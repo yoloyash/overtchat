@@ -7,7 +7,7 @@ import { Streamdown } from "streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { cjk } from "@streamdown/cjk";
-import { ArrowUp, Globe, Sparkles, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, Globe, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -99,99 +99,92 @@ export function ChatArea({ config, onOpenConfig }: Props) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-        <div className="flex min-w-0 items-center gap-2 text-sm">
-          {config.model ? (
-            <>
-              <span className="size-1.5 rounded-full bg-green-500" />
-              <span className="truncate font-medium">{config.model}</span>
-            </>
-          ) : (
-            <button
-              onClick={onOpenConfig}
-              className="text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
-            >
-              No model configured
-            </button>
-          )}
-        </div>
+      <header className="flex h-12 shrink-0 items-center border-b px-3">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onOpenConfig}
+          className="min-w-0 max-w-[60%] gap-1.5"
+        >
+          <span className="truncate">
+            {config.model || "No model configured"}
+          </span>
+          <ChevronDown className="shrink-0 text-muted-foreground" />
+        </Button>
       </header>
 
       <ScrollArea className="flex-1">
-        <div className="mx-auto w-full max-w-3xl px-4">
-          {messages.length === 0 ? (
-            <EmptyState configured={configured} onOpenConfig={onOpenConfig} />
-          ) : (
-            <div className="space-y-6 py-8">
-              {messages.map((m, i) => (
-                <MessageBubble
-                  key={m.id}
-                  message={m}
-                  streaming={streaming && i === messages.length - 1}
-                />
-              ))}
-              <div ref={bottomRef} />
-            </div>
-          )}
-        </div>
+        {messages.length === 0 ? (
+          <EmptyState configured={configured} onOpenConfig={onOpenConfig} />
+        ) : (
+          <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8">
+            {messages.map((m, i) => (
+              <MessageBubble
+                key={m.id}
+                message={m}
+                streaming={streaming && i === messages.length - 1}
+              />
+            ))}
+            <div ref={bottomRef} />
+          </div>
+        )}
       </ScrollArea>
 
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-6">
         <div className="mx-auto max-w-3xl">
           {error && (
             <p className="mb-2 text-sm text-destructive">{error.message}</p>
           )}
-          <div className="flex items-end gap-2 rounded-2xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className={cn(
-                "shrink-0 rounded-full",
-                searchEnabled &&
-                  "bg-blue-500/10 text-blue-600 hover:bg-blue-500/15 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300",
-              )}
-              onClick={() => setSearchEnabled((v) => !v)}
-              aria-label={searchEnabled ? "Disable web search" : "Enable web search"}
-              aria-pressed={searchEnabled}
-              title={searchEnabled ? "Web search on" : "Web search off"}
-            >
-              <Globe />
-            </Button>
+          <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3 py-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
             <Textarea
               ref={textareaRef}
               rows={1}
               placeholder={configured ? "Message…" : "Configure an API endpoint to start chatting"}
-              className="max-h-48 min-h-8 flex-1 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:ring-0 md:text-sm"
+              className="max-h-48 min-h-6 resize-none border-0 bg-transparent px-1 py-1 shadow-none focus-visible:ring-0 md:text-sm"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
             />
-            {streaming ? (
+            <div className="flex items-center justify-between gap-2">
               <Button
-                size="icon-sm"
-                variant="secondary"
-                className="shrink-0 rounded-full"
-                onClick={() => stop()}
-                aria-label="Stop generating"
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-full px-3",
+                  searchEnabled &&
+                    "bg-accent text-foreground hover:bg-accent",
+                )}
+                onClick={() => setSearchEnabled((v) => !v)}
+                aria-label={searchEnabled ? "Disable web search" : "Enable web search"}
+                aria-pressed={searchEnabled}
               >
-                <Square className="size-3 fill-current" />
+                <Globe />
+                <span className="text-xs">Search</span>
               </Button>
-            ) : (
-              <Button
-                size="icon-sm"
-                className="shrink-0 rounded-full"
-                disabled={!input.trim()}
-                onClick={submit}
-                aria-label="Send message"
-              >
-                <ArrowUp />
-              </Button>
-            )}
+              {streaming ? (
+                <Button
+                  size="icon-sm"
+                  variant="secondary"
+                  className="shrink-0 rounded-full"
+                  onClick={() => stop()}
+                  aria-label="Stop generating"
+                >
+                  <Square className="size-3 fill-current" />
+                </Button>
+              ) : (
+                <Button
+                  size="icon-sm"
+                  className="shrink-0 rounded-full"
+                  disabled={!input.trim()}
+                  onClick={submit}
+                  aria-label="Send message"
+                >
+                  <ArrowUp />
+                </Button>
+              )}
+            </div>
           </div>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            Enter to send, Shift+Enter for newline
-          </p>
         </div>
       </div>
     </div>
@@ -206,20 +199,20 @@ function EmptyState({
   onOpenConfig: () => void;
 }) {
   return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center text-center">
-      <div className="mb-4 flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground">
+    <div className="flex h-full min-h-[70vh] flex-col items-center justify-center px-4 text-center">
+      <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
         <Sparkles className="size-5" />
       </div>
-      <h1 className="font-heading text-2xl font-semibold tracking-tight">
+      <h1 className="font-heading text-3xl font-semibold tracking-tight">
         What can I help with?
       </h1>
-      <p className="mt-2 text-sm text-muted-foreground">
+      <p className="mt-3 max-w-sm text-sm text-muted-foreground">
         {configured
           ? "Ask a question or start a conversation."
           : "Point overtchat at any OpenAI-compatible endpoint to begin."}
       </p>
       {!configured && (
-        <Button variant="outline" size="sm" className="mt-4" onClick={onOpenConfig}>
+        <Button variant="outline" className="mt-5" onClick={onOpenConfig}>
           Configure endpoint
         </Button>
       )}

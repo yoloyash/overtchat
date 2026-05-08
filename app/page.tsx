@@ -21,7 +21,7 @@ export default function Home() {
         onOpenConfig={() => setConfigOpen(true)}
         onNewChat={() => setChatKey((k) => k + 1)}
       />
-      <main className="flex flex-1 flex-col overflow-hidden border-l">
+      <main className="flex flex-1 flex-col overflow-hidden">
         <ChatArea
           key={chatKey}
           config={config}
