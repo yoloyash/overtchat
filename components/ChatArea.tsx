@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport, type UIMessage } from "ai";
+import { Streamdown } from "streamdown";
+import { code } from "@streamdown/code";
+import { math } from "@streamdown/math";
+import { cjk } from "@streamdown/cjk";
 import { ArrowUp, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,24 +14,41 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { type ApiConfig } from "@/lib/config";
 
-interface Message {
-  role: "user" | "assistant";
-  content: string;
-}
-
 interface Props {
   config: ApiConfig;
   onOpenConfig: () => void;
 }
 
+const PLUGINS = { code, math, cjk };
+
 export function ChatArea({ config, onOpenConfig }: Props) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const configured = Boolean(config.baseUrl && config.model);
+  const configRef = useRef(config);
+  configRef.current = config;
+
+  const [transport] = useState(
+    () =>
+      new DefaultChatTransport<UIMessage>({
+        api: "/api/chat",
+        prepareSendMessagesRequest: ({ messages, body }) => ({
+          body: {
+            ...body,
+            messages,
+            baseUrl: configRef.current.baseUrl,
+            apiKey: configRef.current.apiKey,
+            model: configRef.current.model,
+          },
+        }),
+      }),
+  );
+
+  const { messages, sendMessage, status, stop, error } = useChat({ transport });
+
   const [input, setInput] = useState("");
-  const [streaming, setStreaming] = useState(false);
-  const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const abortRef = useRef<AbortController | null>(null);
+
+  const streaming = status === "streaming" || status === "submitted";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -38,99 +61,21 @@ export function ChatArea({ config, onOpenConfig }: Props) {
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
 
-  const configured = Boolean(config.baseUrl && config.model);
-
-  async function send() {
+  function submit() {
     const text = input.trim();
     if (!text || streaming) return;
-
     if (!configured) {
       onOpenConfig();
       return;
     }
-
-    setError("");
-    const history: Message[] = [...messages, { role: "user", content: text }];
-    setMessages(history);
+    sendMessage({ text });
     setInput("");
-    setStreaming(true);
-
-    const assistantIdx = history.length;
-    setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
-
-    const ctrl = new AbortController();
-    abortRef.current = ctrl;
-
-    try {
-      const res = await fetch(config.baseUrl.replace(/\/$/, "") + "/chat/completions", {
-        method: "POST",
-        signal: ctrl.signal,
-        headers: {
-          "Content-Type": "application/json",
-          ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
-        },
-        body: JSON.stringify({
-          model: config.model,
-          stream: true,
-          messages: history.map(({ role, content }) => ({ role, content })),
-        }),
-      });
-
-      if (!res.ok) {
-        const body = await res.text();
-        throw new Error(`${res.status}: ${body}`);
-      }
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop()!;
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6).trim();
-          if (payload === "[DONE]") break;
-          try {
-            const delta = JSON.parse(payload).choices?.[0]?.delta?.content ?? "";
-            if (delta) {
-              setMessages((prev) => {
-                const next = [...prev];
-                next[assistantIdx] = {
-                  role: "assistant",
-                  content: next[assistantIdx].content + delta,
-                };
-                return next;
-              });
-            }
-          } catch {
-            // malformed chunk — skip
-          }
-        }
-      }
-    } catch (e) {
-      if ((e as Error).name === "AbortError") return;
-      setError(e instanceof Error ? e.message : String(e));
-      setMessages((prev) => prev.slice(0, assistantIdx));
-    } finally {
-      setStreaming(false);
-      abortRef.current = null;
-    }
-  }
-
-  function stop() {
-    abortRef.current?.abort();
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      send();
+      submit();
     }
   }
 
@@ -162,7 +107,7 @@ export function ChatArea({ config, onOpenConfig }: Props) {
             <div className="space-y-6 py-8">
               {messages.map((m, i) => (
                 <MessageBubble
-                  key={i}
+                  key={m.id}
                   message={m}
                   streaming={streaming && i === messages.length - 1}
                 />
@@ -176,7 +121,7 @@ export function ChatArea({ config, onOpenConfig }: Props) {
       <div className="px-4 pb-4">
         <div className="mx-auto max-w-3xl">
           {error && (
-            <p className="mb-2 text-sm text-destructive">{error}</p>
+            <p className="mb-2 text-sm text-destructive">{error.message}</p>
           )}
           <div className="flex items-end gap-2 rounded-2xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
             <Textarea
@@ -193,7 +138,7 @@ export function ChatArea({ config, onOpenConfig }: Props) {
                 size="icon-sm"
                 variant="secondary"
                 className="shrink-0 rounded-full"
-                onClick={stop}
+                onClick={() => stop()}
                 aria-label="Stop generating"
               >
                 <Square className="size-3 fill-current" />
@@ -203,7 +148,7 @@ export function ChatArea({ config, onOpenConfig }: Props) {
                 size="icon-sm"
                 className="shrink-0 rounded-full"
                 disabled={!input.trim()}
-                onClick={send}
+                onClick={submit}
                 aria-label="Send message"
               >
                 <ArrowUp />
@@ -252,36 +197,50 @@ function MessageBubble({
   message,
   streaming,
 }: {
-  message: Message;
+  message: UIMessage;
   streaming: boolean;
 }) {
   if (message.role === "user") {
+    const text = message.parts
+      .filter((p) => p.type === "text")
+      .map((p) => p.text)
+      .join("");
     return (
       <div className="flex justify-end">
         <div className="max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">
-          {message.content}
+          {text}
         </div>
       </div>
     );
   }
 
-  const parts = splitThinking(message.content);
-
   return (
     <div className="flex justify-start">
       <div className="w-full max-w-full space-y-3 text-sm leading-relaxed">
-        {parts.map((part, i) =>
-          part.kind === "think" ? (
-            <ThinkingBlock key={i} content={part.text} open={streaming && i === parts.length - 1} />
-          ) : (
-            <div key={i} className="whitespace-pre-wrap">
-              {part.text}
-            </div>
-          ),
-        )}
-        {streaming && (
-          <span className="ml-0.5 inline-block h-[0.9em] w-[2px] animate-pulse bg-foreground align-middle" />
-        )}
+        {message.parts.map((part, i) => {
+          if (part.type === "reasoning") {
+            return (
+              <ThinkingBlock
+                key={i}
+                content={part.text}
+                open={streaming && part.state !== "done"}
+              />
+            );
+          }
+          if (part.type === "text") {
+            return (
+              <Streamdown
+                key={i}
+                className="space-y-3"
+                plugins={PLUGINS}
+                isAnimating={streaming}
+              >
+                {part.text}
+              </Streamdown>
+            );
+          }
+          return null;
+        })}
       </div>
     </div>
   );
@@ -307,24 +266,4 @@ function ThinkingBlock({ content, open }: { content: string; open: boolean }) {
       <div className="whitespace-pre-wrap text-xs text-muted-foreground">{trimmed}</div>
     </details>
   );
-}
-
-type Part = { kind: "text" | "think"; text: string };
-
-function splitThinking(content: string): Part[] {
-  const parts: Part[] = [];
-  const regex = /<think>([\s\S]*?)(?:<\/think>|$)/g;
-  let last = 0;
-  let m: RegExpExecArray | null;
-  while ((m = regex.exec(content)) !== null) {
-    if (m.index > last) {
-      parts.push({ kind: "text", text: content.slice(last, m.index) });
-    }
-    parts.push({ kind: "think", text: m[1] });
-    last = regex.lastIndex;
-  }
-  if (last < content.length) {
-    parts.push({ kind: "text", text: content.slice(last) });
-  }
-  return parts.length ? parts : [{ kind: "text", text: content }];
 }
