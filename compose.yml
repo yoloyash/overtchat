@@ -1,0 +1,12 @@
+services:
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: overtchat-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8088}:8080"
+    environment:
+      SEARXNG_BASE_URL: http://localhost:${SEARXNG_PORT:-8088}/
+      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me-in-production}
+    volumes:
+      - ./searxng:/etc/searxng:rw

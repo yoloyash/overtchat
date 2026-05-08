@@ -7,12 +7,19 @@ import { Streamdown } from "streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { cjk } from "@streamdown/cjk";
-import { ArrowUp, Sparkles, Square } from "lucide-react";
+import { ArrowUp, Globe, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { type ApiConfig } from "@/lib/config";
+import {
+  ToolCall,
+  type FetchUrlPart,
+  type WebSearchPart,
+} from "@/components/ToolCall";
+
+const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 
 interface Props {
   config: ApiConfig;
@@ -26,6 +33,16 @@ export function ChatArea({ config, onOpenConfig }: Props) {
   const configRef = useRef(config);
   configRef.current = config;
 
+  const [searchEnabled, setSearchEnabled] = useState(false);
+  useEffect(() => {
+    setSearchEnabled(localStorage.getItem(SEARCH_STORAGE_KEY) === "true");
+  }, []);
+  useEffect(() => {
+    localStorage.setItem(SEARCH_STORAGE_KEY, String(searchEnabled));
+  }, [searchEnabled]);
+  const searchRef = useRef(searchEnabled);
+  searchRef.current = searchEnabled;
+
   const [transport] = useState(
     () =>
       new DefaultChatTransport<UIMessage>({
@@ -37,6 +54,7 @@ export function ChatArea({ config, onOpenConfig }: Props) {
             baseUrl: configRef.current.baseUrl,
             apiKey: configRef.current.apiKey,
             model: configRef.current.model,
+            searchEnabled: searchRef.current,
           },
         }),
       }),
@@ -124,6 +142,22 @@ export function ChatArea({ config, onOpenConfig }: Props) {
             <p className="mb-2 text-sm text-destructive">{error.message}</p>
           )}
           <div className="flex items-end gap-2 rounded-2xl border bg-background px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "shrink-0 rounded-full",
+                searchEnabled &&
+                  "bg-blue-500/10 text-blue-600 hover:bg-blue-500/15 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300",
+              )}
+              onClick={() => setSearchEnabled((v) => !v)}
+              aria-label={searchEnabled ? "Disable web search" : "Enable web search"}
+              aria-pressed={searchEnabled}
+              title={searchEnabled ? "Web search on" : "Web search off"}
+            >
+              <Globe />
+            </Button>
             <Textarea
               ref={textareaRef}
               rows={1}
@@ -238,6 +272,12 @@ function MessageBubble({
                 {part.text}
               </Streamdown>
             );
+          }
+          if (part.type === "tool-web_search") {
+            return <ToolCall key={i} part={part as unknown as WebSearchPart} />;
+          }
+          if (part.type === "tool-fetch_url") {
+            return <ToolCall key={i} part={part as unknown as FetchUrlPart} />;
           }
           return null;
         })}

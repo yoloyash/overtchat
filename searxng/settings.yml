@@ -1,0 +1,38 @@
+use_default_settings: true
+
+server:
+  bind_address: 0.0.0.0
+  port: 8080
+  secret_key: "${SEARXNG_SECRET}"
+  limiter: false
+  public_instance: false
+  image_proxy: true
+
+search:
+  safe_search: 0
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 4.0
+  max_request_timeout: 10.0
+  pool_connections: 100
+  pool_maxsize: 20
+
+engines:
+  - name: ahmia
+    disabled: true
+  - name: torch
+    disabled: true
+  - name: wikidata
+    disabled: true
+  - name: brave
+    disabled: true
+  - name: karmasearch
+    disabled: true
+  - name: karmasearch videos
+    disabled: true

@@ -1,11 +1,13 @@
 import {
   convertToModelMessages,
   streamText,
+  stepCountIs,
   wrapLanguageModel,
   extractReasoningMiddleware,
   type UIMessage,
 } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { webTools } from "@/lib/tools";
 
 export const maxDuration = 300;
 
@@ -14,10 +16,12 @@ interface Body {
   baseUrl: string;
   apiKey?: string;
   model: string;
+  searchEnabled?: boolean;
 }
 
 export async function POST(req: Request) {
-  const { messages, baseUrl, apiKey, model } = (await req.json()) as Body;
+  const { messages, baseUrl, apiKey, model, searchEnabled } =
+    (await req.json()) as Body;
 
   if (!baseUrl || !model) {
     return new Response("Missing baseUrl or model", { status: 400 });
@@ -37,6 +41,8 @@ export async function POST(req: Request) {
   const result = streamText({
     model: wrapped,
     messages: await convertToModelMessages(messages),
+    tools: searchEnabled ? webTools : undefined,
+    stopWhen: searchEnabled ? stepCountIs(5) : undefined,
     abortSignal: req.signal,
   });
 
