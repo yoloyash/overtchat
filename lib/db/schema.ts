@@ -1,5 +1,6 @@
 import { relations, sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -121,7 +122,9 @@ export const messages = sqliteTable(
       .notNull()
       .references(() => chats.id, { onDelete: "cascade" }),
     role: text("role", { enum: ["user", "assistant", "system"] }).notNull(),
-    parts: text("parts").notNull(),
+    parts: text("parts", { mode: "json" })
+      .$type<UIMessagePart<UIDataTypes, UITools>[]>()
+      .notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

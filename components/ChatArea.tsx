@@ -50,22 +50,7 @@ export function ChatArea({
   const chatIdRef = useRef<string | undefined>(chatId);
 
   const [transport] = useState(
-    // chatIdRef is only read inside the fetch closure at network-call time,
-    // never during render. The lazy initializer runs once at mount.
-    // eslint-disable-next-line react-hooks/refs
-    () =>
-      new DefaultChatTransport<UIMessage>({
-        api: "/api/chat",
-        fetch: async (input, init) => {
-          const res = await fetch(input, init);
-          const id = res.headers.get("X-Chat-Id");
-          if (id && !chatIdRef.current) {
-            chatIdRef.current = id;
-            window.history.replaceState(null, "", `/chat/${id}`);
-          }
-          return res;
-        },
-      }),
+    () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
   );
 
   const { messages, sendMessage, status, stop, error } = useChat({
@@ -107,6 +92,11 @@ export function ChatArea({
     if (!configured) {
       router.push("/settings");
       return;
+    }
+    if (!chatIdRef.current) {
+      const id = crypto.randomUUID();
+      chatIdRef.current = id;
+      window.history.replaceState(null, "", `/chat/${id}`);
     }
     sendMessage(
       { text },

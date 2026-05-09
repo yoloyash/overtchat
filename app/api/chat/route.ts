@@ -13,8 +13,7 @@ import { webTools } from "@/lib/tools";
 import { auth } from "@/lib/auth/server";
 import {
   appendMessage,
-  createChat,
-  getChat,
+  ensureChat,
   setTitleIfNull,
   touchChat,
 } from "@/lib/db/chats";
@@ -27,7 +26,7 @@ interface Body {
   apiKey?: string;
   model: string;
   searchEnabled?: boolean;
-  chatId?: string;
+  chatId: string;
 }
 
 export async function POST(req: Request) {
@@ -35,14 +34,8 @@ export async function POST(req: Request) {
   if (!session) return new Response("Unauthorized", { status: 401 });
   const userId = session.user.id;
 
-  const {
-    messages,
-    baseUrl,
-    apiKey,
-    model,
-    searchEnabled,
-    chatId: incoming,
-  } = (await req.json()) as Body;
+  const { messages, baseUrl, apiKey, model, searchEnabled, chatId } =
+    (await req.json()) as Body;
 
   if (!baseUrl || !model) {
     return new Response("Missing baseUrl or model", { status: 400 });
@@ -50,15 +43,12 @@ export async function POST(req: Request) {
   if (!messages.length) {
     return new Response("No messages", { status: 400 });
   }
-
-  let chatId: string;
-  if (incoming) {
-    const existing = await getChat(incoming, userId);
-    if (!existing) return new Response("Not found", { status: 404 });
-    chatId = existing.id;
-  } else {
-    chatId = (await createChat(userId)).id;
+  if (!chatId) {
+    return new Response("Missing chatId", { status: 400 });
   }
+
+  const chat = await ensureChat(chatId, userId);
+  if (!chat) return new Response("Not found", { status: 404 });
 
   const last = messages[messages.length - 1];
   if (last.role === "user") {
@@ -87,7 +77,6 @@ export async function POST(req: Request) {
 
   return result.toUIMessageStreamResponse({
     sendReasoning: true,
-    headers: { "X-Chat-Id": chatId },
     onFinish: async ({ responseMessage, isAborted }) => {
       if (isAborted) return;
       try {

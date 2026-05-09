@@ -8,17 +8,6 @@ type AnyPart = UIMessagePart<UIDataTypes, UITools>;
 
 export type ChatRow = typeof chats.$inferSelect;
 
-export async function createChat(
-  userId: string,
-  id: string = crypto.randomUUID(),
-): Promise<ChatRow> {
-  const [row] = await db
-    .insert(chats)
-    .values({ id, userId, title: null })
-    .returning();
-  return row;
-}
-
 export async function getChat(
   id: string,
   userId: string,
@@ -29,6 +18,28 @@ export async function getChat(
     .where(and(eq(chats.id, id), eq(chats.userId, userId)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * Idempotent: if the chat exists and belongs to `userId`, returns it. If no
+ * chat with this id exists, creates it. If a chat with this id exists but
+ * belongs to someone else, returns null.
+ */
+export async function ensureChat(
+  id: string,
+  userId: string,
+): Promise<ChatRow | null> {
+  const [existing] = await db
+    .select()
+    .from(chats)
+    .where(eq(chats.id, id))
+    .limit(1);
+  if (existing) return existing.userId === userId ? existing : null;
+  const [row] = await db
+    .insert(chats)
+    .values({ id, userId, title: null })
+    .returning();
+  return row;
 }
 
 export async function listChats(
@@ -72,12 +83,7 @@ export async function appendMessage(
   parts: AnyPart[],
 ): Promise<{ id: string }> {
   const id = crypto.randomUUID();
-  await db.insert(messages).values({
-    id,
-    chatId,
-    role,
-    parts: JSON.stringify(parts),
-  });
+  await db.insert(messages).values({ id, chatId, role, parts });
   return { id };
 }
 
@@ -90,7 +96,7 @@ export async function getMessages(chatId: string): Promise<UIMessage[]> {
   return rows.map((r) => ({
     id: r.id,
     role: r.role as UIMessage["role"],
-    parts: JSON.parse(r.parts) as UIMessage["parts"],
+    parts: r.parts as UIMessage["parts"],
   }));
 }
 
