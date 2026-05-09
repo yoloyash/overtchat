@@ -12,9 +12,9 @@ import { cjk } from "@streamdown/cjk";
 import { ArrowUp, Globe, Sparkles, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { type ApiConfig } from "@/lib/config";
+import { useLocalStorage } from "@/lib/useLocalStorage";
 import { ModelPicker } from "@/components/ModelPicker";
 import {
   ToolCall,
@@ -34,46 +34,36 @@ const PLUGINS = { code, math, cjk };
 export function ChatArea({ config, onConfigChange }: Props) {
   const router = useRouter();
   const configured = Boolean(config.baseUrl && config.model);
-  const configRef = useRef(config);
-  configRef.current = config;
 
-  const [searchEnabled, setSearchEnabled] = useState(false);
-  useEffect(() => {
-    setSearchEnabled(localStorage.getItem(SEARCH_STORAGE_KEY) === "true");
-  }, []);
-  useEffect(() => {
-    localStorage.setItem(SEARCH_STORAGE_KEY, String(searchEnabled));
-  }, [searchEnabled]);
-  const searchRef = useRef(searchEnabled);
-  searchRef.current = searchEnabled;
+  const [searchEnabled, setSearchEnabled] = useLocalStorage<boolean>(
+    SEARCH_STORAGE_KEY,
+    false,
+  );
 
   const [transport] = useState(
-    () =>
-      new DefaultChatTransport<UIMessage>({
-        api: "/api/chat",
-        prepareSendMessagesRequest: ({ messages, body }) => ({
-          body: {
-            ...body,
-            messages,
-            baseUrl: configRef.current.baseUrl,
-            apiKey: configRef.current.apiKey,
-            model: configRef.current.model,
-            searchEnabled: searchRef.current,
-          },
-        }),
-      }),
+    () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
   );
 
   const { messages, sendMessage, status, stop, error } = useChat({ transport });
 
   const [input, setInput] = useState("");
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const stickToBottomRef = useRef(true);
 
   const streaming = status === "streaming" || status === "submitted";
 
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distanceFromBottom < 80;
+  }
+
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el || !stickToBottomRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   useEffect(() => {
@@ -90,7 +80,17 @@ export function ChatArea({ config, onConfigChange }: Props) {
       router.push("/settings");
       return;
     }
-    sendMessage({ text });
+    sendMessage(
+      { text },
+      {
+        body: {
+          baseUrl: config.baseUrl,
+          apiKey: config.apiKey,
+          model: config.model,
+          searchEnabled,
+        },
+      },
+    );
     setInput("");
   }
 
@@ -110,7 +110,11 @@ export function ChatArea({ config, onConfigChange }: Props) {
         />
       </header>
 
-      <ScrollArea className="flex-1">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto overscroll-contain"
+      >
         {messages.length === 0 ? (
           <EmptyState configured={configured} />
         ) : (
@@ -122,10 +126,9 @@ export function ChatArea({ config, onConfigChange }: Props) {
                 streaming={streaming && i === messages.length - 1}
               />
             ))}
-            <div ref={bottomRef} />
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       <div className="px-4 pb-6">
         <div className="mx-auto max-w-3xl">
@@ -152,7 +155,7 @@ export function ChatArea({ config, onConfigChange }: Props) {
                   searchEnabled &&
                     "bg-accent text-foreground hover:bg-accent",
                 )}
-                onClick={() => setSearchEnabled((v) => !v)}
+                onClick={() => setSearchEnabled(!searchEnabled)}
                 aria-label={searchEnabled ? "Disable web search" : "Enable web search"}
                 aria-pressed={searchEnabled}
               >
@@ -225,7 +228,7 @@ function MessageBubble({
       .join("");
     return (
       <div className="flex justify-end">
-        <div className="max-w-[80%] rounded-2xl bg-muted px-4 py-2.5 text-sm whitespace-pre-wrap">
+        <div className="max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap text-secondary-foreground">
           {text}
         </div>
       </div>

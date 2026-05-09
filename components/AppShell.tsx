@@ -1,8 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { Sidebar } from "@/components/Sidebar";
-import { type ApiConfig, loadConfig } from "@/lib/config";
+import { type ApiConfig, useConfig } from "@/lib/config";
 
 interface ShellContext {
   config: ApiConfig;
@@ -20,17 +20,8 @@ export function useAppShell() {
 }
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const [config, setConfig] = useState<ApiConfig>({ baseUrl: "", apiKey: "", model: "" });
+  const [config, setConfig] = useConfig();
   const [chatKey, setChatKey] = useState(0);
-
-  useEffect(() => {
-    setConfig(loadConfig());
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "overtchat_config") setConfig(loadConfig());
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
   const value = useMemo<ShellContext>(
     () => ({
@@ -39,7 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       chatKey,
       newChat: () => setChatKey((k) => k + 1),
     }),
-    [config, chatKey],
+    [config, setConfig, chatKey],
   );
 
   return (

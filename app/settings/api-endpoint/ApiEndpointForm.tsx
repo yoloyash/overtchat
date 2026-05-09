@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Select,
   SelectContent,
@@ -12,23 +12,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { type ApiConfig, fetchModels, loadConfig, saveConfig } from "@/lib/config";
+import { type ApiConfig, fetchModels, useConfig } from "@/lib/config";
 
 type TestStatus = "idle" | "loading" | "ok" | "error";
 
 export function ApiEndpointForm() {
-  const [config, setConfig] = useState<ApiConfig>({ baseUrl: "", apiKey: "", model: "" });
+  const [saved, setConfig] = useConfig();
+  const [draft, setDraft] = useState<ApiConfig>(saved);
   const [models, setModels] = useState<string[]>([]);
   const [testStatus, setTestStatus] = useState<TestStatus>("idle");
   const [testError, setTestError] = useState("");
   const [savedAt, setSavedAt] = useState(0);
 
-  useEffect(() => {
-    setConfig(loadConfig());
-  }, []);
-
   function handleBaseUrlChange(value: string) {
-    setConfig((c) => ({ ...c, baseUrl: value }));
+    setDraft((c) => ({ ...c, baseUrl: value }));
     setTestStatus("idle");
     setModels([]);
   }
@@ -38,11 +35,11 @@ export function ApiEndpointForm() {
     setTestError("");
     setModels([]);
     try {
-      const ids = await fetchModels(config);
+      const ids = await fetchModels(draft);
       if (!ids.length) throw new Error("No models available at this endpoint");
       setModels(ids);
       setTestStatus("ok");
-      setConfig((c) => ({ ...c, model: ids.includes(c.model) ? c.model : ids[0] }));
+      setDraft((c) => ({ ...c, model: ids.includes(c.model) ? c.model : ids[0] }));
     } catch (e) {
       setTestStatus("error");
       setTestError(e instanceof Error ? e.message : String(e));
@@ -50,11 +47,11 @@ export function ApiEndpointForm() {
   }
 
   function handleSave() {
-    saveConfig(config);
+    setConfig(draft);
     setSavedAt(Date.now());
   }
 
-  const canSave = Boolean(config.baseUrl && config.model);
+  const canSave = Boolean(draft.baseUrl && draft.model);
 
   return (
     <div className="max-w-xl space-y-6">
@@ -71,7 +68,7 @@ export function ApiEndpointForm() {
           <Input
             id="baseUrl"
             placeholder="http://localhost:8000/v1"
-            value={config.baseUrl}
+            value={draft.baseUrl}
             onChange={(e) => handleBaseUrlChange(e.target.value)}
           />
         </div>
@@ -85,8 +82,8 @@ export function ApiEndpointForm() {
             id="apiKey"
             type="password"
             placeholder="sk-…"
-            value={config.apiKey}
-            onChange={(e) => setConfig((c) => ({ ...c, apiKey: e.target.value }))}
+            value={draft.apiKey}
+            onChange={(e) => setDraft((c) => ({ ...c, apiKey: e.target.value }))}
           />
         </div>
 
@@ -94,13 +91,13 @@ export function ApiEndpointForm() {
           <Button
             variant="outline"
             size="sm"
-            disabled={!config.baseUrl || testStatus === "loading"}
+            disabled={!draft.baseUrl || testStatus === "loading"}
             onClick={testConnection}
           >
             {testStatus === "loading" ? "Testing…" : "Test connection"}
           </Button>
           {testStatus === "ok" && (
-            <span className="text-sm text-green-600 dark:text-green-400">
+            <span className="text-sm text-ring">
               {models.length} model{models.length === 1 ? "" : "s"} available
             </span>
           )}
@@ -113,10 +110,10 @@ export function ApiEndpointForm() {
           <div className="space-y-1.5">
             <Label>Model</Label>
             <Select
-              value={config.model}
-              onValueChange={(v) => setConfig((c) => ({ ...c, model: v ?? "" }))}
+              value={draft.model}
+              onValueChange={(v) => setDraft((c) => ({ ...c, model: v ?? "" }))}
             >
-              <SelectTrigger className={cn(!config.model && "text-muted-foreground")}>
+              <SelectTrigger className={cn(!draft.model && "text-muted-foreground")}>
                 <SelectValue placeholder="Select a model" />
               </SelectTrigger>
               <SelectContent>

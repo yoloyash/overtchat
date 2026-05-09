@@ -1,3 +1,5 @@
+import { useLocalStorage } from "@/lib/useLocalStorage";
+
 export interface ApiConfig {
   baseUrl: string;
   apiKey: string;
@@ -5,22 +7,15 @@ export interface ApiConfig {
 }
 
 const CONFIG_KEY = "overtchat_config";
+const DEFAULT_CONFIG: ApiConfig = { baseUrl: "", apiKey: "", model: "" };
 
-export function loadConfig(): ApiConfig {
-  if (typeof window === "undefined") return { baseUrl: "", apiKey: "", model: "" };
-  try {
-    const raw = localStorage.getItem(CONFIG_KEY);
-    return raw ? JSON.parse(raw) : { baseUrl: "", apiKey: "", model: "" };
-  } catch {
-    return { baseUrl: "", apiKey: "", model: "" };
-  }
+export function useConfig(): [ApiConfig, (next: ApiConfig) => void] {
+  return useLocalStorage<ApiConfig>(CONFIG_KEY, DEFAULT_CONFIG);
 }
 
-export function saveConfig(config: ApiConfig): void {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-}
-
-export async function fetchModels(config: Pick<ApiConfig, "baseUrl" | "apiKey">): Promise<string[]> {
+export async function fetchModels(
+  config: Pick<ApiConfig, "baseUrl" | "apiKey">,
+): Promise<string[]> {
   const res = await fetch(config.baseUrl.replace(/\/$/, "") + "/models", {
     headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
   });

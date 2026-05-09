@@ -7,7 +7,7 @@ import { Menu } from "@base-ui/react/menu";
 import { Check, ChevronDown, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type ApiConfig, fetchModels, saveConfig } from "@/lib/config";
+import { type ApiConfig, fetchModels } from "@/lib/config";
 
 interface Props {
   config: ApiConfig;
@@ -44,9 +44,7 @@ export function ModelPicker({ config, onChange }: Props) {
   }
 
   function selectModel(id: string) {
-    const next = { ...config, model: id };
-    saveConfig(next);
-    onChange(next);
+    onChange({ ...config, model: id });
   }
 
   const label = config.model || (configured ? "No model selected" : "Not configured");
