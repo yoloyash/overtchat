@@ -1,14 +1,11 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
-import { Sidebar } from "@/components/Sidebar";
+import { createContext, useContext, useMemo } from "react";
 import { type ApiConfig, useConfig } from "@/lib/config";
 
 interface ShellContext {
   config: ApiConfig;
   setConfig: (config: ApiConfig) => void;
-  chatKey: number;
-  newChat: () => void;
 }
 
 const Ctx = createContext<ShellContext | null>(null);
@@ -19,24 +16,24 @@ export function useAppShell() {
   return ctx;
 }
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({
+  sidebar,
+  children,
+}: {
+  sidebar: React.ReactNode;
+  children: React.ReactNode;
+}) {
   const [config, setConfig] = useConfig();
-  const [chatKey, setChatKey] = useState(0);
 
   const value = useMemo<ShellContext>(
-    () => ({
-      config,
-      setConfig,
-      chatKey,
-      newChat: () => setChatKey((k) => k + 1),
-    }),
-    [config, setConfig, chatKey],
+    () => ({ config, setConfig }),
+    [config, setConfig],
   );
 
   return (
     <Ctx.Provider value={value}>
       <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar onNewChat={value.newChat} />
+        {sidebar}
         <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
       </div>
     </Ctx.Provider>

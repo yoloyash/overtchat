@@ -8,6 +8,13 @@
       "when": 1778288038369,
       "tag": "0000_tired_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1778294903039,
+      "tag": "0001_brown_tigra",
+      "breakpoints": true
     }
   ]
 }

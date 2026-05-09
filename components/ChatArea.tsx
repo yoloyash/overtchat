@@ -27,11 +27,18 @@ const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 interface Props {
   config: ApiConfig;
   onConfigChange: (config: ApiConfig) => void;
+  chatId?: string;
+  initialMessages?: UIMessage[];
 }
 
 const PLUGINS = { code, math, cjk };
 
-export function ChatArea({ config, onConfigChange }: Props) {
+export function ChatArea({
+  config,
+  onConfigChange,
+  chatId,
+  initialMessages,
+}: Props) {
   const router = useRouter();
   const configured = Boolean(config.baseUrl && config.model);
 
@@ -40,11 +47,32 @@ export function ChatArea({ config, onConfigChange }: Props) {
     false,
   );
 
+  const chatIdRef = useRef<string | undefined>(chatId);
+
   const [transport] = useState(
-    () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
+    // chatIdRef is only read inside the fetch closure at network-call time,
+    // never during render. The lazy initializer runs once at mount.
+    // eslint-disable-next-line react-hooks/refs
+    () =>
+      new DefaultChatTransport<UIMessage>({
+        api: "/api/chat",
+        fetch: async (input, init) => {
+          const res = await fetch(input, init);
+          const id = res.headers.get("X-Chat-Id");
+          if (id && !chatIdRef.current) {
+            chatIdRef.current = id;
+            window.history.replaceState(null, "", `/chat/${id}`);
+          }
+          return res;
+        },
+      }),
   );
 
-  const { messages, sendMessage, status, stop, error } = useChat({ transport });
+  const { messages, sendMessage, status, stop, error } = useChat({
+    transport,
+    messages: initialMessages,
+    onFinish: () => router.refresh(),
+  });
 
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -88,6 +116,7 @@ export function ChatArea({ config, onConfigChange }: Props) {
           apiKey: config.apiKey,
           model: config.model,
           searchEnabled,
+          chatId: chatIdRef.current,
         },
       },
     );
