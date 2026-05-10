@@ -18,6 +18,7 @@ import {
   setTitleIfNull,
   touchChat,
 } from "@/lib/db/chats";
+import { inlineUploads } from "@/lib/db/uploads";
 
 export const maxDuration = 300;
 
@@ -81,9 +82,11 @@ export async function POST(req: Request) {
     middleware: extractReasoningMiddleware({ tagName: "think" }),
   });
 
+  const inlined = await inlineUploads(messages, userId);
+
   const result = streamText({
     model: wrapped,
-    messages: await convertToModelMessages(messages),
+    messages: await convertToModelMessages(inlined),
     tools: searchEnabled ? webTools : undefined,
     stopWhen: searchEnabled ? stepCountIs(10) : undefined,
     abortSignal: req.signal,

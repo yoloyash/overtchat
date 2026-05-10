@@ -18,3 +18,9 @@ const migrationsFolder = path.join(process.cwd(), "drizzle");
 if (fs.existsSync(migrationsFolder)) {
   migrate(db, { migrationsFolder });
 }
+
+void import("./uploads").then(({ sweepOrphanedUploads }) =>
+  sweepOrphanedUploads().catch((err) =>
+    console.error("[sweep-orphan-uploads]", err),
+  ),
+);

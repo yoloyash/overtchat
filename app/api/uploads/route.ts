@@ -41,7 +41,6 @@ export async function POST(req: Request) {
     userId,
     filename: file.name || "upload",
     mediaType: file.type,
-    size: file.size,
   });
 
   return Response.json({

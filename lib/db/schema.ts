@@ -178,7 +178,6 @@ export const uploads = sqliteTable(
       .references(() => user.id, { onDelete: "cascade" }),
     filename: text("filename").notNull(),
     mediaType: text("media_type").notNull(),
-    size: integer("size").notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),

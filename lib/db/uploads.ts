@@ -1,9 +1,11 @@
 import "server-only";
 import fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
+import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
-import { uploads } from "@/lib/db/schema";
+import { messages, uploads } from "@/lib/db/schema";
 
 export type UploadRow = typeof uploads.$inferSelect;
 
@@ -21,7 +23,6 @@ export async function createUpload(row: {
   userId: string;
   filename: string;
   mediaType: string;
-  size: number;
 }): Promise<void> {
   await db.insert(uploads).values(row);
 }
@@ -36,4 +37,61 @@ export async function getUpload(
     .where(and(eq(uploads.id, id), eq(uploads.userId, userId)))
     .limit(1);
   return row ?? null;
+}
+
+const UPLOAD_URL_PREFIX = "/api/uploads/";
+
+const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Deletes upload rows (and their disk bytes) older than 24h that no message
+ * references. Composer-abandoned uploads never get persisted into a message, so
+ * they'd otherwise leak forever.
+ */
+export async function sweepOrphanedUploads(): Promise<void> {
+  const cutoff = new Date(Date.now() - ORPHAN_GRACE_MS);
+  const candidates = await db
+    .select({ id: uploads.id })
+    .from(uploads)
+    .where(lt(uploads.createdAt, cutoff));
+
+  for (const { id } of candidates) {
+    const needle = `%${UPLOAD_URL_PREFIX}${id}%`;
+    const [referenced] = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(sql`${messages.parts} LIKE ${needle}`)
+      .limit(1);
+    if (referenced) continue;
+    await db.delete(uploads).where(eq(uploads.id, id));
+    await fsp.rm(uploadPath(id), { force: true });
+  }
+}
+
+/**
+ * Rewrites `file` parts that reference our uploads route to inline `data:` URLs
+ * so upstream providers (OpenAI, Groq, …) can fetch bytes without auth. Foreign
+ * URLs pass through untouched. Missing/unauthorized uploads are dropped.
+ */
+export async function inlineUploads(
+  messages: UIMessage[],
+  userId: string,
+): Promise<UIMessage[]> {
+  return Promise.all(
+    messages.map(async (m) => ({
+      ...m,
+      parts: await Promise.all(
+        m.parts.map(async (part) => {
+          if (part.type !== "file") return part;
+          if (!part.url.startsWith(UPLOAD_URL_PREFIX)) return part;
+          const id = part.url.slice(UPLOAD_URL_PREFIX.length);
+          const row = await getUpload(id, userId);
+          if (!row) return null;
+          const bytes = await fsp.readFile(uploadPath(id));
+          const dataUrl = `data:${row.mediaType};base64,${bytes.toString("base64")}`;
+          return { ...part, url: dataUrl };
+        }),
+      ).then((parts) => parts.filter((p) => p !== null)),
+    })),
+  );
 }
