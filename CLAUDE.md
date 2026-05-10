@@ -17,7 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Product shape
 
-overtchat is a simpler self-hosted alternative to OpenWebUI. See `ROADMAP.md` for phase plan and explicit non-goals. Load-bearing principles:
+overtchat is a simpler self-hosted alternative to OpenWebUI. Load-bearing principles:
 
 - **Bring-your-own endpoint.** The server never holds a model key; the browser sends `baseUrl`/`apiKey`/`model` with every chat request. Do not add server-side env vars for provider credentials.
 - **No RAG.** Web search results go straight into context. Never propose embeddings, vector DBs, or chunking.

@@ -1,6 +1,6 @@
 # Deploy
 
-Single-compose, self-hosted. Assumes Docker + Docker Compose v2 on the target machine.
+Single-compose, self-hosted, LAN-only. Assumes Docker + Docker Compose v2 on the target machine.
 
 ## One-time setup
 
@@ -13,9 +13,7 @@ cp .env.example .env
 Edit `.env`:
 
 - `BETTER_AUTH_SECRET` — required. Generate with `openssl rand -hex 32`.
-- `BETTER_AUTH_URL` — must match the URL the browser hits (scheme + host + port).
-  - Local: `http://localhost:4718`
-  - Cloudflare tunnel: `https://chat.yourdomain.com`
+- `BETTER_AUTH_URL` — the URL the browser will hit (scheme + host + port). For LAN access from other devices, set it to your host's LAN IP, e.g. `http://192.168.1.50:4718`.
 
 Then:
 
@@ -34,9 +32,12 @@ docker compose up -d --build
 
 Compose only recreates the container if the image changed. Migrations run automatically on boot. Data in the `overtchat-data` volume persists across rebuilds.
 
-## Cloudflare tunnel
+## Pointing at your LLM
 
-Point the tunnel at `http://localhost:4718` on the host. Set `BETTER_AUTH_URL` in `.env` to the public URL, then `docker compose up -d` to restart the app with the new value. `BETTER_AUTH_URL` must exactly match what the browser sees — mismatches break auth cookies silently.
+The app container makes the upstream LLM calls, so the base URL you set in **Settings → API endpoint** needs to be reachable **from inside the container**, not from your browser.
+
+- **LLM running on the host (not in docker):** use `http://host.docker.internal:<port>/v1`. Baked into `compose.yml` via `extra_hosts`, works on Linux / macOS / Windows.
+- **Public provider (OpenAI / Groq / etc.):** use the provider's base URL + API key.
 
 ## Common ops
 
@@ -64,6 +65,6 @@ docker compose down && docker compose up -d --build --force-recreate
 ## Troubleshooting
 
 - **`curl -I http://localhost:4718` returns `307`** — healthy (redirect to `/login`).
-- **Login succeeds, next page redirects back to login** — `BETTER_AUTH_URL` mismatch. Fix in `.env`, then restart.
+- **Login succeeds, next page redirects back to login** — `BETTER_AUTH_URL` mismatch with what the browser sees. Fix in `.env`, then `docker compose up -d`.
 - **Port already in use** — change `APP_PORT` in `.env`.
 - **Schema errors after pull** — you didn't rebuild. `docker compose up -d --build`.

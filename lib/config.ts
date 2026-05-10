@@ -16,10 +16,12 @@ export function useConfig(): [ApiConfig, (next: ApiConfig) => void] {
 export async function fetchModels(
   config: Pick<ApiConfig, "baseUrl" | "apiKey">,
 ): Promise<string[]> {
-  const res = await fetch(config.baseUrl.replace(/\/$/, "") + "/models", {
-    headers: config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {},
+  const res = await fetch("/api/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseUrl: config.baseUrl, apiKey: config.apiKey }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as { data?: Array<{ id: string }> };
-  return (json.data ?? []).map((m) => m.id).sort();
+  const json = (await res.json()) as { models?: string[]; error?: string };
+  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+  return json.models ?? [];
 }

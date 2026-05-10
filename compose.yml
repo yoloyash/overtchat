@@ -7,9 +7,11 @@ services:
       - "${APP_PORT:-4718}:4717"
     environment:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4717}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
       SEARXNG_URL: http://searxng:8080
       DATABASE_URL: /app/data/chat.db
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - overtchat-data:/app/data
     depends_on:

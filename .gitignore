@@ -39,6 +39,8 @@ yarn-error.log*
 
 # local-only compose overrides (per-developer)
 *.local.yml
+compose.override.yml
+compose.override.yaml
 
 # vercel
 .vercel

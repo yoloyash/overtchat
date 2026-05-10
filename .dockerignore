@@ -18,6 +18,8 @@ CLAUDE.md
 Dockerfile
 .dockerignore
 compose.yml
+compose.override.yml
+compose.override.yaml
 *.local.yml
 .vscode
 .idea

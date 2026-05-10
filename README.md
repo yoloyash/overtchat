@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# overtchat
 
-## Getting Started
+A simpler self-hosted alternative to OpenWebUI. Bring your own OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp, OpenAI, Groq, anything). One `docker compose up` and you're in.
 
-First, run the development server:
+- Multi-user auth, first signup becomes admin
+- Persistent chat history, auto-titled
+- Web search via bundled SearXNG (no external API keys)
+- Reasoning models (DeepSeek, Qwen3) render `<think>` blocks natively
+- Tool calling — search runs when the model asks for it, not on a timer
+- No RAG, no embeddings, no vector DB. Results go straight into context.
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/yoloyash/overtchat
+cd overtchat
+cp .env.example .env
 ```
 
-Open [http://localhost:4717](http://localhost:4717) with your browser to see the result.
+Generate a secret and write it into `.env`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Then bring it up:
 
-## Learn More
+```bash
+docker compose up -d --build
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open [http://localhost:4718](http://localhost:4718). First signup becomes admin. Go to **Settings → API endpoint** and point it at your LLM:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Ollama / vLLM / llama.cpp on the same host:** `http://host.docker.internal:<port>/v1`
+- **OpenAI / Groq / any public provider:** the provider's base URL + API key
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Hit "Test connection" to populate the model list, pick one, save.
 
-## Deploy on Vercel
+To open it up to other devices on your LAN, set `BETTER_AUTH_URL` in `.env` to your host's LAN IP (e.g. `http://192.168.1.50:4718`) and `docker compose up -d`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Stack
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Next.js 16 · Vercel AI SDK v6 · Better Auth · Drizzle + SQLite · base-ui · Tailwind · SearXNG
+
+## More
+
+- [docs/deploy.md](docs/deploy.md) — updates, backup, troubleshooting
