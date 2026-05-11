@@ -653,7 +653,12 @@ function ThinkingBlock({ content, open }: { content: string; open: boolean }) {
           <span className="text-muted-foreground/70 group-open/think:hidden">— click to expand</span>
         </span>
       </summary>
-      <div className="whitespace-pre-wrap text-xs text-muted-foreground">{trimmed}</div>
+      <Streamdown
+        className="space-y-2 text-xs text-muted-foreground [&_p]:my-0 [&_pre]:text-xs [&_code]:text-xs"
+        plugins={PLUGINS}
+      >
+        {trimmed}
+      </Streamdown>
     </details>
   );
 }
