@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth/server";
 import { getChat, getMessages } from "@/lib/db/chats";
-import { ChatPageClient } from "./ChatPageClient";
+import { ChatArea } from "@/components/ChatArea";
 
 export default async function Page({
   params,
@@ -15,5 +15,5 @@ export default async function Page({
   const chat = await getChat(id, session.user.id);
   if (!chat) redirect("/");
   const initialMessages = await getMessages(id);
-  return <ChatPageClient chatId={id} initialMessages={initialMessages} />;
+  return <ChatArea chatId={id} initialMessages={initialMessages} />;
 }

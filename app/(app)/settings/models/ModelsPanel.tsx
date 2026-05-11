@@ -1,50 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  fetchAdminModelConfigs,
-  type AdminModelConfig,
-  type ModelConfigInput,
-} from "@/lib/config";
+import type { AdminModelConfig, ModelConfigInput } from "@/lib/config";
 import { ModelConfigDialog } from "./ModelConfigDialog";
 
-export function ModelsPanel() {
-  const [modelConfigs, setModelConfigs] = useState<AdminModelConfig[]>([]);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState("");
+export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
+  const router = useRouter();
   const [editing, setEditing] = useState<AdminModelConfig | "new" | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      const list = await fetchAdminModelConfigs();
-      setModelConfigs(list);
-      setStatus("ready");
-    } catch (e) {
-      setStatus("error");
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const list = await fetchAdminModelConfigs();
-        if (cancelled) return;
-        setModelConfigs(list);
-        setStatus("ready");
-      } catch (e) {
-        if (cancelled) return;
-        setStatus("error");
-        setError(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function remove(id: string, label: string) {
     if (!confirm(`Delete "${label}"?`)) return;
@@ -53,7 +18,7 @@ export function ModelsPanel() {
       alert(`Failed to delete (${res.status})`);
       return;
     }
-    void load();
+    router.refresh();
   }
 
   async function save(input: ModelConfigInput, id?: string) {
@@ -69,7 +34,7 @@ export function ModelsPanel() {
       throw new Error(json.error ?? `HTTP ${res.status}`);
     }
     setEditing(null);
-    void load();
+    router.refresh();
   }
 
   return (
@@ -86,21 +51,11 @@ export function ModelsPanel() {
         </Button>
       </header>
 
-      {status === "loading" && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="size-3.5 animate-spin" />
-          Loading…
-        </div>
-      )}
-      {status === "error" && <p className="text-sm text-destructive">{error}</p>}
-
-      {status === "ready" && modelConfigs.length === 0 && (
+      {initial.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No models yet. Click “Add model” to create the first one.
         </p>
-      )}
-
-      {status === "ready" && modelConfigs.length > 0 && (
+      ) : (
         <div className="overflow-hidden rounded-lg border">
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
@@ -112,7 +67,7 @@ export function ModelsPanel() {
               </tr>
             </thead>
             <tbody>
-              {modelConfigs.map((m) => (
+              {initial.map((m) => (
                 <tr key={m.id} className="border-b last:border-0">
                   <td className="px-3 py-2 font-medium">{m.label}</td>
                   <td className="px-3 py-2 font-mono text-xs text-muted-foreground">

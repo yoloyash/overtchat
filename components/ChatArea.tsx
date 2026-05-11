@@ -40,13 +40,14 @@ import {
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 
 interface Props {
-  chatId?: string;
+  chatId: string;
   initialMessages?: UIMessage[];
+  isNew?: boolean;
 }
 
 const PLUGINS = { code, math, cjk };
 
-export function ChatArea({ chatId, initialMessages }: Props) {
+export function ChatArea({ chatId, initialMessages, isNew }: Props) {
   const router = useRouter();
 
   const [models, setModels] = useState<PublicModelConfig[] | null>(null);
@@ -78,7 +79,7 @@ export function ChatArea({ chatId, initialMessages }: Props) {
     false,
   );
 
-  const chatIdRef = useRef<string | undefined>(chatId);
+  const isNewRef = useRef(isNew ?? false);
 
   const [transport] = useState(
     () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
@@ -93,7 +94,7 @@ export function ChatArea({ chatId, initialMessages }: Props) {
   const requestBody = () => ({
     modelConfigId: selectedId,
     searchEnabled,
-    chatId: chatIdRef.current,
+    chatId,
   });
 
   const [input, setInput] = useState("");
@@ -132,10 +133,9 @@ export function ChatArea({ chatId, initialMessages }: Props) {
     if (streaming || uploading) return;
     if (!text && attachments.length === 0) return;
     if (!configured) return;
-    if (!chatIdRef.current) {
-      const id = crypto.randomUUID();
-      chatIdRef.current = id;
-      window.history.replaceState(null, "", `/chat/${id}`);
+    if (isNewRef.current) {
+      isNewRef.current = false;
+      window.history.replaceState(null, "", `/chat/${chatId}`);
     }
     sendMessage({ text, files: attachments }, { body: requestBody() });
     setInput("");
