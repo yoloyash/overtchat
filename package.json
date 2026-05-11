@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 4717",
+    "dev": "mkdir -p data && drizzle-kit migrate && next dev -p 4717",
     "build": "next build",
-    "start": "next start -p 4717",
+    "start": "mkdir -p data && drizzle-kit migrate && next start -p 4717",
     "lint": "eslint",
     "auth:generate": "better-auth generate --config lib/auth/server.ts --output lib/db/schema.ts --y",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "mkdir -p data && drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

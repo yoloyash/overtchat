@@ -23,11 +23,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+COPY --from=builder --chown=nextjs:nodejs /app/drizzle.config.ts ./
+COPY --from=builder --chown=nextjs:nodejs /app/lib/db/schema.ts ./lib/db/schema.ts
 
-RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data \
+ && npm install --no-save --prefix /app drizzle-kit
 
 USER nextjs
 ENV HOSTNAME=0.0.0.0 PORT=4717 DATABASE_URL=/app/data/chat.db
 EXPOSE 4717
 
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "npx drizzle-kit migrate && node server.js"]
