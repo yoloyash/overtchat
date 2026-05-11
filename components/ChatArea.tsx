@@ -8,6 +8,7 @@ import { Streamdown } from "streamdown";
 import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { cjk } from "@streamdown/cjk";
+import remarkBreaks from "remark-breaks";
 import {
   ArrowUp,
   Check,
@@ -709,12 +710,13 @@ function ThinkingBlock({
         )}
       >
         <div className="overflow-hidden">
-          <div className="border-l-2 border-border pl-3 text-xs text-muted-foreground">
+          <div className="border-l-2 border-border pl-3">
             <Streamdown
-              className="space-y-2 [&_p]:my-0 [&_pre]:text-xs [&_code]:text-xs"
+              className="space-y-3 text-xs leading-relaxed text-muted-foreground [&_pre]:text-xs [&_code]:text-xs"
               plugins={PLUGINS}
+              remarkPlugins={[remarkBreaks]}
             >
-              {trimmed || " "}
+              {trimmed}
             </Streamdown>
           </div>
         </div>
