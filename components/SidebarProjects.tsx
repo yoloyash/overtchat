@@ -65,7 +65,7 @@ function ProjectNode({
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-label={open ? "Collapse" : "Expand"}
-          className="rounded p-1 text-muted-foreground hover:bg-sidebar-accent"
+          className="rounded p-1 text-muted-foreground hover:bg-sidebar-accent max-md:p-2"
         >
           <ChevronRight
             className={cn(
@@ -86,7 +86,7 @@ function ProjectNode({
         <Link
           href={`/?projectId=${project.id}`}
           aria-label={`New chat in ${project.name}`}
-          className="mr-0.5 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-foreground group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+          className="mr-0.5 rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-foreground group-hover:opacity-100 max-md:p-2 [@media(hover:none)]:opacity-100"
         >
           <Plus className="size-3.5" />
         </Link>
@@ -161,7 +161,7 @@ export function CreateProjectDialog({
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0">
           <Dialog.Title className="font-heading text-lg font-semibold tracking-tight">
             New project
           </Dialog.Title>

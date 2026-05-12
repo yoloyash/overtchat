@@ -48,7 +48,7 @@ export function SidebarClient({
             setCollapsed(true);
           }}
           aria-label="Collapse sidebar"
-          className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2.5"
         >
           <PanelLeft className="size-4" />
         </button>

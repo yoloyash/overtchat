@@ -438,7 +438,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
                   variant="ghost"
                   size="sm"
                   className={cn(
-                    "h-8 rounded-full px-3",
+                    "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
                     searchEnabled &&
                       "bg-accent text-foreground hover:bg-accent",
                   )}
@@ -683,7 +683,7 @@ function ActionButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
     >
       {icon}
     </button>
@@ -832,7 +832,7 @@ function AttachmentChip({
           type="button"
           onClick={onRemove}
           aria-label={`Remove ${label}`}
-          className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background [@media(hover:none)]:opacity-100"
+          className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background max-md:p-1.5 [@media(hover:none)]:opacity-100"
         >
           <X className="size-3" />
         </button>
@@ -859,7 +859,7 @@ function AttachmentChip({
         type="button"
         onClick={onRemove}
         aria-label={`Remove ${label}`}
-        className="absolute top-1 right-1 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background [@media(hover:none)]:opacity-100"
+        className="absolute top-1 right-1 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background max-md:p-1.5 [@media(hover:none)]:opacity-100"
       >
         <X className="size-3" />
       </button>

@@ -62,7 +62,10 @@ export function AppShell({
         openPalette,
       }}
     >
-      <Dialog.Root open={openMobile} onOpenChange={setOpenMobile}>
+      {/* modal={false}: the drawer is navigation, not a confirmation modal.
+          Dropping the focus trap lets portaled popups (AccountMenu, chat-row
+          menus) inside the sidebar open normally on mobile. */}
+      <Dialog.Root open={openMobile} onOpenChange={setOpenMobile} modal={false}>
         <div className="flex h-dvh overflow-hidden bg-background">
           {!collapsed && <div className="hidden md:flex">{sidebar}</div>}
           <Dialog.Portal>

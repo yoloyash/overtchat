@@ -29,7 +29,7 @@ export function ModelConfigDialog({
     <Dialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,42rem)] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border bg-card shadow-lg outline-none data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 flex max-h-[min(90vh,42rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl border bg-card shadow-lg outline-none data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity">
           {mode && (
             <ModelConfigForm
               editing={mode === "new" ? null : mode}
