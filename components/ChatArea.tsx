@@ -9,17 +9,21 @@ import { code } from "@streamdown/code";
 import { math } from "@streamdown/math";
 import { cjk } from "@streamdown/cjk";
 import remarkBreaks from "remark-breaks";
+import { remark } from "remark";
+import strip from "strip-markdown";
 import {
   ArrowUp,
   Check,
   ChevronDown,
   Copy,
   Globe,
+  Loader2,
   Paperclip,
   Pencil,
   RotateCcw,
   Sparkles,
   Square,
+  Volume2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +35,7 @@ import {
   type PublicModelConfig,
 } from "@/lib/config";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import { useSpeech } from "@/lib/useSpeech";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import {
@@ -48,6 +53,20 @@ interface Props {
 }
 
 const PLUGINS = { code, math, cjk };
+
+const stripper = remark().use(strip);
+
+function stripMarkdown(s: string): string {
+  return String(stripper.processSync(s)).replace(/\s+/g, " ").trim();
+}
+
+function speakableText(message: UIMessage): string {
+  return message.parts
+    .filter((p) => p.type === "text")
+    .map((p) => stripMarkdown((p as { text: string }).text))
+    .join(" ")
+    .trim();
+}
 
 export function ChatArea({ chatId, initialMessages, isNew }: Props) {
   const router = useRouter();
@@ -92,6 +111,8 @@ export function ChatArea({ chatId, initialMessages, isNew }: Props) {
     messages: initialMessages,
     onFinish: () => router.refresh(),
   });
+
+  const speech = useSpeech();
 
   const requestBody = () => ({
     modelConfigId: selectedId,
@@ -236,6 +257,7 @@ export function ChatArea({ chatId, initialMessages, isNew }: Props) {
                 canAct={!streaming && configured}
                 onRegenerate={handleRegenerate}
                 onEdit={handleEdit}
+                speech={speech}
               />
             ))}
             {status === "submitted" &&
@@ -374,12 +396,14 @@ function MessageBubble({
   canAct,
   onRegenerate,
   onEdit,
+  speech,
 }: {
   message: UIMessage;
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
   onEdit: (id: string, text: string) => void;
+  speech: ReturnType<typeof useSpeech>;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -469,6 +493,11 @@ function MessageBubble({
       {!streaming && (
         <MessageActions show={canAct}>
           <CopyButton text={text} />
+          <SpeakButton
+            messageId={message.id}
+            text={speakableText(message)}
+            speech={speech}
+          />
           <ActionButton
             label="Regenerate"
             onClick={() => onRegenerate(message.id)}
@@ -477,6 +506,36 @@ function MessageBubble({
         </MessageActions>
       )}
     </div>
+  );
+}
+
+function SpeakButton({
+  messageId,
+  text,
+  speech,
+}: {
+  messageId: string;
+  text: string;
+  speech: ReturnType<typeof useSpeech>;
+}) {
+  if (!text) return null;
+  const active = speech.activeId === messageId;
+  const loading = active && speech.status === "loading";
+  const playing = active && speech.status === "playing";
+  const label = playing ? "Stop" : loading ? "Loading…" : "Speak";
+  const icon = loading ? (
+    <Loader2 className="size-3.5 animate-spin" />
+  ) : playing ? (
+    <Square className="size-3 fill-current" />
+  ) : (
+    <Volume2 className="size-3.5" />
+  );
+  return (
+    <ActionButton
+      label={label}
+      icon={icon}
+      onClick={() => void speech.play(messageId, text)}
+    />
   );
 }
 
