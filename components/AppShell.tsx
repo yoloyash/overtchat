@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import { SidebarContext } from "@/components/sidebar-context";
@@ -25,6 +25,7 @@ export function AppShell({
     "overtchat_sidebar_collapsed",
     false,
   );
+  const drawerRef = useRef<HTMLElement | null>(null);
   const pathname = usePathname();
   const [lastPath, setLastPath] = useState(pathname);
   if (pathname !== lastPath) {
@@ -60,17 +61,18 @@ export function AppShell({
         openMobile,
         setOpenMobile,
         openPalette,
+        drawerRef,
       }}
     >
-      {/* modal={false}: the drawer is navigation, not a confirmation modal.
-          Dropping the focus trap lets portaled popups (AccountMenu, chat-row
-          menus) inside the sidebar open normally on mobile. */}
-      <Dialog.Root open={openMobile} onOpenChange={setOpenMobile} modal={false}>
+      <Dialog.Root open={openMobile} onOpenChange={setOpenMobile}>
         <div className="flex h-dvh overflow-hidden bg-background">
           {!collapsed && <div className="hidden md:flex">{sidebar}</div>}
           <Dialog.Portal>
             <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 md:hidden" />
-            <Dialog.Popup className="fixed inset-y-0 left-0 z-50 flex transition-transform duration-200 data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden">
+            <Dialog.Popup
+              ref={drawerRef as React.RefObject<HTMLDivElement>}
+              className="fixed inset-y-0 left-0 z-50 flex transition-transform duration-200 data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden"
+            >
               {sidebar}
             </Dialog.Popup>
           </Dialog.Portal>

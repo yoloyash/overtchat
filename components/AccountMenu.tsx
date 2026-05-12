@@ -6,10 +6,16 @@ import { Menu } from "@base-ui/react/menu";
 import { ChevronUp, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
+import { useSidebar } from "@/components/sidebar-context";
 
 export function AccountMenu() {
   const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
+  // Portal the menu into the drawer's Dialog.Popup on mobile so the Dialog's
+  // dismiss logic recognizes menu-item taps as "inside" events. On desktop
+  // the drawer isn't mounted, ref.current is null, and base-ui falls back to
+  // portaling into <body>. See sidebar-context.tsx for the full explanation.
+  const { drawerRef } = useSidebar();
 
   async function logOut() {
     await authClient.signOut();
@@ -49,7 +55,7 @@ export function AccountMenu() {
         </span>
         <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
       </Menu.Trigger>
-      <Menu.Portal>
+      <Menu.Portal container={drawerRef}>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
           <Menu.Popup className="z-50 w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
             <Menu.Item

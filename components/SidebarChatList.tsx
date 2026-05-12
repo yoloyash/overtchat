@@ -12,6 +12,7 @@ import {
   moveChatToProjectAction,
   renameChatAction,
 } from "@/app/(app)/actions";
+import { useSidebar } from "@/components/sidebar-context";
 
 interface Chat {
   id: string;
@@ -77,6 +78,8 @@ export function SidebarItem({
   const router = useRouter();
   const pathname = usePathname();
   const active = pathname === `/chat/${chat.id}`;
+  // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
+  const { drawerRef } = useSidebar();
 
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(chat.title ?? "");
@@ -148,7 +151,7 @@ export function SidebarItem({
         >
           <MoreHorizontal className="size-3.5 text-muted-foreground" />
         </Menu.Trigger>
-        <Menu.Portal>
+        <Menu.Portal container={drawerRef}>
           <Menu.Positioner side="right" align="start" sideOffset={6}>
             <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
               <Menu.Item
@@ -167,7 +170,7 @@ export function SidebarItem({
                   <span>Move to</span>
                   <span className="ml-auto text-muted-foreground">›</span>
                 </Menu.SubmenuTrigger>
-                <Menu.Portal>
+                <Menu.Portal container={drawerRef}>
                   <Menu.Positioner side="right" align="start" sideOffset={6}>
                     <Menu.Popup className="z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
                       <Menu.Item
