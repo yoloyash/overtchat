@@ -13,6 +13,7 @@ cp .env.example .env
 Edit `.env`:
 
 - `BETTER_AUTH_SECRET` — required. Generate with `openssl rand -hex 32`.
+- `SEARXNG_SECRET` — required. Generate with `openssl rand -hex 32`.
 - `BETTER_AUTH_URL` — the URL the browser will hit (scheme + host + port). For LAN access from other devices, set it to your host's LAN IP, e.g. `http://192.168.1.50:4718`.
 
 Then:
@@ -20,6 +21,8 @@ Then:
 ```bash
 docker compose up -d --build
 ```
+
+First boot takes ~30s because the Kokoro TTS container downloads its model. Subsequent boots are fast.
 
 Open the URL. First user signs up → becomes admin. Add more users from `/settings/users`.
 

@@ -9,6 +9,7 @@ services:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
       SEARXNG_URL: http://searxng:8080
+      KOKORO_URL: http://kokoro:8880
       DATABASE_URL: /app/data/chat.db
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -16,19 +17,50 @@ services:
       - overtchat-data:/app/data
     depends_on:
       searxng:
-        condition: service_started
+        condition: service_healthy
+      kokoro:
+        condition: service_healthy
 
   searxng:
-    image: docker.io/searxng/searxng:latest
+    image: docker.io/searxng/searxng:2026.5.5-0ac5254b8
     container_name: overtchat-searxng
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:${SEARXNG_PORT:-8088}:8080"
     environment:
-      SEARXNG_BASE_URL: http://localhost:${SEARXNG_PORT:-8088}/
-      SEARXNG_SECRET: ${SEARXNG_SECRET:-change-me-in-production}
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
     volumes:
       - ./searxng:/etc/searxng:rw
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/healthz || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
+    container_name: overtchat-kokoro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  # To expose overtchat via Cloudflare Tunnel, uncomment below and paste your
+  # tunnel token. Nothing else on this stack is reachable from the internet —
+  # searxng and kokoro stay on the internal Docker network.
+  #
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: overtchat-cloudflared
+  #   restart: unless-stopped
+  #   command: tunnel --no-autoupdate run
+  #   environment:
+  #     TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   depends_on:
+  #     app:
+  #       condition: service_started
 
 volumes:
   overtchat-data:

@@ -1,0 +1,13 @@
+# Dev-only port exposures. Binds services to 127.0.0.1 so you can curl them
+# from the host while debugging. Not loaded in prod.
+#
+# Usage:
+#   docker compose -f compose.yml -f compose.dev.yml up -d
+services:
+  searxng:
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-8088}:8080"
+
+  kokoro:
+    ports:
+      - "127.0.0.1:${KOKORO_PORT:-8880}:8880"
