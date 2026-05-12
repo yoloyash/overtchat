@@ -83,6 +83,11 @@ CREATE TABLE `uploads` (
 	`user_id` text NOT NULL,
 	`filename` text NOT NULL,
 	`media_type` text NOT NULL,
+	`category` text NOT NULL,
+	`size` integer NOT NULL,
+	`page_count` integer,
+	`extracted_text` text,
+	`truncated` integer DEFAULT false NOT NULL,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
 );
