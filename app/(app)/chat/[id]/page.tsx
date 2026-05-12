@@ -15,5 +15,11 @@ export default async function Page({
   const chat = await getChat(id, session.user.id);
   if (!chat) redirect("/");
   const initialMessages = await getMessages(id);
-  return <ChatArea chatId={id} initialMessages={initialMessages} />;
+  return (
+    <ChatArea
+      chatId={id}
+      projectId={chat.projectId ?? null}
+      initialMessages={initialMessages}
+    />
+  );
 }

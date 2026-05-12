@@ -50,6 +50,7 @@ interface Props {
   chatId: string;
   initialMessages?: UIMessage[];
   isNew?: boolean;
+  projectId?: string | null;
 }
 
 const PLUGINS = { code, math, cjk };
@@ -68,7 +69,7 @@ function speakableText(message: UIMessage): string {
     .trim();
 }
 
-export function ChatArea({ chatId, initialMessages, isNew }: Props) {
+export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const router = useRouter();
 
   const [models, setModels] = useState<PublicModelConfig[] | null>(null);
@@ -118,6 +119,7 @@ export function ChatArea({ chatId, initialMessages, isNew }: Props) {
     modelConfigId: selectedId,
     searchEnabled,
     chatId,
+    projectId: projectId ?? null,
   });
 
   const [input, setInput] = useState("");

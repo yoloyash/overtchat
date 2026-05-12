@@ -1,5 +1,16 @@
 import { ChatArea } from "@/components/ChatArea";
 
-export default function Home() {
-  return <ChatArea chatId={crypto.randomUUID()} isNew />;
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ projectId?: string }>;
+}) {
+  const { projectId } = await searchParams;
+  return (
+    <ChatArea
+      chatId={crypto.randomUUID()}
+      projectId={projectId ?? null}
+      isNew
+    />
+  );
 }

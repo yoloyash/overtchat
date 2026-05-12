@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Menu } from "@base-ui/react/menu";
-import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { FolderInput, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   deleteChatAction,
+  moveChatToProjectAction,
   renameChatAction,
 } from "@/app/(app)/actions";
 
@@ -16,7 +17,18 @@ interface Chat {
   title: string | null;
 }
 
-export function SidebarChatList({ chats }: { chats: Chat[] }) {
+export interface ProjectOption {
+  id: string;
+  name: string;
+}
+
+export function SidebarChatList({
+  chats,
+  projects,
+}: {
+  chats: Chat[];
+  projects: ProjectOption[];
+}) {
   if (chats.length === 0) {
     return (
       <p className="py-1.5 text-xs text-muted-foreground">
@@ -27,13 +39,21 @@ export function SidebarChatList({ chats }: { chats: Chat[] }) {
   return (
     <ul className="flex flex-col gap-0.5 py-1">
       {chats.map((c) => (
-        <SidebarItem key={c.id} chat={c} />
+        <SidebarItem key={c.id} chat={c} projects={projects} />
       ))}
     </ul>
   );
 }
 
-function SidebarItem({ chat }: { chat: Chat }) {
+export function SidebarItem({
+  chat,
+  projects,
+  currentProjectId = null,
+}: {
+  chat: Chat;
+  projects: ProjectOption[];
+  currentProjectId?: string | null;
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const active = pathname === `/chat/${chat.id}`;
@@ -56,6 +76,13 @@ function SidebarItem({ chat }: { chat: Chat }) {
     startTransition(async () => {
       await deleteChatAction(chat.id);
       if (active) router.push("/");
+    });
+  }
+
+  function moveTo(projectId: string | null) {
+    if (projectId === currentProjectId) return;
+    startTransition(async () => {
+      await moveChatToProjectAction(chat.id, projectId);
     });
   }
 
@@ -103,7 +130,7 @@ function SidebarItem({ chat }: { chat: Chat }) {
         </Menu.Trigger>
         <Menu.Portal>
           <Menu.Positioner side="right" align="start" sideOffset={6}>
-            <Menu.Popup className="z-50 w-40 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+            <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
               <Menu.Item
                 onClick={() => {
                   setDraft(chat.title ?? "");
@@ -114,6 +141,47 @@ function SidebarItem({ chat }: { chat: Chat }) {
                 <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
                 <span>Rename</span>
               </Menu.Item>
+              <Menu.SubmenuRoot>
+                <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
+                  <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span>Move to</span>
+                  <span className="ml-auto text-muted-foreground">›</span>
+                </Menu.SubmenuTrigger>
+                <Menu.Portal>
+                  <Menu.Positioner side="right" align="start" sideOffset={6}>
+                    <Menu.Popup className="z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+                      <Menu.Item
+                        onClick={() => moveTo(null)}
+                        disabled={currentProjectId === null}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                          currentProjectId === null &&
+                            "text-muted-foreground",
+                        )}
+                      >
+                        No project
+                      </Menu.Item>
+                      {projects.length > 0 && (
+                        <div className="my-1 h-px bg-border" />
+                      )}
+                      {projects.map((p) => (
+                        <Menu.Item
+                          key={p.id}
+                          onClick={() => moveTo(p.id)}
+                          disabled={p.id === currentProjectId}
+                          className={cn(
+                            "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                            p.id === currentProjectId &&
+                              "text-muted-foreground",
+                          )}
+                        >
+                          <span className="truncate">{p.name}</span>
+                        </Menu.Item>
+                      ))}
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.SubmenuRoot>
               <Menu.Item
                 onClick={confirmDelete}
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none data-[highlighted]:bg-accent"

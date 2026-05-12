@@ -21,6 +21,7 @@ import {
 } from "@/lib/db/chats";
 import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getProject } from "@/lib/db/projects";
 
 export const maxDuration = 300;
 
@@ -29,6 +30,7 @@ interface Body {
   modelConfigId: string;
   searchEnabled?: boolean;
   chatId: string;
+  projectId?: string | null;
   trigger?: "submit-message" | "regenerate-message";
   messageId?: string;
 }
@@ -45,6 +47,7 @@ export async function POST(req: Request) {
     modelConfigId,
     searchEnabled,
     chatId,
+    projectId,
     trigger,
     messageId,
   } = (await req.json()) as Body;
@@ -56,8 +59,12 @@ export async function POST(req: Request) {
   const modelConfig = await getModelConfig(modelConfigId);
   if (!modelConfig) return new Response("Model config not found", { status: 404 });
 
-  const chat = await ensureChat(chatId, userId);
+  const chat = await ensureChat(chatId, userId, projectId ?? null);
   if (!chat) return new Response("Not found", { status: 404 });
+
+  const project = chat.projectId
+    ? await getProject(chat.projectId, userId)
+    : null;
 
   const last = messages[messages.length - 1];
   if (trigger === "regenerate-message") {
@@ -84,9 +91,14 @@ export async function POST(req: Request) {
     ? { [PROVIDER_NAME]: modelConfig.extraBody as Record<string, JSONValue> }
     : undefined;
 
+  const systemParts = [project?.instructions, modelConfig.systemPrompt].filter(
+    (s): s is string => Boolean(s && s.trim()),
+  );
+  const system = systemParts.length ? systemParts.join("\n\n") : undefined;
+
   const result = streamText({
     model: wrapped,
-    system: modelConfig.systemPrompt ?? undefined,
+    system,
     messages: await convertToModelMessages(inlined),
     tools: searchEnabled ? webTools : undefined,
     stopWhen: searchEnabled ? stepCountIs(10) : undefined,

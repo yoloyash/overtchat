@@ -24,10 +24,15 @@ export async function getChat(
  * Idempotent: if the chat exists and belongs to `userId`, returns it. If no
  * chat with this id exists, creates it. If a chat with this id exists but
  * belongs to someone else, returns null.
+ *
+ * `projectId` is only used on the insert path. If the chat already exists, the
+ * stored row is returned as-is — moving a chat between projects is an explicit
+ * operation (see `moveChatToProject`).
  */
 export async function ensureChat(
   id: string,
   userId: string,
+  projectId: string | null = null,
 ): Promise<ChatRow | null> {
   const [existing] = await db
     .select()
@@ -37,7 +42,7 @@ export async function ensureChat(
   if (existing) return existing.userId === userId ? existing : null;
   const [row] = await db
     .insert(chats)
-    .values({ id, userId, title: null })
+    .values({ id, userId, projectId, title: null })
     .returning();
   return row;
 }
@@ -52,6 +57,17 @@ export async function listChats(
     .where(eq(chats.userId, userId))
     .orderBy(desc(chats.updatedAt))
     .limit(limit);
+}
+
+export async function listChatsByProject(
+  projectId: string,
+  userId: string,
+): Promise<ChatRow[]> {
+  return db
+    .select()
+    .from(chats)
+    .where(and(eq(chats.userId, userId), eq(chats.projectId, projectId)))
+    .orderBy(desc(chats.updatedAt));
 }
 
 export async function deleteChat(id: string, userId: string): Promise<void> {

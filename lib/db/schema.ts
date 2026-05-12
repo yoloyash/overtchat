@@ -93,6 +93,28 @@ export const verification = sqliteTable(
   (table) => [index("verification_identifier_idx").on(table.identifier)],
 );
 
+export const projects = sqliteTable(
+  "projects",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    instructions: text("instructions"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("projects_userId_updatedAt_idx").on(table.userId, table.updatedAt),
+  ],
+);
+
 export const chats = sqliteTable(
   "chats",
   {
@@ -100,6 +122,9 @@ export const chats = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
     title: text("title"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
@@ -111,6 +136,11 @@ export const chats = sqliteTable(
   },
   (table) => [
     index("chats_userId_updatedAt_idx").on(table.userId, table.updatedAt),
+    index("chats_userId_projectId_updatedAt_idx").on(
+      table.userId,
+      table.projectId,
+      table.updatedAt,
+    ),
   ],
 );
 
@@ -138,6 +168,7 @@ export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   chats: many(chats),
+  projects: many(projects),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -159,7 +190,19 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
     fields: [chats.userId],
     references: [user.id],
   }),
+  project: one(projects, {
+    fields: [chats.projectId],
+    references: [projects.id],
+  }),
   messages: many(messages),
+}));
+
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  user: one(user, {
+    fields: [projects.userId],
+    references: [user.id],
+  }),
+  chats: many(chats),
 }));
 
 export const messagesRelations = relations(messages, ({ one }) => ({
