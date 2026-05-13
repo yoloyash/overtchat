@@ -57,8 +57,13 @@ export function useSpeech() {
 
   useEffect(() => stop, [stop]);
 
+  // Must be called synchronously from a user-gesture handler. Mobile browsers
+  // (iOS Safari, Android Chrome) require Audio.play() to fire in the same tick
+  // as the tap — awaiting a fetch before creating the audio element lets the
+  // gesture expire and play() is rejected silently. We wire up Audio +
+  // MediaSource and call play() before any await; bytes stream in afterwards.
   const play = useCallback(
-    async (id: string, text: string) => {
+    (id: string, text: string) => {
       if (activeId === id) {
         stop();
         return;
@@ -71,43 +76,42 @@ export function useSpeech() {
       setActiveId(id);
       setStatus("loading");
 
-      try {
-        const res = await fetch("/api/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
-          signal: ac.signal,
+      const MSCtor = getMediaSourceCtor();
+      if (!MSCtor) {
+        // No MSE available (iOS < 17.1). Blob path can't start audio inside
+        // the gesture since we need bytes first — playback will likely be
+        // blocked by mobile autoplay policy. Unavoidable without MSE.
+        void playBlobFallback(text, ac, {
+          setAudio: (a) => (audioRef.current = a),
+          setUrl: (u) => (urlRef.current = u),
+          onPlaying: () => setStatus("playing"),
+          onEnd: () => stop(),
         });
-        if (!res.ok || !res.body) throw new Error(`TTS failed (${res.status})`);
-
-        const MSCtor = getMediaSourceCtor();
-        if (MSCtor) {
-          await playStreaming(res.body, MSCtor, ac, {
-            onStart: () => setStatus("playing"),
-            setAudio: (a) => (audioRef.current = a),
-            setUrl: (u) => (urlRef.current = u),
-            setMediaSource: (m) => (mediaSourceRef.current = m),
-            onEnd: () => stop(),
-          });
-        } else {
-          // Fallback: wait for full blob, then play. Older browsers / no MSE.
-          const blob = await res.blob();
-          if (ac.signal.aborted) return;
-          const url = URL.createObjectURL(blob);
-          urlRef.current = url;
-          const audio = new Audio(url);
-          audioRef.current = audio;
-          audio.onended = () => stop();
-          audio.onerror = () => stop();
-          setStatus("playing");
-          await audio.play();
-        }
-      } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          console.error("TTS error:", err);
-        }
-        stop();
+        return;
       }
+
+      const mediaSource = new MSCtor();
+      mediaSourceRef.current = mediaSource;
+      const url = URL.createObjectURL(mediaSource);
+      urlRef.current = url;
+
+      const audio = new Audio();
+      audioRef.current = audio;
+      audio.src = url;
+      audio.onended = () => stop();
+      audio.onerror = () => stop();
+
+      // play() returns a promise that resolves once buffered data actually
+      // starts playing. We don't await — the async byte pump below has to
+      // keep running after this synchronous handler returns.
+      audio.play().then(
+        () => setStatus("playing"),
+        () => stop(),
+      );
+
+      void streamIntoMediaSource(mediaSource, text, ac, {
+        onEnd: () => stop(),
+      });
     },
     [activeId, stop],
   );
@@ -115,73 +119,64 @@ export function useSpeech() {
   return { activeId, status, play, stop };
 }
 
-interface StreamingHandles {
-  onStart: () => void;
-  setAudio: (a: HTMLAudioElement) => void;
-  setUrl: (u: string) => void;
-  setMediaSource: (m: MediaSource) => void;
-  onEnd: () => void;
-}
-
-async function playStreaming(
-  body: ReadableStream<Uint8Array>,
-  MSCtor: MSCtor,
+async function streamIntoMediaSource(
+  mediaSource: MediaSource,
+  text: string,
   ac: AbortController,
-  h: StreamingHandles,
+  h: { onEnd: () => void },
 ): Promise<void> {
-  const mediaSource = new MSCtor();
-  h.setMediaSource(mediaSource);
-  const url = URL.createObjectURL(mediaSource);
-  h.setUrl(url);
-
-  const audio = new Audio();
-  h.setAudio(audio);
-  audio.src = url;
-  audio.onended = h.onEnd;
-  audio.onerror = h.onEnd;
-
-  await new Promise<void>((resolve, reject) => {
-    mediaSource.addEventListener("sourceopen", () => resolve(), { once: true });
-    mediaSource.addEventListener("error", () => reject(new Error("MediaSource error")), { once: true });
-    ac.signal.addEventListener("abort", () => reject(new Error("AbortError")), { once: true });
-  });
-  if (ac.signal.aborted) return;
-
-  const sb = mediaSource.addSourceBuffer(MIME);
-  const queue: BufferSource[] = [];
-  let closing = false;
-
-  const pump = () => {
-    if (sb.updating || queue.length === 0) return;
-    const chunk = queue.shift()!;
-    try {
-      sb.appendBuffer(chunk);
-    } catch {
-      h.onEnd();
-    }
-  };
-  sb.addEventListener("updateend", () => {
-    if (queue.length > 0) pump();
-    else if (closing && mediaSource.readyState === "open") {
-      try {
-        mediaSource.endOfStream();
-      } catch {
-        // already closed
-      }
-    }
-  });
-
-  // Start playback as soon as enough has buffered.
-  const started = { value: false };
-  audio.addEventListener("canplay", () => {
-    if (started.value) return;
-    started.value = true;
-    h.onStart();
-    void audio.play().catch(() => h.onEnd());
-  });
-
-  const reader = body.getReader();
   try {
+    await new Promise<void>((resolve, reject) => {
+      if (mediaSource.readyState === "open") return resolve();
+      mediaSource.addEventListener("sourceopen", () => resolve(), {
+        once: true,
+      });
+      mediaSource.addEventListener(
+        "error",
+        () => reject(new Error("MediaSource error")),
+        { once: true },
+      );
+      ac.signal.addEventListener(
+        "abort",
+        () => reject(new Error("AbortError")),
+        { once: true },
+      );
+    });
+    if (ac.signal.aborted) return;
+
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal: ac.signal,
+    });
+    if (!res.ok || !res.body) throw new Error(`TTS failed (${res.status})`);
+
+    const sb = mediaSource.addSourceBuffer(MIME);
+    const queue: BufferSource[] = [];
+    let closing = false;
+
+    const pump = () => {
+      if (sb.updating || queue.length === 0) return;
+      const chunk = queue.shift()!;
+      try {
+        sb.appendBuffer(chunk);
+      } catch {
+        h.onEnd();
+      }
+    };
+    sb.addEventListener("updateend", () => {
+      if (queue.length > 0) pump();
+      else if (closing && mediaSource.readyState === "open") {
+        try {
+          mediaSource.endOfStream();
+        } catch {
+          // already closed
+        }
+      }
+    });
+
+    const reader = res.body.getReader();
     while (true) {
       const { done, value } = await reader.read();
       if (ac.signal.aborted) return;
@@ -202,6 +197,45 @@ async function playStreaming(
       }
     }
   } catch (err) {
-    if ((err as Error).name !== "AbortError") throw err;
+    if ((err as Error).name !== "AbortError") {
+      console.error("TTS stream error:", err);
+      h.onEnd();
+    }
+  }
+}
+
+async function playBlobFallback(
+  text: string,
+  ac: AbortController,
+  h: {
+    setAudio: (a: HTMLAudioElement) => void;
+    setUrl: (u: string) => void;
+    onPlaying: () => void;
+    onEnd: () => void;
+  },
+): Promise<void> {
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal: ac.signal,
+    });
+    if (!res.ok) throw new Error(`TTS failed (${res.status})`);
+    const blob = await res.blob();
+    if (ac.signal.aborted) return;
+    const url = URL.createObjectURL(blob);
+    h.setUrl(url);
+    const audio = new Audio(url);
+    h.setAudio(audio);
+    audio.onended = h.onEnd;
+    audio.onerror = h.onEnd;
+    h.onPlaying();
+    await audio.play();
+  } catch (err) {
+    if ((err as Error).name !== "AbortError") {
+      console.error("TTS error:", err);
+    }
+    h.onEnd();
   }
 }
