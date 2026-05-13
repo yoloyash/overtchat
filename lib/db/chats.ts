@@ -3,6 +3,7 @@ import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
 import { chats, messages } from "@/lib/db/schema";
+import { extractSearchText } from "@/lib/search/extract";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
 
@@ -100,6 +101,14 @@ export async function appendMessage(
   id: string = crypto.randomUUID(),
 ): Promise<{ id: string }> {
   await db.insert(messages).values({ id, chatId, role, parts });
+  const content = extractSearchText(parts);
+  if (content) {
+    await db.run(sql`
+      INSERT INTO messages_fts (content, message_id, chat_id, user_id)
+      SELECT ${content}, ${id}, ${chatId}, ${chats.userId}
+      FROM ${chats} WHERE ${chats.id} = ${chatId}
+    `);
+  }
   return { id };
 }
 

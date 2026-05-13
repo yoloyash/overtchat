@@ -117,4 +117,14 @@ CREATE TABLE `verification` (
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL
 );
 --> statement-breakpoint
-CREATE INDEX `verification_identifier_idx` ON `verification` (`identifier`);
+CREATE INDEX `verification_identifier_idx` ON `verification` (`identifier`);--> statement-breakpoint
+CREATE VIRTUAL TABLE `messages_fts` USING fts5(
+	content,
+	message_id UNINDEXED,
+	chat_id UNINDEXED,
+	user_id UNINDEXED,
+	tokenize = 'unicode61 remove_diacritics 2'
+);--> statement-breakpoint
+CREATE TRIGGER `messages_fts_ad` AFTER DELETE ON `messages` BEGIN
+	DELETE FROM `messages_fts` WHERE message_id = old.id;
+END;

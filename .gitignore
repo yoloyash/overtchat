@@ -27,6 +27,9 @@
 *.log
 *.png
 ROADMAP.md
+GEMINI.md
+CLAUDE.md
+/scripts/
 
 # debug
 npm-debug.log*
