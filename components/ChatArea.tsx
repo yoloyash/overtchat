@@ -20,6 +20,7 @@ import {
   FileCode,
   FileSpreadsheet,
   FileText,
+  Ghost,
   Globe,
   Loader2,
   Paperclip,
@@ -189,16 +190,26 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     false,
   );
 
+  const [temporary, setTemporary] = useState(false);
+
   const isNewRef = useRef(isNew ?? false);
 
   const [transport] = useState(
     () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
   );
 
+  const temporaryRef = useRef(false);
+  useEffect(() => {
+    temporaryRef.current = temporary;
+  }, [temporary]);
+
   const { messages, sendMessage, regenerate, status, stop, error } = useChat({
     transport,
     messages: initialMessages,
-    onFinish: () => router.refresh(),
+    onFinish: () => {
+      if (temporaryRef.current) return;
+      router.refresh();
+    },
   });
 
   const speech = useSpeech();
@@ -208,6 +219,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     searchEnabled,
     chatId,
     projectId: projectId ?? null,
+    temporary,
   });
 
   const [input, setInput] = useState("");
@@ -249,7 +261,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     if (streaming || uploading) return;
     if (!text && attachments.length === 0) return;
     if (!configured) return;
-    if (isNewRef.current) {
+    if (isNewRef.current && !temporary) {
       isNewRef.current = false;
       window.history.replaceState(null, "", `/chat/${chatId}`);
     }
@@ -344,6 +356,32 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
           selectedId={selectedId}
           onSelect={setSelectedId}
         />
+        <div className="ml-auto flex items-center">
+          {isNew && messages.length === 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "rounded-full",
+                temporary && "bg-accent text-foreground hover:bg-accent",
+              )}
+              onClick={() => setTemporary((t) => !t)}
+              aria-label={
+                temporary ? "Disable temporary chat" : "Enable temporary chat"
+              }
+              aria-pressed={temporary}
+              title="Temporary chat — won't be saved to history"
+            >
+              <Ghost />
+            </Button>
+          ) : temporary ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-2.5 py-1 text-xs font-medium text-foreground">
+              <Ghost className="size-3.5" />
+              Temporary
+            </span>
+          ) : null}
+        </div>
       </header>
 
       <div
@@ -352,7 +390,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         className="flex-1 overflow-y-auto overscroll-contain"
       >
         {messages.length === 0 ? (
-          <EmptyState configured={configured} />
+          <EmptyState configured={configured} temporary={temporary} />
         ) : (
           <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8">
             {messages.map((m, i) => (
@@ -479,19 +517,31 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   );
 }
 
-function EmptyState({ configured }: { configured: boolean }) {
+function EmptyState({
+  configured,
+  temporary,
+}: {
+  configured: boolean;
+  temporary: boolean;
+}) {
   return (
     <div className="flex h-full min-h-[70vh] flex-col items-center justify-center px-4 text-center">
       <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        <Sparkles className="size-5" />
+        {temporary ? (
+          <Ghost className="size-5" />
+        ) : (
+          <Sparkles className="size-5" />
+        )}
       </div>
       <h1 className="font-heading text-2xl font-semibold tracking-tight">
-        What can I help with?
+        {temporary ? "Temporary chat" : "What can I help with?"}
       </h1>
       <p className="mt-3 max-w-sm text-sm text-muted-foreground">
-        {configured
-          ? "Ask a question or start a conversation."
-          : "No models configured yet. An admin needs to add one in Settings → Models."}
+        {!configured
+          ? "No models configured yet. An admin needs to add one in Settings → Models."
+          : temporary
+            ? "Messages won't be saved to your history."
+            : "Ask a question or start a conversation."}
       </p>
     </div>
   );
