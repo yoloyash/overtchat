@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { Streamdown } from "streamdown";
 import { code } from "@streamdown/code";
@@ -34,11 +34,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import {
-  fetchModelConfigs,
-  useSelectedModel,
-  type PublicModelConfig,
-} from "@/lib/config";
+import { useSelectedModel } from "@/lib/config";
+import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { chatKeys } from "@/lib/queries/keys";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { useDictation, type DictationError } from "@/lib/useDictation";
@@ -178,29 +176,19 @@ function speakableText(message: UIMessage): string {
 }
 
 export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
-  const router = useRouter();
+  const qc = useQueryClient();
 
-  const [models, setModels] = useState<PublicModelConfig[] | null>(null);
+  const { data: modelsData, isError: modelsError } = useModelConfigs();
+  const models = modelsError ? [] : modelsData ?? null;
   const [selectedId, setSelectedId] = useSelectedModel();
 
   useEffect(() => {
-    let cancelled = false;
-    fetchModelConfigs()
-      .then((list) => {
-        if (cancelled) return;
-        setModels(list);
-        if (list.length > 0 && !list.some((m) => m.id === selectedId)) {
-          setSelectedId(list[0].id);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) setModels([]);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!models || models.length === 0) return;
+    if (!models.some((m) => m.id === selectedId)) {
+      setSelectedId(models[0].id);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [models]);
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
 
@@ -227,7 +215,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     messages: initialMessages,
     onFinish: () => {
       if (temporaryRef.current) return;
-      router.refresh();
+      qc.invalidateQueries({ queryKey: chatKeys.list() });
     },
   });
 

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +14,6 @@ export function AccountForm({
   email: string;
   name: string;
 }) {
-  const router = useRouter();
   const [name, setName] = useState(initialName);
   const [profileStatus, setProfileStatus] = useState<
     "idle" | "submitting" | "ok"
@@ -45,7 +43,6 @@ export function AccountForm({
       return;
     }
     setProfileStatus("ok");
-    router.refresh();
   }
 
   async function changePassword(e: React.FormEvent) {

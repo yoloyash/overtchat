@@ -1,8 +1,11 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
-import { listChatsByProject } from "@/lib/db/chats";
 import { getProject } from "@/lib/db/projects";
+import { getQueryClient } from "@/lib/queryClient";
+import { projectKeys } from "@/lib/queries/keys";
+import type { ProjectListItem } from "@/lib/queries/projects";
 import { ProjectPanel } from "./ProjectPanel";
 
 export default async function Page({
@@ -17,15 +20,17 @@ export default async function Page({
   const project = await getProject(id, session.user.id);
   if (!project) redirect("/");
 
-  const chats = await listChatsByProject(id, session.user.id);
+  const qc = getQueryClient();
+  qc.setQueryData<ProjectListItem>(projectKeys.detail(id), {
+    id: project.id,
+    name: project.name,
+    instructions: project.instructions,
+    updatedAt: project.updatedAt.getTime(),
+  });
+
   return (
-    <ProjectPanel
-      project={{
-        id: project.id,
-        name: project.name,
-        instructions: project.instructions,
-      }}
-      chats={chats.map((c) => ({ id: c.id, title: c.title }))}
-    />
+    <HydrationBoundary state={dehydrate(qc)}>
+      <ProjectPanel projectId={id} />
+    </HydrationBoundary>
   );
 }

@@ -6,22 +6,16 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Pencil, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { groupByDate, type DateBucket } from "@/lib/dateGroups";
+import { useChats } from "@/lib/queries/chats";
+import { useChatsSearch, type SearchHit } from "@/lib/queries/search";
 
 type Chat = { id: string; title: string | null; updatedAt: number };
-
-type Hit = {
-  chatId: string;
-  title: string | null;
-  updatedAt: number;
-  snippet: string | null;
-  messageId: string | null;
-};
 
 type Row =
   | { kind: "label"; label: DateBucket | "Results" }
   | { kind: "new" }
   | { kind: "chat"; chat: Chat }
-  | { kind: "hit"; hit: Hit };
+  | { kind: "hit"; hit: SearchHit };
 
 function renderSnippet(snippet: string) {
   let highlighted = false;
@@ -42,57 +36,48 @@ function renderSnippet(snippet: string) {
 export function SearchChatsPalette({
   open,
   onOpenChange,
-  chats,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  chats: Chat[];
 }) {
   const router = useRouter();
+  const { data: allChats = [] } = useChats();
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [active, setActive] = useState(0);
-  const [hitsFor, setHitsFor] = useState<{ q: string; hits: Hit[] } | null>(
-    null,
-  );
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 150);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const search = useChatsSearch(debouncedQuery);
 
   function handleOpenChange(next: boolean) {
     if (!next) {
       setQuery("");
+      setDebouncedQuery("");
       setActive(0);
-      setHitsFor(null);
     }
     onOpenChange(next);
   }
 
-  useEffect(() => {
-    const q = query.trim();
-    if (q.length < 2) return;
-    const ctrl = new AbortController();
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(
-          `/api/search?q=${encodeURIComponent(q)}`,
-          { signal: ctrl.signal },
-        );
-        if (!res.ok) throw new Error(`search ${res.status}`);
-        const data = (await res.json()) as { hits: Hit[] };
-        setHitsFor({ q, hits: data.hits });
-      } catch (err) {
-        if ((err as { name?: string })?.name !== "AbortError") {
-          setHitsFor({ q, hits: [] });
-        }
-      }
-    }, 150);
-    return () => {
-      clearTimeout(t);
-      ctrl.abort();
-    };
-  }, [query]);
-
   const q = query.trim();
-  const hits = hitsFor && hitsFor.q === q ? hitsFor.hits : null;
-  const loading = q.length >= 2 && hits === null;
+  const debouncedQ = debouncedQuery.trim();
+  const showingResults = q.length >= 2;
+  const hits = debouncedQ.length >= 2 ? search.data ?? null : null;
+  const loading = showingResults && search.isFetching && !search.data;
+
+  const chats: Chat[] = useMemo(
+    () =>
+      allChats.map((c) => ({
+        id: c.id,
+        title: c.title,
+        updatedAt: c.updatedAt,
+      })),
+    [allChats],
+  );
 
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [{ kind: "new" }];
@@ -154,7 +139,6 @@ export function SearchChatsPalette({
     el?.scrollIntoView({ block: "nearest" });
   }
 
-  const showingResults = q.length >= 2;
   const emptyResults =
     showingResults && !loading && hits !== null && hits.length === 0;
 
@@ -271,7 +255,7 @@ export function SearchChatsPalette({
                 </button>
               );
             })}
-            {showingResults && loading && hits === null && (
+            {showingResults && loading && (
               <p className="px-2 py-4 text-center text-xs text-muted-foreground">
                 Searching…
               </p>

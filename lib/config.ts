@@ -36,20 +36,6 @@ export function useSelectedModel(): [string, (id: string) => void] {
   return useLocalStorage<string>(SELECTED_MODEL_KEY, "");
 }
 
-export async function fetchModelConfigs(): Promise<PublicModelConfig[]> {
-  const res = await fetch("/api/model-configs");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as { modelConfigs: PublicModelConfig[] };
-  return json.modelConfigs;
-}
-
-export async function fetchAdminModelConfigs(): Promise<AdminModelConfig[]> {
-  const res = await fetch("/api/model-configs?admin=1");
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = (await res.json()) as { modelConfigs: AdminModelConfig[] };
-  return json.modelConfigs;
-}
-
 export async function fetchModelsForEndpoint(
   baseUrl: string,
   apiKey?: string | null,

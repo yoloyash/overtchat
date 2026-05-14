@@ -1,51 +1,48 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AdminModelConfig, ModelConfigInput } from "@/lib/config";
+import {
+  useAdminModelConfigs,
+  useCreateModelConfig,
+  useDeleteModelConfig,
+  useUpdateModelConfig,
+} from "@/lib/queries/modelConfigs";
 import { ModelConfigDialog } from "./ModelConfigDialog";
 
-export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
-  const router = useRouter();
+export function ModelsPanel() {
+  const { data: models = [] } = useAdminModelConfigs();
+  const createMut = useCreateModelConfig();
+  const updateMut = useUpdateModelConfig();
+  const deleteMut = useDeleteModelConfig();
+
   const [editing, setEditing] = useState<AdminModelConfig | "new" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
   async function confirmDelete() {
     if (!pendingDelete) return;
-    setDeleting(true);
     setDeleteError("");
     try {
-      const res = await fetch(`/api/model-configs/${pendingDelete.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        setDeleteError(`Failed to delete (${res.status})`);
-        return;
-      }
+      await deleteMut.mutateAsync(pendingDelete.id);
       setPendingDelete(null);
-      router.refresh();
-    } finally {
-      setDeleting(false);
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : `Failed to delete`,
+      );
     }
   }
 
   async function save(input: ModelConfigInput, id?: string) {
-    const url = id ? `/api/model-configs/${id}` : "/api/model-configs";
-    const method = id ? "PATCH" : "POST";
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    });
-    if (!res.ok) {
-      const json = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(json.error ?? `HTTP ${res.status}`);
+    if (id) {
+      await updateMut.mutateAsync({ id, input });
+    } else {
+      await createMut.mutateAsync(input);
     }
     setEditing(null);
-    router.refresh();
   }
 
   return (
@@ -57,14 +54,14 @@ export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
             OpenAI-compatible endpoints available to everyone.
           </p>
         </div>
-        {initial.length > 0 && (
+        {models.length > 0 && (
           <Button size="sm" onClick={() => setEditing("new")}>
             <Plus /> Add
           </Button>
         )}
       </header>
 
-      {initial.length === 0 ? (
+      {models.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-muted/20 px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">No models configured yet.</p>
           <Button className="mt-4" size="sm" onClick={() => setEditing("new")}>
@@ -73,7 +70,7 @@ export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
         </div>
       ) : (
         <ul className="space-y-2">
-          {initial.map((m) => (
+          {models.map((m) => (
             <li key={m.id} className="group relative">
               <button
                 type="button"
@@ -117,7 +114,7 @@ export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
       <AlertDialog.Root
         open={pendingDelete !== null}
         onOpenChange={(next) => {
-          if (!next && !deleting) {
+          if (!next && !deleteMut.isPending) {
             setPendingDelete(null);
             setDeleteError("");
           }
@@ -143,7 +140,7 @@ export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
               <Button
                 variant="ghost"
                 size="sm"
-                disabled={deleting}
+                disabled={deleteMut.isPending}
                 onClick={() => setPendingDelete(null)}
               >
                 Cancel
@@ -151,10 +148,10 @@ export function ModelsPanel({ initial }: { initial: AdminModelConfig[] }) {
               <Button
                 variant="destructive"
                 size="sm"
-                disabled={deleting}
+                disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleting ? "Deleting…" : "Delete"}
+                {deleteMut.isPending ? "Deleting…" : "Delete"}
               </Button>
             </div>
           </AlertDialog.Popup>

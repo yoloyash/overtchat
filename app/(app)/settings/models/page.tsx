@@ -1,7 +1,10 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
 import { listModelConfigs, toAdminModelConfig } from "@/lib/db/modelConfigs";
+import { getQueryClient } from "@/lib/queryClient";
+import { modelConfigKeys } from "@/lib/queries/keys";
 import { ModelsPanel } from "./ModelsPanel";
 
 export default async function Page() {
@@ -9,6 +12,18 @@ export default async function Page() {
   if (!session) redirect("/login");
   if (session.user.role !== "admin") redirect("/settings/general");
 
-  const rows = await listModelConfigs();
-  return <ModelsPanel initial={rows.map(toAdminModelConfig)} />;
+  const qc = getQueryClient();
+  await qc.prefetchQuery({
+    queryKey: modelConfigKeys.adminList(),
+    queryFn: async () => {
+      const rows = await listModelConfigs();
+      return rows.map(toAdminModelConfig);
+    },
+  });
+
+  return (
+    <HydrationBoundary state={dehydrate(qc)}>
+      <ModelsPanel />
+    </HydrationBoundary>
+  );
 }

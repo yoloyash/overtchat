@@ -9,27 +9,49 @@ import {
   SidebarProjects,
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
-import type { ProjectOption } from "@/components/SidebarChatList";
 import { useSidebar } from "@/components/sidebar-context";
+import { useChats } from "@/lib/queries/chats";
+import { useProjects } from "@/lib/queries/projects";
 
-type RecentChat = { id: string; title: string | null; updatedAt: number };
-type ProjectWithChats = ProjectOption & {
-  chats: { id: string; title: string | null }[];
-};
-
-export function SidebarClient({
-  unprojected,
-  projects,
-  projectOptions,
-}: {
-  unprojected: RecentChat[];
-  projects: ProjectWithChats[];
-  projectOptions: ProjectOption[];
-}) {
+export function SidebarClient() {
   const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  const { data: chats = [] } = useChats();
+  const { data: projects = [] } = useProjects();
+
+  const projectOptions = useMemo(
+    () => projects.map((p) => ({ id: p.id, name: p.name })),
+    [projects],
+  );
+
+  const unprojected = useMemo(
+    () =>
+      chats
+        .filter((c) => c.projectId == null)
+        .map((c) => ({
+          id: c.id,
+          title: c.title,
+          updatedAt: c.updatedAt,
+        })),
+    [chats],
+  );
+
+  const projectsWithChats = useMemo(() => {
+    const byProject = new Map<string, { id: string; title: string | null }[]>();
+    for (const c of chats) {
+      if (!c.projectId) continue;
+      const list = byProject.get(c.projectId) ?? [];
+      list.push({ id: c.id, title: c.title });
+      byProject.set(c.projectId, list);
+    }
+    return projectOptions.map((p) => ({
+      ...p,
+      chats: byProject.get(p.id) ?? [],
+    }));
+  }, [chats, projectOptions]);
 
   const modKey = useMemo(
     () =>
@@ -86,7 +108,7 @@ export function SidebarClient({
         </nav>
 
         <SectionLabel>Projects</SectionLabel>
-        <SidebarProjects projects={projects} />
+        <SidebarProjects projects={projectsWithChats} />
         <button
           type="button"
           onClick={() => setCreatingProject(true)}

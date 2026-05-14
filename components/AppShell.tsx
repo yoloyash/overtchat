@@ -7,15 +7,11 @@ import { SidebarContext } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 
-type Chat = { id: string; title: string | null; updatedAt: number };
-
 export function AppShell({
   sidebar,
-  allChats,
   children,
 }: {
   sidebar: React.ReactNode;
-  allChats: Chat[];
   children: React.ReactNode;
 }) {
   const router = useRouter();
@@ -81,11 +77,7 @@ export function AppShell({
           </main>
         </div>
       </Dialog.Root>
-      <SearchChatsPalette
-        open={paletteOpen}
-        onOpenChange={setPaletteOpen}
-        chats={allChats}
-      />
+      <SearchChatsPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
     </SidebarContext.Provider>
   );
 }

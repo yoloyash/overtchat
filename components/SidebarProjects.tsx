@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ChevronRight, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createProjectAction } from "@/app/(app)/actions";
+import { useCreateProject } from "@/lib/queries/projects";
 import {
   SidebarItem,
   type ProjectOption,
@@ -121,9 +121,9 @@ export function CreateProjectDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const createMut = useCreateProject();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
-  const [pending, startTransition] = useTransition();
 
   function reset() {
     setName("");
@@ -137,17 +137,22 @@ export function CreateProjectDialog({
       setError("Name is required");
       return;
     }
-    startTransition(async () => {
-      try {
-        const { id } = await createProjectAction(trimmed);
-        reset();
-        onClose();
-        router.push(`/projects/${id}`);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    });
+    createMut.mutate(
+      { name: trimmed },
+      {
+        onSuccess: ({ id }) => {
+          reset();
+          onClose();
+          router.push(`/projects/${id}`);
+        },
+        onError: (err) => {
+          setError(err instanceof Error ? err.message : String(err));
+        },
+      },
+    );
   }
+
+  const pending = createMut.isPending;
 
   return (
     <Dialog.Root

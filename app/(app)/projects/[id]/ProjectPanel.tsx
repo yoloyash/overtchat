@@ -2,73 +2,73 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
+import { useChats } from "@/lib/queries/chats";
 import {
-  deleteProjectAction,
-  updateProjectAction,
-} from "@/app/(app)/actions";
+  useDeleteProject,
+  useProject,
+  useUpdateProject,
+} from "@/lib/queries/projects";
 
-interface Project {
-  id: string;
-  name: string;
-  instructions: string | null;
-}
-
-interface Chat {
-  id: string;
-  title: string | null;
-}
-
-export function ProjectPanel({
-  project,
-  chats,
-}: {
-  project: Project;
-  chats: Chat[];
-}) {
+export function ProjectPanel({ projectId }: { projectId: string }) {
   const router = useRouter();
-  const [, startTransition] = useTransition();
+  const { data: project } = useProject(projectId);
+  const { data: chats = [] } = useChats();
+  const updateMut = useUpdateProject(projectId);
+  const deleteMut = useDeleteProject();
 
-  const [name, setName] = useState(project.name);
+  const savedInstructions = project?.instructions ?? "";
   const [renaming, setRenaming] = useState(false);
-
-  const [instructions, setInstructions] = useState(project.instructions ?? "");
-  const [savedInstructions, setSavedInstructions] = useState(
-    project.instructions ?? "",
+  const [name, setName] = useState(project?.name ?? "");
+  const [instructionsDraft, setInstructionsDraft] = useState<string | null>(
+    null,
   );
-  const [saving, setSaving] = useState(false);
 
-  const dirty = instructions !== savedInstructions;
-
-  function commitRename() {
-    const next = name.trim();
-    setRenaming(false);
-    if (!next || next === project.name) {
-      setName(project.name);
-      return;
-    }
-    startTransition(async () => {
-      await updateProjectAction(project.id, { name: next });
-    });
+  // Reset the draft when the saved value changes (after save, or when switching projects).
+  // See React docs on resetting state when a prop changes.
+  const [draftBaseline, setDraftBaseline] = useState(savedInstructions);
+  if (savedInstructions !== draftBaseline) {
+    setDraftBaseline(savedInstructions);
+    setInstructionsDraft(null);
   }
 
-  async function saveInstructions() {
-    setSaving(true);
-    try {
-      await updateProjectAction(project.id, {
-        instructions: instructions.trim() ? instructions : null,
-      });
-      setSavedInstructions(instructions);
-    } finally {
-      setSaving(false);
-    }
+  const instructions = instructionsDraft ?? savedInstructions;
+  const dirty = instructionsDraft !== null && instructionsDraft !== savedInstructions;
+
+  const projectChats = useMemo(
+    () => chats.filter((c) => c.projectId === projectId),
+    [chats, projectId],
+  );
+
+  function startRename() {
+    if (!project) return;
+    setName(project.name);
+    setRenaming(true);
+  }
+
+  function commitRename() {
+    if (!project) return;
+    const next = name.trim();
+    setRenaming(false);
+    if (!next || next === project.name) return;
+    updateMut.mutate({ name: next });
+  }
+
+  function saveInstructions() {
+    if (instructionsDraft === null) return;
+    const value = instructionsDraft;
+    updateMut.mutate(
+      { instructions: value.trim() ? value : null },
+      { onSuccess: () => setInstructionsDraft(null) },
+    );
   }
 
   function confirmDelete() {
+    if (!project) return;
     if (
       !window.confirm(
         `Delete "${project.name}"? Chats inside it will move to the main list.`,
@@ -76,10 +76,17 @@ export function ProjectPanel({
     ) {
       return;
     }
-    startTransition(async () => {
-      await deleteProjectAction(project.id);
-      router.push("/");
+    deleteMut.mutate(project.id, {
+      onSuccess: () => router.push("/"),
     });
+  }
+
+  if (!project) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
   }
 
   return (
@@ -108,7 +115,7 @@ export function ProjectPanel({
         ) : (
           <button
             type="button"
-            onClick={() => setRenaming(true)}
+            onClick={startRename}
             className="truncate rounded-md px-1 py-0.5 text-sm font-semibold tracking-tight hover:bg-accent"
             title="Rename"
           >
@@ -127,7 +134,7 @@ export function ProjectPanel({
             <Menu.Positioner side="bottom" align="end" sideOffset={6}>
               <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
                 <Menu.Item
-                  onClick={() => setRenaming(true)}
+                  onClick={startRename}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
@@ -160,7 +167,7 @@ export function ProjectPanel({
             <textarea
               rows={8}
               value={instructions}
-              onChange={(e) => setInstructions(e.target.value)}
+              onChange={(e) => setInstructionsDraft(e.target.value)}
               placeholder="e.g. Always respond in concise bullet points. Assume the reader is a senior engineer."
               className="w-full rounded-lg border border-input bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
             />
@@ -168,9 +175,9 @@ export function ProjectPanel({
               <Button
                 size="sm"
                 onClick={saveInstructions}
-                disabled={!dirty || saving}
+                disabled={!dirty || updateMut.isPending}
               >
-                {saving ? "Saving…" : "Save"}
+                {updateMut.isPending ? "Saving…" : "Save"}
               </Button>
             </div>
           </section>
@@ -187,13 +194,13 @@ export function ProjectPanel({
                 <Plus /> New chat
               </Button>
             </div>
-            {chats.length === 0 ? (
+            {projectChats.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No chats yet. Click “New chat” to start one in this project.
               </p>
             ) : (
               <ul className="divide-y rounded-lg border">
-                {chats.map((c) => (
+                {projectChats.map((c) => (
                   <li key={c.id}>
                     <Link
                       href={`/chat/${c.id}`}

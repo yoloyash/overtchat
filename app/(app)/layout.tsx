@@ -1,10 +1,15 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
 import { listChats } from "@/lib/db/chats";
 import { listProjects } from "@/lib/db/projects";
 import { AppShell } from "@/components/AppShell";
 import { Sidebar } from "@/components/Sidebar";
+import { getQueryClient } from "@/lib/queryClient";
+import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import type { ChatListItem } from "@/lib/queries/chats";
+import type { ProjectListItem } from "@/lib/queries/projects";
 
 export default async function AppLayout({
   children,
@@ -14,51 +19,37 @@ export default async function AppLayout({
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
 
-  const [chats, projects] = await Promise.all([
-    listChats(session.user.id),
-    listProjects(session.user.id),
+  const qc = getQueryClient();
+  await Promise.all([
+    qc.prefetchQuery({
+      queryKey: chatKeys.list(),
+      queryFn: async (): Promise<ChatListItem[]> => {
+        const rows = await listChats(session.user.id);
+        return rows.map((c) => ({
+          id: c.id,
+          title: c.title,
+          projectId: c.projectId,
+          updatedAt: c.updatedAt.getTime(),
+        }));
+      },
+    }),
+    qc.prefetchQuery({
+      queryKey: projectKeys.list(),
+      queryFn: async (): Promise<ProjectListItem[]> => {
+        const rows = await listProjects(session.user.id);
+        return rows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          instructions: p.instructions,
+          updatedAt: p.updatedAt.getTime(),
+        }));
+      },
+    }),
   ]);
 
-  const projectOptions = projects.map((p) => ({ id: p.id, name: p.name }));
-  const unprojected = chats
-    .filter((c) => c.projectId == null)
-    .map((c) => ({
-      id: c.id,
-      title: c.title,
-      updatedAt: c.updatedAt.getTime(),
-    }));
-  const chatsByProject = new Map<
-    string,
-    { id: string; title: string | null }[]
-  >();
-  for (const c of chats) {
-    if (!c.projectId) continue;
-    const list = chatsByProject.get(c.projectId) ?? [];
-    list.push({ id: c.id, title: c.title });
-    chatsByProject.set(c.projectId, list);
-  }
-  const projectsWithChats = projectOptions.map((p) => ({
-    ...p,
-    chats: chatsByProject.get(p.id) ?? [],
-  }));
-  const allChats = chats.map((c) => ({
-    id: c.id,
-    title: c.title,
-    updatedAt: c.updatedAt.getTime(),
-  }));
-
   return (
-    <AppShell
-      sidebar={
-        <Sidebar
-          unprojected={unprojected}
-          projects={projectsWithChats}
-          projectOptions={projectOptions}
-        />
-      }
-      allChats={allChats}
-    >
-      {children}
-    </AppShell>
+    <HydrationBoundary state={dehydrate(qc)}>
+      <AppShell sidebar={<Sidebar />}>{children}</AppShell>
+    </HydrationBoundary>
   );
 }

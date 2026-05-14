@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { chatKeys, projectKeys } from "@/lib/queries/keys";
 
 type ImportResult = {
   format: string;
@@ -19,7 +20,7 @@ const FORMAT_LABELS: Record<string, string> = {
 };
 
 export function DataForm() {
-  const router = useRouter();
+  const qc = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [importing, setImporting] = useState(false);
@@ -44,7 +45,8 @@ export function DataForm() {
         return;
       }
       setImportResult(body as ImportResult);
-      router.refresh();
+      qc.invalidateQueries({ queryKey: chatKeys.list() });
+      qc.invalidateQueries({ queryKey: projectKeys.list() });
     } catch (err) {
       setImportError(
         err instanceof Error ? err.message : "Import failed.",

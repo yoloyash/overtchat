@@ -1,29 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/client";
+import { useInvalidateUsers, useUsers } from "@/lib/queries/users";
 import { AddUserDialog } from "./AddUserDialog";
 
-export type UserRow = {
-  id: string;
-  email: string;
-  name: string;
-  role?: string | null;
-  createdAt: string | Date;
-  banned?: boolean | null;
-};
-
-export function UsersPanel({
-  currentUserId,
-  initial,
-}: {
-  currentUserId: string;
-  initial: UserRow[];
-}) {
-  const router = useRouter();
+export function UsersPanel({ currentUserId }: { currentUserId: string }) {
+  const { data: users = [] } = useUsers();
+  const invalidateUsers = useInvalidateUsers();
   const [addOpen, setAddOpen] = useState(false);
 
   async function removeUser(id: string) {
@@ -34,7 +20,7 @@ export function UsersPanel({
       alert(error.message ?? "Failed to delete user");
       return;
     }
-    router.refresh();
+    invalidateUsers();
   }
 
   return (
@@ -63,7 +49,7 @@ export function UsersPanel({
             </tr>
           </thead>
           <tbody>
-            {initial.map((u) => (
+            {users.map((u) => (
               <tr key={u.id} className="border-b last:border-0">
                 <td className="px-3 py-2">{u.name}</td>
                 <td className="px-3 py-2">{u.email}</td>
@@ -94,7 +80,7 @@ export function UsersPanel({
       <AddUserDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreated={() => router.refresh()}
+        onCreated={invalidateUsers}
       />
     </div>
   );

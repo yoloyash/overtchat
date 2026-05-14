@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   Download,
@@ -14,10 +14,10 @@ import {
 import { cn } from "@/lib/utils";
 import { groupByDate } from "@/lib/dateGroups";
 import {
-  deleteChatAction,
-  moveChatToProjectAction,
-  renameChatAction,
-} from "@/app/(app)/actions";
+  useDeleteChat,
+  useMoveChat,
+  useRenameChat,
+} from "@/lib/queries/chats";
 import { useSidebar } from "@/components/sidebar-context";
 
 interface Chat {
@@ -87,32 +87,32 @@ export function SidebarItem({
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
   const { drawerRef } = useSidebar();
 
+  const renameMut = useRenameChat();
+  const deleteMut = useDeleteChat();
+  const moveMut = useMoveChat();
+
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(chat.title ?? "");
-  const [, startTransition] = useTransition();
 
   function commitRename() {
     const next = draft.trim();
     setRenaming(false);
     if (!next || next === (chat.title ?? "")) return;
-    startTransition(async () => {
-      await renameChatAction(chat.id, next);
-    });
+    renameMut.mutate({ id: chat.id, title: next });
   }
 
   function confirmDelete() {
     if (!window.confirm("Delete this chat?")) return;
-    startTransition(async () => {
-      await deleteChatAction(chat.id);
-      if (active) router.push("/");
+    deleteMut.mutate(chat.id, {
+      onSuccess: () => {
+        if (active) router.push("/");
+      },
     });
   }
 
   function moveTo(projectId: string | null) {
     if (projectId === currentProjectId) return;
-    startTransition(async () => {
-      await moveChatToProjectAction(chat.id, projectId);
-    });
+    moveMut.mutate({ id: chat.id, projectId });
   }
 
   if (renaming) {
