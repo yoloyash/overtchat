@@ -47,6 +47,45 @@ services:
       retries: 20
       start_period: 60s
 
+  # Speech-to-text via Parakeet TDT v3. Off by default; opt in with:
+  #   docker compose --profile stt up -d        (CPU, ~670MB model, ~2GB RAM)
+  #   docker compose --profile stt-gpu up -d    (NVIDIA GPU, requires NVIDIA Container Toolkit)
+  # Both services are reachable from `app` as `http://stt:5092`.
+  stt-cpu:
+    image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.0}
+    build:
+      context: ./stt
+      dockerfile: Dockerfile.cpu
+    container_name: overtchat-stt-cpu
+    restart: unless-stopped
+    profiles: [stt]
+    networks:
+      default:
+        aliases: [stt]
+    volumes:
+      - overtchat-stt-models:/models
+
+  stt-gpu:
+    image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.0}
+    build:
+      context: ./stt
+      dockerfile: Dockerfile.gpu
+    container_name: overtchat-stt-gpu
+    restart: unless-stopped
+    profiles: [stt-gpu]
+    networks:
+      default:
+        aliases: [stt]
+    volumes:
+      - overtchat-stt-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
   # To expose overtchat via Cloudflare Tunnel, uncomment below and paste your
   # tunnel token. Nothing else on this stack is reachable from the internet —
   # searxng and kokoro stay on the internal Docker network.
@@ -64,3 +103,4 @@ services:
 
 volumes:
   overtchat-data:
+  overtchat-stt-models:

@@ -1,0 +1,36 @@
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/models \
+    HF_HUB_CACHE=/models \
+    HF_HUB_DISABLE_SYMLINKS_WARNING=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      python3.11 python3.11-venv python3-pip \
+      ffmpeg ca-certificates curl \
+ && ln -sf /usr/bin/python3.11 /usr/bin/python \
+ && ln -sf /usr/bin/python3.11 /usr/bin/python3 \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt \
+ && pip install "onnx-asr[gpu,hub]>=0.11"
+
+COPY main.py .
+
+RUN mkdir -p /models
+
+EXPOSE 5092
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+  CMD curl -fsS http://localhost:5092/health || exit 1
+
+CMD ["python", "main.py"]

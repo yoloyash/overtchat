@@ -1,0 +1,30 @@
+FROM python:3.11-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/models \
+    HF_HUB_CACHE=/models \
+    HF_HUB_DISABLE_SYMLINKS_WARNING=1
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --upgrade pip \
+ && pip install -r requirements.txt \
+ && pip install "onnx-asr[cpu,hub]>=0.11"
+
+COPY main.py .
+
+RUN mkdir -p /models
+
+EXPOSE 5092
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD curl -fsS http://localhost:5092/health || exit 1
+
+CMD ["python", "main.py"]

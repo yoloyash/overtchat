@@ -1,0 +1,85 @@
+name: Build and publish STT images
+
+# Tag a release with `stt-v<semver>` (e.g. `stt-v0.1.0`) to trigger.
+# CPU image is built for linux/amd64 + linux/arm64.
+# GPU image is built for linux/amd64 only (CUDA is amd64-only in practice).
+on:
+  push:
+    tags: ["stt-v*"]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: ${{ github.repository_owner }}
+
+jobs:
+  cpu:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-stt-cpu
+          tags: |
+            type=match,pattern=stt-v(.*),group=1
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./stt
+          file: ./stt/Dockerfile.cpu
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=stt-cpu
+          cache-to: type=gha,scope=stt-cpu,mode=max
+
+  gpu:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-stt-gpu
+          tags: |
+            type=match,pattern=stt-v(.*),group=1
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./stt
+          file: ./stt/Dockerfile.gpu
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=stt-gpu
+          cache-to: type=gha,scope=stt-gpu,mode=max

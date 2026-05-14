@@ -45,8 +45,20 @@ To open it up to other devices on your LAN, set `BETTER_AUTH_URL` in `.env` to y
 - Reasoning models (DeepSeek, Qwen3, …) render `<think>` blocks natively
 - Web search via bundled SearXNG. No API key.
 - Text-to-speech via bundled Kokoro. No setup.
+- Speech-to-text via Parakeet TDT v3 (opt-in, CPU or NVIDIA GPU)
 - Chat export (JSON / Markdown)
 - No RAG, no embeddings, no vector DB. Search results go straight into context.
+
+## Speech-to-text (optional)
+
+Off by default — the mic button in the composer is greyed out until you bring up the Parakeet sidecar:
+
+```bash
+docker compose --profile stt up -d        # CPU (~670 MB model, ~2 GB RAM)
+docker compose --profile stt-gpu up -d    # NVIDIA GPU (requires NVIDIA Container Toolkit)
+```
+
+Multilingual (25 languages, auto-detected). All processing stays on your machine. Model downloads on first start (~10 s) and is cached in a Docker volume.
 
 ## Privacy
 

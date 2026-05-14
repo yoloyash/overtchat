@@ -23,6 +23,7 @@ import {
   Ghost,
   Globe,
   Loader2,
+  Mic,
   Paperclip,
   Pencil,
   RotateCcw,
@@ -41,6 +42,8 @@ import {
 } from "@/lib/config";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
+import { useDictation, type DictationError } from "@/lib/useDictation";
+import { authClient } from "@/lib/auth/client";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import {
@@ -146,6 +149,23 @@ const PLUGINS = { code, math, cjk };
 
 const stripper = remark().use(strip);
 
+function dictationErrorMessage(err: DictationError, isAdmin: boolean): string {
+  switch (err.kind) {
+    case "permission":
+      return "Microphone access denied. Allow it in your browser settings to dictate.";
+    case "unsupported":
+      return "Your browser doesn't support audio recording.";
+    case "stt_unavailable":
+      return isAdmin || err.role === "admin"
+        ? "Speech-to-text isn't running. Start it with: docker compose --profile stt up -d (or --profile stt-gpu for NVIDIA GPU)."
+        : "Speech-to-text isn't enabled. Ask the admin to enable it.";
+    case "empty":
+      return "No speech detected. Try again.";
+    case "other":
+      return err.message || "Transcription failed.";
+  }
+}
+
 function stripMarkdown(s: string): string {
   return String(stripper.processSync(s)).replace(/\s+/g, " ").trim();
 }
@@ -213,6 +233,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   });
 
   const speech = useSpeech();
+  const { data: session } = authClient.useSession();
+  const isAdmin = session?.user.role === "admin";
 
   const requestBody = () => ({
     modelConfigId: selectedId,
@@ -233,6 +255,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const stickToBottomRef = useRef(true);
+
+  const dictation = useDictation((text) => {
+    setInput((prev) => {
+      const trimmed = prev.trimEnd();
+      if (!trimmed) return text;
+      return `${trimmed} ${text}`;
+    });
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  });
 
   const streaming = status === "streaming" || status === "submitted";
 
@@ -418,6 +449,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
           {uploadError && (
             <p className="mb-2 text-sm text-destructive">{uploadError}</p>
           )}
+          {dictation.error && (
+            <p className="mb-2 text-sm text-destructive">
+              {dictationErrorMessage(dictation.error, isAdmin)}
+            </p>
+          )}
           <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3 py-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2 px-1 pt-1">
@@ -488,27 +524,63 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
                   <span className="text-xs">Search</span>
                 </Button>
               </div>
-              {streaming ? (
+              <div className="flex items-center gap-1">
                 <Button
+                  type="button"
+                  variant="ghost"
                   size="icon-sm"
-                  variant="secondary"
-                  className="shrink-0 rounded-full"
-                  onClick={() => stop()}
-                  aria-label="Stop generating"
+                  className={cn(
+                    "rounded-full",
+                    dictation.status === "recording" &&
+                      "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
+                  )}
+                  onClick={() => {
+                    if (dictation.status === "recording") {
+                      dictation.stop();
+                    } else if (dictation.status === "idle") {
+                      void dictation.start();
+                    }
+                  }}
+                  disabled={dictation.status === "transcribing"}
+                  aria-label={
+                    dictation.status === "recording"
+                      ? "Stop dictation"
+                      : dictation.status === "transcribing"
+                        ? "Transcribing"
+                        : "Dictate"
+                  }
+                  aria-pressed={dictation.status === "recording"}
                 >
-                  <Square className="size-3 fill-current" />
+                  {dictation.status === "transcribing" ? (
+                    <Loader2 className="animate-spin" />
+                  ) : dictation.status === "recording" ? (
+                    <Square className="size-3 fill-current" />
+                  ) : (
+                    <Mic />
+                  )}
                 </Button>
-              ) : (
-                <Button
-                  size="icon-sm"
-                  className="shrink-0 rounded-full"
-                  disabled={uploading || (!input.trim() && attachments.length === 0)}
-                  onClick={submit}
-                  aria-label="Send message"
-                >
-                  <ArrowUp />
-                </Button>
-              )}
+                {streaming ? (
+                  <Button
+                    size="icon-sm"
+                    variant="secondary"
+                    className="shrink-0 rounded-full"
+                    onClick={() => stop()}
+                    aria-label="Stop generating"
+                  >
+                    <Square className="size-3 fill-current" />
+                  </Button>
+                ) : (
+                  <Button
+                    size="icon-sm"
+                    className="shrink-0 rounded-full"
+                    disabled={uploading || (!input.trim() && attachments.length === 0)}
+                    onClick={submit}
+                    aria-label="Send message"
+                  >
+                    <ArrowUp />
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
