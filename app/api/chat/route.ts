@@ -1,27 +1,21 @@
 import {
   convertToModelMessages,
   streamText,
-  generateText,
   stepCountIs,
-  wrapLanguageModel,
-  extractReasoningMiddleware,
-  type LanguageModel,
   type UIMessage,
 } from "ai";
-import type { JSONValue } from "@ai-sdk/provider";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { webTools } from "@/lib/tools";
 import { auth } from "@/lib/auth/server";
 import {
   appendMessage,
   deleteMessagesFrom,
   ensureChat,
-  setTitleIfNull,
   touchChat,
 } from "@/lib/db/chats";
 import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
+import { buildModel } from "@/lib/llm";
 
 export const maxDuration = 300;
 
@@ -35,8 +29,6 @@ interface Body {
   messageId?: string;
   temporary?: boolean;
 }
-
-const PROVIDER_NAME = "user-endpoint";
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -85,21 +77,9 @@ export async function POST(req: Request) {
     await touchChat(chatId);
   }
 
-  const provider = createOpenAICompatible({
-    name: PROVIDER_NAME,
-    baseURL: modelConfig.baseUrl.replace(/\/$/, ""),
-    apiKey: modelConfig.apiKey || "none",
-  });
-
-  const wrapped = wrapLanguageModel({
-    model: provider.chatModel(modelConfig.model),
-    middleware: extractReasoningMiddleware({ tagName: "think" }),
-  });
+  const { model, providerOptions } = buildModel(modelConfig);
 
   const inlined = await inlineUploads(messages, userId);
-  const providerOptions = modelConfig.extraBody
-    ? { [PROVIDER_NAME]: modelConfig.extraBody as Record<string, JSONValue> }
-    : undefined;
 
   const systemParts = [project?.instructions, modelConfig.systemPrompt].filter(
     (s): s is string => Boolean(s && s.trim()),
@@ -107,7 +87,7 @@ export async function POST(req: Request) {
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
 
   const result = streamText({
-    model: wrapped,
+    model,
     system,
     messages: await convertToModelMessages(inlined),
     tools: searchEnabled ? webTools : undefined,
@@ -133,52 +113,7 @@ export async function POST(req: Request) {
         await touchChat(chatId);
       } catch (err) {
         console.error("[persist-assistant]", err);
-        return;
       }
-      void maybeGenerateTitle({
-        chatId,
-        userMsg: last,
-        assistantMsg: responseMessage,
-        model: wrapped,
-      }).catch((err) => console.error("[auto-title]", err));
     },
   });
-}
-
-async function maybeGenerateTitle({
-  chatId,
-  userMsg,
-  assistantMsg,
-  model,
-}: {
-  chatId: string;
-  userMsg: UIMessage;
-  assistantMsg: UIMessage;
-  model: LanguageModel;
-}) {
-  const userText = textOf(userMsg);
-  const fallback = userText.trim().slice(0, 40) || "Untitled";
-  try {
-    const { text } = await generateText({
-      model,
-      prompt:
-        "Summarize this conversation in 3 to 6 words. No quotes, no trailing punctuation, no emoji.\n\n" +
-        `User: ${userText}\n\nAssistant: ${textOf(assistantMsg)}`,
-    });
-    const title = (text || "")
-      .trim()
-      .replace(/^["']|["']$/g, "")
-      .slice(0, 80);
-    await setTitleIfNull(chatId, title || fallback);
-  } catch {
-    await setTitleIfNull(chatId, fallback);
-  }
-}
-
-function textOf(m: UIMessage): string {
-  return m.parts
-    .filter((p): p is Extract<typeof p, { type: "text" }> => p.type === "text")
-    .map((p) => p.text)
-    .join("\n")
-    .slice(0, 2000);
 }

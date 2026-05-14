@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { useSelectedModel } from "@/lib/config";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { chatKeys } from "@/lib/queries/keys";
+import type { ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { useDictation, type DictationError } from "@/lib/useDictation";
@@ -279,15 +280,51 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     if (streaming || uploading) return;
     if (!text && attachments.length === 0) return;
     if (!configured) return;
-    if (isNewRef.current && !temporary) {
+    const wasNew = isNewRef.current && !temporary;
+    if (wasNew) {
       isNewRef.current = false;
       window.history.replaceState(null, "", `/chat/${chatId}`);
+      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) => {
+        const next: ChatListItem = {
+          id: chatId,
+          title: null,
+          projectId: projectId ?? null,
+          updatedAt: Date.now(),
+        };
+        if (!prev) return [next];
+        if (prev.some((c) => c.id === chatId)) return prev;
+        return [next, ...prev];
+      });
+      if (text) void requestTitle(text);
     }
     sendMessage({ text, files: attachments }, { body: requestBody() });
     setInput("");
     setAttachments([]);
     setAttachmentMeta({});
     setUploadError(null);
+  }
+
+  async function requestTitle(userText: string) {
+    try {
+      const r = await fetch(`/api/chats/${chatId}/title`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelConfigId: selectedId,
+          userText,
+          projectId: projectId ?? null,
+        }),
+      });
+      if (!r.ok) return;
+      const { title } = (await r.json()) as { title: string };
+      if (!title) return;
+      document.title = title;
+      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) =>
+        prev?.map((c) => (c.id === chatId ? { ...c, title } : c)),
+      );
+    } catch (err) {
+      console.error("[title]", err);
+    }
   }
 
   async function handleFiles(files: FileList | null) {
