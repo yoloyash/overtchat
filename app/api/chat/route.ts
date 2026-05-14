@@ -33,6 +33,7 @@ interface Body {
   projectId?: string | null;
   trigger?: "submit-message" | "regenerate-message";
   messageId?: string;
+  temporary?: boolean;
 }
 
 const PROVIDER_NAME = "user-endpoint";
@@ -50,6 +51,7 @@ export async function POST(req: Request) {
     projectId,
     trigger,
     messageId,
+    temporary,
   } = (await req.json()) as Body;
 
   if (!modelConfigId) return new Response("Missing modelConfigId", { status: 400 });
@@ -59,21 +61,29 @@ export async function POST(req: Request) {
   const modelConfig = await getModelConfig(modelConfigId);
   if (!modelConfig) return new Response("Model config not found", { status: 404 });
 
-  const chat = await ensureChat(chatId, userId, projectId ?? null);
-  if (!chat) return new Response("Not found", { status: 404 });
+  let resolvedProjectId: string | null;
+  if (temporary) {
+    resolvedProjectId = projectId ?? null;
+  } else {
+    const chat = await ensureChat(chatId, userId, projectId ?? null);
+    if (!chat) return new Response("Not found", { status: 404 });
+    resolvedProjectId = chat.projectId;
+  }
 
-  const project = chat.projectId
-    ? await getProject(chat.projectId, userId)
+  const project = resolvedProjectId
+    ? await getProject(resolvedProjectId, userId)
     : null;
 
   const last = messages[messages.length - 1];
-  if (trigger === "regenerate-message") {
-    if (messageId) await deleteMessagesFrom(chatId, messageId);
-  } else if (last.role === "user") {
-    if (messageId) await deleteMessagesFrom(chatId, messageId);
-    await appendMessage(chatId, "user", last.parts, last.id);
+  if (!temporary) {
+    if (trigger === "regenerate-message") {
+      if (messageId) await deleteMessagesFrom(chatId, messageId);
+    } else if (last.role === "user") {
+      if (messageId) await deleteMessagesFrom(chatId, messageId);
+      await appendMessage(chatId, "user", last.parts, last.id);
+    }
+    await touchChat(chatId);
   }
-  await touchChat(chatId);
 
   const provider = createOpenAICompatible({
     name: PROVIDER_NAME,
@@ -112,6 +122,7 @@ export async function POST(req: Request) {
     generateMessageId: () => crypto.randomUUID(),
     onFinish: async ({ responseMessage, isAborted }) => {
       if (isAborted) return;
+      if (temporary) return;
       try {
         await appendMessage(
           chatId,

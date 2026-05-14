@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
 import { SidebarChatList } from "@/components/SidebarChatList";
@@ -27,6 +28,8 @@ export function SidebarClient({
 }) {
   const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
 
   const modKey = useMemo(
     () =>
@@ -58,7 +61,13 @@ export function SidebarClient({
         <nav className="flex flex-col gap-0.5 py-1">
           <Link
             href="/"
-            onClick={() => setOpenMobile(false)}
+            onClick={(e) => {
+              setOpenMobile(false);
+              if (pathname === "/") {
+                e.preventDefault();
+                router.refresh();
+              }
+            }}
             className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"
           >
             <Pencil className="size-4 shrink-0 text-muted-foreground" />
