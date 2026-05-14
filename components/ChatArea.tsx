@@ -27,7 +27,6 @@ import {
   Paperclip,
   Pencil,
   RotateCcw,
-  Sparkles,
   Square,
   Volume2,
   X,
@@ -378,6 +377,151 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     void handleFiles(dt.files);
   }
 
+  const composer = (
+    <>
+      {error && (
+        <p className="mb-2 text-sm text-destructive">{error.message}</p>
+      )}
+      {uploadError && (
+        <p className="mb-2 text-sm text-destructive">{uploadError}</p>
+      )}
+      {dictation.error && (
+        <p className="mb-2 text-sm text-destructive">
+          {dictationErrorMessage(dictation.error, isAdmin)}
+        </p>
+      )}
+      <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 px-1 pt-1">
+            {attachments.map((att, i) => (
+              <AttachmentChip
+                key={`${att.url}-${i}`}
+                attachment={att}
+                meta={attachmentMeta[att.url]}
+                onRemove={() => {
+                  setAttachments((prev) =>
+                    prev.filter((_, j) => j !== i),
+                  );
+                  setAttachmentMeta((prev) => {
+                    const next = { ...prev };
+                    delete next[att.url];
+                    return next;
+                  });
+                }}
+              />
+            ))}
+          </div>
+        )}
+        <Textarea
+          ref={textareaRef}
+          rows={1}
+          placeholder={configured ? "Message…" : "No models available — ask an admin to add one"}
+          className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+        />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ATTACH_ACCEPT}
+              multiple
+              className="hidden"
+              onChange={(e) => void handleFiles(e.target.files)}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              aria-label="Attach file"
+            >
+              <Paperclip />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
+                searchEnabled &&
+                  "bg-accent text-foreground hover:bg-accent",
+              )}
+              onClick={() => setSearchEnabled(!searchEnabled)}
+              aria-label={searchEnabled ? "Disable web search" : "Enable web search"}
+              aria-pressed={searchEnabled}
+            >
+              <Globe />
+              <span className="text-xs">Search</span>
+            </Button>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className={cn(
+                "rounded-full",
+                dictation.status === "recording" &&
+                  "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
+              )}
+              onClick={() => {
+                if (dictation.status === "recording") {
+                  dictation.stop();
+                } else if (dictation.status === "idle") {
+                  void dictation.start();
+                }
+              }}
+              disabled={dictation.status === "transcribing"}
+              aria-label={
+                dictation.status === "recording"
+                  ? "Stop dictation"
+                  : dictation.status === "transcribing"
+                    ? "Transcribing"
+                    : "Dictate"
+              }
+              aria-pressed={dictation.status === "recording"}
+            >
+              {dictation.status === "transcribing" ? (
+                <Loader2 className="animate-spin" />
+              ) : dictation.status === "recording" ? (
+                <Square className="size-3 fill-current" />
+              ) : (
+                <Mic />
+              )}
+            </Button>
+            {streaming ? (
+              <Button
+                size="icon-sm"
+                variant="secondary"
+                className="shrink-0 rounded-full"
+                onClick={() => stop()}
+                aria-label="Stop generating"
+              >
+                <Square className="size-3 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                size="icon-sm"
+                className="shrink-0 rounded-full"
+                disabled={uploading || (!input.trim() && attachments.length === 0)}
+                onClick={submit}
+                aria-label="Send message"
+              >
+                <ArrowUp />
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
@@ -415,206 +559,51 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         </div>
       </header>
 
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto overscroll-contain"
-      >
-        {messages.length === 0 ? (
-          <EmptyState configured={configured} temporary={temporary} />
-        ) : (
-          <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8">
-            {messages.map((m, i) => (
-              <MessageBubble
-                key={m.id}
-                message={m}
-                streaming={streaming && i === messages.length - 1}
-                canAct={!streaming && configured}
-                onRegenerate={handleRegenerate}
-                onEdit={handleEdit}
-                speech={speech}
-              />
-            ))}
-            {status === "submitted" &&
-              messages.at(-1)?.role === "user" && <PendingIndicator />}
-          </div>
-        )}
-      </div>
-
-      <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <div className="mx-auto max-w-3xl">
-          {error && (
-            <p className="mb-2 text-sm text-destructive">{error.message}</p>
-          )}
-          {uploadError && (
-            <p className="mb-2 text-sm text-destructive">{uploadError}</p>
-          )}
-          {dictation.error && (
-            <p className="mb-2 text-sm text-destructive">
-              {dictationErrorMessage(dictation.error, isAdmin)}
-            </p>
-          )}
-          <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3 py-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-            {attachments.length > 0 && (
-              <div className="flex flex-wrap gap-2 px-1 pt-1">
-                {attachments.map((att, i) => (
-                  <AttachmentChip
-                    key={`${att.url}-${i}`}
-                    attachment={att}
-                    meta={attachmentMeta[att.url]}
-                    onRemove={() => {
-                      setAttachments((prev) =>
-                        prev.filter((_, j) => j !== i),
-                      );
-                      setAttachmentMeta((prev) => {
-                        const next = { ...prev };
-                        delete next[att.url];
-                        return next;
-                      });
-                    }}
-                  />
-                ))}
-              </div>
+      {messages.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          <div className="w-full max-w-3xl">
+            <h1 className="mb-10 text-center font-heading text-2xl font-semibold tracking-tight md:text-3xl">
+              {temporary ? "Temporary chat" : "What can I help with?"}
+            </h1>
+            {(!configured || temporary) && (
+              <p className="mb-6 text-center text-sm text-muted-foreground">
+                {!configured
+                  ? "No models configured yet. An admin needs to add one in Settings → Models."
+                  : "Messages won't be saved to your history."}
+              </p>
             )}
-            <Textarea
-              ref={textareaRef}
-              rows={1}
-              placeholder={configured ? "Message…" : "No models available — ask an admin to add one"}
-              className="max-h-48 min-h-6 resize-none border-0 bg-transparent px-1 py-1 shadow-none focus-visible:ring-0 md:text-sm"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onPaste={handlePaste}
-            />
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept={ATTACH_ACCEPT}
-                  multiple
-                  className="hidden"
-                  onChange={(e) => void handleFiles(e.target.files)}
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="rounded-full"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  aria-label="Attach file"
-                >
-                  <Paperclip />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={cn(
-                    "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
-                    searchEnabled &&
-                      "bg-accent text-foreground hover:bg-accent",
-                  )}
-                  onClick={() => setSearchEnabled(!searchEnabled)}
-                  aria-label={searchEnabled ? "Disable web search" : "Enable web search"}
-                  aria-pressed={searchEnabled}
-                >
-                  <Globe />
-                  <span className="text-xs">Search</span>
-                </Button>
-              </div>
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(
-                    "rounded-full",
-                    dictation.status === "recording" &&
-                      "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
-                  )}
-                  onClick={() => {
-                    if (dictation.status === "recording") {
-                      dictation.stop();
-                    } else if (dictation.status === "idle") {
-                      void dictation.start();
-                    }
-                  }}
-                  disabled={dictation.status === "transcribing"}
-                  aria-label={
-                    dictation.status === "recording"
-                      ? "Stop dictation"
-                      : dictation.status === "transcribing"
-                        ? "Transcribing"
-                        : "Dictate"
-                  }
-                  aria-pressed={dictation.status === "recording"}
-                >
-                  {dictation.status === "transcribing" ? (
-                    <Loader2 className="animate-spin" />
-                  ) : dictation.status === "recording" ? (
-                    <Square className="size-3 fill-current" />
-                  ) : (
-                    <Mic />
-                  )}
-                </Button>
-                {streaming ? (
-                  <Button
-                    size="icon-sm"
-                    variant="secondary"
-                    className="shrink-0 rounded-full"
-                    onClick={() => stop()}
-                    aria-label="Stop generating"
-                  >
-                    <Square className="size-3 fill-current" />
-                  </Button>
-                ) : (
-                  <Button
-                    size="icon-sm"
-                    className="shrink-0 rounded-full"
-                    disabled={uploading || (!input.trim() && attachments.length === 0)}
-                    onClick={submit}
-                    aria-label="Send message"
-                  >
-                    <ArrowUp />
-                  </Button>
-                )}
-              </div>
-            </div>
+            {composer}
           </div>
         </div>
-      </div>
-    </div>
-  );
-}
+      ) : (
+        <>
+          <div
+            ref={scrollRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto overscroll-contain"
+          >
+            <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8">
+              {messages.map((m, i) => (
+                <MessageBubble
+                  key={m.id}
+                  message={m}
+                  streaming={streaming && i === messages.length - 1}
+                  canAct={!streaming && configured}
+                  onRegenerate={handleRegenerate}
+                  onEdit={handleEdit}
+                  speech={speech}
+                />
+              ))}
+              {status === "submitted" &&
+                messages.at(-1)?.role === "user" && <PendingIndicator />}
+            </div>
+          </div>
 
-function EmptyState({
-  configured,
-  temporary,
-}: {
-  configured: boolean;
-  temporary: boolean;
-}) {
-  return (
-    <div className="flex h-full min-h-[70vh] flex-col items-center justify-center px-4 text-center">
-      <div className="mb-5 flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
-        {temporary ? (
-          <Ghost className="size-5" />
-        ) : (
-          <Sparkles className="size-5" />
-        )}
-      </div>
-      <h1 className="font-heading text-2xl font-semibold tracking-tight">
-        {temporary ? "Temporary chat" : "What can I help with?"}
-      </h1>
-      <p className="mt-3 max-w-sm text-sm text-muted-foreground">
-        {!configured
-          ? "No models configured yet. An admin needs to add one in Settings → Models."
-          : temporary
-            ? "Messages won't be saved to your history."
-            : "Ask a question or start a conversation."}
-      </p>
+          <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto max-w-3xl">{composer}</div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
