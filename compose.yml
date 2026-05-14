@@ -10,6 +10,7 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
       SEARXNG_URL: http://searxng:8080
       KOKORO_URL: http://kokoro:8880
+      STT_URL: http://stt:5092
       DATABASE_URL: /app/data/chat.db
     extra_hosts:
       - "host.docker.internal:host-gateway"
