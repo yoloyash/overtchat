@@ -42,6 +42,7 @@ import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { useDictation, type DictationError } from "@/lib/useDictation";
 import { authClient } from "@/lib/auth/client";
+import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import {
@@ -223,6 +224,16 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const speech = useSpeech();
   const { data: session } = authClient.useSession();
   const isAdmin = session?.user.role === "admin";
+  const [onboardingDismissed, setOnboardingDismissed] = useLocalStorage<boolean>(
+    "overtchat_onboarding_dismissed",
+    false,
+  );
+  const showOnboarding =
+    isAdmin &&
+    !temporary &&
+    !configured &&
+    !onboardingDismissed &&
+    models !== null;
 
   const requestBody = () => ({
     modelConfigId: selectedId,
@@ -586,19 +597,29 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
       {messages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <div className="w-full max-w-3xl">
-            <h1 className="mb-10 text-center font-heading text-2xl font-semibold tracking-tight md:text-3xl">
-              {temporary ? "Temporary chat" : "What can I help with?"}
-            </h1>
-            {(!configured || temporary) && (
-              <p className="mb-6 text-center text-sm text-muted-foreground">
-                {!configured
-                  ? "No models configured yet. An admin needs to add one in Settings → Models."
-                  : "Messages won't be saved to your history."}
-              </p>
-            )}
-            {composer}
-          </div>
+          {showOnboarding ? (
+            <AdminOnboardingCard
+              modelCount={models?.length ?? 0}
+              onDismiss={() => setOnboardingDismissed(true)}
+            />
+          ) : (
+            <div className="w-full max-w-3xl">
+              <h1 className="mb-10 text-center font-heading text-2xl font-semibold tracking-tight md:text-3xl">
+                {temporary ? "Temporary chat" : "What can I help with?"}
+              </h1>
+              {!configured && (
+                <p className="mb-6 text-center text-sm text-muted-foreground">
+                  No models configured yet. An admin needs to add one in Settings → Models.
+                </p>
+              )}
+              {configured && temporary && (
+                <p className="mb-6 text-center text-sm text-muted-foreground">
+                  {"Messages won't be saved to your history."}
+                </p>
+              )}
+              {composer}
+            </div>
+          )}
         </div>
       ) : (
         <>
