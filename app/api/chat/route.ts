@@ -92,6 +92,10 @@ export async function POST(req: Request) {
     messages: await convertToModelMessages(inlined),
     tools: searchEnabled ? webTools : undefined,
     stopWhen: searchEnabled ? stepCountIs(10) : undefined,
+    prepareStep: searchEnabled
+      ? async ({ stepNumber }) =>
+          stepNumber === 0 ? { toolChoice: "required" } : {}
+      : undefined,
     abortSignal: req.signal,
     providerOptions,
   });

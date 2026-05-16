@@ -53,15 +53,6 @@ export function SidebarClient() {
     }));
   }, [chats, projectOptions]);
 
-  const modKey = useMemo(
-    () =>
-      typeof navigator !== "undefined" &&
-      /mac|iphone|ipad|ipod/i.test(navigator.platform)
-        ? "⌘"
-        : "Ctrl",
-    [],
-  );
-
   return (
     <>
       <div className="flex h-12 shrink-0 items-center justify-between px-3">
@@ -94,7 +85,7 @@ export function SidebarClient() {
           >
             <Pencil className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">New chat</span>
-            <Shortcut keys={[modKey, "⇧", "O"]} />
+            <Shortcut keys={["Ctrl", "Shift", "O"]} />
           </Link>
           <button
             type="button"
@@ -103,7 +94,7 @@ export function SidebarClient() {
           >
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1 text-left">Search chats</span>
-            <Shortcut keys={[modKey, "K"]} />
+            <Shortcut keys={["Ctrl", "K"]} />
           </button>
         </nav>
 

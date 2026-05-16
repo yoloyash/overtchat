@@ -5,33 +5,19 @@ import { searxngSearch, fetchReadable } from "./web";
 export const webTools = {
   web_search: tool({
     description:
-      "Search the web. Returns a ranked list of {link, title, snippet}.\n\n" +
-      "CALL this tool when the user asks about:\n" +
-      "- current events, news, or time-sensitive info\n" +
-      "- specific facts you're not confident in (dates, prices, versions, people's roles)\n" +
-      "- anything that may have changed after your training cutoff\n" +
-      "- a URL, product, or name you don't recognize\n\n" +
-      "Unless you're 100% certain, you MUST call web_search instead of guessing/hallucinating.\n\n" +
-      "After searching, use fetch_url on 1-3 promising results. Always cite sources.",
+      "Search the web. Returns {link, title, snippet}. Cite sources.",
     inputSchema: z.object({
-      query: z.string().describe("The search query"),
-      limit: z
-        .number()
-        .int()
-        .min(1)
-        .max(10)
-        .default(5)
-        .describe("Max number of results to return"),
+      query: z.string(),
+      limit: z.number().int().min(1).max(10).default(5),
     }),
     execute: async ({ query, limit }) => searxngSearch(query, limit),
   }),
 
   fetch_url: tool({
     description:
-      "Fetch a URL and return its main content as markdown. Use this after web_search " +
-      "to read specific pages in depth. Content is truncated to ~8k characters.",
+      "Fetch a URL as markdown (~8k chars). Use after web_search to read promising pages.",
     inputSchema: z.object({
-      url: z.string().url().describe("The URL to fetch"),
+      url: z.string().url(),
     }),
     execute: async ({ url }) => fetchReadable(url),
   }),
