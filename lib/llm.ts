@@ -1,30 +1,14 @@
 import "server-only";
-import {
-  wrapLanguageModel,
-  extractReasoningMiddleware,
-  type LanguageModel,
-} from "ai";
+import { PROVIDER_IMPLS, type BuiltModel } from "@/lib/providers/server";
+import type { ProviderId } from "@/lib/providers/meta";
 import type { JSONValue } from "@ai-sdk/provider";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { ModelConfigRow } from "@/lib/db/modelConfigs";
 
-const PROVIDER_NAME = "user-endpoint";
-
-export function buildModel(modelConfig: ModelConfigRow): {
-  model: LanguageModel;
-  providerOptions: Record<string, Record<string, JSONValue>> | undefined;
-} {
-  const provider = createOpenAICompatible({
-    name: PROVIDER_NAME,
-    baseURL: modelConfig.baseUrl.replace(/\/$/, ""),
-    apiKey: modelConfig.apiKey || "none",
+export function buildModel(modelConfig: ModelConfigRow): BuiltModel {
+  return PROVIDER_IMPLS[modelConfig.provider as ProviderId].build({
+    baseUrl: modelConfig.baseUrl,
+    apiKey: modelConfig.apiKey,
+    model: modelConfig.model,
+    extraBody: modelConfig.extraBody as Record<string, JSONValue> | null,
   });
-  const model = wrapLanguageModel({
-    model: provider.chatModel(modelConfig.model),
-    middleware: extractReasoningMiddleware({ tagName: "think" }),
-  });
-  const providerOptions = modelConfig.extraBody
-    ? { [PROVIDER_NAME]: modelConfig.extraBody as Record<string, JSONValue> }
-    : undefined;
-  return { model, providerOptions };
 }

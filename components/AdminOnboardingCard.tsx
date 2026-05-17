@@ -48,7 +48,7 @@ export function AdminOnboardingCard({
           <Step
             done={modelDone}
             title="Add your first model"
-            description="Connect an OpenAI-compatible endpoint."
+            description="Anthropic, Google Gemini, or any OpenAI-compatible endpoint."
             action={
               <Button size="sm" onClick={() => setModelMode("new")}>
                 <Plus /> {modelDone ? "Add another" : "Add model"}

@@ -2,7 +2,11 @@ import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
-import type { AdminModelConfig, ModelConfigInput } from "@/lib/config";
+import type {
+  AdminModelConfig,
+  ModelConfigInput,
+  ProviderId,
+} from "@/lib/config";
 
 export type { ModelConfigInput };
 export type ModelConfigRow = typeof modelConfigs.$inferSelect;
@@ -11,6 +15,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
   return {
     id: row.id,
     label: row.label,
+    provider: row.provider as ProviderId,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: row.model,
@@ -42,6 +47,7 @@ export async function createModelConfig(input: ModelConfigInput): Promise<ModelC
     .values({
       id: crypto.randomUUID(),
       label: input.label,
+      provider: input.provider,
       baseUrl: input.baseUrl.replace(/\/$/, ""),
       apiKey: input.apiKey ?? null,
       model: input.model,

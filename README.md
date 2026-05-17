@@ -1,6 +1,6 @@
 # overtchat
 
-A simpler self-hosted alternative to Open WebUI. Bring your own OpenAI-compatible endpoint. One `docker compose up` and you're in.
+A simpler self-hosted alternative to Open WebUI. Bring your own model — Anthropic, Google Gemini, or any OpenAI-compatible endpoint. One `docker compose up` and you're in.
 
 ![overtchat](public/screenshot.png)
 
@@ -27,12 +27,14 @@ echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
 docker compose up -d --build
 ```
 
-Open [http://localhost:4718](http://localhost:4718). First signup becomes admin. Go to **Settings → Models** and point it at your LLM:
+Open [http://localhost:4718](http://localhost:4718). First signup becomes admin. Go to **Settings → Models** and pick a provider:
 
-- **Ollama / vLLM / llama.cpp on the same host:** `http://host.docker.internal:<port>/v1`
-- **OpenAI / Groq / any public provider:** the provider's base URL + API key
+- **Anthropic** — paste your API key, pick a Claude model.
+- **Google Gemini** — paste your API key, pick a Gemini model.
+- **OpenAI-compatible** — base URL + (optional) API key. Covers OpenAI, Groq, OpenRouter, xAI, Mistral, Together, DeepSeek, Ollama, vLLM, llama.cpp, etc.
+  - For local servers on the same host use `http://host.docker.internal:<port>/v1`.
 
-Hit "Test connection" to populate the model list, pick one, save.
+Hit "Test connection", save.
 
 To open it up to other devices on your LAN, set `BETTER_AUTH_URL` in `.env` to your host's LAN IP (e.g. `http://192.168.1.50:4718`) and `docker compose up -d`. To expose it to the internet, the bundled compose file has a commented-out `cloudflared` service — paste a tunnel token and uncomment.
 
@@ -68,7 +70,7 @@ No telemetry, no analytics. No external calls except the LLM endpoint you config
 
 - Docker + Docker Compose v2
 - ~1 GB RAM free for the app stack (Kokoro TTS pulls ~100 MB on first boot)
-- An OpenAI-compatible LLM endpoint (local or remote)
+- An LLM endpoint: Anthropic API key, Google Gemini API key, or any OpenAI-compatible endpoint (local or remote)
 
 ## Stack
 

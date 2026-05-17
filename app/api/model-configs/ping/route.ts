@@ -1,16 +1,16 @@
 import { generateText } from "ai";
 import type { JSONValue } from "@ai-sdk/provider";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { auth } from "@/lib/auth/server";
+import { PROVIDER_IMPLS } from "@/lib/providers/server";
+import type { ProviderId } from "@/lib/providers/meta";
 
 interface Body {
+  provider: ProviderId;
   baseUrl: string;
   apiKey?: string | null;
   model: string;
   extraBody?: Record<string, unknown> | null;
 }
-
-const PROVIDER_NAME = "user-endpoint";
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -19,7 +19,9 @@ export async function POST(req: Request) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const { baseUrl, apiKey, model, extraBody } = (await req.json()) as Body;
+  const { provider, baseUrl, apiKey, model, extraBody } =
+    (await req.json()) as Body;
+
   if (!baseUrl || !model) {
     return Response.json(
       { error: "baseUrl and model are required" },
@@ -27,22 +29,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const provider = createOpenAICompatible({
-    name: PROVIDER_NAME,
-    baseURL: baseUrl.replace(/\/$/, ""),
-    apiKey: apiKey || "none",
+  const { model: llm, providerOptions } = PROVIDER_IMPLS[provider].build({
+    baseUrl,
+    apiKey,
+    model,
+    extraBody: extraBody as Record<string, JSONValue> | null | undefined,
   });
 
   const started = Date.now();
   try {
     const { text, usage } = await generateText({
-      model: provider.chatModel(model),
+      model: llm,
       prompt: "Say hi in one short sentence.",
       maxOutputTokens: 64,
       abortSignal: AbortSignal.timeout(30_000),
-      providerOptions: extraBody
-        ? { [PROVIDER_NAME]: extraBody as Record<string, JSONValue> }
-        : undefined,
+      providerOptions,
     });
     return Response.json({
       text: text.trim(),

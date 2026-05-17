@@ -51,7 +51,7 @@ export function ModelsPanel() {
         <div>
           <h1 className="font-heading text-xl font-semibold tracking-tight">Models</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            OpenAI-compatible endpoints available to everyone.
+            Anthropic, Google Gemini, or OpenAI-compatible endpoints — available to everyone.
           </p>
         </div>
         {models.length > 0 && (

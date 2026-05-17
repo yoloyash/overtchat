@@ -12,6 +12,7 @@ import remarkBreaks from "remark-breaks";
 import { remark } from "remark";
 import strip from "strip-markdown";
 import {
+  AlertTriangle,
   ArrowUp,
   Check,
   ChevronDown,
@@ -390,6 +391,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     regenerate({ messageId, body: requestBody() });
   }
 
+  function handleRetry() {
+    if (streaming || !configured) return;
+    regenerate({ body: requestBody() });
+  }
+
   function handleEdit(messageId: string, text: string) {
     if (streaming || !configured) return;
     sendMessage({ text, messageId }, { body: requestBody() });
@@ -415,9 +421,6 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const composer = (
     <>
-      {error && (
-        <p className="mb-2 text-sm text-destructive">{error.message}</p>
-      )}
       {uploadError && (
         <p className="mb-2 text-sm text-destructive">{uploadError}</p>
       )}
@@ -640,7 +643,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
                   speech={speech}
                 />
               ))}
-              {status === "submitted" &&
+              {error && messages.at(-1)?.role === "user" && (
+                <ChatErrorBubble error={error} onRetry={handleRetry} />
+              )}
+              {!error &&
+                status === "submitted" &&
                 messages.at(-1)?.role === "user" && <PendingIndicator />}
             </div>
           </div>
@@ -1116,10 +1123,53 @@ function ThinkingBlock({
 
 function PendingIndicator() {
   return (
-    <div className="flex items-start">
-      <span className="animate-text-shimmer text-xs font-medium">
-        Thinking…
-      </span>
+    <div
+      className="flex items-center gap-1.5 py-2"
+      role="status"
+      aria-label="Assistant is responding"
+    >
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.3s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.15s]" />
+      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70" />
+    </div>
+  );
+}
+
+function chatErrorMessage(error: Error): string {
+  const msg = error.message ?? "";
+  if (
+    error.name === "TypeError" ||
+    /failed to fetch|networkerror|network request failed|load failed/i.test(msg)
+  ) {
+    return "Can't reach the server. Check your connection and try again.";
+  }
+  return msg || "Something went wrong. Please try again.";
+}
+
+function ChatErrorBubble({
+  error,
+  onRetry,
+}: {
+  error: Error;
+  onRetry: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
+    >
+      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+      <div className="min-w-0 flex-1">
+        <p className="text-foreground">{chatErrorMessage(error)}</p>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onRetry}
+        className="shrink-0"
+      >
+        <RotateCcw /> Retry
+      </Button>
     </div>
   );
 }
