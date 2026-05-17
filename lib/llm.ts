@@ -6,8 +6,14 @@ import {
 } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { JSONValue } from "@ai-sdk/provider";
+import { presetFor } from "@/lib/providers/meta";
 
-const PROVIDER_NAME = "openai-compatible";
+// Vertex/Gemini whitelists this string to bypass thought_signature validation
+// on tool_calls. Used as a fallback when an assistant tool_call in history
+// has no real signature (cross-provider history, lost state, pre-fix data).
+// See lobehub/lobe-chat for prior art; pydantic-ai #3881 documents the
+// upstream behavior.
+const SKIP_SIGNATURE = "skip_thought_signature_validator";
 
 export interface BuildArgs {
   baseUrl: string;
@@ -22,10 +28,18 @@ export interface BuiltModel {
 }
 
 export function buildModel({ baseUrl, apiKey, model, extraBody }: BuildArgs): BuiltModel {
+  // Provider name is the metadata key the SDK uses for provider-specific
+  // fields. For Google, naming it "google" lets the SDK roundtrip
+  // thought_signature on tool calls (it reads into providerMetadata[name]
+  // but writes from providerOptions.google).
+  const isGoogle = presetFor(baseUrl) === "google";
+  const providerName = isGoogle ? "google" : "openai-compatible";
+
   const provider = createOpenAICompatible({
-    name: PROVIDER_NAME,
+    name: providerName,
     baseURL: normalizeBaseUrl(baseUrl),
     apiKey: apiKey || "none",
+    transformRequestBody: isGoogle ? stampMissingSignatures : undefined,
   });
   return {
     model: wrapLanguageModel({
@@ -37,9 +51,39 @@ export function buildModel({ baseUrl, apiKey, model, extraBody }: BuildArgs): Bu
       ],
     }),
     providerOptions: extraBody
-      ? { [PROVIDER_NAME]: extraBody as Record<string, JSONValue> }
+      ? { [providerName]: extraBody as Record<string, JSONValue> }
       : undefined,
   };
+}
+
+interface ToolCallWithExtra {
+  type?: string;
+  function?: unknown;
+  extra_content?: { google?: { thought_signature?: unknown } };
+}
+
+interface AssistantMessageWithToolCalls {
+  role?: string;
+  tool_calls?: ToolCallWithExtra[];
+}
+
+function stampMissingSignatures(args: Record<string, unknown>): Record<string, unknown> {
+  const messages = args.messages;
+  if (!Array.isArray(messages)) return args;
+  for (const msg of messages as AssistantMessageWithToolCalls[]) {
+    if (msg.role !== "assistant" || !Array.isArray(msg.tool_calls)) continue;
+    for (const call of msg.tool_calls) {
+      if (call.extra_content?.google?.thought_signature) continue;
+      call.extra_content = {
+        ...call.extra_content,
+        google: {
+          ...call.extra_content?.google,
+          thought_signature: SKIP_SIGNATURE,
+        },
+      };
+    }
+  }
+  return args;
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {
