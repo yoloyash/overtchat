@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
+import { Popover } from "@base-ui/react/popover";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { Streamdown } from "streamdown";
@@ -23,6 +24,7 @@ import {
   FileText,
   Ghost,
   Globe,
+  Info,
   Loader2,
   Mic,
   Paperclip,
@@ -53,6 +55,8 @@ import {
 } from "@/components/ToolCall";
 
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
+const STATS_FOR_NERDS_STORAGE_KEY = "overtchat_stats_for_nerds";
+const MESSAGE_STATS_STORAGE_KEY = "overtchat_message_stats";
 
 const ATTACH_ACCEPT = [
   "image/png",
@@ -92,6 +96,82 @@ interface AttachmentMeta {
   size?: number;
   pageCount?: number | null;
   truncated?: boolean;
+}
+
+interface MessageStats {
+  contextTokens?: number;
+  responseTokens?: number;
+  totalTokens?: number;
+  ttftMs?: number;
+  tps?: number;
+  finishReason?: string;
+}
+
+type StoredMessageStats = Record<string, MessageStats>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function readMessageStats(message: UIMessage): MessageStats | null {
+  if (!isRecord(message.metadata)) return null;
+  const rawStats = message.metadata.stats;
+  if (!isRecord(rawStats)) return null;
+  const stats: MessageStats = {
+    contextTokens: optionalNumber(rawStats.contextTokens),
+    responseTokens: optionalNumber(rawStats.responseTokens),
+    totalTokens: optionalNumber(rawStats.totalTokens),
+    ttftMs: optionalNumber(rawStats.ttftMs),
+    tps: optionalNumber(rawStats.tps),
+    finishReason: optionalString(rawStats.finishReason),
+  };
+  return Object.values(stats).some((value) => value !== undefined)
+    ? stats
+    : null;
+}
+
+function readStoredMessageStats(): StoredMessageStats {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(MESSAGE_STATS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!isRecord(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([id, value]) => {
+          if (!isRecord(value)) return null;
+          const stats: MessageStats = {
+            contextTokens: optionalNumber(value.contextTokens),
+            responseTokens: optionalNumber(value.responseTokens),
+            totalTokens: optionalNumber(value.totalTokens),
+            ttftMs: optionalNumber(value.ttftMs),
+            tps: optionalNumber(value.tps),
+            finishReason: optionalString(value.finishReason),
+          };
+          return Object.values(stats).some((v) => v !== undefined)
+            ? [id, stats]
+            : null;
+        })
+        .filter((entry): entry is [string, MessageStats] => entry !== null),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeStoredMessageStats(stats: StoredMessageStats): void {
+  window.localStorage.setItem(MESSAGE_STATS_STORAGE_KEY, JSON.stringify(stats));
 }
 
 function formatSize(bytes: number): string {
@@ -199,8 +279,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     SEARCH_STORAGE_KEY,
     false,
   );
+  const [statsForNerds] = useLocalStorage<boolean>(
+    STATS_FOR_NERDS_STORAGE_KEY,
+    false,
+  );
 
   const [temporary, setTemporary] = useState(false);
+  const [storedStats, setStoredStats] = useState<StoredMessageStats>(() =>
+    readStoredMessageStats(),
+  );
 
   const isNewRef = useRef(isNew ?? false);
 
@@ -216,7 +303,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const { messages, sendMessage, regenerate, status, stop, error } = useChat({
     transport,
     messages: initialMessages,
-    onFinish: () => {
+    onFinish: ({ message }) => {
+      const stats = readMessageStats(message);
+      if (stats && !temporaryRef.current) {
+        setStoredStats((current) => {
+          const next = { ...current, [message.id]: stats };
+          writeStoredMessageStats(next);
+          return next;
+        });
+      }
       if (temporaryRef.current) return;
       qc.invalidateQueries({ queryKey: chatKeys.list() });
     },
@@ -641,6 +736,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
                   onRegenerate={handleRegenerate}
                   onEdit={handleEdit}
                   speech={speech}
+                  showStats={statsForNerds}
+                  stats={readMessageStats(m) ?? storedStats[m.id] ?? null}
                 />
               ))}
               {error && messages.at(-1)?.role === "user" && (
@@ -668,6 +765,19 @@ function textOf(message: UIMessage): string {
     .join("");
 }
 
+function formatInteger(value: number): string {
+  return new Intl.NumberFormat().format(Math.round(value));
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  return `${(ms / 1000).toFixed(2)} s`;
+}
+
+function formatTps(value: number): string {
+  return `${value >= 100 ? value.toFixed(0) : value.toFixed(1)} tok/s`;
+}
+
 function MessageBubble({
   message,
   streaming,
@@ -675,6 +785,8 @@ function MessageBubble({
   onRegenerate,
   onEdit,
   speech,
+  showStats,
+  stats,
 }: {
   message: UIMessage;
   streaming: boolean;
@@ -682,6 +794,8 @@ function MessageBubble({
   onRegenerate: (id: string) => void;
   onEdit: (id: string, text: string) => void;
   speech: ReturnType<typeof useSpeech>;
+  showStats: boolean;
+  stats: MessageStats | null;
 }) {
   const [editing, setEditing] = useState(false);
 
@@ -781,9 +895,56 @@ function MessageBubble({
             onClick={() => onRegenerate(message.id)}
             icon={<RotateCcw className="size-3.5" />}
           />
+          {showStats && stats && <StatsButton stats={stats} />}
         </MessageActions>
       )}
     </div>
+  );
+}
+
+function StatsButton({ stats }: { stats: MessageStats }) {
+  const rows = [
+    stats.contextTokens !== undefined
+      ? ["Context tokens", formatInteger(stats.contextTokens)]
+      : null,
+    stats.responseTokens !== undefined
+      ? ["Response tokens", formatInteger(stats.responseTokens)]
+      : null,
+    stats.totalTokens !== undefined
+      ? ["Total tokens", formatInteger(stats.totalTokens)]
+      : null,
+    stats.ttftMs !== undefined ? ["TTFT", formatDuration(stats.ttftMs)] : null,
+    stats.tps !== undefined ? ["TPS", formatTps(stats.tps)] : null,
+    stats.finishReason !== undefined ? ["Finish reason", stats.finishReason] : null,
+  ].filter((row): row is [string, string] => row !== null);
+
+  if (!rows.length) return null;
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        type="button"
+        aria-label="Stats for nerds"
+        title="Stats for nerds"
+        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
+      >
+        <Info className="size-3.5" />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner side="top" align="start" sideOffset={6}>
+          <Popover.Popup className="z-50 w-56 rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-md outline-none">
+            <div className="space-y-2">
+              {rows.map(([label, value]) => (
+                <div key={label} className="flex items-center justify-between gap-4">
+                  <span className="text-muted-foreground">{label}</span>
+                  <span className="font-mono text-foreground">{value}</span>
+                </div>
+              ))}
+            </div>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -1173,4 +1334,3 @@ function ChatErrorBubble({
     </div>
   );
 }
-

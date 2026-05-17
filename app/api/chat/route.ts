@@ -19,6 +19,15 @@ import { buildModel } from "@/lib/llm";
 
 export const maxDuration = 300;
 
+interface MessageStats {
+  contextTokens?: number;
+  responseTokens?: number;
+  totalTokens?: number;
+  ttftMs?: number;
+  tps?: number;
+  finishReason?: string;
+}
+
 interface Body {
   messages: UIMessage[];
   modelConfigId: string;
@@ -85,6 +94,8 @@ export async function POST(req: Request) {
   });
 
   const inlined = await inlineUploads(messages, userId);
+  const startedAt = Date.now();
+  let firstTokenAt: number | null = null;
 
   const systemParts = [project?.instructions, modelConfig.systemPrompt].filter(
     (s): s is string => Boolean(s && s.trim()),
@@ -96,19 +107,51 @@ export async function POST(req: Request) {
     system,
     messages: await convertToModelMessages(inlined),
     tools: searchEnabled ? webTools : undefined,
-    stopWhen: searchEnabled ? stepCountIs(10) : undefined,
+    stopWhen: searchEnabled ? stepCountIs(50) : undefined,
     prepareStep: searchEnabled
       ? async ({ stepNumber }) =>
           stepNumber === 0 ? { toolChoice: "required" } : {}
       : undefined,
     abortSignal: req.signal,
     providerOptions,
+    onChunk: ({ chunk }) => {
+      if (
+        firstTokenAt === null &&
+        (chunk.type === "text-delta" || chunk.type === "reasoning-delta") &&
+        chunk.text.length > 0
+      ) {
+        firstTokenAt = Date.now();
+      }
+    },
   });
 
   return result.toUIMessageStreamResponse({
     sendReasoning: true,
     originalMessages: messages,
     generateMessageId: () => crypto.randomUUID(),
+    messageMetadata: ({ part }) => {
+      if (part.type !== "finish") return undefined;
+
+      const finishedAt = Date.now();
+      const outputTokens = part.totalUsage.outputTokens;
+      const generationMs =
+        firstTokenAt === null ? undefined : finishedAt - firstTokenAt;
+      const stats: MessageStats = {
+        contextTokens: part.totalUsage.inputTokens,
+        responseTokens: outputTokens,
+        totalTokens: part.totalUsage.totalTokens,
+        ttftMs: firstTokenAt === null ? undefined : firstTokenAt - startedAt,
+        tps:
+          outputTokens === undefined ||
+          generationMs === undefined ||
+          generationMs <= 0
+            ? undefined
+            : outputTokens / (generationMs / 1000),
+        finishReason: part.finishReason,
+      };
+
+      return { stats };
+    },
     onFinish: async ({ responseMessage, isAborted }) => {
       if (isAborted) return;
       if (temporary) return;
