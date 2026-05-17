@@ -4,8 +4,11 @@ import { useSyncExternalStore } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { useLocalStorage } from "@/lib/useLocalStorage";
 
 type ThemeValue = "light" | "dark" | "system";
+
+const STATS_FOR_NERDS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 const OPTIONS: Array<{ value: ThemeValue; label: string; icon: typeof Sun }> = [
   { value: "light", label: "Light", icon: Sun },
@@ -21,6 +24,10 @@ export function GeneralForm() {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const current = (mounted ? theme : undefined) as ThemeValue | undefined;
+  const [statsForNerds, setStatsForNerds] = useLocalStorage<boolean>(
+    STATS_FOR_NERDS_STORAGE_KEY,
+    false,
+  );
 
   return (
     <div className="max-w-xl space-y-8">
@@ -65,6 +72,29 @@ export function GeneralForm() {
             );
           })}
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-medium">Messages</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Browser-only message display preferences.
+          </p>
+        </div>
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card px-3 py-3 text-sm">
+          <input
+            type="checkbox"
+            checked={statsForNerds}
+            onChange={(e) => setStatsForNerds(e.target.checked)}
+            className="mt-0.5 size-4 accent-primary"
+          />
+          <span>
+            <span className="block font-medium">Stats for nerds</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Show token and speed stats on assistant messages.
+            </span>
+          </span>
+        </label>
       </section>
     </div>
   );
