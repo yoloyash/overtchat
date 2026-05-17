@@ -1,66 +1,53 @@
-/** Wire-protocol identifier — selects which SDK + /models endpoint shape to use. */
-export type ProviderId = "openai-compatible" | "anthropic" | "google";
-
-/** UX preset shown in the dialog dropdown and the picker group headers. */
+/** UX preset shown in the dialog dropdown and as picker group headers. */
 export type PresetId = "openai" | "anthropic" | "google" | "custom";
 
 export interface Preset {
   label: string;
-  provider: ProviderId;
   defaultBaseUrl: string;
-  requiresApiKey: boolean;
+  /** Hostname used as a reverse-lookup key for `presetFor`. */
+  hostname: string;
   modelPlaceholder: string;
 }
 
 export const PRESETS: Record<PresetId, Preset> = {
   openai: {
     label: "OpenAI",
-    provider: "openai-compatible",
     defaultBaseUrl: "https://api.openai.com/v1",
-    requiresApiKey: true,
+    hostname: "api.openai.com",
     modelPlaceholder: "gpt-4o-mini",
   },
   anthropic: {
     label: "Anthropic",
-    provider: "anthropic",
     defaultBaseUrl: "https://api.anthropic.com/v1",
-    requiresApiKey: true,
+    hostname: "api.anthropic.com",
     modelPlaceholder: "claude-sonnet-4-5",
   },
   google: {
     label: "Google Gemini",
-    provider: "google",
-    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    requiresApiKey: true,
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    hostname: "generativelanguage.googleapis.com",
     modelPlaceholder: "gemini-2.5-flash",
   },
   custom: {
     label: "Custom",
-    provider: "openai-compatible",
     defaultBaseUrl: "",
-    requiresApiKey: false,
+    hostname: "",
     modelPlaceholder: "gpt-4o-mini",
   },
 };
 
 export const PRESET_IDS = Object.keys(PRESETS) as PresetId[];
 
-/**
- * Infer a preset from a stored (provider, baseUrl) pair. Used both server-side
- * (to label `PublicModelConfig` for the picker) and client-side (to seed the
- * dialog when editing an existing config).
- */
-export function presetFor(provider: ProviderId, baseUrl: string): PresetId {
-  if (provider === "anthropic") return "anthropic";
-  if (provider === "google") return "google";
-  // openai-compatible — split by hostname.
-  return isOpenAIHost(baseUrl) ? "openai" : "custom";
-}
-
-function isOpenAIHost(baseUrl: string): boolean {
+/** Reverse lookup: which preset does this baseUrl match? Falls back to "custom". */
+export function presetFor(baseUrl: string): PresetId {
+  let host: string;
   try {
-    return new URL(baseUrl).hostname === "api.openai.com";
+    host = new URL(baseUrl).hostname;
   } catch {
-    return false;
+    return "custom";
   }
+  for (const id of PRESET_IDS) {
+    if (PRESETS[id].hostname && PRESETS[id].hostname === host) return id;
+  }
+  return "custom";
 }

@@ -247,7 +247,6 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
 export const modelConfigs = sqliteTable("model_configs", {
   id: text("id").primaryKey(),
   label: text("label").notNull(),
-  provider: text("provider").notNull().default("openai-compatible"),
   baseUrl: text("base_url").notNull(),
   apiKey: text("api_key"),
   model: text("model").notNull(),

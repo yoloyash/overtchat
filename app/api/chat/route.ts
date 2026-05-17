@@ -77,7 +77,12 @@ export async function POST(req: Request) {
     await touchChat(chatId);
   }
 
-  const { model, providerOptions } = buildModel(modelConfig);
+  const { model, providerOptions } = buildModel({
+    baseUrl: modelConfig.baseUrl,
+    apiKey: modelConfig.apiKey,
+    model: modelConfig.model,
+    extraBody: modelConfig.extraBody,
+  });
 
   const inlined = await inlineUploads(messages, userId);
 

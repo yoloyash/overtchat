@@ -24,7 +24,6 @@ import {
   PRESET_IDS,
   presetFor,
   type PresetId,
-  type ProviderId,
 } from "@/lib/providers/meta";
 
 type Mode = AdminModelConfig | "new" | null;
@@ -71,13 +70,12 @@ function ModelConfigForm({
   onSave: (input: ModelConfigInput, id?: string) => Promise<void>;
 }) {
   const [preset, setPreset] = useState<PresetId>(() =>
-    editing ? presetFor(editing.provider, editing.baseUrl) : "openai",
+    editing ? presetFor(editing.baseUrl) : "openai",
   );
   const [draft, setDraft] = useState<ModelConfigInput>(() => {
     if (editing) {
       return {
         label: editing.label,
-        provider: editing.provider,
         baseUrl: editing.baseUrl,
         apiKey: editing.apiKey ?? "",
         model: editing.model,
@@ -86,11 +84,9 @@ function ModelConfigForm({
         sortOrder: editing.sortOrder,
       };
     }
-    const initial = PRESETS.openai;
     return {
       label: "",
-      provider: initial.provider,
-      baseUrl: initial.defaultBaseUrl,
+      baseUrl: PRESETS.openai.defaultBaseUrl,
       apiKey: "",
       model: "",
       systemPrompt: "",
@@ -99,7 +95,9 @@ function ModelConfigForm({
     };
   });
   const presetMeta = PRESETS[preset];
-  const requiresKey = presetMeta.requiresApiKey;
+  // Custom is the only preset where the API key is genuinely optional
+  // (e.g. local Ollama). Hosted presets always require one.
+  const requiresKey = preset !== "custom";
 
   const [extraBodyText, setExtraBodyText] = useState(() =>
     editing?.extraBody ? JSON.stringify(editing.extraBody, null, 2) : "",
@@ -116,16 +114,12 @@ function ModelConfigForm({
   );
 
   const probeModels = useCallback(
-    async (
-      provider: ProviderId,
-      baseUrl: string,
-      apiKey: string | null | undefined,
-    ) => {
+    async (baseUrl: string, apiKey: string | null | undefined) => {
       if (!baseUrl) return;
       setProbingModels(true);
       setProbeError("");
       try {
-        const ids = await fetchModelsForEndpoint(provider, baseUrl, apiKey);
+        const ids = await fetchModelsForEndpoint(baseUrl, apiKey);
         setModels(ids);
         if (ids.length > 0) {
           setDraft((d) => ({
@@ -143,19 +137,15 @@ function ModelConfigForm({
   );
 
   // Auto-probe when creating a new config and the endpoint/key changes.
-  // Presets with requiresApiKey wait for the key; Custom (anonymous-ok)
-  // probes as soon as a base URL is present (e.g. local Ollama).
+  // Hosted presets wait for a key; Custom probes as soon as a base URL exists.
   const isCreating = editing === null;
-  const { provider, baseUrl, apiKey } = draft;
+  const { baseUrl, apiKey } = draft;
   useEffect(() => {
     if (!isCreating || !baseUrl) return;
     if (requiresKey && !apiKey) return;
-    const t = setTimeout(
-      () => void probeModels(provider, baseUrl, apiKey),
-      500,
-    );
+    const t = setTimeout(() => void probeModels(baseUrl, apiKey), 500);
     return () => clearTimeout(t);
-  }, [isCreating, provider, baseUrl, apiKey, requiresKey, probeModels]);
+  }, [isCreating, baseUrl, apiKey, requiresKey, probeModels]);
 
   function parseExtraBody(): { ok: true; value: Record<string, unknown> | null } | { ok: false; error: string } {
     const trimmed = extraBodyText.trim();
@@ -184,7 +174,6 @@ function ModelConfigForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          provider: draft.provider,
           baseUrl: draft.baseUrl,
           apiKey: draft.apiKey,
           model: draft.model,
@@ -251,43 +240,41 @@ function ModelConfigForm({
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          <div className="space-y-1.5">
-            <Label htmlFor="p-preset">Provider</Label>
-            <Select
-              value={preset}
-              disabled={Boolean(editing)}
-              onValueChange={(next) => {
-                if (!next) return;
-                const meta = PRESETS[next];
-                setPreset(next);
-                setDraft((d) => ({
-                  ...d,
-                  provider: meta.provider,
-                  baseUrl: meta.defaultBaseUrl,
-                  model: "",
-                }));
-                setModels([]);
-                setProbeError("");
-                setPingResult(null);
-              }}
-            >
-              <SelectTrigger id="p-preset" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PRESET_IDS.map((id) => (
-                  <SelectItem key={id} value={id}>
-                    {PRESETS[id].label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {editing && (
+          {!editing && (
+            <div className="space-y-1.5">
+              <Label htmlFor="p-preset">Provider</Label>
+              <Select
+                value={preset}
+                onValueChange={(next) => {
+                  if (!next) return;
+                  setPreset(next);
+                  setDraft((d) => ({
+                    ...d,
+                    baseUrl: PRESETS[next].defaultBaseUrl,
+                    model: "",
+                  }));
+                  setModels([]);
+                  setProbeError("");
+                  setPingResult(null);
+                }}
+              >
+                <SelectTrigger id="p-preset" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRESET_IDS.map((id) => (
+                    <SelectItem key={id} value={id}>
+                      {PRESETS[id].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <p className="text-xs text-muted-foreground">
-                Provider can&apos;t be changed after creation.
+                Quick-fill for the endpoint below. All providers use the same
+                OpenAI-compatible chat API.
               </p>
-            )}
-          </div>
+            </div>
+          )}
 
           <div className="space-y-1.5">
             <Label htmlFor="p-base-url">Endpoint</Label>
@@ -340,9 +327,7 @@ function ModelConfigForm({
                 ) : probeError ? (
                   <button
                     type="button"
-                    onClick={() =>
-                      probeModels(draft.provider, draft.baseUrl, draft.apiKey)
-                    }
+                    onClick={() => probeModels(draft.baseUrl, draft.apiKey)}
                     className="underline-offset-2 hover:underline"
                   >
                     Retry fetch

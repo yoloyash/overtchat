@@ -29,7 +29,12 @@ export async function generateAndPersistTitle({
 
   let title = fallback;
   try {
-    const { model, providerOptions } = buildModel(modelConfig);
+    const { model, providerOptions } = buildModel({
+      baseUrl: modelConfig.baseUrl,
+      apiKey: modelConfig.apiKey,
+      model: modelConfig.model,
+      extraBody: modelConfig.extraBody,
+    });
     const { text } = await generateText({
       model,
       prompt:

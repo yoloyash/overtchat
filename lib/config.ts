@@ -1,7 +1,4 @@
 import { useLocalStorage } from "@/lib/useLocalStorage";
-import type { ProviderId } from "@/lib/providers/meta";
-
-export type { ProviderId };
 
 /** Public-facing model config DTO. `apiKey` is intentionally omitted — it never leaves the server. */
 export interface PublicModelConfig {
@@ -17,7 +14,6 @@ export interface PublicModelConfig {
 export interface AdminModelConfig {
   id: string;
   label: string;
-  provider: ProviderId;
   baseUrl: string;
   apiKey: string | null;
   model: string;
@@ -28,7 +24,6 @@ export interface AdminModelConfig {
 
 export interface ModelConfigInput {
   label: string;
-  provider: ProviderId;
   baseUrl: string;
   apiKey?: string | null;
   model: string;
@@ -44,14 +39,13 @@ export function useSelectedModel(): [string, (id: string) => void] {
 }
 
 export async function fetchModelsForEndpoint(
-  provider: ProviderId,
   baseUrl: string,
   apiKey?: string | null,
 ): Promise<string[]> {
   const res = await fetch("/api/models", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ provider, baseUrl, apiKey: apiKey ?? "" }),
+    body: JSON.stringify({ baseUrl, apiKey: apiKey ?? "" }),
   });
   const json = (await res.json()) as { models?: string[]; error?: string };
   if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);

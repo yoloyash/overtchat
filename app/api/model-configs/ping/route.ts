@@ -1,11 +1,8 @@
 import { generateText } from "ai";
-import type { JSONValue } from "@ai-sdk/provider";
 import { auth } from "@/lib/auth/server";
-import { PROVIDER_IMPLS } from "@/lib/providers/server";
-import type { ProviderId } from "@/lib/providers/meta";
+import { buildModel } from "@/lib/llm";
 
 interface Body {
-  provider: ProviderId;
   baseUrl: string;
   apiKey?: string | null;
   model: string;
@@ -19,8 +16,7 @@ export async function POST(req: Request) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const { provider, baseUrl, apiKey, model, extraBody } =
-    (await req.json()) as Body;
+  const { baseUrl, apiKey, model, extraBody } = (await req.json()) as Body;
 
   if (!baseUrl || !model) {
     return Response.json(
@@ -29,11 +25,11 @@ export async function POST(req: Request) {
     );
   }
 
-  const { model: llm, providerOptions } = PROVIDER_IMPLS[provider].build({
+  const { model: llm, providerOptions } = buildModel({
     baseUrl,
     apiKey,
     model,
-    extraBody: extraBody as Record<string, JSONValue> | null | undefined,
+    extraBody,
   });
 
   const started = Date.now();

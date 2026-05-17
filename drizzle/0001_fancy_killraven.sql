@@ -1,1 +1,0 @@
-ALTER TABLE `model_configs` ADD `provider` text DEFAULT 'openai-compatible' NOT NULL;
