@@ -62,3 +62,6 @@ next-env.d.ts
 
 # cache
 /vllm-cache
+
+# tools
+.gemini
