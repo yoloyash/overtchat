@@ -2,8 +2,7 @@
 
 A simpler self-hosted alternative to Open WebUI. Bring your own model — Anthropic, Google Gemini, or any OpenAI-compatible endpoint. One `docker compose up` and you're in.
 
-<!-- TODO: after pushing, drag docs/demo.mp4 into a GitHub issue comment, copy the user-attachments URL, replace the line below -->
-https://github.com/yoloyash/overtchat/raw/main/docs/demo.mp4
+https://github.com/user-attachments/assets/93d1c9d5-b2e2-46b2-97bd-dc9200878270
 
 ## Why I built overtchat
 
