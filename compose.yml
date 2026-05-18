@@ -44,6 +44,8 @@ services:
     image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
     container_name: overtchat-kokoro
     restart: unless-stopped
+    ports:
+      - "127.0.0.1:${KOKORO_PORT:-8880}:8880"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
       interval: 15s
