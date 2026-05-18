@@ -1,4 +1,4 @@
-import { ChatArea } from "@/components/ChatArea";
+import { ChatArea } from "@/components/chat/ChatArea";
 
 export default async function Home({
   searchParams,

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth/server";
 import { getChat, getMessages } from "@/lib/db/chats";
-import { ChatArea } from "@/components/ChatArea";
+import { ChatArea } from "@/components/chat/ChatArea";
 
 export default async function Page({
   params,
