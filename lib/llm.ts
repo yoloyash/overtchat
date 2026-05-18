@@ -41,6 +41,11 @@ export function buildModel({ baseUrl, apiKey, model, extraBody }: BuildArgs): Bu
     apiKey: apiKey || "none",
     transformRequestBody: isGoogle ? stampMissingSignatures : undefined,
   });
+  // Default Gemini to surface thought summaries (free — thinking tokens are
+  // billed regardless). User-supplied extraBody wins at the top level.
+  const mergedExtraBody = isGoogle
+    ? { extra_body: GOOGLE_THINKING_DEFAULT, ...(extraBody ?? {}) }
+    : extraBody;
   return {
     model: wrapLanguageModel({
       model: provider.chatModel(model),
@@ -50,11 +55,15 @@ export function buildModel({ baseUrl, apiKey, model, extraBody }: BuildArgs): Bu
         extractReasoningMiddleware({ tagName: "think" }),
       ],
     }),
-    providerOptions: extraBody
-      ? { [providerName]: extraBody as Record<string, JSONValue> }
+    providerOptions: mergedExtraBody
+      ? { [providerName]: mergedExtraBody as Record<string, JSONValue> }
       : undefined,
   };
 }
+
+const GOOGLE_THINKING_DEFAULT = {
+  google: { thinking_config: { include_thoughts: true } },
+};
 
 interface ToolCallWithExtra {
   type?: string;
