@@ -4,7 +4,7 @@ import {
   stepCountIs,
   type UIMessage,
 } from "ai";
-import { webTools } from "@/lib/tools";
+import { webTools, WEB_SEARCH_CITATION_PROMPT } from "@/lib/tools";
 import { auth } from "@/lib/auth/server";
 import {
   appendMessage,
@@ -16,6 +16,7 @@ import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
+import { buildRuntimeContext } from "@/lib/runtime-context";
 
 export const maxDuration = 300;
 
@@ -97,9 +98,17 @@ export async function POST(req: Request) {
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
 
-  const systemParts = [project?.instructions, modelConfig.systemPrompt].filter(
-    (s): s is string => Boolean(s && s.trim()),
-  );
+  const turnNumber = messages.filter((m) => m.role === "user").length - 1;
+  const runtimeContext = buildRuntimeContext({
+    turn: Math.max(0, turnNumber),
+    searchEnabled,
+  });
+  const systemParts = [
+    project?.instructions,
+    modelConfig.systemPrompt,
+    searchEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    runtimeContext,
+  ].filter((s): s is string => Boolean(s && s.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
 
   const result = streamText({

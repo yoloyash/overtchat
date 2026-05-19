@@ -1,18 +1,9 @@
 import { lookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
+import type { WebSearchResult, FetchedPage } from "./web-client";
 
-export interface WebSearchResult {
-  link: string;
-  title: string;
-  snippet: string;
-}
-
-export interface FetchedPage {
-  url: string;
-  title: string;
-  content: string;
-  wordCount: number;
-}
+export type { WebSearchResult, FetchedPage } from "./web-client";
+export { cleanDomain, faviconUrl } from "./web-client";
 
 const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://localhost:8088";
 const MAX_CONTENT_CHARS = 8_000;
