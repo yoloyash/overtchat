@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FileUIPart, UIMessage } from "ai";
 import { Streamdown } from "streamdown";
 import {
@@ -17,6 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { humanMediaLabel } from "@/lib/chat/attachments";
 import { STREAMDOWN_PLUGINS } from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
+import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
+import { unicodeCitation } from "@/lib/citations-remark";
 import type { MessageStats } from "@/lib/chat/stats";
 import type { useSpeech } from "@/lib/useSpeech";
 import {
@@ -24,9 +26,23 @@ import {
   type FetchUrlPart,
   type WebSearchPart,
 } from "@/components/ToolCall";
+import {
+  Citation,
+  CompositeCitation,
+  HighlightedText,
+  buildSourceLookup,
+} from "./Citation";
+import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { StatsPopover } from "./StatsPopover";
+
+const CITATION_REMARK_PLUGINS = [unicodeCitation];
+const CITATION_ALLOWED_TAGS = {
+  citation: ["turn", "reftype", "index", "citationid"],
+  "composite-citation": ["citations", "citationid"],
+  "highlighted-text": ["citationid"],
+};
 
 export function MessageBubble({
   message,
@@ -92,7 +108,61 @@ export function MessageBubble({
     );
   }
 
+  return (
+    <AssistantBubble
+      message={message}
+      streaming={streaming}
+      canAct={canAct}
+      onRegenerate={onRegenerate}
+      speech={speech}
+      showStats={showStats}
+      stats={stats}
+    />
+  );
+}
+
+function AssistantBubble({
+  message,
+  streaming,
+  canAct,
+  onRegenerate,
+  speech,
+  showStats,
+  stats,
+}: {
+  message: UIMessage;
+  streaming: boolean;
+  canAct: boolean;
+  onRegenerate: (id: string) => void;
+  speech: ReturnType<typeof useSpeech>;
+  showStats: boolean;
+  stats: MessageStats | null;
+}) {
   const text = textOf(message);
+  const lookup = useMemo(() => buildSourceLookup(message), [message]);
+  const citationComponents = useMemo(
+    () => ({
+      citation: (props: Record<string, unknown>) => (
+        <Citation
+          turn={props.turn as string | number | undefined}
+          reftype={props.reftype as CitationRefType | undefined}
+          index={props.index as string | number | undefined}
+          lookup={lookup}
+        />
+      ),
+      "composite-citation": (props: Record<string, unknown>) => (
+        <CompositeCitation
+          citations={props.citations as string | undefined}
+          lookup={lookup}
+        />
+      ),
+      "highlighted-text": (props: Record<string, unknown>) => (
+        <HighlightedText>{props.children as React.ReactNode}</HighlightedText>
+      ),
+    }),
+    [lookup],
+  );
+
   return (
     <div className="group flex flex-col items-start gap-2">
       <div className="w-full max-w-full space-y-3 text-sm leading-relaxed">
@@ -116,6 +186,9 @@ export function MessageBubble({
                 key={i}
                 className="font-serif space-y-3 text-[15px] leading-relaxed"
                 plugins={STREAMDOWN_PLUGINS}
+                remarkPlugins={CITATION_REMARK_PLUGINS}
+                allowedTags={CITATION_ALLOWED_TAGS}
+                components={citationComponents}
                 isAnimating={streaming}
                 caret={showCaret ? "block" : undefined}
               >
@@ -131,10 +204,11 @@ export function MessageBubble({
           }
           return null;
         })}
+        {!streaming && <Sources message={message} />}
       </div>
       {!streaming && (
         <MessageActions show={canAct}>
-          <CopyButton text={text} />
+          <CopyButton text={stripCitationMarkers(text)} />
           <SpeakButton
             messageId={message.id}
             text={speakableText(message)}

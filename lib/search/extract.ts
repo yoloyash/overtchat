@@ -1,5 +1,6 @@
 import "server-only";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import { stripCitationMarkers } from "@/lib/citations";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
 
@@ -7,7 +8,7 @@ export function extractSearchText(parts: AnyPart[]): string {
   const out: string[] = [];
   for (const p of parts) {
     if (p.type === "text" && typeof p.text === "string") {
-      out.push(p.text);
+      out.push(stripCitationMarkers(p.text));
     } else if (p.type === "reasoning" && typeof p.text === "string") {
       out.push(p.text);
     } else if (p.type === "tool-web_search") {

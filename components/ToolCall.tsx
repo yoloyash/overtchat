@@ -9,7 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { WebSearchResult, FetchedPage } from "@/lib/web";
+import type { WebSearchResult, FetchedPage } from "@/lib/web-client";
 
 type ToolState =
   | "input-streaming"
