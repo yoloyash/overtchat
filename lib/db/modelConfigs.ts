@@ -39,16 +39,7 @@ export async function getModelConfig(id: string): Promise<ModelConfigRow | null>
 export async function createModelConfig(input: ModelConfigInput): Promise<ModelConfigRow> {
   const [row] = await db
     .insert(modelConfigs)
-    .values({
-      id: crypto.randomUUID(),
-      label: input.label,
-      baseUrl: input.baseUrl.replace(/\/$/, ""),
-      apiKey: input.apiKey ?? null,
-      model: input.model,
-      systemPrompt: input.systemPrompt?.trim() || null,
-      extraBody: input.extraBody ?? null,
-      sortOrder: input.sortOrder ?? 0,
-    })
+    .values({ id: crypto.randomUUID(), ...input })
     .returning();
   return row;
 }
@@ -59,16 +50,7 @@ export async function updateModelConfig(
 ): Promise<ModelConfigRow | null> {
   const [row] = await db
     .update(modelConfigs)
-    .set({
-      label: input.label,
-      baseUrl: input.baseUrl.replace(/\/$/, ""),
-      apiKey: input.apiKey ?? null,
-      model: input.model,
-      systemPrompt: input.systemPrompt?.trim() || null,
-      extraBody: input.extraBody ?? null,
-      sortOrder: input.sortOrder ?? 0,
-      updatedAt: new Date(),
-    })
+    .set({ ...input, updatedAt: new Date() })
     .where(eq(modelConfigs.id, id))
     .returning();
   return row ?? null;

@@ -1,25 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { AdminModelConfig, ModelConfigInput } from "@/lib/config";
+import type { AdminModelConfig } from "@/lib/config";
 import {
   useAdminModelConfigs,
-  useCreateModelConfig,
   useDeleteModelConfig,
-  useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
-import { ModelConfigDialog } from "./ModelConfigDialog";
 
 export function ModelsPanel() {
   const { data: models = [] } = useAdminModelConfigs();
-  const createMut = useCreateModelConfig();
-  const updateMut = useUpdateModelConfig();
   const deleteMut = useDeleteModelConfig();
 
-  const [editing, setEditing] = useState<AdminModelConfig | "new" | null>(null);
   const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(null);
   const [deleteError, setDeleteError] = useState("");
 
@@ -36,15 +31,6 @@ export function ModelsPanel() {
     }
   }
 
-  async function save(input: ModelConfigInput, id?: string) {
-    if (id) {
-      await updateMut.mutateAsync({ id, input });
-    } else {
-      await createMut.mutateAsync(input);
-    }
-    setEditing(null);
-  }
-
   return (
     <div className="max-w-2xl space-y-6">
       <header className="flex items-start justify-between gap-4">
@@ -55,7 +41,7 @@ export function ModelsPanel() {
           </p>
         </div>
         {models.length > 0 && (
-          <Button size="sm" onClick={() => setEditing("new")}>
+          <Button render={<Link href="/settings/models/new" />} size="sm">
             <Plus /> Add
           </Button>
         )}
@@ -64,7 +50,11 @@ export function ModelsPanel() {
       {models.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-muted/20 px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">No models configured yet.</p>
-          <Button className="mt-4" size="sm" onClick={() => setEditing("new")}>
+          <Button
+            render={<Link href="/settings/models/new" />}
+            className="mt-4"
+            size="sm"
+          >
             <Plus /> Add your first model
           </Button>
         </div>
@@ -72,9 +62,8 @@ export function ModelsPanel() {
         <ul className="space-y-2">
           {models.map((m) => (
             <li key={m.id} className="group relative">
-              <button
-                type="button"
-                onClick={() => setEditing(m)}
+              <Link
+                href={`/settings/models/${m.id}`}
                 aria-label={`Edit ${m.label}`}
                 className="flex w-full items-center rounded-lg border bg-card px-3.5 py-3 pr-12 text-left transition-colors hover:border-ring/40 hover:bg-accent/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
               >
@@ -88,7 +77,7 @@ export function ModelsPanel() {
                     <span className="truncate">{hostnameOf(m.baseUrl)}</span>
                   </div>
                 </div>
-              </button>
+              </Link>
               <button
                 type="button"
                 onClick={() => {
@@ -104,12 +93,6 @@ export function ModelsPanel() {
           ))}
         </ul>
       )}
-
-      <ModelConfigDialog
-        mode={editing}
-        onClose={() => setEditing(null)}
-        onSave={save}
-      />
 
       <AlertDialog.Root
         open={pendingDelete !== null}
