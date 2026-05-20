@@ -1,12 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ModelConfigDialog } from "@/app/(app)/settings/models/ModelConfigDialog";
 import { AddUserDialog } from "@/app/(app)/settings/users/AddUserDialog";
-import { useCreateModelConfig } from "@/lib/queries/modelConfigs";
-import type { ModelConfigInput } from "@/lib/config";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 
@@ -17,20 +15,13 @@ export function AdminOnboardingCard({
   modelCount: number;
   onDismiss: () => void;
 }) {
-  const [modelMode, setModelMode] = useState<"new" | null>(null);
   const [userOpen, setUserOpen] = useState(false);
   const [userAdded, setUserAdded] = useLocalStorage<boolean>(
     "overtchat_onboarding_user_added",
     false,
   );
-  const createMut = useCreateModelConfig();
 
   const modelDone = modelCount > 0;
-
-  async function saveModel(input: ModelConfigInput) {
-    await createMut.mutateAsync(input);
-    setModelMode(null);
-  }
 
   return (
     <>
@@ -50,7 +41,7 @@ export function AdminOnboardingCard({
             title="Add your first model"
             description="Anthropic, Google Gemini, or any OpenAI-compatible endpoint."
             action={
-              <Button size="sm" onClick={() => setModelMode("new")}>
+              <Button render={<Link href="/settings/models/new" />} size="sm">
                 <Plus /> {modelDone ? "Add another" : "Add model"}
               </Button>
             }
@@ -83,11 +74,6 @@ export function AdminOnboardingCard({
         </div>
       </div>
 
-      <ModelConfigDialog
-        mode={modelMode}
-        onClose={() => setModelMode(null)}
-        onSave={saveModel}
-      />
       <AddUserDialog
         open={userOpen}
         onOpenChange={setUserOpen}

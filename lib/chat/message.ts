@@ -2,6 +2,7 @@ import { remark } from "remark";
 import strip from "strip-markdown";
 import type { UIMessage } from "ai";
 import type { DictationError } from "@/lib/useDictation";
+import { stripCitationMarkers } from "@/lib/citations";
 
 const stripper = remark().use(strip);
 
@@ -19,7 +20,7 @@ export function textOf(message: UIMessage): string {
 export function speakableText(message: UIMessage): string {
   return message.parts
     .filter((p) => p.type === "text")
-    .map((p) => stripMarkdown((p as { text: string }).text))
+    .map((p) => stripMarkdown(stripCitationMarkers((p as { text: string }).text)))
     .join(" ")
     .trim();
 }
