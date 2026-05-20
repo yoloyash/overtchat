@@ -4,8 +4,8 @@ import {
   getModelConfig,
   toAdminModelConfig,
   updateModelConfig,
-  type ModelConfigInput,
 } from "@/lib/db/modelConfigs";
+import { ModelConfigSchema } from "@/lib/config";
 
 async function requireAdmin(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -27,14 +27,14 @@ export async function PATCH(
   const existing = await getModelConfig(id);
   if (!existing) return new Response("Not found", { status: 404 });
 
-  const body = (await req.json()) as ModelConfigInput;
-  if (!body.label?.trim() || !body.baseUrl?.trim() || !body.model?.trim()) {
+  const parsed = ModelConfigSchema.safeParse(await req.json());
+  if (!parsed.success) {
     return Response.json(
-      { error: "label, baseUrl, and model are required" },
+      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
       { status: 400 },
     );
   }
-  const row = await updateModelConfig(id, body);
+  const row = await updateModelConfig(id, parsed.data);
   if (!row) return new Response("Not found", { status: 404 });
   return Response.json({ modelConfig: toAdminModelConfig(row) });
 }

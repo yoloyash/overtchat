@@ -3,10 +3,9 @@ import {
   createModelConfig,
   listModelConfigs,
   toAdminModelConfig,
-  type ModelConfigInput,
   type ModelConfigRow,
 } from "@/lib/db/modelConfigs";
-import type { PublicModelConfig } from "@/lib/config";
+import { ModelConfigSchema, type PublicModelConfig } from "@/lib/config";
 import { PRESETS, presetFor } from "@/lib/providers/meta";
 
 function toPublic(row: ModelConfigRow): PublicModelConfig {
@@ -43,13 +42,13 @@ export async function POST(req: Request) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const body = (await req.json()) as ModelConfigInput;
-  if (!body.label?.trim() || !body.baseUrl?.trim() || !body.model?.trim()) {
+  const parsed = ModelConfigSchema.safeParse(await req.json());
+  if (!parsed.success) {
     return Response.json(
-      { error: "label, baseUrl, and model are required" },
+      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
       { status: 400 },
     );
   }
-  const row = await createModelConfig(body);
+  const row = await createModelConfig(parsed.data);
   return Response.json({ modelConfig: toAdminModelConfig(row) }, { status: 201 });
 }
