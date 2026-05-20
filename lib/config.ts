@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 
 /** Public-facing model config DTO. `apiKey` is intentionally omitted — it never leaves the server. */
@@ -22,15 +23,35 @@ export interface AdminModelConfig {
   sortOrder: number;
 }
 
-export interface ModelConfigInput {
-  label: string;
-  baseUrl: string;
-  apiKey?: string | null;
-  model: string;
-  systemPrompt?: string | null;
-  extraBody?: Record<string, unknown> | null;
-  sortOrder?: number;
-}
+/**
+ * Single source of truth for model-config input — used by the form and by the
+ * POST/PATCH API routes. Trims whitespace, strips trailing slash on baseUrl,
+ * and normalizes empty optionals to null.
+ */
+export const ModelConfigSchema = z.object({
+  label: z.string().trim().min(1, "Display name is required"),
+  baseUrl: z
+    .string()
+    .trim()
+    .min(1, "Endpoint is required")
+    .transform((s) => s.replace(/\/$/, "")),
+  apiKey: z.string().nullish().transform((v) => v ?? null),
+  model: z.string().trim().min(1, "Model is required"),
+  systemPrompt: z
+    .string()
+    .nullish()
+    .transform((v) => {
+      const t = v?.trim();
+      return t ? t : null;
+    }),
+  extraBody: z
+    .record(z.string(), z.unknown())
+    .nullish()
+    .transform((v) => v ?? null),
+  sortOrder: z.number().int().nullish().transform((v) => v ?? 0),
+});
+
+export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
 
 const SELECTED_MODEL_KEY = "overtchat_selected_model";
 
