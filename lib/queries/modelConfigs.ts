@@ -92,3 +92,30 @@ export function useDeleteModelConfig() {
     onSuccess: () => invalidateAll(qc),
   });
 }
+
+export type ModelHealth =
+  | { ok: true; elapsedMs: number }
+  | { ok: false; error: string; elapsedMs: number };
+
+export function useModelHealth(id: string) {
+  return useQuery({
+    queryKey: modelConfigKeys.health(id),
+    enabled: false,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
+    retry: false,
+    queryFn: async (): Promise<ModelHealth> => {
+      const r = await fetch(`/api/model-configs/${id}/health`, {
+        method: "POST",
+      });
+      if (!r.ok) {
+        return {
+          ok: false,
+          error: `HTTP ${r.status}`,
+          elapsedMs: 0,
+        };
+      }
+      return (await r.json()) as ModelHealth;
+    },
+  });
+}

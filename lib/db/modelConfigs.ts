@@ -16,6 +16,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     model: row.model,
     systemPrompt: row.systemPrompt,
     extraBody: row.extraBody,
+    enabled: row.enabled,
     sortOrder: row.sortOrder,
   };
 }

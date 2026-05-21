@@ -1,6 +1,5 @@
-import { generateText } from "ai";
 import { auth } from "@/lib/auth/server";
-import { buildModel } from "@/lib/llm";
+import { pingModel } from "@/lib/modelHealth";
 
 interface Body {
   baseUrl: string;
@@ -25,30 +24,14 @@ export async function POST(req: Request) {
     );
   }
 
-  const { model: llm, providerOptions } = buildModel({
-    baseUrl,
-    apiKey,
-    model,
-    extraBody,
-  });
-
-  const started = Date.now();
-  try {
-    const { text, usage } = await generateText({
-      model: llm,
-      prompt: "Say hi in one short sentence.",
-      maxOutputTokens: 64,
-      abortSignal: AbortSignal.timeout(30_000),
-      providerOptions,
-    });
-    return Response.json({
-      text: text.trim(),
-      elapsedMs: Date.now() - started,
-      inputTokens: usage?.inputTokens ?? null,
-      outputTokens: usage?.outputTokens ?? null,
-    });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return Response.json({ error: msg }, { status: 502 });
+  const result = await pingModel({ baseUrl, apiKey, model, extraBody });
+  if (!result.ok) {
+    return Response.json({ error: result.error }, { status: 502 });
   }
+  return Response.json({
+    text: result.text,
+    elapsedMs: result.elapsedMs,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+  });
 }

@@ -252,6 +252,7 @@ export const modelConfigs = sqliteTable("model_configs", {
   model: text("model").notNull(),
   systemPrompt: text("system_prompt"),
   extraBody: text("extra_body", { mode: "json" }).$type<Record<string, unknown>>(),
+  enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)

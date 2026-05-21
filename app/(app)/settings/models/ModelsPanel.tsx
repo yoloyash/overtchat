@@ -3,20 +3,46 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { Switch } from "@base-ui/react/switch";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { AdminModelConfig } from "@/lib/config";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
+  useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
+import { HealthBadge } from "./HealthBadge";
 
 export function ModelsPanel() {
   const { data: models = [] } = useAdminModelConfigs();
   const deleteMut = useDeleteModelConfig();
+  const updateMut = useUpdateModelConfig();
 
   const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  async function toggleEnabled(m: AdminModelConfig, next: boolean) {
+    setTogglingId(m.id);
+    try {
+      await updateMut.mutateAsync({
+        id: m.id,
+        input: {
+          label: m.label,
+          baseUrl: m.baseUrl,
+          apiKey: m.apiKey,
+          model: m.model,
+          systemPrompt: m.systemPrompt,
+          extraBody: m.extraBody,
+          enabled: next,
+          sortOrder: m.sortOrder,
+        },
+      });
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   async function confirmDelete() {
     if (!pendingDelete) return;
@@ -65,11 +91,14 @@ export function ModelsPanel() {
               <Link
                 href={`/settings/models/${m.id}`}
                 aria-label={`Edit ${m.label}`}
-                className="flex w-full items-center rounded-lg border bg-card px-3.5 py-3 pr-12 text-left transition-colors hover:border-ring/40 hover:bg-accent/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                className={`flex w-full items-center rounded-lg border bg-card px-3.5 py-3 pr-28 text-left transition-colors hover:border-ring/40 hover:bg-accent/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 ${m.enabled ? "" : "opacity-60"}`}
               >
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-foreground">
-                    {m.label}
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {m.label}
+                    </span>
+                    <HealthBadge id={m.id} enabled={m.enabled} />
                   </div>
                   <div className="mt-0.5 flex items-center gap-2 font-mono text-xs text-muted-foreground">
                     <span className="truncate">{m.model}</span>
@@ -78,17 +107,28 @@ export function ModelsPanel() {
                   </div>
                 </div>
               </Link>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteError("");
-                  setPendingDelete(m);
-                }}
-                aria-label={`Delete ${m.label}`}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 group-hover:opacity-100"
-              >
-                <Trash2 className="size-4" />
-              </button>
+              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                <Switch.Root
+                  checked={m.enabled}
+                  disabled={togglingId === m.id}
+                  onCheckedChange={(next) => toggleEnabled(m, next)}
+                  aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
+                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-input bg-input/40 transition-colors data-[checked]:border-ring/40 data-[checked]:bg-ring/70 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                >
+                  <Switch.Thumb className="pointer-events-none ml-0.5 size-4 rounded-full bg-background shadow transition-transform data-[checked]:translate-x-4" />
+                </Switch.Root>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteError("");
+                    setPendingDelete(m);
+                  }}
+                  aria-label={`Delete ${m.label}`}
+                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 group-hover:opacity-100"
+                >
+                  <Trash2 className="size-4" />
+                </button>
+              </div>
             </li>
           ))}
         </ul>
