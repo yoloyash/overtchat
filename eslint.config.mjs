@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Gitignored local-only tooling dirs — never lint these.
+    ".gemini/**",
+    ".claude/**",
+    "scripts/**",
   ]),
 ]);
 

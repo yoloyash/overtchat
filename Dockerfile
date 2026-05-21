@@ -3,6 +3,8 @@
 FROM node:22-bookworm-slim AS base
 WORKDIR /app
 ENV NODE_ENV=production
+RUN corepack enable \
+ && corepack prepare npm@10.9.8 --activate
 
 FROM base AS deps
 RUN apt-get update \
