@@ -49,6 +49,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         model: existing.model,
         systemPrompt: existing.systemPrompt ?? "",
         extraBody: existing.extraBody,
+        enabled: existing.enabled,
         sortOrder: existing.sortOrder,
       };
     }
@@ -59,6 +60,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       model: "",
       systemPrompt: "",
       extraBody: null,
+      enabled: true,
       sortOrder: 0,
     };
   });

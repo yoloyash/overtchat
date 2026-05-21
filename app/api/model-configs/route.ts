@@ -32,7 +32,9 @@ export async function GET(req: Request) {
     }
     return Response.json({ modelConfigs: rows.map(toAdminModelConfig) });
   }
-  return Response.json({ modelConfigs: rows.map(toPublic) });
+  return Response.json({
+    modelConfigs: rows.filter((r) => r.enabled).map(toPublic),
+  });
 }
 
 export async function POST(req: Request) {
