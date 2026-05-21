@@ -6,15 +6,21 @@ https://github.com/user-attachments/assets/bb1c6b31-97ad-43dc-b39c-743c12d7ae4b
 
 ## Why I built overtchat
 
-[Open WebUI](https://github.com/open-webui/open-webui) is an impressive project, but every time I tried to actually live in it something got in the way. Five-to-twenty-second pauses before the first token. Long-chat tabs eating multiple gigs of RAM and going janky on scroll. Updates that break a plugin and ask for migration work before the chat will load.
+[Open WebUI](https://github.com/open-webui/open-webui) is an impressive project, but every time I tried to actually live in it something got in the way. The browser tab would peg CPU and balloon past a gig on long replies — the streaming pipeline re-broadcasts the entire growing message body on every token, so a long chat is O(N²) in bytes ([#23733](https://github.com/open-webui/open-webui/issues/23733), still open). Pasting any sizeable chunk of text would freeze the page for seconds ([#12087](https://github.com/open-webui/open-webui/issues/12087), still open). The v0.9 release line shipped a run of migration regressions where you'd `docker pull` and then have to `docker exec` into the container and hand-edit alembic scripts before the app would boot.
 
 And underneath all that, the UI just feels heavy. Settings pages full of toggles for features I'd never use. Web search that wants its own API key. TTS that wants its own setup. A hundred surfaces in front of a single text box.
 
 I wanted a chat app I could open and use. So I wrote one.
 
-overtchat is one Next.js app, one SQLite file, one compose file. SearXNG and Kokoro TTS are pre-wired in the same compose — no extra API keys, no extra setup. No RAG, no plugins, no migration steps. The settings page is short on purpose.
+## What's different, concretely
 
-If you want every feature in the world, use Open WebUI. If you want a chat app that opens fast and stays out of your way, this is that.
+- **One process, one file.** A Next.js app and a SQLite file. No Postgres, no Redis, no Celery, no separate API service. Schema migrations are one Drizzle command on container boot.
+- **600 MB Docker image vs Open WebUI's 1.7 GB** (compressed, amd64, pulled from `ghcr.io` on 2026-05-20). About a third the size on disk, fewer layers.
+- **No plugin runtime, no pipelines, no functions framework.** Tools are two AI SDK definitions in [`lib/tools.ts`](lib/tools.ts): `web_search` (SearXNG) and `fetch_url` (Defuddle → markdown). That's the whole extensibility surface.
+- **No RAG, no embeddings, no vector DB.** Chat search is SQLite FTS5 + BM25, populated by triggers ([`lib/db/search.ts`](lib/db/search.ts)). Web search results go straight into context as JSON.
+- **One LLM client for everything.** Anthropic, Google Gemini, OpenAI, Groq, OpenRouter, xAI, Mistral, DeepSeek, Together, Ollama, vLLM, llama.cpp — all through [`@ai-sdk/openai-compatible`](lib/llm.ts).
+
+If you want every feature in the world — image generation, a code interpreter, knowledge graphs, a plugin marketplace — use Open WebUI or LibreChat. If you want a chat app that opens in under a second and stays out of your way, this is that.
 
 ## Quick start
 
@@ -27,16 +33,10 @@ echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
 docker compose up -d --build
 ```
 
-Open [http://localhost:4718](http://localhost:4718). First signup becomes admin. Go to **Settings → Models** and pick a provider:
+Open [http://localhost:4718](http://localhost:4718), sign up, the setup wizard takes you the rest of the way.
 
-- **Anthropic** — paste your API key, pick a Claude model.
-- **Google Gemini** — paste your API key, pick a Gemini model.
-- **OpenAI-compatible** — base URL + (optional) API key. Covers OpenAI, Groq, OpenRouter, xAI, Mistral, Together, DeepSeek, Ollama, vLLM, llama.cpp, etc.
-  - For local servers on the same host use `http://host.docker.internal:<port>/v1`.
-
-Hit "Test connection", save.
-
-To open it up to other devices on your LAN, set `BETTER_AUTH_URL` in `.env` to your host's LAN IP (e.g. `http://192.168.1.50:4718`) and `docker compose up -d`. To expose it to the internet, the bundled compose file has a commented-out `cloudflared` service — paste a tunnel token and uncomment.
+**LAN access:** set `BETTER_AUTH_URL=http://<your-lan-ip>:4718` in `.env`, then `docker compose up -d`.
+**Internet access:** uncomment the `cloudflared` block in `compose.yml` and paste a tunnel token.
 
 ## What's in the box
 
@@ -44,12 +44,10 @@ To open it up to other devices on your LAN, set `BETTER_AUTH_URL` in `.env` to y
 - Persistent chat history, auto-titled, full-text searchable
 - File uploads — images, PDFs, Word, Excel, CSV, source code
 - Projects with per-project system prompts
-- Reasoning models (DeepSeek, Qwen3, …) render `<think>` blocks natively
 - Web search via bundled SearXNG. No API key.
 - Text-to-speech via bundled Kokoro. No setup.
 - Speech-to-text via Parakeet TDT v3 (opt-in, CPU or NVIDIA GPU)
 - Chat export (JSON / Markdown)
-- No RAG, no embeddings, no vector DB. Search results go straight into context.
 
 ## Speech-to-text (optional)
 
@@ -70,7 +68,7 @@ No telemetry, no analytics. No external calls except the LLM endpoint you config
 
 - Docker + Docker Compose v2
 - ~1 GB RAM free for the app stack (Kokoro TTS pulls ~100 MB on first boot)
-- An LLM endpoint: Anthropic API key, Google Gemini API key, or any OpenAI-compatible endpoint (local or remote)
+- An LLM endpoint (API key or self-hosted)
 
 ## Stack
 
@@ -82,4 +80,4 @@ Next.js 16 · Vercel AI SDK v6 · Better Auth · Drizzle + SQLite · base-ui · 
 
 ## License
 
-MIT
+MIT. Fork it, white-label it, ship it. No branding clauses to negotiate around.
