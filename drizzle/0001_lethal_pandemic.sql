@@ -1,0 +1,1 @@
+ALTER TABLE `model_configs` ADD `enabled` integer DEFAULT true NOT NULL;

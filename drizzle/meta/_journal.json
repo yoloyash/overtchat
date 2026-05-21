@@ -8,6 +8,13 @@
       "when": 1778574373973,
       "tag": "0000_glossy_omega_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1779355957251,
+      "tag": "0001_lethal_pandemic",
+      "breakpoints": true
     }
   ]
 }

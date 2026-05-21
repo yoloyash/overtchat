@@ -20,6 +20,7 @@ export interface AdminModelConfig {
   model: string;
   systemPrompt: string | null;
   extraBody: Record<string, unknown> | null;
+  enabled: boolean;
   sortOrder: number;
 }
 
@@ -48,6 +49,7 @@ export const ModelConfigSchema = z.object({
     .record(z.string(), z.unknown())
     .nullish()
     .transform((v) => v ?? null),
+  enabled: z.boolean().nullish().transform((v) => v ?? true),
   sortOrder: z.number().int().nullish().transform((v) => v ?? 0),
 });
 
