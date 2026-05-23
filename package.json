@@ -24,5 +24,8 @@
   },
   "devDependencies": {
     "turbo": "^2.9.6"
+  },
+  "dependencies": {
+    "expo-crypto": "~56.0.3"
   }
 }

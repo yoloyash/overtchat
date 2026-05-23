@@ -1,3 +1,5 @@
+import "@/polyfills";
+
 import {
   Fraunces_600SemiBold,
 } from "@expo-google-fonts/fraunces";
@@ -6,11 +8,12 @@ import {
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
 } from "@expo-google-fonts/plus-jakarta-sans";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { router, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
 import { getServerUrl } from "@/lib/server-url";
@@ -20,6 +23,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const { colors, scheme } = useTheme();
+  const [queryClient] = useState(() => new QueryClient());
 
   const [loaded, error] = useFonts({
     PlusJakartaSans_400Regular,
@@ -35,7 +39,7 @@ export default function RootLayout() {
     if (!url) return;
     (async () => {
       const { data } = await getAuthClient().getSession();
-      if (data?.user) router.replace("/home");
+      if (data?.user) router.replace("/chat");
     })().catch(() => {
       // Stale URL or unreachable server — leave the user on the welcome
       // screen so they can re-enter a URL.
@@ -45,14 +49,16 @@ export default function RootLayout() {
   if (!loaded && !error) return null;
 
   return (
-    <SafeAreaProvider>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: colors.background },
-        }}
-      />
-    </SafeAreaProvider>
+    <QueryClientProvider client={queryClient}>
+      <SafeAreaProvider>
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+          }}
+        />
+      </SafeAreaProvider>
+    </QueryClientProvider>
   );
 }

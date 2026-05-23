@@ -30,7 +30,7 @@ export default function LoginScreen() {
         setError(error.message ?? "Login failed");
         return;
       }
-      router.replace("/home");
+      router.replace("/chat");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

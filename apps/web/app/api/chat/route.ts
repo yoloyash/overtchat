@@ -124,11 +124,13 @@ export async function POST(req: Request) {
     },
   });
 
+  const streamHeaders = corsHeaders(req);
+  streamHeaders.set("Content-Encoding", "none");
   return result.toUIMessageStreamResponse({
     sendReasoning: true,
     originalMessages: messages,
     generateMessageId: () => crypto.randomUUID(),
-    headers: corsHeaders(req),
+    headers: streamHeaders,
     messageMetadata: ({ part }) => {
       if (part.type !== "finish") return undefined;
 
