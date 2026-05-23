@@ -1,5 +1,5 @@
 # dependencies
-/node_modules
+node_modules
 /.pnp
 .pnp.*
 
@@ -7,15 +7,18 @@
 /coverage
 
 # next.js
-/.next/
+.next/
 /out/
+
+# turborepo
+.turbo
 
 # production
 /build
 /dist
 
 # data
-/data
+data/
 *.db
 *.db-journal
 *.db-wal
@@ -30,7 +33,7 @@ ROADMAP.md
 GEMINI.md
 CLAUDE.md
 AGENTS.md
-/scripts/
+scripts/
 
 # debug
 npm-debug.log*
