@@ -16,9 +16,9 @@ I wanted a chat app I could open and use. So I wrote one.
 
 - **One process, one file.** A Next.js app and a SQLite file. No Postgres, no Redis, no Celery, no separate API service. Schema migrations are one Drizzle command on container boot.
 - **600 MB Docker image vs Open WebUI's 1.7 GB** (compressed, amd64, pulled from `ghcr.io` on 2026-05-20). About a third the size on disk, fewer layers.
-- **No plugin runtime, no pipelines, no functions framework.** Tools are two AI SDK definitions in [`lib/tools.ts`](lib/tools.ts): `web_search` (SearXNG) and `fetch_url` (Defuddle → markdown). That's the whole extensibility surface.
-- **No RAG, no embeddings, no vector DB.** Chat search is SQLite FTS5 + BM25, populated by triggers ([`lib/db/search.ts`](lib/db/search.ts)). Web search results go straight into context as JSON.
-- **One LLM client for everything.** Anthropic, Google Gemini, OpenAI, Groq, OpenRouter, xAI, Mistral, DeepSeek, Together, Ollama, vLLM, llama.cpp — all through [`@ai-sdk/openai-compatible`](lib/llm.ts).
+- **No plugin runtime, no pipelines, no functions framework.** Tools are two AI SDK definitions in [`apps/web/lib/tools.ts`](apps/web/lib/tools.ts): `web_search` (SearXNG) and `fetch_url` (Defuddle → markdown). That's the whole extensibility surface.
+- **No RAG, no embeddings, no vector DB.** Chat search is SQLite FTS5 + BM25, populated by triggers ([`apps/web/lib/db/search.ts`](apps/web/lib/db/search.ts)). Web search results go straight into context as JSON.
+- **One LLM client for everything.** Anthropic, Google Gemini, OpenAI, Groq, OpenRouter, xAI, Mistral, DeepSeek, Together, Ollama, vLLM, llama.cpp — all through [`@ai-sdk/openai-compatible`](apps/web/lib/llm.ts).
 
 If you want every feature in the world — image generation, a code interpreter, knowledge graphs, a plugin marketplace — use Open WebUI or LibreChat. If you want a chat app that opens in under a second and stays out of your way, this is that.
 
