@@ -1,5 +1,5 @@
 const allowedOrigins = (() => {
-  const raw = process.env.MOBILE_DEV_ORIGINS ?? "";
+  const raw = process.env.EXTRA_TRUSTED_ORIGINS ?? "";
   return new Set(
     raw
       .split(",")

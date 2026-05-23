@@ -1,9 +1,10 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import * as Crypto from "expo-crypto";
-import { router } from "expo-router";
+import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,25 +14,40 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
-import { getAuthClient } from "@/lib/auth/client";
+import { useChatSession } from "@/lib/chat/session";
+import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useTheme } from "@/lib/theme";
 
 export default function ChatScreen() {
-  const { colors, radii, fonts } = useTheme();
+  const { activeChatId, newChatKey } = useChatSession();
+  return (
+    <ChatSurface
+      key={activeChatId ?? `new-${newChatKey}`}
+      activeChatId={activeChatId}
+    />
+  );
+}
+
+function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
+  const { colors, fonts } = useTheme();
+  const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
+  const { setActiveChatId, bumpNewChat } = useChatSession();
   const baseURL = useMemo(() => getApiBase(), []);
-  const authClient = getAuthClient();
 
   const { data: models, isPending: modelsPending, error: modelsError } =
     useModelConfigs();
+  const { data: hydration, isPending: hydrationPending } =
+    useChatMessages(activeChatId);
+
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     if (!models?.length) return;
@@ -40,7 +56,7 @@ export default function ChatScreen() {
     }
   }, [models, selectedId]);
 
-  const [chatId] = useState(() => Crypto.randomUUID());
+  const [chatId] = useState(() => activeChatId ?? Crypto.randomUUID());
 
   const transport = useMemo(
     () =>
@@ -52,17 +68,72 @@ export default function ChatScreen() {
     [baseURL],
   );
 
-  const { messages, sendMessage, status, stop, error } = useChat({ transport });
+  const initialMessages = activeChatId ? hydration?.messages : undefined;
+
+  const { messages, sendMessage, status, stop, error } = useChat({
+    transport,
+    messages: initialMessages,
+  });
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const loadingHistory = !!activeChatId && hydrationPending;
+
+  const onNewChat = useCallback(() => {
+    setActiveChatId(null);
+    bumpNewChat();
+  }, [setActiveChatId, bumpNewChat]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: () => (
+        <Pressable
+          onPress={() => setPickerOpen(true)}
+          disabled={modelsPending}
+          style={styles.headerTitle}
+        >
+          {modelsPending ? (
+            <ActivityIndicator color={colors.mutedForeground} size="small" />
+          ) : (
+            <>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.headerTitleText,
+                  { color: colors.foreground, fontFamily: fonts.sansSemiBold },
+                ]}
+              >
+                {selectedModel?.label ?? "Select model"}
+              </Text>
+              <Ionicons
+                name="chevron-down"
+                size={16}
+                color={colors.mutedForeground}
+                style={styles.headerTitleCaret}
+              />
+            </>
+          )}
+        </Pressable>
+      ),
+      headerRight: () => (
+        <Pressable
+          accessibilityRole="button"
+          onPress={onNewChat}
+          hitSlop={10}
+          style={styles.headerRight}
+        >
+          <Ionicons name="create-outline" size={22} color={colors.foreground} />
+        </Pressable>
+      ),
+    });
+  }, [navigation, modelsPending, selectedModel?.id, selectedModel?.label, colors, fonts, onNewChat]);
 
   function requestBody() {
     return {
       modelConfigId: selectedId,
       chatId,
-      projectId: null,
+      projectId: hydration?.projectId ?? null,
       temporary: false,
     };
   }
@@ -71,77 +142,20 @@ export default function ChatScreen() {
     sendMessage({ text }, { body: requestBody() });
   }
 
-  async function handleSignOut() {
-    if (signingOut) return;
-    setSigningOut(true);
-    try {
-      await authClient.signOut();
-      router.replace("/");
-    } finally {
-      setSigningOut(false);
-    }
-  }
-
   return (
     <SafeAreaView
       style={[styles.root, { backgroundColor: colors.background }]}
-      edges={["top", "left", "right"]}
+      edges={["left", "right"]}
     >
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setPickerOpen(true)}
-          disabled={modelsPending}
-          style={({ pressed }) => [
-            styles.modelButton,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              borderRadius: radii.md,
-              opacity: pressed ? 0.85 : 1,
-            },
-          ]}
-        >
-          {modelsPending ? (
-            <ActivityIndicator color={colors.mutedForeground} size="small" />
-          ) : (
-            <Text
-              style={[
-                styles.modelLabel,
-                { color: colors.foreground, fontFamily: fonts.sansSemiBold },
-              ]}
-              numberOfLines={1}
-            >
-              {selectedModel ? selectedModel.label : "Select model"}
-            </Text>
-          )}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          onPress={handleSignOut}
-          disabled={signingOut}
-          style={({ pressed }) => [
-            styles.signOutButton,
-            { opacity: pressed || signingOut ? 0.6 : 1 },
-          ]}
-        >
-          <Text
-            style={[
-              styles.signOutText,
-              { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
-            ]}
-          >
-            {signingOut ? "Signing out…" : "Sign out"}
-          </Text>
-        </Pressable>
-      </View>
-
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        {messages.length === 0 ? (
+        {loadingHistory ? (
+          <View style={styles.empty}>
+            <ActivityIndicator color={colors.mutedForeground} />
+          </View>
+        ) : messages.length === 0 ? (
           <View style={styles.empty}>
             <Text
               style={[
@@ -185,7 +199,12 @@ export default function ChatScreen() {
           />
         )}
 
-        <View style={styles.composerWrap}>
+        <View
+          style={[
+            styles.composerWrap,
+            { paddingBottom: 12 + insets.bottom },
+          ]}
+        >
           <Composer
             configured={configured}
             streaming={streaming}
@@ -209,38 +228,22 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  modelButton: {
-    flexShrink: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    minWidth: 120,
-    alignItems: "center",
-  },
-  modelLabel: { fontSize: 14 },
-  signOutButton: { paddingHorizontal: 8, paddingVertical: 8 },
-  signOutText: { fontSize: 13 },
+  headerTitle: { flexDirection: "row", alignItems: "center" },
+  headerTitleText: { fontSize: 16, maxWidth: 220 },
+  headerTitleCaret: { marginLeft: 4 },
+  headerRight: { paddingHorizontal: 12 },
   empty: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 24,
-    gap: 12,
+    paddingHorizontal: 32,
+    gap: 16,
+    paddingBottom: 60,
   },
-  emptyTitle: { fontSize: 22, textAlign: "center" },
+  emptyTitle: { fontSize: 24, textAlign: "center" },
   emptySub: { fontSize: 14, textAlign: "center" },
   composerWrap: {
     paddingHorizontal: 12,
-    paddingBottom: 12,
     paddingTop: 8,
   },
 });

@@ -8,12 +8,12 @@ import { count } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 
-const mobileOrigins =
-  process.env.MOBILE_DEV_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+const extraTrustedOrigins =
+  process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
-  trustedOrigins: ["overtchat://", ...mobileOrigins],
+  trustedOrigins: ["overtchat://", ...extraTrustedOrigins],
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

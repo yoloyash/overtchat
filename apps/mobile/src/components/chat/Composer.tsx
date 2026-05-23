@@ -1,5 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useTheme } from "@/lib/theme";
 
 export function Composer({
@@ -32,7 +33,7 @@ export function Composer({
         {
           backgroundColor: colors.card,
           borderColor: colors.border,
-          borderRadius: radii.xl,
+          borderRadius: radii.pill,
         },
       ]}
     >
@@ -58,19 +59,12 @@ export function Composer({
             styles.send,
             {
               backgroundColor: colors.secondary,
-              borderRadius: radii.md,
+              borderRadius: radii.pill,
               opacity: pressed ? 0.85 : 1,
             },
           ]}
         >
-          <Text
-            style={[
-              styles.sendText,
-              { color: colors.secondaryForeground, fontFamily: fonts.sansSemiBold },
-            ]}
-          >
-            Stop
-          </Text>
+          <Ionicons name="stop" size={16} color={colors.secondaryForeground} />
         </Pressable>
       ) : (
         <Pressable
@@ -81,19 +75,12 @@ export function Composer({
             styles.send,
             {
               backgroundColor: colors.primary,
-              borderRadius: radii.md,
-              opacity: !canSend ? 0.5 : pressed ? 0.85 : 1,
+              borderRadius: radii.pill,
+              opacity: !canSend ? 0.4 : pressed ? 0.85 : 1,
             },
           ]}
         >
-          <Text
-            style={[
-              styles.sendText,
-              { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
-            ]}
-          >
-            Send
-          </Text>
+          <Ionicons name="arrow-up" size={20} color={colors.primaryForeground} />
         </Pressable>
       )}
     </View>
@@ -105,22 +92,21 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     borderWidth: StyleSheet.hairlineWidth,
   },
   input: {
     flex: 1,
-    minHeight: 24,
+    minHeight: 36,
     maxHeight: 140,
     fontSize: 16,
-    paddingVertical: 4,
+    paddingVertical: 8,
   },
   send: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
-  sendText: { fontSize: 14 },
 });

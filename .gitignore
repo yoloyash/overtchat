@@ -30,6 +30,7 @@ data/
 *.log
 *.png
 ROADMAP.md
+ROADMAP_MOBILE.md
 GEMINI.md
 CLAUDE.md
 AGENTS.md

@@ -20,7 +20,7 @@ export function MessageBubble({
         <View
           style={[
             styles.userBubble,
-            { backgroundColor: colors.secondary, borderRadius: radii.lg },
+            { backgroundColor: colors.secondary, borderRadius: radii.xxl },
           ]}
         >
           <Text
@@ -54,7 +54,11 @@ export function MessageBubble({
 const styles = StyleSheet.create({
   userRow: { alignItems: "flex-end" },
   assistantRow: { alignItems: "flex-start" },
-  userBubble: { maxWidth: "85%", paddingHorizontal: 14, paddingVertical: 10 },
+  userBubble: {
+    maxWidth: "85%",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
   text: { fontSize: 15, lineHeight: 22 },
   assistantText: { fontSize: 16, lineHeight: 24 },
 });
