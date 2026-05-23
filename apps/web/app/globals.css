@@ -57,78 +57,11 @@
 }
 
 /*
- * Olive palette (hue 120°). Neutrals carry a low-chroma olive tint; primary is
- * deep olive-near-black; focus ring is true olive. Destructive stays red.
- * Change the hue in one pass by find/replacing `120` in this block.
+ * Olive palette (hue 120°). Source of truth lives in
+ * `packages/shared/src/theme/tokens.ts`; the imported file is generated.
+ * Run `npm run theme:generate -w packages/shared` after edits.
  */
-:root {
-  --background: oklch(0.992 0.004 120);
-  --foreground: oklch(0.20 0.018 120);
-  --card: oklch(0.992 0.004 120);
-  --card-foreground: oklch(0.20 0.018 120);
-  --popover: oklch(0.998 0.003 120);
-  --popover-foreground: oklch(0.20 0.018 120);
-  --primary: oklch(0.30 0.035 120);
-  --primary-foreground: oklch(0.98 0.005 120);
-  --secondary: oklch(0.93 0.018 120);
-  --secondary-foreground: oklch(0.22 0.020 120);
-  --muted: oklch(0.96 0.010 120);
-  --muted-foreground: oklch(0.48 0.020 120);
-  --accent: oklch(0.91 0.022 120);
-  --accent-foreground: oklch(0.22 0.020 120);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.89 0.014 120);
-  --input: oklch(0.89 0.014 120);
-  --ring: oklch(0.55 0.10 120);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.975 0.008 120);
-  --sidebar-foreground: oklch(0.22 0.018 120);
-  --sidebar-primary: oklch(0.30 0.035 120);
-  --sidebar-primary-foreground: oklch(0.98 0.005 120);
-  --sidebar-accent: oklch(0.91 0.022 120);
-  --sidebar-accent-foreground: oklch(0.22 0.020 120);
-  --sidebar-border: oklch(0.89 0.014 120);
-  --sidebar-ring: oklch(0.55 0.10 120);
-}
-
-.dark {
-  --background: oklch(0.17 0.014 120);
-  --foreground: oklch(0.96 0.005 120);
-  --card: oklch(0.22 0.018 120);
-  --card-foreground: oklch(0.96 0.005 120);
-  --popover: oklch(0.22 0.018 120);
-  --popover-foreground: oklch(0.96 0.005 120);
-  --primary: oklch(0.88 0.020 120);
-  --primary-foreground: oklch(0.22 0.020 120);
-  --secondary: oklch(0.30 0.025 120);
-  --secondary-foreground: oklch(0.96 0.005 120);
-  --muted: oklch(0.26 0.018 120);
-  --muted-foreground: oklch(0.68 0.020 120);
-  --accent: oklch(0.32 0.030 120);
-  --accent-foreground: oklch(0.96 0.005 120);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.60 0.09 120);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.22 0.018 120);
-  --sidebar-foreground: oklch(0.96 0.005 120);
-  --sidebar-primary: oklch(0.60 0.09 120);
-  --sidebar-primary-foreground: oklch(0.16 0.014 120);
-  --sidebar-accent: oklch(0.30 0.025 120);
-  --sidebar-accent-foreground: oklch(0.96 0.005 120);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.60 0.09 120);
-}
+@import "@overtchat/shared/theme.css";
 
 @layer base {
   * {

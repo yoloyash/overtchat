@@ -33,7 +33,7 @@ ROADMAP.md
 GEMINI.md
 CLAUDE.md
 AGENTS.md
-scripts/
+/scripts/
 
 # debug
 npm-debug.log*
