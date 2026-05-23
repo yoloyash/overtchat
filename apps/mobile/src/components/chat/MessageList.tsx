@@ -10,7 +10,7 @@ export function MessageList({
   status,
   error,
   editingId,
-  onLongPress,
+  onStartEdit,
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
@@ -20,7 +20,7 @@ export function MessageList({
   status: ChatStatus;
   error: Error | undefined;
   editingId: string | null;
-  onLongPress: (id: string) => void;
+  onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string) => void;
   onRegenerate: (id: string) => void;
@@ -51,7 +51,7 @@ export function MessageList({
             streaming={streaming && isLast}
             isLast={isLast}
             editing={editingId === m.id}
-            onLongPress={onLongPress}
+            onStartEdit={onStartEdit}
             onCancelEdit={onCancelEdit}
             onSaveEdit={onSaveEdit}
             onRegenerate={onRegenerate}

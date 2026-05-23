@@ -1,6 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import { Feather } from "@expo/vector-icons";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import SyntaxHighlighter from "react-native-syntax-highlighter";
 import { atomDark, vs } from "react-syntax-highlighter/styles/prism";
@@ -15,12 +15,20 @@ export function CodeBlock({
 }) {
   const { colors, fonts, radii, scheme } = useTheme();
   const [copied, setCopied] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lang = language.trim();
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   async function copy() {
     await Clipboard.setStringAsync(code);
     setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1200);
   }
 
   const containerStyle = {

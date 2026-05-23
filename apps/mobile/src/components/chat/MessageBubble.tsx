@@ -1,12 +1,13 @@
 import type { UIMessage } from "ai";
 import * as Clipboard from "expo-clipboard";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
+import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { ThinkingBlock } from "./ThinkingBlock";
 
 export function MessageBubble({
@@ -14,7 +15,7 @@ export function MessageBubble({
   streaming,
   isLast,
   editing,
-  onLongPress,
+  onStartEdit,
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
@@ -23,15 +24,31 @@ export function MessageBubble({
   streaming: boolean;
   isLast: boolean;
   editing: boolean;
-  onLongPress: (id: string) => void;
+  onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string) => void;
   onRegenerate: (id: string) => void;
 }) {
   const { colors, radii, fonts } = useTheme();
   const [copied, setCopied] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const anchorRef = useRef<View>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
 
   const text = textOf(message);
+
+  function copyText(t: string) {
+    Clipboard.setStringAsync(t).catch(() => {});
+    setCopied(true);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setCopied(false), 1200);
+  }
 
   if (message.role === "user") {
     if (editing) {
@@ -44,112 +61,123 @@ export function MessageBubble({
       );
     }
     if (!text) return null;
+
+    const actions: MessageAction[] = streaming ? [] : ["copy", "edit"];
+
+    function onMenuSelect(action: MessageAction) {
+      if (action === "copy") copyText(text);
+      else if (action === "edit") onStartEdit(message.id);
+    }
+
     return (
       <View style={styles.userRow}>
-        <Pressable
-          onLongPress={() => onLongPress(message.id)}
-          delayLongPress={300}
-          style={({ pressed }) => [
-            styles.userBubble,
-            {
-              backgroundColor: colors.secondary,
-              borderRadius: radii.xxl,
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.userText,
-              { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+        <View ref={anchorRef} collapsable={false}>
+          <Pressable
+            onLongPress={() => actions.length > 0 && setMenuOpen(true)}
+            delayLongPress={300}
+            style={({ pressed }) => [
+              styles.userBubble,
+              {
+                backgroundColor: colors.secondary,
+                borderRadius: radii.xxl,
+                opacity: pressed ? 0.9 : 1,
+              },
             ]}
-            selectable
           >
-            {text}
-          </Text>
-        </Pressable>
+            <Text
+              style={[
+                styles.userText,
+                { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+              ]}
+              selectable
+            >
+              {text}
+            </Text>
+          </Pressable>
+        </View>
+        <MessageMenu
+          from={anchorRef}
+          visible={menuOpen}
+          actions={actions}
+          placement="top"
+          onSelect={onMenuSelect}
+          onClose={() => setMenuOpen(false)}
+        />
       </View>
     );
   }
 
-  const textPartIndices: number[] = [];
-  message.parts.forEach((p, i) => {
-    if (p.type === "text") textPartIndices.push(i);
-  });
-  const lastTextIndex = textPartIndices[textPartIndices.length - 1];
-  const hasAnyText = lastTextIndex !== undefined;
+  const hasAnyText = message.parts.some((p) => p.type === "text");
   const showActions = !streaming && hasAnyText && isLast;
+  const assistantActions: MessageAction[] =
+    !streaming && hasAnyText
+      ? isLast
+        ? ["copy", "regenerate"]
+        : ["copy"]
+      : [];
 
-  function copyAssistant(t: string) {
-    return () => {
-      Clipboard.setStringAsync(t).catch(() => {});
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    };
+  function onAssistantMenuSelect(action: MessageAction) {
+    if (action === "copy") copyText(text);
+    else if (action === "regenerate") onRegenerate(message.id);
   }
 
   return (
-    <Pressable
-      onLongPress={() => hasAnyText && onLongPress(message.id)}
-      delayLongPress={300}
-      style={styles.assistantRow}
-    >
-      {message.parts.map((part, i) => {
-        if (part.type === "reasoning") {
-          const isLastPart = i === message.parts.length - 1;
-          const active = streaming && part.state !== "done" && isLastPart;
-          return (
-            <ThinkingBlock
-              key={`r-${i}`}
-              content={part.text}
-              active={active}
-            />
-          );
+    <View ref={anchorRef} collapsable={false} style={styles.assistantRow}>
+      <Pressable
+        onLongPress={() =>
+          assistantActions.length > 0 && setMenuOpen(true)
         }
-        if (part.type === "text") {
-          const isLastText = i === lastTextIndex;
-          const isStreamingPart = streaming && isLastText;
-          if (isStreamingPart) {
+        delayLongPress={300}
+        style={styles.assistantInner}
+      >
+        {message.parts.map((part, i) => {
+          if (part.type === "reasoning") {
+            const isLastPart = i === message.parts.length - 1;
+            const active = streaming && part.state !== "done" && isLastPart;
             return (
-              <Text
-                key={`t-${i}`}
-                style={[
-                  styles.streamingText,
-                  { color: colors.foreground, fontFamily: fonts.sansRegular },
-                ]}
-                selectable
-              >
-                {part.text}
-                <Text style={{ color: colors.mutedForeground }}>▍</Text>
-              </Text>
+              <ThinkingBlock
+                key={`r-${i}`}
+                content={part.text}
+                active={active}
+              />
             );
           }
-          return <MarkdownBody key={`t-${i}`} text={part.text} />;
-        }
-        return null;
-      })}
-      {streaming && !hasAnyText ? (
-        <Text style={{ color: colors.mutedForeground }}>▍</Text>
-      ) : null}
-      {showActions ? (
-        <MessageActions
-          copied={copied}
-          onCopy={copyAssistant(text)}
-          onRegenerate={() => onRegenerate(message.id)}
-        />
-      ) : null}
-    </Pressable>
+          if (part.type === "text") {
+            return <MarkdownBody key={`t-${i}`} text={part.text} />;
+          }
+          return null;
+        })}
+        {streaming && !hasAnyText ? (
+          <Text style={{ color: colors.mutedForeground }}>▍</Text>
+        ) : null}
+        {showActions ? (
+          <MessageActions
+            copied={copied}
+            onCopy={() => copyText(text)}
+            onRegenerate={() => onRegenerate(message.id)}
+          />
+        ) : null}
+      </Pressable>
+      <MessageMenu
+        from={anchorRef}
+        visible={menuOpen}
+        actions={assistantActions}
+        placement="bottom"
+        onSelect={onAssistantMenuSelect}
+        onClose={() => setMenuOpen(false)}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   userRow: { alignItems: "flex-end" },
-  assistantRow: { alignItems: "stretch", gap: 4 },
+  assistantRow: { alignItems: "stretch" },
+  assistantInner: { gap: 4 },
   userBubble: {
     maxWidth: "85%",
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
   userText: { fontSize: 15, lineHeight: 22 },
-  streamingText: { fontSize: 16, lineHeight: 24 },
 });
