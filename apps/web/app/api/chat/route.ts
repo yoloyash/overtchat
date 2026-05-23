@@ -1,10 +1,7 @@
-import {
-  convertToModelMessages,
-  streamText,
-  stepCountIs,
-  type UIMessage,
-} from "ai";
+import { convertToModelMessages, streamText, stepCountIs } from "ai";
+import type { ChatRequestBody } from "@overtchat/shared";
 import { webTools, WEB_SEARCH_CITATION_PROMPT } from "@/lib/tools";
+import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
 import {
   appendMessage,
@@ -29,20 +26,13 @@ interface MessageStats {
   finishReason?: string;
 }
 
-interface Body {
-  messages: UIMessage[];
-  modelConfigId: string;
-  searchEnabled?: boolean;
-  chatId: string;
-  projectId?: string | null;
-  trigger?: "submit-message" | "regenerate-message";
-  messageId?: string;
-  temporary?: boolean;
+export function OPTIONS(req: Request) {
+  return preflight(req);
 }
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return new Response("Unauthorized", { status: 401 });
+  if (!session) return withCors(req, new Response("Unauthorized", { status: 401 }));
   const userId = session.user.id;
 
   const {
@@ -54,21 +44,21 @@ export async function POST(req: Request) {
     trigger,
     messageId,
     temporary,
-  } = (await req.json()) as Body;
+  } = (await req.json()) as ChatRequestBody;
 
-  if (!modelConfigId) return new Response("Missing modelConfigId", { status: 400 });
-  if (!messages.length) return new Response("No messages", { status: 400 });
-  if (!chatId) return new Response("Missing chatId", { status: 400 });
+  if (!modelConfigId) return withCors(req, new Response("Missing modelConfigId", { status: 400 }));
+  if (!messages.length) return withCors(req, new Response("No messages", { status: 400 }));
+  if (!chatId) return withCors(req, new Response("Missing chatId", { status: 400 }));
 
   const modelConfig = await getModelConfig(modelConfigId);
-  if (!modelConfig) return new Response("Model config not found", { status: 404 });
+  if (!modelConfig) return withCors(req, new Response("Model config not found", { status: 404 }));
 
   let resolvedProjectId: string | null;
   if (temporary) {
     resolvedProjectId = projectId ?? null;
   } else {
     const chat = await ensureChat(chatId, userId, projectId ?? null);
-    if (!chat) return new Response("Not found", { status: 404 });
+    if (!chat) return withCors(req, new Response("Not found", { status: 404 }));
     resolvedProjectId = chat.projectId;
   }
 
@@ -138,6 +128,7 @@ export async function POST(req: Request) {
     sendReasoning: true,
     originalMessages: messages,
     generateMessageId: () => crypto.randomUUID(),
+    headers: corsHeaders(req),
     messageMetadata: ({ part }) => {
       if (part.type !== "finish") return undefined;
 

@@ -18,6 +18,8 @@
     "@ai-sdk/openai-compatible": "^2.0.47",
     "@ai-sdk/react": "^3.0.178",
     "@base-ui/react": "^1.4.1",
+    "@better-auth/expo": "^1.6.11",
+    "@overtchat/shared": "*",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",

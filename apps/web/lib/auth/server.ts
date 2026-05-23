@@ -1,14 +1,19 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { admin } from "better-auth/plugins";
+import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
 import { APIError } from "better-auth/api";
 import { count } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 
+const mobileOrigins =
+  process.env.MOBILE_DEV_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
+  trustedOrigins: ["overtchat://", ...mobileOrigins],
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
@@ -16,6 +21,7 @@ export const auth = betterAuth({
   },
   plugins: [
     admin({ defaultRole: "user", adminRole: "admin" }),
+    expo(),
     nextCookies(),
   ],
   databaseHooks: {

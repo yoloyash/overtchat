@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "overtchat",
+    "slug": "overtchat",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "overtchat",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.overtchat.mobile"
+    },
+    "android": {
+      "package": "com.overtchat.mobile",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

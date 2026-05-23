@@ -7,6 +7,7 @@ import {
 } from "@/lib/db/modelConfigs";
 import { ModelConfigSchema, type PublicModelConfig } from "@/lib/config";
 import { PRESETS, presetFor } from "@/lib/providers/meta";
+import { preflight, withCors } from "@/lib/cors";
 
 function toPublic(row: ModelConfigRow): PublicModelConfig {
   return {
@@ -18,9 +19,13 @@ function toPublic(row: ModelConfigRow): PublicModelConfig {
   };
 }
 
+export function OPTIONS(req: Request) {
+  return preflight(req);
+}
+
 export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return new Response("Unauthorized", { status: 401 });
+  if (!session) return withCors(req, new Response("Unauthorized", { status: 401 }));
 
   const url = new URL(req.url);
   const wantAdmin = url.searchParams.get("admin") === "1";
@@ -28,13 +33,16 @@ export async function GET(req: Request) {
 
   if (wantAdmin) {
     if (session.user.role !== "admin") {
-      return new Response("Forbidden", { status: 403 });
+      return withCors(req, new Response("Forbidden", { status: 403 }));
     }
-    return Response.json({ modelConfigs: rows.map(toAdminModelConfig) });
+    return withCors(req, Response.json({ modelConfigs: rows.map(toAdminModelConfig) }));
   }
-  return Response.json({
-    modelConfigs: rows.filter((r) => r.enabled).map(toPublic),
-  });
+  return withCors(
+    req,
+    Response.json({
+      modelConfigs: rows.filter((r) => r.enabled).map(toPublic),
+    }),
+  );
 }
 
 export async function POST(req: Request) {

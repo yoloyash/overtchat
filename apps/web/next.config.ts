@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/*": ["./drizzle/**/*"],
   },
+  transpilePackages: ["@overtchat/shared"],
 };
 
 export default nextConfig;
