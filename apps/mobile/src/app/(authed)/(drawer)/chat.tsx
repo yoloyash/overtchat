@@ -1,12 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import * as Clipboard from "expo-clipboard";
 import * as Crypto from "expo-crypto";
 import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -16,8 +18,10 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Composer } from "@/components/chat/Composer";
+import { MessageActionSheet, type MessageAction } from "@/components/chat/MessageActionSheet";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
+import { textOf } from "@/lib/chat/text";
 import { authFetch, getApiBase } from "@/lib/api";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
@@ -70,7 +74,7 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
 
   const initialMessages = activeChatId ? hydration?.messages : undefined;
 
-  const { messages, sendMessage, status, stop, error } = useChat({
+  const { messages, sendMessage, regenerate, status, stop, error } = useChat({
     transport,
     messages: initialMessages,
   });
@@ -138,8 +142,57 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     };
   }
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [actionSheetFor, setActionSheetFor] = useState<string | null>(null);
+
   function handleSubmit(text: string) {
+    Keyboard.dismiss();
     sendMessage({ text }, { body: requestBody() });
+  }
+
+  function handleRegenerate(messageId: string) {
+    if (streaming || !configured) return;
+    regenerate({ messageId, body: requestBody() });
+  }
+
+  function handleSaveEdit(messageId: string, text: string) {
+    setEditingId(null);
+    if (streaming || !configured) return;
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    Keyboard.dismiss();
+    sendMessage({ text: trimmed, messageId }, { body: requestBody() });
+  }
+
+  function handleLongPress(id: string) {
+    if (streaming) return;
+    setActionSheetFor(id);
+  }
+
+  const sheetMessage = actionSheetFor
+    ? messages.find((m) => m.id === actionSheetFor) ?? null
+    : null;
+  const sheetIsLast =
+    sheetMessage != null && messages.at(-1)?.id === sheetMessage.id;
+  const sheetActions: MessageAction[] = sheetMessage
+    ? sheetMessage.role === "user"
+      ? ["copy", "edit"]
+      : sheetIsLast
+        ? ["copy", "regenerate"]
+        : ["copy"]
+    : [];
+
+  function handleSheetSelect(action: MessageAction) {
+    if (!sheetMessage) return;
+    const id = sheetMessage.id;
+    const text = textOf(sheetMessage);
+    if (action === "copy") {
+      Clipboard.setStringAsync(text).catch(() => {});
+    } else if (action === "edit") {
+      setEditingId(id);
+    } else if (action === "regenerate") {
+      handleRegenerate(id);
+    }
   }
 
   return (
@@ -149,7 +202,8 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     >
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding"
+        keyboardVerticalOffset={insets.bottom}
       >
         {loadingHistory ? (
           <View style={styles.empty}>
@@ -196,6 +250,11 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
             streaming={streaming}
             status={status}
             error={error}
+            editingId={editingId}
+            onLongPress={handleLongPress}
+            onCancelEdit={() => setEditingId(null)}
+            onSaveEdit={handleSaveEdit}
+            onRegenerate={handleRegenerate}
           />
         )}
 
@@ -220,6 +279,13 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
         selectedId={selectedId}
         onSelect={setSelectedId}
         onClose={() => setPickerOpen(false)}
+      />
+
+      <MessageActionSheet
+        visible={actionSheetFor != null && sheetActions.length > 0}
+        actions={sheetActions}
+        onSelect={handleSheetSelect}
+        onClose={() => setActionSheetFor(null)}
       />
     </SafeAreaView>
   );

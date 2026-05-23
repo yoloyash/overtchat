@@ -4,6 +4,9 @@ import {
   Fraunces_600SemiBold,
 } from "@expo-google-fonts/fraunces";
 import {
+  GeistMono_400Regular,
+} from "@expo-google-fonts/geist-mono";
+import {
   PlusJakartaSans_400Regular,
   PlusJakartaSans_500Medium,
   PlusJakartaSans_600SemiBold,
@@ -31,6 +34,7 @@ export default function RootLayout() {
     PlusJakartaSans_500Medium,
     PlusJakartaSans_600SemiBold,
     Fraunces_600SemiBold,
+    GeistMono_400Regular,
   });
 
   useEffect(() => {

@@ -161,6 +161,7 @@ export const mobileFonts = {
   sansMedium: "PlusJakartaSans_500Medium",
   sansSemiBold: "PlusJakartaSans_600SemiBold",
   serifSemiBold: "Fraunces_600SemiBold",
+  mono: "GeistMono_400Regular",
 } as const;
 
 /** @deprecated kept for API stability — prefer `webFonts` or `mobileFonts`. */

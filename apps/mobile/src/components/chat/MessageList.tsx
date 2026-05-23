@@ -9,18 +9,28 @@ export function MessageList({
   streaming,
   status,
   error,
+  editingId,
+  onLongPress,
+  onCancelEdit,
+  onSaveEdit,
+  onRegenerate,
 }: {
   messages: UIMessage[];
   streaming: boolean;
   status: ChatStatus;
   error: Error | undefined;
+  editingId: string | null;
+  onLongPress: (id: string) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (id: string, text: string) => void;
+  onRegenerate: (id: string) => void;
 }) {
   const { colors, fonts } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
-  }, [messages, status]);
+  }, [messages, status, editingId]);
 
   const lastIsUser = messages.at(-1)?.role === "user";
 
@@ -30,14 +40,24 @@ export function MessageList({
       style={styles.scroll}
       contentContainerStyle={styles.content}
       keyboardDismissMode="interactive"
+      keyboardShouldPersistTaps="handled"
     >
-      {messages.map((m, i) => (
-        <MessageBubble
-          key={m.id}
-          message={m}
-          streaming={streaming && i === messages.length - 1}
-        />
-      ))}
+      {messages.map((m, i) => {
+        const isLast = i === messages.length - 1;
+        return (
+          <MessageBubble
+            key={m.id}
+            message={m}
+            streaming={streaming && isLast}
+            isLast={isLast}
+            editing={editingId === m.id}
+            onLongPress={onLongPress}
+            onCancelEdit={onCancelEdit}
+            onSaveEdit={onSaveEdit}
+            onRegenerate={onRegenerate}
+          />
+        );
+      })}
       {!error && status === "submitted" && lastIsUser && (
         <Text
           style={[
