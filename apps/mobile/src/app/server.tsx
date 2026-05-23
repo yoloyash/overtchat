@@ -11,6 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { PingResponse } from "@overtchat/shared";
+import { resetAuthClient } from "@/lib/auth/client";
+import { getServerUrl, setServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
 const DEFAULT_URL = "http://10.0.0.200:4717";
@@ -26,7 +28,7 @@ function normalizeUrl(raw: string): string {
 
 export default function ServerScreen() {
   const { colors, radii, fonts } = useTheme();
-  const [url, setUrl] = useState(DEFAULT_URL);
+  const [url, setUrl] = useState(() => getServerUrl() ?? DEFAULT_URL);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
 
   async function connect() {
@@ -48,6 +50,8 @@ export default function ServerScreen() {
         setStatus({ kind: "error", message: "That doesn't look like an overtchat server." });
         return;
       }
+      setServerUrl(target);
+      resetAuthClient();
       setStatus({ kind: "idle" });
       router.push("/login");
     } catch (err) {

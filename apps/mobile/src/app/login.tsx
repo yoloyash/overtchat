@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -9,12 +10,33 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { getAuthClient } from "@/lib/auth/client";
 import { useTheme } from "@/lib/theme";
 
 export default function LoginScreen() {
   const { colors, radii, fonts } = useTheme();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  async function onSubmit() {
+    if (submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const { error } = await getAuthClient().signIn.email({ email, password });
+      if (error) {
+        setError(error.message ?? "Login failed");
+        return;
+      }
+      router.replace("/home");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <SafeAreaView style={[styles.root, { backgroundColor: colors.background }]}>
@@ -71,6 +93,7 @@ export default function LoginScreen() {
                   autoCorrect={false}
                   keyboardType="email-address"
                   textContentType="emailAddress"
+                  editable={!submitting}
                   style={[
                     styles.input,
                     {
@@ -96,6 +119,7 @@ export default function LoginScreen() {
                   autoCorrect={false}
                   secureTextEntry
                   textContentType="password"
+                  editable={!submitting}
                   style={[
                     styles.input,
                     {
@@ -109,15 +133,24 @@ export default function LoginScreen() {
               </View>
             </View>
 
+            {error !== "" && (
+              <Text
+                style={[styles.error, { color: colors.destructive, fontFamily: fonts.sansRegular }]}
+              >
+                {error}
+              </Text>
+            )}
+
             <Pressable
               accessibilityRole="button"
-              disabled
-              style={[
+              disabled={submitting}
+              onPress={onSubmit}
+              style={({ pressed }) => [
                 styles.cta,
                 {
                   backgroundColor: colors.primary,
                   borderRadius: radii.md,
-                  opacity: 0.5,
+                  opacity: pressed || submitting ? 0.85 : 1,
                 },
               ]}
             >
@@ -127,7 +160,7 @@ export default function LoginScreen() {
                   { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                Sign in
+                {submitting ? "Signing in…" : "Sign in"}
               </Text>
             </Pressable>
           </View>
@@ -153,6 +186,7 @@ const styles = StyleSheet.create({
   field: { gap: 6 },
   label: { fontSize: 14 },
   input: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  error: { fontSize: 14 },
   cta: { paddingVertical: 12, alignItems: "center", justifyContent: "center" },
   ctaText: { fontSize: 15 },
 });
