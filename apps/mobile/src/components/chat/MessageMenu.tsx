@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import type { Component, RefObject } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Popover, { PopoverPlacement } from "react-native-popover-view";
@@ -57,6 +58,7 @@ export function MessageMenu({
             <Pressable
               key={a}
               onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
                 onClose();
                 onSelect(a);
               }}

@@ -1,5 +1,6 @@
 import type { UIMessage } from "ai";
 import * as Clipboard from "expo-clipboard";
+import * as Haptics from "expo-haptics";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { textOf } from "@/lib/chat/text";
@@ -69,11 +70,17 @@ export function MessageBubble({
       else if (action === "edit") onStartEdit(message.id);
     }
 
+    function openUserMenu() {
+      if (actions.length === 0) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+      setMenuOpen(true);
+    }
+
     return (
       <View style={styles.userRow}>
         <View ref={anchorRef} collapsable={false}>
           <Pressable
-            onLongPress={() => actions.length > 0 && setMenuOpen(true)}
+            onLongPress={openUserMenu}
             delayLongPress={300}
             style={({ pressed }) => [
               styles.userBubble,
@@ -121,12 +128,16 @@ export function MessageBubble({
     else if (action === "regenerate") onRegenerate(message.id);
   }
 
+  function openAssistantMenu() {
+    if (assistantActions.length === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setMenuOpen(true);
+  }
+
   return (
     <View ref={anchorRef} collapsable={false} style={styles.assistantRow}>
       <Pressable
-        onLongPress={() =>
-          assistantActions.length > 0 && setMenuOpen(true)
-        }
+        onLongPress={openAssistantMenu}
         delayLongPress={300}
         style={styles.assistantInner}
       >

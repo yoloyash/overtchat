@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import { useTheme } from "@/lib/theme";
@@ -20,6 +21,7 @@ export function Composer({
   function submit() {
     const text = input.trim();
     if (!text || streaming || !configured) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     onSubmit(text);
     setInput("");
   }

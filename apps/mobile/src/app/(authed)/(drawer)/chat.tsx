@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import * as Burnt from "burnt";
 import * as Crypto from "expo-crypto";
 import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -47,7 +49,7 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     useChatMessages(activeChatId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<BottomSheetModal>(null);
 
   useEffect(() => {
     if (!models?.length) return;
@@ -89,7 +91,7 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     navigation.setOptions({
       headerTitle: () => (
         <Pressable
-          onPress={() => setPickerOpen(true)}
+          onPress={() => pickerRef.current?.present()}
           disabled={modelsPending}
           style={styles.headerTitle}
         >
@@ -139,6 +141,18 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
   }
 
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  const lastErrorRef = useRef<Error | undefined>(undefined);
+  useEffect(() => {
+    if (error && error !== lastErrorRef.current) {
+      Burnt.toast({
+        title: "Chat error",
+        message: error.message || "Something went wrong.",
+        preset: "error",
+      });
+    }
+    lastErrorRef.current = error;
+  }, [error]);
 
   function handleSubmit(text: string) {
     Keyboard.dismiss();
@@ -238,11 +252,10 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
       </KeyboardAvoidingView>
 
       <ModelPickerSheet
-        visible={pickerOpen}
+        ref={pickerRef}
         models={models ?? []}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        onClose={() => setPickerOpen(false)}
       />
     </SafeAreaView>
   );

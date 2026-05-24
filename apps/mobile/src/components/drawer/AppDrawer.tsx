@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import { FlashList } from "@shopify/flash-list";
+import * as Burnt from "burnt";
 import { router } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/build/react-navigation/drawer";
+import { useEffect, useMemo, useRef } from "react";
 import {
   ActivityIndicator,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -12,9 +14,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
 import { useChatSession } from "@/lib/chat/session";
-import { groupByDate } from "@/lib/dateGroups";
+import { groupByDate, type DateBucket } from "@/lib/dateGroups";
 import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useTheme } from "@/lib/theme";
+
+type ListEntry =
+  | { kind: "header"; key: string; label: DateBucket }
+  | { kind: "row"; key: string; item: ChatListItem };
 
 function initialsOf(name: string | null | undefined, email: string | null | undefined): string {
   const source = (name && name.trim()) || (email && email.trim()) || "?";
@@ -26,13 +32,36 @@ function initialsOf(name: string | null | undefined, email: string | null | unde
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { colors, radii, fonts } = useTheme();
   const { activeChatId, setActiveChatId, bumpNewChat } = useChatSession();
-  const { data: chats, isPending, error } = useChats();
+  const { data: chats, isPending, isFetching, error, refetch } = useChats();
   const session = getAuthClient().useSession();
   const user = session.data?.user as
     | { name?: string | null; email?: string | null }
     | undefined;
 
-  const groups = chats ? groupByDate(chats) : [];
+  const wasFetching = useRef(false);
+  useEffect(() => {
+    if (wasFetching.current && !isFetching && error) {
+      Burnt.toast({
+        title: "Couldn't refresh chats",
+        message: error instanceof Error ? error.message : undefined,
+        preset: "error",
+      });
+    }
+    wasFetching.current = isFetching;
+  }, [isFetching, error]);
+
+  const entries = useMemo<ListEntry[]>(() => {
+    if (!chats) return [];
+    const groups = groupByDate(chats);
+    const out: ListEntry[] = [];
+    for (const g of groups) {
+      out.push({ kind: "header", key: `h-${g.label}`, label: g.label });
+      for (const item of g.items) {
+        out.push({ kind: "row", key: item.id, item });
+      }
+    }
+    return out;
+  }, [chats]);
 
   function onTapChat(item: ChatListItem) {
     setActiveChatId(item.id);
@@ -73,11 +102,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-      <ScrollView
-        style={styles.list}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-      >
+      <View style={styles.list}>
         {isPending ? (
           <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
         ) : error ? (
@@ -89,7 +114,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           >
             Couldn't load chats
           </Text>
-        ) : groups.length === 0 ? (
+        ) : entries.length === 0 ? (
           <Text
             style={[
               styles.empty,
@@ -99,55 +124,68 @@ export function AppDrawer(props: DrawerContentComponentProps) {
             No conversations yet
           </Text>
         ) : (
-          groups.map((g) => (
-            <View key={g.label}>
-              <Text
-                style={[
-                  styles.groupLabel,
-                  { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
-                ]}
-              >
-                {g.label}
-              </Text>
-              {g.items.map((item) => {
-                const isActive = item.id === activeChatId;
+          <FlashList<ListEntry>
+            data={entries}
+            keyExtractor={(e) => e.key}
+            getItemType={(e) => e.kind}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            refreshing={isFetching && !isPending}
+            onRefresh={() => {
+              refetch();
+            }}
+            renderItem={({ item: entry }) => {
+              if (entry.kind === "header") {
                 return (
-                  <Pressable
-                    key={item.id}
-                    onPress={() => onTapChat(item)}
-                    style={({ pressed }) => [
-                      styles.row,
+                  <Text
+                    style={[
+                      styles.groupLabel,
                       {
-                        backgroundColor: isActive
-                          ? colors.accent
-                          : pressed
-                            ? colors.muted
-                            : "transparent",
-                        borderRadius: radii.md,
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansMedium,
                       },
                     ]}
                   >
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.rowText,
-                        {
-                          color: isActive
-                            ? colors.accentForeground
-                            : colors.foreground,
-                          fontFamily: fonts.sansRegular,
-                        },
-                      ]}
-                    >
-                      {item.title?.trim() || "Untitled"}
-                    </Text>
-                  </Pressable>
+                    {entry.label}
+                  </Text>
                 );
-              })}
-            </View>
-          ))
+              }
+              const isActive = entry.item.id === activeChatId;
+              return (
+                <Pressable
+                  onPress={() => onTapChat(entry.item)}
+                  style={({ pressed }) => [
+                    styles.row,
+                    {
+                      backgroundColor: isActive
+                        ? colors.accent
+                        : pressed
+                          ? colors.muted
+                          : "transparent",
+                      borderRadius: radii.md,
+                    },
+                  ]}
+                >
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.rowText,
+                      {
+                        color: isActive
+                          ? colors.accentForeground
+                          : colors.foreground,
+                        fontFamily: fonts.sansRegular,
+                      },
+                    ]}
+                  >
+                    {entry.item.title?.trim() || "Untitled"}
+                  </Text>
+                </Pressable>
+              );
+            }}
+          />
         )}
-      </ScrollView>
+      </View>
 
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
         <View
