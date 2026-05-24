@@ -1,4 +1,4 @@
-import type { UIMessage } from "ai";
+import type { FileUIPart, UIMessage } from "ai";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import type { FetchUrlPart, WebSearchPart } from "@overtchat/shared";
 import { buildSourceLookup } from "@/lib/chat/citations";
 import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
+import { AttachmentChip } from "./AttachmentChip";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
@@ -54,7 +55,10 @@ export function MessageBubble({
   }
 
   if (message.role === "user") {
-    if (!text && !editing) return null;
+    const fileParts = message.parts.filter(
+      (p): p is FileUIPart => p.type === "file",
+    );
+    if (!text && fileParts.length === 0 && !editing) return null;
 
     const actions: MessageAction[] = streaming ? [] : ["copy", "edit"];
 
@@ -71,6 +75,13 @@ export function MessageBubble({
 
     return (
       <View style={styles.userRow}>
+        {fileParts.length > 0 && !editing ? (
+          <View style={styles.attachmentsRow}>
+            {fileParts.map((part, i) => (
+              <AttachmentChip key={`${part.url}-${i}`} attachment={part} />
+            ))}
+          </View>
+        ) : null}
         <View ref={anchorRef} collapsable={false}>
           {editing ? (
             <EditBubble
@@ -78,7 +89,7 @@ export function MessageBubble({
               onCancel={onCancelEdit}
               onSave={(next) => onSaveEdit(message.id, next)}
             />
-          ) : (
+          ) : text ? (
             <Pressable
               onLongPress={openUserMenu}
               delayLongPress={300}
@@ -101,7 +112,7 @@ export function MessageBubble({
                 {text}
               </Text>
             </Pressable>
-          )}
+          ) : null}
         </View>
         <MessageMenu
           from={anchorRef}
@@ -197,9 +208,16 @@ export function MessageBubble({
 }
 
 const styles = StyleSheet.create({
-  userRow: { alignItems: "flex-end" },
+  userRow: { alignItems: "flex-end", gap: 6 },
   assistantRow: { alignItems: "stretch" },
   assistantInner: { gap: 4 },
+  attachmentsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 6,
+    maxWidth: "85%",
+  },
   userBubble: {
     maxWidth: "85%",
     paddingHorizontal: 16,

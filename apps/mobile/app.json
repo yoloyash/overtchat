@@ -17,7 +17,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow overtchat to access your photos so you can attach them to chats.",
+          "cameraPermission": "Allow overtchat to use your camera so you can attach photos to chats."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

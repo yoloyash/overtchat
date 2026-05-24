@@ -2,8 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
 import { useHeaderHeight } from "expo-router/react-navigation";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -25,6 +27,7 @@ import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
+import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -173,9 +176,82 @@ function ChatSurface({
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
 
+  const {
+    attachments,
+    attachmentMeta,
+    uploading,
+    error: uploadError,
+    addFiles,
+    remove: removeAttachment,
+    clear: clearAttachments,
+    dismissError: dismissUploadError,
+  } = useAttachments();
+
   const onNewChat = useCallback(() => {
     startNewChat();
   }, [startNewChat]);
+
+  const pickFromCamera = useCallback(async () => {
+    addSheetRef.current?.dismiss();
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      toastError("Camera permission required");
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.9,
+    });
+    if (result.canceled) return;
+    void addFiles(result.assets.map(assetToPickedFile));
+  }, [addFiles]);
+
+  const pickFromPhotos = useCallback(async () => {
+    addSheetRef.current?.dismiss();
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      toastError("Photo library permission required");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.9,
+    });
+    if (result.canceled) return;
+    void addFiles(result.assets.map(assetToPickedFile));
+  }, [addFiles]);
+
+  const pickFromFiles = useCallback(async () => {
+    addSheetRef.current?.dismiss();
+    const result = await DocumentPicker.getDocumentAsync({
+      multiple: true,
+      copyToCacheDirectory: true,
+      type: [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.ms-excel",
+        "text/*",
+      ],
+    });
+    if (result.canceled) return;
+    const picked: PickedFile[] = result.assets.map((a) => ({
+      uri: a.uri,
+      name: a.name ?? "file",
+      type: a.mimeType ?? "application/octet-stream",
+    }));
+    void addFiles(picked);
+  }, [addFiles]);
+
+  const onPickTool = useCallback(
+    (tool: "camera" | "photos" | "files") => {
+      if (tool === "camera") void pickFromCamera();
+      else if (tool === "photos") void pickFromPhotos();
+      else void pickFromFiles();
+    },
+    [pickFromCamera, pickFromPhotos, pickFromFiles],
+  );
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -288,7 +364,7 @@ function ChatSurface({
     });
   }
 
-  function handleSubmit(text: string) {
+  function handleSubmit(text: string, files: FileUIPart[]) {
     Keyboard.dismiss();
     const wasNew = isNewRef.current;
     if (wasNew) {
@@ -304,9 +380,10 @@ function ChatSurface({
         if (prev.some((c) => c.id === chatId)) return prev;
         return [next, ...prev];
       });
-      void requestTitle(text);
+      if (text) void requestTitle(text);
     }
-    sendMessage({ text }, { body: requestBody() });
+    sendMessage({ text, files }, { body: requestBody() });
+    clearAttachments();
   }
 
   function handleRegenerate(messageId: string) {
@@ -390,11 +467,17 @@ function ChatSurface({
           configured={configured}
           streaming={streaming}
           searchEnabled={searchEnabled}
+          attachments={attachments}
+          attachmentMeta={attachmentMeta}
+          uploading={uploading}
+          uploadError={uploadError}
           onDisableSearch={() => setSearchEnabled(false)}
           onOpenAddSheet={() => {
             Keyboard.dismiss();
             addSheetRef.current?.present();
           }}
+          onRemoveAttachment={removeAttachment}
+          onDismissUploadError={dismissUploadError}
           onSubmit={handleSubmit}
           onStop={stop}
         />
@@ -411,6 +494,7 @@ function ChatSurface({
         ref={addSheetRef}
         searchEnabled={searchEnabled}
         onToggleSearch={(next) => setSearchEnabled(next)}
+        onPickTool={onPickTool}
       />
     </KeyboardAvoidingView>
   );
@@ -451,3 +535,12 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
 });
+
+function assetToPickedFile(asset: ImagePicker.ImagePickerAsset): PickedFile {
+  const filename =
+    asset.fileName ?? asset.uri.split("/").pop() ?? `image-${Date.now()}.jpg`;
+  const type =
+    asset.mimeType ??
+    (filename.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
+  return { uri: asset.uri, name: filename, type };
+}
