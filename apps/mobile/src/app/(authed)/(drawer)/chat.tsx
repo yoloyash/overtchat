@@ -159,11 +159,16 @@ function ChatSurface({
         api: `${baseURL}/api/chat`,
         fetch: ((input: Parameters<typeof expoFetch>[0], init?: Parameters<typeof expoFetch>[1]) =>
           authFetch(input, init)) as unknown as typeof globalThis.fetch,
+        prepareSendMessagesRequest: ({ messages, body, trigger, messageId }) => ({
+          body: { ...body, messages, trigger, messageId },
+        }),
       }),
     [baseURL],
   );
 
   const { messages, setMessages, sendMessage, regenerate, status, stop, error } = useChat({
+    id: chatId,
+    resume: !isNew,
     transport,
     messages: initialMessages,
     onFinish: () => {
@@ -171,6 +176,13 @@ function ChatSurface({
       qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
     },
   });
+
+  const handleStop = useCallback(() => {
+    stop();
+    void authFetch(`${baseURL}/api/chat/${chatId}/stream/cancel`, {
+      method: "POST",
+    });
+  }, [stop, baseURL, chatId]);
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
@@ -479,7 +491,7 @@ function ChatSurface({
           onRemoveAttachment={removeAttachment}
           onDismissUploadError={dismissUploadError}
           onSubmit={handleSubmit}
-          onStop={stop}
+          onStop={handleStop}
         />
       </View>
 

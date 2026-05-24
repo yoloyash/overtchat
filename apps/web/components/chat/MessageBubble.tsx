@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
 import { Streamdown } from "streamdown";
 import {
@@ -380,7 +381,7 @@ function CopyButton({ text }: { text: string }) {
         )
       }
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
+        void clipboardWriteText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         });

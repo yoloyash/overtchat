@@ -7,6 +7,8 @@ import {
   appendMessage,
   deleteMessagesFrom,
   ensureChat,
+  getActiveStreamId,
+  setActiveStreamId,
   touchChat,
 } from "@/lib/db/chats";
 import { inlineUploads } from "@/lib/db/uploads";
@@ -14,6 +16,8 @@ import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
 import { buildRuntimeContext } from "@/lib/runtime-context";
+import * as cancelRegistry from "@/lib/streams/cancel-registry";
+import { streamContext } from "@/lib/streams/context";
 
 export const maxDuration = 300;
 
@@ -60,6 +64,19 @@ export async function POST(req: Request) {
     const chat = await ensureChat(chatId, userId, projectId ?? null);
     if (!chat) return withCors(req, new Response("Not found", { status: 404 }));
     resolvedProjectId = chat.projectId;
+
+    const prior = await getActiveStreamId(chatId);
+    if (prior) {
+      if (cancelRegistry.has(prior)) {
+        return withCors(
+          req,
+          new Response("Stream already in progress for this chat", {
+            status: 409,
+          }),
+        );
+      }
+      await setActiveStreamId(chatId, null);
+    }
   }
 
   const project = resolvedProjectId
@@ -101,6 +118,11 @@ export async function POST(req: Request) {
   ].filter((s): s is string => Boolean(s && s.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
 
+  const streamId = crypto.randomUUID();
+  const controller = temporary ? null : new AbortController();
+  if (controller) cancelRegistry.register(streamId, controller);
+  const abortSignal = controller?.signal ?? req.signal;
+
   const result = streamText({
     model,
     system,
@@ -111,7 +133,7 @@ export async function POST(req: Request) {
       ? async ({ stepNumber }) =>
           stepNumber === 0 ? { toolChoice: "required" } : {}
       : undefined,
-    abortSignal: req.signal,
+    abortSignal,
     providerOptions,
     onChunk: ({ chunk }) => {
       if (
@@ -131,6 +153,12 @@ export async function POST(req: Request) {
     originalMessages: messages,
     generateMessageId: () => crypto.randomUUID(),
     headers: streamHeaders,
+    consumeSseStream: temporary
+      ? undefined
+      : async ({ stream }) => {
+          await streamContext.createNewResumableStream(streamId, () => stream);
+          await setActiveStreamId(chatId, streamId);
+        },
     messageMetadata: ({ part }) => {
       if (part.type !== "finish") return undefined;
 
@@ -154,19 +182,23 @@ export async function POST(req: Request) {
 
       return { stats };
     },
-    onFinish: async ({ responseMessage, isAborted }) => {
-      if (isAborted) return;
+    onFinish: async ({ responseMessage }) => {
       if (temporary) return;
       try {
-        await appendMessage(
-          chatId,
-          "assistant",
-          responseMessage.parts,
-          responseMessage.id,
-        );
-        await touchChat(chatId);
+        if (responseMessage.parts.length > 0) {
+          await appendMessage(
+            chatId,
+            "assistant",
+            responseMessage.parts,
+            responseMessage.id,
+          );
+          await touchChat(chatId);
+        }
+        await setActiveStreamId(chatId, null);
       } catch (err) {
         console.error("[persist-assistant]", err);
+      } finally {
+        cancelRegistry.unregister(streamId);
       }
     },
   });

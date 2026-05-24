@@ -94,6 +94,27 @@ export async function touchChat(id: string): Promise<void> {
   await db.update(chats).set({ updatedAt: new Date() }).where(eq(chats.id, id));
 }
 
+export async function getActiveStreamId(
+  chatId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ activeStreamId: chats.activeStreamId })
+    .from(chats)
+    .where(eq(chats.id, chatId))
+    .limit(1);
+  return row?.activeStreamId ?? null;
+}
+
+export async function setActiveStreamId(
+  chatId: string,
+  streamId: string | null,
+): Promise<void> {
+  await db
+    .update(chats)
+    .set({ activeStreamId: streamId })
+    .where(eq(chats.id, chatId));
+}
+
 export async function appendMessage(
   chatId: string,
   role: "user" | "assistant" | "system",

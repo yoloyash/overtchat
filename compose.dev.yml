@@ -19,3 +19,7 @@ services:
   stt-gpu:
     ports:
       - "127.0.0.1:${STT_PORT:-5092}:5092"
+
+  redis:
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"

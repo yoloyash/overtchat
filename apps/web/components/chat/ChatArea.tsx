@@ -66,7 +66,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const isNewRef = useRef(isNew ?? false);
 
   const [transport] = useState(
-    () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
+    () =>
+      new DefaultChatTransport<UIMessage>({
+        api: "/api/chat",
+        prepareSendMessagesRequest: ({ messages, body, trigger, messageId }) => ({
+          body: { ...body, messages, trigger, messageId },
+        }),
+      }),
   );
 
   const temporaryRef = useRef(false);
@@ -75,6 +81,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   }, [temporary]);
 
   const { messages, sendMessage, regenerate, status, stop, error } = useChat({
+    id: temporary ? undefined : chatId,
+    resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
     onFinish: ({ message }) => {
@@ -114,6 +122,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   });
 
   const streaming = status === "streaming" || status === "submitted";
+
+  function handleStop() {
+    stop();
+    if (!temporary) {
+      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" });
+    }
+  }
 
   function handleSubmit(text: string, attachments: FileUIPart[]) {
     const wasNew = isNewRef.current && !temporary;
@@ -181,7 +196,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       searchEnabled={searchEnabled}
       onToggleSearch={() => setSearchEnabled(!searchEnabled)}
       onSubmit={handleSubmit}
-      onStop={stop}
+      onStop={handleStop}
       isAdmin={isAdmin}
     />
   );

@@ -15,6 +15,13 @@
       "when": 1779355957251,
       "tag": "0001_lethal_pandemic",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1779617243898,
+      "tag": "0002_secret_mach_iv",
+      "breakpoints": true
     }
   ]
 }

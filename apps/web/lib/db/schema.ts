@@ -126,6 +126,7 @@ export const chats = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title"),
+    activeStreamId: text("active_stream_id"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
