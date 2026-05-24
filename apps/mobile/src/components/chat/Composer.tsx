@@ -27,18 +27,18 @@ export function Composer({
   function submit() {
     const text = input.trim();
     if (!text || streaming || !configured) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     onSubmit(text);
     setInput("");
   }
 
   function openAdd() {
-    Haptics.selectionAsync().catch(() => {});
+    Haptics.selectionAsync().catch(() => { });
     onOpenAddSheet();
   }
 
   function disableSearch() {
-    Haptics.selectionAsync().catch(() => {});
+    Haptics.selectionAsync().catch(() => { });
     onDisableSearch();
   }
 
@@ -74,7 +74,7 @@ export function Composer({
             >
               <Ionicons
                 name="globe-outline"
-                size={13}
+                size={14}
                 color={colors.foreground}
               />
               <Text
@@ -85,7 +85,7 @@ export function Composer({
               >
                 Search
               </Text>
-              <Ionicons name="close" size={13} color={colors.foreground} />
+              <Ionicons name="close" size={14} color={colors.foreground} />
             </Pressable>
           )}
         </View>
@@ -188,26 +188,27 @@ const styles = StyleSheet.create({
     paddingRight: 7,
     paddingVertical: 5,
   },
-  pillLabel: { fontSize: 12 },
+  pillLabel: { fontSize: 14 },
   inputRow: {
     flexDirection: "row",
     alignItems: "flex-end",
     gap: 6,
   },
   iconButton: {
-    width: 36,
-    height: 36,
+    width: 42,
+    height: 42,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
   },
   input: {
     flex: 1,
-    minHeight: 36,
-    maxHeight: 144,
+    minHeight: 42,
+    maxHeight: 162,
     fontSize: 16,
-    paddingHorizontal: 4,
-    paddingTop: 8,
-    paddingBottom: 8,
+    lineHeight: 22,
+    paddingHorizontal: 6,
+    paddingTop: 10,
+    paddingBottom: 10,
   },
 });

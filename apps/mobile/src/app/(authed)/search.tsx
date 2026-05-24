@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatsSearch } from "@/lib/queries/search";
 import { parseSnippet } from "@/lib/search/highlight";
-import { useTheme, type Theme } from "@/lib/theme";
+import { useTheme } from "@/lib/theme";
 
 function useDebounced<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -27,8 +27,7 @@ function useDebounced<T>(value: T, delayMs: number): T {
 }
 
 export default function SearchScreen() {
-  const theme = useTheme();
-  const { colors, radii, fonts } = theme;
+  const { colors, radii, fonts } = useTheme();
   const { setActiveChatId } = useChatSession();
   const [query, setQuery] = useState("");
   const debounced = useDebounced(query, 150);
@@ -73,113 +72,105 @@ export default function SearchScreen() {
         <View
           style={[
             styles.searchBar,
-            {
-              backgroundColor: colors.muted,
-              borderRadius: radii.md,
-            },
+            { backgroundColor: colors.muted, borderRadius: radii.md },
           ]}
         >
-          <Ionicons
-            name="search-outline"
-            size={18}
-            color={colors.mutedForeground}
-          />
-          <TextInput
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search chats…"
-            placeholderTextColor={colors.mutedForeground}
-            autoFocus
-            autoCorrect={false}
-            autoCapitalize="none"
-            returnKeyType="search"
-            style={[
-              styles.searchInput,
-              { color: colors.foreground, fontFamily: fonts.sansRegular },
-            ]}
-          />
-          {query.length > 0 && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Clear search"
-              onPress={() => setQuery("")}
-              hitSlop={8}
-            >
-              <Ionicons
-                name="close-circle"
-                size={18}
-                color={colors.mutedForeground}
-              />
-            </Pressable>
-          )}
-        </View>
-
-        <View style={styles.results}>
-          {!hasQuery ? (
-            <Text
-              style={[
-                styles.hint,
-                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-              ]}
-            >
-              {tooShort
-                ? "Type a few more characters."
-                : "Search across your chats by content or title."}
-            </Text>
-          ) : isFetching && hits.length === 0 ? (
-            <ActivityIndicator
+        <Ionicons
+          name="search-outline"
+          size={18}
+          color={colors.mutedForeground}
+        />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search chats…"
+          placeholderTextColor={colors.mutedForeground}
+          autoFocus
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          style={[
+            styles.searchInput,
+            { color: colors.foreground, fontFamily: fonts.sansRegular },
+          ]}
+        />
+        {query.length > 0 && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
+            onPress={() => setQuery("")}
+            hitSlop={8}
+          >
+            <Ionicons
+              name="close-circle"
+              size={18}
               color={colors.mutedForeground}
-              style={{ marginTop: 32 }}
             />
-          ) : error ? (
-            <Text
-              style={[
-                styles.hint,
-                {
-                  color: colors.destructive,
-                  fontFamily: fonts.sansRegular,
-                },
-              ]}
-            >
-              {error instanceof Error ? error.message : "Search failed"}
-            </Text>
-          ) : hits.length === 0 ? (
-            <Text
-              style={[
-                styles.hint,
-                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-              ]}
-            >
-              No chats match "{trimmed}".
-            </Text>
-          ) : (
-            <FlashList<SearchHit>
-              data={hits}
-              keyExtractor={(h) => `${h.chatId}-${h.messageId ?? "title"}`}
-              contentContainerStyle={styles.listContent}
-              keyboardDismissMode="on-drag"
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => (
-                <SearchRow hit={item} theme={theme} onPress={pickHit} />
-              )}
-            />
-          )}
-        </View>
-      </SafeAreaView>
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.results}>
+        {!hasQuery ? (
+          <Text
+            style={[
+              styles.hint,
+              { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            {tooShort
+              ? "Type a few more characters."
+              : "Search across your chats by content or title."}
+          </Text>
+        ) : isFetching && hits.length === 0 ? (
+          <ActivityIndicator
+            color={colors.mutedForeground}
+            style={{ marginTop: 32 }}
+          />
+        ) : error ? (
+          <Text
+            style={[
+              styles.hint,
+              { color: colors.destructive, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            {error instanceof Error ? error.message : "Search failed"}
+          </Text>
+        ) : hits.length === 0 ? (
+          <Text
+            style={[
+              styles.hint,
+              { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            No chats match "{trimmed}".
+          </Text>
+        ) : (
+          <FlashList<SearchHit>
+            data={hits}
+            keyExtractor={(h) => `${h.chatId}-${h.messageId ?? "title"}`}
+            contentContainerStyle={styles.listContent}
+            keyboardDismissMode="on-drag"
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <SearchRow hit={item} onPress={pickHit} />
+            )}
+          />
+        )}
+      </View>
+    </SafeAreaView>
     </>
   );
 }
 
 function SearchRow({
   hit,
-  theme,
   onPress,
 }: {
   hit: SearchHit;
-  theme: Theme;
   onPress: (hit: SearchHit) => void;
 }) {
-  const { colors, fonts, radii } = theme;
+  const { colors, fonts, radii } = useTheme();
   const segments = useMemo(
     () => (hit.snippet ? parseSnippet(hit.snippet) : []),
     [hit.snippet],
