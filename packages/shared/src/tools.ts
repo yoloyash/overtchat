@@ -43,3 +43,20 @@ export function cleanDomain(url: string): string {
     return url;
   }
 }
+
+/**
+ * Title-cased second-level-domain of a URL — for citation pills and the
+ * Sources footer. e.g. reddit.com → "Reddit", news.ycombinator.com →
+ * "Ycombinator". Falls back to the raw domain on parse error.
+ */
+export function faviconUrl(domain: string, size = 32): string {
+  return `https://www.google.com/s2/favicons?domain=${domain}&sz=${size}`;
+}
+
+export function brandName(url: string): string {
+  const domain = cleanDomain(url);
+  const parts = domain.split(".");
+  const sld = parts.length >= 2 ? parts[parts.length - 2] : domain;
+  if (!sld) return domain;
+  return sld.charAt(0).toUpperCase() + sld.slice(1);
+}

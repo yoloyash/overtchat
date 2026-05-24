@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import {
+  Image,
   LayoutAnimation,
   Linking,
   Pressable,
@@ -9,7 +10,12 @@ import {
   View,
 } from "react-native";
 import type { UIMessage } from "ai";
-import { cleanDomain, type WebSearchPart, type WebSearchResult } from "@overtchat/shared";
+import {
+  cleanDomain,
+  faviconUrl,
+  type WebSearchPart,
+  type WebSearchResult,
+} from "@overtchat/shared";
 import { useTheme } from "@/lib/theme";
 
 export function Sources({ message }: { message: UIMessage }) {
@@ -38,9 +44,30 @@ export function Sources({ message }: { message: UIMessage }) {
     setOpen((o) => !o);
   }
 
+  const previewSources = all.slice(0, 5);
+
   return (
     <View style={styles.wrap}>
       <Pressable onPress={toggle} hitSlop={6} style={styles.header}>
+        <View style={styles.faviconStack}>
+          {previewSources.map((r, i) => {
+            const domain = cleanDomain(r.link);
+            return (
+              <Image
+                key={r.link}
+                source={{ uri: faviconUrl(domain) }}
+                style={[
+                  styles.stackedFavicon,
+                  {
+                    backgroundColor: colors.background,
+                    borderColor: colors.background,
+                    marginLeft: i === 0 ? 0 : -6,
+                  },
+                ]}
+              />
+            );
+          })}
+        </View>
         <Text
           style={[
             styles.headerText,
@@ -87,15 +114,21 @@ export function Sources({ message }: { message: UIMessage }) {
                   >
                     {r.title}
                   </Text>
-                  <Text
-                    style={[
-                      styles.domain,
-                      { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {domain}
-                  </Text>
+                  <View style={styles.domainRow}>
+                    <Image
+                      source={{ uri: faviconUrl(domain) }}
+                      style={styles.rowFavicon}
+                    />
+                    <Text
+                      style={[
+                        styles.domain,
+                        { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {domain}
+                    </Text>
+                  </View>
                   {r.snippet ? (
                     <Text
                       style={[
@@ -127,11 +160,20 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   headerText: { fontSize: 12 },
+  faviconStack: { flexDirection: "row" },
+  stackedFavicon: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+  },
   list: { marginTop: 6, gap: 8 },
   row: { flexDirection: "row", gap: 6 },
   index: { width: 18, textAlign: "right", fontSize: 12, lineHeight: 18 },
   rowBody: { flex: 1, gap: 1 },
   title: { fontSize: 13 },
-  domain: { fontSize: 11 },
+  domainRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  rowFavicon: { width: 12, height: 12, borderRadius: 6 },
+  domain: { fontSize: 11, flexShrink: 1 },
   snippet: { fontSize: 12, lineHeight: 16, marginTop: 2 },
 });

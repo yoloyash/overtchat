@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import {
   STANDALONE_PATTERN,
-  cleanDomain,
+  brandName,
   stripCitationMarkers,
   type CitationRefType,
   type WebSearchPart,
@@ -57,8 +57,7 @@ export function applyCitationsToMarkdown(
       Number(indexStr),
     );
     if (source) {
-      const domain = cleanDomain(source.link);
-      out += ` [${domain}](${source.link}) `;
+      out += ` [${brandName(source.link)}](${source.link}) `;
       citationUrls.add(source.link);
     } else {
       // unknown source — drop the marker entirely
