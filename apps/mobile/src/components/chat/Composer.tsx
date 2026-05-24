@@ -8,14 +8,16 @@ export function Composer({
   configured,
   streaming,
   searchEnabled,
-  onToggleSearch,
+  onDisableSearch,
+  onOpenAddSheet,
   onSubmit,
   onStop,
 }: {
   configured: boolean;
   streaming: boolean;
   searchEnabled: boolean;
-  onToggleSearch: () => void;
+  onDisableSearch: () => void;
+  onOpenAddSheet: () => void;
   onSubmit: (text: string) => void;
   onStop: () => void;
 }) {
@@ -30,12 +32,18 @@ export function Composer({
     setInput("");
   }
 
-  function toggleSearch() {
+  function openAdd() {
     Haptics.selectionAsync().catch(() => {});
-    onToggleSearch();
+    onOpenAddSheet();
+  }
+
+  function disableSearch() {
+    Haptics.selectionAsync().catch(() => {});
+    onDisableSearch();
   }
 
   const canSend = input.trim().length > 0 && !streaming && configured;
+  const showPillsRow = searchEnabled;
 
   return (
     <View
@@ -48,64 +56,85 @@ export function Composer({
         },
       ]}
     >
-      <TextInput
-        value={input}
-        onChangeText={setInput}
-        editable={configured}
-        multiline
-        placeholder={
-          configured ? "Message…" : "No models available — ask an admin to add one"
-        }
-        placeholderTextColor={colors.mutedForeground}
-        style={[
-          styles.input,
-          { color: colors.foreground, fontFamily: fonts.sansRegular },
-        ]}
-      />
-      <View style={styles.actionRow}>
+      {showPillsRow && (
+        <View style={styles.pillsRow}>
+          {searchEnabled && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Disable web search"
+              onPress={disableSearch}
+              style={({ pressed }) => [
+                styles.pill,
+                {
+                  backgroundColor: colors.accent,
+                  borderRadius: radii.pill,
+                  opacity: pressed ? 0.8 : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name="globe-outline"
+                size={13}
+                color={colors.foreground}
+              />
+              <Text
+                style={[
+                  styles.pillLabel,
+                  { color: colors.foreground, fontFamily: fonts.sansMedium },
+                ]}
+              >
+                Search
+              </Text>
+              <Ionicons name="close" size={13} color={colors.foreground} />
+            </Pressable>
+          )}
+        </View>
+      )}
+
+      <View style={styles.inputRow}>
         <Pressable
           accessibilityRole="button"
-          accessibilityState={{ selected: searchEnabled }}
-          accessibilityLabel={searchEnabled ? "Disable web search" : "Enable web search"}
-          onPress={toggleSearch}
+          accessibilityLabel="Add to chat"
+          onPress={openAdd}
           style={({ pressed }) => [
-            styles.searchToggle,
+            styles.iconButton,
             {
-              backgroundColor: searchEnabled ? colors.accent : "transparent",
-              borderColor: searchEnabled ? colors.accent : colors.border,
+              backgroundColor: "transparent",
+              borderColor: colors.border,
               borderRadius: radii.pill,
-              opacity: pressed ? 0.8 : 1,
+              opacity: pressed ? 0.7 : 1,
             },
           ]}
         >
-          <Ionicons
-            name="globe-outline"
-            size={14}
-            color={searchEnabled ? colors.foreground : colors.mutedForeground}
-          />
-          <Text
-            style={[
-              styles.searchLabel,
-              {
-                color: searchEnabled ? colors.foreground : colors.mutedForeground,
-                fontFamily: fonts.sansMedium,
-              },
-            ]}
-          >
-            Search
-          </Text>
+          <Ionicons name="add" size={20} color={colors.mutedForeground} />
         </Pressable>
-        <View style={styles.spacer} />
+
+        <TextInput
+          value={input}
+          onChangeText={setInput}
+          editable={configured}
+          multiline
+          placeholder={
+            configured ? "Message…" : "No models available — ask an admin to add one"
+          }
+          placeholderTextColor={colors.mutedForeground}
+          style={[
+            styles.input,
+            { color: colors.foreground, fontFamily: fonts.sansRegular },
+          ]}
+        />
+
         {streaming ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Stop generating"
             onPress={onStop}
             style={({ pressed }) => [
-              styles.send,
+              styles.iconButton,
               {
                 backgroundColor: colors.secondary,
                 borderRadius: radii.pill,
+                borderColor: "transparent",
                 opacity: pressed ? 0.85 : 1,
               },
             ]}
@@ -119,10 +148,11 @@ export function Composer({
             disabled={!canSend}
             onPress={submit}
             style={({ pressed }) => [
-              styles.send,
+              styles.iconButton,
               {
                 backgroundColor: colors.primary,
                 borderRadius: radii.pill,
+                borderColor: "transparent",
                 opacity: !canSend ? 0.4 : pressed ? 0.85 : 1,
               },
             ]}
@@ -138,39 +168,46 @@ export function Composer({
 const styles = StyleSheet.create({
   bar: {
     flexDirection: "column",
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingTop: 10,
-    paddingBottom: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     borderWidth: StyleSheet.hairlineWidth,
+    gap: 4,
   },
-  input: {
-    minHeight: 28,
-    maxHeight: 140,
-    fontSize: 16,
-    paddingVertical: 4,
-  },
-  actionRow: {
+  pillsRow: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
     gap: 6,
+    paddingHorizontal: 6,
+    paddingTop: 4,
   },
-  searchToggle: {
+  pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderWidth: StyleSheet.hairlineWidth,
+    paddingLeft: 9,
+    paddingRight: 7,
+    paddingVertical: 5,
   },
-  searchLabel: {
-    fontSize: 12,
+  pillLabel: { fontSize: 12 },
+  inputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
   },
-  spacer: { flex: 1 },
-  send: {
-    width: 32,
-    height: 32,
+  iconButton: {
+    width: 36,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  input: {
+    flex: 1,
+    minHeight: 36,
+    maxHeight: 144,
+    fontSize: 16,
+    paddingHorizontal: 4,
+    paddingTop: 8,
+    paddingBottom: 8,
   },
 });

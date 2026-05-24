@@ -21,6 +21,7 @@ import {
   useKeyboardState,
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
@@ -61,6 +62,7 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     false,
   );
   const pickerRef = useRef<BottomSheetModal>(null);
+  const addSheetRef = useRef<BottomSheetModal>(null);
 
   useEffect(() => {
     if (!models?.length) return;
@@ -254,7 +256,11 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
           configured={configured}
           streaming={streaming}
           searchEnabled={searchEnabled}
-          onToggleSearch={() => setSearchEnabled(!searchEnabled)}
+          onDisableSearch={() => setSearchEnabled(false)}
+          onOpenAddSheet={() => {
+            Keyboard.dismiss();
+            addSheetRef.current?.present();
+          }}
           onSubmit={handleSubmit}
           onStop={stop}
         />
@@ -265,6 +271,12 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
         models={models ?? []}
         selectedId={selectedId}
         onSelect={setSelectedId}
+      />
+
+      <AddToChatSheet
+        ref={addSheetRef}
+        searchEnabled={searchEnabled}
+        onToggleSearch={(next) => setSearchEnabled(next)}
       />
     </KeyboardAvoidingView>
   );
