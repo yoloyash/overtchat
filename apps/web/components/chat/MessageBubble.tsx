@@ -15,7 +15,10 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { humanMediaLabel } from "@/lib/chat/attachments";
-import { STREAMDOWN_PLUGINS } from "@/lib/chat/markdown";
+import {
+  STREAMDOWN_DEFAULT_REMARK_PLUGINS,
+  STREAMDOWN_PLUGINS,
+} from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
@@ -37,7 +40,10 @@ import { MediaIcon } from "./attachment-icons";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { StatsPopover } from "./StatsPopover";
 
-const CITATION_REMARK_PLUGINS = [unicodeCitation];
+const CITATION_REMARK_PLUGINS = [
+  ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
+  unicodeCitation,
+];
 const CITATION_ALLOWED_TAGS = {
   citation: ["turn", "reftype", "index", "citationid"],
   "composite-citation": ["citations", "citationid"],
@@ -412,4 +418,3 @@ function SpeakButton({
     />
   );
 }
-

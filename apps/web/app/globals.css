@@ -4,10 +4,10 @@
 @import "streamdown/styles.css";
 @import "katex/dist/katex.min.css";
 
-@source "../node_modules/streamdown/dist/*.js";
-@source "../node_modules/@streamdown/code/dist/*.js";
-@source "../node_modules/@streamdown/math/dist/*.js";
-@source "../node_modules/@streamdown/cjk/dist/*.js";
+@source "../../../node_modules/streamdown/dist/*.js";
+@source "../../../node_modules/@streamdown/code/dist/*.js";
+@source "../../../node_modules/@streamdown/math/dist/*.js";
+@source "../../../node_modules/@streamdown/cjk/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -95,4 +95,3 @@
   color: transparent;
   animation: text-shimmer 2.5s linear infinite;
 }
-
