@@ -7,6 +7,7 @@ import {
 import type { PublicModelConfig } from "@overtchat/shared";
 import { forwardRef, useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/lib/theme";
 
 export type ModelPickerSheetRef = BottomSheetModal;
@@ -20,6 +21,7 @@ export const ModelPickerSheet = forwardRef<
   }
 >(function ModelPickerSheet({ models, selectedId, onSelect }, ref) {
   const { colors, radii, fonts } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -45,7 +47,7 @@ export const ModelPickerSheet = forwardRef<
       }}
       handleIndicatorStyle={{ backgroundColor: colors.mutedForeground }}
     >
-      <BottomSheetView style={styles.body}>
+      <BottomSheetView style={[styles.body, { paddingBottom: 16 + insets.bottom }]}>
         <Text
           style={[
             styles.title,
@@ -118,7 +120,7 @@ export const ModelPickerSheet = forwardRef<
 });
 
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24 },
+  body: { paddingHorizontal: 16, paddingTop: 4 },
   title: { fontSize: 18, marginBottom: 8, paddingHorizontal: 8 },
   empty: { fontSize: 14, paddingHorizontal: 8, paddingVertical: 12 },
   list: { gap: 4 },

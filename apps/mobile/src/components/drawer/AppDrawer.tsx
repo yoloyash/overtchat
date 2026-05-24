@@ -38,17 +38,28 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     | { name?: string | null; email?: string | null }
     | undefined;
 
+  const userRefreshing = useRef(false);
   const wasFetching = useRef(false);
   useEffect(() => {
-    if (wasFetching.current && !isFetching && error) {
-      Burnt.toast({
-        title: "Couldn't refresh chats",
-        message: error instanceof Error ? error.message : undefined,
-        preset: "error",
-      });
+    if (wasFetching.current && !isFetching && userRefreshing.current) {
+      if (error) {
+        const detail = error instanceof Error ? error.message : null;
+        Burnt.toast({
+          title: detail
+            ? `Couldn't refresh chats — ${detail}`
+            : "Couldn't refresh chats",
+          preset: "error",
+        });
+      }
+      userRefreshing.current = false;
     }
     wasFetching.current = isFetching;
   }, [isFetching, error]);
+
+  function onPullToRefresh() {
+    userRefreshing.current = true;
+    refetch();
+  }
 
   const entries = useMemo<ListEntry[]>(() => {
     if (!chats) return [];
@@ -131,9 +142,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}
             refreshing={isFetching && !isPending}
-            onRefresh={() => {
-              refetch();
-            }}
+            onRefresh={onPullToRefresh}
             renderItem={({ item: entry }) => {
               if (entry.kind === "header") {
                 return (
