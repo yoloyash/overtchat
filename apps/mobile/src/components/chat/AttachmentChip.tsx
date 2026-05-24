@@ -1,7 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { FileUIPart } from "ai";
 import { Image } from "expo-image";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ImageView from "react-native-image-viewing";
 import { getApiBase, getAuthCookie } from "@/lib/api";
 import {
   type AttachmentCategory,
@@ -52,17 +55,19 @@ export function AttachmentChip({
   onRemove?: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const insets = useSafeAreaInsets();
   const label = attachment.filename ?? "file";
   const cookie = getAuthCookie();
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (isImageAttachment(attachment, meta)) {
     const localUri = meta?.localUri;
     const source = localUri
       ? { uri: localUri }
       : {
-          uri: resolveUrl(attachment.url),
-          headers: cookie ? { Cookie: cookie } : undefined,
-        };
+        uri: resolveUrl(attachment.url),
+        headers: cookie ? { Cookie: cookie } : undefined,
+      };
     return (
       <View
         style={[
@@ -74,16 +79,54 @@ export function AttachmentChip({
           },
         ]}
       >
-        <Image
-          source={source}
-          style={styles.image}
-          contentFit="cover"
-          cachePolicy="memory-disk"
-          accessibilityLabel={label}
+        <Pressable
+          onPress={() => setPreviewOpen(true)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel={`Preview ${label}`}
+          style={({ pressed }) => [
+            styles.imagePressable,
+            { opacity: pressed ? 0.85 : 1 },
+          ]}
+        >
+          <Image
+            source={source}
+            style={styles.image}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            accessibilityLabel={label}
+          />
+        </Pressable>
+        {onRemove && <RemoveButton onPress={onRemove} label={label} />}
+        <ImageView
+          images={[source]}
+          imageIndex={0}
+          visible={previewOpen}
+          onRequestClose={() => setPreviewOpen(false)}
+          backgroundColor="rgba(0,0,0,0.95)"
+          swipeToCloseEnabled
+          doubleTapToZoomEnabled
+          HeaderComponent={() => (
+            <View
+              style={[
+                styles.viewerHeader,
+                { paddingTop: insets.top + 8, paddingRight: insets.right + 12 },
+              ]}
+            >
+              <Pressable
+                onPress={() => setPreviewOpen(false)}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Close preview"
+                style={({ pressed }) => [
+                  styles.viewerClose,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Ionicons name="close" size={22} color="#fff" />
+              </Pressable>
+            </View>
+          )}
         />
-        {onRemove && (
-          <RemoveButton onPress={onRemove} label={label} />
-        )}
       </View>
     );
   }
@@ -183,6 +226,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     position: "relative",
   },
+  imagePressable: { width: "100%", height: "100%" },
   image: { width: "100%", height: "100%" },
   docWrap: {
     flexDirection: "row",
@@ -213,5 +257,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  viewerHeader: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    paddingBottom: 8,
+  },
+  viewerClose: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
 });
