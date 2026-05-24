@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { FileUIPart } from "ai";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image } from "expo-image";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { getApiBase, getAuthCookie } from "@/lib/api";
 import {
   type AttachmentCategory,
@@ -55,6 +56,13 @@ export function AttachmentChip({
   const cookie = getAuthCookie();
 
   if (isImageAttachment(attachment, meta)) {
+    const localUri = meta?.localUri;
+    const source = localUri
+      ? { uri: localUri }
+      : {
+          uri: resolveUrl(attachment.url),
+          headers: cookie ? { Cookie: cookie } : undefined,
+        };
     return (
       <View
         style={[
@@ -67,11 +75,10 @@ export function AttachmentChip({
         ]}
       >
         <Image
-          source={{
-            uri: resolveUrl(attachment.url),
-            headers: cookie ? { Cookie: cookie } : undefined,
-          }}
+          source={source}
           style={styles.image}
+          contentFit="cover"
+          cachePolicy="memory-disk"
           accessibilityLabel={label}
         />
         {onRemove && (

@@ -1,5 +1,5 @@
 import type { FileUIPart } from "ai";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { uploadFile } from "@/lib/api";
 import type { AttachmentMeta } from "./attachments";
 
@@ -16,6 +16,16 @@ export function useAttachments() {
   >({});
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Persistent cache of upload-url -> local picker URI. Survives clear() so
+  // freshly-sent user message bubbles can keep rendering the local preview
+  // instead of round-tripping to the auth-gated server endpoint.
+  const localUriCacheRef = useRef<Record<string, string>>({});
+
+  const getLocalUri = useCallback(
+    (url: string) => localUriCacheRef.current[url],
+    [],
+  );
 
   const addFiles = useCallback(async (files: PickedFile[]) => {
     if (files.length === 0) return;
@@ -37,7 +47,9 @@ export function useAttachments() {
           size: json.size,
           pageCount: json.pageCount,
           truncated: json.truncated,
+          localUri: file.uri,
         };
+        localUriCacheRef.current[json.url] = file.uri;
       }
       setAttachments((prev) => [...prev, ...uploaded]);
       setAttachmentMeta((prev) => ({ ...prev, ...nextMeta }));
@@ -57,6 +69,7 @@ export function useAttachments() {
         delete next[removed.url];
         return next;
       });
+      delete localUriCacheRef.current[removed.url];
       return prev.filter((_, i) => i !== index);
     });
   }, []);
@@ -78,5 +91,6 @@ export function useAttachments() {
     remove,
     clear,
     dismissError,
+    getLocalUri,
   };
 }

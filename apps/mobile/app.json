@@ -24,7 +24,8 @@
           "photosPermission": "Allow overtchat to access your photos so you can attach them to chats.",
           "cameraPermission": "Allow overtchat to use your camera so you can attach photos to chats."
         }
-      ]
+      ],
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -7,6 +7,8 @@ export interface AttachmentMeta {
   size?: number;
   pageCount?: number | null;
   truncated?: boolean;
+  /** Local file URI from the picker; used for instant preview before/after upload. */
+  localUri?: string;
 }
 
 export function formatSize(bytes: number): string {
