@@ -28,6 +28,7 @@ import { authFetch, getApiBase } from "@/lib/api";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useSecureFlag } from "@/lib/useSecureFlag";
 import { useTheme } from "@/lib/theme";
 
 export default function ChatScreen() {
@@ -55,6 +56,10 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     useChatMessages(activeChatId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchEnabled, setSearchEnabled] = useSecureFlag(
+    "overtchat.searchEnabled",
+    false,
+  );
   const pickerRef = useRef<BottomSheetModal>(null);
 
   useEffect(() => {
@@ -140,6 +145,7 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
   function requestBody() {
     return {
       modelConfigId: selectedId,
+      searchEnabled,
       chatId,
       projectId: hydration?.projectId ?? null,
       temporary: false,
@@ -247,6 +253,8 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
         <Composer
           configured={configured}
           streaming={streaming}
+          searchEnabled={searchEnabled}
+          onToggleSearch={() => setSearchEnabled(!searchEnabled)}
           onSubmit={handleSubmit}
           onStop={stop}
         />

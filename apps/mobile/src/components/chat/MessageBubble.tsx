@@ -1,15 +1,19 @@
 import type { UIMessage } from "ai";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import type { FetchUrlPart, WebSearchPart } from "@overtchat/shared";
+import { buildSourceLookup } from "@/lib/chat/citations";
 import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
+import { Sources } from "./Sources";
 import { ThinkingBlock } from "./ThinkingBlock";
+import { ToolCall } from "./ToolCall";
 
 export function MessageBubble({
   message,
@@ -122,6 +126,7 @@ export function MessageBubble({
         ? ["copy", "regenerate"]
         : ["copy"]
       : [];
+  const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
 
   function onAssistantMenuSelect(action: MessageAction) {
     if (action === "copy") copyText(text);
@@ -154,10 +159,27 @@ export function MessageBubble({
             );
           }
           if (part.type === "text") {
-            return <MarkdownBody key={`t-${i}`} text={part.text} />;
+            return (
+              <MarkdownBody
+                key={`t-${i}`}
+                text={part.text}
+                sourceLookup={sourceLookup}
+              />
+            );
+          }
+          if (part.type === "tool-web_search") {
+            return (
+              <ToolCall key={`tc-${i}`} part={part as unknown as WebSearchPart} />
+            );
+          }
+          if (part.type === "tool-fetch_url") {
+            return (
+              <ToolCall key={`tc-${i}`} part={part as unknown as FetchUrlPart} />
+            );
           }
           return null;
         })}
+        {!streaming ? <Sources message={message} /> : null}
         {streaming && !hasAnyText ? (
           <Text style={{ color: colors.mutedForeground }}>▍</Text>
         ) : null}

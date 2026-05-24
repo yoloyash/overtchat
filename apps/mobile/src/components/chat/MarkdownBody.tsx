@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { Linking, StyleSheet } from "react-native";
+import { Linking, StyleSheet, Text } from "react-native";
 import Markdown, { type ASTNode, type RenderRules } from "react-native-markdown-display";
 import MarkdownIt from "markdown-it";
 import { useTheme } from "@/lib/theme";
+import { applyCitationsToMarkdown, type SourceLookup } from "@/lib/chat/citations";
 import { CodeBlock } from "./CodeBlock";
 
 type Variant = "body" | "thinking";
@@ -10,11 +11,19 @@ type Variant = "body" | "thinking";
 export function MarkdownBody({
   text,
   variant = "body",
+  sourceLookup,
 }: {
   text: string;
   variant?: Variant;
+  sourceLookup?: SourceLookup;
 }) {
   const { colors, fonts, radii } = useTheme();
+
+  const { rendered, citationUrls } = useMemo(() => {
+    if (!sourceLookup) return { rendered: text, citationUrls: new Set<string>() };
+    const result = applyCitationsToMarkdown(text, sourceLookup);
+    return { rendered: result.text, citationUrls: result.citationUrls };
+  }, [text, sourceLookup]);
 
   const styles = useMemo(
     () => buildStyles({ colors, fonts, radii, variant }),
@@ -42,8 +51,41 @@ export function MarkdownBody({
           language=""
         />
       ),
+      link: (node, children, _parent, ruleStyles, onLinkPress) => {
+        const href = (node as ASTNode & { attributes?: { href?: string } }).attributes
+          ?.href;
+        const isCitation = href ? citationUrls.has(href) : false;
+        if (isCitation) {
+          return (
+            <Text
+              key={node.key}
+              style={ruleStyles.citationPill}
+              onPress={() => {
+                if (!href) return;
+                if (onLinkPress?.(href) === false) return;
+                Linking.openURL(href).catch(() => {});
+              }}
+            >
+              {children}
+            </Text>
+          );
+        }
+        return (
+          <Text
+            key={node.key}
+            style={ruleStyles.link}
+            onPress={() => {
+              if (!href) return;
+              if (onLinkPress?.(href) === false) return;
+              Linking.openURL(href).catch(() => {});
+            }}
+          >
+            {children}
+          </Text>
+        );
+      },
     }),
-    [],
+    [citationUrls],
   );
 
   return (
@@ -56,7 +98,7 @@ export function MarkdownBody({
         return true;
       }}
     >
-      {text}
+      {rendered}
     </Markdown>
   );
 }
@@ -143,6 +185,16 @@ function buildStyles({
     strong: { fontFamily: fonts.sansSemiBold },
     em: { fontStyle: "italic" },
     link: { color: colors.primary, textDecorationLine: "underline" },
+    citationPill: {
+      color: colors.foreground,
+      backgroundColor: colors.muted,
+      fontFamily: fonts.sansMedium,
+      fontSize: baseSize - 3,
+      paddingHorizontal: 6,
+      paddingVertical: 1,
+      borderRadius: radii.pill,
+      overflow: "hidden",
+    },
     bullet_list: { marginVertical: 4 },
     ordered_list: { marginVertical: 4 },
     list_item: { marginVertical: 2 },

@@ -1,0 +1,137 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
+import {
+  LayoutAnimation,
+  Linking,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import type { UIMessage } from "ai";
+import { cleanDomain, type WebSearchPart, type WebSearchResult } from "@overtchat/shared";
+import { useTheme } from "@/lib/theme";
+
+export function Sources({ message }: { message: UIMessage }) {
+  const { colors, fonts } = useTheme();
+  const [open, setOpen] = useState(false);
+
+  const all: WebSearchResult[] = [];
+  const seen = new Set<string>();
+  for (const part of message.parts) {
+    const sp = part as unknown as WebSearchPart;
+    if (sp.type !== "tool-web_search") continue;
+    const results = sp.output;
+    if (!Array.isArray(results)) continue;
+    for (const r of results) {
+      if (seen.has(r.link)) continue;
+      seen.add(r.link);
+      all.push(r);
+    }
+  }
+  if (all.length === 0) return null;
+
+  function toggle() {
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(180, "easeInEaseOut", "opacity"),
+    );
+    setOpen((o) => !o);
+  }
+
+  return (
+    <View style={styles.wrap}>
+      <Pressable onPress={toggle} hitSlop={6} style={styles.header}>
+        <Text
+          style={[
+            styles.headerText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansSemiBold },
+          ]}
+        >
+          {all.length} {all.length === 1 ? "Source" : "Sources"}
+        </Text>
+        <Ionicons
+          name={open ? "chevron-down" : "chevron-forward"}
+          size={14}
+          color={colors.mutedForeground}
+        />
+      </Pressable>
+
+      {open && (
+        <View style={styles.list}>
+          {all.map((r, i) => {
+            const domain = cleanDomain(r.link);
+            return (
+              <Pressable
+                key={r.link}
+                onPress={() => Linking.openURL(r.link).catch(() => {})}
+                style={({ pressed }) => [
+                  styles.row,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.index,
+                    { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                  ]}
+                >
+                  {i + 1}.
+                </Text>
+                <View style={styles.rowBody}>
+                  <Text
+                    style={[
+                      styles.title,
+                      { color: colors.foreground, fontFamily: fonts.sansSemiBold },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {r.title}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.domain,
+                      { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {domain}
+                  </Text>
+                  {r.snippet ? (
+                    <Text
+                      style={[
+                        styles.snippet,
+                        { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {r.snippet}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { marginTop: 6 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+  },
+  headerText: { fontSize: 12 },
+  list: { marginTop: 6, gap: 8 },
+  row: { flexDirection: "row", gap: 6 },
+  index: { width: 18, textAlign: "right", fontSize: 12, lineHeight: 18 },
+  rowBody: { flex: 1, gap: 1 },
+  title: { fontSize: 13 },
+  domain: { fontSize: 11 },
+  snippet: { fontSize: 12, lineHeight: 16, marginTop: 2 },
+});
