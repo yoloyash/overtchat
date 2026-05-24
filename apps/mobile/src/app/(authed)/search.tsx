@@ -28,7 +28,7 @@ function useDebounced<T>(value: T, delayMs: number): T {
 
 export default function SearchScreen() {
   const { colors, radii, fonts } = useTheme();
-  const { setActiveChatId } = useChatSession();
+  const { openChat } = useChatSession();
   const [query, setQuery] = useState("");
   const debounced = useDebounced(query, 150);
 
@@ -39,7 +39,7 @@ export default function SearchScreen() {
   const hasQuery = trimmed.length >= 2;
 
   function pickHit(hit: SearchHit) {
-    setActiveChatId(hit.chatId);
+    openChat(hit.chatId);
     router.replace("/chat");
   }
 

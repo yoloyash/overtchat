@@ -41,7 +41,7 @@ function initialsOf(name: string | null | undefined, email: string | null | unde
 
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { colors, radii, fonts } = useTheme();
-  const { activeChatId, setActiveChatId, bumpNewChat } = useChatSession();
+  const { activeChatId, openChat: openSession, startNewChat: startSessionNewChat } = useChatSession();
   const { data: chats, isPending, isFetching, error, refetch } = useChats();
   const session = getAuthClient().useSession();
   const user = session.data?.user as
@@ -87,13 +87,12 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   }, [chats]);
 
   function openChat(item: ChatListItem) {
-    setActiveChatId(item.id);
+    openSession(item.id);
     props.navigation.closeDrawer();
   }
 
   function startNewChat() {
-    setActiveChatId(null);
-    bumpNewChat();
+    startSessionNewChat();
     props.navigation.closeDrawer();
   }
 
@@ -123,8 +122,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     deleteMutation.mutate(target.id, {
       onSuccess: () => {
         if (activeChatId === target.id) {
-          setActiveChatId(null);
-          bumpNewChat();
+          startSessionNewChat();
         }
         toastSuccess("Chat deleted");
       },

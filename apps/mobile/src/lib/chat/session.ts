@@ -1,10 +1,10 @@
 import { createContext, useContext } from "react";
 
 export type ChatSession = {
-  activeChatId: string | null;
-  setActiveChatId: (id: string | null) => void;
-  newChatKey: number;
-  bumpNewChat: () => void;
+  activeChatId: string;
+  isNewChat: boolean;
+  startNewChat: () => void;
+  openChat: (id: string) => void;
 };
 
 export const ChatSessionContext = createContext<ChatSession | null>(null);

@@ -1,20 +1,34 @@
+import * as Crypto from "expo-crypto";
 import { Stack } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
 import { ChatSessionContext, type ChatSession } from "@/lib/chat/session";
 import { useTheme } from "@/lib/theme";
 
+type State = { id: string; isNew: boolean };
+
 export default function AuthedLayout() {
   const { colors } = useTheme();
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
-  const [newChatKey, setNewChatKey] = useState(0);
+  const [state, setState] = useState<State>(() => ({
+    id: Crypto.randomUUID(),
+    isNew: true,
+  }));
 
-  const bumpNewChat = useCallback(() => {
-    setNewChatKey((k) => k + 1);
+  const startNewChat = useCallback(() => {
+    setState({ id: Crypto.randomUUID(), isNew: true });
+  }, []);
+
+  const openChat = useCallback((id: string) => {
+    setState({ id, isNew: false });
   }, []);
 
   const session = useMemo<ChatSession>(
-    () => ({ activeChatId, setActiveChatId, newChatKey, bumpNewChat }),
-    [activeChatId, newChatKey, bumpNewChat],
+    () => ({
+      activeChatId: state.id,
+      isNewChat: state.isNew,
+      startNewChat,
+      openChat,
+    }),
+    [state, startNewChat, openChat],
   );
 
   return (

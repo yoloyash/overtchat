@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { useQueryClient } from "@tanstack/react-query";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import * as Crypto from "expo-crypto";
 import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -28,38 +28,112 @@ import { authFetch, getApiBase } from "@/lib/api";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import type { ChatListItem } from "@/lib/queries/chats";
+import { queryKeys } from "@/lib/queries/keys";
 import { useSecureFlag } from "@/lib/useSecureFlag";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 
 export default function ChatScreen() {
-  const { activeChatId, newChatKey } = useChatSession();
+  const { activeChatId, isNewChat } = useChatSession();
   return (
-    <ChatSurface
-      key={activeChatId ?? `new-${newChatKey}`}
-      activeChatId={activeChatId}
+    <ChatGate
+      key={activeChatId}
+      chatId={activeChatId}
+      isNew={isNewChat}
     />
   );
 }
 
-function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
+function ChatGate({ chatId, isNew }: { chatId: string; isNew: boolean }) {
+  const { colors, fonts } = useTheme();
+  const {
+    data: hydration,
+    isPending,
+    error,
+    refetch,
+  } = useChatMessages(isNew ? null : chatId);
+
+  if (!isNew && isPending) {
+    return (
+      <View style={[styles.gate, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.mutedForeground} />
+      </View>
+    );
+  }
+
+  if (!isNew && error) {
+    return (
+      <View style={[styles.gate, { backgroundColor: colors.background }]}>
+        <Text
+          style={[
+            styles.gateError,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {error.message || "Couldn't load chat"}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => refetch()}
+          style={({ pressed }) => [
+            styles.gateRetry,
+            {
+              backgroundColor: colors.primary,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.gateRetryText,
+              { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
+            ]}
+          >
+            Try again
+          </Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return (
+    <ChatSurface
+      chatId={chatId}
+      isNew={isNew}
+      initialMessages={hydration?.messages}
+      projectId={hydration?.projectId ?? null}
+    />
+  );
+}
+
+function ChatSurface({
+  chatId,
+  isNew,
+  initialMessages,
+  projectId,
+}: {
+  chatId: string;
+  isNew: boolean;
+  initialMessages: UIMessage[] | undefined;
+  projectId: string | null;
+}) {
   const { colors, fonts } = useTheme();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
-  const { setActiveChatId, bumpNewChat } = useChatSession();
+  const { startNewChat } = useChatSession();
+  const qc = useQueryClient();
   const baseURL = useMemo(() => getApiBase(), []);
 
   const { data: models, isPending: modelsPending, error: modelsError } =
     useModelConfigs();
   const {
-    data: hydration,
-    isPending: hydrationPending,
     isFetching: hydrationFetching,
     error: hydrationError,
     refetch: refetchHydration,
-  } = useChatMessages(activeChatId);
+  } = useChatMessages(isNew ? null : chatId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchEnabled, setSearchEnabled] = useSecureFlag(
@@ -76,8 +150,6 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     }
   }, [models, selectedId]);
 
-  const [chatId] = useState(() => activeChatId ?? Crypto.randomUUID());
-
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
@@ -88,22 +160,22 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
     [baseURL],
   );
 
-  const initialMessages = activeChatId ? hydration?.messages : undefined;
-
-  const { messages, sendMessage, regenerate, status, stop, error } = useChat({
+  const { messages, setMessages, sendMessage, regenerate, status, stop, error } = useChat({
     transport,
     messages: initialMessages,
+    onFinish: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.chats() });
+      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+    },
   });
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
-  const loadingHistory = !!activeChatId && hydrationPending;
 
   const onNewChat = useCallback(() => {
-    setActiveChatId(null);
-    bumpNewChat();
-  }, [setActiveChatId, bumpNewChat]);
+    startNewChat();
+  }, [startNewChat]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -154,9 +226,34 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
       modelConfigId: selectedId,
       searchEnabled,
       chatId,
-      projectId: hydration?.projectId ?? null,
+      projectId,
       temporary: false,
     };
+  }
+
+  const isNewRef = useRef(isNew);
+
+  async function requestTitle(userText: string) {
+    if (!selectedId) return;
+    try {
+      const r = await authFetch(`${baseURL}/api/chats/${chatId}/title`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelConfigId: selectedId,
+          userText,
+          projectId,
+        }),
+      });
+      if (!r.ok) return;
+      const { title } = (await r.json()) as { title: string };
+      if (!title) return;
+      qc.setQueryData<ChatListItem[]>(queryKeys.chats(), (prev) =>
+        prev?.map((c) => (c.id === chatId ? { ...c, title } : c)),
+      );
+    } catch {
+      // title generation is non-critical; silent failure matches web
+    }
   }
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -184,13 +281,31 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
   }, [hydrationFetching, hydrationError]);
 
   function onRefreshMessages() {
-    if (!activeChatId) return;
+    if (isNew) return;
     userRefreshingMessages.current = true;
-    refetchHydration();
+    refetchHydration().then((res) => {
+      if (res.data?.messages) setMessages(res.data.messages);
+    });
   }
 
   function handleSubmit(text: string) {
     Keyboard.dismiss();
+    const wasNew = isNewRef.current;
+    if (wasNew) {
+      isNewRef.current = false;
+      qc.setQueryData<ChatListItem[]>(queryKeys.chats(), (prev) => {
+        const next: ChatListItem = {
+          id: chatId,
+          title: null,
+          projectId,
+          updatedAt: Date.now(),
+        };
+        if (!prev) return [next];
+        if (prev.some((c) => c.id === chatId)) return prev;
+        return [next, ...prev];
+      });
+      void requestTitle(text);
+    }
     sendMessage({ text }, { body: requestBody() });
   }
 
@@ -214,11 +329,7 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
-      {loadingHistory ? (
-        <View style={styles.empty}>
-          <ActivityIndicator color={colors.mutedForeground} />
-        </View>
-      ) : messages.length === 0 ? (
+      {messages.length === 0 ? (
         <View style={styles.empty}>
           <Text
             style={[
@@ -260,8 +371,8 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
           status={status}
           error={error}
           editingId={editingId}
-          refreshing={!!activeChatId && hydrationFetching && !streaming}
-          onRefresh={activeChatId ? onRefreshMessages : undefined}
+          refreshing={!isNew && hydrationFetching && !streaming}
+          onRefresh={isNew ? undefined : onRefreshMessages}
           onStartEdit={(id) => !streaming && setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
@@ -311,6 +422,20 @@ const styles = StyleSheet.create({
   headerTitleText: { fontSize: 16, maxWidth: 220 },
   headerTitleCaret: { marginLeft: 4 },
   headerRight: { paddingHorizontal: 12 },
+  gate: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 16,
+  },
+  gateError: { fontSize: 14, textAlign: "center" },
+  gateRetry: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+  },
+  gateRetryText: { fontSize: 14 },
   empty: {
     flex: 1,
     alignItems: "center",
