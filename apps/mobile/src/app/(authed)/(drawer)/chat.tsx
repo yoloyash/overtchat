@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import * as Burnt from "burnt";
 import * as Crypto from "expo-crypto";
@@ -15,8 +16,11 @@ import {
   Text,
   View,
 } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  KeyboardAvoidingView,
+  useKeyboardState,
+} from "react-native-keyboard-controller";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
@@ -40,6 +44,8 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
   const { colors, fonts } = useTheme();
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const { setActiveChatId, bumpNewChat } = useChatSession();
   const baseURL = useMemo(() => getApiBase(), []);
 
@@ -174,82 +180,77 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
   }
 
   return (
-    <SafeAreaView
+    <KeyboardAvoidingView
       style={[styles.root, { backgroundColor: colors.background }]}
-      edges={["left", "right"]}
+      behavior="padding"
+      keyboardVerticalOffset={headerHeight}
     >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior="translate-with-padding"
-        keyboardVerticalOffset={insets.bottom}
-      >
-        {loadingHistory ? (
-          <View style={styles.empty}>
-            <ActivityIndicator color={colors.mutedForeground} />
-          </View>
-        ) : messages.length === 0 ? (
-          <View style={styles.empty}>
+      {loadingHistory ? (
+        <View style={styles.empty}>
+          <ActivityIndicator color={colors.mutedForeground} />
+        </View>
+      ) : messages.length === 0 ? (
+        <View style={styles.empty}>
+          <Text
+            style={[
+              styles.emptyTitle,
+              { color: colors.foreground, fontFamily: fonts.serifSemiBold },
+            ]}
+          >
+            {modelsError
+              ? "Couldn't load models"
+              : configured
+                ? "What can I help with?"
+                : "No models configured"}
+          </Text>
+          {!configured && !modelsError && (
             <Text
               style={[
-                styles.emptyTitle,
-                { color: colors.foreground, fontFamily: fonts.serifSemiBold },
+                styles.emptySub,
+                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
               ]}
             >
-              {modelsError
-                ? "Couldn't load models"
-                : configured
-                  ? "What can I help with?"
-                  : "No models configured"}
+              An admin needs to add one in Settings → Models on the web app.
             </Text>
-            {!configured && !modelsError && (
-              <Text
-                style={[
-                  styles.emptySub,
-                  { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-                ]}
-              >
-                An admin needs to add one in Settings → Models on the web app.
-              </Text>
-            )}
-            {modelsError && (
-              <Text
-                style={[
-                  styles.emptySub,
-                  { color: colors.destructive, fontFamily: fonts.sansRegular },
-                ]}
-              >
-                {modelsError.message}
-              </Text>
-            )}
-          </View>
-        ) : (
-          <MessageList
-            messages={messages}
-            streaming={streaming}
-            status={status}
-            error={error}
-            editingId={editingId}
-            onStartEdit={(id) => !streaming && setEditingId(id)}
-            onCancelEdit={() => setEditingId(null)}
-            onSaveEdit={handleSaveEdit}
-            onRegenerate={handleRegenerate}
-          />
-        )}
-
-        <View
-          style={[
-            styles.composerWrap,
-            { paddingBottom: 12 + insets.bottom },
-          ]}
-        >
-          <Composer
-            configured={configured}
-            streaming={streaming}
-            onSubmit={handleSubmit}
-            onStop={stop}
-          />
+          )}
+          {modelsError && (
+            <Text
+              style={[
+                styles.emptySub,
+                { color: colors.destructive, fontFamily: fonts.sansRegular },
+              ]}
+            >
+              {modelsError.message}
+            </Text>
+          )}
         </View>
-      </KeyboardAvoidingView>
+      ) : (
+        <MessageList
+          messages={messages}
+          streaming={streaming}
+          status={status}
+          error={error}
+          editingId={editingId}
+          onStartEdit={(id) => !streaming && setEditingId(id)}
+          onCancelEdit={() => setEditingId(null)}
+          onSaveEdit={handleSaveEdit}
+          onRegenerate={handleRegenerate}
+        />
+      )}
+
+      <View
+        style={[
+          styles.composerWrap,
+          { paddingBottom: keyboardVisible ? 8 : 12 + insets.bottom },
+        ]}
+      >
+        <Composer
+          configured={configured}
+          streaming={streaming}
+          onSubmit={handleSubmit}
+          onStop={stop}
+        />
+      </View>
 
       <ModelPickerSheet
         ref={pickerRef}
@@ -257,13 +258,12 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
         selectedId={selectedId}
         onSelect={setSelectedId}
       />
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  flex: { flex: 1 },
   headerTitle: { flexDirection: "row", alignItems: "center" },
   headerTitleText: { fontSize: 16, maxWidth: 220 },
   headerTitleCaret: { marginLeft: 4 },
