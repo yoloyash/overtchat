@@ -10,6 +10,7 @@ import {
   type AttachmentCategory,
   type AttachmentMeta,
   formatSize,
+  humanMediaLabel,
 } from "@/lib/chat/attachments";
 import { useTheme } from "@/lib/theme";
 
@@ -131,13 +132,15 @@ export function AttachmentChip({
     );
   }
 
-  const sub = [
-    meta?.pageCount ? `${meta.pageCount} pages` : null,
-    meta?.size != null ? formatSize(meta.size) : null,
-    meta?.truncated ? "truncated" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const sub =
+    [
+      humanMediaLabel(attachment.mediaType),
+      meta?.pageCount ? `${meta.pageCount} pages` : null,
+      meta?.size != null ? formatSize(meta.size) : null,
+      meta?.truncated ? "truncated" : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
   return (
     <View
@@ -147,7 +150,7 @@ export function AttachmentChip({
           borderColor: colors.border,
           backgroundColor: colors.muted,
           borderRadius: radii.md,
-          paddingRight: onRemove ? 30 : 12,
+          paddingRight: onRemove ? 30 : 14,
         },
       ]}
     >
@@ -159,7 +162,7 @@ export function AttachmentChip({
       >
         <Ionicons
           name={categoryIcon(meta?.category)}
-          size={16}
+          size={20}
           color={colors.mutedForeground}
         />
       </View>
@@ -231,22 +234,23 @@ const styles = StyleSheet.create({
   docWrap: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    paddingVertical: 8,
-    paddingLeft: 8,
-    maxWidth: 240,
+    gap: 10,
+    height: IMAGE_SIZE,
+    paddingLeft: 10,
+    paddingRight: 14,
+    width: 240,
     borderWidth: StyleSheet.hairlineWidth,
     position: "relative",
   },
   docIcon: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     alignItems: "center",
     justifyContent: "center",
   },
   docMeta: { flex: 1, minWidth: 0 },
-  docLabel: { fontSize: 12 },
-  docSub: { fontSize: 11, marginTop: 1 },
+  docLabel: { fontSize: 13 },
+  docSub: { fontSize: 11, marginTop: 2 },
   removeBtn: {
     position: "absolute",
     top: 4,
