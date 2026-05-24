@@ -3,7 +3,6 @@ import { useChat } from "@ai-sdk/react";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import * as Burnt from "burnt";
 import * as Crypto from "expo-crypto";
 import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
@@ -31,6 +30,7 @@ import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { useSecureFlag } from "@/lib/useSecureFlag";
 import { useTheme } from "@/lib/theme";
+import { toastError } from "@/lib/toast";
 
 export default function ChatScreen() {
   const { activeChatId, newChatKey } = useChatSession();
@@ -53,8 +53,13 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
 
   const { data: models, isPending: modelsPending, error: modelsError } =
     useModelConfigs();
-  const { data: hydration, isPending: hydrationPending } =
-    useChatMessages(activeChatId);
+  const {
+    data: hydration,
+    isPending: hydrationPending,
+    isFetching: hydrationFetching,
+    error: hydrationError,
+    refetch: refetchHydration,
+  } = useChatMessages(activeChatId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchEnabled, setSearchEnabled] = useSecureFlag(
@@ -159,14 +164,30 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
   const lastErrorRef = useRef<Error | undefined>(undefined);
   useEffect(() => {
     if (error && error !== lastErrorRef.current) {
-      Burnt.toast({
-        title: "Chat error",
-        message: error.message || "Something went wrong.",
-        preset: "error",
-      });
+      toastError("Chat error", error);
     }
     lastErrorRef.current = error;
   }, [error]);
+
+  const userRefreshingMessages = useRef(false);
+  const wasFetchingMessages = useRef(false);
+  useEffect(() => {
+    if (
+      wasFetchingMessages.current &&
+      !hydrationFetching &&
+      userRefreshingMessages.current
+    ) {
+      if (hydrationError) toastError("Couldn't refresh messages", hydrationError);
+      userRefreshingMessages.current = false;
+    }
+    wasFetchingMessages.current = hydrationFetching;
+  }, [hydrationFetching, hydrationError]);
+
+  function onRefreshMessages() {
+    if (!activeChatId) return;
+    userRefreshingMessages.current = true;
+    refetchHydration();
+  }
 
   function handleSubmit(text: string) {
     Keyboard.dismiss();
@@ -239,6 +260,8 @@ function ChatSurface({ activeChatId }: { activeChatId: string | null }) {
           status={status}
           error={error}
           editingId={editingId}
+          refreshing={!!activeChatId && hydrationFetching && !streaming}
+          onRefresh={activeChatId ? onRefreshMessages : undefined}
           onStartEdit={(id) => !streaming && setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}

@@ -29,6 +29,7 @@ export default function AuthedLayout() {
       >
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="search" />
       </Stack>
     </ChatSessionContext.Provider>
   );

@@ -1,6 +1,12 @@
 import type { ChatStatus, UIMessage } from "ai";
 import { useEffect, useRef } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useTheme } from "@/lib/theme";
 import { MessageBubble } from "./MessageBubble";
 
@@ -10,6 +16,8 @@ export function MessageList({
   status,
   error,
   editingId,
+  refreshing,
+  onRefresh,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -20,6 +28,8 @@ export function MessageList({
   status: ChatStatus;
   error: Error | undefined;
   editingId: string | null;
+  refreshing?: boolean;
+  onRefresh?: () => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string) => void;
@@ -41,6 +51,15 @@ export function MessageList({
       contentContainerStyle={styles.content}
       keyboardDismissMode="interactive"
       keyboardShouldPersistTaps="handled"
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl
+            refreshing={!!refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.mutedForeground}
+          />
+        ) : undefined
+      }
     >
       {messages.map((m, i) => {
         const isLast = i === messages.length - 1;
