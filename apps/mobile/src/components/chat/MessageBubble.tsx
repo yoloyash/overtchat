@@ -18,7 +18,6 @@ import { ToolCall } from "./ToolCall";
 export function MessageBubble({
   message,
   streaming,
-  isLast,
   editing,
   onStartEdit,
   onCancelEdit,
@@ -27,7 +26,6 @@ export function MessageBubble({
 }: {
   message: UIMessage;
   streaming: boolean;
-  isLast: boolean;
   editing: boolean;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
@@ -56,16 +54,7 @@ export function MessageBubble({
   }
 
   if (message.role === "user") {
-    if (editing) {
-      return (
-        <EditBubble
-          initialText={text}
-          onCancel={onCancelEdit}
-          onSave={(next) => onSaveEdit(message.id, next)}
-        />
-      );
-    }
-    if (!text) return null;
+    if (!text && !editing) return null;
 
     const actions: MessageAction[] = streaming ? [] : ["copy", "edit"];
 
@@ -83,28 +72,36 @@ export function MessageBubble({
     return (
       <View style={styles.userRow}>
         <View ref={anchorRef} collapsable={false}>
-          <Pressable
-            onLongPress={openUserMenu}
-            delayLongPress={300}
-            style={({ pressed }) => [
-              styles.userBubble,
-              {
-                backgroundColor: colors.secondary,
-                borderRadius: radii.xxl,
-                opacity: pressed ? 0.9 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.userText,
-                { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+          {editing ? (
+            <EditBubble
+              initialText={text}
+              onCancel={onCancelEdit}
+              onSave={(next) => onSaveEdit(message.id, next)}
+            />
+          ) : (
+            <Pressable
+              onLongPress={openUserMenu}
+              delayLongPress={300}
+              style={({ pressed }) => [
+                styles.userBubble,
+                {
+                  backgroundColor: colors.secondary,
+                  borderRadius: radii.xxl,
+                  opacity: pressed ? 0.9 : 1,
+                },
               ]}
-              selectable
             >
-              {text}
-            </Text>
-          </Pressable>
+              <Text
+                style={[
+                  styles.userText,
+                  { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+                ]}
+                selectable
+              >
+                {text}
+              </Text>
+            </Pressable>
+          )}
         </View>
         <MessageMenu
           from={anchorRef}
@@ -119,13 +116,9 @@ export function MessageBubble({
   }
 
   const hasAnyText = message.parts.some((p) => p.type === "text");
-  const showActions = !streaming && hasAnyText && isLast;
+  const showActions = !streaming && hasAnyText;
   const assistantActions: MessageAction[] =
-    !streaming && hasAnyText
-      ? isLast
-        ? ["copy", "regenerate"]
-        : ["copy"]
-      : [];
+    !streaming && hasAnyText ? ["copy", "regenerate"] : [];
   const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
 
   function onAssistantMenuSelect(action: MessageAction) {

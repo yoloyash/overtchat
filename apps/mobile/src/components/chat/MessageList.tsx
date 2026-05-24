@@ -68,7 +68,6 @@ export function MessageList({
             key={m.id}
             message={m}
             streaming={streaming && isLast}
-            isLast={isLast}
             editing={editingId === m.id}
             onStartEdit={onStartEdit}
             onCancelEdit={onCancelEdit}
