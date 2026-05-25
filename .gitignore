@@ -29,6 +29,7 @@ data/
 *.pem
 *.log
 *.png
+!apps/mobile/assets/*.png
 ROADMAP.md
 ROADMAP_MOBILE.md
 GEMINI.md

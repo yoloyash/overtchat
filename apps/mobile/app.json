@@ -2,22 +2,41 @@
   "expo": {
     "name": "overtchat",
     "slug": "overtchat",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "scheme": "overtchat",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.overtchat.mobile"
+      "bundleIdentifier": "com.overtchat.mobile",
+      "buildNumber": "1"
     },
     "android": {
       "package": "com.overtchat.mobile",
-      "predictiveBackGestureEnabled": false
+      "versionCode": 1,
+      "predictiveBackGestureEnabled": false,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#23261f"
+      }
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "backgroundColor": "#f5f5f0",
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#23261f"
+          }
+        }
+      ],
       [
         "expo-image-picker",
         {
