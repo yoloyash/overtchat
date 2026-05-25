@@ -17,7 +17,7 @@ import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
 import { buildRuntimeContext } from "@/lib/runtime-context";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
-import { streamContext } from "@/lib/streams/context";
+import { getStreamContext } from "@/lib/streams/context";
 
 export const maxDuration = 300;
 
@@ -156,7 +156,7 @@ export async function POST(req: Request) {
     consumeSseStream: temporary
       ? undefined
       : async ({ stream }) => {
-          await streamContext.createNewResumableStream(streamId, () => stream);
+          await getStreamContext().createNewResumableStream(streamId, () => stream);
           await setActiveStreamId(chatId, streamId);
         },
     messageMetadata: ({ part }) => {

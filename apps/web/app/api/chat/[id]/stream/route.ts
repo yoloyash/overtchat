@@ -2,7 +2,7 @@ import { UI_MESSAGE_STREAM_HEADERS } from "ai";
 import { auth } from "@/lib/auth/server";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { getActiveStreamId, getChat, setActiveStreamId } from "@/lib/db/chats";
-import { streamContext } from "@/lib/streams/context";
+import { getStreamContext } from "@/lib/streams/context";
 
 export const maxDuration = 300;
 
@@ -24,7 +24,7 @@ export async function GET(
   const streamId = await getActiveStreamId(id);
   if (!streamId) return withCors(req, new Response(null, { status: 204 }));
 
-  const replay = await streamContext.resumeExistingStream(streamId);
+  const replay = await getStreamContext().resumeExistingStream(streamId);
   if (!replay) {
     await setActiveStreamId(id, null);
     return withCors(req, new Response(null, { status: 204 }));
