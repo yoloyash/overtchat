@@ -40,17 +40,26 @@ import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 
 export default function ChatScreen() {
-  const { activeChatId, isNewChat } = useChatSession();
+  const { activeChatId, isNewChat, activeProjectId } = useChatSession();
   return (
     <ChatGate
       key={activeChatId}
       chatId={activeChatId}
       isNew={isNewChat}
+      newChatProjectId={activeProjectId}
     />
   );
 }
 
-function ChatGate({ chatId, isNew }: { chatId: string; isNew: boolean }) {
+function ChatGate({
+  chatId,
+  isNew,
+  newChatProjectId,
+}: {
+  chatId: string;
+  isNew: boolean;
+  newChatProjectId: string | null;
+}) {
   const { colors, fonts } = useTheme();
   const {
     data: hydration,
@@ -107,7 +116,7 @@ function ChatGate({ chatId, isNew }: { chatId: string; isNew: boolean }) {
       chatId={chatId}
       isNew={isNew}
       initialMessages={hydration?.messages}
-      projectId={hydration?.projectId ?? null}
+      projectId={isNew ? newChatProjectId : (hydration?.projectId ?? null)}
     />
   );
 }

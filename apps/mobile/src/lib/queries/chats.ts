@@ -49,3 +49,24 @@ export function useDeleteChat() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
   });
 }
+
+export function useMoveChat() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      projectId,
+    }: {
+      id: string;
+      projectId: string | null;
+    }) => {
+      const res = await authFetch(`${getApiBase()}/api/chats/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId }),
+      });
+      if (!res.ok) throw new Error(`Failed to move (${res.status})`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
+  });
+}

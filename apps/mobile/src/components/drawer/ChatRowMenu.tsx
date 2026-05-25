@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import Popover, { PopoverPlacement } from "react-native-popover-view";
 import { useTheme } from "@/lib/theme";
 
-export type ChatRowAction = "rename" | "delete";
+export type ChatRowAction = "rename" | "move" | "delete";
 
 const ACTION_META: Record<
   ChatRowAction,
@@ -16,6 +16,7 @@ const ACTION_META: Record<
   }
 > = {
   rename: { label: "Rename", icon: "edit-3" },
+  move: { label: "Move to project", icon: "folder" },
   delete: { label: "Delete", icon: "trash-2", destructive: true },
 };
 
