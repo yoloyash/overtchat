@@ -1,6 +1,7 @@
 import { useColorScheme } from "react-native";
 import { mobileFonts, radii, type ColorTokens } from "@overtchat/shared";
 import { darkTokensRgb, lightTokensRgb } from "@overtchat/shared/theme.rn";
+import { useThemePref } from "@/lib/appearance";
 
 export type Theme = {
   colors: ColorTokens;
@@ -10,7 +11,9 @@ export type Theme = {
 };
 
 export function useTheme(): Theme {
-  const scheme = useColorScheme() === "dark" ? "dark" : "light";
+  const pref = useThemePref();
+  const system = useColorScheme() === "dark" ? "dark" : "light";
+  const scheme = pref === "system" ? system : pref;
   return {
     colors: scheme === "dark" ? darkTokensRgb : lightTokensRgb,
     radii,

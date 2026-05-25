@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
 import {
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,9 +11,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
+import { setThemePref, useThemePref, type ThemePref } from "@/lib/appearance";
+import { getServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
-
-type ThemePref = "system" | "light" | "dark";
 
 export default function SettingsScreen() {
   const { colors, radii, fonts } = useTheme();
@@ -22,8 +23,15 @@ export default function SettingsScreen() {
     | undefined;
   const isAdmin = user?.role === "admin";
 
-  const [themePref, setThemePref] = useState<ThemePref>("system");
+  const themePref = useThemePref();
   const [signingOut, setSigningOut] = useState(false);
+  const serverUrl = getServerUrl();
+  const serverHost = serverUrl ? safeHost(serverUrl) : null;
+
+  function openOnWeb(path: string) {
+    if (!serverUrl) return;
+    Linking.openURL(`${serverUrl.replace(/\/$/, "")}${path}`).catch(() => {});
+  }
 
   async function handleSignOut() {
     if (signingOut) return;
@@ -66,7 +74,6 @@ export default function SettingsScreen() {
           <Section title="Account">
             <Row label="Name" right={user?.name ?? "—"} />
             <Row label="Email" right={user?.email ?? "—"} />
-            <Row label="Change password" right="Coming soon" disabled />
           </Section>
 
           <Section title="Appearance">
@@ -115,32 +122,55 @@ export default function SettingsScreen() {
             ))}
           </Section>
 
-          {isAdmin ? (
-            <Section title="Admin">
-              <Row
-                label="Models"
-                sub="Manage on the web app"
-                right={
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={colors.mutedForeground}
-                  />
-                }
-              />
-              <Row
-                label="Users"
-                sub="Manage on the web app"
-                right={
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={colors.mutedForeground}
-                  />
-                }
-              />
-            </Section>
-          ) : null}
+          <Section title="Manage on web">
+            <LinkRow
+              label="Account"
+              sub="Name, email, password, sessions"
+              onPress={() => openOnWeb("/settings/account")}
+              colors={colors}
+              fonts={fonts}
+            />
+            <LinkRow
+              label="Data"
+              sub="Export, delete chats"
+              onPress={() => openOnWeb("/settings/data")}
+              colors={colors}
+              fonts={fonts}
+            />
+            {isAdmin ? (
+              <>
+                <LinkRow
+                  label="Models"
+                  sub="Provider config and access"
+                  onPress={() => openOnWeb("/settings/models")}
+                  colors={colors}
+                  fonts={fonts}
+                />
+                <LinkRow
+                  label="Users"
+                  sub="Invite and manage members"
+                  onPress={() => openOnWeb("/settings/users")}
+                  colors={colors}
+                  fonts={fonts}
+                />
+              </>
+            ) : null}
+            {serverHost ? (
+              <View style={[styles.row, { paddingTop: 4 }]}>
+                <Text
+                  style={[
+                    styles.rowSub,
+                    {
+                      color: colors.mutedForeground,
+                      fontFamily: fonts.sansRegular,
+                    },
+                  ]}
+                >
+                  Opens {serverHost} in your browser
+                </Text>
+              </View>
+            ) : null}
+          </Section>
 
           <Pressable
             accessibilityRole="button"
@@ -196,6 +226,56 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </View>
     </View>
   );
+}
+
+function LinkRow({
+  label,
+  sub,
+  onPress,
+  colors,
+  fonts,
+}: {
+  label: string;
+  sub: string;
+  onPress: () => void;
+  colors: ReturnType<typeof useTheme>["colors"];
+  fonts: ReturnType<typeof useTheme>["fonts"];
+}) {
+  return (
+    <Pressable
+      accessibilityRole="link"
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
+    >
+      <View style={styles.rowText}>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: colors.foreground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.rowSub,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {sub}
+        </Text>
+      </View>
+      <Ionicons name="open-outline" size={18} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
+function safeHost(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }
 
 function Row({
