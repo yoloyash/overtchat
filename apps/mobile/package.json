@@ -22,6 +22,7 @@
     "@gorhom/bottom-sheet": "^5.2.14",
     "@overtchat/shared": "*",
     "@react-navigation/drawer": "^7.10.2",
+    "@sentry/react-native": "~7.11.0",
     "@shopify/flash-list": "^2.3.1",
     "@stardazed/streams-text-encoding": "^1.0.2",
     "@tanstack/react-query": "^5.100.14",

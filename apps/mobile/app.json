@@ -50,6 +50,14 @@
         {
           "microphonePermission": "Allow overtchat to use your microphone for voice dictation."
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "organization": "yash-ge",
+          "project": "react-native"
+        }
       ]
     ],
     "experiments": {

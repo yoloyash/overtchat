@@ -1,0 +1,51 @@
+name: Build mobile app on EAS
+
+# Tag a release with `mobile-v<semver>` (e.g. `mobile-v1.0.0`) to trigger.
+# Cuts an Android production build (app-bundle) on EAS.
+on:
+  push:
+    tags: ["mobile-v*"]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "EAS build profile"
+        required: true
+        default: "production"
+        type: choice
+        options: ["development", "preview", "production"]
+      platform:
+        description: "Platform"
+        required: true
+        default: "android"
+        type: choice
+        options: ["android", "ios", "all"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      # Hoisted root install — apps/mobile reads from the root node_modules.
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+
+      - name: Build on EAS
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli@latest build \
+            --non-interactive \
+            --no-wait \
+            --platform "${{ github.event.inputs.platform || 'android' }}" \
+            --profile "${{ github.event.inputs.profile || 'production' }}"

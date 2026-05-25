@@ -1,5 +1,6 @@
 import "@/polyfills";
 
+import * as Sentry from "@sentry/react-native";
 import {
   Fraunces_600SemiBold,
 } from "@expo-google-fonts/fraunces";
@@ -29,7 +30,16 @@ import { useTheme } from "@/lib/theme";
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    debug: __DEV__,
+    sendDefaultPii: false,
+  });
+}
+
+function RootLayout() {
   const { colors, scheme } = useTheme();
   const [queryClient] = useState(() => new QueryClient());
 
@@ -87,3 +97,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(RootLayout);
