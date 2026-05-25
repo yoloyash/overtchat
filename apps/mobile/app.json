@@ -25,7 +25,13 @@
           "cameraPermission": "Allow overtchat to use your camera so you can attach photos to chats."
         }
       ],
-      "expo-image"
+      "expo-image",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow overtchat to use your microphone for voice dictation."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

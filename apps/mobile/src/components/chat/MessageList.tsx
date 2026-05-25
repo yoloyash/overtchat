@@ -8,6 +8,7 @@ import {
   View,
 } from "react-native";
 import { useTheme } from "@/lib/theme";
+import type { useSpeech } from "@/lib/useSpeech";
 import { MessageBubble } from "./MessageBubble";
 
 export function MessageList({
@@ -16,6 +17,7 @@ export function MessageList({
   status,
   error,
   editingId,
+  speech,
   refreshing,
   onRefresh,
   onStartEdit,
@@ -28,6 +30,7 @@ export function MessageList({
   status: ChatStatus;
   error: Error | undefined;
   editingId: string | null;
+  speech: ReturnType<typeof useSpeech>;
   refreshing?: boolean;
   onRefresh?: () => void;
   onStartEdit: (id: string) => void;
@@ -69,6 +72,7 @@ export function MessageList({
             message={m}
             streaming={streaming && isLast}
             editing={editingId === m.id}
+            speech={speech}
             onStartEdit={onStartEdit}
             onCancelEdit={onCancelEdit}
             onSaveEdit={onSaveEdit}

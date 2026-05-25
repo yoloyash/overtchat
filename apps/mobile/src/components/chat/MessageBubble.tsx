@@ -7,6 +7,7 @@ import type { FetchUrlPart, WebSearchPart } from "@overtchat/shared";
 import { buildSourceLookup } from "@/lib/chat/citations";
 import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
+import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
@@ -20,6 +21,7 @@ export function MessageBubble({
   message,
   streaming,
   editing,
+  speech,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -28,6 +30,7 @@ export function MessageBubble({
   message: UIMessage;
   streaming: boolean;
   editing: boolean;
+  speech: ReturnType<typeof useSpeech>;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string) => void;
@@ -192,6 +195,12 @@ export function MessageBubble({
             copied={copied}
             onCopy={() => copyText(text)}
             onRegenerate={() => onRegenerate(message.id)}
+            onSpeak={
+              text ? () => void speech.play(message.id, text) : undefined
+            }
+            speechStatus={
+              speech.activeId === message.id ? speech.status : "idle"
+            }
           />
         ) : null}
       </Pressable>

@@ -1,10 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { AttachmentMeta } from "@/lib/chat/attachments";
+import { dictationErrorMessage } from "@/lib/chat/message";
 import { useTheme } from "@/lib/theme";
+import { toastError } from "@/lib/toast";
+import { useDictation } from "@/lib/useDictation";
 import { AttachmentChip } from "./AttachmentChip";
 
 export function Composer({
@@ -15,6 +18,7 @@ export function Composer({
   attachmentMeta,
   uploading,
   uploadError,
+  isAdmin,
   onDisableSearch,
   onOpenAddSheet,
   onRemoveAttachment,
@@ -29,6 +33,7 @@ export function Composer({
   attachmentMeta: Record<string, AttachmentMeta>;
   uploading: boolean;
   uploadError: string | null;
+  isAdmin: boolean;
   onDisableSearch: () => void;
   onOpenAddSheet: () => void;
   onRemoveAttachment: (index: number) => void;
@@ -39,6 +44,19 @@ export function Composer({
   const { colors, radii, fonts } = useTheme();
   const [input, setInput] = useState("");
 
+  const dictation = useDictation((text) => {
+    setInput((prev) => {
+      const trimmed = prev.trimEnd();
+      return trimmed ? `${trimmed} ${text}` : text;
+    });
+  });
+
+  useEffect(() => {
+    if (!dictation.error) return;
+    toastError("Dictation", dictationErrorMessage(dictation.error, isAdmin));
+    dictation.clearError();
+  }, [dictation, isAdmin]);
+
   function submit() {
     const text = input.trim();
     if (streaming || uploading || !configured) return;
@@ -46,6 +64,15 @@ export function Composer({
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     onSubmit(text, attachments);
     setInput("");
+  }
+
+  function toggleMic() {
+    Haptics.selectionAsync().catch(() => {});
+    if (dictation.status === "recording") {
+      void dictation.stop();
+    } else if (dictation.status === "idle") {
+      void dictation.start();
+    }
   }
 
   function openAdd() {
@@ -203,7 +230,7 @@ export function Composer({
           <TextInput
             value={input}
             onChangeText={setInput}
-            editable={configured}
+            editable={configured && dictation.status !== "transcribing"}
             multiline
             placeholder={
               configured ? "Message…" : "No models available — ask an admin to add one"
@@ -214,6 +241,51 @@ export function Composer({
               { color: colors.foreground, fontFamily: fonts.sansRegular },
             ]}
           />
+
+          {!streaming && !canSend ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                dictation.status === "recording"
+                  ? "Stop dictation"
+                  : dictation.status === "transcribing"
+                    ? "Transcribing"
+                    : "Start dictation"
+              }
+              disabled={dictation.status === "transcribing"}
+              onPress={toggleMic}
+              style={({ pressed }) => [
+                styles.iconButton,
+                {
+                  backgroundColor:
+                    dictation.status === "recording"
+                      ? colors.destructive
+                      : "transparent",
+                  borderColor:
+                    dictation.status === "recording"
+                      ? "transparent"
+                      : colors.border,
+                  borderRadius: radii.pill,
+                  opacity:
+                    dictation.status === "transcribing"
+                      ? 0.6
+                      : pressed
+                        ? 0.7
+                        : 1,
+                },
+              ]}
+            >
+              <Ionicons
+                name={dictation.status === "recording" ? "stop" : "mic"}
+                size={dictation.status === "recording" ? 16 : 20}
+                color={
+                  dictation.status === "recording"
+                    ? colors.background
+                    : colors.mutedForeground
+                }
+              />
+            </Pressable>
+          ) : null}
 
           {streaming ? (
             <Pressable

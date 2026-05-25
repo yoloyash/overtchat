@@ -30,6 +30,7 @@
     "better-auth": "^1.6.11",
     "burnt": "^0.13.0",
     "expo": "~56.0.3",
+    "expo-audio": "~56.0.10",
     "expo-clipboard": "~56.0.3",
     "expo-constants": "~56.0.14",
     "expo-crypto": "~56.0.3",

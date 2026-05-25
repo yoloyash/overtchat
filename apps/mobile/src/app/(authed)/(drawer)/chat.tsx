@@ -27,6 +27,7 @@ import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
+import { getAuthClient } from "@/lib/auth/client";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
@@ -34,6 +35,7 @@ import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
 import { useSecureFlag } from "@/lib/useSecureFlag";
+import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
 
@@ -129,6 +131,11 @@ function ChatSurface({
   const { startNewChat } = useChatSession();
   const qc = useQueryClient();
   const baseURL = useMemo(() => getApiBase(), []);
+  const session = getAuthClient().useSession();
+  const isAdmin =
+    (session.data?.user as { role?: string | null } | undefined)?.role ===
+    "admin";
+  const speech = useSpeech();
 
   const { data: models, isPending: modelsPending, error: modelsError } =
     useModelConfigs();
@@ -460,6 +467,7 @@ function ChatSurface({
           status={status}
           error={error}
           editingId={editingId}
+          speech={speech}
           refreshing={!isNew && hydrationFetching && !streaming}
           onRefresh={isNew ? undefined : onRefreshMessages}
           onStartEdit={(id) => !streaming && setEditingId(id)}
@@ -483,6 +491,7 @@ function ChatSurface({
           attachmentMeta={attachmentMeta}
           uploading={uploading}
           uploadError={uploadError}
+          isAdmin={isAdmin}
           onDisableSearch={() => setSearchEnabled(false)}
           onOpenAddSheet={() => {
             Keyboard.dismiss();

@@ -12,6 +12,7 @@ import {
   PlusJakartaSans_600SemiBold,
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { setAudioModeAsync } from "expo-audio";
 import { useFonts } from "expo-font";
 import { router, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -38,6 +39,12 @@ export default function RootLayout() {
     Fraunces_600SemiBold,
     GeistMono_400Regular,
   });
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true, allowsRecording: false }).catch(
+      () => {},
+    );
+  }, []);
 
   useEffect(() => {
     if (!loaded && !error) return;

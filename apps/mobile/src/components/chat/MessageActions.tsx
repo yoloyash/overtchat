@@ -1,15 +1,20 @@
 import { Feather } from "@expo/vector-icons";
 import { Pressable, StyleSheet, View } from "react-native";
+import type { SpeechStatus } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 
 export function MessageActions({
   onCopy,
   onRegenerate,
+  onSpeak,
   copied,
+  speechStatus = "idle",
 }: {
   onCopy: () => void;
   onRegenerate?: () => void;
+  onSpeak?: () => void;
   copied: boolean;
+  speechStatus?: SpeechStatus;
 }) {
   const { colors } = useTheme();
 
@@ -27,6 +32,26 @@ export function MessageActions({
           onPress={onRegenerate}
           color={colors.mutedForeground}
           accessibilityLabel="Regenerate response"
+        />
+      ) : null}
+      {onSpeak ? (
+        <IconButton
+          icon={
+            speechStatus === "playing"
+              ? "square"
+              : speechStatus === "loading"
+                ? "loader"
+                : "volume-2"
+          }
+          onPress={onSpeak}
+          color={colors.mutedForeground}
+          accessibilityLabel={
+            speechStatus === "playing"
+              ? "Stop reading"
+              : speechStatus === "loading"
+                ? "Loading speech"
+                : "Read aloud"
+          }
         />
       ) : null}
     </View>
