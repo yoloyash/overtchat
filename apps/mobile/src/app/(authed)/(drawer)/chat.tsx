@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
+import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
@@ -434,6 +435,7 @@ function ChatSurface({
       behavior="padding"
       keyboardVerticalOffset={headerHeight}
     >
+      <MiniSpeechPlayer speech={speech} />
       {messages.length === 0 ? (
         <View style={styles.empty}>
           <Text

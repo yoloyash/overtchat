@@ -37,7 +37,7 @@ export function MessageActions({
       {onSpeak ? (
         <IconButton
           icon={
-            speechStatus === "playing"
+            speechStatus === "playing" || speechStatus === "paused"
               ? "square"
               : speechStatus === "loading"
                 ? "loader"
@@ -46,7 +46,7 @@ export function MessageActions({
           onPress={onSpeak}
           color={colors.mutedForeground}
           accessibilityLabel={
-            speechStatus === "playing"
+            speechStatus === "playing" || speechStatus === "paused"
               ? "Stop reading"
               : speechStatus === "loading"
                 ? "Loading speech"

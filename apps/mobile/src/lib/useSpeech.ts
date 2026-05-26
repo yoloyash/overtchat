@@ -3,18 +3,22 @@ import { File as FsFile, Paths } from "expo-file-system";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { authFetch, getApiBase } from "@/lib/api";
 
-export type SpeechStatus = "idle" | "loading" | "playing";
+export type SpeechStatus = "idle" | "loading" | "playing" | "paused";
 
 export function useSpeech() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<SpeechStatus>("idle");
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const fileRef = useRef<FsFile | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const subRef = useRef<{ remove: () => void } | null>(null);
+  const lastPlayedRef = useRef<{ id: string; text: string } | null>(null);
 
-  const stop = useCallback(() => {
+  const teardown = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     subRef.current?.remove();
@@ -42,7 +46,15 @@ export function useSpeech() {
     }
     setActiveId(null);
     setStatus("idle");
+    setCurrentTime(0);
+    setDuration(0);
   }, []);
+
+  const stop = useCallback(() => {
+    teardown();
+    setError(null);
+    lastPlayedRef.current = null;
+  }, [teardown]);
 
   useEffect(() => stop, [stop]);
 
@@ -56,10 +68,17 @@ export function useSpeech() {
       const trimmed = text.trim();
       if (!trimmed) return;
 
+      lastPlayedRef.current = { id, text };
+
       const ac = new AbortController();
       abortRef.current = ac;
       setActiveId(id);
       setStatus("loading");
+
+      const fail = (msg: string) => {
+        teardown();
+        setError(msg);
+      };
 
       try {
         const res = await authFetch(`${getApiBase()}/api/tts`, {
@@ -99,17 +118,83 @@ export function useSpeech() {
             stop();
             return;
           }
+          if (typeof s.currentTime === "number") setCurrentTime(s.currentTime);
+          if (typeof s.duration === "number" && s.duration > 0) {
+            setDuration(s.duration);
+          }
           if (s.playing) setStatus("playing");
+          else if (s.isLoaded) {
+            setStatus((prev) =>
+              prev === "loading" || prev === "playing" ? "paused" : prev,
+            );
+          }
         });
         player.play();
       } catch (err) {
-        if ((err as Error).name !== "AbortError") {
-          stop();
-        }
+        if ((err as Error).name === "AbortError") return;
+        fail(networkErrorMessage(err));
       }
     },
-    [activeId, stop],
+    [activeId, stop, teardown],
   );
 
-  return { activeId, status, play, stop };
+  const pause = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    try {
+      p.pause();
+      setStatus("paused");
+    } catch {
+      stop();
+    }
+  }, [stop]);
+
+  const resume = useCallback(() => {
+    const p = playerRef.current;
+    if (!p) return;
+    try {
+      p.play();
+      setStatus("playing");
+    } catch {
+      stop();
+    }
+  }, [stop]);
+
+  const seek = useCallback((seconds: number) => {
+    const p = playerRef.current;
+    if (!p) return;
+    try {
+      void p.seekTo(seconds);
+      setCurrentTime(seconds);
+    } catch {
+      // ignore — next status update will reconcile
+    }
+  }, []);
+
+  const retry = useCallback(() => {
+    const last = lastPlayedRef.current;
+    if (!last) return;
+    void play(last.id, last.text);
+  }, [play]);
+
+  return {
+    activeId,
+    status,
+    currentTime,
+    duration,
+    error,
+    play,
+    pause,
+    resume,
+    seek,
+    stop,
+    retry,
+  };
+}
+
+function networkErrorMessage(err: unknown): string {
+  const msg = (err as Error)?.message ?? "";
+  if (msg.includes("TTS failed")) return "Speech service unavailable.";
+  if (msg.toLowerCase().includes("network")) return "Network error.";
+  return "Couldn't play speech.";
 }

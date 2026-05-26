@@ -21,6 +21,7 @@
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.14",
     "@overtchat/shared": "*",
+    "@react-native-community/slider": "5.2.0",
     "@sentry/react-native": "~7.11.0",
     "@shopify/flash-list": "2.0.2",
     "@stardazed/streams-text-encoding": "^1.0.2",
