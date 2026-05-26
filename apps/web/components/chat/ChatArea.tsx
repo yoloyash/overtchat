@@ -21,6 +21,7 @@ import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { ChatHeader } from "./ChatHeader";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 const STATS_FOR_NERDS_STORAGE_KEY = "overtchat_stats_for_nerds";
@@ -211,6 +212,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}
       />
+
+      <MiniSpeechPlayer speech={speech} />
 
       {messages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">

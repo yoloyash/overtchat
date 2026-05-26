@@ -402,11 +402,11 @@ function SpeakButton({
   if (!text) return null;
   const active = speech.activeId === messageId;
   const loading = active && speech.status === "loading";
-  const playing = active && speech.status === "playing";
-  const label = playing ? "Stop" : loading ? "Loading…" : "Speak";
+  const live = active && (speech.status === "playing" || speech.status === "paused");
+  const label = live ? "Stop" : loading ? "Loading…" : "Speak";
   const icon = loading ? (
     <Loader2 className="size-3.5 animate-spin" />
-  ) : playing ? (
+  ) : live ? (
     <Square className="size-3 fill-current" />
   ) : (
     <Volume2 className="size-3.5" />
