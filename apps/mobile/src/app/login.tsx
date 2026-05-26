@@ -11,10 +11,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
+import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
 export default function LoginScreen() {
   const { colors, radii, fonts } = useTheme();
+  const serverUrl = useServerUrl();
+  const authClient = getAuthClient();
+  const session = authClient.useSession();
+  const serverHost = serverUrl ? safeHost(serverUrl) : null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,12 +30,12 @@ export default function LoginScreen() {
     setSubmitting(true);
     setError("");
     try {
-      const { error } = await getAuthClient().signIn.email({ email, password });
+      const { error } = await authClient.signIn.email({ email, password });
       if (error) {
         setError(error.message ?? "Login failed");
         return;
       }
-      router.replace("/chat");
+      await session.refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -163,6 +168,34 @@ export default function LoginScreen() {
                 {submitting ? "Signing in…" : "Sign in"}
               </Text>
             </Pressable>
+
+            {serverHost ? (
+              <View style={styles.serverRow}>
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.serverText,
+                    { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                  ]}
+                >
+                  Server: {serverHost}
+                </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/server")}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={[
+                      styles.serverLinkText,
+                      { color: colors.primary, fontFamily: fonts.sansSemiBold },
+                    ]}
+                  >
+                    Change
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           <View style={styles.flex} />
@@ -189,4 +222,15 @@ const styles = StyleSheet.create({
   error: { fontSize: 14 },
   cta: { paddingVertical: 12, alignItems: "center", justifyContent: "center" },
   ctaText: { fontSize: 15 },
+  serverRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  serverText: { flex: 1, fontSize: 13 },
+  serverLinkText: { fontSize: 13 },
 });
+
+function safeHost(url: string) {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}

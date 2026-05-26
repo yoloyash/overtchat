@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -12,7 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { PingResponse } from "@overtchat/shared";
 import { resetAuthClient } from "@/lib/auth/client";
-import { getServerUrl, setServerUrl } from "@/lib/server-url";
+import { setServerUrl, useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
 const DEFAULT_URL = "http://10.0.0.200:4717";
@@ -28,8 +28,14 @@ function normalizeUrl(raw: string): string {
 
 export default function ServerScreen() {
   const { colors, radii, fonts } = useTheme();
-  const [url, setUrl] = useState(() => getServerUrl() ?? DEFAULT_URL);
+  const serverUrl = useServerUrl();
+  const [url, setUrl] = useState(() => serverUrl ?? DEFAULT_URL);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const [redirectToLogin, setRedirectToLogin] = useState(false);
+
+  useEffect(() => {
+    if (redirectToLogin && serverUrl) router.replace("/login");
+  }, [redirectToLogin, serverUrl]);
 
   async function connect() {
     const target = normalizeUrl(url);
@@ -53,7 +59,7 @@ export default function ServerScreen() {
       setServerUrl(target);
       resetAuthClient();
       setStatus({ kind: "idle" });
-      router.push("/login");
+      setRedirectToLogin(true);
     } catch (err) {
       setStatus({
         kind: "error",

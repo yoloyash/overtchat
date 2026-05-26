@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
 import {
   Linking,
@@ -38,7 +38,7 @@ export default function SettingsScreen() {
     setSigningOut(true);
     try {
       await getAuthClient().signOut();
-      router.replace("/");
+      await session.refetch();
     } finally {
       setSigningOut(false);
     }

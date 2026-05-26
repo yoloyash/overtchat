@@ -15,7 +15,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setAudioModeAsync } from "expo-audio";
 import { useFonts } from "expo-font";
-import { router, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
@@ -25,7 +25,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
-import { getServerUrl } from "@/lib/server-url";
+import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
 SplashScreen.preventAutoHideAsync();
@@ -61,20 +61,6 @@ function RootLayout() {
     SystemUI.setBackgroundColorAsync(colors.background).catch(() => {});
   }, [colors.background]);
 
-  useEffect(() => {
-    if (!loaded && !error) return;
-    SplashScreen.hideAsync();
-    const url = getServerUrl();
-    if (!url) return;
-    (async () => {
-      const { data } = await getAuthClient().getSession();
-      if (data?.user) router.replace("/chat");
-    })().catch(() => {
-      // Stale URL or unreachable server — leave the user on the welcome
-      // screen so they can re-enter a URL.
-    });
-  }, [loaded, error]);
-
   if (!loaded && !error) return null;
 
   return (
@@ -84,17 +70,81 @@ function RootLayout() {
           <SafeAreaProvider>
             <BottomSheetModalProvider>
               <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-              <Stack
-                screenOptions={{
-                  headerShown: false,
-                  contentStyle: { backgroundColor: colors.background },
-                }}
-              />
+              <AuthRoutes backgroundColor={colors.background} />
             </BottomSheetModalProvider>
           </SafeAreaProvider>
         </QueryClientProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function AuthRoutes({ backgroundColor }: { backgroundColor: string }) {
+  const serverUrl = useServerUrl();
+
+  if (!serverUrl) {
+    return (
+      <RootStack
+        authReady
+        hasServer={false}
+        hasSession={false}
+        backgroundColor={backgroundColor}
+      />
+    );
+  }
+
+  return <SessionRoutes key={serverUrl} backgroundColor={backgroundColor} />;
+}
+
+function SessionRoutes({ backgroundColor }: { backgroundColor: string }) {
+  const session = getAuthClient().useSession();
+  return (
+    <RootStack
+      authReady={!session.isPending}
+      hasServer
+      hasSession={Boolean(session.data?.user)}
+      backgroundColor={backgroundColor}
+    />
+  );
+}
+
+function RootStack({
+  authReady,
+  hasServer,
+  hasSession,
+  backgroundColor,
+}: {
+  authReady: boolean;
+  hasServer: boolean;
+  hasSession: boolean;
+  backgroundColor: string;
+}) {
+  useEffect(() => {
+    if (authReady) SplashScreen.hideAsync();
+  }, [authReady]);
+
+  if (!authReady) return null;
+
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor },
+      }}
+    >
+      <Stack.Protected guard={!hasServer && !hasSession}>
+        <Stack.Screen name="index" />
+      </Stack.Protected>
+      <Stack.Protected guard={hasServer && !hasSession}>
+        <Stack.Screen name="login" />
+      </Stack.Protected>
+      <Stack.Protected guard={!hasSession}>
+        <Stack.Screen name="server" />
+      </Stack.Protected>
+      <Stack.Protected guard={hasServer && hasSession}>
+        <Stack.Screen name="(authed)" />
+      </Stack.Protected>
+    </Stack>
   );
 }
 
