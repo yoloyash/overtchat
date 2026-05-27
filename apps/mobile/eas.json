@@ -25,9 +25,19 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "production-apk": {
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "track": "alpha",
+        "releaseStatus": "draft"
+      }
+    }
   }
 }
