@@ -2,6 +2,8 @@
 
 A simpler self-hosted alternative to Open WebUI. Bring your own model — Anthropic, Google Gemini, or any OpenAI-compatible endpoint. One `docker compose up` and you're in.
 
+> 📱 **Android client now in closed beta.** [Become a tester](#mobile) · [Download APK](https://github.com/yoloyash/overtchat/releases/latest) · *iOS in progress*
+
 https://github.com/user-attachments/assets/bb1c6b31-97ad-43dc-b39c-743c12d7ae4b
 
 ## Why I built overtchat
@@ -38,6 +40,16 @@ Open [http://localhost:4718](http://localhost:4718), sign up, the setup wizard t
 **LAN access:** set `BETTER_AUTH_URL=http://<your-lan-ip>:4718` in `.env`, then `docker compose up -d`.
 **Internet access:** uncomment the `cloudflared` block in `compose.yml` and paste a tunnel token.
 
+## Mobile
+
+overtchat now ships as a native Android app — same chat surface, same model picker, same uploads, voice, and web search you have on web.
+
+It's a thin client: **bring your own server**. On first launch, enter the URL of an overtchat instance you control. Chats and files live there, not in the app.
+
+- **Closed beta on Google Play** — open an [issue](https://github.com/yoloyash/overtchat/issues) to request a tester slot. Updates ship automatically once you're in.
+- **Sideload APK** — [latest release on GitHub](https://github.com/yoloyash/overtchat/releases/latest). Useful if you don't have Play Store, or just prefer it.
+- **iOS** — in progress, no timeline yet.
+
 ## What's in the box
 
 - Multi-user auth, first signup becomes admin
@@ -63,6 +75,8 @@ Multilingual (25 languages, auto-detected). All processing stays on your machine
 ## Privacy
 
 No telemetry, no analytics. No external calls except the LLM endpoint you configure and the bundled SearXNG (which runs on your machine). All data lives in a single SQLite file you can copy, back up, or delete.
+
+The Android client adds one exception: crash reports go to Sentry (no chat content, no credentials). Details in the [privacy policy](https://yoloyash.github.io/overtchat/privacy.html).
 
 ## Requirements
 
