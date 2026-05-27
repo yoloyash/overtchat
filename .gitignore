@@ -47,6 +47,10 @@ yarn-error.log*
 .env
 .env*.local
 
+# Google service account JSON keys (any *.json at repo root looking like a key)
+/overtchat-*.json
+/*-service-account*.json
+
 # local-only compose overrides (per-developer)
 *.local.yml
 compose.override.yml

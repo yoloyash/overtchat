@@ -1,51 +1,68 @@
-name: Build mobile app on EAS
+name: Mobile release
 
-# Tag a release with `mobile-v<semver>` (e.g. `mobile-v1.0.0`) to trigger.
-# Cuts an Android production build (app-bundle) on EAS.
 on:
   push:
     tags: ["mobile-v*"]
   workflow_dispatch:
-    inputs:
-      profile:
-        description: "EAS build profile"
-        required: true
-        default: "production"
-        type: choice
-        options: ["development", "preview", "production"]
-      platform:
-        description: "Platform"
-        required: true
-        default: "android"
-        type: choice
-        options: ["android", "ios", "all"]
 
 jobs:
-  build:
+  aab:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/mobile
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22.x
           cache: npm
           cache-dependency-path: package-lock.json
-
-      # Hoisted root install — apps/mobile reads from the root node_modules.
       - name: Install dependencies
         working-directory: .
         run: npm ci
-
-      - name: Build on EAS
+      - name: Build AAB and auto-submit to Play
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           npx eas-cli@latest build \
-            --non-interactive \
-            --no-wait \
-            --platform "${{ github.event.inputs.platform || 'android' }}" \
-            --profile "${{ github.event.inputs.profile || 'production' }}"
+            --non-interactive --no-wait --auto-submit \
+            --platform android --profile production
+
+  apk:
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install dependencies
+        working-directory: .
+        run: npm ci
+      - name: Build APK and attach to GitHub release
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OUT=$(npx eas-cli@latest build \
+            --non-interactive --wait --json \
+            --platform android --profile production-apk)
+          URL=$(echo "$OUT" | jq -r '.[0].artifacts.buildUrl')
+          MOBILE_TAG="${GITHUB_REF_NAME}"
+          VERSION="${MOBILE_TAG#mobile-v}"
+          PAIRED=$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]' | sort -V | tail -1 || true)
+          TAG="${PAIRED:-$MOBILE_TAG}"
+          curl -fsSL "$URL" -o "overtchat-v${VERSION}.apk"
+          gh release view "$TAG" >/dev/null 2>&1 || \
+            gh release create "$TAG" --draft --title "$TAG" --notes "Draft — fill in notes before publishing."
+          gh release upload "$TAG" "overtchat-v${VERSION}.apk" --clobber

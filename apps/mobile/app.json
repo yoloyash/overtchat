@@ -14,7 +14,6 @@
     },
     "android": {
       "package": "com.overtchat.mobile",
-      "versionCode": 1,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
