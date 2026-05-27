@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type SpeechStatus = "idle" | "loading" | "playing";
+export type SpeechStatus = "idle" | "loading" | "playing" | "paused";
 
 const MIME = "audio/mpeg";
 
 type MSCtor = typeof MediaSource & { isTypeSupported(t: string): boolean };
 
-// iOS 17.1+ exposes ManagedMediaSource instead of MediaSource. Prefer it where
-// available — it's the one Safari actually supports for streaming audio.
+// Safari 17.1+ only streams audio through ManagedMediaSource, not MediaSource.
 function getMediaSourceCtor(): MSCtor | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
@@ -24,12 +23,17 @@ function getMediaSourceCtor(): MSCtor | null {
 export function useSpeech() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [status, setStatus] = useState<SpeechStatus>("idle");
+  // While streaming, audio.duration is Infinity and seeking corrupts the
+  // source buffer; flips true once endOfStream() (or the blob load) completes.
+  const [canSeek, setCanSeek] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const lastPlayedRef = useRef<{ id: string; text: string } | null>(null);
 
-  const stop = useCallback(() => {
+  const teardown = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
     const ms = mediaSourceRef.current;
@@ -41,11 +45,17 @@ export function useSpeech() {
       }
     }
     mediaSourceRef.current = null;
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.removeAttribute("src");
-      audioRef.current.load();
-      audioRef.current = null;
+    const audio = audioRef.current;
+    if (audio) {
+      // Clear before pause()/load() so teardown's pause event doesn't bounce
+      // status back to "paused" after we set "idle".
+      audio.onended = null;
+      audio.onerror = null;
+      audio.onpause = null;
+      audio.onplay = null;
+      audio.pause();
+      audio.removeAttribute("src");
+      audio.load();
     }
     if (urlRef.current) {
       URL.revokeObjectURL(urlRef.current);
@@ -53,15 +63,19 @@ export function useSpeech() {
     }
     setActiveId(null);
     setStatus("idle");
+    setCanSeek(false);
   }, []);
+
+  const stop = useCallback(() => {
+    teardown();
+    setError(null);
+    lastPlayedRef.current = null;
+  }, [teardown]);
 
   useEffect(() => stop, [stop]);
 
-  // Must be called synchronously from a user-gesture handler. Mobile browsers
-  // (iOS Safari, Android Chrome) require Audio.play() to fire in the same tick
-  // as the tap — awaiting a fetch before creating the audio element lets the
-  // gesture expire and play() is rejected silently. We wire up Audio +
-  // MediaSource and call play() before any await; bytes stream in afterwards.
+  // Must run synchronously in a user-gesture handler — mobile browsers reject
+  // Audio.play() if any await lands between the tap and the call.
   const play = useCallback(
     (id: string, text: string) => {
       if (activeId === id) {
@@ -70,22 +84,41 @@ export function useSpeech() {
       }
       stop();
       if (!text.trim()) return;
+      const audio = audioRef.current;
+      if (!audio) {
+        console.warn("useSpeech: audioRef not attached");
+        return;
+      }
+
+      lastPlayedRef.current = { id, text };
 
       const ac = new AbortController();
       abortRef.current = ac;
       setActiveId(id);
       setStatus("loading");
 
+      const fail = (msg: string) => {
+        teardown();
+        setError(msg);
+      };
+
+      // Wired once so external controls (media-chrome's pause button) keep
+      // status in sync.
+      audio.onended = () => stop();
+      audio.onerror = () => fail("Playback failed.");
+      audio.onpause = () => {
+        if (audio.src && !audio.ended) setStatus("paused");
+      };
+      audio.onplay = () => setStatus("playing");
+
       const MSCtor = getMediaSourceCtor();
       if (!MSCtor) {
-        // No MSE available (iOS < 17.1). Blob path can't start audio inside
-        // the gesture since we need bytes first — playback will likely be
-        // blocked by mobile autoplay policy. Unavoidable without MSE.
-        void playBlobFallback(text, ac, {
-          setAudio: (a) => (audioRef.current = a),
+        // iOS < 17.1: no MSE, so play() can't fire inside the gesture and
+        // mobile autoplay will likely block. Unavoidable.
+        void playBlobFallback(audio, text, ac, {
           setUrl: (u) => (urlRef.current = u),
-          onPlaying: () => setStatus("playing"),
-          onEnd: () => stop(),
+          onComplete: () => setCanSeek(true),
+          onError: fail,
         });
         return;
       }
@@ -95,35 +128,31 @@ export function useSpeech() {
       const url = URL.createObjectURL(mediaSource);
       urlRef.current = url;
 
-      const audio = new Audio();
-      audioRef.current = audio;
       audio.src = url;
-      audio.onended = () => stop();
-      audio.onerror = () => stop();
-
-      // play() returns a promise that resolves once buffered data actually
-      // starts playing. We don't await — the async byte pump below has to
-      // keep running after this synchronous handler returns.
-      audio.play().then(
-        () => setStatus("playing"),
-        () => stop(),
-      );
+      audio.play().catch(() => fail("Couldn't start playback."));
 
       void streamIntoMediaSource(mediaSource, text, ac, {
-        onEnd: () => stop(),
+        onComplete: () => setCanSeek(true),
+        onError: fail,
       });
     },
-    [activeId, stop],
+    [activeId, stop, teardown],
   );
 
-  return { activeId, status, play, stop };
+  const retry = useCallback(() => {
+    const last = lastPlayedRef.current;
+    if (!last) return;
+    play(last.id, last.text);
+  }, [play]);
+
+  return { activeId, status, canSeek, error, play, stop, retry, audioRef };
 }
 
 async function streamIntoMediaSource(
   mediaSource: MediaSource,
   text: string,
   ac: AbortController,
-  h: { onEnd: () => void },
+  h: { onComplete: () => void; onError: (msg: string) => void },
 ): Promise<void> {
   try {
     await new Promise<void>((resolve, reject) => {
@@ -162,7 +191,7 @@ async function streamIntoMediaSource(
       try {
         sb.appendBuffer(chunk);
       } catch {
-        h.onEnd();
+        h.onError("Audio buffer error.");
       }
     };
     sb.addEventListener("updateend", () => {
@@ -170,6 +199,7 @@ async function streamIntoMediaSource(
       else if (closing && mediaSource.readyState === "open") {
         try {
           mediaSource.endOfStream();
+          h.onComplete();
         } catch {
           // already closed
         }
@@ -185,6 +215,7 @@ async function streamIntoMediaSource(
         if (!sb.updating && mediaSource.readyState === "open") {
           try {
             mediaSource.endOfStream();
+            h.onComplete();
           } catch {
             // ignore
           }
@@ -197,21 +228,20 @@ async function streamIntoMediaSource(
       }
     }
   } catch (err) {
-    if ((err as Error).name !== "AbortError") {
-      console.error("TTS stream error:", err);
-      h.onEnd();
-    }
+    if ((err as Error).name === "AbortError") return;
+    console.error("TTS stream error:", err);
+    h.onError(networkErrorMessage(err));
   }
 }
 
 async function playBlobFallback(
+  audio: HTMLAudioElement,
   text: string,
   ac: AbortController,
   h: {
-    setAudio: (a: HTMLAudioElement) => void;
     setUrl: (u: string) => void;
-    onPlaying: () => void;
-    onEnd: () => void;
+    onComplete: () => void;
+    onError: (msg: string) => void;
   },
 ): Promise<void> {
   try {
@@ -226,16 +256,21 @@ async function playBlobFallback(
     if (ac.signal.aborted) return;
     const url = URL.createObjectURL(blob);
     h.setUrl(url);
-    const audio = new Audio(url);
-    h.setAudio(audio);
-    audio.onended = h.onEnd;
-    audio.onerror = h.onEnd;
-    h.onPlaying();
+    audio.src = url;
+    h.onComplete();
     await audio.play();
   } catch (err) {
-    if ((err as Error).name !== "AbortError") {
-      console.error("TTS error:", err);
-    }
-    h.onEnd();
+    if ((err as Error).name === "AbortError") return;
+    console.error("TTS error:", err);
+    h.onError(networkErrorMessage(err));
   }
+}
+
+function networkErrorMessage(err: unknown): string {
+  const msg = (err as Error)?.message ?? "";
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "You're offline.";
+  }
+  if (msg.includes("TTS failed")) return "Speech service unavailable.";
+  return "Network error.";
 }

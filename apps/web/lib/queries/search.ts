@@ -1,15 +1,10 @@
 "use client";
 
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import type { SearchHit } from "@overtchat/shared";
 import { searchKeys } from "@/lib/queries/keys";
 
-export type SearchHit = {
-  chatId: string;
-  title: string | null;
-  updatedAt: number;
-  snippet: string | null;
-  messageId: string | null;
-};
+export type { SearchHit };
 
 export function useChatsSearch(query: string) {
   const enabled = query.trim().length >= 2;

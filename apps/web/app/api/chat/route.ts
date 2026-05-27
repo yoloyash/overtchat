@@ -1,15 +1,14 @@
-import {
-  convertToModelMessages,
-  streamText,
-  stepCountIs,
-  type UIMessage,
-} from "ai";
+import { convertToModelMessages, streamText, stepCountIs } from "ai";
+import type { ChatRequestBody } from "@overtchat/shared";
 import { webTools, WEB_SEARCH_CITATION_PROMPT } from "@/lib/tools";
+import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
 import {
   appendMessage,
   deleteMessagesFrom,
   ensureChat,
+  getActiveStreamId,
+  setActiveStreamId,
   touchChat,
 } from "@/lib/db/chats";
 import { inlineUploads } from "@/lib/db/uploads";
@@ -17,6 +16,8 @@ import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
 import { buildRuntimeContext } from "@/lib/runtime-context";
+import * as cancelRegistry from "@/lib/streams/cancel-registry";
+import { getStreamContext } from "@/lib/streams/context";
 
 export const maxDuration = 300;
 
@@ -29,20 +30,13 @@ interface MessageStats {
   finishReason?: string;
 }
 
-interface Body {
-  messages: UIMessage[];
-  modelConfigId: string;
-  searchEnabled?: boolean;
-  chatId: string;
-  projectId?: string | null;
-  trigger?: "submit-message" | "regenerate-message";
-  messageId?: string;
-  temporary?: boolean;
+export function OPTIONS(req: Request) {
+  return preflight(req);
 }
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return new Response("Unauthorized", { status: 401 });
+  if (!session) return withCors(req, new Response("Unauthorized", { status: 401 }));
   const userId = session.user.id;
 
   const {
@@ -54,22 +48,35 @@ export async function POST(req: Request) {
     trigger,
     messageId,
     temporary,
-  } = (await req.json()) as Body;
+  } = (await req.json()) as ChatRequestBody;
 
-  if (!modelConfigId) return new Response("Missing modelConfigId", { status: 400 });
-  if (!messages.length) return new Response("No messages", { status: 400 });
-  if (!chatId) return new Response("Missing chatId", { status: 400 });
+  if (!modelConfigId) return withCors(req, new Response("Missing modelConfigId", { status: 400 }));
+  if (!messages.length) return withCors(req, new Response("No messages", { status: 400 }));
+  if (!chatId) return withCors(req, new Response("Missing chatId", { status: 400 }));
 
   const modelConfig = await getModelConfig(modelConfigId);
-  if (!modelConfig) return new Response("Model config not found", { status: 404 });
+  if (!modelConfig) return withCors(req, new Response("Model config not found", { status: 404 }));
 
   let resolvedProjectId: string | null;
   if (temporary) {
     resolvedProjectId = projectId ?? null;
   } else {
     const chat = await ensureChat(chatId, userId, projectId ?? null);
-    if (!chat) return new Response("Not found", { status: 404 });
+    if (!chat) return withCors(req, new Response("Not found", { status: 404 }));
     resolvedProjectId = chat.projectId;
+
+    const prior = await getActiveStreamId(chatId);
+    if (prior) {
+      if (cancelRegistry.has(prior)) {
+        return withCors(
+          req,
+          new Response("Stream already in progress for this chat", {
+            status: 409,
+          }),
+        );
+      }
+      await setActiveStreamId(chatId, null);
+    }
   }
 
   const project = resolvedProjectId
@@ -111,6 +118,11 @@ export async function POST(req: Request) {
   ].filter((s): s is string => Boolean(s && s.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
 
+  const streamId = crypto.randomUUID();
+  const controller = temporary ? null : new AbortController();
+  if (controller) cancelRegistry.register(streamId, controller);
+  const abortSignal = controller?.signal ?? req.signal;
+
   const result = streamText({
     model,
     system,
@@ -121,7 +133,7 @@ export async function POST(req: Request) {
       ? async ({ stepNumber }) =>
           stepNumber === 0 ? { toolChoice: "required" } : {}
       : undefined,
-    abortSignal: req.signal,
+    abortSignal,
     providerOptions,
     onChunk: ({ chunk }) => {
       if (
@@ -134,10 +146,19 @@ export async function POST(req: Request) {
     },
   });
 
+  const streamHeaders = corsHeaders(req);
+  streamHeaders.set("Content-Encoding", "none");
   return result.toUIMessageStreamResponse({
     sendReasoning: true,
     originalMessages: messages,
     generateMessageId: () => crypto.randomUUID(),
+    headers: streamHeaders,
+    consumeSseStream: temporary
+      ? undefined
+      : async ({ stream }) => {
+          await getStreamContext().createNewResumableStream(streamId, () => stream);
+          await setActiveStreamId(chatId, streamId);
+        },
     messageMetadata: ({ part }) => {
       if (part.type !== "finish") return undefined;
 
@@ -161,19 +182,23 @@ export async function POST(req: Request) {
 
       return { stats };
     },
-    onFinish: async ({ responseMessage, isAborted }) => {
-      if (isAborted) return;
+    onFinish: async ({ responseMessage }) => {
       if (temporary) return;
       try {
-        await appendMessage(
-          chatId,
-          "assistant",
-          responseMessage.parts,
-          responseMessage.id,
-        );
-        await touchChat(chatId);
+        if (responseMessage.parts.length > 0) {
+          await appendMessage(
+            chatId,
+            "assistant",
+            responseMessage.parts,
+            responseMessage.id,
+          );
+          await touchChat(chatId);
+        }
+        await setActiveStreamId(chatId, null);
       } catch (err) {
         console.error("[persist-assistant]", err);
+      } finally {
+        cancelRegistry.unregister(streamId);
       }
     },
   });

@@ -1,15 +1,6 @@
 import { z } from "zod";
 import { useLocalStorage } from "@/lib/useLocalStorage";
-
-/** Public-facing model config DTO. `apiKey` is intentionally omitted — it never leaves the server. */
-export interface PublicModelConfig {
-  id: string;
-  label: string;
-  /** Display label for the underlying provider, e.g. "OpenAI", "Anthropic", "Custom". */
-  displayProvider: string;
-  model: string;
-  hasExtraBody: boolean;
-}
+export type { PublicModelConfig } from "@overtchat/shared";
 
 /** Admin-facing model config DTO. Includes `apiKey` + `extraBody` for editing. */
 export interface AdminModelConfig {

@@ -14,7 +14,7 @@ I wanted a chat app I could open and use. So I wrote one.
 
 ## What's different, concretely
 
-- **One process, one file.** A Next.js app and a SQLite file. No Postgres, no Redis, no Celery, no separate API service. Schema migrations are one Drizzle command on container boot.
+- **One process, one SQLite file, one tiny Redis.** A Next.js app, a SQLite file for everything that matters, and a tiny Redis container (~13 MB idle, capped at 64 MB) that exists only so a reload mid-reply doesn't drop your tokens. No Postgres, no Celery, no separate API service. Schema migrations are one Drizzle command on container boot.
 - **600 MB Docker image vs Open WebUI's 1.7 GB** (compressed, amd64, pulled from `ghcr.io` on 2026-05-20). About a third the size on disk, fewer layers.
 - **No plugin runtime, no pipelines, no functions framework.** Tools are two AI SDK definitions in [`apps/web/lib/tools.ts`](apps/web/lib/tools.ts): `web_search` (SearXNG) and `fetch_url` (Defuddle → markdown). That's the whole extensibility surface.
 - **No RAG, no embeddings, no vector DB.** Chat search is SQLite FTS5 + BM25, populated by triggers ([`apps/web/lib/db/search.ts`](apps/web/lib/db/search.ts)). Web search results go straight into context as JSON.
@@ -72,7 +72,7 @@ No telemetry, no analytics. No external calls except the LLM endpoint you config
 
 ## Stack
 
-Next.js 16 · Vercel AI SDK v6 · Better Auth · Drizzle + SQLite · base-ui · Tailwind · SearXNG · Kokoro TTS
+Next.js 16 · Vercel AI SDK v6 · Better Auth · Drizzle + SQLite · Redis (resume buffer) · base-ui · Tailwind · SearXNG · Kokoro TTS
 
 ## More
 

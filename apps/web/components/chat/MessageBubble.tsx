@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
 import { Streamdown } from "streamdown";
 import {
@@ -15,7 +16,10 @@ import {
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { humanMediaLabel } from "@/lib/chat/attachments";
-import { STREAMDOWN_PLUGINS } from "@/lib/chat/markdown";
+import {
+  STREAMDOWN_DEFAULT_REMARK_PLUGINS,
+  STREAMDOWN_PLUGINS,
+} from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
@@ -37,7 +41,10 @@ import { MediaIcon } from "./attachment-icons";
 import { ThinkingBlock } from "./ThinkingBlock";
 import { StatsPopover } from "./StatsPopover";
 
-const CITATION_REMARK_PLUGINS = [unicodeCitation];
+const CITATION_REMARK_PLUGINS = [
+  ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
+  unicodeCitation,
+];
 const CITATION_ALLOWED_TAGS = {
   citation: ["turn", "reftype", "index", "citationid"],
   "composite-citation": ["citations", "citationid"],
@@ -374,7 +381,7 @@ function CopyButton({ text }: { text: string }) {
         )
       }
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(() => {
+        void clipboardWriteText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         });
@@ -395,11 +402,11 @@ function SpeakButton({
   if (!text) return null;
   const active = speech.activeId === messageId;
   const loading = active && speech.status === "loading";
-  const playing = active && speech.status === "playing";
-  const label = playing ? "Stop" : loading ? "Loading…" : "Speak";
+  const live = active && (speech.status === "playing" || speech.status === "paused");
+  const label = live ? "Stop" : loading ? "Loading…" : "Speak";
   const icon = loading ? (
     <Loader2 className="size-3.5 animate-spin" />
-  ) : playing ? (
+  ) : live ? (
     <Square className="size-3 fill-current" />
   ) : (
     <Volume2 className="size-3.5" />
@@ -412,4 +419,3 @@ function SpeakButton({
     />
   );
 }
-

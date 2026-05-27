@@ -4,7 +4,7 @@
 **/.next
 **/.turbo
 npm-debug.log*
-**/data
+apps/web/data
 *.db
 *.db-journal
 *.db-wal
@@ -28,7 +28,7 @@ compose.override.yaml
 .gemini
 .claude
 .DS_Store
-**/scripts
+apps/web/scripts
 **/tsconfig.tsbuildinfo
 docs
 searxng

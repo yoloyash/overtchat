@@ -9,31 +9,9 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { WebSearchResult, FetchedPage } from "@/lib/web-client";
+import type { WebSearchPart, FetchUrlPart } from "@overtchat/shared";
 
-type ToolState =
-  | "input-streaming"
-  | "input-available"
-  | "output-available"
-  | "output-error";
-
-export type WebSearchPart = {
-  type: "tool-web_search";
-  toolCallId: string;
-  state: ToolState;
-  input?: { query?: string; limit?: number };
-  output?: WebSearchResult[];
-  errorText?: string;
-};
-
-export type FetchUrlPart = {
-  type: "tool-fetch_url";
-  toolCallId: string;
-  state: ToolState;
-  input?: { url?: string };
-  output?: FetchedPage;
-  errorText?: string;
-};
+export type { WebSearchPart, FetchUrlPart };
 
 export function ToolCall({ part }: { part: WebSearchPart | FetchUrlPart }) {
   const [open, setOpen] = useState(false);

@@ -1,0 +1,1 @@
+ALTER TABLE `chats` ADD `active_stream_id` text;

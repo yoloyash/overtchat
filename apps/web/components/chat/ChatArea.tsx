@@ -21,6 +21,7 @@ import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { ChatHeader } from "./ChatHeader";
 import { Composer } from "./Composer";
 import { MessageList } from "./MessageList";
+import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 const STATS_FOR_NERDS_STORAGE_KEY = "overtchat_stats_for_nerds";
@@ -66,7 +67,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const isNewRef = useRef(isNew ?? false);
 
   const [transport] = useState(
-    () => new DefaultChatTransport<UIMessage>({ api: "/api/chat" }),
+    () =>
+      new DefaultChatTransport<UIMessage>({
+        api: "/api/chat",
+        prepareSendMessagesRequest: ({ messages, body, trigger, messageId }) => ({
+          body: { ...body, messages, trigger, messageId },
+        }),
+      }),
   );
 
   const temporaryRef = useRef(false);
@@ -75,6 +82,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   }, [temporary]);
 
   const { messages, sendMessage, regenerate, status, stop, error } = useChat({
+    id: temporary ? undefined : chatId,
+    resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
     onFinish: ({ message }) => {
@@ -114,6 +123,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   });
 
   const streaming = status === "streaming" || status === "submitted";
+
+  function handleStop() {
+    stop();
+    if (!temporary) {
+      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" });
+    }
+  }
 
   function handleSubmit(text: string, attachments: FileUIPart[]) {
     const wasNew = isNewRef.current && !temporary;
@@ -181,7 +197,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       searchEnabled={searchEnabled}
       onToggleSearch={() => setSearchEnabled(!searchEnabled)}
       onSubmit={handleSubmit}
-      onStop={stop}
+      onStop={handleStop}
       isAdmin={isAdmin}
     />
   );
@@ -196,6 +212,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}
       />
+
+      <MiniSpeechPlayer speech={speech} />
 
       {messages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
