@@ -2,7 +2,10 @@ name: Update token count
 
 on:
   push:
-    branches: [main, feat/repo-tokens-badge]
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
   workflow_dispatch:
 
 permissions:
