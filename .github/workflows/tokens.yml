@@ -1,0 +1,38 @@
+name: Update token count
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+      - 'packages/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-tokens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: nanocoai/nanoclaw/repo-tokens@main
+        id: tokens
+        with:
+          include: 'apps/web/app/**/*.ts apps/web/app/**/*.tsx apps/web/lib/**/*.ts apps/web/lib/**/*.tsx apps/mobile/src/**/*.ts apps/mobile/src/**/*.tsx packages/shared/src/**/*.ts packages/shared/src/**/*.tsx'
+          exclude: '**/*.test.ts **/*.test.tsx **/*.spec.ts **/*.spec.tsx **/node_modules/** **/dist/**'
+          badge-path: '.github/badges/tokens.svg'
+
+      - name: Commit if changed
+        run: |
+          git add README.md .github/badges/tokens.svg
+          git diff --cached --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "docs: update token count to ${{ steps.tokens.outputs.badge }}"
+          git push

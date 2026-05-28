@@ -5,6 +5,10 @@ node_modules
 
 # testing
 /coverage
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
 
 # next.js
 .next/
@@ -28,8 +32,6 @@ data/
 .DS_Store
 *.pem
 *.log
-*.png
-!apps/mobile/assets/*.png
 ROADMAP.md
 ROADMAP_MOBILE.md
 GEMINI.md

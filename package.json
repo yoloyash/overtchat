@@ -16,6 +16,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:e2e": "npm run test:e2e -w apps/web --",
+    "test:e2e:ui": "npm run test:e2e:ui -w apps/web --",
     "start": "npm run start -w apps/web --",
     "db:generate": "npm run db:generate -w apps/web --",
     "db:migrate": "npm run db:migrate -w apps/web --",

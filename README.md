@@ -1,8 +1,17 @@
-# overtchat
+<p align="center">
+  <img src=".github/assets/banner.png" alt="overtchat banner" width="600" />
+</p>
 
-A simpler self-hosted alternative to Open WebUI. Bring your own model — Anthropic, Google Gemini, or any OpenAI-compatible endpoint. One `docker compose up` and you're in.
+<p align="center">
+  A lightweight self-hosted chat client that "just works". One <code>docker compose up</code> and you're in.
+</p>
 
-> 📱 **Android client now in closed beta.** [Become a tester](#mobile) · [Download APK](https://github.com/yoloyash/overtchat/releases/latest) · *iOS in progress*
+<p align="center">
+  <a href="https://groups.google.com/g/overtchat-testers"><img src="https://img.shields.io/badge/Android-Alpha_(Testers_Wanted)-green?logo=android&logoColor=white&color=22C55E" alt="Android Alpha" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="https://github.com/yoloyash/overtchat/releases/latest"><img src="https://img.shields.io/badge/APK-Download-blue?logo=android&logoColor=white&color=3B82F6" alt="Android APK" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="https://yoloyash.github.io/overtchat/privacy.html"><img src="https://img.shields.io/badge/Privacy-Zero_Telemetry-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="https://github.com/yoloyash/overtchat"><img src=".github/badges/tokens.svg" alt="repo tokens" valign="middle"></a>
+</p>
 
 https://github.com/user-attachments/assets/bb1c6b31-97ad-43dc-b39c-743c12d7ae4b
 
@@ -46,9 +55,9 @@ overtchat now ships as a native Android app — same chat surface, same model pi
 
 It's a thin client: **bring your own server**. On first launch, enter the URL of an overtchat instance you control. Chats and files live there, not in the app.
 
-- **Closed beta on Google Play** — open an [issue](https://github.com/yoloyash/overtchat/issues) to request a tester slot. Updates ship automatically once you're in.
-- **Sideload APK** — [latest release on GitHub](https://github.com/yoloyash/overtchat/releases/latest). Useful if you don't have Play Store, or just prefer it.
-- **iOS** — in progress, no timeline yet.
+- **Google Play Beta:** Join the [Google Group](https://groups.google.com/g/overtchat-testers) for access.
+- **Direct Download:** Sideload the [latest APK](https://github.com/yoloyash/overtchat/releases/latest).
+- **iOS:** In progress, no timeline yet.
 
 ## What's in the box
 
