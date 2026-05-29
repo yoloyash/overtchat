@@ -78,6 +78,9 @@ next-env.d.ts
 apps/mobile/android/
 apps/mobile/ios/
 apps/mobile/.expo/
+apps/mobile/credentials.json
+apps/mobile/credentials/
 
 # tools
 .gemini
+.claude

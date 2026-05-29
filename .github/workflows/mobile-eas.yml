@@ -6,63 +6,96 @@ on:
   workflow_dispatch:
 
 jobs:
-  aab:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/mobile
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.x
-          cache: npm
-          cache-dependency-path: package-lock.json
-      - name: Install dependencies
-        working-directory: .
-        run: npm ci
-      - name: Build AAB and auto-submit to Play
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: |
-          npx eas-cli@latest build \
-            --non-interactive --no-wait --auto-submit \
-            --platform android --profile production
-
-  apk:
-    if: startsWith(github.ref, 'refs/tags/mobile-v')
-    runs-on: ubuntu-latest
+  android:
+    runs-on: self-hosted
     permissions:
       contents: write
     defaults:
       run:
-        working-directory: apps/mobile
+        shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+
+      - uses: actions/setup-node@v5
         with:
           node-version: 22.x
           cache: npm
           cache-dependency-path: package-lock.json
+
       - name: Install dependencies
-        working-directory: .
         run: npm ci
-      - name: Build APK and attach to GitHub release
+
+      - name: Check mobile version
+        id: version
+        run: |
+          VERSION="$(node -p "require('./apps/mobile/app.json').expo.version")"
+          PACKAGE_VERSION="$(node -p "require('./apps/mobile/package.json').version")"
+          VERSION_CODE="$(node -p "require('./apps/mobile/app.json').expo.android.versionCode")"
+          EXPECTED_TAG="mobile-v${VERSION}"
+
+          test "$PACKAGE_VERSION" = "$VERSION"
+          test "$VERSION_CODE" != "undefined"
+
+          if [[ "${GITHUB_REF_TYPE:-}" == "tag" ]]; then
+            test "${GITHUB_REF_NAME}" = "$EXPECTED_TAG"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "version_code=$VERSION_CODE"
+            echo "expected_tag=$EXPECTED_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install local Android credentials
+        run: |
+          if [[ -f apps/mobile/credentials.json ]]; then
+            exit 0
+          fi
+
+          CREDENTIALS_DIR="${OVERTCHAT_MOBILE_CREDENTIALS_DIR:-$HOME/.overtchat/mobile-credentials}"
+          cp "$CREDENTIALS_DIR/credentials.json" apps/mobile/credentials.json
+          cp -R "$CREDENTIALS_DIR/credentials" apps/mobile/credentials
+
+      - name: Build AAB locally
+        working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          mkdir -p ../../dist/mobile
+          npx eas-cli@20 build --local --non-interactive \
+            --platform android --profile production \
+            --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab"
+
+      - name: Build APK locally
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          mkdir -p ../../dist/mobile
+          npx eas-cli@20 build --local --non-interactive \
+            --platform android --profile production-apk \
+            --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
+
+      - name: Submit AAB to Play
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli@20 submit --non-interactive \
+            --platform android --profile production \
+            --path "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab"
+
+      - name: Attach APK to GitHub release
+        if: startsWith(github.ref, 'refs/tags/mobile-v')
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          OUT=$(npx eas-cli@latest build \
-            --non-interactive --wait --json \
-            --platform android --profile production-apk)
-          URL=$(echo "$OUT" | jq -r '.[0].artifacts.buildUrl')
-          MOBILE_TAG="${GITHUB_REF_NAME}"
-          VERSION="${MOBILE_TAG#mobile-v}"
-          PAIRED=$(git tag --points-at "$GITHUB_SHA" | grep -E '^v[0-9]' | sort -V | tail -1 || true)
-          TAG="${PAIRED:-$MOBILE_TAG}"
-          curl -fsSL "$URL" -o "overtchat-v${VERSION}.apk"
+          TAG="${{ steps.version.outputs.expected_tag }}"
+          APK="dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
+
           gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --draft --title "$TAG" --notes "Draft — fill in notes before publishing."
-          gh release upload "$TAG" "overtchat-v${VERSION}.apk" --clobber
+            gh release create "$TAG" --draft --title "$TAG" --notes "Draft - fill in notes before publishing."
+          gh release upload "$TAG" "$APK" --clobber
