@@ -5,6 +5,19 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DEFAULT_FONT_ID,
+  FONT_OPTIONS,
+  FONT_STORAGE_KEY,
+  type FontId,
+} from "@/lib/fonts";
 
 type ThemeValue = "light" | "dark" | "system";
 
@@ -28,6 +41,17 @@ export function GeneralForm() {
     STATS_FOR_NERDS_STORAGE_KEY,
     false,
   );
+  const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
+  const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
+
+  function selectFont(next: FontId) {
+    setFontId(next);
+    // The blocking script only runs on page load; apply the change live too.
+    const opt = FONT_OPTIONS.find((f) => f.id === next);
+    const root = document.documentElement;
+    if (!opt || opt.cssValue === null) root.style.removeProperty("--app-font-sans");
+    else root.style.setProperty("--app-font-sans", opt.cssValue);
+  }
 
   return (
     <div className="max-w-xl space-y-8">
@@ -72,6 +96,31 @@ export function GeneralForm() {
             );
           })}
         </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-medium">Font</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Interface font for this browser. Headings and code are unaffected.
+          </p>
+        </div>
+        <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>
+          <SelectTrigger aria-label="Font" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FONT_OPTIONS.map(({ id, label, cssValue }) => (
+              <SelectItem
+                key={id}
+                value={id}
+                style={{ fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)" }}
+              >
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </section>
 
       <section className="space-y-3">
