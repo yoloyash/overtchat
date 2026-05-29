@@ -6,6 +6,13 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   DEFAULT_FONT_ID,
   FONT_OPTIONS,
   FONT_STORAGE_KEY,
@@ -98,27 +105,22 @@ export function GeneralForm() {
             Interface font for this browser. Headings and code are unaffected.
           </p>
         </div>
-        <div role="radiogroup" aria-label="Font" className="grid grid-cols-3 gap-2">
-          {FONT_OPTIONS.map(({ id, label, cssValue }) => {
-            const active = currentFont === id;
-            return (
-              <button
+        <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>
+          <SelectTrigger aria-label="Font" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FONT_OPTIONS.map(({ id, label, cssValue }) => (
+              <SelectItem
                 key={id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => selectFont(id)}
+                value={id}
                 style={{ fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)" }}
-                className={cn(
-                  "flex flex-col items-center gap-2 rounded-lg border bg-card px-3 py-4 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                  active ? "border-ring ring-1 ring-ring" : "hover:bg-accent/50",
-                )}
               >
-                <span>{label}</span>
-              </button>
-            );
-          })}
-        </div>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </section>
 
       <section className="space-y-3">
