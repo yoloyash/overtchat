@@ -12,6 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getAuthClient } from "@/lib/auth/client";
 import { setThemePref, useThemePref, type ThemePref } from "@/lib/appearance";
+import { FONT_OPTIONS, FONT_SANS } from "@/lib/fonts";
+import { setFontPref, useFontPref } from "@/lib/fontPref";
 import { getServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
 
@@ -24,6 +26,7 @@ export default function SettingsScreen() {
   const isAdmin = user?.role === "admin";
 
   const themePref = useThemePref();
+  const fontPref = useFontPref();
   const [signingOut, setSigningOut] = useState(false);
   const serverUrl = getServerUrl();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
@@ -110,6 +113,49 @@ export default function SettingsScreen() {
                   ]}
                 >
                   {themePref === opt.key ? (
+                    <View
+                      style={[
+                        styles.radioDot,
+                        { backgroundColor: colors.primary },
+                      ]}
+                    />
+                  ) : null}
+                </View>
+              </Pressable>
+            ))}
+          </Section>
+
+          <Section title="Font">
+            {FONT_OPTIONS.map((opt) => (
+              <Pressable
+                key={opt.id}
+                onPress={() => setFontPref(opt.id)}
+                style={({ pressed }) => [
+                  styles.row,
+                  { opacity: pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.rowLabel,
+                    {
+                      color: colors.foreground,
+                      fontFamily: FONT_SANS[opt.id].sansRegular,
+                    },
+                  ]}
+                >
+                  {opt.label}
+                </Text>
+                <View
+                  style={[
+                    styles.radio,
+                    {
+                      borderColor:
+                        fontPref === opt.id ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  {fontPref === opt.id ? (
                     <View
                       style={[
                         styles.radioDot,
