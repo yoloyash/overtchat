@@ -10,10 +10,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.overtchat.mobile",
-      "buildNumber": "1"
+      "buildNumber": "5"
     },
     "android": {
       "package": "com.overtchat.mobile",
+      "versionCode": 5,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -61,6 +62,14 @@
           "url": "https://sentry.io/",
           "organization": "yash-ge",
           "project": "react-native"
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
         }
       ]
     ],

@@ -7,8 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://groups.google.com/g/overtchat-testers"><img src="https://img.shields.io/badge/Android-Alpha_(Testers_Wanted)-green?logo=android&logoColor=white&color=22C55E" alt="Android Alpha" valign="middle"></a>&nbsp; • &nbsp;
-  <a href="https://github.com/yoloyash/overtchat/releases/latest"><img src="https://img.shields.io/badge/APK-Download-blue?logo=android&logoColor=white&color=3B82F6" alt="Android APK" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="docs/android-testing.md"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
   <a href="https://yoloyash.github.io/overtchat/privacy.html"><img src="https://img.shields.io/badge/Privacy-Zero_Telemetry-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
   <a href="https://github.com/yoloyash/overtchat"><img src=".github/badges/tokens.svg" alt="repo tokens" valign="middle"></a>
 </p>
@@ -55,8 +54,7 @@ overtchat now ships as a native Android app — same chat surface, same model pi
 
 It's a thin client: **bring your own server**. On first launch, enter the URL of an overtchat instance you control. Chats and files live there, not in the app.
 
-- **Google Play Beta:** Join the [Google Group](https://groups.google.com/g/overtchat-testers) for access.
-- **Direct Download:** Sideload the [latest APK](https://github.com/yoloyash/overtchat/releases/latest).
+- **Android:** Install through [Google Play](docs/android-testing.md).
 - **iOS:** In progress, no timeline yet.
 
 ## What's in the box
