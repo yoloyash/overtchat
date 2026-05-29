@@ -224,7 +224,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
             />
           ) : (
             <div className="w-full max-w-3xl">
-              <h1 className="mb-10 text-center font-heading text-2xl font-semibold tracking-tight md:text-3xl">
+              <h1 className="mb-10 text-center text-2xl font-semibold tracking-tight md:text-3xl">
                 {temporary ? "Temporary chat" : "What can I help with?"}
               </h1>
               {!configured && (

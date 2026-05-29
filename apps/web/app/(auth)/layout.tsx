@@ -6,7 +6,7 @@ export default function AuthLayout({
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">
       <div className="mb-8 flex items-center gap-2">
-        <span className="font-heading text-lg font-semibold tracking-tight">
+        <span className="font-brand text-lg font-semibold tracking-tight">
           overtchat
         </span>
       </div>

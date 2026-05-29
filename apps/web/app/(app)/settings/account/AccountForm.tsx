@@ -67,7 +67,7 @@ export function AccountForm({
   return (
     <div className="max-w-xl space-y-10">
       <header>
-        <h1 className="font-heading text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight">
           Account
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

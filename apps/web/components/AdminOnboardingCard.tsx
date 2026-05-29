@@ -27,7 +27,7 @@ export function AdminOnboardingCard({
     <>
       <div className="mx-auto w-full max-w-md">
         <div className="text-center">
-          <h1 className="font-heading text-2xl font-semibold tracking-tight md:text-3xl">
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
             Welcome to overtchat
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
