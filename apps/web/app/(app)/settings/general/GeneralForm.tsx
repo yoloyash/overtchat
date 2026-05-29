@@ -3,7 +3,6 @@
 import { useSyncExternalStore } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
-import { cn } from "@/lib/utils";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
   Select,
@@ -12,6 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   DEFAULT_FONT_ID,
   FONT_OPTIONS,
@@ -69,33 +71,23 @@ export function GeneralForm() {
             Choose how overtchat looks to you.
           </p>
         </div>
-        <div
-          role="radiogroup"
+        <RadioGroup
           aria-label="Theme"
+          value={current}
+          onValueChange={(next) => setTheme(next as ThemeValue)}
           className="grid grid-cols-3 gap-2"
         >
-          {OPTIONS.map(({ value, label, icon: Icon }) => {
-            const active = current === value;
-            return (
-              <button
-                key={value}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                onClick={() => setTheme(value)}
-                className={cn(
-                  "flex flex-col items-center gap-2 rounded-lg border bg-card px-3 py-4 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                  active
-                    ? "border-ring ring-1 ring-ring"
-                    : "hover:bg-accent/50",
-                )}
-              >
-                <Icon className="size-4 text-muted-foreground" />
-                <span>{label}</span>
-              </button>
-            );
-          })}
-        </div>
+          {OPTIONS.map(({ value, label, icon: Icon }) => (
+            <Label
+              key={value}
+              className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border bg-card px-3 py-4 text-sm font-normal transition-colors outline-none has-data-[checked]:border-ring has-data-[checked]:ring-1 has-data-[checked]:ring-ring has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:bg-accent/50"
+            >
+              <RadioGroupItem value={value} className="sr-only" />
+              <Icon className="size-4 text-muted-foreground" />
+              <span>{label}</span>
+            </Label>
+          ))}
+        </RadioGroup>
       </section>
 
       <section className="space-y-3">
@@ -130,20 +122,23 @@ export function GeneralForm() {
             Browser-only message display preferences.
           </p>
         </div>
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border bg-card px-3 py-3 text-sm">
-          <input
-            type="checkbox"
-            checked={statsForNerds}
-            onChange={(e) => setStatsForNerds(e.target.checked)}
-            className="mt-0.5 size-4 accent-primary"
-          />
+        <Label
+          htmlFor="stats-for-nerds"
+          className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border bg-card px-3 py-3 text-sm font-normal"
+        >
           <span>
             <span className="block font-medium">Stats for nerds</span>
             <span className="mt-0.5 block text-xs text-muted-foreground">
               Show token and speed stats on assistant messages.
             </span>
           </span>
-        </label>
+          <Switch
+            id="stats-for-nerds"
+            checked={statsForNerds}
+            onCheckedChange={(next) => setStatsForNerds(next)}
+            className="mt-0.5"
+          />
+        </Label>
       </section>
     </div>
   );
