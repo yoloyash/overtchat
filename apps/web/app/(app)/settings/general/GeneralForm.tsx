@@ -5,6 +5,12 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  DEFAULT_FONT_ID,
+  FONT_OPTIONS,
+  FONT_STORAGE_KEY,
+  type FontId,
+} from "@/lib/fonts";
 
 type ThemeValue = "light" | "dark" | "system";
 
@@ -28,6 +34,17 @@ export function GeneralForm() {
     STATS_FOR_NERDS_STORAGE_KEY,
     false,
   );
+  const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
+  const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
+
+  function selectFont(next: FontId) {
+    setFontId(next);
+    // The blocking script only runs on page load; apply the change live too.
+    const opt = FONT_OPTIONS.find((f) => f.id === next);
+    const root = document.documentElement;
+    if (!opt || opt.cssValue === null) root.style.removeProperty("--app-font-sans");
+    else root.style.setProperty("--app-font-sans", opt.cssValue);
+  }
 
   return (
     <div className="max-w-xl space-y-8">
@@ -67,6 +84,36 @@ export function GeneralForm() {
                 )}
               >
                 <Icon className="size-4 text-muted-foreground" />
+                <span>{label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-medium">Font</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Interface font for this browser. Headings and code are unaffected.
+          </p>
+        </div>
+        <div role="radiogroup" aria-label="Font" className="grid grid-cols-3 gap-2">
+          {FONT_OPTIONS.map(({ id, label, cssValue }) => {
+            const active = currentFont === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => selectFont(id)}
+                style={{ fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)" }}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-lg border bg-card px-3 py-4 text-sm transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                  active ? "border-ring ring-1 ring-ring" : "hover:bg-accent/50",
+                )}
+              >
                 <span>{label}</span>
               </button>
             );
