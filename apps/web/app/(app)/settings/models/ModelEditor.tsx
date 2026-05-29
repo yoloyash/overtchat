@@ -155,7 +155,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         >
           <ArrowLeft />
         </Button>
-        <h1 className="font-heading text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight">
           {isEditing ? "Edit model" : "Add model"}
         </h1>
       </div>

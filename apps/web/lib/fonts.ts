@@ -3,8 +3,9 @@
  * picker — consumed by `app/layout.tsx` (the no-FOUC inline script) and the
  * settings picker in `app/(app)/settings/general/GeneralForm.tsx`.
  *
- * Only the body/UI sans is swappable. Headings (Fraunces) and code (Geist Mono)
- * are fixed. The choice lives in localStorage — no DB, no migration, per-browser.
+ * The picked font applies to all UI and content text. Only the brand wordmark
+ * (Fraunces, via --font-brand) and code (Geist Mono) are fixed. The choice lives
+ * in localStorage — no DB, no migration, per-browser.
  *
  * NOTE: the actual `next/font/google` calls must stay top-level in `layout.tsx`;
  * this module only owns the ids, labels, storage key, and the value written to

@@ -56,7 +56,7 @@ export function SidebarClient() {
   return (
     <>
       <div className="flex h-12 shrink-0 items-center justify-between px-3">
-        <span className="text-sm font-semibold tracking-tight">overtchat</span>
+        <span className="font-brand text-sm font-semibold tracking-tight">overtchat</span>
         <button
           type="button"
           onClick={() => {

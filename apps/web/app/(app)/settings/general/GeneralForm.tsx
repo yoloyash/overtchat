@@ -56,7 +56,7 @@ export function GeneralForm() {
   return (
     <div className="max-w-xl space-y-8">
       <header>
-        <h1 className="font-heading text-xl font-semibold tracking-tight">General</h1>
+        <h1 className="text-xl font-semibold tracking-tight">General</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Personal preferences for this browser.
         </p>
@@ -102,7 +102,7 @@ export function GeneralForm() {
         <div>
           <h2 className="text-sm font-medium">Font</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Interface font for this browser. Headings and code are unaffected.
+            Choose the font used in the app.
           </p>
         </div>
         <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>

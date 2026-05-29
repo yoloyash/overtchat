@@ -27,7 +27,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     <div className="max-w-3xl space-y-6">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-heading text-xl font-semibold tracking-tight">Users</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Users</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Manage who can sign in.
           </p>

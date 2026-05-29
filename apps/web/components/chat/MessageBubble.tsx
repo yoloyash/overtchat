@@ -191,7 +191,7 @@ function AssistantBubble({
             return (
               <Streamdown
                 key={i}
-                className="font-serif space-y-3 text-[15px] leading-relaxed"
+                className="font-sans space-y-3 text-[15px] leading-relaxed"
                 plugins={STREAMDOWN_PLUGINS}
                 remarkPlugins={CITATION_REMARK_PLUGINS}
                 allowedTags={CITATION_ALLOWED_TAGS}
