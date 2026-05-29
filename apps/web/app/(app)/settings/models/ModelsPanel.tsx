@@ -61,7 +61,7 @@ export function ModelsPanel() {
     <div className="max-w-2xl space-y-6">
       <header className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="font-heading text-xl font-semibold tracking-tight">Models</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Models</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Anthropic, Google Gemini, or OpenAI-compatible endpoints — available to everyone.
           </p>
@@ -146,7 +146,7 @@ export function ModelsPanel() {
         <AlertDialog.Portal>
           <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/40 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity" />
           <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity">
-            <AlertDialog.Title className="font-heading text-base font-semibold tracking-tight">
+            <AlertDialog.Title className="text-base font-semibold tracking-tight">
               Delete model?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">

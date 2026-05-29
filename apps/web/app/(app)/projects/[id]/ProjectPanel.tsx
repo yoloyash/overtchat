@@ -157,7 +157,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
         <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-8">
           <section className="space-y-3">
             <div>
-              <h2 className="font-heading text-base font-semibold tracking-tight">
+              <h2 className="text-base font-semibold tracking-tight">
                 Instructions
               </h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -184,7 +184,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
 
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-base font-semibold tracking-tight">
+              <h2 className="text-base font-semibold tracking-tight">
                 Chats
               </h2>
               <Button

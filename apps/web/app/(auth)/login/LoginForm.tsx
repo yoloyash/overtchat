@@ -32,7 +32,7 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} className="space-y-5">
       <header>
-        <h1 className="font-heading text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight">
           Welcome back
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">

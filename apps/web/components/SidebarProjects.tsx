@@ -167,7 +167,7 @@ export function CreateProjectDialog({
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
         <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0">
-          <Dialog.Title className="font-heading text-lg font-semibold tracking-tight">
+          <Dialog.Title className="text-lg font-semibold tracking-tight">
             New project
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
