@@ -8,7 +8,11 @@ const DB_PATH = process.env.DATABASE_URL ?? "./data/chat.db";
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const sqlite = new Database(DB_PATH);
-sqlite.pragma("journal_mode = WAL");
 sqlite.pragma("foreign_keys = ON");
 
 export const db = drizzle({ client: sqlite });
+
+export function enableWalMode() {
+  if (sqlite.memory) return;
+  sqlite.pragma("journal_mode = WAL");
+}
