@@ -18,7 +18,12 @@ jobs:
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npx playwright install chromium --with-deps
-      - run: npm run build -w apps/web --
+      - env:
+          DATABASE_URL: ":memory:"
+          BETTER_AUTH_SECRET: ci-build-secret-12345678901234567890
+          BETTER_AUTH_URL: http://localhost:4717
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build -w apps/web --
       - env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CI: true
