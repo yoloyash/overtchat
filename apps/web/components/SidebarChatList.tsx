@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
   Download,
@@ -19,6 +20,7 @@ import {
   useRenameChat,
 } from "@/lib/queries/chats";
 import { useSidebar } from "@/components/sidebar-context";
+import { Button } from "@/components/ui/button";
 
 interface Chat {
   id: string;
@@ -93,6 +95,8 @@ export function SidebarItem({
 
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(chat.title ?? "");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   function commitRename() {
     const next = draft.trim();
@@ -101,13 +105,20 @@ export function SidebarItem({
     renameMut.mutate({ id: chat.id, title: next });
   }
 
-  function confirmDelete() {
-    if (!window.confirm("Delete this chat?")) return;
-    deleteMut.mutate(chat.id, {
-      onSuccess: () => {
-        if (active) router.push("/");
-      },
-    });
+  function requestDelete() {
+    setDeleteError("");
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
+    setDeleteError("");
+    try {
+      await deleteMut.mutateAsync(chat.id);
+      setDeleteOpen(false);
+      if (active) router.push("/");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+    }
   }
 
   function moveTo(projectId: string | null) {
@@ -140,95 +151,148 @@ export function SidebarItem({
   }
 
   return (
-    <li className="group flex items-center">
-      <Link
-        href={`/chat/${chat.id}`}
-        className={cn(
-          "flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent",
-          active && "bg-sidebar-accent",
-        )}
-      >
-        {chat.title ?? "Untitled"}
-      </Link>
-      <Menu.Root>
-        <Menu.Trigger
-          aria-label="Chat actions"
-          className="mr-0.5 rounded p-1 opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-100 data-[popup-open]:opacity-100 max-md:p-2 [@media(hover:none)]:opacity-100"
+    <>
+      <li className="group flex items-center">
+        <Link
+          href={`/chat/${chat.id}`}
+          className={cn(
+            "flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent",
+            active && "bg-sidebar-accent",
+          )}
         >
-          <MoreHorizontal className="size-3.5 text-muted-foreground" />
-        </Menu.Trigger>
-        <Menu.Portal container={drawerRef}>
-          <Menu.Positioner side="right" align="start" sideOffset={6}>
-            <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
-              <Menu.Item
-                onClick={() => {
-                  setDraft(chat.title ?? "");
-                  setRenaming(true);
-                }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-              >
-                <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>Rename</span>
-              </Menu.Item>
-              <Menu.SubmenuRoot>
-                <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
-                  <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span>Move to</span>
-                  <span className="ml-auto text-muted-foreground">›</span>
-                </Menu.SubmenuTrigger>
-                <Menu.Portal container={drawerRef}>
-                  <Menu.Positioner side="right" align="start" sideOffset={6}>
-                    <Menu.Popup className="z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
-                      <Menu.Item
-                        onClick={() => moveTo(null)}
-                        disabled={currentProjectId === null}
-                        className={cn(
-                          "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                          currentProjectId === null &&
-                            "text-muted-foreground",
-                        )}
-                      >
-                        No project
-                      </Menu.Item>
-                      {projects.length > 0 && (
-                        <div className="my-1 h-px bg-border" />
-                      )}
-                      {projects.map((p) => (
+          {chat.title ?? "Untitled"}
+        </Link>
+        <Menu.Root>
+          <Menu.Trigger
+            aria-label="Chat actions"
+            className="mr-0.5 rounded p-1 opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-100 data-[popup-open]:opacity-100 max-md:p-2 [@media(hover:none)]:opacity-100"
+          >
+            <MoreHorizontal className="size-3.5 text-muted-foreground" />
+          </Menu.Trigger>
+          <Menu.Portal container={drawerRef}>
+            <Menu.Positioner side="right" align="start" sideOffset={6}>
+              <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+                <Menu.Item
+                  onClick={() => {
+                    setDraft(chat.title ?? "");
+                    setRenaming(true);
+                  }}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                >
+                  <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span>Rename</span>
+                </Menu.Item>
+                <Menu.SubmenuRoot>
+                  <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
+                    <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span>Move to</span>
+                    <span className="ml-auto text-muted-foreground">›</span>
+                  </Menu.SubmenuTrigger>
+                  <Menu.Portal container={drawerRef}>
+                    <Menu.Positioner side="right" align="start" sideOffset={6}>
+                      <Menu.Popup className="z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
                         <Menu.Item
-                          key={p.id}
-                          onClick={() => moveTo(p.id)}
-                          disabled={p.id === currentProjectId}
+                          onClick={() => moveTo(null)}
+                          disabled={currentProjectId === null}
                           className={cn(
-                            "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                            p.id === currentProjectId &&
+                            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                            currentProjectId === null &&
                               "text-muted-foreground",
                           )}
                         >
-                          <span className="truncate">{p.name}</span>
+                          No project
                         </Menu.Item>
-                      ))}
-                    </Menu.Popup>
-                  </Menu.Positioner>
-                </Menu.Portal>
-              </Menu.SubmenuRoot>
-              <Menu.Item
-                render={<a href={`/api/chat/${chat.id}/export`} download />}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                        {projects.length > 0 && (
+                          <div className="my-1 h-px bg-border" />
+                        )}
+                        {projects.map((p) => (
+                          <Menu.Item
+                            key={p.id}
+                            onClick={() => moveTo(p.id)}
+                            disabled={p.id === currentProjectId}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                              p.id === currentProjectId &&
+                                "text-muted-foreground",
+                            )}
+                          >
+                            <span className="truncate">{p.name}</span>
+                          </Menu.Item>
+                        ))}
+                      </Menu.Popup>
+                    </Menu.Positioner>
+                  </Menu.Portal>
+                </Menu.SubmenuRoot>
+                <Menu.Item
+                  render={<a href={`/api/chat/${chat.id}/export`} download />}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                >
+                  <Download className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span>Export</span>
+                </Menu.Item>
+                <Menu.Item
+                  onClick={requestDelete}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none data-[highlighted]:bg-accent"
+                >
+                  <Trash2 className="size-3.5 shrink-0" />
+                  <span>Delete</span>
+                </Menu.Item>
+              </Menu.Popup>
+            </Menu.Positioner>
+          </Menu.Portal>
+        </Menu.Root>
+      </li>
+
+      <AlertDialog.Root
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          if (next) {
+            setDeleteOpen(true);
+          } else if (!deleteMut.isPending) {
+            setDeleteOpen(false);
+            setDeleteError("");
+          }
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
+          <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-5 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+            <AlertDialog.Title className="text-base font-semibold tracking-tight">
+              Delete chat?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {chat.title ?? "Untitled"}
+              </span>{" "}
+              will be permanently deleted.
+            </AlertDialog.Description>
+            {deleteError && (
+              <p className="mt-3 text-xs text-destructive">{deleteError}</p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Close
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleteMut.isPending}
+                  />
+                }
               >
-                <Download className="size-3.5 shrink-0 text-muted-foreground" />
-                <span>Export</span>
-              </Menu.Item>
-              <Menu.Item
+                Cancel
+              </AlertDialog.Close>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteMut.isPending}
                 onClick={confirmDelete}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none data-[highlighted]:bg-accent"
               >
-                <Trash2 className="size-3.5 shrink-0" />
-                <span>Delete</span>
-              </Menu.Item>
-            </Menu.Popup>
-          </Menu.Positioner>
-        </Menu.Portal>
-      </Menu.Root>
-    </li>
+                {deleteMut.isPending ? "Deleting…" : "Delete"}
+              </Button>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </>
   );
 }

@@ -49,4 +49,20 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
     await page.getByLabel("Send message").waitFor({ state: "visible", timeout: 45000 });
     await expect(page.locator("body")).toContainText("Overtchat-E2E-Success", { timeout: 15000 });
   });
+
+  await test.step("delete chat from mobile sidebar", async () => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.getByLabel("Open sidebar").click();
+    await page.getByRole("button", { name: "Chat actions" }).first().click();
+    await page.getByRole("menuitem", { name: "Delete" }).click();
+    await expect(
+      page.getByRole("alertdialog", { name: "Delete chat?" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.waitForURL("**/");
+    await page.getByLabel("Open sidebar").click();
+    await expect(
+      page.getByText("No conversations yet").filter({ visible: true }),
+    ).toBeVisible();
+  });
 });
