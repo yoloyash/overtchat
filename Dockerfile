@@ -16,7 +16,11 @@ RUN npm ci --include=dev
 
 FROM deps AS builder
 COPY . .
-RUN npm run build -w apps/web
+RUN DATABASE_URL=:memory: \
+    BETTER_AUTH_SECRET=container-build-secret-123456789012345 \
+    BETTER_AUTH_URL=http://localhost:4717 \
+    NEXT_TELEMETRY_DISABLED=1 \
+    npm run build -w apps/web
 
 FROM base AS runner
 RUN groupadd --system --gid 1001 nodejs \
