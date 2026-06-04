@@ -65,7 +65,7 @@ export function MessageBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
-  onEdit: (id: string, text: string) => void;
+  onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -81,10 +81,15 @@ export function MessageBubble({
       return (
         <EditBubble
           initial={text}
+          initialFiles={files}
           onCancel={() => setEditing(false)}
-          onSave={(next) => {
+          onSave={(next, keptFiles) => {
             setEditing(false);
-            if (next.trim() && next !== text) onEdit(message.id, next);
+            const changed =
+              next !== text || keptFiles.length !== files.length;
+            if (changed && (next.trim() || keptFiles.length > 0)) {
+              onEdit(message.id, next, keptFiles);
+            }
           }}
         />
       );
@@ -269,14 +274,17 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
 
 function EditBubble({
   initial,
+  initialFiles,
   onCancel,
   onSave,
 }: {
   initial: string;
+  initialFiles: FileUIPart[];
   onCancel: () => void;
-  onSave: (text: string) => void;
+  onSave: (text: string, files: FileUIPart[]) => void;
 }) {
   const [draft, setDraft] = useState(initial);
+  const [files, setFiles] = useState(initialFiles);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -298,6 +306,25 @@ function EditBubble({
   return (
     <div className="flex w-full justify-end">
       <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-secondary px-4 py-2.5">
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {files.map((part, i) => (
+              <div key={i} className="relative">
+                <MessageAttachment part={part} />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setFiles((prev) => prev.filter((_, j) => j !== i))
+                  }
+                  aria-label={`Remove ${part.filename ?? "attachment"}`}
+                  className="absolute top-1 right-1 rounded-full bg-foreground/70 p-0.5 text-background shadow-sm hover:bg-foreground max-md:p-1"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <Textarea
           ref={ref}
           value={draft}
@@ -305,7 +332,7 @@ function EditBubble({
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              onSave(draft);
+              onSave(draft, files);
             }
             if (e.key === "Escape") {
               e.preventDefault();
@@ -322,7 +349,7 @@ function EditBubble({
           />
           <ActionButton
             label="Save"
-            onClick={() => onSave(draft)}
+            onClick={() => onSave(draft, files)}
             icon={<Check className="size-3.5" />}
           />
         </div>
