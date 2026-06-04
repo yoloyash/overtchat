@@ -360,13 +360,15 @@ function AttachmentChip({
       type="button"
       onClick={onRemove}
       aria-label={`Remove ${label}`}
-      className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background max-md:p-1.5 [@media(hover:none)]:opacity-100"
+      className="absolute top-0.5 right-0.5 rounded-full bg-foreground/70 p-0.5 text-background shadow-sm hover:bg-foreground max-md:p-1"
     >
       <X className="size-3" />
     </button>
   );
 
-  if (isImage) {
+  // Images render as a thumbnail while uploading/ready. On failure we fall back
+  // to the row chip below so the actual error reason has room to show.
+  if (isImage && status !== "error") {
     const src = attachment.previewUrl ?? part?.url;
     return (
       <div className="group/chip relative h-16 w-16 overflow-hidden rounded-lg border bg-muted">
@@ -377,11 +379,6 @@ function AttachmentChip({
         {status === "uploading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/50">
             <Loader2 className="size-4 animate-spin text-foreground" />
-          </div>
-        )}
-        {status === "error" && (
-          <div className="absolute inset-0 flex items-center justify-center bg-destructive/15 text-destructive">
-            <AlertCircle className="size-4" />
           </div>
         )}
         {removeButton}
@@ -400,7 +397,12 @@ function AttachmentChip({
           .filter(Boolean)
           .join(" · ");
   return (
-    <div className="group/chip relative flex items-center gap-2 rounded-lg border bg-muted/40 py-2 pr-8 pl-2 max-w-[18rem]">
+    <div
+      className={cn(
+        "group/chip relative flex items-center gap-2 rounded-lg border bg-muted/40 py-2 pr-8 pl-2 max-w-[18rem]",
+        status === "error" && "border-destructive/40 bg-destructive/5",
+      )}
+    >
       <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
         {status === "uploading" ? (
           <Loader2 className="size-4 animate-spin" />
@@ -418,6 +420,7 @@ function AttachmentChip({
               "truncate text-[11px] text-muted-foreground",
               status === "error" && "text-destructive",
             )}
+            title={status === "error" ? sub : undefined}
           >
             {sub}
           </div>
