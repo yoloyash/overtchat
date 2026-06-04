@@ -65,7 +65,7 @@ export function MessageBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
-  onEdit: (id: string, text: string) => void;
+  onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -81,10 +81,13 @@ export function MessageBubble({
       return (
         <EditBubble
           initial={text}
+          files={files}
           onCancel={() => setEditing(false)}
           onSave={(next) => {
             setEditing(false);
-            if (next.trim() && next !== text) onEdit(message.id, next);
+            if (next !== text && (next.trim() || files.length > 0)) {
+              onEdit(message.id, next, files);
+            }
           }}
         />
       );
@@ -269,10 +272,12 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
 
 function EditBubble({
   initial,
+  files,
   onCancel,
   onSave,
 }: {
   initial: string;
+  files: FileUIPart[];
   onCancel: () => void;
   onSave: (text: string) => void;
 }) {
@@ -298,6 +303,13 @@ function EditBubble({
   return (
     <div className="flex w-full justify-end">
       <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-secondary px-4 py-2.5">
+        {files.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {files.map((part, i) => (
+              <MessageAttachment key={i} part={part} />
+            ))}
+          </div>
+        )}
         <Textarea
           ref={ref}
           value={draft}

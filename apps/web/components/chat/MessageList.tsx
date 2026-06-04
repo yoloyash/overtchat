@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { ChatStatus, UIMessage } from "ai";
+import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
@@ -31,7 +31,7 @@ export function MessageList({
   showStats: boolean;
   storedStats: StoredMessageStats;
   onRegenerate: (id: string) => void;
-  onEdit: (id: string, text: string) => void;
+  onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRetry: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);

@@ -185,9 +185,9 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     regenerate({ body: requestBody() });
   }
 
-  function handleEdit(messageId: string, text: string) {
+  function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
     if (streaming || !configured) return;
-    sendMessage({ text, messageId }, { body: requestBody() });
+    sendMessage({ text, files, messageId }, { body: requestBody() });
   }
 
   const composer = (

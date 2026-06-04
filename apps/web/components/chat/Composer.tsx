@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FileUIPart } from "ai";
 import {
+  AlertCircle,
   ArrowUp,
   Globe,
   Loader2,
@@ -24,6 +25,17 @@ import { dictationErrorMessage } from "@/lib/chat/message";
 import { useDictation } from "@/lib/useDictation";
 import { CategoryIcon } from "./attachment-icons";
 
+interface Attachment {
+  id: number;
+  status: "uploading" | "ready" | "error";
+  filename: string;
+  mediaType: string;
+  previewUrl?: string;
+  part?: FileUIPart;
+  meta?: AttachmentMeta;
+  error?: string;
+}
+
 export function Composer({
   configured,
   streaming,
@@ -42,15 +54,27 @@ export function Composer({
   isAdmin: boolean;
 }) {
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<FileUIPart[]>([]);
-  const [attachmentMeta, setAttachmentMeta] = useState<
-    Record<string, AttachmentMeta>
-  >({});
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nextIdRef = useRef(0);
+
+  const uploading = attachments.some((a) => a.status === "uploading");
+
+  // Revoke any outstanding image preview object URLs on unmount.
+  const attachmentsRef = useRef(attachments);
+  useEffect(() => {
+    attachmentsRef.current = attachments;
+  }, [attachments]);
+  useEffect(
+    () => () => {
+      for (const a of attachmentsRef.current) {
+        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+      }
+    },
+    [],
+  );
 
   const dictation = useDictation((text) => {
     setInput((prev) => {
@@ -71,59 +95,92 @@ export function Composer({
   function submit() {
     const text = input.trim();
     if (streaming || uploading) return;
-    if (!text && attachments.length === 0) return;
+    const ready = attachments
+      .filter((a) => a.status === "ready" && a.part)
+      .map((a) => a.part as FileUIPart);
+    if (!text && ready.length === 0) return;
     if (!configured) return;
-    onSubmit(text, attachments);
+    onSubmit(text, ready);
     setInput("");
+    for (const a of attachments) {
+      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
+    }
     setAttachments([]);
-    setAttachmentMeta({});
-    setUploadError(null);
   }
 
-  async function handleFiles(files: FileList | null) {
+  function removeAttachment(id: number) {
+    setAttachments((prev) => {
+      const target = prev.find((a) => a.id === id);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
+  }
+
+  function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    setUploadError(null);
-    setUploading(true);
+    for (const file of Array.from(files)) {
+      void uploadOne(file);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  // Optimistically insert a pending chip (with an image preview if applicable)
+  // so the attachment is visible the instant it's added, then upload in the
+  // background and flip it to ready/error in place.
+  async function uploadOne(file: File) {
+    const id = nextIdRef.current++;
+    const isImage = file.type.startsWith("image/");
+    const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
+    setAttachments((prev) => [
+      ...prev,
+      {
+        id,
+        status: "uploading",
+        previewUrl,
+        filename: file.name || "file",
+        mediaType: file.type || "application/octet-stream",
+      },
+    ]);
+
     try {
-      const uploaded: FileUIPart[] = [];
-      const nextMeta: Record<string, AttachmentMeta> = {};
-      for (const file of Array.from(files)) {
-        const form = new FormData();
-        form.append("file", file);
-        const res = await fetch("/api/uploads", { method: "POST", body: form });
-        const json = (await res.json().catch(() => ({}))) as {
-          url?: string;
-          mediaType?: string;
-          filename?: string;
-          category?: AttachmentCategory;
-          size?: number;
-          pageCount?: number | null;
-          truncated?: boolean;
-          error?: string;
-        };
-        if (!res.ok || !json.url || !json.mediaType) {
-          throw new Error(json.error ?? `Upload failed (${res.status})`);
-        }
-        uploaded.push({
-          type: "file",
-          url: json.url,
-          mediaType: json.mediaType,
-          filename: json.filename,
-        });
-        nextMeta[json.url] = {
-          category: json.category,
-          size: json.size,
-          pageCount: json.pageCount,
-          truncated: json.truncated,
-        };
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/uploads", { method: "POST", body: form });
+      const json = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        mediaType?: string;
+        filename?: string;
+        category?: AttachmentCategory;
+        size?: number;
+        pageCount?: number | null;
+        truncated?: boolean;
+        error?: string;
+      };
+      if (!res.ok || !json.url || !json.mediaType) {
+        throw new Error(json.error ?? `Upload failed (${res.status})`);
       }
-      setAttachments((prev) => [...prev, ...uploaded]);
-      setAttachmentMeta((prev) => ({ ...prev, ...nextMeta }));
+      const part: FileUIPart = {
+        type: "file",
+        url: json.url,
+        mediaType: json.mediaType,
+        filename: json.filename,
+      };
+      const meta: AttachmentMeta = {
+        category: json.category,
+        size: json.size,
+        pageCount: json.pageCount,
+        truncated: json.truncated,
+      };
+      setAttachments((prev) =>
+        prev.map((a) =>
+          a.id === id ? { ...a, status: "ready", part, meta } : a,
+        ),
+      );
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      const message = err instanceof Error ? err.message : "Upload failed";
+      setAttachments((prev) =>
+        prev.map((a) => (a.id === id ? { ...a, status: "error", error: message } : a)),
+      );
     }
   }
 
@@ -147,9 +204,6 @@ export function Composer({
 
   return (
     <>
-      {uploadError && (
-        <p className="mb-2 text-sm text-destructive">{uploadError}</p>
-      )}
       {dictation.error && (
         <p className="mb-2 text-sm text-destructive">
           {dictationErrorMessage(dictation.error, isAdmin)}
@@ -158,21 +212,11 @@ export function Composer({
       <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-1 pt-1">
-            {attachments.map((att, i) => (
+            {attachments.map((att) => (
               <AttachmentChip
-                key={`${att.url}-${i}`}
+                key={att.id}
                 attachment={att}
-                meta={attachmentMeta[att.url]}
-                onRemove={() => {
-                  setAttachments((prev) =>
-                    prev.filter((_, j) => j !== i),
-                  );
-                  setAttachmentMeta((prev) => {
-                    const next = { ...prev };
-                    delete next[att.url];
-                    return next;
-                  });
-                }}
+                onRemove={() => removeAttachment(att.id)}
               />
             ))}
           </div>
@@ -281,12 +325,14 @@ export function Composer({
                 size="icon-sm"
                 className="shrink-0 rounded-full"
                 disabled={
-                  uploading || (!input.trim() && attachments.length === 0)
+                  uploading ||
+                  (!input.trim() &&
+                    !attachments.some((a) => a.status === "ready"))
                 }
                 onClick={submit}
                 aria-label="Send message"
               >
-                <ArrowUp />
+                {uploading ? <Loader2 className="animate-spin" /> : <ArrowUp />}
               </Button>
             )}
           </div>
@@ -298,65 +344,86 @@ export function Composer({
 
 function AttachmentChip({
   attachment,
-  meta,
   onRemove,
 }: {
-  attachment: FileUIPart;
-  meta: AttachmentMeta | undefined;
+  attachment: Attachment;
   onRemove: () => void;
 }) {
-  const label = attachment.filename ?? "file";
+  const { status, meta, part } = attachment;
+  const label = attachment.filename;
   const isImage =
     meta?.category === "image" ||
-    (!meta && attachment.mediaType?.startsWith("image/"));
+    Boolean(attachment.previewUrl) ||
+    attachment.mediaType.startsWith("image/");
+  const removeButton = (
+    <button
+      type="button"
+      onClick={onRemove}
+      aria-label={`Remove ${label}`}
+      className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background max-md:p-1.5 [@media(hover:none)]:opacity-100"
+    >
+      <X className="size-3" />
+    </button>
+  );
+
   if (isImage) {
+    const src = attachment.previewUrl ?? part?.url;
     return (
       <div className="group/chip relative h-16 w-16 overflow-hidden rounded-lg border bg-muted">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={attachment.url}
-          alt={label}
-          className="size-full object-cover"
-        />
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Remove ${label}`}
-          className="absolute top-0.5 right-0.5 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background max-md:p-1.5 [@media(hover:none)]:opacity-100"
-        >
-          <X className="size-3" />
-        </button>
+        {src && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={src} alt={label} className="size-full object-cover" />
+        )}
+        {status === "uploading" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/50">
+            <Loader2 className="size-4 animate-spin text-foreground" />
+          </div>
+        )}
+        {status === "error" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-destructive/15 text-destructive">
+            <AlertCircle className="size-4" />
+          </div>
+        )}
+        {removeButton}
       </div>
     );
   }
-  const sub = [
-    meta?.pageCount ? `${meta.pageCount} pages` : null,
-    meta?.size != null ? formatSize(meta.size) : null,
-    meta?.truncated ? "truncated" : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+
+  const sub =
+    status === "error"
+      ? (attachment.error ?? "Upload failed")
+      : [
+          meta?.pageCount ? `${meta.pageCount} pages` : null,
+          meta?.size != null ? formatSize(meta.size) : null,
+          meta?.truncated ? "truncated" : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
   return (
     <div className="group/chip relative flex items-center gap-2 rounded-lg border bg-muted/40 py-2 pr-8 pl-2 max-w-[18rem]">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
-        <CategoryIcon category={meta?.category} className="size-4" />
+        {status === "uploading" ? (
+          <Loader2 className="size-4 animate-spin" />
+        ) : status === "error" ? (
+          <AlertCircle className="size-4 text-destructive" />
+        ) : (
+          <CategoryIcon category={meta?.category} className="size-4" />
+        )}
       </div>
       <div className="min-w-0">
         <div className="truncate text-xs font-medium">{label}</div>
         {sub && (
-          <div className="truncate text-[11px] text-muted-foreground">
+          <div
+            className={cn(
+              "truncate text-[11px] text-muted-foreground",
+              status === "error" && "text-destructive",
+            )}
+          >
             {sub}
           </div>
         )}
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={`Remove ${label}`}
-        className="absolute top-1 right-1 rounded-full bg-background/80 p-0.5 text-foreground opacity-0 transition-opacity group-hover/chip:opacity-100 hover:bg-background max-md:p-1.5 [@media(hover:none)]:opacity-100"
-      >
-        <X className="size-3" />
-      </button>
+      {removeButton}
     </div>
   );
 }
