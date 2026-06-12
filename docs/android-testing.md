@@ -10,4 +10,16 @@ Overtchat is currently in closed testing for Android. Please join here:
    https://play.google.com/store/apps/details?id=com.overtchat.mobile
 4. Done
 
+## Sideload (APK)
+
+Prefer not to use Google Play? Every release ships a universal APK you can
+install directly:
+
+1. Open the releases page:
+   https://github.com/yoloyash/overtchat/releases
+2. Pick the newest **`mobile-v*`** release (the `v*` releases are the
+   self-hosted server, not the app).
+3. Download the attached `overtchat-v<version>.apk` and open it on your device
+   (you may need to allow "install from unknown sources").
+
 Feedback: ykhurana6@gmail.com
