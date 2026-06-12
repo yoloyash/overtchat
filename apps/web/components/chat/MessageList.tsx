@@ -70,9 +70,7 @@ export function MessageList({
             stats={readMessageStats(m) ?? storedStats[m.id] ?? null}
           />
         ))}
-        {error && messages.at(-1)?.role === "user" && (
-          <ChatErrorBubble error={error} onRetry={onRetry} />
-        )}
+        {error && <ChatErrorBubble error={error} onRetry={onRetry} />}
         {!error &&
           status === "submitted" &&
           messages.at(-1)?.role === "user" && <PendingIndicator />}
