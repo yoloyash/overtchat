@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import type { FileUIPart } from "ai";
 import {
   AlertCircle,
@@ -17,63 +23,68 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   ATTACH_ACCEPT,
-  type AttachmentCategory,
-  type AttachmentMeta,
   formatSize,
+  getDataTransferFiles,
 } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { useDictation } from "@/lib/useDictation";
 import { CategoryIcon } from "./attachment-icons";
+import {
+  type ChatAttachment,
+  useChatAttachments,
+} from "./useChatAttachments";
 
-interface Attachment {
-  id: number;
-  status: "uploading" | "ready" | "error";
-  filename: string;
-  mediaType: string;
-  previewUrl?: string;
-  part?: FileUIPart;
-  meta?: AttachmentMeta;
-  error?: string;
+export interface ComposerHandle {
+  addFiles: (files: readonly File[]) => void;
+  focus: () => void;
 }
 
-export function Composer({
-  configured,
-  streaming,
-  searchEnabled,
-  onToggleSearch,
-  onSubmit,
-  onStop,
-  isAdmin,
-}: {
+interface ComposerProps {
   configured: boolean;
   streaming: boolean;
   searchEnabled: boolean;
+  dropActive: boolean;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
   onStop: () => void;
   isAdmin: boolean;
-}) {
+}
+
+export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
+  configured,
+  streaming,
+  searchEnabled,
+  dropActive,
+  onToggleSearch,
+  onSubmit,
+  onStop,
+  isAdmin,
+}, ref) {
   const [input, setInput] = useState("");
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const {
+    attachments,
+    uploading,
+    readyParts,
+    addFiles,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const nextIdRef = useRef(0);
 
-  const uploading = attachments.some((a) => a.status === "uploading");
-
-  // Revoke any outstanding image preview object URLs on unmount.
-  const attachmentsRef = useRef(attachments);
-  useEffect(() => {
-    attachmentsRef.current = attachments;
-  }, [attachments]);
-  useEffect(
-    () => () => {
-      for (const a of attachmentsRef.current) {
-        if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-      }
-    },
-    [],
+  useImperativeHandle(
+    ref,
+    () => ({
+      addFiles(files) {
+        addFiles(files);
+        setTimeout(() => textareaRef.current?.focus(), 0);
+      },
+      focus() {
+        textareaRef.current?.focus();
+      },
+    }),
+    [addFiles],
   );
 
   const dictation = useDictation((text) => {
@@ -95,93 +106,17 @@ export function Composer({
   function submit() {
     const text = input.trim();
     if (streaming || uploading) return;
-    const ready = attachments
-      .filter((a) => a.status === "ready" && a.part)
-      .map((a) => a.part as FileUIPart);
-    if (!text && ready.length === 0) return;
+    if (!text && readyParts.length === 0) return;
     if (!configured) return;
-    onSubmit(text, ready);
+    onSubmit(text, readyParts);
     setInput("");
-    for (const a of attachments) {
-      if (a.previewUrl) URL.revokeObjectURL(a.previewUrl);
-    }
-    setAttachments([]);
-  }
-
-  function removeAttachment(id: number) {
-    setAttachments((prev) => {
-      const target = prev.find((a) => a.id === id);
-      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
-      return prev.filter((a) => a.id !== id);
-    });
+    clearAttachments();
   }
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
-    for (const file of Array.from(files)) {
-      void uploadOne(file);
-    }
+    addFiles(Array.from(files));
     if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
-  // Optimistically insert a pending chip (with an image preview if applicable)
-  // so the attachment is visible the instant it's added, then upload in the
-  // background and flip it to ready/error in place.
-  async function uploadOne(file: File) {
-    const id = nextIdRef.current++;
-    const isImage = file.type.startsWith("image/");
-    const previewUrl = isImage ? URL.createObjectURL(file) : undefined;
-    setAttachments((prev) => [
-      ...prev,
-      {
-        id,
-        status: "uploading",
-        previewUrl,
-        filename: file.name || "file",
-        mediaType: file.type || "application/octet-stream",
-      },
-    ]);
-
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: form });
-      const json = (await res.json().catch(() => ({}))) as {
-        url?: string;
-        mediaType?: string;
-        filename?: string;
-        category?: AttachmentCategory;
-        size?: number;
-        pageCount?: number | null;
-        truncated?: boolean;
-        error?: string;
-      };
-      if (!res.ok || !json.url || !json.mediaType) {
-        throw new Error(json.error ?? `Upload failed (${res.status})`);
-      }
-      const part: FileUIPart = {
-        type: "file",
-        url: json.url,
-        mediaType: json.mediaType,
-        filename: json.filename,
-      };
-      const meta: AttachmentMeta = {
-        category: json.category,
-        size: json.size,
-        pageCount: json.pageCount,
-        truncated: json.truncated,
-      };
-      setAttachments((prev) =>
-        prev.map((a) =>
-          a.id === id ? { ...a, status: "ready", part, meta } : a,
-        ),
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Upload failed";
-      setAttachments((prev) =>
-        prev.map((a) => (a.id === id ? { ...a, status: "error", error: message } : a)),
-      );
-    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -192,14 +127,10 @@ export function Composer({
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const files = Array.from(e.clipboardData.files).filter((f) =>
-      f.type.startsWith("image/"),
-    );
+    const files = getDataTransferFiles(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
-    const dt = new DataTransfer();
-    for (const f of files) dt.items.add(f);
-    void handleFiles(dt.files);
+    addFiles(files);
   }
 
   return (
@@ -209,7 +140,12 @@ export function Composer({
           {dictationErrorMessage(dictation.error, isAdmin)}
         </p>
       )}
-      <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+      <div
+        className={cn(
+          "flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+          dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
+        )}
+      >
         {attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 px-1 pt-1">
             {attachments.map((att) => (
@@ -327,7 +263,7 @@ export function Composer({
                 disabled={
                   uploading ||
                   (!input.trim() &&
-                    !attachments.some((a) => a.status === "ready"))
+                    readyParts.length === 0)
                 }
                 onClick={submit}
                 aria-label="Send message"
@@ -340,13 +276,13 @@ export function Composer({
       </div>
     </>
   );
-}
+});
 
 function AttachmentChip({
   attachment,
   onRemove,
 }: {
-  attachment: Attachment;
+  attachment: ChatAttachment;
   onRemove: () => void;
 }) {
   const { status, meta, part } = attachment;

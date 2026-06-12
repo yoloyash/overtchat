@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/config";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { chatKeys } from "@/lib/queries/keys";
@@ -17,9 +18,13 @@ import {
   writeStoredMessageStats,
   type StoredMessageStats,
 } from "@/lib/chat/stats";
+import {
+  getDataTransferFiles,
+  hasDataTransferFiles,
+} from "@/lib/chat/attachments";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { ChatHeader } from "./ChatHeader";
-import { Composer } from "./Composer";
+import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
@@ -63,8 +68,10 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const [storedStats, setStoredStats] = useState<StoredMessageStats>(() =>
     readStoredMessageStats(),
   );
+  const [dragDepth, setDragDepth] = useState(0);
 
   const isNewRef = useRef(isNew ?? false);
+  const composerRef = useRef<ComposerHandle>(null);
 
   const [transport] = useState(
     () =>
@@ -123,6 +130,37 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   });
 
   const streaming = status === "streaming" || status === "submitted";
+  const dropActive = dragDepth > 0;
+
+  function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
+    if (!hasDataTransferFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragDepth((depth) => depth + 1);
+  }
+
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    if (!hasDataTransferFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    if (!hasDataTransferFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragDepth((depth) => Math.max(0, depth - 1));
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (!hasDataTransferFiles(e.dataTransfer)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setDragDepth(0);
+    const files = getDataTransferFiles(e.dataTransfer);
+    if (files.length > 0) composerRef.current?.addFiles(files);
+  }
 
   function handleStop() {
     stop();
@@ -192,9 +230,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const composer = (
     <Composer
+      ref={composerRef}
       configured={configured}
       streaming={streaming}
       searchEnabled={searchEnabled}
+      dropActive={dropActive}
       onToggleSearch={() => setSearchEnabled(!searchEnabled)}
       onSubmit={handleSubmit}
       onStop={handleStop}
@@ -203,7 +243,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   );
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div
+      className="relative flex flex-1 flex-col overflow-hidden"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <ChatHeader
         models={models}
         selectedId={selectedId}
@@ -214,6 +260,22 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       />
 
       <MiniSpeechPlayer speech={speech} />
+
+      {dropActive && (
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px]">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-ring bg-background/90 px-8 py-6 text-center shadow-lg ring-1 ring-ring/20">
+            <div className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm animate-in zoom-in-95">
+              <FileUp className="size-6" />
+            </div>
+            <div>
+              <div className="text-sm font-medium">Drop files to attach</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Images, PDFs, docs, spreadsheets, and text files
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {messages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
