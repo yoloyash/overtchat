@@ -3,19 +3,18 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { FetchUrlPart, WebSearchPart } from "@overtchat/shared";
 import { buildSourceLookup } from "@/lib/chat/citations";
+import { groupMessageParts } from "@/lib/chat/parts";
 import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
+import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { Sources } from "./Sources";
-import { ThinkingBlock } from "./ThinkingBlock";
-import { ToolCall } from "./ToolCall";
 
 export function MessageBubble({
   message,
@@ -153,38 +152,31 @@ export function MessageBubble({
         delayLongPress={300}
         style={styles.assistantInner}
       >
-        {message.parts.map((part, i) => {
-          if (part.type === "reasoning") {
-            const isLastPart = i === message.parts.length - 1;
-            const active = streaming && part.state !== "done" && isLastPart;
-            return (
-              <ThinkingBlock
-                key={`r-${i}`}
-                content={part.text}
-                active={active}
-              />
-            );
-          }
-          if (part.type === "text") {
+        {groupMessageParts(message.parts).map((seg, i, segs) => {
+          const isLast = i === segs.length - 1;
+          if (seg.kind === "text") {
             return (
               <MarkdownBody
-                key={`t-${i}`}
-                text={part.text}
+                key={`t-${seg.index}`}
+                text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
               />
             );
           }
-          if (part.type === "tool-web_search") {
-            return (
-              <ToolCall key={`tc-${i}`} part={part as unknown as WebSearchPart} />
-            );
-          }
-          if (part.type === "tool-fetch_url") {
-            return (
-              <ToolCall key={`tc-${i}`} part={part as unknown as FetchUrlPart} />
-            );
-          }
-          return null;
+          const trailing = seg.parts[seg.parts.length - 1];
+          const trailingDone =
+            trailing.type === "reasoning"
+              ? (trailing as { state?: string }).state === "done"
+              : (trailing as { state?: string }).state === "output-available" ||
+                (trailing as { state?: string }).state === "output-error";
+          const active = streaming && isLast && !trailingDone;
+          return (
+            <ChainOfThought
+              key={`a-${seg.startIndex}`}
+              parts={seg.parts as ActivityPart[]}
+              active={active}
+            />
+          );
         })}
         {!streaming ? <Sources message={message} /> : null}
         {streaming && !hasAnyText ? (
