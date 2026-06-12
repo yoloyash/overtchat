@@ -2,7 +2,7 @@
 
 import type { UIMessage } from "ai";
 import { cleanDomain, faviconUrl, type WebSearchResult } from "@/lib/web-client";
-import type { WebSearchPart } from "@/components/ToolCall";
+import type { WebSearchPart } from "@overtchat/shared";
 import type { CitationRefType } from "@/lib/citations";
 
 const SOURCE_REF_TYPES = new Set<CitationRefType>(["search", "news", "ref"]);

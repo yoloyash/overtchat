@@ -21,15 +21,11 @@ import {
   STREAMDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
+import { groupMessageParts } from "@/lib/chat/parts";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
 import type { MessageStats } from "@/lib/chat/stats";
 import type { useSpeech } from "@/lib/useSpeech";
-import {
-  ToolCall,
-  type FetchUrlPart,
-  type WebSearchPart,
-} from "@/components/ToolCall";
 import {
   Citation,
   CompositeCitation,
@@ -38,7 +34,7 @@ import {
 } from "./Citation";
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
-import { ThinkingBlock } from "./ThinkingBlock";
+import { ChainOfThought } from "./ChainOfThought";
 import { StatsPopover } from "./StatsPopover";
 
 const CITATION_REMARK_PLUGINS = [
@@ -178,44 +174,46 @@ function AssistantBubble({
   return (
     <div className="group flex flex-col items-start gap-2">
       <div className="w-full max-w-full space-y-3 text-sm leading-relaxed">
-        {message.parts.map((part, i) => {
-          if (part.type === "reasoning") {
-            const isLast = i === message.parts.length - 1;
-            const active = streaming && part.state !== "done" && isLast;
+        {(() => {
+          const segments = groupMessageParts(message.parts);
+          return segments.map((seg, i) => {
+            const isLast = i === segments.length - 1;
+            if (seg.kind === "text") {
+              const showCaret = streaming && isLast;
+              return (
+                <Streamdown
+                  key={seg.index}
+                  className="font-sans space-y-3 text-[15px] leading-relaxed"
+                  plugins={STREAMDOWN_PLUGINS}
+                  remarkPlugins={CITATION_REMARK_PLUGINS}
+                  allowedTags={CITATION_ALLOWED_TAGS}
+                  components={citationComponents}
+                  isAnimating={streaming}
+                  caret={showCaret ? "block" : undefined}
+                >
+                  {(seg.part as { text: string }).text}
+                </Streamdown>
+              );
+            }
+            const trailing = seg.parts[seg.parts.length - 1];
+            const trailingDone =
+              trailing.type === "reasoning"
+                ? (trailing as { state?: string }).state === "done"
+                : (trailing as { state?: string }).state ===
+                    "output-available" ||
+                  (trailing as { state?: string }).state === "output-error";
+            const active = streaming && isLast && !trailingDone;
             return (
-              <ThinkingBlock
-                key={i}
-                content={part.text}
+              <ChainOfThought
+                key={seg.startIndex}
+                parts={
+                  seg.parts as Parameters<typeof ChainOfThought>[0]["parts"]
+                }
                 active={active}
               />
             );
-          }
-          if (part.type === "text") {
-            const isLast = i === message.parts.length - 1;
-            const showCaret = streaming && isLast;
-            return (
-              <Streamdown
-                key={i}
-                className="font-sans space-y-3 text-[15px] leading-relaxed"
-                plugins={STREAMDOWN_PLUGINS}
-                remarkPlugins={CITATION_REMARK_PLUGINS}
-                allowedTags={CITATION_ALLOWED_TAGS}
-                components={citationComponents}
-                isAnimating={streaming}
-                caret={showCaret ? "block" : undefined}
-              >
-                {part.text}
-              </Streamdown>
-            );
-          }
-          if (part.type === "tool-web_search") {
-            return <ToolCall key={i} part={part as unknown as WebSearchPart} />;
-          }
-          if (part.type === "tool-fetch_url") {
-            return <ToolCall key={i} part={part as unknown as FetchUrlPart} />;
-          }
-          return null;
-        })}
+          });
+        })()}
         {!streaming && <Sources message={message} />}
       </div>
       {!streaming && (

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { UIMessage } from "ai";
 import { cleanDomain, faviconUrl, type WebSearchResult } from "@/lib/web-client";
-import type { WebSearchPart } from "@/components/ToolCall";
+import type { WebSearchPart } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 
 export function Sources({ message }: { message: UIMessage }) {
