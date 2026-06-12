@@ -104,6 +104,7 @@ export async function POST(req: Request) {
   const inlined = await inlineUploads(messages, userId);
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
+  let streamError: unknown = null;
 
   const turnNumber = messages.filter((m) => m.role === "user").length - 1;
   const runtimeContext = buildRuntimeContext({
@@ -144,6 +145,10 @@ export async function POST(req: Request) {
         firstTokenAt = Date.now();
       }
     },
+    onError: ({ error }) => {
+      streamError = error;
+      console.error("[chat-stream]", error);
+    },
   });
 
   const streamHeaders = corsHeaders(req);
@@ -153,6 +158,8 @@ export async function POST(req: Request) {
     originalMessages: messages,
     generateMessageId: () => crypto.randomUUID(),
     headers: streamHeaders,
+    onError: (error) =>
+      error instanceof Error ? error.message : "Something went wrong.",
     consumeSseStream: temporary
       ? undefined
       : async ({ stream }) => {
@@ -184,6 +191,15 @@ export async function POST(req: Request) {
     },
     onFinish: async ({ responseMessage }) => {
       if (temporary) return;
+      // A turn that errored mid-stream leaves a partial assistant message
+      // (e.g. reasoning with no answer). Persisting it would strand a dangling
+      // "Thought for Ns" block on reload. Drop it; the client surfaces the
+      // error and offers retry.
+      if (streamError) {
+        await setActiveStreamId(chatId, null);
+        cancelRegistry.unregister(streamId);
+        return;
+      }
       try {
         if (responseMessage.parts.length > 0) {
           await appendMessage(
