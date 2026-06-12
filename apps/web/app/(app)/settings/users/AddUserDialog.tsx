@@ -5,6 +5,13 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { authClient } from "@/lib/auth/client";
 
 type Role = "user" | "admin";
@@ -106,15 +113,15 @@ export function AddUserDialog({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-role">Role</Label>
-              <select
-                id="new-role"
-                value={role}
-                onChange={(e) => setRole(e.target.value as Role)}
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <option value="user">user</option>
-                <option value="admin">admin</option>
-              </select>
+              <Select value={role} onValueChange={(next) => setRole(next as Role)}>
+                <SelectTrigger id="new-role" aria-label="Role" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">user</SelectItem>
+                  <SelectItem value="admin">admin</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
