@@ -1,21 +1,22 @@
 "use client";
 
-import Image, { type StaticImageData } from "next/image";
 import type { ModelBrandIconId } from "@overtchat/shared";
 import anthropic from "@lobehub/icons-static-svg/icons/anthropic.svg";
-import claude from "@lobehub/icons-static-svg/icons/claude-color.svg";
-import deepseek from "@lobehub/icons-static-svg/icons/deepseek-color.svg";
-import gemini from "@lobehub/icons-static-svg/icons/gemini-color.svg";
+import claude from "@lobehub/icons-static-svg/icons/claude.svg";
+import deepseek from "@lobehub/icons-static-svg/icons/deepseek.svg";
+import gemini from "@lobehub/icons-static-svg/icons/gemini.svg";
 import groq from "@lobehub/icons-static-svg/icons/groq.svg";
-import meta from "@lobehub/icons-static-svg/icons/meta-color.svg";
-import minimax from "@lobehub/icons-static-svg/icons/minimax-color.svg";
-import mistral from "@lobehub/icons-static-svg/icons/mistral-color.svg";
+import meta from "@lobehub/icons-static-svg/icons/meta.svg";
+import minimax from "@lobehub/icons-static-svg/icons/minimax.svg";
+import mistral from "@lobehub/icons-static-svg/icons/mistral.svg";
 import ollama from "@lobehub/icons-static-svg/icons/ollama.svg";
 import openai from "@lobehub/icons-static-svg/icons/openai.svg";
 import openrouter from "@lobehub/icons-static-svg/icons/openrouter.svg";
-import qwen from "@lobehub/icons-static-svg/icons/qwen-color.svg";
-import vllm from "@lobehub/icons-static-svg/icons/vllm-color.svg";
+import qwen from "@lobehub/icons-static-svg/icons/qwen.svg";
+import vllm from "@lobehub/icons-static-svg/icons/vllm.svg";
 import { cn } from "@/lib/utils";
+
+type IconAsset = string | { src: string };
 
 const ICONS = {
   anthropic,
@@ -31,7 +32,7 @@ const ICONS = {
   openrouter,
   qwen,
   vllm,
-} satisfies Record<ModelBrandIconId, StaticImageData | string>;
+} satisfies Record<ModelBrandIconId, IconAsset>;
 
 const LABELS = {
   anthropic: "Anthropic",
@@ -61,24 +62,26 @@ export function ModelBrandIcon({
   if (!iconId) return null;
   const src = ICONS[iconId];
   if (!src) return null;
+  const url = typeof src === "string" ? src : src.src;
 
   return (
     <span
+      aria-hidden
       className={cn(
-        "inline-flex size-4 shrink-0 items-center justify-center rounded-sm border border-border/60 bg-white text-black",
+        "inline-block size-4 shrink-0 bg-current text-muted-foreground",
         className,
       )}
+      style={{
+        maskImage: `url("${url}")`,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain",
+        WebkitMaskImage: `url("${url}")`,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+      }}
       title={title ?? LABELS[iconId]}
-    >
-      <Image
-        src={src}
-        alt=""
-        aria-hidden
-        width={16}
-        height={16}
-        className="size-3 object-contain"
-        unoptimized
-      />
-    </span>
+    />
   );
 }
