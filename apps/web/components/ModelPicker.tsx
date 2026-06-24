@@ -3,6 +3,7 @@
 import { Menu } from "@base-ui/react/menu";
 import { Check, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
 import type { PublicModelConfig } from "@/lib/config";
 import { PRESETS, PRESET_IDS } from "@/lib/providers/meta";
@@ -44,6 +45,10 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
           />
         }
       >
+        <ModelBrandIcon
+          iconId={selected?.modelIconId ?? selected?.providerIconId}
+          className="size-4"
+        />
         <span className="truncate">{label}</span>
         <ChevronDown className="shrink-0 text-muted-foreground" />
       </Menu.Trigger>
@@ -69,6 +74,10 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
                         "mt-0.5 size-3.5 shrink-0",
                         m.id === selectedId ? "opacity-100" : "opacity-0",
                       )}
+                    />
+                    <ModelBrandIcon
+                      iconId={m.modelIconId ?? m.providerIconId}
+                      className="mt-px"
                     />
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate">{m.label}</span>
@@ -98,12 +107,14 @@ function groupModels(
     arr.push(m);
     buckets.set(m.displayProvider, arr);
   }
-  return [...buckets.entries()].sort(([a], [b]) => {
-    const ai = GROUP_ORDER.indexOf(a);
-    const bi = GROUP_ORDER.indexOf(b);
-    if (ai !== -1 && bi !== -1) return ai - bi;
-    if (ai !== -1) return -1;
-    if (bi !== -1) return 1;
-    return a.localeCompare(b);
-  });
+  return [...buckets.entries()]
+    .map(([label, items]) => [label, items] satisfies [string, PublicModelConfig[]])
+    .sort(([a], [b]) => {
+      const ai = GROUP_ORDER.indexOf(a);
+      const bi = GROUP_ORDER.indexOf(b);
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return a.localeCompare(b);
+    });
 }

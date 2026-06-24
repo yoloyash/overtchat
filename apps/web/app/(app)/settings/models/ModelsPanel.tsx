@@ -6,7 +6,12 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Switch } from "@base-ui/react/switch";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/config";
+import {
+  modelIconForModel,
+  providerIdentityForBaseUrl,
+} from "@/lib/providers/meta";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -86,51 +91,61 @@ export function ModelsPanel() {
         </div>
       ) : (
         <ul className="space-y-2">
-          {models.map((m) => (
-            <li key={m.id} className="group relative">
-              <Link
-                href={`/settings/models/${m.id}`}
-                aria-label={`Edit ${m.label}`}
-                className={`flex w-full items-center rounded-lg border bg-card px-3.5 py-3 pr-28 text-left transition-colors hover:border-ring/40 hover:bg-accent/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 ${m.enabled ? "" : "opacity-60"}`}
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">
-                      {m.label}
-                    </span>
-                    <HealthBadge id={m.id} enabled={m.enabled} />
+          {models.map((m) => {
+            const provider = providerIdentityForBaseUrl(m.baseUrl);
+            const iconId = modelIconForModel(m.model) ?? provider.iconId;
+            return (
+              <li key={m.id} className="group relative">
+                <Link
+                  href={`/settings/models/${m.id}`}
+                  aria-label={`Edit ${m.label}`}
+                  className={`flex w-full items-center rounded-lg border bg-card px-3.5 py-3 pr-28 text-left transition-colors hover:border-ring/40 hover:bg-accent/40 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40 ${m.enabled ? "" : "opacity-60"}`}
+                >
+                  <ModelBrandIcon iconId={iconId} className="mr-2.5 size-5" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-sm font-medium text-foreground">
+                        {m.label}
+                      </span>
+                      <HealthBadge id={m.id} enabled={m.enabled} />
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-2 font-mono text-xs text-muted-foreground">
+                      <span className="truncate">{m.model}</span>
+                      <span
+                        aria-hidden="true"
+                        className="text-muted-foreground/50"
+                      >
+                        ·
+                      </span>
+                      <span className="truncate">{hostnameOf(m.baseUrl)}</span>
+                    </div>
                   </div>
-                  <div className="mt-0.5 flex items-center gap-2 font-mono text-xs text-muted-foreground">
-                    <span className="truncate">{m.model}</span>
-                    <span aria-hidden="true" className="text-muted-foreground/50">·</span>
-                    <span className="truncate">{hostnameOf(m.baseUrl)}</span>
-                  </div>
+                </Link>
+                <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
+                  <Switch.Root
+                    checked={m.enabled}
+                    disabled={togglingId === m.id}
+                    onCheckedChange={(next) => toggleEnabled(m, next)}
+                    aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
+                    className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-input bg-input/40 transition-colors data-[checked]:border-ring/40 data-[checked]:bg-ring/70 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  >
+                    <Switch.Thumb className="pointer-events-none ml-0.5 size-4 rounded-full bg-background shadow transition-transform data-[checked]:translate-x-4" />
+                  </Switch.Root>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteError("");
+                      setPendingDelete(m);
+                    }}
+                    aria-label={`Delete ${m.label}`}
+                    className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 group-hover:opacity-100"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
                 </div>
-              </Link>
-              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1">
-                <Switch.Root
-                  checked={m.enabled}
-                  disabled={togglingId === m.id}
-                  onCheckedChange={(next) => toggleEnabled(m, next)}
-                  aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
-                  className="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-input bg-input/40 transition-colors data-[checked]:border-ring/40 data-[checked]:bg-ring/70 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                >
-                  <Switch.Thumb className="pointer-events-none ml-0.5 size-4 rounded-full bg-background shadow transition-transform data-[checked]:translate-x-4" />
-                </Switch.Root>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteError("");
-                    setPendingDelete(m);
-                  }}
-                  aria-label={`Delete ${m.label}`}
-                  className="rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 group-hover:opacity-100"
-                >
-                  <Trash2 className="size-4" />
-                </button>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
 

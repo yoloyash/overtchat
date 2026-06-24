@@ -6,14 +6,20 @@ import {
   type ModelConfigRow,
 } from "@/lib/db/modelConfigs";
 import { ModelConfigSchema, type PublicModelConfig } from "@/lib/config";
-import { PRESETS, presetFor } from "@/lib/providers/meta";
+import {
+  modelIconForModel,
+  providerIdentityForBaseUrl,
+} from "@/lib/providers/meta";
 import { preflight, withCors } from "@/lib/cors";
 
 function toPublic(row: ModelConfigRow): PublicModelConfig {
+  const provider = providerIdentityForBaseUrl(row.baseUrl);
   return {
     id: row.id,
     label: row.label,
-    displayProvider: PRESETS[presetFor(row.baseUrl)].label,
+    displayProvider: provider.label,
+    providerIconId: provider.iconId ?? undefined,
+    modelIconId: modelIconForModel(row.model) ?? undefined,
     model: row.model,
     hasExtraBody: !!row.extraBody && Object.keys(row.extraBody).length > 0,
   };

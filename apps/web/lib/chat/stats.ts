@@ -1,4 +1,8 @@
 import type { UIMessage } from "ai";
+import {
+  MODEL_BRAND_ICON_IDS,
+  type ModelBrandIconId,
+} from "@overtchat/shared";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_message_stats";
 
@@ -9,6 +13,10 @@ export interface MessageStats {
   ttftMs?: number;
   tps?: number;
   finishReason?: string;
+  providerLabel?: string;
+  providerIconId?: ModelBrandIconId;
+  model?: string;
+  modelIconId?: ModelBrandIconId;
 }
 
 export type StoredMessageStats = Record<string, MessageStats>;
@@ -27,6 +35,14 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
+function optionalIconId(value: unknown): ModelBrandIconId | undefined {
+  const iconId = optionalString(value);
+  return iconId !== undefined &&
+    MODEL_BRAND_ICON_IDS.includes(iconId as ModelBrandIconId)
+    ? (iconId as ModelBrandIconId)
+    : undefined;
+}
+
 export function readMessageStats(message: UIMessage): MessageStats | null {
   if (!isRecord(message.metadata)) return null;
   const rawStats = message.metadata.stats;
@@ -38,6 +54,10 @@ export function readMessageStats(message: UIMessage): MessageStats | null {
     ttftMs: optionalNumber(rawStats.ttftMs),
     tps: optionalNumber(rawStats.tps),
     finishReason: optionalString(rawStats.finishReason),
+    providerLabel: optionalString(rawStats.providerLabel),
+    providerIconId: optionalIconId(rawStats.providerIconId),
+    model: optionalString(rawStats.model),
+    modelIconId: optionalIconId(rawStats.modelIconId),
   };
   return Object.values(stats).some((value) => value !== undefined)
     ? stats
@@ -62,6 +82,10 @@ export function readStoredMessageStats(): StoredMessageStats {
             ttftMs: optionalNumber(value.ttftMs),
             tps: optionalNumber(value.tps),
             finishReason: optionalString(value.finishReason),
+            providerLabel: optionalString(value.providerLabel),
+            providerIconId: optionalIconId(value.providerIconId),
+            model: optionalString(value.model),
+            modelIconId: optionalIconId(value.modelIconId),
           };
           return Object.values(stats).some((v) => v !== undefined)
             ? [id, stats]

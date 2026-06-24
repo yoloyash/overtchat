@@ -8,22 +8,49 @@ import {
   formatTps,
   type MessageStats,
 } from "@/lib/chat/stats";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 
 export function StatsPopover({ stats }: { stats: MessageStats }) {
   const rows = [
+    stats.providerLabel !== undefined
+      ? {
+          iconId: stats.providerIconId,
+          label: "Provider",
+          value: stats.providerLabel,
+        }
+      : null,
+    stats.model !== undefined
+      ? {
+          iconId: stats.modelIconId ?? stats.providerIconId,
+          label: "Model",
+          value: stats.model,
+        }
+      : null,
     stats.contextTokens !== undefined
-      ? ["Context tokens", formatInteger(stats.contextTokens)]
+      ? { label: "Context tokens", value: formatInteger(stats.contextTokens) }
       : null,
     stats.responseTokens !== undefined
-      ? ["Response tokens", formatInteger(stats.responseTokens)]
+      ? { label: "Response tokens", value: formatInteger(stats.responseTokens) }
       : null,
     stats.totalTokens !== undefined
-      ? ["Total tokens", formatInteger(stats.totalTokens)]
+      ? { label: "Total tokens", value: formatInteger(stats.totalTokens) }
       : null,
-    stats.ttftMs !== undefined ? ["TTFT", formatDuration(stats.ttftMs)] : null,
-    stats.tps !== undefined ? ["TPS", formatTps(stats.tps)] : null,
-    stats.finishReason !== undefined ? ["Finish reason", stats.finishReason] : null,
-  ].filter((row): row is [string, string] => row !== null);
+    stats.ttftMs !== undefined
+      ? { label: "TTFT", value: formatDuration(stats.ttftMs) }
+      : null,
+    stats.tps !== undefined ? { label: "TPS", value: formatTps(stats.tps) } : null,
+    stats.finishReason !== undefined
+      ? { label: "Finish reason", value: stats.finishReason }
+      : null,
+  ].filter(
+    (
+      row,
+    ): row is {
+      iconId?: MessageStats["providerIconId"];
+      label: string;
+      value: string;
+    } => row !== null,
+  );
 
   if (!rows.length) return null;
 
@@ -41,10 +68,13 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
         <Popover.Positioner side="top" align="start" sideOffset={6}>
           <Popover.Popup className="z-50 w-56 rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-md outline-none">
             <div className="space-y-2">
-              {rows.map(([label, value]) => (
+              {rows.map(({ iconId, label, value }) => (
                 <div key={label} className="flex items-center justify-between gap-4">
                   <span className="text-muted-foreground">{label}</span>
-                  <span className="font-mono text-foreground">{value}</span>
+                  <span className="flex min-w-0 items-center gap-1.5 font-mono text-foreground">
+                    <ModelBrandIcon iconId={iconId} className="size-3.5" />
+                    <span className="truncate">{value}</span>
+                  </span>
                 </div>
               ))}
             </div>

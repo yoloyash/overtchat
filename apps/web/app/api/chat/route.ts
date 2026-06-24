@@ -1,5 +1,5 @@
 import { convertToModelMessages, streamText, stepCountIs } from "ai";
-import type { ChatRequestBody } from "@overtchat/shared";
+import type { ChatRequestBody, ModelBrandIconId } from "@overtchat/shared";
 import { webTools, WEB_SEARCH_CITATION_PROMPT } from "@/lib/tools";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
@@ -15,6 +15,10 @@ import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
+import {
+  modelIconForModel,
+  providerIdentityForBaseUrl,
+} from "@/lib/providers/meta";
 import { buildRuntimeContext } from "@/lib/runtime-context";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
@@ -28,6 +32,10 @@ interface MessageStats {
   ttftMs?: number;
   tps?: number;
   finishReason?: string;
+  providerLabel?: string;
+  providerIconId?: ModelBrandIconId;
+  model?: string;
+  modelIconId?: ModelBrandIconId;
 }
 
 export function OPTIONS(req: Request) {
@@ -102,6 +110,9 @@ export async function POST(req: Request) {
   });
 
   const inlined = await inlineUploads(messages, userId);
+  const providerIdentity = providerIdentityForBaseUrl(modelConfig.baseUrl);
+  const modelIconId =
+    modelIconForModel(modelConfig.model) ?? providerIdentity.iconId ?? undefined;
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
   let streamError: unknown = null;
@@ -185,6 +196,10 @@ export async function POST(req: Request) {
             ? undefined
             : outputTokens / (generationMs / 1000),
         finishReason: part.finishReason,
+        providerLabel: providerIdentity.label,
+        providerIconId: providerIdentity.iconId ?? undefined,
+        model: modelConfig.model,
+        modelIconId,
       };
 
       return { stats };
