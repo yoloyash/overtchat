@@ -13,10 +13,13 @@ import {
 } from "@/components/ui/select";
 import { fetchModelsForEndpoint } from "@/lib/config";
 import {
+  modelIconForModel,
   PRESETS,
   PRESET_IDS,
+  providerIconForPreset,
   type PresetId,
 } from "@/lib/providers/meta";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 
 export interface ConnectionDraft {
   baseUrl: string;
@@ -41,6 +44,7 @@ export function ConnectionFields({
   const requiresKey = preset === null ? false : preset !== "custom";
   const presetMeta = preset === null ? PRESETS.custom : PRESETS[preset];
   const isCreating = preset !== null;
+  const presetIconId = preset === null ? null : providerIconForPreset(preset);
 
   const [models, setModels] = useState<string[]>([]);
   const [probing, setProbing] = useState(false);
@@ -90,11 +94,13 @@ export function ConnectionFields({
             }}
           >
             <SelectTrigger id="p-preset" className="w-full">
+              <ModelBrandIcon iconId={presetIconId} />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {PRESET_IDS.map((id) => (
                 <SelectItem key={id} value={id}>
+                  <ModelBrandIcon iconId={providerIconForPreset(id)} />
                   {PRESETS[id].label}
                 </SelectItem>
               ))}
@@ -171,11 +177,13 @@ export function ConnectionFields({
             }}
           >
             <SelectTrigger id="p-model" className="w-full">
+              <ModelBrandIcon iconId={modelIconForModel(draft.model)} />
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
               {models.map((m) => (
                 <SelectItem key={m} value={m}>
+                  <ModelBrandIcon iconId={modelIconForModel(m)} />
                   {m}
                 </SelectItem>
               ))}
