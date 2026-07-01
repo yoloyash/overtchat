@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Cpu, Database, Settings2, User, Users } from "lucide-react";
+import { Cpu, Database, Settings2, User, Users, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth/client";
 
@@ -20,6 +20,7 @@ const USER_ITEMS: Item[] = [
 
 const ADMIN_ITEMS: Item[] = [
   { href: "/settings/models", label: "Models", icon: Cpu },
+  { href: "/settings/tools", label: "Tools", icon: Wrench },
   { href: "/settings/users", label: "Users", icon: Users },
 ];
 

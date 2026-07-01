@@ -14,6 +14,7 @@ export function Composer({
   configured,
   streaming,
   searchEnabled,
+  searchAvailable,
   attachments,
   attachmentMeta,
   uploading,
@@ -29,6 +30,7 @@ export function Composer({
   configured: boolean;
   streaming: boolean;
   searchEnabled: boolean;
+  searchAvailable: boolean;
   attachments: FileUIPart[];
   attachmentMeta: Record<string, AttachmentMeta>;
   uploading: boolean;
@@ -90,7 +92,7 @@ export function Composer({
     !streaming &&
     !uploading &&
     configured;
-  const showPillsRow = searchEnabled;
+  const showPillsRow = searchAvailable && searchEnabled;
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
   return (

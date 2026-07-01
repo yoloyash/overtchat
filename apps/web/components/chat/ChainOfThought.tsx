@@ -8,18 +8,24 @@ import {
   Loader2,
   type LucideIcon,
   Search,
+  Wrench,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import type {
   FetchUrlPart,
+  GenericToolPart,
   WebSearchPart,
   WebSearchResult,
 } from "@overtchat/shared";
 import { ThinkingContent } from "./ThinkingContent";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
-export type ActivityPart = WebSearchPart | FetchUrlPart | ReasoningPart;
+export type ActivityPart =
+  | WebSearchPart
+  | FetchUrlPart
+  | GenericToolPart
+  | ReasoningPart;
 
 function isWebSearch(p: ActivityPart): p is WebSearchPart {
   return p.type === "tool-web_search";
@@ -29,6 +35,13 @@ function isFetchUrl(p: ActivityPart): p is FetchUrlPart {
 }
 function isReasoning(p: ActivityPart): p is ReasoningPart {
   return p.type === "reasoning";
+}
+function isGenericTool(p: ActivityPart): p is GenericToolPart {
+  return (
+    !isWebSearch(p) &&
+    !isFetchUrl(p) &&
+    (p.type === "dynamic-tool" || p.type.startsWith("tool-"))
+  );
 }
 
 /**
@@ -71,13 +84,14 @@ export function ChainOfThought({
     }
   }, [active]);
 
-  const hasTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const hasWebTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const hasTools = hasWebTools || parts.some(isGenericTool);
   const last = parts[parts.length - 1];
 
-  const StatusIcon = active ? Loader2 : hasTools ? Globe : Brain;
+  const StatusIcon = active ? Loader2 : hasWebTools ? Globe : hasTools ? Wrench : Brain;
   const label = active
     ? activeLabel(last)
-    : settledLabel(hasTools, duration);
+    : settledLabel(hasWebTools, hasTools, duration);
 
   return (
     <div className="text-xs">
@@ -132,7 +146,9 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
     ? Search
     : isFetchUrl(part)
       ? Globe
-      : Brain;
+      : isGenericTool(part)
+        ? Wrench
+        : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -142,6 +158,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isGenericTool(part) ? (
+          <GenericToolStep part={part} />
         ) : isReasoning(part) ? (
           <ThinkingContent content={part.text} />
         ) : null}
@@ -256,6 +274,54 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   );
 }
 
+function GenericToolStep({ part }: { part: GenericToolPart }) {
+  const name = toolDisplayName(part);
+  const running =
+    part.state !== "output-available" &&
+    part.state !== "output-error" &&
+    part.state !== "output-denied";
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {running ? `Calling ${name}` : name}
+        </span>
+        <span className="shrink-0 text-muted-foreground">
+          {toolStateLabel(part.state)}
+        </span>
+      </div>
+      {part.state === "output-error" ? (
+        <p className="text-destructive">{part.errorText}</p>
+      ) : part.state === "output-denied" ? (
+        <p className="text-muted-foreground">Tool call denied.</p>
+      ) : (
+        <div className="space-y-1.5">
+          {part.input !== undefined && (
+            <JsonBlock label="Input" value={part.input} />
+          )}
+          {part.state === "output-available" && part.output !== undefined && (
+            <JsonBlock label="Output" value={part.output} />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JsonBlock({ label, value }: { label: string; value: unknown }) {
+  return (
+    <details className="rounded-lg border bg-background/40 px-2.5 py-2">
+      <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+        {label}
+      </summary>
+      <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-muted-foreground">
+        {formatUnknown(value)}
+      </pre>
+    </details>
+  );
+}
+
 /**
  * A domain favicon with a fallback chain: Google's favicon service →
  * DuckDuckGo → a globe glyph. Both services 404 on unknown domains, so the
@@ -298,18 +364,77 @@ function Favicon({
 
 function activeLabel(last: ActivityPart | undefined): string {
   if (!last) return "Working…";
-  if (last.type === "tool-web_search") {
+  if (isWebSearch(last)) {
     const query = last.input?.query?.trim();
     return query ? `Searching "${query}"` : "Searching the web…";
   }
-  if (last.type === "tool-fetch_url") {
+  if (isFetchUrl(last)) {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
+  }
+  if (last.type === "dynamic-tool" || last.type.startsWith("tool-")) {
+    return `Calling ${toolDisplayName(last as GenericToolPart)}`;
   }
   return "Thinking";
 }
 
-function settledLabel(hasTools: boolean, duration: number): string {
-  if (hasTools) return "Searched the web";
+function settledLabel(
+  hasWebTools: boolean,
+  hasTools: boolean,
+  duration: number,
+): string {
+  if (hasWebTools) return "Searched the web";
+  if (hasTools) return "Used tools";
   return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
+}
+
+function toolDisplayName(part: GenericToolPart): string {
+  const metadata = part.toolMetadata ?? {};
+  const serverName =
+    typeof metadata.serverName === "string" ? metadata.serverName : "";
+  const displayName =
+    typeof metadata.displayName === "string" ? metadata.displayName : "";
+  const toolName =
+    typeof metadata.toolName === "string"
+      ? metadata.toolName
+      : part.toolName || part.type.replace(/^tool-/, "");
+  if (serverName && (displayName || toolName)) {
+    return `${serverName}: ${displayName || toolName}`;
+  }
+  return displayName || toolName || "tool";
+}
+
+function toolStateLabel(state: GenericToolPart["state"]): string {
+  switch (state) {
+    case "input-streaming":
+      return "Preparing";
+    case "input-available":
+      return "Running";
+    case "approval-requested":
+      return "Approval requested";
+    case "approval-responded":
+      return "Approved";
+    case "output-available":
+      return "Done";
+    case "output-error":
+      return "Error";
+    case "output-denied":
+      return "Denied";
+    default:
+      return "Working";
+  }
+}
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === "string") return truncate(value);
+  try {
+    return truncate(JSON.stringify(value, null, 2));
+  } catch {
+    return String(value);
+  }
+}
+
+function truncate(value: string): string {
+  const max = 4_000;
+  return value.length > max ? `${value.slice(0, max)}\n...` : value;
 }

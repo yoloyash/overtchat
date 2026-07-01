@@ -33,6 +33,7 @@ import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useToolCapabilities } from "@/lib/queries/tools";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
 import { useSecureFlag } from "@/lib/useSecureFlag";
@@ -149,6 +150,8 @@ function ChatSurface({
 
   const { data: models, isPending: modelsPending, error: modelsError } =
     useModelConfigs();
+  const { data: toolCapabilities } = useToolCapabilities();
+  const searchAvailable = toolCapabilities?.webSearchEnabled ?? true;
   const {
     isFetching: hydrationFetching,
     error: hydrationError,
@@ -169,6 +172,10 @@ function ChatSurface({
       setSelectedId(models[0].id);
     }
   }, [models, selectedId]);
+
+  useEffect(() => {
+    if (!searchAvailable && searchEnabled) setSearchEnabled(false);
+  }, [searchAvailable, searchEnabled, setSearchEnabled]);
 
   const transport = useMemo(
     () =>
@@ -329,7 +336,7 @@ function ChatSurface({
   function requestBody() {
     return {
       modelConfigId: selectedId,
-      searchEnabled,
+      searchEnabled: searchEnabled && searchAvailable,
       chatId,
       projectId,
       temporary: false,
@@ -498,6 +505,7 @@ function ChatSurface({
           configured={configured}
           streaming={streaming}
           searchEnabled={searchEnabled}
+          searchAvailable={searchAvailable}
           attachments={attachments}
           attachmentMeta={attachmentMeta}
           uploading={uploading}
@@ -525,6 +533,7 @@ function ChatSurface({
       <AddToChatSheet
         ref={addSheetRef}
         searchEnabled={searchEnabled}
+        searchAvailable={searchAvailable}
         onToggleSearch={(next) => setSearchEnabled(next)}
         onPickTool={onPickTool}
       />

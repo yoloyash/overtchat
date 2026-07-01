@@ -19,6 +19,7 @@ import {
   cleanDomain,
   faviconUrl,
   type FetchUrlPart,
+  type GenericToolPart,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
@@ -26,7 +27,11 @@ import { useTheme } from "@/lib/theme";
 import { MarkdownBody } from "./MarkdownBody";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
-export type ActivityPart = WebSearchPart | FetchUrlPart | ReasoningPart;
+export type ActivityPart =
+  | WebSearchPart
+  | FetchUrlPart
+  | GenericToolPart
+  | ReasoningPart;
 
 function isWebSearch(p: ActivityPart): p is WebSearchPart {
   return p.type === "tool-web_search";
@@ -36,6 +41,13 @@ function isFetchUrl(p: ActivityPart): p is FetchUrlPart {
 }
 function isReasoning(p: ActivityPart): p is ReasoningPart {
   return p.type === "reasoning";
+}
+function isGenericTool(p: ActivityPart): p is GenericToolPart {
+  return (
+    !isWebSearch(p) &&
+    !isFetchUrl(p) &&
+    (p.type === "dynamic-tool" || p.type.startsWith("tool-"))
+  );
 }
 
 /**
@@ -79,9 +91,12 @@ export function ChainOfThought({
     }
   }, [active]);
 
-  const hasTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const hasWebTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const hasTools = hasWebTools || parts.some(isGenericTool);
   const last = parts[parts.length - 1];
-  const label = active ? activeLabel(last) : settledLabel(hasTools, duration);
+  const label = active
+    ? activeLabel(last)
+    : settledLabel(hasWebTools, hasTools, duration);
 
   function toggle() {
     LayoutAnimation.configureNext(
@@ -98,7 +113,12 @@ export function ChainOfThought({
         hitSlop={6}
         style={({ pressed }) => [styles.header, { opacity: pressed ? 0.7 : 1 }]}
       >
-        <StatusIcon active={active} hasTools={hasTools} color={colors.mutedForeground} />
+        <StatusIcon
+          active={active}
+          hasWebTools={hasWebTools}
+          hasTools={hasTools}
+          color={colors.mutedForeground}
+        />
         <ShimmerLabel active={active}>
           <Text
             numberOfLines={1}
@@ -132,19 +152,26 @@ export function ChainOfThought({
 /** Leading status glyph: spinner while active, else globe (tools) / brain. */
 function StatusIcon({
   active,
+  hasWebTools,
   hasTools,
   color,
 }: {
   active: boolean;
+  hasWebTools: boolean;
   hasTools: boolean;
   color: string;
 }) {
   if (active) {
     return <ActivityIndicator size="small" color={color} style={styles.statusIcon} />;
   }
-  if (hasTools) {
+  if (hasWebTools) {
     return (
       <Ionicons name="globe-outline" size={15} color={color} style={styles.statusIcon} />
+    );
+  }
+  if (hasTools) {
+    return (
+      <Ionicons name="construct-outline" size={15} color={color} style={styles.statusIcon} />
     );
   }
   return (
@@ -201,7 +228,9 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
     ? "search"
     : isFetchUrl(part)
       ? "globe"
-      : "brain";
+      : isGenericTool(part)
+        ? "tool"
+        : "brain";
 
   return (
     <View style={styles.step}>
@@ -211,6 +240,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isGenericTool(part) ? (
+          <GenericToolStep part={part} />
         ) : isReasoning(part) ? (
           <ThinkingContent content={part.text} />
         ) : null}
@@ -219,7 +250,7 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   );
 }
 
-type RailIcon = "search" | "globe" | "brain";
+type RailIcon = "search" | "globe" | "tool" | "brain";
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
 function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
@@ -231,6 +262,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <Ionicons name="search" size={11} color={colors.mutedForeground} />
         ) : icon === "globe" ? (
           <Ionicons name="globe-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "tool" ? (
+          <Ionicons name="construct-outline" size={11} color={colors.mutedForeground} />
         ) : (
           <MaterialCommunityIcons name="brain" size={11} color={colors.mutedForeground} />
         )}
@@ -447,6 +480,98 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   );
 }
 
+function GenericToolStep({ part }: { part: GenericToolPart }) {
+  const { colors, fonts } = useTheme();
+  const name = toolDisplayName(part);
+  const running =
+    part.state !== "output-available" &&
+    part.state !== "output-error" &&
+    part.state !== "output-denied";
+
+  return (
+    <View style={styles.genericStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {running ? `Calling ${name}` : name}
+        </Text>
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {toolStateLabel(part.state)}
+        </Text>
+      </View>
+
+      {part.state === "output-error" ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : part.state === "output-denied" ? (
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          Tool call denied.
+        </Text>
+      ) : (
+        <>
+          {part.input !== undefined ? (
+            <JsonBlock label="Input" value={part.input} />
+          ) : null}
+          {part.state === "output-available" && part.output !== undefined ? (
+            <JsonBlock label="Output" value={part.output} />
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+}
+
+function JsonBlock({ label, value }: { label: string; value: unknown }) {
+  const { colors, fonts } = useTheme();
+  return (
+    <View
+      style={[
+        styles.jsonBlock,
+        { borderColor: colors.border, backgroundColor: colors.muted },
+      ]}
+    >
+      <Text
+        style={[
+          styles.jsonLabel,
+          { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+        ]}
+      >
+        {label}
+      </Text>
+      <Text
+        selectable
+        style={[
+          styles.jsonText,
+          { color: colors.mutedForeground, fontFamily: fonts.mono },
+        ]}
+      >
+        {formatUnknown(value)}
+      </Text>
+    </View>
+  );
+}
+
 /**
  * A domain favicon with a fallback chain: Google's favicon service →
  * DuckDuckGo → a globe glyph. Both services 404 on unknown domains, so the
@@ -481,20 +606,79 @@ function Favicon({ domain }: { domain: string }) {
 
 function activeLabel(last: ActivityPart | undefined): string {
   if (!last) return "Working…";
-  if (last.type === "tool-web_search") {
+  if (isWebSearch(last)) {
     const query = last.input?.query?.trim();
     return query ? `Searching "${query}"` : "Searching the web…";
   }
-  if (last.type === "tool-fetch_url") {
+  if (isFetchUrl(last)) {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
+  }
+  if (last.type === "dynamic-tool" || last.type.startsWith("tool-")) {
+    return `Calling ${toolDisplayName(last as GenericToolPart)}`;
   }
   return "Thinking";
 }
 
-function settledLabel(hasTools: boolean, duration: number): string {
-  if (hasTools) return "Searched the web";
+function settledLabel(
+  hasWebTools: boolean,
+  hasTools: boolean,
+  duration: number,
+): string {
+  if (hasWebTools) return "Searched the web";
+  if (hasTools) return "Used tools";
   return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
+}
+
+function toolDisplayName(part: GenericToolPart): string {
+  const metadata = part.toolMetadata ?? {};
+  const serverName =
+    typeof metadata.serverName === "string" ? metadata.serverName : "";
+  const displayName =
+    typeof metadata.displayName === "string" ? metadata.displayName : "";
+  const toolName =
+    typeof metadata.toolName === "string"
+      ? metadata.toolName
+      : part.toolName || part.type.replace(/^tool-/, "");
+  if (serverName && (displayName || toolName)) {
+    return `${serverName}: ${displayName || toolName}`;
+  }
+  return displayName || toolName || "tool";
+}
+
+function toolStateLabel(state: GenericToolPart["state"]): string {
+  switch (state) {
+    case "input-streaming":
+      return "Preparing";
+    case "input-available":
+      return "Running";
+    case "approval-requested":
+      return "Approval requested";
+    case "approval-responded":
+      return "Approved";
+    case "output-available":
+      return "Done";
+    case "output-error":
+      return "Error";
+    case "output-denied":
+      return "Denied";
+    default:
+      return "Working";
+  }
+}
+
+function formatUnknown(value: unknown): string {
+  if (typeof value === "string") return truncate(value);
+  try {
+    return truncate(JSON.stringify(value, null, 2));
+  } catch {
+    return String(value);
+  }
+}
+
+function truncate(value: string): string {
+  const max = 3_000;
+  return value.length > max ? `${value.slice(0, max)}\n...` : value;
 }
 
 const styles = StyleSheet.create({
@@ -525,6 +709,7 @@ const styles = StyleSheet.create({
   stepBody: { flex: 1, paddingBottom: 12 },
 
   searchStep: { gap: 6 },
+  genericStep: { gap: 6 },
   searchHeader: {
     flexDirection: "row",
     alignItems: "baseline",
@@ -534,6 +719,15 @@ const styles = StyleSheet.create({
   stepTitle: { flexShrink: 1, fontSize: 13 },
   metaText: { fontSize: 12 },
   errorText: { fontSize: 12 },
+  jsonBlock: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  jsonLabel: { fontSize: 12 },
+  jsonText: { fontSize: 11, lineHeight: 16 },
 
   resultList: {
     borderWidth: StyleSheet.hairlineWidth,

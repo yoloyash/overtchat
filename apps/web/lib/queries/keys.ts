@@ -17,6 +17,13 @@ export const modelConfigKeys = {
   health: (id: string) => [...modelConfigKeys.all(), "health", id] as const,
 };
 
+export const toolKeys = {
+  all: () => ["tools"] as const,
+  settings: () => [...toolKeys.all(), "settings"] as const,
+  capabilities: () => [...toolKeys.all(), "capabilities"] as const,
+  mcpServers: () => [...toolKeys.all(), "mcpServers"] as const,
+};
+
 export const userKeys = {
   all: () => ["users"] as const,
   list: () => [...userKeys.all(), "list"] as const,
