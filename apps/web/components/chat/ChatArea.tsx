@@ -7,6 +7,7 @@ import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/config";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
+import { useToolCapabilities } from "@/lib/queries/tools";
 import { chatKeys } from "@/lib/queries/keys";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
@@ -59,6 +60,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     SEARCH_STORAGE_KEY,
     false,
   );
+  const { data: toolCapabilities } = useToolCapabilities();
+  const searchAvailable = toolCapabilities?.webSearchEnabled ?? true;
+  useEffect(() => {
+    if (!searchAvailable && searchEnabled) setSearchEnabled(false);
+  }, [searchAvailable, searchEnabled, setSearchEnabled]);
   const [statsForNerds] = useLocalStorage<boolean>(
     STATS_FOR_NERDS_STORAGE_KEY,
     false,
@@ -123,7 +129,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const requestBody = () => ({
     modelConfigId: selectedId,
-    searchEnabled,
+    searchEnabled: searchEnabled && searchAvailable,
     chatId,
     projectId: projectId ?? null,
     temporary,
@@ -234,6 +240,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       configured={configured}
       streaming={streaming}
       searchEnabled={searchEnabled}
+      searchAvailable={searchAvailable}
       dropActive={dropActive}
       onToggleSearch={() => setSearchEnabled(!searchEnabled)}
       onSubmit={handleSubmit}

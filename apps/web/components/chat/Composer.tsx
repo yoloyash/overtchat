@@ -43,6 +43,7 @@ interface ComposerProps {
   configured: boolean;
   streaming: boolean;
   searchEnabled: boolean;
+  searchAvailable: boolean;
   dropActive: boolean;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
@@ -54,6 +55,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   configured,
   streaming,
   searchEnabled,
+  searchAvailable,
   dropActive,
   onToggleSearch,
   onSubmit,
@@ -192,24 +194,26 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             >
               <Paperclip />
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
-                searchEnabled &&
-                  "bg-accent text-foreground hover:bg-accent",
-              )}
-              onClick={onToggleSearch}
-              aria-label={
-                searchEnabled ? "Disable web search" : "Enable web search"
-              }
-              aria-pressed={searchEnabled}
-            >
-              <Globe />
-              <span className="text-xs">Search</span>
-            </Button>
+            {searchAvailable && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
+                  searchEnabled &&
+                    "bg-accent text-foreground hover:bg-accent",
+                )}
+                onClick={onToggleSearch}
+                aria-label={
+                  searchEnabled ? "Disable web search" : "Enable web search"
+                }
+                aria-pressed={searchEnabled}
+              >
+                <Globe />
+                <span className="text-xs">Search</span>
+              </Button>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button

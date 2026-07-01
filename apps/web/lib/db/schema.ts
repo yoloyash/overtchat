@@ -1,5 +1,11 @@
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 
 export const user = sqliteTable("user", {
@@ -263,3 +269,46 @@ export const modelConfigs = sqliteTable("model_configs", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+export const toolSettings = sqliteTable("tool_settings", {
+  id: text("id").primaryKey(),
+  webSearchEnabled: integer("web_search_enabled", { mode: "boolean" })
+    .default(true)
+    .notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const mcpServers = sqliteTable(
+  "mcp_servers",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    transport: text("transport", { enum: ["stdio"] }).default("stdio").notNull(),
+    command: text("command").notNull(),
+    args: text("args", { mode: "json" }).$type<string[]>().notNull(),
+    env: text("env", { mode: "json" })
+      .$type<Record<string, string>>()
+      .notNull(),
+    cwd: text("cwd"),
+    enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("mcp_servers_slug_idx").on(table.slug),
+    index("mcp_servers_enabled_sort_idx").on(table.enabled, table.sortOrder),
+  ],
+);

@@ -2,14 +2,12 @@ import type { UIMessage } from "ai";
 
 type AnyPart = UIMessage["parts"][number];
 
-const ACTIVITY_TYPES = new Set([
-  "reasoning",
-  "tool-web_search",
-  "tool-fetch_url",
-]);
-
 export function isActivityPart(part: AnyPart): boolean {
-  return ACTIVITY_TYPES.has(part.type);
+  return (
+    part.type === "reasoning" ||
+    part.type === "dynamic-tool" ||
+    part.type.startsWith("tool-")
+  );
 }
 
 export type Segment =

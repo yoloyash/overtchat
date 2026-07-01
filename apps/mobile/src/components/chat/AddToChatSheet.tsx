@@ -24,10 +24,14 @@ export const AddToChatSheet = forwardRef<
   AddToChatSheetRef,
   {
     searchEnabled: boolean;
+    searchAvailable: boolean;
     onToggleSearch: (next: boolean) => void;
     onPickTool?: (tool: ToolKey) => void;
   }
->(function AddToChatSheet({ searchEnabled, onToggleSearch, onPickTool }, ref) {
+>(function AddToChatSheet(
+  { searchEnabled, searchAvailable, onToggleSearch, onPickTool },
+  ref,
+) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -99,38 +103,40 @@ export const AddToChatSheet = forwardRef<
           ))}
         </View>
 
-        <View
-          style={[
-            styles.toggleRow,
-            {
-              backgroundColor: colors.muted,
-              borderRadius: radii.lg,
-            },
-          ]}
-        >
-          <Ionicons
-            name="globe-outline"
-            size={18}
-            color={colors.popoverForeground}
-          />
-          <Text
+        {searchAvailable ? (
+          <View
             style={[
-              styles.toggleLabel,
+              styles.toggleRow,
               {
-                color: colors.popoverForeground,
-                fontFamily: fonts.sansMedium,
+                backgroundColor: colors.muted,
+                borderRadius: radii.lg,
               },
             ]}
           >
-            Web search
-          </Text>
-          <Switch
-            value={searchEnabled}
-            onValueChange={onToggleSearch}
-            trackColor={{ true: colors.primary, false: colors.border }}
-            thumbColor={colors.background}
-          />
-        </View>
+            <Ionicons
+              name="globe-outline"
+              size={18}
+              color={colors.popoverForeground}
+            />
+            <Text
+              style={[
+                styles.toggleLabel,
+                {
+                  color: colors.popoverForeground,
+                  fontFamily: fonts.sansMedium,
+                },
+              ]}
+            >
+              Web search
+            </Text>
+            <Switch
+              value={searchEnabled}
+              onValueChange={onToggleSearch}
+              trackColor={{ true: colors.primary, false: colors.border }}
+              thumbColor={colors.background}
+            />
+          </View>
+        ) : null}
       </BottomSheetView>
     </BottomSheetModal>
   );

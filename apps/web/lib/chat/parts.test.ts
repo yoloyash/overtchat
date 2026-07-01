@@ -14,6 +14,23 @@ const search = (query: string): Part =>
     input: { query },
     output: [],
   }) as unknown as Part;
+const mcpTool = (name: string): Part =>
+  ({
+    type: `tool-${name}`,
+    toolCallId: name,
+    state: "output-available",
+    input: { city: "Berlin" },
+    output: { weather: "clear" },
+  }) as unknown as Part;
+const dynamicTool = (name: string): Part =>
+  ({
+    type: "dynamic-tool",
+    toolName: name,
+    toolCallId: name,
+    state: "output-available",
+    input: { q: "docs" },
+    output: { ok: true },
+  }) as unknown as Part;
 const file = (): Part =>
   ({ type: "file", mediaType: "image/png", url: "x" }) as Part;
 
@@ -75,5 +92,21 @@ describe("groupMessageParts", () => {
     const activity = segs[0] as Extract<Segment, { kind: "activity" }>;
     expect(activity.parts).toHaveLength(4); // reasoning + 3 searches, blanks dropped
     expect(segs[1]).toMatchObject({ kind: "text", index: 6 });
+  });
+
+  it("treats MCP-style static and dynamic tool parts as activity", () => {
+    const segs = groupMessageParts([
+      reasoning("checking"),
+      mcpTool("mcp_docs_search"),
+      dynamicTool("mcp_weather_lookup"),
+      text("done"),
+    ]);
+    expect(segs.map((s) => s.kind)).toEqual(["activity", "text"]);
+    const activity = segs[0] as Extract<Segment, { kind: "activity" }>;
+    expect(activity.parts.map((part) => part.type)).toEqual([
+      "reasoning",
+      "tool-mcp_docs_search",
+      "dynamic-tool",
+    ]);
   });
 });

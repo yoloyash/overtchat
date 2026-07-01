@@ -1,4 +1,9 @@
-import { convertToModelMessages, streamText, stepCountIs } from "ai";
+import {
+  convertToModelMessages,
+  streamText,
+  stepCountIs,
+  type ToolSet,
+} from "ai";
 import type { ChatRequestBody, ModelBrandIconId } from "@overtchat/shared";
 import { webTools, WEB_SEARCH_CITATION_PROMPT } from "@/lib/tools";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
@@ -13,8 +18,10 @@ import {
 } from "@/lib/db/chats";
 import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getToolSettings, listEnabledMcpServers } from "@/lib/db/tools";
 import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
+import { buildMcpTools, closeMcpClients, type BuiltMcpTools } from "@/lib/mcp";
 import {
   modelIconForModel,
   providerIdentityForBaseUrl,
@@ -90,6 +97,13 @@ export async function POST(req: Request) {
   const project = resolvedProjectId
     ? await getProject(resolvedProjectId, userId)
     : null;
+  const [toolSettings, enabledMcpServers] = await Promise.all([
+    getToolSettings(),
+    listEnabledMcpServers(),
+  ]);
+  const effectiveSearchEnabled = Boolean(
+    searchEnabled && toolSettings.webSearchEnabled,
+  );
 
   const last = messages[messages.length - 1];
   if (!temporary) {
@@ -120,47 +134,72 @@ export async function POST(req: Request) {
   const turnNumber = messages.filter((m) => m.role === "user").length - 1;
   const runtimeContext = buildRuntimeContext({
     turn: Math.max(0, turnNumber),
-    searchEnabled,
+    searchEnabled: effectiveSearchEnabled,
   });
-  const systemParts = [
-    project?.instructions,
-    modelConfig.systemPrompt,
-    searchEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
-    runtimeContext,
-  ].filter((s): s is string => Boolean(s && s.trim()));
-  const system = systemParts.length ? systemParts.join("\n\n") : undefined;
 
   const streamId = crypto.randomUUID();
   const controller = temporary ? null : new AbortController();
   if (controller) cancelRegistry.register(streamId, controller);
   const abortSignal = controller?.signal ?? req.signal;
 
-  const result = streamText({
-    model,
-    system,
-    messages: await convertToModelMessages(inlined),
-    tools: searchEnabled ? webTools : undefined,
-    stopWhen: searchEnabled ? stepCountIs(50) : undefined,
-    prepareStep: searchEnabled
-      ? async ({ stepNumber }) =>
-          stepNumber === 0 ? { toolChoice: "required" } : {}
-      : undefined,
-    abortSignal,
-    providerOptions,
-    onChunk: ({ chunk }) => {
-      if (
-        firstTokenAt === null &&
-        (chunk.type === "text-delta" || chunk.type === "reasoning-delta") &&
-        chunk.text.length > 0
-      ) {
-        firstTokenAt = Date.now();
-      }
-    },
-    onError: ({ error }) => {
-      streamError = error;
-      console.error("[chat-stream]", error);
-    },
-  });
+  let mcpClients: BuiltMcpTools["clients"] = [];
+  let result: ReturnType<typeof streamText>;
+  try {
+    const mcp = await buildMcpTools(enabledMcpServers);
+    mcpClients = mcp.clients;
+    for (const skipped of mcp.skipped) {
+      console.warn(
+        `[mcp:${skipped.serverName}] skipped for request: ${skipped.error}`,
+      );
+    }
+
+    const tools: ToolSet = {};
+    if (effectiveSearchEnabled) Object.assign(tools, webTools);
+    Object.assign(tools, mcp.tools);
+    const hasTools = Object.keys(tools).length > 0;
+    const systemParts = [
+      project?.instructions,
+      modelConfig.systemPrompt,
+      effectiveSearchEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+      ...mcp.instructions,
+      runtimeContext,
+    ].filter((s): s is string => Boolean(s && s.trim()));
+    const system = systemParts.length ? systemParts.join("\n\n") : undefined;
+    const modelMessages = await convertToModelMessages(inlined);
+    result = streamText({
+      model,
+      system,
+      messages: modelMessages,
+      tools: hasTools ? tools : undefined,
+      stopWhen: hasTools ? stepCountIs(50) : undefined,
+      prepareStep: effectiveSearchEnabled
+        ? async ({ stepNumber }) =>
+            stepNumber === 0 ? { toolChoice: "required" } : {}
+        : undefined,
+      abortSignal,
+      providerOptions,
+      onChunk: ({ chunk }) => {
+        if (
+          firstTokenAt === null &&
+          (chunk.type === "text-delta" || chunk.type === "reasoning-delta") &&
+          chunk.text.length > 0
+        ) {
+          firstTokenAt = Date.now();
+        }
+      },
+      onError: ({ error }) => {
+        streamError = error;
+        console.error("[chat-stream]", error);
+      },
+      onAbort: async () => {
+        await closeMcpClients(mcpClients);
+      },
+    });
+  } catch (err) {
+    if (!temporary) cancelRegistry.unregister(streamId);
+    await closeMcpClients(mcpClients);
+    throw err;
+  }
 
   const streamHeaders = corsHeaders(req);
   streamHeaders.set("Content-Encoding", "none");
@@ -205,17 +244,16 @@ export async function POST(req: Request) {
       return { stats };
     },
     onFinish: async ({ responseMessage }) => {
-      if (temporary) return;
-      // A turn that errored mid-stream leaves a partial assistant message
-      // (e.g. reasoning with no answer). Persisting it would strand a dangling
-      // "Thought for Ns" block on reload. Drop it; the client surfaces the
-      // error and offers retry.
-      if (streamError) {
-        await setActiveStreamId(chatId, null);
-        cancelRegistry.unregister(streamId);
-        return;
-      }
       try {
+        if (temporary) return;
+        // A turn that errored mid-stream leaves a partial assistant message
+        // (e.g. reasoning with no answer). Persisting it would strand a dangling
+        // "Thought for Ns" block on reload. Drop it; the client surfaces the
+        // error and offers retry.
+        if (streamError) {
+          await setActiveStreamId(chatId, null);
+          return;
+        }
         if (responseMessage.parts.length > 0) {
           await appendMessage(
             chatId,
@@ -229,7 +267,8 @@ export async function POST(req: Request) {
       } catch (err) {
         console.error("[persist-assistant]", err);
       } finally {
-        cancelRegistry.unregister(streamId);
+        if (!temporary) cancelRegistry.unregister(streamId);
+        await closeMcpClients(mcpClients);
       }
     },
   });

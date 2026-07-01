@@ -168,7 +168,8 @@ export function MessageBubble({
             trailing.type === "reasoning"
               ? (trailing as { state?: string }).state === "done"
               : (trailing as { state?: string }).state === "output-available" ||
-                (trailing as { state?: string }).state === "output-error";
+                (trailing as { state?: string }).state === "output-error" ||
+                (trailing as { state?: string }).state === "output-denied";
           const active = streaming && isLast && !trailingDone;
           return (
             <ChainOfThought

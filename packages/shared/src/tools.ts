@@ -35,6 +35,22 @@ export type FetchUrlPart = {
   errorText?: string;
 };
 
+export type GenericToolPart = {
+  type: `tool-${string}` | "dynamic-tool";
+  toolName?: string;
+  toolCallId: string;
+  title?: string;
+  toolMetadata?: Record<string, unknown>;
+  state:
+    | ToolState
+    | "approval-requested"
+    | "approval-responded"
+    | "output-denied";
+  input?: unknown;
+  output?: unknown;
+  errorText?: string;
+};
+
 export function cleanDomain(url: string): string {
   try {
     const host = new URL(url).hostname;
