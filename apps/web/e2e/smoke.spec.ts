@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { ensureAdminSession } from "./helpers";
 
 test("signup, configure Gemini, stream a response", async ({ page }) => {
   if (!process.env.GEMINI_API_KEY) {
@@ -6,14 +7,8 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
     return;
   }
 
-  await test.step("admin signup", async () => {
-    await page.goto("/signup");
-    await expect(page.locator("h1")).toContainText("Create the first account");
-    await page.locator("#name").fill("E2E Tester");
-    await page.locator("#email").fill("test-admin@overtchat-test.local");
-    await page.locator("#password").fill("test-password-123");
-    await page.getByRole("button", { name: "Create account" }).click();
-    await page.waitForURL("**/", { timeout: 15000 });
+  await test.step("admin session", async () => {
+    await ensureAdminSession(page);
   });
 
   await test.step("configure Gemini model", async () => {
