@@ -12,7 +12,7 @@
   <a href="https://github.com/yoloyash/overtchat"><img src=".github/badges/tokens.svg" alt="repo tokens" valign="middle"></a>
 </p>
 
-https://github.com/user-attachments/assets/bb1c6b31-97ad-43dc-b39c-743c12d7ae4b
+https://github.com/user-attachments/assets/8d135eac-ae55-40eb-934c-e0d88395bb5b
 
 ## Why I built overtchat
 
