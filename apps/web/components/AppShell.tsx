@@ -61,13 +61,13 @@ export function AppShell({
       }}
     >
       <Dialog.Root open={openMobile} onOpenChange={setOpenMobile}>
-        <div className="flex h-dvh overflow-hidden bg-background">
+        <div className="box-border flex h-dvh overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
           {!collapsed && <div className="hidden md:flex">{sidebar}</div>}
           <Dialog.Portal>
             <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 md:hidden" />
             <Dialog.Popup
               ref={drawerRef as React.RefObject<HTMLDivElement>}
-              className="fixed inset-y-0 left-0 z-50 flex transition-transform duration-200 data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden"
+              className="fixed inset-y-0 left-0 z-50 box-border flex bg-sidebar pt-[env(safe-area-inset-top)] transition-transform duration-200 data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden"
             >
               {sidebar}
             </Dialog.Popup>
