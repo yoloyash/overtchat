@@ -1,7 +1,7 @@
 {
   "name": "@overtchat/mobile",
   "main": "expo-router/entry",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "scripts": {
     "dev": "expo start --host=lan",
