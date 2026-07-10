@@ -8,7 +8,7 @@ import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/config";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { chatKeys } from "@/lib/queries/keys";
-import type { ChatListItem } from "@/lib/queries/chats";
+import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { authClient } from "@/lib/auth/client";
@@ -40,6 +40,7 @@ interface Props {
 
 export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const qc = useQueryClient();
+  const { data: chats } = useChats();
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : modelsData ?? null;
@@ -65,6 +66,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   );
 
   const [temporary, setTemporary] = useState(false);
+  useEffect(() => {
+    if (temporary) {
+      document.title = "overtchat";
+      return;
+    }
+    document.title =
+      chats?.find((chat) => chat.id === chatId)?.title?.trim() || "overtchat";
+  }, [chatId, chats, temporary]);
+
   const [storedStats, setStoredStats] = useState<StoredMessageStats>(() =>
     readStoredMessageStats(),
   );
@@ -93,7 +103,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
-    onFinish: ({ message }) => {
+    onFinish: ({ message, isAbort, isError }) => {
       const stats = readMessageStats(message);
       if (stats && !temporaryRef.current) {
         setStoredStats((current) => {
@@ -103,6 +113,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         });
       }
       if (temporaryRef.current) return;
+      if (isAbort || isError) return;
       qc.invalidateQueries({ queryKey: chatKeys.list() });
     },
   });
@@ -185,32 +196,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         if (prev.some((c) => c.id === chatId)) return prev;
         return [next, ...prev];
       });
-      if (text) void requestTitle(text);
     }
     sendMessage({ text, files: attachments }, { body: requestBody() });
-  }
-
-  async function requestTitle(userText: string) {
-    try {
-      const r = await fetch(`/api/chats/${chatId}/title`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelConfigId: selectedId,
-          userText,
-          projectId: projectId ?? null,
-        }),
-      });
-      if (!r.ok) return;
-      const { title } = (await r.json()) as { title: string };
-      if (!title) return;
-      document.title = title;
-      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) =>
-        prev?.map((c) => (c.id === chatId ? { ...c, title } : c)),
-      );
-    } catch (err) {
-      console.error("[title]", err);
-    }
   }
 
   function handleRegenerate(messageId: string) {

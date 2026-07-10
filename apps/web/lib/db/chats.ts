@@ -171,9 +171,13 @@ export async function getMessages(chatId: string): Promise<UIMessage[]> {
 export async function setTitleIfNull(
   id: string,
   title: string,
-): Promise<void> {
-  await db
+): Promise<string | null> {
+  const trimmed = title.trim();
+  if (!trimmed) return null;
+  const [row] = await db
     .update(chats)
-    .set({ title })
-    .where(and(eq(chats.id, id), sql`${chats.title} IS NULL`));
+    .set({ title: trimmed })
+    .where(and(eq(chats.id, id), sql`${chats.title} IS NULL`))
+    .returning({ title: chats.title });
+  return row?.title ?? null;
 }
