@@ -89,7 +89,7 @@ export function AdvancedFields({
               id="p-system-prompt"
               rows={4}
               className="min-h-28 resize-y"
-              placeholder="You are a helpful assistant..."
+              placeholder="You are a helpful assistant…"
               value={systemPrompt}
               onChange={(e) => onSystemPromptChange(e.target.value)}
             />

@@ -267,7 +267,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             Cancel
           </Button>
           <Button type="submit" size="sm" disabled={!canSave}>
-            {saving ? "Saving..." : isEditing ? "Save" : "Create"}
+            {saving ? "Saving…" : isEditing ? "Save" : "Create"}
           </Button>
         </div>
       </form>

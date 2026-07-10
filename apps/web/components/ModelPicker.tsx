@@ -26,7 +26,7 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
   const showSearch = (models?.length ?? 0) > SEARCH_THRESHOLD;
 
   const label = loading
-    ? "Loading..."
+    ? "Loading…"
     : selected
       ? selected.label
       : models && models.length > 0

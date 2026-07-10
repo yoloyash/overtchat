@@ -273,7 +273,7 @@ export function ModelsPanel() {
                 disabled={deleteMut.isPending}
                 onClick={confirmDelete}
               >
-                {deleteMut.isPending ? "Deleting..." : "Delete"}
+                {deleteMut.isPending ? "Deleting…" : "Delete"}
               </Button>
             </div>
           </AlertDialog.Popup>
