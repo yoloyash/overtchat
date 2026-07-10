@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   ModelConfigSchema,
   type AdminModelConfig,
@@ -21,6 +21,7 @@ import { PRESETS, presetFor, type PresetId } from "@/lib/providers/meta";
 import { AdvancedFields } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
+import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
 
 export interface ModelEditorProps {
   /** When provided, editor loads the existing config from cache; otherwise a new one is being created. */
@@ -35,7 +36,6 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     : undefined;
   const isEditing = Boolean(modelId);
 
-  // For "new" we expose a preset selector. For "edit" the preset is implicit.
   const [preset, setPreset] = useState<PresetId>(() =>
     existing ? presetFor(existing.baseUrl) : "openai",
   );
@@ -75,9 +75,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const updateMut = useUpdateModelConfig();
   const saving = createMut.isPending || updateMut.isPending;
 
-  const requiresKey = isEditing
-    ? presetFor(draft.baseUrl) !== "custom"
-    : preset !== "custom";
+  const requiresKey = preset !== "custom";
 
   const canSave =
     !saving &&
@@ -145,7 +143,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   }
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-4xl">
       <div className="mb-6 flex items-center gap-2">
         <Button
           render={<Link href="/settings/models" />}
@@ -155,49 +153,89 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         >
           <ArrowLeft />
         </Button>
-        <h1 className="text-xl font-semibold tracking-tight">
-          {isEditing ? "Edit model" : "Add model"}
-        </h1>
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {isEditing ? "Edit model" : "Add model"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Configure a model that everyone on this server can use.
+          </p>
+        </div>
       </div>
 
-      <form onSubmit={submit} className="space-y-6">
-        <ConnectionFields
-          draft={{
-            baseUrl: draft.baseUrl,
-            apiKey: draft.apiKey ?? "",
-            model: draft.model,
-          }}
-          onChange={(next) => setDraft((d) => ({ ...d, ...next }))}
-          preset={isEditing ? null : preset}
-          onPresetChange={(next) => {
-            setPreset(next);
-            setDraft((d) => ({
-              ...d,
-              baseUrl: PRESETS[next].defaultBaseUrl,
-              model: "",
-            }));
-          }}
-        />
-
-        <ConnectionTester
-          key={`${draft.baseUrl}|${draft.apiKey}|${draft.model}|${extraBodyText}`}
-          args={pingArgs}
-          disabled={requiresKey && !draft.apiKey}
-        />
-
-        <div className="space-y-1.5">
-          <Label htmlFor="p-label">Display name</Label>
-          <Input
-            id="p-label"
-            placeholder={
-              draft.model ? defaultLabelFor(draft.model) : "Shown in the picker"
-            }
-            value={draft.label}
-            onChange={(e) =>
-              setDraft((d) => ({ ...d, label: e.target.value }))
-            }
+      <form onSubmit={submit} className="space-y-8">
+        <SettingsSection
+          title="Connection"
+          description="Provider, credentials, model discovery, and connectivity."
+        >
+          <ConnectionFields
+            draft={{
+              baseUrl: draft.baseUrl,
+              apiKey: draft.apiKey ?? "",
+              model: draft.model,
+            }}
+            onChange={(next) => setDraft((d) => ({ ...d, ...next }))}
+            preset={preset}
+            autoFetchModels={!isEditing}
+            onPresetChange={(next) => {
+              setPreset(next);
+              setDraft((d) => ({
+                ...d,
+                baseUrl: PRESETS[next].defaultBaseUrl,
+                apiKey: "",
+                model: "",
+              }));
+            }}
           />
-        </div>
+
+          <SettingsRow
+            title="Test connection"
+            description="Send a short request with the current connection settings."
+          >
+            <ConnectionTester
+              key={`${draft.baseUrl}|${draft.apiKey}|${draft.model}|${extraBodyText}`}
+              args={pingArgs}
+              disabled={requiresKey && !draft.apiKey}
+            />
+          </SettingsRow>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Chat availability"
+          description="How this model appears to people using chat."
+        >
+          <SettingsRow
+            title="Display name"
+            description="Shown in the chat model picker."
+            htmlFor="p-label"
+            align="center"
+          >
+            <Input
+              id="p-label"
+              placeholder={
+                draft.model ? defaultLabelFor(draft.model) : "Shown in the picker"
+              }
+              value={draft.label}
+              onChange={(e) =>
+                setDraft((d) => ({ ...d, label: e.target.value }))
+              }
+            />
+          </SettingsRow>
+
+          <SettingsRow
+            title="Available in chat"
+            description="Turn off to keep the config without showing it in the picker."
+            align="center"
+          >
+            <Switch
+              checked={draft.enabled}
+              onCheckedChange={(next) =>
+                setDraft((d) => ({ ...d, enabled: next }))
+              }
+              aria-label={draft.enabled ? "Disable model" : "Enable model"}
+            />
+          </SettingsRow>
+        </SettingsSection>
 
         <AdvancedFields
           systemPrompt={draft.systemPrompt ?? ""}
