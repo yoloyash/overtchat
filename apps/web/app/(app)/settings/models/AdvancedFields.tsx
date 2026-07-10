@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Editor from "react-simple-code-editor";
 import { ChevronDown } from "lucide-react";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { SettingsRow } from "../_components/SettingsRows";
 
 const EXTRA_BODY_EXAMPLE = {
   chat_template_kwargs: { thinking: true },
@@ -51,111 +52,123 @@ export function AdvancedFields({
         onExtraBodyTextChange(formatted, null);
       }
     } catch {
-      // already invalid; live error covers it
+      // Invalid JSON is already reported live.
     }
   }
 
   return (
-    <div className="border-t pt-4">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-      >
-        Advanced
-        <ChevronDown
-          className={cn(
-            "size-3.5 transition-transform duration-200",
-            open && "rotate-180",
-          )}
-        />
-      </button>
+    <>
+      <div className="flex items-center justify-between gap-3 py-4">
+        <div className="min-w-0">
+          <div className="text-sm font-medium leading-5">Advanced options</div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Add per-model prompt and provider-specific request overrides.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+        >
+          {open ? "Hide" : "Show"}
+          <ChevronDown
+            className={cn(
+              "transition-transform duration-200",
+              open && "rotate-180",
+            )}
+          />
+        </Button>
+      </div>
+
       {open && (
-        <div className="mt-4 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="p-system-prompt">
-              System prompt <OptionalChip />
-            </Label>
+        <>
+          <SettingsRow
+            title="System prompt"
+            description="Prepended to every request sent through this model."
+            htmlFor="p-system-prompt"
+          >
             <Textarea
               id="p-system-prompt"
-              rows={3}
-              placeholder="You are a helpful assistant…"
+              rows={4}
+              className="min-h-28 resize-y"
+              placeholder="You are a helpful assistant..."
               value={systemPrompt}
               onChange={(e) => onSystemPromptChange(e.target.value)}
             />
-          </div>
+          </SettingsRow>
 
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between gap-2">
-              <Label htmlFor="p-extra">
-                Extra body <OptionalChip />
-              </Label>
-              {!extraBodyText.trim() && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const formatted = JSON.stringify(EXTRA_BODY_EXAMPLE, null, 2);
-                    onExtraBodyTextChange(formatted, null);
+          <SettingsRow
+            title="Extra body"
+            description="JSON object forwarded as provider-specific request options."
+            htmlFor="p-extra"
+          >
+            <div className="space-y-2">
+              <div
+                className={cn(
+                  "rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
+                  extraBodyError &&
+                    "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
+                )}
+              >
+                <Editor
+                  value={extraBodyText}
+                  onValueChange={(next) =>
+                    onExtraBodyTextChange(next, parseExtraBody(next))
+                  }
+                  highlight={(code) => code}
+                  tabSize={2}
+                  insertSpaces
+                  padding={12}
+                  textareaId="p-extra"
+                  placeholder='{ "chat_template_kwargs": { "thinking": true } }'
+                  onBlur={handleExtraBodyBlur}
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  aria-label="Extra request body JSON"
+                  aria-invalid={extraBodyError ? true : undefined}
+                  style={{
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+                    fontSize: "0.8125rem",
+                    lineHeight: "1.55",
+                    minHeight: "9rem",
                   }}
-                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  Insert example
-                </button>
-              )}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                {extraBodyError ? (
+                  <p className="break-words text-destructive">
+                    {extraBodyError}
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground">
+                    Must be a JSON object. Leave empty to send no override.
+                  </p>
+                )}
+                {!extraBodyText.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const formatted = JSON.stringify(
+                        EXTRA_BODY_EXAMPLE,
+                        null,
+                        2,
+                      );
+                      onExtraBodyTextChange(formatted, null);
+                    }}
+                    className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                  >
+                    Insert example
+                  </button>
+                )}
+              </div>
             </div>
-            <div
-              className={cn(
-                "rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
-                extraBodyError &&
-                  "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
-              )}
-            >
-              <Editor
-                value={extraBodyText}
-                onValueChange={(next) =>
-                  onExtraBodyTextChange(next, parseExtraBody(next))
-                }
-                highlight={(code) => code}
-                tabSize={2}
-                insertSpaces
-                padding={8}
-                textareaId="p-extra"
-                placeholder='{ "chat_template_kwargs": { "thinking": true } }'
-                onBlur={handleExtraBodyBlur}
-                spellCheck={false}
-                autoCorrect="off"
-                autoCapitalize="off"
-                aria-label="Extra request body JSON"
-                aria-invalid={extraBodyError ? true : undefined}
-                style={{
-                  fontFamily:
-                    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                  fontSize: "0.75rem",
-                  lineHeight: "1.5",
-                  minHeight: "8rem",
-                }}
-              />
-            </div>
-            {extraBodyError && (
-              <p className="text-xs text-destructive break-words">
-                {extraBodyError}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              Provider-specific options forwarded as <code className="font-mono text-[11px]">extra_body</code>.
-            </p>
-          </div>
-        </div>
+          </SettingsRow>
+        </>
       )}
-    </div>
-  );
-}
-
-function OptionalChip() {
-  return (
-    <span className="ml-1 rounded px-1.5 py-px text-[10px] font-normal uppercase tracking-wide text-muted-foreground/80">
-      Optional
-    </span>
+    </>
   );
 }
