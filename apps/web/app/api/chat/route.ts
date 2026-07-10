@@ -15,6 +15,7 @@ import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { buildModel } from "@/lib/llm";
+import { generateChatTitle } from "@/lib/title";
 import {
   modelIconForModel,
   providerIdentityForBaseUrl,
@@ -66,12 +67,14 @@ export async function POST(req: Request) {
   if (!modelConfig) return withCors(req, new Response("Model config not found", { status: 404 }));
 
   let resolvedProjectId: string | null;
+  let existingTitle: string | null = null;
   if (temporary) {
     resolvedProjectId = projectId ?? null;
   } else {
     const chat = await ensureChat(chatId, userId, projectId ?? null);
     if (!chat) return withCors(req, new Response("Not found", { status: 404 }));
     resolvedProjectId = chat.projectId;
+    existingTitle = chat.title;
 
     const prior = await getActiveStreamId(chatId);
     if (prior) {
@@ -92,12 +95,25 @@ export async function POST(req: Request) {
     : null;
 
   const last = messages[messages.length - 1];
+  const userMessageCount = messages.filter((m) => m.role === "user").length;
+  let titlePromise: Promise<string | null> | null = null;
   if (!temporary) {
     if (trigger === "regenerate-message") {
       if (messageId) await deleteMessagesFrom(chatId, messageId);
     } else if (last.role === "user") {
       if (messageId) await deleteMessagesFrom(chatId, messageId);
       await appendMessage(chatId, "user", last.parts, last.id);
+      if (
+        existingTitle === null &&
+        messageId === undefined &&
+        userMessageCount === 1
+      ) {
+        titlePromise = generateChatTitle({
+          chatId,
+          modelConfig,
+          userParts: last.parts,
+        });
+      }
     }
     await touchChat(chatId);
   }
@@ -206,16 +222,15 @@ export async function POST(req: Request) {
     },
     onFinish: async ({ responseMessage }) => {
       if (temporary) return;
-      // A turn that errored mid-stream leaves a partial assistant message
-      // (e.g. reasoning with no answer). Persisting it would strand a dangling
-      // "Thought for Ns" block on reload. Drop it; the client surfaces the
-      // error and offers retry.
-      if (streamError) {
-        await setActiveStreamId(chatId, null);
-        cancelRegistry.unregister(streamId);
-        return;
-      }
       try {
+        // A turn that errored mid-stream leaves a partial assistant message
+        // (e.g. reasoning with no answer). Persisting it would strand a dangling
+        // "Thought for Ns" block on reload. Drop it; the client surfaces the
+        // error and offers retry.
+        if (streamError) {
+          await setActiveStreamId(chatId, null);
+          return;
+        }
         if (responseMessage.parts.length > 0) {
           await appendMessage(
             chatId,
@@ -230,6 +245,7 @@ export async function POST(req: Request) {
         console.error("[persist-assistant]", err);
       } finally {
         cancelRegistry.unregister(streamId);
+        if (titlePromise) await titlePromise;
       }
     },
   });

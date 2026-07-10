@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -97,6 +97,10 @@ export function SidebarItem({
   const [draft, setDraft] = useState(chat.title ?? "");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [revealNextTitle, setRevealNextTitle] = useState(chat.title === null);
+  const markTitleRevealComplete = useCallback(() => {
+    setRevealNextTitle(false);
+  }, []);
 
   function commitRename() {
     const next = draft.trim();
@@ -160,7 +164,16 @@ export function SidebarItem({
             active && "bg-sidebar-accent",
           )}
         >
-          {chat.title ?? "Untitled"}
+          {chat.title ? (
+            <RevealedTitle
+              key={chat.title}
+              title={chat.title}
+              reveal={revealNextTitle}
+              onComplete={markTitleRevealComplete}
+            />
+          ) : (
+            "Untitled"
+          )}
         </Link>
         <Menu.Root>
           <Menu.Trigger
@@ -295,4 +308,38 @@ export function SidebarItem({
       </AlertDialog.Root>
     </>
   );
+}
+
+function RevealedTitle({
+  title,
+  reveal,
+  onComplete,
+}: {
+  title: string;
+  reveal: boolean;
+  onComplete: () => void;
+}) {
+  const chars = Array.from(title);
+  const [length, setLength] = useState(() =>
+    reveal ? Math.min(1, chars.length) : chars.length,
+  );
+
+  useEffect(() => {
+    if (!reveal) return;
+
+    let nextLength = Math.min(1, chars.length);
+
+    const interval = window.setInterval(() => {
+      nextLength = Math.min(chars.length, nextLength + 2);
+      setLength(nextLength);
+      if (nextLength >= chars.length) {
+        window.clearInterval(interval);
+        onComplete();
+      }
+    }, 24);
+
+    return () => window.clearInterval(interval);
+  }, [chars.length, onComplete, reveal]);
+
+  return <>{reveal ? chars.slice(0, length).join("") : title}</>;
 }
