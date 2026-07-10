@@ -1,18 +1,23 @@
 import { useEffect, useRef, useState } from "react";
+import type { FileUIPart } from "ai";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useTheme } from "@/lib/theme";
+import { AttachmentChip } from "./AttachmentChip";
 
 export function EditBubble({
   initialText,
+  initialFiles,
   onSave,
   onCancel,
 }: {
   initialText: string;
-  onSave: (text: string) => void;
+  initialFiles: FileUIPart[];
+  onSave: (text: string, files: FileUIPart[]) => void;
   onCancel: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
   const [draft, setDraft] = useState(initialText);
+  const [files, setFiles] = useState(initialFiles);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -20,7 +25,15 @@ export function EditBubble({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  const dirty = draft.trim().length > 0 && draft !== initialText;
+  const nextText = draft.trim();
+  const dirty =
+    nextText !== initialText.trim() || files.length !== initialFiles.length;
+  const canSend = dirty && (nextText.length > 0 || files.length > 0);
+
+  function send() {
+    if (!canSend) return;
+    onSave(nextText, files);
+  }
 
   return (
     <View style={styles.row}>
@@ -28,20 +41,35 @@ export function EditBubble({
         style={[
           styles.bubble,
           {
-            backgroundColor: colors.secondary,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
             borderRadius: radii.xxl,
           },
         ]}
       >
+        {files.length > 0 ? (
+          <View style={styles.attachments}>
+            {files.map((file, i) => (
+              <AttachmentChip
+                key={`${file.url}-${i}`}
+                attachment={file}
+                onRemove={() =>
+                  setFiles((prev) => prev.filter((_, j) => j !== i))
+                }
+              />
+            ))}
+          </View>
+        ) : null}
         <TextInput
           ref={inputRef}
           value={draft}
           onChangeText={setDraft}
           multiline
+          accessibilityLabel="Edit message"
           textAlignVertical="top"
           style={[
             styles.input,
-            { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+            { color: colors.cardForeground, fontFamily: fonts.sansRegular },
           ]}
         />
         <View style={styles.actions}>
@@ -56,8 +84,8 @@ export function EditBubble({
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => onSave(draft.trim())}
-            disabled={!dirty}
+            onPress={send}
+            disabled={!canSend}
             hitSlop={6}
             style={[
               styles.btn,
@@ -65,7 +93,7 @@ export function EditBubble({
               {
                 backgroundColor: colors.primary,
                 borderRadius: radii.pill,
-                opacity: dirty ? 1 : 0.5,
+                opacity: canSend ? 1 : 0.5,
               },
             ]}
           >
@@ -75,7 +103,7 @@ export function EditBubble({
                 { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
               ]}
             >
-              Save
+              Send
             </Text>
           </Pressable>
         </View>
@@ -87,15 +115,24 @@ export function EditBubble({
 const styles = StyleSheet.create({
   row: { alignItems: "flex-end" },
   bubble: {
-    maxWidth: "85%",
-    minWidth: 220,
+    maxWidth: "92%",
+    minWidth: 260,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 14,
     paddingVertical: 10,
+  },
+  attachments: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: 6,
+    marginBottom: 10,
   },
   input: {
     fontSize: 15,
     lineHeight: 22,
-    minHeight: 22,
+    minHeight: 80,
+    maxHeight: 240,
   },
   actions: {
     flexDirection: "row",
