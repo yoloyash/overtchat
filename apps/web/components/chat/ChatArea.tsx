@@ -8,7 +8,7 @@ import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/config";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { chatKeys } from "@/lib/queries/keys";
-import type { ChatListItem } from "@/lib/queries/chats";
+import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { authClient } from "@/lib/auth/client";
@@ -40,6 +40,7 @@ interface Props {
 
 export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const qc = useQueryClient();
+  const { data: chats } = useChats();
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : modelsData ?? null;
@@ -65,6 +66,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   );
 
   const [temporary, setTemporary] = useState(false);
+  useEffect(() => {
+    if (temporary) {
+      document.title = "overtchat";
+      return;
+    }
+    document.title =
+      chats?.find((chat) => chat.id === chatId)?.title?.trim() || "overtchat";
+  }, [chatId, chats, temporary]);
+
   const [storedStats, setStoredStats] = useState<StoredMessageStats>(() =>
     readStoredMessageStats(),
   );
