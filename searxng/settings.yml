@@ -24,15 +24,5 @@ outgoing:
   pool_maxsize: 20
 
 engines:
-  - name: ahmia
-    disabled: true
-  - name: torch
-    disabled: true
-  - name: wikidata
-    disabled: true
   - name: brave
-    disabled: true
-  - name: karmasearch
-    disabled: true
-  - name: karmasearch videos
     disabled: true
