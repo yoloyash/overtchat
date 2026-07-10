@@ -93,7 +93,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
-    onFinish: ({ message }) => {
+    onFinish: ({ message, isAbort, isError }) => {
       const stats = readMessageStats(message);
       if (stats && !temporaryRef.current) {
         setStoredStats((current) => {
@@ -103,6 +103,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         });
       }
       if (temporaryRef.current) return;
+      if (isAbort || isError) return;
       qc.invalidateQueries({ queryKey: chatKeys.list() });
     },
   });
@@ -185,32 +186,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         if (prev.some((c) => c.id === chatId)) return prev;
         return [next, ...prev];
       });
-      if (text) void requestTitle(text);
     }
     sendMessage({ text, files: attachments }, { body: requestBody() });
-  }
-
-  async function requestTitle(userText: string) {
-    try {
-      const r = await fetch(`/api/chats/${chatId}/title`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelConfigId: selectedId,
-          userText,
-          projectId: projectId ?? null,
-        }),
-      });
-      if (!r.ok) return;
-      const { title } = (await r.json()) as { title: string };
-      if (!title) return;
-      document.title = title;
-      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) =>
-        prev?.map((c) => (c.id === chatId ? { ...c, title } : c)),
-      );
-    } catch (err) {
-      console.error("[title]", err);
-    }
   }
 
   function handleRegenerate(messageId: string) {
