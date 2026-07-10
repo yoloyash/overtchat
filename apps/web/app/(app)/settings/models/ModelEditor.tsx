@@ -166,7 +166,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       <form onSubmit={submit} className="space-y-8">
         <SettingsSection
           title="Connection"
-          description="Provider, credentials, and upstream model discovery."
+          description="Provider, credentials, model discovery, and connectivity."
         >
           <ConnectionFields
             draft={{
@@ -187,11 +187,22 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               }));
             }}
           />
+
+          <SettingsRow
+            title="Test connection"
+            description="Send a short request with the current connection settings."
+          >
+            <ConnectionTester
+              key={`${draft.baseUrl}|${draft.apiKey}|${draft.model}|${extraBodyText}`}
+              args={pingArgs}
+              disabled={requiresKey && !draft.apiKey}
+            />
+          </SettingsRow>
         </SettingsSection>
 
         <SettingsSection
-          title="Details"
-          description="How this model appears in the app."
+          title="Chat availability"
+          description="How this model appears to people using chat."
         >
           <SettingsRow
             title="Display name"
@@ -212,8 +223,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </SettingsRow>
 
           <SettingsRow
-            title="Enabled"
-            description="Disabled models stay configured but disappear from the chat picker."
+            title="Available in chat"
+            description="Turn off to keep the config without showing it in the picker."
             align="center"
           >
             <Switch
@@ -224,36 +235,20 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               aria-label={draft.enabled ? "Disable model" : "Enable model"}
             />
           </SettingsRow>
-
-          <SettingsRow
-            title="Test connection"
-            description="Sends a short request with the current settings."
-          >
-            <ConnectionTester
-              key={`${draft.baseUrl}|${draft.apiKey}|${draft.model}|${extraBodyText}`}
-              args={pingArgs}
-              disabled={requiresKey && !draft.apiKey}
-            />
-          </SettingsRow>
         </SettingsSection>
 
-        <SettingsSection
-          title="Behavior"
-          description="Optional prompt and request-body overrides."
-        >
-          <AdvancedFields
-            systemPrompt={draft.systemPrompt ?? ""}
-            onSystemPromptChange={(next) =>
-              setDraft((d) => ({ ...d, systemPrompt: next }))
-            }
-            extraBodyText={extraBodyText}
-            onExtraBodyTextChange={(next, err) => {
-              setExtraBodyText(next);
-              setExtraBodyError(err);
-            }}
-            defaultOpen={Boolean(existing?.systemPrompt || existing?.extraBody)}
-          />
-        </SettingsSection>
+        <AdvancedFields
+          systemPrompt={draft.systemPrompt ?? ""}
+          onSystemPromptChange={(next) =>
+            setDraft((d) => ({ ...d, systemPrompt: next }))
+          }
+          extraBodyText={extraBodyText}
+          onExtraBodyTextChange={(next, err) => {
+            setExtraBodyText(next);
+            setExtraBodyError(err);
+          }}
+          defaultOpen={Boolean(existing?.systemPrompt || existing?.extraBody)}
+        />
 
         {saveError && (
           <div className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">

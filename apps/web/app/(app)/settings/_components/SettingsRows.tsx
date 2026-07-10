@@ -4,27 +4,34 @@ import { cn } from "@/lib/utils";
 interface SettingsSectionProps {
   title: string;
   description?: string;
-  children: React.ReactNode;
+  action?: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
 }
 
 export function SettingsSection({
   title,
   description,
+  action,
   children,
   className,
 }: SettingsSectionProps) {
   return (
     <section className={cn("space-y-3", className)}>
-      <div>
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
-        {description && (
-          <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-            {description}
-          </p>
-        )}
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          {description && (
+            <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              {description}
+            </p>
+          )}
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
-      <div className="divide-y divide-border/70 border-y">{children}</div>
+      {children ? (
+        <div className="divide-y divide-border/70 border-y">{children}</div>
+      ) : null}
     </section>
   );
 }
@@ -58,8 +65,8 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "grid gap-3 py-4 md:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] md:gap-6",
-        align === "center" && "md:items-center",
+        "grid gap-3 py-4 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-6",
+        align === "center" && "lg:items-center",
         className,
       )}
     >

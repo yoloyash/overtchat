@@ -121,7 +121,7 @@ export function ConnectionFields({
     <>
       <SettingsRow
         title="Provider"
-        description="Applies defaults for endpoint, credential handling, and display grouping."
+        description="Sets endpoint defaults and picker grouping."
         htmlFor="p-preset"
         align="center"
       >
@@ -192,11 +192,11 @@ export function ConnectionFields({
 
       <SettingsRow
         title="Model"
-        description="Choose a fetched model or enter a model id manually."
+        description="Choose a fetched model or enter an id."
         htmlFor="p-model"
       >
         <div className="space-y-2">
-          <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2 lg:flex-row">
             {showList ? (
               <Select
                 value={draft.model}
@@ -237,7 +237,7 @@ export function ConnectionFields({
               size="sm"
               disabled={!canProbe || probing}
               onClick={() => void probe(draft.baseUrl, draft.apiKey)}
-              className="sm:w-auto"
+              className="lg:w-auto"
             >
               {probing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               {models.length > 0 ? "Refresh" : "Fetch"}

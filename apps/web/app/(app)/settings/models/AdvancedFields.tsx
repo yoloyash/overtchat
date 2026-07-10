@@ -6,7 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { SettingsRow } from "../_components/SettingsRows";
+import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
 
 const EXTRA_BODY_EXAMPLE = {
   chat_template_kwargs: { thinking: true },
@@ -57,14 +57,10 @@ export function AdvancedFields({
   }
 
   return (
-    <>
-      <div className="flex items-center justify-between gap-3 py-4">
-        <div className="min-w-0">
-          <div className="text-sm font-medium leading-5">Advanced options</div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Add per-model prompt and provider-specific request overrides.
-          </p>
-        </div>
+    <SettingsSection
+      title="Advanced"
+      description="Optional prompt and request-body overrides for this model."
+      action={
         <Button
           type="button"
           variant="outline"
@@ -80,13 +76,13 @@ export function AdvancedFields({
             )}
           />
         </Button>
-      </div>
-
-      {open && (
+      }
+    >
+      {open ? (
         <>
           <SettingsRow
             title="System prompt"
-            description="Prepended to every request sent through this model."
+            description="Optional instructions sent before each conversation."
             htmlFor="p-system-prompt"
           >
             <Textarea
@@ -101,7 +97,7 @@ export function AdvancedFields({
 
           <SettingsRow
             title="Extra body"
-            description="JSON object forwarded as provider-specific request options."
+            description="Optional JSON object merged into each provider request."
             htmlFor="p-extra"
           >
             <div className="space-y-2">
@@ -168,7 +164,7 @@ export function AdvancedFields({
             </div>
           </SettingsRow>
         </>
-      )}
-    </>
+      ) : undefined}
+    </SettingsSection>
   );
 }

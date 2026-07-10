@@ -91,7 +91,7 @@ export function ModelsPanel() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Models</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -99,14 +99,18 @@ export function ModelsPanel() {
           </p>
         </div>
         {models.length > 0 && (
-          <Button render={<Link href="/settings/models/new" />} size="sm">
+          <Button
+            render={<Link href="/settings/models/new" />}
+            size="sm"
+            className="self-start lg:self-auto"
+          >
             <Plus /> Add model
           </Button>
         )}
       </header>
 
       {models.length > 0 && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative max-w-md flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -156,7 +160,7 @@ export function ModelsPanel() {
               <div
                 key={m.id}
                 className={cn(
-                  "grid gap-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center",
+                  "grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
                   !m.enabled && "opacity-65",
                 )}
               >
@@ -184,36 +188,44 @@ export function ModelsPanel() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 justify-self-start md:justify-self-end">
-                  <Switch
-                    checked={m.enabled}
-                    disabled={togglingId === m.id}
-                    onCheckedChange={(next) => void toggleEnabled(m, next)}
-                    aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
-                  />
-                  <Button
-                    render={<Link href={`/settings/models/${m.id}`} />}
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={`Edit ${m.label}`}
-                    title={`Edit ${m.label}`}
-                  >
-                    <Pencil />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={() => {
-                      setDeleteError("");
-                      setPendingDelete(m);
-                    }}
-                    aria-label={`Delete ${m.label}`}
-                    title={`Delete ${m.label}`}
-                    className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 />
-                  </Button>
+                <div className="flex items-center gap-3 justify-self-start lg:justify-self-end">
+                  <div className="flex min-w-16 items-center justify-end gap-2">
+                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                      {m.enabled ? "On" : "Off"}
+                    </span>
+                    <Switch
+                      checked={m.enabled}
+                      disabled={togglingId === m.id}
+                      onCheckedChange={(next) => void toggleEnabled(m, next)}
+                      aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
+                    />
+                  </div>
+                  <div className="h-6 w-px bg-border" aria-hidden="true" />
+                  <div className="flex items-center gap-0.5 rounded-lg border bg-background/80 p-0.5">
+                    <Button
+                      render={<Link href={`/settings/models/${m.id}`} />}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Edit ${m.label}`}
+                      title={`Edit ${m.label}`}
+                    >
+                      <Pencil />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => {
+                        setDeleteError("");
+                        setPendingDelete(m);
+                      }}
+                      aria-label={`Delete ${m.label}`}
+                      title={`Delete ${m.label}`}
+                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
                 </div>
               </div>
             );
