@@ -190,8 +190,15 @@ export async function POST(req: Request) {
     consumeSseStream: temporary
       ? undefined
       : async ({ stream }) => {
-          await getStreamContext().createNewResumableStream(streamId, () => stream);
-          await setActiveStreamId(chatId, streamId);
+          const streamContext = getStreamContext();
+          if (!streamContext) return;
+
+          try {
+            await streamContext.createNewResumableStream(streamId, () => stream);
+            await setActiveStreamId(chatId, streamId);
+          } catch (err) {
+            console.warn("[resumable-stream] failed to buffer stream", err);
+          }
         },
     messageMetadata: ({ part }) => {
       if (part.type !== "finish") return undefined;
