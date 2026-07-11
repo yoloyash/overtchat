@@ -31,7 +31,10 @@ export function SettingsNav() {
   const items = isAdmin ? [...USER_ITEMS, ...ADMIN_ITEMS] : USER_ITEMS;
 
   return (
-    <nav className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col md:gap-0 md:space-y-5 md:overflow-visible">
+    <nav
+      aria-label="Settings"
+      className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col md:gap-0 md:space-y-5 md:overflow-visible"
+    >
       <Section
         label="User settings"
         items={USER_ITEMS}

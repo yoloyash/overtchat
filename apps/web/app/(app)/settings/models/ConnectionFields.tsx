@@ -124,6 +124,7 @@ export function ConnectionFields({
         description="Sets endpoint defaults and picker grouping."
         htmlFor="p-preset"
         align="center"
+        controlAlign="end"
       >
         <Select
           value={preset}
@@ -133,7 +134,7 @@ export function ConnectionFields({
             clearProbeState();
           }}
         >
-          <SelectTrigger id="p-preset" className="w-full">
+          <SelectTrigger id="p-preset" className="w-full @2xl:max-w-xl">
             <ModelBrandIcon iconId={presetIconId} />
             <SelectValue />
           </SelectTrigger>
@@ -153,9 +154,11 @@ export function ConnectionFields({
         description="Base URL for the model API."
         htmlFor="p-base-url"
         align="center"
+        controlAlign="end"
       >
         <Input
           id="p-base-url"
+          className="w-full @2xl:max-w-xl"
           placeholder="https://api.openai.com/v1"
           required
           autoFocus={preset === "custom"}
@@ -176,27 +179,31 @@ export function ConnectionFields({
         }
         htmlFor="p-api-key"
         align="center"
+        controlAlign="end"
       >
-        <PasswordInput
-          id="p-api-key"
-          autoComplete="new-password"
-          placeholder={requiresKey ? "Required" : "Optional"}
-          required={requiresKey}
-          value={draft.apiKey}
-          onChange={(e) => {
-            onChange({ apiKey: e.target.value });
-            clearProbeState();
-          }}
-        />
+        <div className="w-full @2xl:max-w-xl">
+          <PasswordInput
+            id="p-api-key"
+            autoComplete="new-password"
+            placeholder={requiresKey ? "Required" : "Optional"}
+            required={requiresKey}
+            value={draft.apiKey}
+            onChange={(e) => {
+              onChange({ apiKey: e.target.value });
+              clearProbeState();
+            }}
+          />
+        </div>
       </SettingsRow>
 
       <SettingsRow
         title="Model"
         description="Choose a fetched model or enter an id."
         htmlFor="p-model"
+        controlAlign="end"
       >
-        <div className="space-y-2">
-          <div className="flex flex-col gap-2 lg:flex-row">
+        <div className="w-full space-y-2 @2xl:max-w-xl">
+          <div className="flex flex-col gap-2 @lg:flex-row">
             {showList ? (
               <Select
                 value={draft.model}
@@ -221,7 +228,7 @@ export function ConnectionFields({
             ) : (
               <Input
                 id="p-model"
-                className="min-w-0 flex-1 font-mono text-xs md:text-xs"
+                className="min-w-0 flex-1 font-mono text-xs"
                 placeholder={presetMeta.modelPlaceholder}
                 required
                 value={draft.model}
@@ -237,7 +244,7 @@ export function ConnectionFields({
               size="sm"
               disabled={!canProbe || probing}
               onClick={() => void probe(draft.baseUrl, draft.apiKey)}
-              className="lg:w-auto"
+              className="@lg:w-auto"
             >
               {probing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               {models.length > 0 ? "Refresh" : "Fetch"}
