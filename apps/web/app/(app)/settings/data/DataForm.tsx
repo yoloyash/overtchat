@@ -5,6 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import {
+  SettingsNotice,
+  SettingsPageHeader,
+  SettingsRow,
+  SettingsSection,
+} from "../_components/SettingsRows";
 
 type ImportResult = {
   format: string;
@@ -58,78 +64,78 @@ export function DataForm() {
   }
 
   return (
-    <div className="max-w-xl space-y-10">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Data
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Import chats from other platforms, or export your own.
-        </p>
-      </header>
+    <div className="max-w-3xl space-y-8">
+      <SettingsPageHeader
+        title="Data"
+        description="Import chats from other platforms, or export your own."
+      />
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-sm font-medium">Import chats</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Supports ChatGPT, Claude.ai, OpenWebUI, and overtchat exports.
-            Drop the downloaded JSON or ZIP; we&apos;ll detect the format.
-          </p>
-        </div>
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".json,.zip,application/json,application/zip"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) void handleFile(f);
+        }}
+      />
 
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".json,.zip,application/json,application/zip"
-          hidden
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) void handleFile(f);
-          }}
-        />
+      <SettingsSection
+        title="Import"
+        description="Supports ChatGPT, Claude.ai, OpenWebUI, and overtchat exports."
+      >
+        <SettingsRow
+          title="Import file"
+          description="Choose a downloaded JSON or ZIP file. The format is detected automatically."
+          align="center"
+        >
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={importing}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload data-icon="inline-start" />
+              {importing ? "Importing…" : "Choose file"}
+            </Button>
 
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={importing}
-            onClick={() => fileRef.current?.click()}
-          >
-            <Upload data-icon="inline-start" />
-            {importing ? "Importing…" : "Choose file"}
+            {importResult && (
+              <SettingsNotice tone="success">
+                Imported {importResult.importedChats} chat
+                {importResult.importedChats === 1 ? "" : "s"} from{" "}
+                {FORMAT_LABELS[importResult.format] ?? importResult.format}.
+              </SettingsNotice>
+            )}
+
+            {importError && (
+              <SettingsNotice tone="error">{importError}</SettingsNotice>
+            )}
+
+            <SettingsNotice tone="muted" className="text-xs">
+              Imports preserve visible conversation text and reasoning.
+              Attachments, images, and branches are not preserved.
+            </SettingsNotice>
+          </div>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Export"
+        description="Download every conversation as a single overtchat JSON file."
+      >
+        <SettingsRow
+          title="Export file"
+          description="Use this file for backup or a lossless re-import."
+          align="center"
+        >
+          <Button type="button" variant="outline" render={<a href="/api/export" />}>
+            <Download data-icon="inline-start" />
+            Download export
           </Button>
-          {importResult && (
-            <span className="text-sm text-ring">
-              Imported {importResult.importedChats} chat
-              {importResult.importedChats === 1 ? "" : "s"} from{" "}
-              {FORMAT_LABELS[importResult.format] ?? importResult.format}.
-            </span>
-          )}
-        </div>
-
-        {importError && (
-          <p className="text-sm text-destructive">{importError}</p>
-        )}
-
-        <p className="text-xs text-muted-foreground">
-          Attachments, images, and branches aren&apos;t preserved — only text
-          and reasoning from the visible conversation.
-        </p>
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-sm font-medium">Export all chats</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Downloads every conversation as a single JSON file. Lossless
-            round-trip — re-import with the &ldquo;Choose file&rdquo; button above.
-          </p>
-        </div>
-        <Button type="button" variant="outline" render={<a href="/api/export" />}>
-          <Download data-icon="inline-start" />
-          Download export
-        </Button>
-      </section>
+        </SettingsRow>
+      </SettingsSection>
     </div>
   );
 }

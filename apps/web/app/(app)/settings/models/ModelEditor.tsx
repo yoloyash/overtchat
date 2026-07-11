@@ -21,7 +21,12 @@ import { PRESETS, presetFor, type PresetId } from "@/lib/providers/meta";
 import { AdvancedFields } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
-import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
+import {
+  SettingsActions,
+  SettingsPageHeader,
+  SettingsRow,
+  SettingsSection,
+} from "../_components/SettingsRows";
 
 export interface ModelEditorProps {
   /** When provided, editor loads the existing config from cache; otherwise a new one is being created. */
@@ -144,24 +149,21 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   return (
     <div className="max-w-4xl">
-      <div className="mb-6 flex items-center gap-2">
-        <Button
-          render={<Link href="/settings/models" />}
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Back to models"
-        >
-          <ArrowLeft />
-        </Button>
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">
-            {isEditing ? "Edit model" : "Add model"}
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure a model that everyone on this server can use.
-          </p>
-        </div>
-      </div>
+      <SettingsPageHeader
+        className="mb-6"
+        title={isEditing ? "Edit model" : "Add model"}
+        description="Configure a model that everyone on this server can use."
+        leading={
+          <Button
+            render={<Link href="/settings/models" />}
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Back to models"
+          >
+            <ArrowLeft />
+          </Button>
+        }
+      />
 
       <form onSubmit={submit} className="space-y-8">
         <SettingsSection
@@ -257,7 +259,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </div>
         )}
 
-        <div className="flex items-center justify-end gap-2 border-t pt-4">
+        <SettingsActions>
           <Button
             type="button"
             variant="ghost"
@@ -269,7 +271,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <Button type="submit" size="sm" disabled={!canSave}>
             {saving ? "Saving…" : isEditing ? "Save" : "Create"}
           </Button>
-        </div>
+        </SettingsActions>
       </form>
     </div>
   );

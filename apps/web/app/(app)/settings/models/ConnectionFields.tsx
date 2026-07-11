@@ -196,7 +196,7 @@ export function ConnectionFields({
         htmlFor="p-model"
       >
         <div className="space-y-2">
-          <div className="flex flex-col gap-2 lg:flex-row">
+          <div className="flex flex-col gap-2 @lg:flex-row">
             {showList ? (
               <Select
                 value={draft.model}
@@ -237,7 +237,7 @@ export function ConnectionFields({
               size="sm"
               disabled={!canProbe || probing}
               onClick={() => void probe(draft.baseUrl, draft.apiKey)}
-              className="lg:w-auto"
+              className="@lg:w-auto"
             >
               {probing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               {models.length > 0 ? "Refresh" : "Fetch"}
