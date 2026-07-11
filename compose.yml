@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.9.5}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.9.7}
     build: .
     container_name: overtchat-app
     restart: unless-stopped

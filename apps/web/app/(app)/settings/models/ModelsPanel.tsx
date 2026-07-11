@@ -19,6 +19,10 @@ import {
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { cn } from "@/lib/utils";
+import {
+  SettingsNotice,
+  SettingsPageHeader,
+} from "../_components/SettingsRows";
 import { HealthBadge } from "./HealthBadge";
 
 export function ModelsPanel() {
@@ -27,7 +31,8 @@ export function ModelsPanel() {
   const updateMut = useUpdateModelConfig();
 
   const [query, setQuery] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(null);
+  const [pendingDelete, setPendingDelete] =
+    useState<AdminModelConfig | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [actionError, setActionError] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -70,7 +75,9 @@ export function ModelsPanel() {
         },
       });
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to update model");
+      setActionError(
+        err instanceof Error ? err.message : "Failed to update model",
+      );
     } finally {
       setTogglingId(null);
     }
@@ -90,27 +97,21 @@ export function ModelsPanel() {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
-      <header className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Models</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure the model endpoints available in chat.
-          </p>
-        </div>
-        {models.length > 0 && (
-          <Button
-            render={<Link href="/settings/models/new" />}
-            size="sm"
-            className="self-start lg:self-auto"
-          >
-            <Plus /> Add model
-          </Button>
-        )}
-      </header>
+    <div className="@container max-w-4xl space-y-6">
+      <SettingsPageHeader
+        title="Models"
+        description="Configure the model endpoints available in chat."
+        action={
+          models.length > 0 ? (
+            <Button render={<Link href="/settings/models/new" />} size="sm">
+              <Plus /> Add model
+            </Button>
+          ) : undefined
+        }
+      />
 
       {models.length > 0 && (
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
           <div className="relative max-w-md flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -128,9 +129,12 @@ export function ModelsPanel() {
       )}
 
       {actionError && (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <SettingsNotice
+          tone="error"
+          className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
+        >
           {actionError}
-        </div>
+        </SettingsNotice>
       )}
 
       {models.length === 0 ? (
@@ -151,7 +155,7 @@ export function ModelsPanel() {
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-border/70 border-y">
+        <div className="@container divide-y divide-border/70 border-y">
           {filteredModels.map((m) => {
             const provider = providerIdentityForBaseUrl(m.baseUrl);
             const host = hostnameOf(m.baseUrl);
@@ -160,7 +164,7 @@ export function ModelsPanel() {
               <div
                 key={m.id}
                 className={cn(
-                  "grid gap-3 py-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center",
+                  "grid gap-3 py-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
                   !m.enabled && "opacity-65",
                 )}
               >
@@ -188,9 +192,9 @@ export function ModelsPanel() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 justify-self-start lg:justify-self-end">
-                  <div className="flex min-w-16 items-center justify-end gap-2">
-                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                <div className="flex flex-wrap items-center gap-2 justify-self-end @xl:flex-nowrap">
+                  <div className="flex items-center justify-end gap-2 @2xl:min-w-16">
+                    <span className="hidden text-xs text-muted-foreground @2xl:inline">
                       {m.enabled ? "On" : "Off"}
                     </span>
                     <Switch
@@ -201,20 +205,21 @@ export function ModelsPanel() {
                     />
                   </div>
                   <div className="h-6 w-px bg-border" aria-hidden="true" />
-                  <div className="flex items-center gap-0.5 rounded-lg border bg-background/80 p-0.5">
+                  <div className="flex items-center gap-1.5">
                     <Button
                       render={<Link href={`/settings/models/${m.id}`} />}
-                      variant="ghost"
-                      size="icon-sm"
+                      variant="outline"
+                      size="sm"
                       aria-label={`Edit ${m.label}`}
                       title={`Edit ${m.label}`}
                     >
-                      <Pencil />
+                      <Pencil data-icon="inline-start" />
+                      Edit
                     </Button>
                     <Button
                       type="button"
                       variant="ghost"
-                      size="icon-sm"
+                      size="sm"
                       onClick={() => {
                         setDeleteError("");
                         setPendingDelete(m);
@@ -223,7 +228,8 @@ export function ModelsPanel() {
                       title={`Delete ${m.label}`}
                       className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                     >
-                      <Trash2 />
+                      <Trash2 data-icon="inline-start" />
+                      Delete
                     </Button>
                   </div>
                 </div>
@@ -256,7 +262,9 @@ export function ModelsPanel() {
               their messages.
             </AlertDialog.Description>
             {deleteError && (
-              <p className="mt-3 text-xs text-destructive">{deleteError}</p>
+              <SettingsNotice tone="error" className="mt-3 text-xs">
+                {deleteError}
+              </SettingsNotice>
             )}
             <div className="mt-5 flex justify-end gap-2">
               <Button

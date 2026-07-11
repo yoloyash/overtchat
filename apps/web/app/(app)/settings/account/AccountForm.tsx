@@ -3,9 +3,15 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
+import {
+  SettingsActions,
+  SettingsNotice,
+  SettingsPageHeader,
+  SettingsRow,
+  SettingsSection,
+} from "../_components/SettingsRows";
 
 export function AccountForm({
   email,
@@ -31,7 +37,7 @@ export function AccountForm({
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) {
-      setProfileError("Name is required");
+      setProfileError("Name is required.");
       return;
     }
     setProfileStatus("submitting");
@@ -65,42 +71,55 @@ export function AccountForm({
   }
 
   return (
-    <div className="max-w-xl space-y-10">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">
-          Account
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Signed in as <span className="text-foreground">{email}</span>.
-        </p>
-      </header>
+    <div className="max-w-3xl space-y-8">
+      <SettingsPageHeader
+        title="Account"
+        description={
+          <>
+            Signed in as <span className="text-foreground">{email}</span>.
+          </>
+        }
+      />
 
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-sm font-medium">Profile</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Shown in the sidebar and on chats.
-          </p>
-        </div>
-
+      <div className="space-y-10">
         <form onSubmit={saveProfile} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
-              type="text"
-              autoComplete="name"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
+          <SettingsSection
+            title="Profile"
+            description="Shown in the sidebar and around chats."
+          >
+            <SettingsRow
+              title="Name"
+              description="Use the name people should recognize on this server."
+              htmlFor="name"
+              align="center"
+              controlAlign="end"
+            >
+              <Input
+                id="name"
+                type="text"
+                autoComplete="name"
+                className="w-full @2xl:max-w-sm"
+                required
+                value={name}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setProfileStatus("idle");
+                  setProfileError("");
+                }}
+              />
+            </SettingsRow>
+          </SettingsSection>
 
           {profileError && (
-            <p className="text-sm text-destructive">{profileError}</p>
+            <SettingsNotice tone="error">{profileError}</SettingsNotice>
           )}
 
-          <div className="flex items-center gap-3">
+          <SettingsActions bordered={false}>
+            {profileStatus === "ok" && (
+              <SettingsNotice tone="success" className="mr-auto">
+                Profile updated
+              </SettingsNotice>
+            )}
             <Button
               type="submit"
               disabled={
@@ -109,20 +128,8 @@ export function AccountForm({
             >
               {profileStatus === "submitting" ? "Saving…" : "Save"}
             </Button>
-            {profileStatus === "ok" && (
-              <span className="text-sm text-ring">Saved</span>
-            )}
-          </div>
+          </SettingsActions>
         </form>
-      </section>
-
-      <section className="space-y-4">
-        <div>
-          <h2 className="text-sm font-medium">Change password</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Signs you out of all other sessions.
-          </p>
-        </div>
 
         <form onSubmit={changePassword} className="space-y-4">
           {/* Hidden username anchor so password managers associate this
@@ -135,40 +142,69 @@ export function AccountForm({
             readOnly
             hidden
           />
-          <div className="space-y-1.5">
-            <Label htmlFor="current">Current password</Label>
-            <PasswordInput
-              id="current"
-              autoComplete="current-password"
-              required
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="new">New password</Label>
-            <PasswordInput
-              id="new"
-              autoComplete="new-password"
-              required
-              minLength={8}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-            />
-          </div>
+          <SettingsSection
+            title="Password"
+            description="Changing your password signs you out of all other sessions."
+          >
+            <SettingsRow
+              title="Current password"
+              htmlFor="current"
+              align="center"
+              controlAlign="end"
+            >
+              <div className="w-full @2xl:max-w-sm">
+                <PasswordInput
+                  id="current"
+                  autoComplete="current-password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => {
+                    setCurrentPassword(e.target.value);
+                    setPwStatus("idle");
+                    setPwError("");
+                  }}
+                />
+              </div>
+            </SettingsRow>
 
-          {pwError && <p className="text-sm text-destructive">{pwError}</p>}
+            <SettingsRow
+              title="New password"
+              description="Use at least 8 characters."
+              htmlFor="new"
+              align="center"
+              controlAlign="end"
+            >
+              <div className="w-full @2xl:max-w-sm">
+                <PasswordInput
+                  id="new"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    setPwStatus("idle");
+                    setPwError("");
+                  }}
+                />
+              </div>
+            </SettingsRow>
+          </SettingsSection>
 
-          <div className="flex items-center gap-3">
+          {pwError && <SettingsNotice tone="error">{pwError}</SettingsNotice>}
+
+          <SettingsActions bordered={false}>
+            {pwStatus === "ok" && (
+              <SettingsNotice tone="success" className="mr-auto">
+                Password updated
+              </SettingsNotice>
+            )}
             <Button type="submit" disabled={pwStatus === "submitting"}>
               {pwStatus === "submitting" ? "Saving…" : "Change password"}
             </Button>
-            {pwStatus === "ok" && (
-              <span className="text-sm text-ring">Password updated</span>
-            )}
-          </div>
+          </SettingsActions>
         </form>
-      </section>
+      </div>
     </div>
   );
 }

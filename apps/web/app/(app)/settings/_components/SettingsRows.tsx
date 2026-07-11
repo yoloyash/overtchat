@@ -7,6 +7,7 @@ interface SettingsSectionProps {
   action?: React.ReactNode;
   children?: React.ReactNode;
   className?: string;
+  contentClassName?: string;
 }
 
 export function SettingsSection({
@@ -15,10 +16,11 @@ export function SettingsSection({
   action,
   children,
   className,
+  contentClassName,
 }: SettingsSectionProps) {
   return (
-    <section className={cn("space-y-3", className)}>
-      <div className="flex items-start justify-between gap-4">
+    <section className={cn("@container space-y-3", className)}>
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
           {description && (
@@ -30,18 +32,57 @@ export function SettingsSection({
         {action && <div className="shrink-0">{action}</div>}
       </div>
       {children ? (
-        <div className="divide-y divide-border/70 border-y">{children}</div>
+        <div className={cn("divide-y divide-border/70 border-y", contentClassName)}>
+          {children}
+        </div>
       ) : null}
     </section>
   );
 }
 
+interface SettingsPageHeaderProps {
+  title: string;
+  description?: React.ReactNode;
+  leading?: React.ReactNode;
+  action?: React.ReactNode;
+  className?: string;
+}
+
+export function SettingsPageHeader({
+  title,
+  description,
+  leading,
+  action,
+  className,
+}: SettingsPageHeaderProps) {
+  return (
+    <header className={cn("@container", className)}>
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          {leading && <div className="shrink-0">{leading}</div>}
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+            {description && (
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
+        {action && <div className="shrink-0">{action}</div>}
+      </div>
+    </header>
+  );
+}
+
 interface SettingsRowProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   htmlFor?: string;
   children: React.ReactNode;
   align?: "start" | "center";
+  controlAlign?: "start" | "end" | "stretch";
+  controlClassName?: string;
   className?: string;
 }
 
@@ -51,6 +92,8 @@ export function SettingsRow({
   htmlFor,
   children,
   align = "start",
+  controlAlign = "stretch",
+  controlClassName,
   className,
 }: SettingsRowProps) {
   const titleClass = "text-sm font-medium leading-5 text-foreground";
@@ -65,8 +108,8 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "grid gap-3 py-4 lg:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] lg:gap-6",
-        align === "center" && "lg:items-center",
+        "grid gap-3 py-4 @2xl:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] @2xl:gap-6",
+        align === "center" && "@2xl:items-center",
         className,
       )}
     >
@@ -78,7 +121,66 @@ export function SettingsRow({
           </p>
         )}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div
+        className={cn(
+          "min-w-0",
+          controlAlign === "start" && "@2xl:flex @2xl:justify-start",
+          controlAlign === "end" && "@2xl:flex @2xl:justify-end",
+          controlClassName,
+        )}
+      >
+        {children}
+      </div>
     </div>
+  );
+}
+
+interface SettingsActionsProps {
+  children: React.ReactNode;
+  className?: string;
+  bordered?: boolean;
+}
+
+export function SettingsActions({
+  children,
+  className,
+  bordered = true,
+}: SettingsActionsProps) {
+  return (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-end gap-2",
+        bordered && "border-t pt-4",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+interface SettingsNoticeProps {
+  children: React.ReactNode;
+  tone?: "muted" | "success" | "error";
+  className?: string;
+}
+
+export function SettingsNotice({
+  children,
+  tone = "muted",
+  className,
+}: SettingsNoticeProps) {
+  return (
+    <p
+      className={cn(
+        "text-sm leading-5",
+        tone === "muted" && "text-muted-foreground",
+        tone === "success" && "text-ring",
+        tone === "error" && "text-destructive",
+        className,
+      )}
+    >
+      {children}
+    </p>
   );
 }

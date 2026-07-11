@@ -28,7 +28,9 @@ export default function SettingsLayout({
         <aside className="shrink-0 overflow-y-auto border-b p-3 md:w-56 md:border-r md:border-b-0">
           <SettingsNav />
         </aside>
-        <div className="flex-1 overflow-y-auto p-4 md:p-8">{children}</div>
+        <div className="min-w-0 flex-1 overflow-y-auto p-4 md:p-8">
+          {children}
+        </div>
       </div>
     </div>
   );

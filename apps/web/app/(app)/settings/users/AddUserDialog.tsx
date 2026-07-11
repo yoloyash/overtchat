@@ -13,6 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { authClient } from "@/lib/auth/client";
+import {
+  SettingsActions,
+  SettingsNotice,
+} from "../_components/SettingsRows";
 
 type Role = "user" | "admin";
 
@@ -71,7 +75,7 @@ export function AddUserDialog({
     >
       <Dialog.Portal>
         <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity">
+        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
           <Dialog.Title className="text-lg font-semibold tracking-tight">
             Add user
           </Dialog.Title>
@@ -87,7 +91,10 @@ export function AddUserDialog({
                 type="text"
                 required
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setError("");
+                }}
               />
             </div>
             <div className="space-y-1.5">
@@ -97,7 +104,10 @@ export function AddUserDialog({
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setError("");
+                }}
               />
             </div>
             <div className="space-y-1.5">
@@ -108,25 +118,34 @@ export function AddUserDialog({
                 required
                 minLength={8}
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setError("");
+                }}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-role">Role</Label>
-              <Select value={role} onValueChange={(next) => setRole(next as Role)}>
+              <Select
+                value={role}
+                onValueChange={(next) => {
+                  setRole(next as Role);
+                  setError("");
+                }}
+              >
                 <SelectTrigger id="new-role" aria-label="Role" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">user</SelectItem>
-                  <SelectItem value="admin">admin</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <SettingsActions bordered={false} className="pt-2">
               <Button
                 type="button"
                 variant="ghost"
@@ -138,7 +157,7 @@ export function AddUserDialog({
               <Button type="submit" size="sm" disabled={submitting}>
                 {submitting ? "Creating…" : "Create"}
               </Button>
-            </div>
+            </SettingsActions>
           </form>
         </Dialog.Popup>
       </Dialog.Portal>

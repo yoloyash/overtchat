@@ -58,8 +58,8 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     <Popover.Root>
       <Popover.Trigger
         type="button"
-        aria-label="Stats for nerds"
-        title="Stats for nerds"
+        aria-label="Message stats"
+        title="Message stats"
         className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
       >
         <Info className="size-3.5" />

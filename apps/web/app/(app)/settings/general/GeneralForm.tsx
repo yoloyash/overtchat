@@ -15,6 +15,11 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import {
+  SettingsPageHeader,
+  SettingsRow,
+  SettingsSection,
+} from "../_components/SettingsRows";
+import {
   DEFAULT_FONT_ID,
   FONT_OPTIONS,
   FONT_STORAGE_KEY,
@@ -23,7 +28,7 @@ import {
 
 type ThemeValue = "light" | "dark" | "system";
 
-const STATS_FOR_NERDS_STORAGE_KEY = "overtchat_stats_for_nerds";
+const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 const OPTIONS: Array<{ value: ThemeValue; label: string; icon: typeof Sun }> = [
   { value: "light", label: "Light", icon: Sun },
@@ -39,8 +44,8 @@ export function GeneralForm() {
   const { theme, setTheme } = useTheme();
   const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const current = (mounted ? theme : undefined) as ThemeValue | undefined;
-  const [statsForNerds, setStatsForNerds] = useLocalStorage<boolean>(
-    STATS_FOR_NERDS_STORAGE_KEY,
+  const [messageStatsEnabled, setMessageStatsEnabled] = useLocalStorage<boolean>(
+    MESSAGE_STATS_STORAGE_KEY,
     false,
   );
   const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
@@ -56,90 +61,85 @@ export function GeneralForm() {
   }
 
   return (
-    <div className="max-w-xl space-y-8">
-      <header>
-        <h1 className="text-xl font-semibold tracking-tight">General</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Personal preferences for this browser.
-        </p>
-      </header>
+    <div className="max-w-3xl space-y-8">
+      <SettingsPageHeader
+        title="General"
+        description="Personal preferences for this browser."
+      />
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Appearance</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose how overtchat looks to you.
-          </p>
-        </div>
-        <RadioGroup
-          aria-label="Theme"
-          value={current}
-          onValueChange={(next) => setTheme(next as ThemeValue)}
-          className="grid grid-cols-3 gap-2"
+      <SettingsSection
+        title="Appearance"
+        description="Choose how overtchat looks and reads."
+      >
+        <SettingsRow
+          title="Theme"
+          description="Use a fixed theme or follow the system setting."
+          align="center"
+          controlAlign="end"
         >
-          {OPTIONS.map(({ value, label, icon: Icon }) => (
-            <Label
-              key={value}
-              className="flex cursor-pointer flex-col items-center gap-2 rounded-lg border bg-card px-3 py-4 text-sm font-normal transition-colors outline-none has-data-[checked]:border-ring has-data-[checked]:ring-1 has-data-[checked]:ring-ring has-focus-visible:border-ring has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:bg-accent/50"
-            >
-              <RadioGroupItem value={value} className="sr-only" />
-              <Icon className="size-4 text-muted-foreground" />
-              <span>{label}</span>
-            </Label>
-          ))}
-        </RadioGroup>
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Font</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Choose the font used in the app.
-          </p>
-        </div>
-        <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>
-          <SelectTrigger aria-label="Font" className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {FONT_OPTIONS.map(({ id, label, cssValue }) => (
-              <SelectItem
-                key={id}
-                value={id}
-                style={{ fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)" }}
+          <RadioGroup
+            aria-label="Theme"
+            value={current}
+            onValueChange={(next) => setTheme(next as ThemeValue)}
+            className="grid w-full grid-cols-3 gap-1 rounded-lg border bg-muted/30 p-1 @2xl:max-w-xs"
+          >
+            {OPTIONS.map(({ value, label, icon: Icon }) => (
+              <Label
+                key={value}
+                className="flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground transition-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground"
               >
-                {label}
-              </SelectItem>
+                <RadioGroupItem value={value} className="sr-only" />
+                <Icon className="size-3.5" />
+                <span>{label}</span>
+              </Label>
             ))}
-          </SelectContent>
-        </Select>
-      </section>
+          </RadioGroup>
+        </SettingsRow>
 
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-sm font-medium">Messages</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Browser-only message display preferences.
-          </p>
-        </div>
-        <Label
-          htmlFor="stats-for-nerds"
-          className="flex cursor-pointer items-start justify-between gap-3 rounded-lg border bg-card px-3 py-3 text-sm font-normal"
+        <SettingsRow
+          title="Chat font"
+          description="Choose the font used throughout the app."
+          align="center"
+          controlAlign="end"
         >
-          <span>
-            <span className="block font-medium">Stats for nerds</span>
-            <span className="mt-0.5 block text-xs text-muted-foreground">
-              Show token and speed stats on assistant messages.
-            </span>
-          </span>
+          <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>
+            <SelectTrigger aria-label="Chat font" className="w-full @2xl:w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FONT_OPTIONS.map(({ id, label, cssValue }) => (
+                <SelectItem
+                  key={id}
+                  value={id}
+                  style={{ fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)" }}
+                >
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Messages"
+        description="Browser-only message display preferences."
+      >
+        <SettingsRow
+          title="Message stats"
+          description="Show token counts and speed stats on assistant messages."
+          htmlFor="message-stats"
+          align="center"
+          controlAlign="end"
+        >
           <Switch
-            id="stats-for-nerds"
-            checked={statsForNerds}
-            onCheckedChange={(next) => setStatsForNerds(next)}
-            className="mt-0.5"
+            id="message-stats"
+            checked={messageStatsEnabled}
+            onCheckedChange={(next) => setMessageStatsEnabled(next)}
+            aria-label="Show message stats"
           />
-        </Label>
-      </section>
+        </SettingsRow>
+      </SettingsSection>
     </div>
   );
 }

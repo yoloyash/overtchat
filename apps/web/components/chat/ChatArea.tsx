@@ -29,7 +29,7 @@ import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
-const STATS_FOR_NERDS_STORAGE_KEY = "overtchat_stats_for_nerds";
+const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 interface Props {
   chatId: string;
@@ -60,8 +60,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     SEARCH_STORAGE_KEY,
     false,
   );
-  const [statsForNerds] = useLocalStorage<boolean>(
-    STATS_FOR_NERDS_STORAGE_KEY,
+  const [messageStatsEnabled] = useLocalStorage<boolean>(
+    MESSAGE_STATS_STORAGE_KEY,
     false,
   );
 
@@ -299,7 +299,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
             error={error}
             configured={configured}
             speech={speech}
-            showStats={statsForNerds}
+            showStats={messageStatsEnabled}
             storedStats={storedStats}
             onRegenerate={handleRegenerate}
             onEdit={handleEdit}
