@@ -20,7 +20,7 @@ export function SettingsSection({
 }: SettingsSectionProps) {
   return (
     <section className={cn("@container space-y-3", className)}>
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
         <div className="min-w-0">
           <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
           {description && (
@@ -56,24 +56,21 @@ export function SettingsPageHeader({
   className,
 }: SettingsPageHeaderProps) {
   return (
-    <header
-      className={cn(
-        "flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between",
-        className,
-      )}
-    >
-      <div className="flex min-w-0 items-start gap-2">
-        {leading && <div className="shrink-0">{leading}</div>}
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-          {description && (
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              {description}
-            </p>
-          )}
+    <header className={cn("@container", className)}>
+      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
+        <div className="flex min-w-0 items-start gap-2">
+          {leading && <div className="shrink-0">{leading}</div>}
+          <div className="min-w-0">
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+            {description && (
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {description}
+              </p>
+            )}
+          </div>
         </div>
+        {action && <div className="shrink-0">{action}</div>}
       </div>
-      {action && <div className="shrink-0">{action}</div>}
     </header>
   );
 }
@@ -152,7 +149,7 @@ export function SettingsActions({
   return (
     <div
       className={cn(
-        "flex items-center justify-end gap-2",
+        "flex flex-wrap items-center justify-end gap-2",
         bordered && "border-t pt-4",
         className,
       )}

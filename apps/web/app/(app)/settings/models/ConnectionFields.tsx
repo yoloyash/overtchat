@@ -228,7 +228,7 @@ export function ConnectionFields({
             ) : (
               <Input
                 id="p-model"
-                className="min-w-0 flex-1 font-mono text-xs md:text-xs"
+                className="min-w-0 flex-1 font-mono text-xs"
                 placeholder={presetMeta.modelPlaceholder}
                 required
                 value={draft.model}
