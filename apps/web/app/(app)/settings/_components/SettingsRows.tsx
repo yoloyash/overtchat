@@ -108,7 +108,7 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "grid gap-3 py-4 @2xl:grid-cols-[minmax(0,13rem)_minmax(0,1fr)] @2xl:gap-6",
+        "grid gap-3 py-4 @2xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] @2xl:gap-6",
         align === "center" && "@2xl:items-center",
         className,
       )}
