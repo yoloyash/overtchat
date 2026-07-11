@@ -114,7 +114,7 @@ export function AccountForm({
             <SettingsNotice tone="error">{profileError}</SettingsNotice>
           )}
 
-          <SettingsActions>
+          <SettingsActions bordered={false}>
             {profileStatus === "ok" && (
               <SettingsNotice tone="success" className="mr-auto">
                 Profile updated
@@ -193,7 +193,7 @@ export function AccountForm({
 
           {pwError && <SettingsNotice tone="error">{pwError}</SettingsNotice>}
 
-          <SettingsActions>
+          <SettingsActions bordered={false}>
             {pwStatus === "ok" && (
               <SettingsNotice tone="success" className="mr-auto">
                 Password updated
