@@ -193,6 +193,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <SettingsRow
             title="Test connection"
             description="Send a short request with the current connection settings."
+            controlAlign="end"
           >
             <ConnectionTester
               key={`${draft.baseUrl}|${draft.apiKey}|${draft.model}|${extraBodyText}`}
@@ -211,9 +212,11 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             description="Shown in the chat model picker."
             htmlFor="p-label"
             align="center"
+            controlAlign="end"
           >
             <Input
               id="p-label"
+              className="w-full @2xl:max-w-xl"
               placeholder={
                 draft.model ? defaultLabelFor(draft.model) : "Shown in the picker"
               }
@@ -228,6 +231,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             title="Available in chat"
             description="Turn off to keep the config without showing it in the picker."
             align="center"
+            controlAlign="end"
           >
             <Switch
               checked={draft.enabled}

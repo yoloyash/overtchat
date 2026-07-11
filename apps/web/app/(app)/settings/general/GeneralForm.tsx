@@ -75,12 +75,13 @@ export function GeneralForm() {
           title="Theme"
           description="Use a fixed theme or follow the system setting."
           align="center"
+          controlAlign="end"
         >
           <RadioGroup
             aria-label="Theme"
             value={current}
             onValueChange={(next) => setTheme(next as ThemeValue)}
-            className="grid grid-cols-3 gap-1 rounded-lg border bg-muted/30 p-1"
+            className="grid w-full grid-cols-3 gap-1 rounded-lg border bg-muted/30 p-1 @2xl:max-w-xs"
           >
             {OPTIONS.map(({ value, label, icon: Icon }) => (
               <Label
@@ -99,9 +100,10 @@ export function GeneralForm() {
           title="Chat font"
           description="Choose the font used throughout the app."
           align="center"
+          controlAlign="end"
         >
           <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>
-            <SelectTrigger aria-label="Chat font" className="w-full">
+            <SelectTrigger aria-label="Chat font" className="w-full @2xl:w-64">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -128,6 +130,7 @@ export function GeneralForm() {
           description="Show token counts and speed stats on assistant messages."
           htmlFor="message-stats"
           align="center"
+          controlAlign="end"
         >
           <Switch
             id="message-stats"

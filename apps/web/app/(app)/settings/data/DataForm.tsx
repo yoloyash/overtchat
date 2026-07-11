@@ -87,10 +87,11 @@ export function DataForm() {
       >
         <SettingsRow
           title="Import file"
-          description="Choose a downloaded JSON or ZIP file. The format is detected automatically."
+          description="Choose a downloaded JSON or ZIP file. Imports preserve visible conversation text and reasoning, but not attachments, images, or branches."
           align="center"
+          controlAlign="end"
         >
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2 @2xl:items-end @2xl:text-right">
             <Button
               type="button"
               variant="outline"
@@ -112,11 +113,6 @@ export function DataForm() {
             {importError && (
               <SettingsNotice tone="error">{importError}</SettingsNotice>
             )}
-
-            <SettingsNotice tone="muted" className="text-xs">
-              Imports preserve visible conversation text and reasoning.
-              Attachments, images, and branches are not preserved.
-            </SettingsNotice>
           </div>
         </SettingsRow>
       </SettingsSection>
@@ -129,6 +125,7 @@ export function DataForm() {
           title="Export file"
           description="Use this file for backup or a lossless re-import."
           align="center"
+          controlAlign="end"
         >
           <Button type="button" variant="outline" render={<a href="/api/export" />}>
             <Download data-icon="inline-start" />

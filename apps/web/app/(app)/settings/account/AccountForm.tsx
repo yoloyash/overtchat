@@ -92,11 +92,13 @@ export function AccountForm({
               description="Use the name people should recognize on this server."
               htmlFor="name"
               align="center"
+              controlAlign="end"
             >
               <Input
                 id="name"
                 type="text"
                 autoComplete="name"
+                className="w-full @2xl:max-w-sm"
                 required
                 value={name}
                 onChange={(e) => {
@@ -148,18 +150,21 @@ export function AccountForm({
               title="Current password"
               htmlFor="current"
               align="center"
+              controlAlign="end"
             >
-              <PasswordInput
-                id="current"
-                autoComplete="current-password"
-                required
-                value={currentPassword}
-                onChange={(e) => {
-                  setCurrentPassword(e.target.value);
-                  setPwStatus("idle");
-                  setPwError("");
-                }}
-              />
+              <div className="w-full @2xl:max-w-sm">
+                <PasswordInput
+                  id="current"
+                  autoComplete="current-password"
+                  required
+                  value={currentPassword}
+                  onChange={(e) => {
+                    setCurrentPassword(e.target.value);
+                    setPwStatus("idle");
+                    setPwError("");
+                  }}
+                />
+              </div>
             </SettingsRow>
 
             <SettingsRow
@@ -167,19 +172,22 @@ export function AccountForm({
               description="Use at least 8 characters."
               htmlFor="new"
               align="center"
+              controlAlign="end"
             >
-              <PasswordInput
-                id="new"
-                autoComplete="new-password"
-                required
-                minLength={8}
-                value={newPassword}
-                onChange={(e) => {
-                  setNewPassword(e.target.value);
-                  setPwStatus("idle");
-                  setPwError("");
-                }}
-              />
+              <div className="w-full @2xl:max-w-sm">
+                <PasswordInput
+                  id="new"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={newPassword}
+                  onChange={(e) => {
+                    setNewPassword(e.target.value);
+                    setPwStatus("idle");
+                    setPwError("");
+                  }}
+                />
+              </div>
             </SettingsRow>
           </SettingsSection>
 

@@ -80,10 +80,12 @@ export function SettingsPageHeader({
 
 interface SettingsRowProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   htmlFor?: string;
   children: React.ReactNode;
   align?: "start" | "center";
+  controlAlign?: "start" | "end" | "stretch";
+  controlClassName?: string;
   className?: string;
 }
 
@@ -93,6 +95,8 @@ export function SettingsRow({
   htmlFor,
   children,
   align = "start",
+  controlAlign = "stretch",
+  controlClassName,
   className,
 }: SettingsRowProps) {
   const titleClass = "text-sm font-medium leading-5 text-foreground";
@@ -120,7 +124,16 @@ export function SettingsRow({
           </p>
         )}
       </div>
-      <div className="min-w-0">{children}</div>
+      <div
+        className={cn(
+          "min-w-0",
+          controlAlign === "start" && "@2xl:flex @2xl:justify-start",
+          controlAlign === "end" && "@2xl:flex @2xl:justify-end",
+          controlClassName,
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }
