@@ -14,6 +14,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { humanMediaLabel } from "@/lib/chat/attachments";
 import {
@@ -284,6 +285,15 @@ function EditBubble({
   const [draft, setDraft] = useState(initial);
   const [files, setFiles] = useState(initialFiles);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const nextText = draft.trim();
+  const initialText = initial.trim();
+  const dirty = nextText !== initialText || files.length !== initialFiles.length;
+  const canSave = dirty && (nextText.length > 0 || files.length > 0);
+
+  function save() {
+    if (!canSave) return;
+    onSave(nextText, files);
+  }
 
   useEffect(() => {
     const el = ref.current;
@@ -303,7 +313,13 @@ function EditBubble({
 
   return (
     <div className="flex w-full justify-end">
-      <div className="flex w-full max-w-[80%] flex-col gap-2 rounded-2xl bg-secondary px-4 py-2.5">
+      <form
+        className="flex w-full max-w-[min(42rem,100%)] flex-col gap-3 rounded-3xl border bg-card px-4 pt-4 pb-3 shadow-sm dark:bg-muted/70"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save();
+        }}
+      >
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {files.map((part, i) => (
@@ -325,33 +341,42 @@ function EditBubble({
         )}
         <Textarea
           ref={ref}
+          rows={1}
           value={draft}
+          aria-label="Edit message"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              onSave(draft, files);
+              save();
             }
             if (e.key === "Escape") {
               e.preventDefault();
               onCancel();
             }
           }}
-          className="min-h-0 resize-none border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0 md:text-sm"
+          className="max-h-72 min-h-20 resize-none border-0 bg-transparent px-1 py-0 text-[15px] leading-6 shadow-none focus-visible:ring-0 md:text-[15px] dark:bg-transparent"
         />
-        <div className="flex justify-end gap-1">
-          <ActionButton
-            label="Cancel"
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            size="lg"
+            className="h-9 rounded-full px-4"
             onClick={onCancel}
-            icon={<X className="size-3.5" />}
-          />
-          <ActionButton
-            label="Save"
-            onClick={() => onSave(draft, files)}
-            icon={<Check className="size-3.5" />}
-          />
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            size="lg"
+            className="h-9 rounded-full px-5"
+            disabled={!canSave}
+          >
+            Send
+          </Button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }
