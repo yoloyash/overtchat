@@ -24,7 +24,20 @@ export async function GET(
   const streamId = await getActiveStreamId(id);
   if (!streamId) return withCors(req, new Response(null, { status: 204 }));
 
-  const replay = await getStreamContext().resumeExistingStream(streamId);
+  const streamContext = getStreamContext();
+  if (!streamContext) {
+    await setActiveStreamId(id, null);
+    return withCors(req, new Response(null, { status: 204 }));
+  }
+
+  let replay: Awaited<ReturnType<typeof streamContext.resumeExistingStream>>;
+  try {
+    replay = await streamContext.resumeExistingStream(streamId);
+  } catch (err) {
+    console.warn("[resumable-stream] failed to resume stream", err);
+    await setActiveStreamId(id, null);
+    return withCors(req, new Response(null, { status: 204 }));
+  }
   if (!replay) {
     await setActiveStreamId(id, null);
     return withCors(req, new Response(null, { status: 204 }));
