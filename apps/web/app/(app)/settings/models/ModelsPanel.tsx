@@ -164,7 +164,7 @@ export function ModelsPanel() {
               <div
                 key={m.id}
                 className={cn(
-                  "grid gap-3 py-3 @3xl:grid-cols-[minmax(0,1fr)_auto] @3xl:items-center",
+                  "grid gap-3 py-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
                   !m.enabled && "opacity-65",
                 )}
               >
@@ -192,9 +192,9 @@ export function ModelsPanel() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 justify-self-start @3xl:justify-self-end">
-                  <div className="flex min-w-16 items-center justify-end gap-2">
-                    <span className="hidden text-xs text-muted-foreground sm:inline">
+                <div className="flex flex-wrap items-center gap-2 justify-self-end @xl:flex-nowrap">
+                  <div className="flex items-center justify-end gap-2 @2xl:min-w-16">
+                    <span className="hidden text-xs text-muted-foreground @2xl:inline">
                       {m.enabled ? "On" : "Off"}
                     </span>
                     <Switch
