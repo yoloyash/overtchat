@@ -5,7 +5,6 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetTextInput,
-  BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import type { PublicModelConfig } from "@overtchat/shared";
 import { forwardRef, useCallback, useMemo, useState } from "react";
@@ -41,7 +40,7 @@ export const ModelPickerSheet = forwardRef<
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const [search, setSearch] = useState("");
-  const sheetMaxHeight = Math.min(560, Math.round(height * 0.72));
+  const sheetMaxHeight = Math.min(640, Math.round(height * 0.86));
   const showSearch = !loading && !error && models.length > SEARCH_THRESHOLD;
   const searchTerm = search.trim();
 
@@ -52,8 +51,6 @@ export const ModelPickerSheet = forwardRef<
       [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
   }, [models, searchTerm]);
-
-  const groups = useMemo(() => groupModels(filteredModels), [filteredModels]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -71,6 +68,7 @@ export const ModelPickerSheet = forwardRef<
     <BottomSheetModal
       ref={ref}
       enableDynamicSizing
+      maxDynamicContentSize={sheetMaxHeight}
       backdropComponent={renderBackdrop}
       onDismiss={() => setSearch("")}
       backgroundStyle={{
@@ -80,7 +78,14 @@ export const ModelPickerSheet = forwardRef<
       }}
       handleIndicatorStyle={{ backgroundColor: colors.mutedForeground }}
     >
-      <BottomSheetView style={styles.body}>
+      <BottomSheetScrollView
+        contentContainerStyle={[
+          styles.body,
+          { paddingBottom: 20 + insets.bottom },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={models.length > SEARCH_THRESHOLD}
+      >
         <Text
           style={[
             styles.title,
@@ -132,67 +137,44 @@ export const ModelPickerSheet = forwardRef<
           </View>
         ) : null}
 
-        <BottomSheetScrollView
-          style={[styles.scroller, { maxHeight: sheetMaxHeight }]}
-          contentContainerStyle={[
-            styles.scrollerContent,
-            { paddingBottom: 16 + insets.bottom },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={models.length > SEARCH_THRESHOLD}
-        >
-          {loading ? (
-            <StatusState
-              title="Loading models…"
-              icon={<ActivityIndicator color={colors.mutedForeground} />}
-            />
-          ) : error ? (
-            <StatusState
-              title="Couldn't load models."
-              message={error.message}
-              tone="error"
-            />
-          ) : models.length === 0 ? (
-            <StatusState
-              title="No models configured."
-              message="An admin needs to add one in Settings → Models."
-            />
-          ) : groups.length === 0 ? (
-            <StatusState
-              title={`No models match "${searchTerm}".`}
-              message="Try a model, provider, or deployment name."
-            />
-          ) : (
-            groups.map(([provider, items]) => (
-              <View key={provider} style={styles.group}>
-                <Text
-                  style={[
-                    styles.groupLabel,
-                    {
-                      color: colors.mutedForeground,
-                      fontFamily: fonts.sansMedium,
-                    },
-                  ]}
-                >
-                  {provider}
-                </Text>
-                {items.map((model) => (
-                  <ModelRow
-                    key={model.id}
-                    model={model}
-                    selected={model.id === selectedId}
-                    onPress={() => {
-                      onSelect(model.id);
-                      setSearch("");
-                      (ref as React.RefObject<BottomSheetModal>)?.current?.dismiss();
-                    }}
-                  />
-                ))}
-              </View>
-            ))
-          )}
-        </BottomSheetScrollView>
-      </BottomSheetView>
+        {loading ? (
+          <StatusState
+            title="Loading models…"
+            icon={<ActivityIndicator color={colors.mutedForeground} />}
+          />
+        ) : error ? (
+          <StatusState
+            title="Couldn't load models."
+            message={error.message}
+            tone="error"
+          />
+        ) : models.length === 0 ? (
+          <StatusState
+            title="No models configured."
+            message="An admin needs to add one in Settings → Models."
+          />
+        ) : filteredModels.length === 0 ? (
+          <StatusState
+            title={`No models match "${searchTerm}".`}
+            message="Try a model, provider, or deployment name."
+          />
+        ) : (
+          <View style={styles.list}>
+            {filteredModels.map((model) => (
+              <ModelRow
+                key={model.id}
+                model={model}
+                selected={model.id === selectedId}
+                onPress={() => {
+                  onSelect(model.id);
+                  setSearch("");
+                  (ref as React.RefObject<BottomSheetModal>)?.current?.dismiss();
+                }}
+              />
+            ))}
+          </View>
+        )}
+      </BottomSheetScrollView>
     </BottomSheetModal>
   );
 });
@@ -207,10 +189,6 @@ function ModelRow({
   onPress: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
-  const subtitle =
-    model.label === model.model
-      ? model.displayProvider
-      : `${model.displayProvider} / ${model.model}`;
 
   return (
     <Pressable
@@ -226,11 +204,6 @@ function ModelRow({
         },
       ]}
     >
-      <Ionicons
-        name="checkmark"
-        size={18}
-        color={selected ? colors.primary : "transparent"}
-      />
       <View style={styles.rowText}>
         <Text
           numberOfLines={1}
@@ -245,20 +218,15 @@ function ModelRow({
         >
           {model.label}
         </Text>
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={[
-            styles.sub,
-            {
-              color: colors.mutedForeground,
-              fontFamily: fonts.sansRegular,
-            },
-          ]}
-        >
-          {subtitle}
-        </Text>
       </View>
+      {selected ? (
+        <Ionicons
+          name="checkmark"
+          size={18}
+          color={colors.primary}
+          style={styles.rowCheck}
+        />
+      ) : null}
     </Pressable>
   );
 }
@@ -301,20 +269,8 @@ function StatusState({
   );
 }
 
-function groupModels(
-  models: PublicModelConfig[],
-): Array<[string, PublicModelConfig[]]> {
-  const groups = new Map<string, PublicModelConfig[]>();
-  for (const model of models) {
-    const items = groups.get(model.displayProvider) ?? [];
-    items.push(model);
-    groups.set(model.displayProvider, items);
-  }
-  return [...groups.entries()];
-}
-
 const styles = StyleSheet.create({
-  body: { paddingHorizontal: 12, paddingTop: 4 },
+  body: { paddingHorizontal: 12, paddingTop: 4, gap: 8 },
   title: { fontSize: 18, paddingHorizontal: 8, paddingBottom: 8 },
   searchBox: {
     minHeight: 42,
@@ -327,27 +283,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 8 },
-  scroller: { flexGrow: 0 },
-  scrollerContent: { gap: 8 },
-  group: { gap: 2 },
-  groupLabel: {
-    fontSize: 11,
-    letterSpacing: 0.7,
-    textTransform: "uppercase",
-    paddingHorizontal: 12,
-    paddingTop: 6,
-    paddingBottom: 3,
-  },
+  list: { gap: 2 },
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
+    gap: 12,
+    minHeight: 48,
     paddingHorizontal: 12,
-    paddingVertical: 11,
+    paddingVertical: 12,
   },
-  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  rowText: { flex: 1, minWidth: 0 },
   label: { fontSize: 15 },
-  sub: { fontSize: 12, lineHeight: 17 },
+  rowCheck: { marginLeft: "auto" },
   status: {
     alignItems: "center",
     justifyContent: "center",
