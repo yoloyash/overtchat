@@ -74,12 +74,19 @@ export default function SettingsScreen() {
         edges={["bottom", "left", "right"]}
       >
         <ScrollView contentContainerStyle={styles.content}>
-          <Section title="Account">
+          <Section title="Account" description="Signed in on this device.">
             <Row label="Name" right={user?.name ?? "—"} />
             <Row label="Email" right={user?.email ?? "—"} />
           </Section>
 
-          <Section title="Appearance">
+          <Section
+            title="Appearance"
+            description="Choose how overtchat looks and reads."
+          >
+            <GroupHeader
+              label="Theme"
+              sub="Use a fixed theme or follow the system setting."
+            />
             {(
               [
                 { key: "system", label: "System" },
@@ -87,98 +94,44 @@ export default function SettingsScreen() {
                 { key: "dark", label: "Dark" },
               ] as { key: ThemePref; label: string }[]
             ).map((opt) => (
-              <Pressable
+              <RadioRow
                 key={opt.key}
+                label={opt.label}
+                selected={themePref === opt.key}
                 onPress={() => setThemePref(opt.key)}
-                style={({ pressed }) => [
-                  styles.row,
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.rowLabel,
-                    { color: colors.foreground, fontFamily: fonts.sansRegular },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-                <View
-                  style={[
-                    styles.radio,
-                    {
-                      borderColor:
-                        themePref === opt.key ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  {themePref === opt.key ? (
-                    <View
-                      style={[
-                        styles.radioDot,
-                        { backgroundColor: colors.primary },
-                      ]}
-                    />
-                  ) : null}
-                </View>
-              </Pressable>
+              />
             ))}
-          </Section>
 
-          <Section title="Font">
+            <Divider />
+            <GroupHeader
+              label="Chat font"
+              sub="Choose the font used throughout the app."
+            />
             {FONT_OPTIONS.map((opt) => (
-              <Pressable
+              <RadioRow
                 key={opt.id}
+                label={opt.label}
+                selected={fontPref === opt.id}
+                labelFont={FONT_SANS[opt.id].sansRegular}
                 onPress={() => setFontPref(opt.id)}
-                style={({ pressed }) => [
-                  styles.row,
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.rowLabel,
-                    {
-                      color: colors.foreground,
-                      fontFamily: FONT_SANS[opt.id].sansRegular,
-                    },
-                  ]}
-                >
-                  {opt.label}
-                </Text>
-                <View
-                  style={[
-                    styles.radio,
-                    {
-                      borderColor:
-                        fontPref === opt.id ? colors.primary : colors.border,
-                    },
-                  ]}
-                >
-                  {fontPref === opt.id ? (
-                    <View
-                      style={[
-                        styles.radioDot,
-                        { backgroundColor: colors.primary },
-                      ]}
-                    />
-                  ) : null}
-                </View>
-              </Pressable>
+              />
             ))}
           </Section>
 
-          <Section title="Manage on web">
+          <Section
+            title="Manage on web"
+            description="Open server settings in your browser."
+          >
             <LinkRow
               label="Account"
-              sub="Name, email, password, sessions"
+              sub="Name, email, password, and sessions."
               onPress={() => openOnWeb("/settings/account")}
               colors={colors}
               fonts={fonts}
             />
             <LinkRow
               label="Data"
-              sub="Export, delete chats"
+              sub="Export data and delete chats."
               onPress={() => openOnWeb("/settings/data")}
               colors={colors}
               fonts={fonts}
@@ -187,14 +140,14 @@ export default function SettingsScreen() {
               <>
                 <LinkRow
                   label="Models"
-                  sub="Provider config and access"
+                  sub="Provider config and model access."
                   onPress={() => openOnWeb("/settings/models")}
                   colors={colors}
                   fonts={fonts}
                 />
                 <LinkRow
                   label="Users"
-                  sub="Invite and manage members"
+                  sub="Invite and manage members."
                   onPress={() => openOnWeb("/settings/users")}
                   colors={colors}
                   fonts={fonts}
@@ -212,7 +165,7 @@ export default function SettingsScreen() {
                     },
                   ]}
                 >
-                  Opens {serverHost} in your browser
+                  Opens {serverHost} in your browser.
                 </Text>
               </View>
             ) : null}
@@ -246,18 +199,38 @@ export default function SettingsScreen() {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: ReactNode;
+}) {
   const { colors, radii, fonts } = useTheme();
   return (
     <View style={styles.section}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
-        ]}
-      >
-        {title.toUpperCase()}
-      </Text>
+      <View style={styles.sectionHeader}>
+        <Text
+          style={[
+            styles.sectionTitle,
+            { color: colors.foreground, fontFamily: fonts.sansSemiBold },
+          ]}
+        >
+          {title}
+        </Text>
+        {description ? (
+          <Text
+            style={[
+              styles.sectionDescription,
+              { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            {description}
+          </Text>
+        ) : null}
+      </View>
       <View
         style={[
           styles.sectionBody,
@@ -272,6 +245,83 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </View>
     </View>
   );
+}
+
+function GroupHeader({ label, sub }: { label: string; sub: string }) {
+  const { colors, fonts } = useTheme();
+  return (
+    <View style={[styles.row, styles.groupHeaderRow]}>
+      <View style={styles.rowText}>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.rowSub,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {sub}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function RadioRow({
+  label,
+  selected,
+  labelFont,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  labelFont?: string;
+  onPress: () => void;
+}) {
+  const { colors, fonts } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="radio"
+      accessibilityState={{ checked: selected }}
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
+    >
+      <Text
+        style={[
+          styles.rowLabel,
+          {
+            color: colors.foreground,
+            fontFamily: labelFont ?? fonts.sansRegular,
+          },
+        ]}
+      >
+        {label}
+      </Text>
+      <View
+        style={[
+          styles.radio,
+          {
+            borderColor: selected ? colors.primary : colors.border,
+          },
+        ]}
+      >
+        {selected ? (
+          <View style={[styles.radioDot, { backgroundColor: colors.primary }]} />
+        ) : null}
+      </View>
+    </Pressable>
+  );
+}
+
+function Divider() {
+  const { colors } = useTheme();
+  return <View style={[styles.divider, { backgroundColor: colors.border }]} />;
 }
 
 function LinkRow({
@@ -378,11 +428,14 @@ function Row({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   content: { paddingHorizontal: 16, paddingVertical: 16, gap: 24, paddingBottom: 32 },
-  section: { gap: 8 },
+  section: { gap: 10 },
+  sectionHeader: { gap: 2, paddingHorizontal: 4 },
   sectionTitle: {
-    fontSize: 11,
-    letterSpacing: 0.8,
-    paddingHorizontal: 4,
+    fontSize: 15,
+  },
+  sectionDescription: {
+    fontSize: 12,
+    lineHeight: 18,
   },
   sectionBody: { borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
   row: {
@@ -392,10 +445,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     gap: 12,
   },
+  groupHeaderRow: { paddingBottom: 6 },
   rowText: { flex: 1, gap: 2 },
   rowLabel: { fontSize: 15 },
-  rowSub: { fontSize: 12 },
+  rowSub: { fontSize: 12, lineHeight: 17 },
   rowRight: { fontSize: 14, maxWidth: "55%" },
+  divider: { height: StyleSheet.hairlineWidth },
   radio: {
     width: 20,
     height: 20,

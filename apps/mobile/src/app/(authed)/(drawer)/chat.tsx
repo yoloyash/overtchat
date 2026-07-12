@@ -287,7 +287,6 @@ function ChatSurface({
       headerTitle: () => (
         <Pressable
           onPress={() => pickerRef.current?.present()}
-          disabled={modelsPending}
           style={styles.headerTitle}
         >
           {modelsPending ? (
@@ -519,6 +518,8 @@ function ChatSurface({
         ref={pickerRef}
         models={models ?? []}
         selectedId={selectedId}
+        loading={modelsPending}
+        error={modelsError}
         onSelect={setSelectedId}
       />
 
