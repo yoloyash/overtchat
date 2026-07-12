@@ -420,13 +420,13 @@ function ChatSurface({
     regenerate({ messageId, body: requestBody() });
   }
 
-  function handleSaveEdit(messageId: string, text: string) {
+  function handleSaveEdit(messageId: string, text: string, files: FileUIPart[]) {
     setEditingId(null);
     if (streaming || !configured) return;
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed && files.length === 0) return;
     Keyboard.dismiss();
-    sendMessage({ text: trimmed, messageId }, { body: requestBody() });
+    sendMessage({ text: trimmed, files, messageId }, { body: requestBody() });
   }
 
   return (

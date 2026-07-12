@@ -32,7 +32,7 @@ export function MessageBubble({
   speech: ReturnType<typeof useSpeech>;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, text: string) => void;
+  onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -62,7 +62,11 @@ export function MessageBubble({
     );
     if (!text && fileParts.length === 0 && !editing) return null;
 
-    const actions: MessageAction[] = streaming ? [] : ["copy", "edit"];
+    const actions: MessageAction[] = streaming
+      ? []
+      : text
+        ? ["copy", "edit"]
+        : ["edit"];
 
     function onMenuSelect(action: MessageAction) {
       if (action === "copy") copyText(text);
@@ -80,7 +84,11 @@ export function MessageBubble({
         {fileParts.length > 0 && !editing ? (
           <View style={styles.attachmentsRow}>
             {fileParts.map((part, i) => (
-              <AttachmentChip key={`${part.url}-${i}`} attachment={part} />
+              <AttachmentChip
+                key={`${part.url}-${i}`}
+                attachment={part}
+                onLongPress={openUserMenu}
+              />
             ))}
           </View>
         ) : null}
@@ -88,8 +96,9 @@ export function MessageBubble({
           {editing ? (
             <EditBubble
               initialText={text}
+              initialFiles={fileParts}
               onCancel={onCancelEdit}
-              onSave={(next) => onSaveEdit(message.id, next)}
+              onSave={(next, files) => onSaveEdit(message.id, next, files)}
             />
           ) : text ? (
             <Pressable

@@ -1,4 +1,4 @@
-import type { ChatStatus, UIMessage } from "ai";
+import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef } from "react";
 import {
   RefreshControl,
@@ -35,7 +35,7 @@ export function MessageList({
   onRefresh?: () => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
-  onSaveEdit: (id: string, text: string) => void;
+  onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
 }) {
   const { colors, fonts } = useTheme();
@@ -43,7 +43,7 @@ export function MessageList({
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
-  }, [messages, status, editingId]);
+  }, [messages, status]);
 
   const lastIsUser = messages.at(-1)?.role === "user";
 

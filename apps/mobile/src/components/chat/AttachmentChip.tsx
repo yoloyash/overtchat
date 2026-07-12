@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { FileUIPart } from "ai";
 import { Image } from "expo-image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ImageView from "react-native-image-viewing";
@@ -50,16 +50,19 @@ export function AttachmentChip({
   attachment,
   meta,
   onRemove,
+  onLongPress,
 }: {
   attachment: FileUIPart;
   meta?: AttachmentMeta;
   onRemove?: () => void;
+  onLongPress?: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const label = attachment.filename ?? "file";
   const cookie = getAuthCookie();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const longPressedRef = useRef(false);
 
   if (isImageAttachment(attachment, meta)) {
     const localUri = meta?.localUri;
@@ -81,7 +84,22 @@ export function AttachmentChip({
         ]}
       >
         <Pressable
-          onPress={() => setPreviewOpen(true)}
+          onPress={() => {
+            if (longPressedRef.current) {
+              longPressedRef.current = false;
+              return;
+            }
+            setPreviewOpen(true);
+          }}
+          onLongPress={
+            onLongPress
+              ? () => {
+                  longPressedRef.current = true;
+                  onLongPress();
+                }
+              : undefined
+          }
+          delayLongPress={300}
           accessibilityRole="imagebutton"
           accessibilityLabel={`Preview ${label}`}
           style={({ pressed }) => [
@@ -142,18 +160,17 @@ export function AttachmentChip({
       .filter(Boolean)
       .join(" · ");
 
-  return (
-    <View
-      style={[
-        styles.docWrap,
-        {
-          borderColor: colors.border,
-          backgroundColor: colors.muted,
-          borderRadius: radii.md,
-          paddingRight: onRemove ? 30 : 14,
-        },
-      ]}
-    >
+  const docStyle = [
+    styles.docWrap,
+    {
+      borderColor: colors.border,
+      backgroundColor: colors.muted,
+      borderRadius: radii.md,
+      paddingRight: onRemove ? 30 : 14,
+    },
+  ];
+  const docContent = (
+    <>
       <View
         style={[
           styles.docIcon,
@@ -189,8 +206,22 @@ export function AttachmentChip({
         ) : null}
       </View>
       {onRemove && <RemoveButton onPress={onRemove} label={label} />}
-    </View>
+    </>
   );
+
+  if (onLongPress) {
+    return (
+      <Pressable
+        onLongPress={onLongPress}
+        delayLongPress={300}
+        style={({ pressed }) => [...docStyle, { opacity: pressed ? 0.9 : 1 }]}
+      >
+        {docContent}
+      </Pressable>
+    );
+  }
+
+  return <View style={docStyle}>{docContent}</View>;
 }
 
 function RemoveButton({
