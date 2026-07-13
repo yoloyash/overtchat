@@ -7,8 +7,10 @@ import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/config";
+import { getErrorMessage } from "@/lib/errors";
 import {
   modelIconForModel,
   providerIdentityForBaseUrl,
@@ -34,7 +36,6 @@ export function ModelsPanel() {
   const [pendingDelete, setPendingDelete] =
     useState<AdminModelConfig | null>(null);
   const [deleteError, setDeleteError] = useState("");
-  const [actionError, setActionError] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const filteredModels = useMemo(() => {
@@ -59,7 +60,6 @@ export function ModelsPanel() {
 
   async function toggleEnabled(m: AdminModelConfig, next: boolean) {
     setTogglingId(m.id);
-    setActionError("");
     try {
       await updateMut.mutateAsync({
         id: m.id,
@@ -75,9 +75,11 @@ export function ModelsPanel() {
         },
       });
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to update model",
-      );
+      const message = getErrorMessage(err, "Failed to update model");
+      toast.error({
+        title: `Failed to ${next ? "enable" : "disable"} model`,
+        description: message,
+      });
     } finally {
       setTogglingId(null);
     }
@@ -85,14 +87,17 @@ export function ModelsPanel() {
 
   async function confirmDelete() {
     if (!pendingDelete) return;
+    const label = pendingDelete.label;
     setDeleteError("");
     try {
       await deleteMut.mutateAsync(pendingDelete.id);
       setPendingDelete(null);
+      toast.success({
+        title: "Model deleted",
+        description: label,
+      });
     } catch (err) {
-      setDeleteError(
-        err instanceof Error ? err.message : "Failed to delete model",
-      );
+      setDeleteError(getErrorMessage(err, "Failed to delete model"));
     }
   }
 
@@ -126,15 +131,6 @@ export function ModelsPanel() {
             {models.length} configured
           </p>
         </div>
-      )}
-
-      {actionError && (
-        <SettingsNotice
-          tone="error"
-          className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2"
-        >
-          {actionError}
-        </SettingsNotice>
       )}
 
       {models.length === 0 ? (

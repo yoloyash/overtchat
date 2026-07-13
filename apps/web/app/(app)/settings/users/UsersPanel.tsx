@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import { useInvalidateUsers, useUsers } from "@/lib/queries/users";
 import type { UserRow } from "@/lib/queries/users";
@@ -24,6 +25,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
 
   async function confirmDelete() {
     if (!pendingDelete || pendingDelete.id === currentUserId) return;
+    const email = pendingDelete.email;
     setDeleting(true);
     setDeleteError("");
     const { error } = await authClient.admin.removeUser({
@@ -37,6 +39,10 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
     invalidateUsers();
     setPendingDelete(null);
     setDeleting(false);
+    toast.success({
+      title: "User deleted",
+      description: email,
+    });
   }
 
   return (

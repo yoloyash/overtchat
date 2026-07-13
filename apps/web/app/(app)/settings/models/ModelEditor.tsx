@@ -7,11 +7,13 @@ import { ArrowLeft, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import {
   ModelConfigSchema,
   type AdminModelConfig,
   type ModelConfigInput,
 } from "@/lib/config";
+import { getErrorMessage } from "@/lib/errors";
 import {
   useAdminModelConfigs,
   useCreateModelConfig,
@@ -116,9 +118,10 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         extraBody = JSON.parse(extraBodyText);
       } catch (err) {
         setSaveError(
-          `Extra body must be valid JSON object: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          `Extra body must be valid JSON object: ${getErrorMessage(
+            err,
+            "Invalid JSON",
+          )}`,
         );
         return;
       }
@@ -138,12 +141,20 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     try {
       if (modelId) {
         await updateMut.mutateAsync({ id: modelId, input });
+        toast.success({
+          title: "Model saved",
+          description: input.label,
+        });
       } else {
         await createMut.mutateAsync(input);
+        toast.success({
+          title: "Model created",
+          description: input.label,
+        });
       }
       router.push("/settings/models");
     } catch (err) {
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(getErrorMessage(err, "Failed to save model"));
     }
   }
 

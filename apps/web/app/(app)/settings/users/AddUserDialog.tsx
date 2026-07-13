@@ -5,6 +5,7 @@ import { Dialog } from "@base-ui/react/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/toast";
 import {
   Select,
   SelectContent,
@@ -63,6 +64,10 @@ export function AddUserDialog({
     reset();
     onOpenChange(false);
     onCreated();
+    toast.success({
+      title: "User created",
+      description: email,
+    });
   }
 
   return (
