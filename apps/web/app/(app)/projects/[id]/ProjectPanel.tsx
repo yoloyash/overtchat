@@ -114,9 +114,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
       });
       router.push("/");
     } catch (err) {
-      setDeleteError(
-        err instanceof Error ? err.message : "Failed to delete project.",
-      );
+      setDeleteError(getErrorMessage(err, "Failed to delete project."));
     }
   }
 

@@ -437,11 +437,10 @@ function CopyButton({ text }: { text: string }) {
             setCopied(true);
             setTimeout(() => setCopied(false), 1200);
           })
-          .catch((err) => {
+          .catch(() => {
             toast.error({
               title: "Failed to copy",
-              description:
-                err instanceof Error ? err.message : "Clipboard access was denied.",
+              description: "Clipboard access was denied by the browser.",
             });
           });
       }}

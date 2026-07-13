@@ -12,7 +12,6 @@ import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { authClient } from "@/lib/auth/client";
-import { toast } from "@/components/ui/toast";
 import {
   readMessageStats,
   readStoredMessageStats,
@@ -177,17 +176,9 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   function handleStop() {
     stop();
     if (!temporary) {
-      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" })
-        .then((res) => {
-          if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        })
-        .catch((err) => {
-          toast.error({
-            title: "Failed to cancel server stream",
-            description:
-              err instanceof Error ? err.message : "The local stream was stopped.",
-          });
-        });
+      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
+        () => undefined,
+      );
     }
   }
 

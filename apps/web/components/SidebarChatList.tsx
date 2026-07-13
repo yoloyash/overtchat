@@ -134,7 +134,7 @@ export function SidebarItem({
       toast.success("Chat deleted");
       if (active) router.push("/");
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+      setDeleteError(getErrorMessage(err, "Failed to delete"));
     }
   }
 

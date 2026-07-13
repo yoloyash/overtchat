@@ -7,6 +7,7 @@ import { ChevronUp, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
 
 export function AccountMenu() {
@@ -24,7 +25,7 @@ export function AccountMenu() {
       if (error) {
         toast.error({
           title: "Failed to log out",
-          description: error.message ?? "Try again in a moment.",
+          description: getErrorMessage(error, "Try again in a moment."),
         });
         return;
       }
@@ -33,7 +34,7 @@ export function AccountMenu() {
     } catch (err) {
       toast.error({
         title: "Failed to log out",
-        description: err instanceof Error ? err.message : "Try again in a moment.",
+        description: getErrorMessage(err, "Try again in a moment."),
       });
     }
   }

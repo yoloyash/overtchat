@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 import { useCreateProject } from "@/lib/queries/projects";
 import {
   SidebarItem,
@@ -151,7 +152,7 @@ export function CreateProjectDialog({
           router.push(`/projects/${id}`);
         },
         onError: (err) => {
-          setError(err instanceof Error ? err.message : String(err));
+          setError(getErrorMessage(err, "Failed to create project."));
         },
       },
     );
