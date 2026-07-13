@@ -7,8 +7,10 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { useChats } from "@/lib/queries/chats";
+import { getErrorMessage } from "@/lib/errors";
 import {
   useDeleteProject,
   useProject,
@@ -59,7 +61,17 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
     const next = name.trim();
     setRenaming(false);
     if (!next || next === project.name) return;
-    updateMut.mutate({ name: next });
+    updateMut.mutate(
+      { name: next },
+      {
+        onError: (err) => {
+          toast.error({
+            title: "Failed to rename project",
+            description: getErrorMessage(err, "The project name was not changed."),
+          });
+        },
+      },
+    );
   }
 
   function saveInstructions() {
@@ -67,7 +79,21 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
     const value = instructionsDraft;
     updateMut.mutate(
       { instructions: value.trim() ? value : null },
-      { onSuccess: () => setInstructionsDraft(null) },
+      {
+        onSuccess: () => {
+          setInstructionsDraft(null);
+          toast.success("Project instructions saved");
+        },
+        onError: (err) => {
+          toast.error({
+            title: "Failed to save instructions",
+            description: getErrorMessage(
+              err,
+              "The project instructions were not changed.",
+            ),
+          });
+        },
+      },
     );
   }
 
@@ -82,6 +108,10 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
     try {
       await deleteMut.mutateAsync(project.id);
       setDeleteOpen(false);
+      toast.success({
+        title: "Project deleted",
+        description: "Chats from the project moved to your main list.",
+      });
       router.push("/");
     } catch (err) {
       setDeleteError(

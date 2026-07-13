@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { chatKeys, projectKeys } from "@/lib/queries/keys";
 import {
   SettingsNotice,
@@ -50,9 +51,16 @@ export function DataForm() {
         );
         return;
       }
-      setImportResult(body as ImportResult);
+      const result = body as ImportResult;
+      setImportResult(result);
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: projectKeys.list() });
+      toast.success({
+        title: "Import complete",
+        description: `Imported ${result.importedChats} chat${
+          result.importedChats === 1 ? "" : "s"
+        } from ${FORMAT_LABELS[result.format] ?? result.format}.`,
+      });
     } catch (err) {
       setImportError(
         err instanceof Error ? err.message : "Import failed.",

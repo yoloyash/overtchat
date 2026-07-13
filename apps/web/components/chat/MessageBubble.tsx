@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/components/ui/toast";
 import { humanMediaLabel } from "@/lib/chat/attachments";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
@@ -431,10 +432,18 @@ function CopyButton({ text }: { text: string }) {
         )
       }
       onClick={() => {
-        void clipboardWriteText(text).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        });
+        void clipboardWriteText(text)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          })
+          .catch((err) => {
+            toast.error({
+              title: "Failed to copy",
+              description:
+                err instanceof Error ? err.message : "Clipboard access was denied.",
+            });
+          });
       }}
     />
   );

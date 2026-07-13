@@ -7,8 +7,10 @@ import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/config";
+import { getErrorMessage } from "@/lib/errors";
 import {
   modelIconForModel,
   providerIdentityForBaseUrl,
@@ -75,9 +77,12 @@ export function ModelsPanel() {
         },
       });
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Failed to update model",
-      );
+      const message = getErrorMessage(err, "Failed to update model");
+      setActionError(message);
+      toast.error({
+        title: `Failed to ${next ? "enable" : "disable"} model`,
+        description: message,
+      });
     } finally {
       setTogglingId(null);
     }
@@ -85,10 +90,15 @@ export function ModelsPanel() {
 
   async function confirmDelete() {
     if (!pendingDelete) return;
+    const label = pendingDelete.label;
     setDeleteError("");
     try {
       await deleteMut.mutateAsync(pendingDelete.id);
       setPendingDelete(null);
+      toast.success({
+        title: "Model deleted",
+        description: label,
+      });
     } catch (err) {
       setDeleteError(
         err instanceof Error ? err.message : "Failed to delete model",

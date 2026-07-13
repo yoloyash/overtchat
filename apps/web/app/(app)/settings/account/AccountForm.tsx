@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
+import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import {
   SettingsActions,
@@ -49,6 +50,7 @@ export function AccountForm({
       return;
     }
     setProfileStatus("ok");
+    toast.success("Profile updated");
   }
 
   async function changePassword(e: React.FormEvent) {
@@ -68,6 +70,7 @@ export function AccountForm({
     setPwStatus("ok");
     setCurrentPassword("");
     setNewPassword("");
+    toast.success("Password updated");
   }
 
   return (

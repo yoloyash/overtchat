@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { toast } from "@/components/ui/toast";
 import { useCreateProject } from "@/lib/queries/projects";
 import {
   SidebarItem,
@@ -143,6 +144,10 @@ export function CreateProjectDialog({
         onSuccess: ({ id }) => {
           reset();
           onClose();
+          toast.success({
+            title: "Project created",
+            description: trimmed,
+          });
           router.push(`/projects/${id}`);
         },
         onError: (err) => {

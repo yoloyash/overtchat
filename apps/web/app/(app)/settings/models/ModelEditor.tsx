@@ -7,6 +7,7 @@ import { ArrowLeft, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { toast } from "@/components/ui/toast";
 import {
   ModelConfigSchema,
   type AdminModelConfig,
@@ -138,8 +139,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     try {
       if (modelId) {
         await updateMut.mutateAsync({ id: modelId, input });
+        toast.success({
+          title: "Model saved",
+          description: input.label,
+        });
       } else {
         await createMut.mutateAsync(input);
+        toast.success({
+          title: "Model created",
+          description: input.label,
+        });
       }
       router.push("/settings/models");
     } catch (err) {
