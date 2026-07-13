@@ -8,12 +8,12 @@ Single-compose, self-hosted, LAN-only. Assumes Docker + Docker Compose v2 on the
 git clone <repo>
 cd overtchat
 cp .env.example .env
+echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
+echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
 ```
 
 Edit `.env`:
 
-- `BETTER_AUTH_SECRET` — required. Generate with `openssl rand -hex 32`.
-- `SEARXNG_SECRET` — required. Generate with `openssl rand -hex 32`.
 - `BETTER_AUTH_URL` — the URL the browser will hit (scheme + host + port). For LAN access from other devices, set it to your host's LAN IP, e.g. `http://192.168.1.50:4718`.
 
 Then:
@@ -41,6 +41,36 @@ The app container makes the upstream LLM calls, so the base URL you set in **Set
 
 - **LLM running on the host (not in docker):** use `http://host.docker.internal:<port>/v1`. Baked into `compose.yml` via `extra_hosts`, works on Linux / macOS / Windows.
 - **Public provider (OpenAI / Groq / etc.):** use the provider's base URL + API key.
+
+## Reusing sidecars
+
+SearXNG and Kokoro are bundled by default. To point the app at existing services, set container-reachable URLs in `.env`:
+
+```env
+OVERTCHAT_SEARXNG_URL=http://host.docker.internal:8088
+OVERTCHAT_KOKORO_URL=http://host.docker.internal:8880
+OVERTCHAT_STT_URL=http://host.docker.internal:5092
+```
+
+This changes where the app connects. To also stop the bundled containers from starting, add this to your local `compose.override.yml`:
+
+```yaml
+services:
+  searxng:
+    profiles: ["disabled"]
+  kokoro:
+    profiles: ["disabled"]
+```
+
+Docker Compose loads `compose.override.yml` automatically; this repo ignores it. If you already use that file for local networks or other overrides, merge these service entries into it.
+
+Then run the usual command:
+
+```bash
+docker compose up -d
+```
+
+Use `host.docker.internal` for services running on the Docker host, or a LAN/container URL for services running elsewhere.
 
 ## Common ops
 
