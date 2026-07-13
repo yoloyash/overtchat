@@ -119,19 +119,19 @@ export default function SettingsScreen() {
           </Section>
 
           <Section
-            title="Manage on web"
-            description="Open server settings in your browser."
+            title="Settings on the web"
+            description="Open settings that are managed on the web."
           >
             <LinkRow
               label="Account"
-              sub="Name, email, password, and sessions."
+              sub="Name and password."
               onPress={() => openOnWeb("/settings/account")}
               colors={colors}
               fonts={fonts}
             />
             <LinkRow
               label="Data"
-              sub="Export data and delete chats."
+              sub="Import and export chats."
               onPress={() => openOnWeb("/settings/data")}
               colors={colors}
               fonts={fonts}
@@ -140,14 +140,14 @@ export default function SettingsScreen() {
               <>
                 <LinkRow
                   label="Models"
-                  sub="Provider config and model access."
+                  sub="Models available in chat."
                   onPress={() => openOnWeb("/settings/models")}
                   colors={colors}
                   fonts={fonts}
                 />
                 <LinkRow
                   label="Users"
-                  sub="Invite and manage members."
+                  sub="Add and manage users."
                   onPress={() => openOnWeb("/settings/users")}
                   colors={colors}
                   fonts={fonts}
@@ -165,7 +165,7 @@ export default function SettingsScreen() {
                     },
                   ]}
                 >
-                  Opens {serverHost} in your browser.
+                  Opens {serverHost} on the web.
                 </Text>
               </View>
             ) : null}
