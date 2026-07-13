@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
+import { getErrorMessage } from "@/lib/errors";
 import { chatKeys, projectKeys } from "@/lib/queries/keys";
 import {
   SettingsNotice,
@@ -30,12 +32,10 @@ export function DataForm() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importError, setImportError] = useState("");
 
   async function handleFile(file: File) {
     setImporting(true);
-    setImportResult(null);
     setImportError("");
 
     const form = new FormData();
@@ -50,13 +50,17 @@ export function DataForm() {
         );
         return;
       }
-      setImportResult(body as ImportResult);
+      const result = body as ImportResult;
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: projectKeys.list() });
+      toast.success({
+        title: "Import complete",
+        description: `Imported ${result.importedChats} chat${
+          result.importedChats === 1 ? "" : "s"
+        } from ${FORMAT_LABELS[result.format] ?? result.format}.`,
+      });
     } catch (err) {
-      setImportError(
-        err instanceof Error ? err.message : "Import failed.",
-      );
+      setImportError(getErrorMessage(err, "Import failed."));
     } finally {
       setImporting(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -101,14 +105,6 @@ export function DataForm() {
               <Upload data-icon="inline-start" />
               {importing ? "Importing…" : "Choose file"}
             </Button>
-
-            {importResult && (
-              <SettingsNotice tone="success">
-                Imported {importResult.importedChats} chat
-                {importResult.importedChats === 1 ? "" : "s"} from{" "}
-                {FORMAT_LABELS[importResult.format] ?? importResult.format}.
-              </SettingsNotice>
-            )}
 
             {importError && (
               <SettingsNotice tone="error">{importError}</SettingsNotice>

@@ -19,8 +19,10 @@ import {
   useMoveChat,
   useRenameChat,
 } from "@/lib/queries/chats";
+import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 
 interface Chat {
   id: string;
@@ -106,7 +108,17 @@ export function SidebarItem({
     const next = draft.trim();
     setRenaming(false);
     if (!next || next === (chat.title ?? "")) return;
-    renameMut.mutate({ id: chat.id, title: next });
+    renameMut.mutate(
+      { id: chat.id, title: next },
+      {
+        onError: (err) => {
+          toast.error({
+            title: "Failed to rename chat",
+            description: getErrorMessage(err, "The chat title was not changed."),
+          });
+        },
+      },
+    );
   }
 
   function requestDelete() {
@@ -119,15 +131,26 @@ export function SidebarItem({
     try {
       await deleteMut.mutateAsync(chat.id);
       setDeleteOpen(false);
+      toast.success("Chat deleted");
       if (active) router.push("/");
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+      setDeleteError(getErrorMessage(err, "Failed to delete"));
     }
   }
 
   function moveTo(projectId: string | null) {
     if (projectId === currentProjectId) return;
-    moveMut.mutate({ id: chat.id, projectId });
+    moveMut.mutate(
+      { id: chat.id, projectId },
+      {
+        onError: (err) => {
+          toast.error({
+            title: "Failed to move chat",
+            description: getErrorMessage(err, "The chat stayed where it was."),
+          });
+        },
+      },
+    );
   }
 
   if (renaming) {

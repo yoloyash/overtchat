@@ -11,6 +11,7 @@ import {
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { QueryProvider } from "@/components/QueryProvider";
+import { ToastProvider } from "@/components/ui/toast";
 import { FONT_STORAGE_KEY, fontCssValueById } from "@/lib/fonts";
 
 const sans = Plus_Jakarta_Sans({
@@ -92,7 +93,9 @@ export default function RootLayout({
       <body className="h-full">
         <script dangerouslySetInnerHTML={{ __html: fontScript }} />
         <QueryProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            <ToastProvider>{children}</ToastProvider>
+          </ThemeProvider>
         </QueryProvider>
       </body>
     </html>

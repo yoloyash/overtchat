@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronUp, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
 
 export function AccountMenu() {
@@ -18,9 +20,23 @@ export function AccountMenu() {
   const { drawerRef } = useSidebar();
 
   async function logOut() {
-    await authClient.signOut();
-    router.replace("/login");
-    router.refresh();
+    try {
+      const { error } = await authClient.signOut();
+      if (error) {
+        toast.error({
+          title: "Failed to log out",
+          description: getErrorMessage(error, "Try again in a moment."),
+        });
+        return;
+      }
+      router.replace("/login");
+      router.refresh();
+    } catch (err) {
+      toast.error({
+        title: "Failed to log out",
+        description: getErrorMessage(err, "Try again in a moment."),
+      });
+    }
   }
 
   return (

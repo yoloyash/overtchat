@@ -176,7 +176,9 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   function handleStop() {
     stop();
     if (!temporary) {
-      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" });
+      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
+        () => undefined,
+      );
     }
   }
 
