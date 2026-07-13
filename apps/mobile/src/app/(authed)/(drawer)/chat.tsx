@@ -27,6 +27,7 @@ import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
@@ -293,6 +294,12 @@ function ChatSurface({
             <ActivityIndicator color={colors.mutedForeground} size="small" />
           ) : (
             <>
+              <ModelBrandIcon
+                iconId={selectedModel?.modelIconId ?? selectedModel?.providerIconId}
+                color={colors.mutedForeground}
+                size={16}
+                style={styles.headerTitleIcon}
+              />
               <Text
                 numberOfLines={1}
                 style={[
@@ -323,7 +330,17 @@ function ChatSurface({
         </Pressable>
       ),
     });
-  }, [navigation, modelsPending, selectedModel?.id, selectedModel?.label, colors, fonts, onNewChat]);
+  }, [
+    navigation,
+    modelsPending,
+    selectedModel?.id,
+    selectedModel?.label,
+    selectedModel?.modelIconId,
+    selectedModel?.providerIconId,
+    colors,
+    fonts,
+    onNewChat,
+  ]);
 
   function requestBody() {
     return {
@@ -535,8 +552,9 @@ function ChatSurface({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  headerTitle: { flexDirection: "row", alignItems: "center" },
-  headerTitleText: { fontSize: 16, maxWidth: 220 },
+  headerTitle: { flexDirection: "row", alignItems: "center", maxWidth: 240 },
+  headerTitleIcon: { marginRight: 7 },
+  headerTitleText: { flexShrink: 1, fontSize: 16, maxWidth: 190 },
   headerTitleCaret: { marginLeft: 4 },
   headerRight: { paddingHorizontal: 12 },
   gate: {

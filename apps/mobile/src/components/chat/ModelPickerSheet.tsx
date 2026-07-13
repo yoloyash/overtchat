@@ -17,6 +17,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { useTheme } from "@/lib/theme";
 
 export type ModelPickerSheetRef = BottomSheetModal;
@@ -204,6 +205,12 @@ function ModelRow({
         },
       ]}
     >
+      <ModelBrandIcon
+        iconId={model.modelIconId ?? model.providerIconId}
+        color={colors.mutedForeground}
+        size={17}
+        style={styles.rowIcon}
+      />
       <View style={styles.rowText}>
         <Text
           numberOfLines={1}
@@ -287,11 +294,12 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
     minHeight: 48,
     paddingHorizontal: 12,
     paddingVertical: 12,
   },
+  rowIcon: { flexShrink: 0 },
   rowText: { flex: 1, minWidth: 0 },
   label: { fontSize: 15 },
   rowCheck: { marginLeft: "auto" },

@@ -1,39 +1,38 @@
-"use client";
-
 import { modelBrandIconData, type ModelBrandIconId } from "@overtchat/shared";
-import { cn } from "@/lib/utils";
+import type { StyleProp, ViewStyle } from "react-native";
+import Svg, { Path } from "react-native-svg";
 
 export function ModelBrandIcon({
   iconId,
-  className,
-  title,
+  color,
+  size = 16,
+  style,
 }: {
   iconId: ModelBrandIconId | null | undefined;
-  className?: string;
-  title?: string;
+  color: string;
+  size?: number;
+  style?: StyleProp<ViewStyle>;
 }) {
   const icon = modelBrandIconData(iconId);
   if (!icon) return null;
 
   return (
-    <svg
-      aria-hidden
+    <Svg
+      accessible={false}
+      width={size}
+      height={size}
       viewBox={icon.viewBox}
-      fill="currentColor"
-      className={cn(
-        "inline-block size-4 shrink-0 text-muted-foreground",
-        className,
-      )}
+      style={style}
     >
-      <title>{title ?? icon.label}</title>
       {icon.paths.map((path, index) => (
-        <path
+        <Path
           key={index}
           d={path.d}
+          fill={color}
           fillRule={path.fillRule}
           clipRule={path.fillRule}
         />
       ))}
-    </svg>
+    </Svg>
   );
 }
