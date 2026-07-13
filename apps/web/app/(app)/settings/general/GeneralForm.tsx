@@ -64,7 +64,7 @@ export function GeneralForm() {
     <div className="max-w-3xl space-y-8">
       <SettingsPageHeader
         title="General"
-        description="Personal preferences for this browser."
+        description="Preferences saved for this browser."
       />
 
       <SettingsSection
@@ -123,7 +123,7 @@ export function GeneralForm() {
 
       <SettingsSection
         title="Messages"
-        description="Browser-only message display preferences."
+        description="Message display preferences saved for this browser."
       >
         <SettingsRow
           title="Message stats"

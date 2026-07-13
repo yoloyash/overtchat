@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
 
   const savedInstructions = project?.instructions ?? "";
   const [renaming, setRenaming] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [name, setName] = useState(project?.name ?? "");
   const [instructionsDraft, setInstructionsDraft] = useState<string | null>(
     null,
@@ -37,7 +40,8 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
   }
 
   const instructions = instructionsDraft ?? savedInstructions;
-  const dirty = instructionsDraft !== null && instructionsDraft !== savedInstructions;
+  const dirty =
+    instructionsDraft !== null && instructionsDraft !== savedInstructions;
 
   const projectChats = useMemo(
     () => chats.filter((c) => c.projectId === projectId),
@@ -67,18 +71,23 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
     );
   }
 
-  function confirmDelete() {
+  function requestDelete() {
+    setDeleteError("");
+    setDeleteOpen(true);
+  }
+
+  async function confirmDelete() {
     if (!project) return;
-    if (
-      !window.confirm(
-        `Delete "${project.name}"? Chats inside it will move to the main list.`,
-      )
-    ) {
-      return;
+    setDeleteError("");
+    try {
+      await deleteMut.mutateAsync(project.id);
+      setDeleteOpen(false);
+      router.push("/");
+    } catch (err) {
+      setDeleteError(
+        err instanceof Error ? err.message : "Failed to delete project.",
+      );
     }
-    deleteMut.mutate(project.id, {
-      onSuccess: () => router.push("/"),
-    });
   }
 
   if (!project) {
@@ -141,7 +150,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
                   <span>Rename</span>
                 </Menu.Item>
                 <Menu.Item
-                  onClick={confirmDelete}
+                  onClick={requestDelete}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none data-[highlighted]:bg-accent"
                 >
                   <Trash2 className="size-3.5 shrink-0" />
@@ -184,9 +193,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
 
           <section className="space-y-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold tracking-tight">
-                Chats
-              </h2>
+              <h2 className="text-base font-semibold tracking-tight">Chats</h2>
               <Button
                 size="sm"
                 render={<Link href={`/?projectId=${project.id}`} />}
@@ -215,6 +222,57 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
           </section>
         </div>
       </div>
+
+      <AlertDialog.Root
+        open={deleteOpen}
+        onOpenChange={(next) => {
+          if (next) {
+            setDeleteOpen(true);
+          } else if (!deleteMut.isPending) {
+            setDeleteOpen(false);
+            setDeleteError("");
+          }
+        }}
+      >
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
+          <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+            <AlertDialog.Title className="text-base font-semibold tracking-tight">
+              Delete project?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {project.name}
+              </span>{" "}
+              will be deleted. Chats inside it will move to your main list.
+            </AlertDialog.Description>
+            {deleteError && (
+              <p className="mt-3 text-xs text-destructive">{deleteError}</p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Close
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={deleteMut.isPending}
+                  />
+                }
+              >
+                Cancel
+              </AlertDialog.Close>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={deleteMut.isPending}
+                onClick={confirmDelete}
+              >
+                {deleteMut.isPending ? "Deleting…" : "Delete"}
+              </Button>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
     </div>
   );
 }

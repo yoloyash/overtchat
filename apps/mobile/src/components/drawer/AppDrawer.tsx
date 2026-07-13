@@ -350,7 +350,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                 { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
               ]}
             >
-              No conversations yet
+              No chats yet
             </Text>
           </View>
         ) : (
@@ -515,8 +515,8 @@ export function AppDrawer(props: DrawerContentComponentProps) {
         title="Delete chat?"
         message={
           deleteTarget?.title?.trim()
-            ? `"${deleteTarget.title.trim()}" will be permanently deleted.`
-            : "This conversation will be permanently deleted."
+            ? `${deleteTarget.title.trim()} will be permanently deleted.`
+            : "This chat will be permanently deleted."
         }
         confirmLabel="Delete"
         destructive

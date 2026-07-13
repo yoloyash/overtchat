@@ -82,7 +82,7 @@ export function AdvancedFields({
         <>
           <SettingsRow
             title="System prompt"
-            description="Optional instructions sent before each conversation."
+            description="Optional instructions sent before each chat."
             htmlFor="p-system-prompt"
           >
             <Textarea

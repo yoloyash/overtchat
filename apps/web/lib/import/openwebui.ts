@@ -104,7 +104,7 @@ function convertOne(raw: OWUIChat): ImportedChat | null {
 
   const title =
     (raw.title ?? inner.title ?? "").toString().slice(0, 200) ||
-    "OpenWebUI conversation";
+    "OpenWebUI chat";
 
   return { title, createdAt: chatCreated, messages };
 }
@@ -118,6 +118,6 @@ export function importOpenWebUI(data: unknown): ImportedChat[] {
     const chat = convertOne(c);
     if (chat) out.push(chat);
   }
-  if (!out.length) throw new ImportError("No usable conversations in OpenWebUI export.");
+  if (!out.length) throw new ImportError("No usable chats in OpenWebUI export.");
   return out;
 }

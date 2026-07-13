@@ -473,7 +473,7 @@ function ChatSurface({
                 { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
               ]}
             >
-              An admin needs to add one in Settings → Models on the web app.
+              An admin can add one in Settings → Models on the web.
             </Text>
           )}
           {modelsError && (

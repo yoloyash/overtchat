@@ -232,9 +232,7 @@ export function Composer({
             onChangeText={setInput}
             editable={configured && dictation.status !== "transcribing"}
             multiline
-            placeholder={
-              configured ? "Message…" : "No models available — ask an admin to add one"
-            }
+            placeholder={configured ? "Message…" : "No models configured"}
             placeholderTextColor={colors.mutedForeground}
             style={[
               styles.input,

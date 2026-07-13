@@ -50,7 +50,7 @@ export function SidebarChatList({
           Recents
         </div>
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          No conversations yet
+          No chats yet
         </p>
       </>
     );
@@ -274,10 +274,16 @@ export function SidebarItem({
               Delete chat?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">
-                {chat.title ?? "Untitled"}
-              </span>{" "}
-              will be permanently deleted.
+              {chat.title?.trim() ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {chat.title.trim()}
+                  </span>{" "}
+                  will be permanently deleted.
+                </>
+              ) : (
+                "This chat will be permanently deleted."
+              )}
             </AlertDialog.Description>
             {deleteError && (
               <p className="mt-3 text-xs text-destructive">{deleteError}</p>

@@ -36,7 +36,7 @@ export function SettingsNav() {
       className="-mx-1 flex gap-1 overflow-x-auto md:mx-0 md:flex-col md:gap-0 md:space-y-5 md:overflow-visible"
     >
       <Section
-        label="User settings"
+        label="Personal settings"
         items={USER_ITEMS}
         pathname={pathname}
         className="hidden md:block"

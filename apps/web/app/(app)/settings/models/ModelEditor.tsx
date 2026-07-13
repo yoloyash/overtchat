@@ -229,7 +229,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
           <SettingsRow
             title="Available in chat"
-            description="Turn off to keep the config without showing it in the picker."
+            description="Turn off to keep this model saved without showing it in chat."
             align="center"
             controlAlign="end"
           >

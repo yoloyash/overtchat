@@ -441,7 +441,7 @@ function ProjectScreenInner({ projectId }: { projectId: string }) {
         title="Delete project?"
         message={
           project
-            ? `"${project.name}" will be deleted. Chats inside it will move to your main list.`
+            ? `${project.name} will be deleted. Chats inside it will move to your main list.`
             : ""
         }
         confirmLabel="Delete"

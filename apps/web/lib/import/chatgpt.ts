@@ -144,7 +144,7 @@ function convertOne(conv: ChatGPTConversation): ImportedChat | null {
   if (!messages.length) return null;
 
   return {
-    title: (conv.title ?? "").toString().slice(0, 200) || "ChatGPT conversation",
+    title: (conv.title ?? "").toString().slice(0, 200) || "ChatGPT chat",
     createdAt: chatCreated,
     messages,
   };
@@ -159,6 +159,6 @@ export function importChatGPT(data: unknown): ImportedChat[] {
     const chat = convertOne(conv);
     if (chat) out.push(chat);
   }
-  if (!out.length) throw new ImportError("No usable conversations in ChatGPT export.");
+  if (!out.length) throw new ImportError("No usable chats in ChatGPT export.");
   return out;
 }

@@ -278,7 +278,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
               </h1>
               {!configured && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
-                  No models configured yet. An admin needs to add one in Settings → Models.
+                  No models configured. An admin can add one in Settings → Models.
                 </p>
               )}
               {configured && temporary && (

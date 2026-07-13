@@ -82,6 +82,8 @@ export function MessageList({
       })}
       {!error && status === "submitted" && lastIsUser && (
         <Text
+          accessibilityLabel="Assistant is responding"
+          accessibilityLiveRegion="polite"
           style={[
             styles.pending,
             { color: colors.mutedForeground, fontFamily: fonts.sansRegular },

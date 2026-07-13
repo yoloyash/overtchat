@@ -87,7 +87,7 @@ export function DataForm() {
       >
         <SettingsRow
           title="Import file"
-          description="Choose a downloaded JSON or ZIP file. Imports preserve visible conversation text and reasoning, but not attachments, images, or branches."
+          description="Choose a downloaded JSON or ZIP file. Imports preserve visible chat text and reasoning, but not attachments, images, or branches."
           align="center"
           controlAlign="end"
         >
@@ -119,7 +119,7 @@ export function DataForm() {
 
       <SettingsSection
         title="Export"
-        description="Download every conversation as a single overtchat JSON file."
+        description="Download every chat as a single overtchat JSON file."
       >
         <SettingsRow
           title="Export file"

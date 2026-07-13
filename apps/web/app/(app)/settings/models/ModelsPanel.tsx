@@ -100,7 +100,7 @@ export function ModelsPanel() {
     <div className="@container max-w-4xl space-y-6">
       <SettingsPageHeader
         title="Models"
-        description="Configure the model endpoints available in chat."
+        description="Manage the models available in chat."
         action={
           models.length > 0 ? (
             <Button render={<Link href="/settings/models/new" />} size="sm">
@@ -139,7 +139,7 @@ export function ModelsPanel() {
 
       {models.length === 0 ? (
         <div className="border-y border-dashed px-6 py-14 text-center">
-          <p className="text-sm text-muted-foreground">No models configured yet.</p>
+          <p className="text-sm text-muted-foreground">No models configured.</p>
           <Button
             render={<Link href="/settings/models/new" />}
             className="mt-4"
@@ -258,8 +258,7 @@ export function ModelsPanel() {
               <span className="font-medium text-foreground">
                 {pendingDelete?.label}
               </span>{" "}
-              will be removed from the picker. Existing chats that used it keep
-              their messages.
+              will be removed from chat. Existing chats keep their messages.
             </AlertDialog.Description>
             {deleteError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">

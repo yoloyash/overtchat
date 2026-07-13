@@ -109,7 +109,7 @@ function convertOne(conv: ClaudeConversation): ImportedChat | null {
   if (!messages.length) return null;
 
   return {
-    title: (conv.name ?? "").toString().slice(0, 200) || "Claude conversation",
+    title: (conv.name ?? "").toString().slice(0, 200) || "Claude chat",
     createdAt: chatCreated,
     messages,
   };
@@ -124,6 +124,6 @@ export function importClaude(data: unknown): ImportedChat[] {
     const chat = convertOne(conv);
     if (chat) out.push(chat);
   }
-  if (!out.length) throw new ImportError("No usable conversations in Claude export.");
+  if (!out.length) throw new ImportError("No usable chats in Claude export.");
   return out;
 }
