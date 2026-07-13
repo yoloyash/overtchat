@@ -8,7 +8,6 @@ import { Input } from "@/components/ui/input";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
 import type { PublicModelConfig } from "@/lib/config";
-import { PRESETS, PRESET_IDS } from "@/lib/providers/meta";
 
 interface Props {
   models: PublicModelConfig[] | null;
@@ -16,7 +15,6 @@ interface Props {
   onSelect: (id: string) => void;
 }
 
-const GROUP_ORDER = PRESET_IDS.map((id) => PRESETS[id].label);
 const SEARCH_THRESHOLD = 7;
 
 export function ModelPicker({ models, selectedId, onSelect }: Props) {
@@ -44,8 +42,6 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
         .includes(q),
     );
   }, [models, search]);
-
-  const groups = groupModels(filteredModels);
 
   return (
     <Menu.Root>
@@ -95,50 +91,32 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
             )}
 
             <div className={showSearch ? "p-1" : undefined}>
-              {groups.length === 0 ? (
+              {filteredModels.length === 0 ? (
                 <div className="px-2 py-6 text-center text-xs text-muted-foreground">
                   No models match{" "}
                   <span className="text-foreground">{search.trim()}</span>.
                 </div>
               ) : (
-                groups.map(([groupLabel, items]) => (
-                  <Menu.Group
-                    key={groupLabel}
-                    className="py-1 first:pt-0 last:pb-0 not-first:border-t not-first:mt-1 not-first:pt-2"
+                filteredModels.map((m) => (
+                  <Menu.Item
+                    key={m.id}
+                    onClick={() => {
+                      onSelect(m.id);
+                      setSearch("");
+                    }}
+                    className={cn(
+                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                      m.id === selectedId && "bg-accent text-accent-foreground",
+                    )}
                   >
-                    <Menu.GroupLabel className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                      {groupLabel}
-                    </Menu.GroupLabel>
-                    {items.map((m) => (
-                      <Menu.Item
-                        key={m.id}
-                        onClick={() => {
-                          onSelect(m.id);
-                          setSearch("");
-                        }}
-                        className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                      >
-                        <Check
-                          className={cn(
-                            "mt-0.5 size-3.5 shrink-0",
-                            m.id === selectedId ? "opacity-100" : "opacity-0",
-                          )}
-                        />
-                        <ModelBrandIcon
-                          iconId={m.modelIconId ?? m.providerIconId}
-                          className="mt-px"
-                        />
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate">{m.label}</span>
-                          <span className="truncate text-xs text-muted-foreground">
-                            {m.label === m.model
-                              ? m.displayProvider
-                              : `${m.displayProvider} / ${m.model}`}
-                          </span>
-                        </span>
-                      </Menu.Item>
-                    ))}
-                  </Menu.Group>
+                    <ModelBrandIcon iconId={m.modelIconId ?? m.providerIconId} />
+                    <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                    <span className="flex size-4 shrink-0 items-center justify-center">
+                      {m.id === selectedId ? (
+                        <Check className="size-3.5 text-muted-foreground" />
+                      ) : null}
+                    </span>
+                  </Menu.Item>
                 ))
               )}
             </div>
@@ -147,25 +125,4 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
       </Menu.Portal>
     </Menu.Root>
   );
-}
-
-function groupModels(
-  models: PublicModelConfig[],
-): Array<[string, PublicModelConfig[]]> {
-  const buckets = new Map<string, PublicModelConfig[]>();
-  for (const m of models) {
-    const arr = buckets.get(m.displayProvider) ?? [];
-    arr.push(m);
-    buckets.set(m.displayProvider, arr);
-  }
-  return [...buckets.entries()]
-    .map(([label, items]) => [label, items] satisfies [string, PublicModelConfig[]])
-    .sort(([a], [b]) => {
-      const ai = GROUP_ORDER.indexOf(a);
-      const bi = GROUP_ORDER.indexOf(b);
-      if (ai !== -1 && bi !== -1) return ai - bi;
-      if (ai !== -1) return -1;
-      if (bi !== -1) return 1;
-      return a.localeCompare(b);
-    });
 }

@@ -21,7 +21,6 @@
     "@ai-sdk/react": "^3.0.178",
     "@base-ui/react": "^1.4.1",
     "@better-auth/expo": "^1.6.11",
-    "@lobehub/icons-static-svg": "^1.91.0",
     "@overtchat/shared": "*",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
