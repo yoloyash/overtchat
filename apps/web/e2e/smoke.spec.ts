@@ -89,7 +89,7 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
     await page.waitForURL("**/");
     await page.getByLabel("Open sidebar").click();
     await expect(
-      page.getByText("No conversations yet").filter({ visible: true }),
+      page.getByText("No chats yet").filter({ visible: true }),
     ).toBeVisible();
   });
 });

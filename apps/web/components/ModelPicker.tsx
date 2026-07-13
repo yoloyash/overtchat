@@ -28,8 +28,8 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
     : selected
       ? selected.label
       : models && models.length > 0
-        ? "Select a model"
-        : "No models";
+        ? "Select model"
+        : "No models configured";
 
   const filteredModels = useMemo(() => {
     const list = models ?? [];

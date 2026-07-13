@@ -145,19 +145,19 @@ export const ModelPickerSheet = forwardRef<
           />
         ) : error ? (
           <StatusState
-            title="Couldn't load models."
+            title="Couldn't load models"
             message={error.message}
             tone="error"
           />
         ) : models.length === 0 ? (
           <StatusState
-            title="No models configured."
-            message="An admin needs to add one in Settings → Models."
+            title="No models configured"
+            message="An admin can add one in Settings → Models on the web."
           />
         ) : filteredModels.length === 0 ? (
           <StatusState
-            title={`No models match "${searchTerm}".`}
-            message="Try a model, provider, or deployment name."
+            title={`No models match "${searchTerm}"`}
+            message="Try a model, provider, or endpoint name."
           />
         ) : (
           <View style={styles.list}>
