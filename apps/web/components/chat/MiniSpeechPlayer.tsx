@@ -42,7 +42,7 @@ export function MiniSpeechPlayer({
             type="button"
             onClick={() => stop()}
             aria-label="Dismiss"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
           >
             <X className="size-4" />
           </button>
@@ -74,7 +74,7 @@ export function MiniSpeechPlayer({
           type="button"
           onClick={() => stop()}
           aria-label="Close player"
-          className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="rounded-md p-2 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
         >
           <X className="size-4" />
         </button>

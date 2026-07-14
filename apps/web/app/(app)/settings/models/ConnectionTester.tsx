@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { motionClasses } from "@/lib/motion";
 
 export interface PingArgs {
   baseUrl: string;
@@ -75,7 +76,7 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
       >
         {pinging ? (
           <>
-            <Loader2 className="size-3 animate-spin" /> Testing…
+            <Loader2 className={`size-3 ${motionClasses.spinner}`} /> Testing…
           </>
         ) : (
           "Test connection"

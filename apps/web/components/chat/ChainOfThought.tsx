@@ -10,6 +10,7 @@ import {
   Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import type {
   FetchUrlPart,
@@ -86,22 +87,22 @@ export function ChainOfThought({
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="group/cot flex w-full items-center gap-2 py-1 text-left text-muted-foreground transition-colors hover:text-foreground"
+        className="group/cot flex w-full items-center gap-2 py-1 text-left text-muted-foreground motion-colors hover:text-foreground"
       >
         <StatusIcon
-          className={cn("size-4 shrink-0", active && "animate-spin")}
+          className={cn("size-4 shrink-0", active && motionClasses.spinner)}
         />
         <span
           className={cn(
             "min-w-0 truncate font-medium",
-            active ? "animate-text-shimmer text-foreground" : "text-foreground",
+            active ? `${motionClasses.shimmer} text-foreground` : "text-foreground",
           )}
         >
           {label}
         </span>
         <ChevronDown
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200",
+            "size-3.5 shrink-0 text-muted-foreground/60 motion-transform",
             open && "rotate-180",
           )}
         />
@@ -110,7 +111,8 @@ export function ChainOfThought({
       {/* Timeline — typed step nodes on a left rail, in original order. */}
       <div
         className={cn(
-          "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+          "grid",
+          motionClasses.collapse,
           open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
       >
@@ -202,7 +204,7 @@ function ResultRow({ result }: { result: WebSearchResult }) {
         href={result.link}
         target="_blank"
         rel="noreferrer"
-        className="flex items-center gap-2.5 px-2.5 py-2 transition-colors hover:bg-accent/60"
+        className="flex items-center gap-2.5 px-2.5 py-2 motion-colors hover:bg-accent/60"
       >
         <Favicon domain={domain} className="size-4 shrink-0 rounded-sm" />
         <span className="min-w-0 flex-1 truncate text-foreground">
@@ -237,10 +239,10 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
       href={page?.url ?? url ?? "#"}
       target="_blank"
       rel="noreferrer"
-      className="flex items-center gap-2.5 rounded-lg border bg-background/40 px-2.5 py-2 transition-colors hover:bg-accent/60"
+      className="flex items-center gap-2.5 rounded-lg border bg-background/40 px-2.5 py-2 motion-colors hover:bg-accent/60"
     >
       {running ? (
-        <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+        <Loader2 className={cn("size-4 shrink-0 text-muted-foreground", motionClasses.spinner)} />
       ) : (
         <Favicon domain={domain} className="size-4 shrink-0 rounded-sm" />
       )}

@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
@@ -22,7 +21,11 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
 import { Button } from "@/components/ui/button";
+import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
+import { motionClasses } from "@/lib/motion";
+import { useMotionRouter } from "@/lib/useMotionRouter";
+import { useReducedMotion } from "@/lib/useReducedMotion";
 
 interface Chat {
   id: string;
@@ -85,7 +88,7 @@ export function SidebarItem({
   projects: ProjectOption[];
   currentProjectId?: string | null;
 }) {
-  const router = useRouter();
+  const router = useMotionRouter();
   const pathname = usePathname();
   const active = pathname === `/chat/${chat.id}`;
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
@@ -180,10 +183,10 @@ export function SidebarItem({
   return (
     <>
       <li className="group flex items-center">
-        <Link
+        <MotionLink
           href={`/chat/${chat.id}`}
           className={cn(
-            "flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent",
+            "flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
             active && "bg-sidebar-accent",
           )}
         >
@@ -197,41 +200,54 @@ export function SidebarItem({
           ) : (
             "Untitled"
           )}
-        </Link>
+        </MotionLink>
         <Menu.Root>
           <Menu.Trigger
             aria-label="Chat actions"
-            className="mr-0.5 rounded p-1 opacity-0 transition-opacity hover:bg-sidebar-accent group-hover:opacity-100 data-[popup-open]:opacity-100 max-md:p-2 [@media(hover:none)]:opacity-100"
+            className={cn(
+              "mr-0.5 rounded p-1 hover:bg-sidebar-accent max-md:p-2",
+              motionClasses.hoverReveal,
+            )}
           >
             <MoreHorizontal className="size-3.5 text-muted-foreground" />
           </Menu.Trigger>
           <Menu.Portal container={drawerRef}>
             <Menu.Positioner side="right" align="start" sideOffset={6}>
-              <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+              <Menu.Popup
+                className={cn(
+                  "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                  motionClasses.popup,
+                )}
+              >
                 <Menu.Item
                   onClick={() => {
                     setDraft(chat.title ?? "");
                     setRenaming(true);
                   }}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
                   <span>Rename</span>
                 </Menu.Item>
                 <Menu.SubmenuRoot>
-                  <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
+                  <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
                     <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
                     <span>Move to</span>
                     <span className="ml-auto text-muted-foreground">›</span>
                   </Menu.SubmenuTrigger>
                   <Menu.Portal container={drawerRef}>
                     <Menu.Positioner side="right" align="start" sideOffset={6}>
-                      <Menu.Popup className="z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+                      <Menu.Popup
+                        className={cn(
+                          "z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                          motionClasses.popup,
+                        )}
+                      >
                         <Menu.Item
                           onClick={() => moveTo(null)}
                           disabled={currentProjectId === null}
                           className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                             currentProjectId === null &&
                               "text-muted-foreground",
                           )}
@@ -247,7 +263,7 @@ export function SidebarItem({
                             onClick={() => moveTo(p.id)}
                             disabled={p.id === currentProjectId}
                             className={cn(
-                              "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                              "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                               p.id === currentProjectId &&
                                 "text-muted-foreground",
                             )}
@@ -261,14 +277,14 @@ export function SidebarItem({
                 </Menu.SubmenuRoot>
                 <Menu.Item
                   render={<a href={`/api/chat/${chat.id}/export`} download />}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <Download className="size-3.5 shrink-0 text-muted-foreground" />
                   <span>Export</span>
                 </Menu.Item>
                 <Menu.Item
                   onClick={requestDelete}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none data-[highlighted]:bg-accent"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
                 >
                   <Trash2 className="size-3.5 shrink-0" />
                   <span>Delete</span>
@@ -291,8 +307,15 @@ export function SidebarItem({
         }}
       >
         <AlertDialog.Portal>
-          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-          <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-5 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+          <AlertDialog.Backdrop
+            className={cn("fixed inset-0 z-50 bg-black/40", motionClasses.overlay)}
+          />
+          <AlertDialog.Popup
+            className={cn(
+              "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-5 text-card-foreground shadow-lg outline-none",
+              motionClasses.dialog,
+            )}
+          >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               Delete chat?
             </AlertDialog.Title>
@@ -349,12 +372,17 @@ function RevealedTitle({
   onComplete: () => void;
 }) {
   const chars = Array.from(title);
+  const reducedMotion = useReducedMotion();
   const [length, setLength] = useState(() =>
     reveal ? Math.min(1, chars.length) : chars.length,
   );
 
   useEffect(() => {
     if (!reveal) return;
+    if (reducedMotion) {
+      onComplete();
+      return;
+    }
 
     let nextLength = Math.min(1, chars.length);
 
@@ -368,7 +396,7 @@ function RevealedTitle({
     }, 24);
 
     return () => window.clearInterval(interval);
-  }, [chars.length, onComplete, reveal]);
+  }, [chars.length, onComplete, reducedMotion, reveal]);
 
-  return <>{reveal ? chars.slice(0, length).join("") : title}</>;
+  return <>{reveal && !reducedMotion ? chars.slice(0, length).join("") : title}</>;
 }

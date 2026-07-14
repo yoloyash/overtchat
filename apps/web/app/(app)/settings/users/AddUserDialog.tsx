@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -79,8 +81,15 @@ export function AddUserDialog({
       }}
     >
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 data-[starting-style]:opacity-0 data-[ending-style]:opacity-0 transition-opacity" />
-        <Dialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+        <Dialog.Backdrop
+          className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+        />
+        <Dialog.Popup
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none",
+            motionClasses.dialog,
+          )}
+        >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
             Add user
           </Dialog.Title>

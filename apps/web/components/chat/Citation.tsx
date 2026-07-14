@@ -35,7 +35,7 @@ function CitationPill({ source, n }: { source: WebSearchResult; n: number }) {
       target="_blank"
       rel="noopener noreferrer"
       title={`${source.title} — ${domain}`}
-      className="ml-0.5 inline-flex h-[18px] items-center gap-1 rounded-full border bg-muted px-1.5 align-baseline text-[10px] font-medium leading-none text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-foreground"
+      className="ml-0.5 inline-flex h-[18px] items-center gap-1 rounded-full border bg-muted px-1.5 align-baseline text-[10px] font-medium leading-none text-muted-foreground no-underline motion-colors hover:bg-accent hover:text-foreground"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img

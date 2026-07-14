@@ -8,6 +8,8 @@ import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import { useInvalidateUsers, useUsers } from "@/lib/queries/users";
 import type { UserRow } from "@/lib/queries/users";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import {
   SettingsNotice,
   SettingsPageHeader,
@@ -128,8 +130,15 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
         }}
       >
         <AlertDialog.Portal>
-          <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-          <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+          <AlertDialog.Backdrop
+            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+          />
+          <AlertDialog.Popup
+            className={cn(
+              "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none",
+              motionClasses.dialog,
+            )}
+          >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               Delete user?
             </AlertDialog.Title>

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
 import type { PublicModelConfig } from "@/lib/config";
+import { motionClasses } from "@/lib/motion";
 
 interface Props {
   models: PublicModelConfig[] | null;
@@ -70,6 +71,7 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
           <Menu.Popup
             className={cn(
               "z-50 max-h-96 w-80 overflow-y-auto rounded-lg border bg-popover text-sm text-popover-foreground shadow-md outline-none",
+              motionClasses.popup,
               showSearch ? "p-0" : "p-1",
             )}
           >
@@ -105,7 +107,7 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
                       setSearch("");
                     }}
                     className={cn(
-                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                       m.id === selectedId && "bg-accent text-accent-foreground",
                     )}
                   >

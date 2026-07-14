@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MotionLink } from "@/components/ui/motion-link";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
@@ -26,6 +26,7 @@ import {
   SettingsPageHeader,
 } from "../_components/SettingsRows";
 import { HealthBadge } from "./HealthBadge";
+import { motionClasses } from "@/lib/motion";
 
 export function ModelsPanel() {
   const { data: models = [] } = useAdminModelConfigs();
@@ -108,7 +109,7 @@ export function ModelsPanel() {
         description="Manage the models available in chat."
         action={
           models.length > 0 ? (
-            <Button render={<Link href="/settings/models/new" />} size="sm">
+            <Button render={<MotionLink href="/settings/models/new" />} size="sm">
               <Plus /> Add model
             </Button>
           ) : undefined
@@ -137,7 +138,7 @@ export function ModelsPanel() {
         <div className="border-y border-dashed px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">No models configured.</p>
           <Button
-            render={<Link href="/settings/models/new" />}
+            render={<MotionLink href="/settings/models/new" />}
             className="mt-4"
             size="sm"
           >
@@ -203,7 +204,7 @@ export function ModelsPanel() {
                   <div className="h-6 w-px bg-border" aria-hidden="true" />
                   <div className="flex items-center gap-1.5">
                     <Button
-                      render={<Link href={`/settings/models/${m.id}`} />}
+                      render={<MotionLink href={`/settings/models/${m.id}`} />}
                       variant="outline"
                       size="sm"
                       aria-label={`Edit ${m.label}`}
@@ -245,8 +246,15 @@ export function ModelsPanel() {
         }}
       >
         <AlertDialog.Portal>
-          <AlertDialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-          <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+          <AlertDialog.Backdrop
+            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+          />
+          <AlertDialog.Popup
+            className={cn(
+              "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 shadow-lg outline-none",
+              motionClasses.dialog,
+            )}
+          >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               Delete model?
             </AlertDialog.Title>

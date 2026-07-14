@@ -32,7 +32,7 @@ export function Sources({ message }: { message: UIMessage }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-md py-1 text-muted-foreground transition-colors hover:text-foreground"
+        className="flex items-center gap-2 rounded-md py-1 text-muted-foreground motion-colors hover:text-foreground"
       >
         <div className="flex -space-x-1">
           {preview.map((r) => {
@@ -52,7 +52,7 @@ export function Sources({ message }: { message: UIMessage }) {
         <span className="font-medium">{all.length} Sources</span>
         <ChevronRight
           className={cn(
-            "size-3.5 transition-transform",
+            "size-3.5 motion-transform",
             open && "rotate-90",
           )}
         />

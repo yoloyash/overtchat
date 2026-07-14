@@ -55,6 +55,10 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+@theme {
+  --animate-text-shimmer: text-shimmer 2.5s linear infinite;
+}
+
 /*
  * Olive palette (hue 120°). Source of truth lives in
  * `packages/shared/src/theme/tokens.ts`; the imported file is generated.
@@ -63,6 +67,18 @@
 @import "@overtchat/shared/theme.css";
 
 @layer base {
+  :root {
+    --motion-duration-instant: 0ms;
+    --motion-duration-fast: 120ms;
+    --motion-duration-base: 180ms;
+    --motion-duration-slow: 240ms;
+    --motion-duration-deliberate: 320ms;
+    --motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+    --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+    --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
@@ -96,6 +112,56 @@
   }
 }
 
+@layer utilities {
+  .motion-colors {
+    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, box-shadow;
+    transition-duration: var(--motion-duration-fast);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .motion-opacity {
+    transition-property: opacity;
+    transition-duration: var(--motion-duration-fast);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .motion-transform {
+    transition-property: transform;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .motion-surface {
+    transition-property: opacity, transform, scale;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .motion-overlay {
+    transition-property: opacity;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .motion-collapse {
+    transition-property: grid-template-rows, opacity;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
+  .motion-disable,
+  .motion-disable * {
+    transition-duration: var(--motion-duration-instant) !important;
+    animation-duration: var(--motion-duration-instant) !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+
+  .motion-skeleton {
+    background-color: color-mix(in oklch, var(--muted) 82%, var(--foreground) 8%);
+  }
+}
+
 @media (forced-colors: active) {
   * {
     scrollbar-color: auto;
@@ -121,4 +187,73 @@
   -webkit-background-clip: text;
   color: transparent;
   animation: text-shimmer 2.5s linear infinite;
+}
+
+@supports (view-transition-name: root) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: var(--motion-duration-slow);
+    animation-timing-function: var(--motion-ease-standard);
+  }
+
+  :root:active-view-transition-type(route-chat)::view-transition-old(root),
+  :root:active-view-transition-type(route-project)::view-transition-old(root),
+  :root:active-view-transition-type(route-settings)::view-transition-old(root) {
+    animation-name: overtchat-route-out;
+  }
+
+  :root:active-view-transition-type(route-chat)::view-transition-new(root),
+  :root:active-view-transition-type(route-project)::view-transition-new(root),
+  :root:active-view-transition-type(route-settings)::view-transition-new(root),
+  :root:active-view-transition-type(route-home)::view-transition-new(root) {
+    animation-name: overtchat-route-in;
+  }
+}
+
+@keyframes overtchat-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes overtchat-route-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: var(--motion-duration-instant) !important;
+    animation-duration: var(--motion-duration-instant) !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .animate-text-shimmer {
+    background-image: none;
+    color: currentColor;
+  }
+
+  @supports (view-transition-name: root) {
+    ::view-transition-old(root),
+    ::view-transition-new(root) {
+      animation: none;
+    }
+  }
 }
