@@ -45,8 +45,10 @@ docker compose up -d --build
 
 Open [http://localhost:4718](http://localhost:4718), sign up, the setup wizard takes you the rest of the way.
 
-**LAN access:** set `BETTER_AUTH_URL=http://<your-lan-ip>:4718` in `.env`, then `docker compose up -d`.
-**Internet access:** uncomment the `cloudflared` block in `compose.yml` and paste a tunnel token.
+- **LAN access:** set `BETTER_AUTH_URL=http://<your-lan-ip>:4718` in `.env`, then `docker compose up -d`.
+- **Internet access:** uncomment the `cloudflared` block in `compose.yml` and paste a tunnel token.
+
+Already run SearXNG or Kokoro elsewhere? You can point overtchat at them; see [deploy docs](docs/deploy.md#reusing-sidecars).
 
 ## Mobile
 
@@ -81,7 +83,7 @@ Multilingual (25 languages, auto-detected). All processing stays on your machine
 
 ## Privacy
 
-No telemetry, no analytics. No external calls except the LLM endpoint you configure and the bundled SearXNG (which runs on your machine). All data lives in a single SQLite file you can copy, back up, or delete.
+No telemetry, no analytics. No external calls except the LLM endpoint you configure and SearXNG (bundled by default, or your own if you point overtchat at it). All data lives in a single SQLite file you can copy, back up, or delete.
 
 The Android client adds one exception: crash reports go to Sentry (no chat content, no credentials). Details in the [privacy policy](https://yoloyash.github.io/overtchat/privacy.html).
 
