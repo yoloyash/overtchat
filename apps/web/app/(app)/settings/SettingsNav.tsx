@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Cpu, Database, Settings2, User, Users } from "lucide-react";
+import { MotionLink } from "@/components/ui/motion-link";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth/client";
 
@@ -87,10 +87,11 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
   const active = pathname === item.href;
   const Icon = item.icon;
   return (
-    <Link
+    <MotionLink
       href={item.href}
+      pendingHint
       className={cn(
-        "flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+        "flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors",
         active
           ? "bg-accent text-accent-foreground"
           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
@@ -98,6 +99,6 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
     >
       <Icon className="size-3.5 shrink-0" />
       <span>{item.label}</span>
-    </Link>
+    </MotionLink>
   );
 }

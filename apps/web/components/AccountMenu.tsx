@@ -1,17 +1,19 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronUp, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import { getErrorMessage } from "@/lib/errors";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/sidebar-context";
+import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function AccountMenu() {
-  const router = useRouter();
+  const router = useMotionRouter();
   const { data: session, isPending } = authClient.useSession();
   // Portal the menu into the drawer's Dialog.Popup on mobile so the Dialog's
   // dismiss logic recognizes menu-item taps as "inside" events. On desktop
@@ -73,17 +75,22 @@ export function AccountMenu() {
       </Menu.Trigger>
       <Menu.Portal container={drawerRef}>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
-          <Menu.Popup className="z-50 w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+          <Menu.Popup
+            className={cn(
+              "z-50 w-56 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+              motionClasses.popup,
+            )}
+          >
             <Menu.Item
-              render={<Link href="/settings" />}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              render={<MotionLink href="/settings" />}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
               <span>Settings</span>
             </Menu.Item>
             <Menu.Item
               onClick={logOut}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <LogOut className="size-3.5 shrink-0 text-muted-foreground" />
               <span>Log out</span>

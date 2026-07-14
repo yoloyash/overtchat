@@ -1,24 +1,26 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { useChats } from "@/lib/queries/chats";
 import { getErrorMessage } from "@/lib/errors";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import {
   useDeleteProject,
   useProject,
   useUpdateProject,
 } from "@/lib/queries/projects";
+import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function ProjectPanel({ projectId }: { projectId: string }) {
-  const router = useRouter();
+  const router = useMotionRouter();
   const { data: project } = useProject(projectId);
   const { data: chats = [] } = useChats();
   const updateMut = useUpdateProject(projectId);
@@ -153,7 +155,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
           <button
             type="button"
             onClick={startRename}
-            className="truncate rounded-md px-1 py-0.5 text-sm font-semibold tracking-tight hover:bg-accent"
+            className="truncate rounded-md px-1 py-0.5 text-sm font-semibold tracking-tight motion-colors hover:bg-accent"
             title="Rename"
           >
             {project.name}
@@ -163,23 +165,28 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
         <Menu.Root>
           <Menu.Trigger
             aria-label="Project actions"
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
           >
             <MoreHorizontal className="size-4" />
           </Menu.Trigger>
           <Menu.Portal>
             <Menu.Positioner side="bottom" align="end" sideOffset={6}>
-              <Menu.Popup className="z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none">
+              <Menu.Popup
+                className={cn(
+                  "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                  motionClasses.popup,
+                )}
+              >
                 <Menu.Item
                   onClick={startRename}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
                   <span>Rename</span>
                 </Menu.Item>
                 <Menu.Item
                   onClick={requestDelete}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none data-[highlighted]:bg-accent"
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
                 >
                   <Trash2 className="size-3.5 shrink-0" />
                   <span>Delete project</span>
@@ -224,7 +231,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
               <h2 className="text-base font-semibold tracking-tight">Chats</h2>
               <Button
                 size="sm"
-                render={<Link href={`/?projectId=${project.id}`} />}
+                render={<MotionLink href={`/?projectId=${project.id}`} />}
               >
                 <Plus /> New chat
               </Button>
@@ -237,12 +244,12 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
               <ul className="divide-y rounded-lg border">
                 {projectChats.map((c) => (
                   <li key={c.id}>
-                    <Link
+                    <MotionLink
                       href={`/chat/${c.id}`}
-                      className="block truncate px-3 py-2.5 text-sm hover:bg-accent"
+                      className="block truncate px-3 py-2.5 text-sm motion-colors hover:bg-accent"
                     >
                       {c.title ?? "Untitled"}
-                    </Link>
+                    </MotionLink>
                   </li>
                 ))}
               </ul>
@@ -263,8 +270,15 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
         }}
       >
         <AlertDialog.Portal>
-          <AlertDialog.Backdrop className="fixed inset-0 z-50 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0" />
-          <AlertDialog.Popup className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0">
+          <AlertDialog.Backdrop
+            className={cn("fixed inset-0 z-50 bg-black/40", motionClasses.overlay)}
+          />
+          <AlertDialog.Popup
+            className={cn(
+              "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none",
+              motionClasses.dialog,
+            )}
+          >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               Delete project?
             </AlertDialog.Title>

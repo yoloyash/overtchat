@@ -2,6 +2,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
+import { routeTransitionTypes } from "@/lib/motion";
 import { SettingsNav } from "./SettingsNav";
 
 export default function SettingsLayout({
@@ -16,7 +17,7 @@ export default function SettingsLayout({
         <span className="text-sm font-semibold tracking-tight">Settings</span>
         <div className="flex-1" />
         <Button
-          render={<Link href="/" />}
+          render={<Link href="/" transitionTypes={[routeTransitionTypes.home]} />}
           variant="ghost"
           size="icon-sm"
           aria-label="Close settings"
