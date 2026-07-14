@@ -9,7 +9,7 @@
 <p align="center">
   <a href="docs/android-testing.md"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
   <a href="https://yoloyash.github.io/overtchat/privacy.html"><img src="https://img.shields.io/badge/Privacy-Zero_Telemetry-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
-  <a href="https://github.com/yoloyash/overtchat"><img src=".github/badges/tokens.svg" alt="repo tokens" valign="middle"></a>
+  <a href=".github/actions/repo-tokens/README.md"><img src=".github/badges/tokens.svg" alt="source tokens" valign="middle"></a>
 </p>
 
 https://github.com/user-attachments/assets/8d135eac-ae55-40eb-934c-e0d88395bb5b

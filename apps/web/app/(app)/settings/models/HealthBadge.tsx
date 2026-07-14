@@ -1,6 +1,7 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
+import { motionClasses } from "@/lib/motion";
 import { useModelHealth } from "@/lib/queries/modelConfigs";
 
 export interface HealthBadgeProps {
@@ -41,10 +42,10 @@ export function HealthBadge({ id, enabled }: HealthBadgeProps) {
       disabled={!enabled || isFetching}
       title={title}
       aria-label={title}
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-card/60 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border bg-card/60 px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none text-muted-foreground motion-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
     >
       {isFetching ? (
-        <Loader2 className="size-2.5 animate-spin" />
+        <Loader2 className={`size-2.5 ${motionClasses.spinner}`} />
       ) : (
         <span className={`size-1.5 rounded-full ${dotClass}`} aria-hidden />
       )}

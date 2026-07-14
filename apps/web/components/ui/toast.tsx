@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { CheckCircle2, X, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { motionClasses } from "@/lib/motion";
 
 type ToastInput =
   | string
@@ -58,8 +59,8 @@ function ToastList() {
       toast={item}
       swipeDirection="right"
       className={cn(
-        "pointer-events-auto w-full rounded-lg border bg-popover text-popover-foreground shadow-lg outline-none transition-all duration-200",
-        "data-[swiping]:transition-none data-[starting-style]:translate-x-6 data-[starting-style]:opacity-0 data-[ending-style]:translate-x-6 data-[ending-style]:opacity-0",
+        "pointer-events-auto w-full rounded-lg border bg-popover text-popover-foreground shadow-lg outline-none",
+        motionClasses.toast,
         item.type === "success" && "border-ring/30",
         item.type === "error" && "border-destructive/35",
       )}
@@ -74,7 +75,7 @@ function ToastList() {
         </div>
         <ToastPrimitive.Close
           aria-label="Dismiss notification"
-          className="rounded-md p-1 text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="rounded-md p-1 text-muted-foreground outline-none motion-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <X className="size-3.5" />
         </ToastPrimitive.Close>

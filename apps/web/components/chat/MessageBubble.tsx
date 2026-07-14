@@ -27,6 +27,7 @@ import { groupMessageParts } from "@/lib/chat/parts";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
 import type { MessageStats } from "@/lib/chat/stats";
+import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
 import {
   Citation,
@@ -391,7 +392,7 @@ function MessageActions({
 }) {
   if (!show) return null;
   return (
-    <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+    <div className="flex items-center gap-0.5 opacity-0 motion-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
       {children}
     </div>
   );
@@ -412,7 +413,7 @@ function ActionButton({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
+      className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
     >
       {icon}
     </button>
@@ -463,7 +464,7 @@ function SpeakButton({
   const live = active && (speech.status === "playing" || speech.status === "paused");
   const label = live ? "Stop" : loading ? "Loading…" : "Speak";
   const icon = loading ? (
-    <Loader2 className="size-3.5 animate-spin" />
+    <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />
   ) : live ? (
     <Square className="size-3 fill-current" />
   ) : (

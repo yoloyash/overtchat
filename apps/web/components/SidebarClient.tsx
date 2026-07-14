@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import { FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
 import { SidebarChatList } from "@/components/SidebarChatList";
@@ -12,11 +11,13 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
+import { MotionLink } from "@/components/ui/motion-link";
+import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function SidebarClient() {
   const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
-  const router = useRouter();
+  const router = useMotionRouter();
   const pathname = usePathname();
 
   const { data: chats = [] } = useChats();
@@ -72,7 +73,7 @@ export function SidebarClient() {
 
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         <nav className="flex flex-col gap-0.5 py-1">
-          <Link
+          <MotionLink
             href="/"
             onClick={(e) => {
               setOpenMobile(false);
@@ -81,16 +82,17 @@ export function SidebarClient() {
                 router.refresh();
               }
             }}
-            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"
+            pendingHint
+            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
           >
             <Pencil className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">New chat</span>
             <Shortcut keys={["Ctrl", "Shift", "O"]} />
-          </Link>
+          </MotionLink>
           <button
             type="button"
             onClick={openPalette}
-            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent"
+            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
           >
             <Search className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1 text-left">Search chats</span>
@@ -103,7 +105,7 @@ export function SidebarClient() {
         <button
           type="button"
           onClick={() => setCreatingProject(true)}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
         >
           <FolderPlus className="size-4 shrink-0" />
           <span>New project</span>
@@ -130,7 +132,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 function Shortcut({ keys }: { keys: string[] }) {
   return (
-    <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+    <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-muted-foreground opacity-0 motion-opacity group-hover:opacity-100">
       {keys.map((k) => (
         <kbd
           key={k}

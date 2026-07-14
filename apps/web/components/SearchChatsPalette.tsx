@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Pencil, Search, X } from "lucide-react";
@@ -8,6 +7,8 @@ import { cn } from "@/lib/utils";
 import { groupByDate, type DateBucket } from "@/lib/dateGroups";
 import { useChats } from "@/lib/queries/chats";
 import { useChatsSearch, type SearchHit } from "@/lib/queries/search";
+import { motionClasses } from "@/lib/motion";
+import { useMotionRouter } from "@/lib/useMotionRouter";
 
 type Chat = { id: string; title: string | null; updatedAt: number };
 
@@ -40,7 +41,7 @@ export function SearchChatsPalette({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const router = useRouter();
+  const router = useMotionRouter();
   const { data: allChats = [] } = useChats();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -145,8 +146,15 @@ export function SearchChatsPalette({
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0" />
-        <Dialog.Popup className="fixed left-1/2 top-[20%] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border bg-popover text-popover-foreground shadow-xl outline-none transition-opacity data-[starting-style]:opacity-0 data-[ending-style]:opacity-0">
+        <Dialog.Backdrop
+          className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+        />
+        <Dialog.Popup
+          className={cn(
+            "fixed left-1/2 top-[20%] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border bg-popover text-popover-foreground shadow-xl outline-none",
+            motionClasses.palette,
+          )}
+        >
           <Dialog.Title className="sr-only">Search chats</Dialog.Title>
           <div className="flex items-center gap-2 border-b px-3 py-2.5">
             <Search className="size-4 shrink-0 text-muted-foreground" />
@@ -174,7 +182,7 @@ export function SearchChatsPalette({
               type="button"
               onClick={() => handleOpenChange(false)}
               aria-label="Close"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded p-1 text-muted-foreground motion-colors hover:bg-muted hover:text-foreground"
             >
               <X className="size-4" />
             </button>

@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import { SidebarContext } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import { motionClasses } from "@/lib/motion";
+import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function AppShell({
   sidebar,
@@ -14,7 +16,7 @@ export function AppShell({
   sidebar: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
+  const router = useMotionRouter();
   const [openMobile, setOpenMobile] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = useLocalStorage<boolean>(
@@ -64,10 +66,12 @@ export function AppShell({
         <div className="box-border flex h-dvh overflow-hidden bg-background pt-[env(safe-area-inset-top)]">
           {!collapsed && <div className="hidden md:flex">{sidebar}</div>}
           <Dialog.Portal>
-            <Dialog.Backdrop className="fixed inset-0 z-40 bg-black/40 transition-opacity data-[ending-style]:opacity-0 data-[starting-style]:opacity-0 md:hidden" />
+            <Dialog.Backdrop
+              className={`fixed inset-0 z-40 bg-black/40 md:hidden ${motionClasses.overlay}`}
+            />
             <Dialog.Popup
               ref={drawerRef as React.RefObject<HTMLDivElement>}
-              className="fixed inset-y-0 left-0 z-50 box-border flex bg-sidebar pt-[env(safe-area-inset-top)] transition-transform duration-200 data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden"
+              className="fixed inset-y-0 left-0 z-50 box-border flex bg-sidebar pt-[env(safe-area-inset-top)] motion-transform data-[ending-style]:-translate-x-full data-[starting-style]:-translate-x-full md:hidden"
             >
               {sidebar}
             </Dialog.Popup>

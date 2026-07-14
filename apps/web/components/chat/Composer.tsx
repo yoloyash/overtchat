@@ -27,6 +27,7 @@ import {
   getDataTransferFiles,
 } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
+import { motionClasses } from "@/lib/motion";
 import { useDictation } from "@/lib/useDictation";
 import { CategoryIcon } from "./attachment-icons";
 import {
@@ -36,7 +37,7 @@ import {
 
 export interface ComposerHandle {
   addFiles: (files: readonly File[]) => void;
-  focus: () => void;
+  focus: (options?: FocusOptions) => void;
 }
 
 interface ComposerProps {
@@ -78,10 +79,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     () => ({
       addFiles(files) {
         addFiles(files);
-        setTimeout(() => textareaRef.current?.focus(), 0);
+        setTimeout(
+          () => textareaRef.current?.focus({ preventScroll: true }),
+          0,
+        );
       },
-      focus() {
-        textareaRef.current?.focus();
+      focus(options) {
+        textareaRef.current?.focus(options);
       },
     }),
     [addFiles],
@@ -93,7 +97,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (!trimmed) return text;
       return `${trimmed} ${text}`;
     });
-    setTimeout(() => textareaRef.current?.focus(), 0);
+    setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
   });
 
   useEffect(() => {
@@ -142,7 +146,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       )}
       <div
         className={cn(
-          "flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm transition-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+          "flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
           dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
         )}
       >
@@ -237,7 +241,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-pressed={dictation.status === "recording"}
             >
               {dictation.status === "transcribing" ? (
-                <Loader2 className="animate-spin" />
+                <Loader2 className={motionClasses.spinner} />
               ) : dictation.status === "recording" ? (
                 <Square className="size-3 fill-current" />
               ) : (
@@ -266,7 +270,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 onClick={submit}
                 aria-label="Send message"
               >
-                {uploading ? <Loader2 className="animate-spin" /> : <ArrowUp />}
+                {uploading ? <Loader2 className={motionClasses.spinner} /> : <ArrowUp />}
               </Button>
             )}
           </div>
@@ -294,7 +298,7 @@ function AttachmentChip({
       type="button"
       onClick={onRemove}
       aria-label={`Remove ${label}`}
-      className="absolute top-0.5 right-0.5 rounded-full bg-foreground/70 p-0.5 text-background shadow-sm hover:bg-foreground max-md:p-1"
+      className="absolute top-0.5 right-0.5 rounded-full bg-foreground/70 p-0.5 text-background shadow-sm motion-colors hover:bg-foreground max-md:p-1"
     >
       <X className="size-3" />
     </button>
@@ -312,7 +316,7 @@ function AttachmentChip({
         )}
         {status === "uploading" && (
           <div className="absolute inset-0 flex items-center justify-center bg-background/50">
-            <Loader2 className="size-4 animate-spin text-foreground" />
+            <Loader2 className={`size-4 text-foreground ${motionClasses.spinner}`} />
           </div>
         )}
         {removeButton}
@@ -339,7 +343,7 @@ function AttachmentChip({
     >
       <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground">
         {status === "uploading" ? (
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className={`size-4 ${motionClasses.spinner}`} />
         ) : status === "error" ? (
           <AlertCircle className="size-4 text-destructive" />
         ) : (

@@ -9,6 +9,8 @@ import {
   type MessageStats,
 } from "@/lib/chat/stats";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 
 export function StatsPopover({ stats }: { stats: MessageStats }) {
   const rows = [
@@ -60,13 +62,18 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
         type="button"
         aria-label="Message stats"
         title="Message stats"
-        className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
+        className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
       >
         <Info className="size-3.5" />
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner side="top" align="start" sideOffset={6}>
-          <Popover.Popup className="z-50 w-56 rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-md outline-none">
+          <Popover.Popup
+            className={cn(
+              "z-50 w-56 rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-md outline-none",
+              motionClasses.popup,
+            )}
+          >
             <div className="space-y-2">
               {rows.map(({ iconId, label, value }) => (
                 <div key={label} className="flex items-center justify-between gap-4">

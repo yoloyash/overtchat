@@ -11,6 +11,7 @@ import { chatKeys } from "@/lib/queries/keys";
 import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
+import { motionClasses } from "@/lib/motion";
 import { authClient } from "@/lib/auth/client";
 import {
   readMessageStats,
@@ -30,6 +31,10 @@ import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
+
+function shouldAutofocusComposer() {
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
 
 interface Props {
   chatId: string;
@@ -82,6 +87,14 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const isNewRef = useRef(isNew ?? false);
   const composerRef = useRef<ComposerHandle>(null);
+
+  useEffect(() => {
+    if (!configured || !shouldAutofocusComposer()) return;
+    const id = window.setTimeout(() => {
+      composerRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [chatId, configured]);
 
   const [transport] = useState(
     () =>
@@ -251,9 +264,9 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       <MiniSpeechPlayer speech={speech} />
 
       {dropActive && (
-        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px]">
+        <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-ring bg-background/90 px-8 py-6 text-center shadow-lg ring-1 ring-ring/20">
-            <div className="flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm animate-in zoom-in-95">
+            <div className={`flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ${motionClasses.dropIcon}`}>
               <FileUp className="size-6" />
             </div>
             <div>
