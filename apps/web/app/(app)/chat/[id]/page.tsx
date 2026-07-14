@@ -17,6 +17,7 @@ export default async function Page({
   const initialMessages = await getMessages(id);
   return (
     <ChatArea
+      key={id}
       chatId={id}
       projectId={chat.projectId ?? null}
       initialMessages={initialMessages}

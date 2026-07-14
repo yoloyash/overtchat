@@ -31,6 +31,10 @@ import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
+function shouldAutofocusComposer() {
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
 interface Props {
   chatId: string;
   initialMessages?: UIMessage[];
@@ -82,6 +86,14 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const isNewRef = useRef(isNew ?? false);
   const composerRef = useRef<ComposerHandle>(null);
+
+  useEffect(() => {
+    if (!configured || !shouldAutofocusComposer()) return;
+    const id = window.setTimeout(() => {
+      composerRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [chatId, configured]);
 
   const [transport] = useState(
     () =>
