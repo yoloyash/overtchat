@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import { AlertTriangle, ChevronDown, RotateCcw } from "lucide-react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import { readMessageStats, type StoredMessageStats } from "@/lib/chat/stats";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MessageBubble } from "./MessageBubble";
-
-const BOTTOM_THRESHOLD_PX = 80;
 
 export function MessageList({
   messages,
@@ -36,59 +34,16 @@ export function MessageList({
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRetry: () => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
-  const [detachedFromBottom, setDetachedFromBottom] = useState(false);
-
-  function pinToBottom(el: HTMLDivElement) {
-    el.scrollTop = el.scrollHeight;
-    setDetachedFromBottom(false);
-  }
-
-  function updateStickiness(el: HTMLDivElement) {
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const isAtBottom = distanceFromBottom < BOTTOM_THRESHOLD_PX;
-    stickToBottomRef.current = isAtBottom;
-    setDetachedFromBottom(!isAtBottom);
-  }
-
-  function handleScroll() {
-    const el = scrollRef.current;
-    if (!el) return;
-    updateStickiness(el);
-  }
-
-  function scrollToBottom() {
-    const el = scrollRef.current;
-    if (!el) return;
-    stickToBottomRef.current = true;
-    pinToBottom(el);
-  }
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    pinToBottom(el);
-  }, [messages]);
-
-  useEffect(() => {
-    const scrollEl = scrollRef.current;
-    const contentEl = contentRef.current;
-    if (!scrollEl || !contentEl) return;
-
-    const observer = new ResizeObserver(() => {
-      if (stickToBottomRef.current) pinToBottom(scrollEl);
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+    useStickToBottom({
+      initial: "instant",
+      resize: "instant",
     });
-    observer.observe(contentEl);
-    return () => observer.disconnect();
-  }, []);
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
       <div
         ref={scrollRef}
-        onScroll={handleScroll}
         className="h-full overflow-y-auto overscroll-contain"
       >
         <div
@@ -115,14 +70,14 @@ export function MessageList({
         </div>
       </div>
 
-      {detachedFromBottom && (
+      {!isAtBottom && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
           <Button
             type="button"
             variant="outline"
             size="icon-sm"
             className="pointer-events-auto rounded-full bg-background/95 shadow-md backdrop-blur"
-            onClick={scrollToBottom}
+            onClick={() => void scrollToBottom()}
             aria-label="Scroll to bottom"
           >
             <ChevronDown />
