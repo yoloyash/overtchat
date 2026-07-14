@@ -1,4 +1,4 @@
-name: Update token count
+name: Update source token count
 
 on:
   push:
@@ -6,6 +6,11 @@ on:
     paths:
       - 'apps/**'
       - 'packages/**'
+      - 'AGENTS.md'
+      - 'Dockerfile'
+      - 'compose.yml'
+      - '.github/actions/repo-tokens/**'
+      - '.github/workflows/tokens.yml'
   workflow_dispatch:
 
 permissions:
@@ -21,11 +26,39 @@ jobs:
         with:
           python-version: '3.12'
 
-      - uses: nanocoai/nanoclaw/repo-tokens@main
+      - uses: ./.github/actions/repo-tokens
         id: tokens
         with:
-          include: 'apps/web/app/**/*.ts apps/web/app/**/*.tsx apps/web/lib/**/*.ts apps/web/lib/**/*.tsx apps/mobile/src/**/*.ts apps/mobile/src/**/*.tsx packages/shared/src/**/*.ts packages/shared/src/**/*.tsx'
-          exclude: '**/*.test.ts **/*.test.tsx **/*.spec.ts **/*.spec.tsx **/node_modules/** **/dist/**'
+          include: >-
+            apps/web/app/**/*.ts
+            apps/web/app/**/*.tsx
+            apps/web/components/**/*.ts
+            apps/web/components/**/*.tsx
+            apps/web/lib/**/*.ts
+            apps/web/lib/**/*.tsx
+            apps/web/instrumentation.ts
+            apps/web/next.config.ts
+            apps/web/scripts/**/*.ts
+            apps/mobile/src/**/*.ts
+            apps/mobile/src/**/*.tsx
+            apps/mobile/scripts/**/*.mjs
+            apps/mobile/app.json
+            apps/mobile/eas.json
+            packages/shared/src/**/*.ts
+            packages/shared/src/**/*.tsx
+            packages/shared/scripts/**/*.ts
+            AGENTS.md
+            apps/web/AGENTS.md
+            apps/mobile/AGENTS.md
+            Dockerfile
+            compose.yml
+          exclude: >-
+            **/*.test.ts
+            **/*.test.tsx
+            **/*.spec.ts
+            **/*.spec.tsx
+            **/node_modules/**
+            **/dist/**
           badge-path: '.github/badges/tokens.svg'
 
       - name: Commit if changed
@@ -34,5 +67,6 @@ jobs:
           git diff --cached --quiet && exit 0
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "docs: update token count to ${{ steps.tokens.outputs.badge }}"
+          git commit -m "docs: update source token count to ${{ steps.tokens.outputs.badge }}"
+          git pull --rebase
           git push
