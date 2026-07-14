@@ -36,7 +36,7 @@ import {
 
 export interface ComposerHandle {
   addFiles: (files: readonly File[]) => void;
-  focus: () => void;
+  focus: (options?: FocusOptions) => void;
 }
 
 interface ComposerProps {
@@ -78,10 +78,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     () => ({
       addFiles(files) {
         addFiles(files);
-        setTimeout(() => textareaRef.current?.focus(), 0);
+        setTimeout(
+          () => textareaRef.current?.focus({ preventScroll: true }),
+          0,
+        );
       },
-      focus() {
-        textareaRef.current?.focus();
+      focus(options) {
+        textareaRef.current?.focus(options);
       },
     }),
     [addFiles],
@@ -93,7 +96,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       if (!trimmed) return text;
       return `${trimmed} ${text}`;
     });
-    setTimeout(() => textareaRef.current?.focus(), 0);
+    setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
   });
 
   useEffect(() => {

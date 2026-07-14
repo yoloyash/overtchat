@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { AlertTriangle, ChevronDown, RotateCcw } from "lucide-react";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import { readMessageStats, type StoredMessageStats } from "@/lib/chat/stats";
@@ -34,47 +34,56 @@ export function MessageList({
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRetry: () => void;
 }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
-
-  function handleScroll() {
-    const el = scrollRef.current;
-    if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceFromBottom < 80;
-  }
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !stickToBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages]);
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+    useStickToBottom({
+      initial: "instant",
+      resize: "instant",
+    });
 
   return (
-    <div
-      ref={scrollRef}
-      onScroll={handleScroll}
-      className="flex-1 overflow-y-auto overscroll-contain"
-    >
-      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8">
-        {messages.map((m, i) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            streaming={streaming && i === messages.length - 1}
-            canAct={!streaming && configured}
-            onRegenerate={onRegenerate}
-            onEdit={onEdit}
-            speech={speech}
-            showStats={showStats}
-            stats={readMessageStats(m) ?? storedStats[m.id] ?? null}
-          />
-        ))}
-        {error && <ChatErrorBubble error={error} onRetry={onRetry} />}
-        {!error &&
-          status === "submitted" &&
-          messages.at(-1)?.role === "user" && <PendingIndicator />}
+    <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto overscroll-contain"
+      >
+        <div
+          ref={contentRef}
+          className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8"
+        >
+          {messages.map((m, i) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              streaming={streaming && i === messages.length - 1}
+              canAct={!streaming && configured}
+              onRegenerate={onRegenerate}
+              onEdit={onEdit}
+              speech={speech}
+              showStats={showStats}
+              stats={readMessageStats(m) ?? storedStats[m.id] ?? null}
+            />
+          ))}
+          {error && <ChatErrorBubble error={error} onRetry={onRetry} />}
+          {!error &&
+            status === "submitted" &&
+            messages.at(-1)?.role === "user" && <PendingIndicator />}
+        </div>
       </div>
+
+      {!isAtBottom && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="pointer-events-auto rounded-full bg-background/95 shadow-md backdrop-blur"
+            onClick={() => void scrollToBottom()}
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
