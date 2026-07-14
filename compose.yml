@@ -9,9 +9,9 @@ services:
     environment:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
-      SEARXNG_URL: http://searxng:8080
-      KOKORO_URL: http://kokoro:8880
-      STT_URL: http://stt:5092
+      SEARXNG_URL: ${OVERTCHAT_SEARXNG_URL:-http://searxng:8080}
+      KOKORO_URL: ${OVERTCHAT_KOKORO_URL:-http://kokoro:8880}
+      STT_URL: ${OVERTCHAT_STT_URL:-http://stt:5092}
       DATABASE_URL: /app/data/chat.db
       REDIS_URL: redis://redis:6379
     extra_hosts:
@@ -21,14 +21,13 @@ services:
     depends_on:
       searxng:
         condition: service_healthy
+        required: false
       kokoro:
         condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
 
-  # Tiny Redis sidecar used as the buffer for resumable assistant streams.
-  # No persistence, 64 MB cap, LRU eviction — if a key is lost, the worst
-  # case is a client falls back to its already-loaded message history.
   redis:
     image: redis:8-alpine@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
     container_name: overtchat-redis
@@ -50,11 +49,10 @@ services:
       retries: 5
 
   searxng:
+    # SearXNG engines churn often; latest avoids silently losing search coverage.
     image: docker.io/searxng/searxng:latest
     container_name: overtchat-searxng
     restart: unless-stopped
-    ports:
-      - "${BIND_ADDR:-127.0.0.1}:${SEARXNG_PORT:-8088}:8080"
     environment:
       FORCE_OWNERSHIP: "false"
       SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
@@ -71,8 +69,6 @@ services:
     image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
     container_name: overtchat-kokoro
     restart: unless-stopped
-    ports:
-      - "${BIND_ADDR:-127.0.0.1}:${KOKORO_PORT:-8880}:8880"
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
       interval: 15s

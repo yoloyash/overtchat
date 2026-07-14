@@ -1,28 +1,23 @@
-# Dev-only port exposures. Binds services to 127.0.0.1 by default so you can
-# curl them from the host while debugging. Not loaded in prod.
-#
-# To expose to your LAN (other machines on the network), set BIND_ADDR=0.0.0.0
-# in .env. Your router still won't forward these to the WAN unless you tell it to.
-#
-# Usage:
-#   docker compose -f compose.yml -f compose.dev.yml up -d
+# Exposes containerized dependencies to `npm run dev` on the host.
+# This file is only used when explicitly passed with `-f`:
+#   docker compose -f compose.yml -f compose.dev.yml up -d redis
 services:
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
   searxng:
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:${SEARXNG_PORT:-8088}:8080"
+      - "127.0.0.1:8088:8080"
 
   kokoro:
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:${KOKORO_PORT:-8880}:8880"
+      - "127.0.0.1:8880:8880"
 
   stt-cpu:
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:${STT_PORT:-5092}:5092"
+      - "127.0.0.1:5092:5092"
 
   stt-gpu:
     ports:
-      - "${BIND_ADDR:-127.0.0.1}:${STT_PORT:-5092}:5092"
-
-  redis:
-    ports:
-      - "${BIND_ADDR:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:5092:5092"
