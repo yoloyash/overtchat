@@ -4,11 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - 'apps/**'
-      - 'packages/**'
-      - 'AGENTS.md'
-      - 'Dockerfile'
-      - 'compose.yml'
+      - 'apps/web/app/**'
+      - 'apps/web/components/**'
+      - 'apps/web/lib/**'
+      - 'apps/web/instrumentation.ts'
+      - 'apps/web/next.config.ts'
+      - 'apps/mobile/src/**'
+      - 'packages/shared/src/**'
       - '.github/actions/repo-tokens/**'
       - '.github/workflows/tokens.yml'
   workflow_dispatch:
@@ -38,20 +40,10 @@ jobs:
             apps/web/lib/**/*.tsx
             apps/web/instrumentation.ts
             apps/web/next.config.ts
-            apps/web/scripts/**/*.ts
             apps/mobile/src/**/*.ts
             apps/mobile/src/**/*.tsx
-            apps/mobile/scripts/**/*.mjs
-            apps/mobile/app.json
-            apps/mobile/eas.json
             packages/shared/src/**/*.ts
             packages/shared/src/**/*.tsx
-            packages/shared/scripts/**/*.ts
-            AGENTS.md
-            apps/web/AGENTS.md
-            apps/mobile/AGENTS.md
-            Dockerfile
-            compose.yml
           exclude: >-
             **/*.test.ts
             **/*.test.tsx

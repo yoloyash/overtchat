@@ -5,10 +5,10 @@ This is a token-count-only adaptation of NanoClaw's
 composite action. It keeps NanoClaw's `tiktoken` counting and SVG badge layout,
 but deliberately omits the model-dependent “percentage of context window.”
 
-The workflow counts the repository's system-understanding surface: production
-web, mobile, and shared source; maintenance scripts; core runtime/build
-configuration; and the agent guidance that documents the architecture. Tests,
-generated output, dependencies, and database migrations are excluded.
+The workflow counts production web, mobile, and shared source, including the
+web runtime entry point and Next.js configuration. Tests, documentation,
+maintenance scripts, infrastructure, generated output, dependencies, and
+database migrations are excluded.
 
 The tokenizer is pinned and the action lives in this repository so the metric
 cannot change because an upstream branch moved. See [LICENSE](LICENSE) for the
