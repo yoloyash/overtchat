@@ -1,0 +1,23 @@
+# Exposes containerized dependencies to `npm run dev` on the host.
+# This file is only used when explicitly passed with `-f`:
+#   docker compose -f compose.yml -f compose.dev.yml up -d redis
+services:
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+
+  searxng:
+    ports:
+      - "127.0.0.1:8088:8080"
+
+  kokoro:
+    ports:
+      - "127.0.0.1:8880:8880"
+
+  stt-cpu:
+    ports:
+      - "127.0.0.1:5092:5092"
+
+  stt-gpu:
+    ports:
+      - "127.0.0.1:5092:5092"

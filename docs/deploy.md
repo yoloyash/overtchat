@@ -26,6 +26,18 @@ First boot takes ~30s because the Kokoro TTS container downloads its model. Subs
 
 Open the URL. First user signs up → becomes admin. Add more users from `/settings/users`.
 
+## Development
+
+Run the app on the host and Redis in Docker:
+
+```bash
+npm install
+docker compose -f compose.yml -f compose.dev.yml up -d redis
+npm run dev
+```
+
+Open [http://localhost:4717](http://localhost:4717). Add `searxng` or `kokoro` to the Compose command when working on search or text-to-speech.
+
 ## Deploying updates
 
 ```bash
@@ -78,21 +90,12 @@ Use `host.docker.internal` for services running on the Docker host, or a LAN/con
 # Tail logs
 docker compose logs -f app
 
-# Restart just the app
-docker compose restart app
-
 # Stop everything
 docker compose down
 
 # Backup the DB (safe while running)
 docker compose exec app sqlite3 /app/data/chat.db ".backup /app/data/backup.db"
 docker compose cp app:/app/data/backup.db ./backup.db
-
-# Nuke everything including data
-docker compose down -v
-
-# Rebuild from scratch
-docker compose down && docker compose up -d --build --force-recreate
 ```
 
 ## Troubleshooting
