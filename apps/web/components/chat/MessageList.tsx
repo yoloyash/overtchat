@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { AlertTriangle, ChevronDown, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import { readMessageStats, type StoredMessageStats } from "@/lib/chat/stats";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MessageBubble } from "./MessageBubble";
+
+const BOTTOM_THRESHOLD_PX = 80;
 
 export function MessageList({
   messages,
@@ -35,46 +37,98 @@ export function MessageList({
   onRetry: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
+  const [detachedFromBottom, setDetachedFromBottom] = useState(false);
+
+  function pinToBottom(el: HTMLDivElement) {
+    el.scrollTop = el.scrollHeight;
+    setDetachedFromBottom(false);
+  }
+
+  function updateStickiness(el: HTMLDivElement) {
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isAtBottom = distanceFromBottom < BOTTOM_THRESHOLD_PX;
+    stickToBottomRef.current = isAtBottom;
+    setDetachedFromBottom(!isAtBottom);
+  }
 
   function handleScroll() {
     const el = scrollRef.current;
     if (!el) return;
-    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    stickToBottomRef.current = distanceFromBottom < 80;
+    updateStickiness(el);
+  }
+
+  function scrollToBottom() {
+    const el = scrollRef.current;
+    if (!el) return;
+    stickToBottomRef.current = true;
+    pinToBottom(el);
   }
 
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !stickToBottomRef.current) return;
-    el.scrollTop = el.scrollHeight;
+    pinToBottom(el);
   }, [messages]);
 
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    const contentEl = contentRef.current;
+    if (!scrollEl || !contentEl) return;
+
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current) pinToBottom(scrollEl);
+    });
+    observer.observe(contentEl);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div
-      ref={scrollRef}
-      onScroll={handleScroll}
-      className="flex-1 overflow-y-auto overscroll-contain"
-    >
-      <div className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8">
-        {messages.map((m, i) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            streaming={streaming && i === messages.length - 1}
-            canAct={!streaming && configured}
-            onRegenerate={onRegenerate}
-            onEdit={onEdit}
-            speech={speech}
-            showStats={showStats}
-            stats={readMessageStats(m) ?? storedStats[m.id] ?? null}
-          />
-        ))}
-        {error && <ChatErrorBubble error={error} onRetry={onRetry} />}
-        {!error &&
-          status === "submitted" &&
-          messages.at(-1)?.role === "user" && <PendingIndicator />}
+    <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="h-full overflow-y-auto overscroll-contain"
+      >
+        <div
+          ref={contentRef}
+          className="mx-auto w-full max-w-3xl space-y-6 px-4 pt-10 pb-8"
+        >
+          {messages.map((m, i) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              streaming={streaming && i === messages.length - 1}
+              canAct={!streaming && configured}
+              onRegenerate={onRegenerate}
+              onEdit={onEdit}
+              speech={speech}
+              showStats={showStats}
+              stats={readMessageStats(m) ?? storedStats[m.id] ?? null}
+            />
+          ))}
+          {error && <ChatErrorBubble error={error} onRetry={onRetry} />}
+          {!error &&
+            status === "submitted" &&
+            messages.at(-1)?.role === "user" && <PendingIndicator />}
+        </div>
       </div>
+
+      {detachedFromBottom && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            className="pointer-events-auto rounded-full bg-background/95 shadow-md backdrop-blur"
+            onClick={scrollToBottom}
+            aria-label="Scroll to bottom"
+          >
+            <ChevronDown />
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
