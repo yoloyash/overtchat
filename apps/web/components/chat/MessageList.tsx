@@ -6,6 +6,7 @@ import { useStickToBottom } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import { readMessageStats, type StoredMessageStats } from "@/lib/chat/stats";
+import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MessageBubble } from "./MessageBubble";
 
@@ -95,9 +96,9 @@ function PendingIndicator() {
       role="status"
       aria-label="Assistant is responding"
     >
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.3s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70 [animation-delay:-0.15s]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground/70" />
+      <span className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.3s] ${motionClasses.pendingDot}`} />
+      <span className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.15s] ${motionClasses.pendingDot}`} />
+      <span className={`size-1.5 rounded-full bg-muted-foreground/70 ${motionClasses.pendingDot}`} />
     </div>
   );
 }

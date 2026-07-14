@@ -71,7 +71,7 @@ export function AdvancedFields({
           {open ? "Hide" : "Show"}
           <ChevronDown
             className={cn(
-              "transition-transform duration-200",
+              "motion-transform",
               open && "rotate-180",
             )}
           />
@@ -103,7 +103,7 @@ export function AdvancedFields({
             <div className="space-y-2">
               <div
                 className={cn(
-                  "rounded-lg border border-input bg-transparent transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
+                  "rounded-lg border border-input bg-transparent motion-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
                   extraBodyError &&
                     "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
                 )}

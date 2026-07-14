@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { fetchModelsForEndpoint } from "@/lib/config";
+import { motionClasses } from "@/lib/motion";
 import {
   modelIconForModel,
   PRESETS,
@@ -246,7 +247,7 @@ export function ConnectionFields({
               onClick={() => void probe(draft.baseUrl, draft.apiKey)}
               className="@lg:w-auto"
             >
-              {probing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              {probing ? <Loader2 className={motionClasses.spinner} /> : <RefreshCw />}
               {models.length > 0 ? "Refresh" : "Fetch"}
             </Button>
           </div>
@@ -254,7 +255,7 @@ export function ConnectionFields({
           <div className="flex min-h-5 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             {probing ? (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" />
+                <Loader2 className={`size-3 ${motionClasses.spinner}`} />
                 Fetching available models
               </span>
             ) : models.length > 0 ? (
