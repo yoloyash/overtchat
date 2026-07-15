@@ -1,52 +1,49 @@
 import { expect, test } from "@playwright/test";
-import Database from "better-sqlite3";
-import path from "node:path";
-
-const TEST_DB_PATH = path.resolve(__dirname, "../data/test.db");
-
-function resetE2eDatabase() {
-  const db = new Database(TEST_DB_PATH);
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 5000");
-  db.transaction(() => {
-    db.prepare("DELETE FROM messages").run();
-    db.prepare("DELETE FROM messages_fts").run();
-    db.prepare("DELETE FROM chats").run();
-    db.prepare("DELETE FROM projects").run();
-    db.prepare("DELETE FROM uploads").run();
-    db.prepare("DELETE FROM account").run();
-    db.prepare("DELETE FROM session").run();
-    db.prepare("DELETE FROM verification").run();
-    db.prepare("DELETE FROM user").run();
-    db.prepare("DELETE FROM model_configs").run();
-  })();
-  db.close();
-}
+import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
 
 function seedModelConfig() {
-  const db = new Database(TEST_DB_PATH);
+  const db = openE2eDatabase();
   const now = Date.now();
-  db.prepare(
-    `INSERT INTO model_configs
-      (id, label, base_url, api_key, model, system_prompt, extra_body, enabled, sort_order, created_at, updated_at)
-     VALUES
-      (@id, @label, @baseUrl, @apiKey, @model, NULL, NULL, 1, 0, @now, @now)`,
-  ).run({
-    id: "motion-model",
-    label: "Local Motion Model",
-    baseUrl: "https://example.invalid/v1",
-    apiKey: "test-key",
-    model: "motion-test-model",
-    now,
-  });
-  db.close();
+  try {
+    db.prepare(
+      `INSERT INTO model_configs
+        (id, label, base_url, api_key, model, system_prompt, extra_body, enabled, sort_order, created_at, updated_at)
+       VALUES
+        (@id, @label, @baseUrl, @apiKey, @model, NULL, NULL, 1, 0, @now, @now)`,
+    ).run({
+      id: "motion-model",
+      label: "Local Motion Model",
+      baseUrl: "https://example.invalid/v1",
+      apiKey: "test-key",
+      model: "motion-test-model",
+      now,
+    });
+  } finally {
+    db.close();
+  }
 }
 
-test.beforeEach(() => {
-  resetE2eDatabase();
+test.beforeEach(resetE2eDatabase);
+
+test("motion primitives respect the reduced-motion preference", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/signup");
+
+  const submit = page.getByRole("button", { name: "Create account" });
+  await expect(submit).toBeVisible();
+  expect(
+    await submit.evaluate((element) => getComputedStyle(element).transitionDuration),
+  ).not.toBe("0s");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect
+    .poll(() =>
+      submit.evaluate((element) => getComputedStyle(element).transitionDuration),
+    )
+    .toBe("0s");
 });
 
-test("motion surfaces work without an upstream model", async ({ page }) => {
+test("interactive surfaces remain usable with reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   await test.step("admin signup", async () => {
@@ -71,7 +68,7 @@ test("motion surfaces work without an upstream model", async ({ page }) => {
     await expect(page.getByRole("dialog", { name: "Search chats" })).toBeHidden();
   });
 
-  await test.step("project dialog and motion router navigation", async () => {
+  await test.step("project dialog and navigation", async () => {
     await page.getByRole("button", { name: "New project" }).click();
     await expect(page.getByRole("dialog", { name: "New project" })).toBeVisible();
     await page.locator("#project-name").fill("Motion Project");

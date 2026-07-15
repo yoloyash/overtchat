@@ -1,11 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MotionLink } from "@/components/ui/motion-link";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
@@ -109,7 +109,7 @@ export function ModelsPanel() {
         description="Manage the models available in chat."
         action={
           models.length > 0 ? (
-            <Button render={<MotionLink href="/settings/models/new" />} size="sm">
+            <Button render={<Link href="/settings/models/new" />} size="sm">
               <Plus /> Add model
             </Button>
           ) : undefined
@@ -138,7 +138,7 @@ export function ModelsPanel() {
         <div className="border-y border-dashed px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">No models configured.</p>
           <Button
-            render={<MotionLink href="/settings/models/new" />}
+            render={<Link href="/settings/models/new" />}
             className="mt-4"
             size="sm"
           >
@@ -204,7 +204,7 @@ export function ModelsPanel() {
                   <div className="h-6 w-px bg-border" aria-hidden="true" />
                   <div className="flex items-center gap-1.5">
                     <Button
-                      render={<MotionLink href={`/settings/models/${m.id}`} />}
+                      render={<Link href={`/settings/models/${m.id}`} />}
                       variant="outline"
                       size="sm"
                       aria-label={`Edit ${m.label}`}

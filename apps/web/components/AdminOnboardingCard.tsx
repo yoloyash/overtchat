@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MotionLink } from "@/components/ui/motion-link";
 import { AddUserDialog } from "@/app/(app)/settings/users/AddUserDialog";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
@@ -41,7 +41,7 @@ export function AdminOnboardingCard({
             title="Add your first model"
             description="Anthropic, Google Gemini, or any OpenAI-compatible endpoint."
             action={
-              <Button render={<MotionLink href="/settings/models/new" />} size="sm">
+              <Button render={<Link href="/settings/models/new" />} size="sm">
                 <Plus /> {modelDone ? "Add another" : "Add model"}
               </Button>
             }

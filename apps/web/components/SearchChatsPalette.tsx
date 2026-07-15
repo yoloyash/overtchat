@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Pencil, Search, X } from "lucide-react";
@@ -8,7 +9,6 @@ import { groupByDate, type DateBucket } from "@/lib/dateGroups";
 import { useChats } from "@/lib/queries/chats";
 import { useChatsSearch, type SearchHit } from "@/lib/queries/search";
 import { motionClasses } from "@/lib/motion";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 
 type Chat = { id: string; title: string | null; updatedAt: number };
 
@@ -41,7 +41,7 @@ export function SearchChatsPalette({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const router = useMotionRouter();
+  const router = useRouter();
   const { data: allChats = [] } = useChats();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");

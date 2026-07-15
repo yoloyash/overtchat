@@ -2,9 +2,6 @@ import path from "node:path";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  experimental: {
-    viewTransition: true,
-  },
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname, "../../"),
   outputFileTracingIncludes: {

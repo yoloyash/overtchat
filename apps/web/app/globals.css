@@ -186,50 +186,6 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: text-shimmer 2.5s linear infinite;
-}
-
-@supports (view-transition-name: root) {
-  ::view-transition-old(root),
-  ::view-transition-new(root) {
-    animation-duration: var(--motion-duration-slow);
-    animation-timing-function: var(--motion-ease-standard);
-  }
-
-  :root:active-view-transition-type(route-chat)::view-transition-old(root),
-  :root:active-view-transition-type(route-project)::view-transition-old(root),
-  :root:active-view-transition-type(route-settings)::view-transition-old(root) {
-    animation-name: overtchat-route-out;
-  }
-
-  :root:active-view-transition-type(route-chat)::view-transition-new(root),
-  :root:active-view-transition-type(route-project)::view-transition-new(root),
-  :root:active-view-transition-type(route-settings)::view-transition-new(root),
-  :root:active-view-transition-type(route-home)::view-transition-new(root) {
-    animation-name: overtchat-route-in;
-  }
-}
-
-@keyframes overtchat-route-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes overtchat-route-out {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-  }
-  to {
-    opacity: 0;
-    transform: translateY(-2px);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -250,10 +206,4 @@
     color: currentColor;
   }
 
-  @supports (view-transition-name: root) {
-    ::view-transition-old(root),
-    ::view-transition-new(root) {
-      animation: none;
-    }
-  }
 }

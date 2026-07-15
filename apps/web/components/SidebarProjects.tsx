@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ChevronRight, Plus } from "lucide-react";
@@ -8,12 +9,10 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
 import { useCreateProject } from "@/lib/queries/projects";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 import {
   SidebarItem,
   type ProjectOption,
@@ -78,7 +77,7 @@ function ProjectNode({
             )}
           />
         </button>
-        <MotionLink
+        <Link
           href={`/projects/${project.id}`}
           className={cn(
             "flex-1 truncate rounded-md px-1 py-1 text-sm motion-colors hover:bg-sidebar-accent",
@@ -86,8 +85,8 @@ function ProjectNode({
           )}
         >
           {project.name}
-        </MotionLink>
-        <MotionLink
+        </Link>
+        <Link
           href={`/?projectId=${project.id}`}
           aria-label={`New chat in ${project.name}`}
           className={cn(
@@ -96,7 +95,7 @@ function ProjectNode({
           )}
         >
           <Plus className="size-3.5" />
-        </MotionLink>
+        </Link>
       </div>
       {open && (
         <ul className="ml-5 flex flex-col gap-0.5 border-l pl-1">
@@ -127,7 +126,7 @@ export function CreateProjectDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const router = useMotionRouter();
+  const router = useRouter();
   const createMut = useCreateProject();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
