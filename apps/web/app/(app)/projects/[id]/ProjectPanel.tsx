@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import { MoreHorizontal, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { useChats } from "@/lib/queries/chats";
@@ -17,10 +18,9 @@ import {
   useProject,
   useUpdateProject,
 } from "@/lib/queries/projects";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function ProjectPanel({ projectId }: { projectId: string }) {
-  const router = useMotionRouter();
+  const router = useRouter();
   const { data: project } = useProject(projectId);
   const { data: chats = [] } = useChats();
   const updateMut = useUpdateProject(projectId);
@@ -231,7 +231,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
               <h2 className="text-base font-semibold tracking-tight">Chats</h2>
               <Button
                 size="sm"
-                render={<MotionLink href={`/?projectId=${project.id}`} />}
+                render={<Link href={`/?projectId=${project.id}`} />}
               >
                 <Plus /> New chat
               </Button>
@@ -244,12 +244,12 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
               <ul className="divide-y rounded-lg border">
                 {projectChats.map((c) => (
                   <li key={c.id}>
-                    <MotionLink
+                    <Link
                       href={`/chat/${c.id}`}
                       className="block truncate px-3 py-2.5 text-sm motion-colors hover:bg-accent"
                     >
                       {c.title ?? "Untitled"}
-                    </MotionLink>
+                    </Link>
                   </li>
                 ))}
               </ul>

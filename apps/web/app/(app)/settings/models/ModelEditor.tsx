@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowLeft, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MotionLink } from "@/components/ui/motion-link";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import {
@@ -28,7 +29,6 @@ import {
   SettingsRow,
   SettingsSection,
 } from "../_components/SettingsRows";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export interface ModelEditorProps {
   /** When provided, editor loads the existing config from cache; otherwise a new one is being created. */
@@ -36,7 +36,7 @@ export interface ModelEditorProps {
 }
 
 export function ModelEditor({ modelId }: ModelEditorProps) {
-  const router = useMotionRouter();
+  const router = useRouter();
   const { data: list = [] } = useAdminModelConfigs();
   const existing: AdminModelConfig | undefined = modelId
     ? list.find((m) => m.id === modelId)
@@ -166,7 +166,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         description="Configure a model that everyone on this server can use."
         leading={
           <Button
-            render={<MotionLink href="/settings/models" />}
+            render={<Link href="/settings/models" />}
             variant="ghost"
             size="icon-sm"
             aria-label="Back to models"
@@ -279,7 +279,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             type="button"
             variant="ghost"
             size="sm"
-            render={<MotionLink href="/settings/models" />}
+            render={<Link href="/settings/models" />}
           >
             Cancel
           </Button>

@@ -1,31 +1,7 @@
-import { test, expect } from "@playwright/test";
-import Database from "better-sqlite3";
-import path from "node:path";
+import { expect, test } from "@playwright/test";
+import { resetE2eDatabase } from "./helpers/database";
 
-const TEST_DB_PATH = path.resolve(__dirname, "../data/test.db");
-
-function resetE2eDatabase() {
-  const db = new Database(TEST_DB_PATH);
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 5000");
-  db.transaction(() => {
-    db.prepare("DELETE FROM messages").run();
-    db.prepare("DELETE FROM messages_fts").run();
-    db.prepare("DELETE FROM chats").run();
-    db.prepare("DELETE FROM projects").run();
-    db.prepare("DELETE FROM uploads").run();
-    db.prepare("DELETE FROM account").run();
-    db.prepare("DELETE FROM session").run();
-    db.prepare("DELETE FROM verification").run();
-    db.prepare("DELETE FROM user").run();
-    db.prepare("DELETE FROM model_configs").run();
-  })();
-  db.close();
-}
-
-test.beforeEach(() => {
-  resetE2eDatabase();
-});
+test.beforeEach(resetE2eDatabase);
 
 test("signup, configure Gemini, stream a response", async ({ page }) => {
   if (!process.env.GEMINI_API_KEY) {

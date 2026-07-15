@@ -1,13 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Dialog } from "@base-ui/react/dialog";
 import { SidebarContext } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { motionClasses } from "@/lib/motion";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function AppShell({
   sidebar,
@@ -16,7 +15,7 @@ export function AppShell({
   sidebar: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const router = useMotionRouter();
+  const router = useRouter();
   const [openMobile, setOpenMobile] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = useLocalStorage<boolean>(

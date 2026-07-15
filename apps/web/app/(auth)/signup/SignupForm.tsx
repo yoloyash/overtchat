@@ -1,15 +1,15 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 import { bootstrapSignUp } from "./actions";
 
 export function SignupForm() {
-  const router = useMotionRouter();
+  const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
