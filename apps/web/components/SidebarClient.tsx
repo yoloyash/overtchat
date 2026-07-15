@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
 import { SidebarChatList } from "@/components/SidebarChatList";
@@ -11,13 +12,12 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
-import { MotionLink } from "@/components/ui/motion-link";
-import { useMotionRouter } from "@/lib/useMotionRouter";
+import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 
 export function SidebarClient() {
   const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
-  const router = useMotionRouter();
+  const router = useRouter();
   const pathname = usePathname();
 
   const { data: chats = [] } = useChats();
@@ -73,7 +73,7 @@ export function SidebarClient() {
 
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         <nav className="flex flex-col gap-0.5 py-1">
-          <MotionLink
+          <Link
             href="/"
             onClick={(e) => {
               setOpenMobile(false);
@@ -82,13 +82,13 @@ export function SidebarClient() {
                 router.refresh();
               }
             }}
-            pendingHint
             className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
           >
             <Pencil className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">New chat</span>
             <Shortcut keys={["Ctrl", "Shift", "O"]} />
-          </MotionLink>
+            <LinkPendingIndicator />
+          </Link>
           <button
             type="button"
             onClick={openPalette}

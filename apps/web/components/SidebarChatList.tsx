@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
@@ -21,10 +22,8 @@ import {
 import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
 import { Button } from "@/components/ui/button";
-import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 import { useReducedMotion } from "@/lib/useReducedMotion";
 
 interface Chat {
@@ -88,7 +87,7 @@ export function SidebarItem({
   projects: ProjectOption[];
   currentProjectId?: string | null;
 }) {
-  const router = useMotionRouter();
+  const router = useRouter();
   const pathname = usePathname();
   const active = pathname === `/chat/${chat.id}`;
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
@@ -183,7 +182,7 @@ export function SidebarItem({
   return (
     <>
       <li className="group flex items-center">
-        <MotionLink
+        <Link
           href={`/chat/${chat.id}`}
           className={cn(
             "flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
@@ -200,7 +199,7 @@ export function SidebarItem({
           ) : (
             "Untitled"
           )}
-        </MotionLink>
+        </Link>
         <Menu.Root>
           <Menu.Trigger
             aria-label="Chat actions"

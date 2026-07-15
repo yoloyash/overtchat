@@ -46,7 +46,25 @@ test.beforeEach(() => {
   resetE2eDatabase();
 });
 
-test("motion surfaces work without an upstream model", async ({ page }) => {
+test("motion primitives respect the reduced-motion preference", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/signup");
+
+  const submit = page.getByRole("button", { name: "Create account" });
+  await expect(submit).toBeVisible();
+  expect(
+    await submit.evaluate((element) => getComputedStyle(element).transitionDuration),
+  ).not.toBe("0s");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect
+    .poll(() =>
+      submit.evaluate((element) => getComputedStyle(element).transitionDuration),
+    )
+    .toBe("0s");
+});
+
+test("interactive surfaces remain usable with reduced motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   await test.step("admin signup", async () => {
@@ -71,7 +89,7 @@ test("motion surfaces work without an upstream model", async ({ page }) => {
     await expect(page.getByRole("dialog", { name: "Search chats" })).toBeHidden();
   });
 
-  await test.step("project dialog and motion router navigation", async () => {
+  await test.step("project dialog and navigation", async () => {
     await page.getByRole("button", { name: "New project" }).click();
     await expect(page.getByRole("dialog", { name: "New project" })).toBeVisible();
     await page.locator("#project-name").fill("Motion Project");

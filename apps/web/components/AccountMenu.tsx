@@ -1,19 +1,19 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronUp, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { MotionLink } from "@/components/ui/motion-link";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/sidebar-context";
-import { useMotionRouter } from "@/lib/useMotionRouter";
 
 export function AccountMenu() {
-  const router = useMotionRouter();
+  const router = useRouter();
   const { data: session, isPending } = authClient.useSession();
   // Portal the menu into the drawer's Dialog.Popup on mobile so the Dialog's
   // dismiss logic recognizes menu-item taps as "inside" events. On desktop
@@ -82,7 +82,7 @@ export function AccountMenu() {
             )}
           >
             <Menu.Item
-              render={<MotionLink href="/settings" />}
+              render={<Link href="/settings" />}
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
