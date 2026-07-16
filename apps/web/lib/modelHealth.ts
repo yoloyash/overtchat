@@ -1,13 +1,7 @@
 import "server-only";
 import { generateText } from "ai";
-import { buildModel } from "@/lib/llm";
-
-export interface PingArgs {
-  baseUrl: string;
-  apiKey?: string | null;
-  model: string;
-  extraBody?: Record<string, unknown> | null;
-}
+import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
+import type { ProviderModelConfig } from "@/lib/providers/server/types";
 
 export type PingResult =
   | {
@@ -19,17 +13,14 @@ export type PingResult =
     }
   | { ok: false; error: string; elapsedMs: number };
 
-export async function pingModel(args: PingArgs): Promise<PingResult> {
-  const { model: llm, providerOptions } = buildModel({
-    baseUrl: args.baseUrl,
-    apiKey: args.apiKey ?? null,
-    model: args.model,
-    extraBody: args.extraBody ?? null,
-  });
+export async function pingModel(
+  config: ProviderModelConfig,
+): Promise<PingResult> {
+  const { model, providerOptions } = createConfiguredLanguageModel(config);
   const started = Date.now();
   try {
     const { text, usage } = await generateText({
-      model: llm,
+      model,
       prompt: "Say hi in one short sentence.",
       maxOutputTokens: 64,
       abortSignal: AbortSignal.timeout(30_000),

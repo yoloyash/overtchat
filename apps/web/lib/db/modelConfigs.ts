@@ -11,11 +11,13 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
   return {
     id: row.id,
     label: row.label,
+    providerId: row.providerId,
+    apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: row.model,
     systemPrompt: row.systemPrompt,
-    extraBody: row.extraBody,
+    providerOptions: row.providerOptions,
     enabled: row.enabled,
     sortOrder: row.sortOrder,
   };

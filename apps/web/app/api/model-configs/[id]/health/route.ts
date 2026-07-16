@@ -17,10 +17,12 @@ export async function POST(
   if (!row) return new Response("Not found", { status: 404 });
 
   const result = await pingModel({
+    providerId: row.providerId,
+    apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: row.model,
-    extraBody: row.extraBody,
+    providerOptions: row.providerOptions,
   });
 
   if (!result.ok) {

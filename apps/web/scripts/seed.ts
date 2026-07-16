@@ -66,10 +66,12 @@ async function seed() {
   const modelsToCreate = [
     {
       label: "Qwen 3.6",
+      providerId: "custom" as const,
+      apiFormat: "openai-chat" as const,
       baseUrl: "http://10.0.0.200:8000/v1",
       model: "qwen36",
       systemPrompt: "Keep responses short to medium length.",
-      extraBody: {
+      providerOptions: {
         chat_template_kwargs: {
           enable_thinking: false
         }
@@ -78,10 +80,12 @@ async function seed() {
     },
     {
       label: "Qwen 3.6 Thinking",
+      providerId: "custom" as const,
+      apiFormat: "openai-chat" as const,
       baseUrl: "http://10.0.0.200:8000/v1",
       model: "qwen36",
       systemPrompt: "Keep responses short to medium length.",
-      extraBody: {
+      providerOptions: {
         chat_template_kwargs: {
           enable_thinking: true
         }
@@ -96,10 +100,12 @@ async function seed() {
       await db.insert(modelConfigs).values({
         id: crypto.randomUUID(),
         label: modelData.label,
+        providerId: modelData.providerId,
+        apiFormat: modelData.apiFormat,
         baseUrl: modelData.baseUrl.replace(/\/$/, ""),
         model: modelData.model,
         systemPrompt: modelData.systemPrompt,
-        extraBody: modelData.extraBody,
+        providerOptions: modelData.providerOptions,
         sortOrder: modelData.sortOrder
       });
       console.log(`✅ Model ${modelData.label} created successfully!`);

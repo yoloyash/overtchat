@@ -14,12 +14,12 @@ import {
 import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
-import { buildModel } from "@/lib/llm";
 import { generateChatTitle } from "@/lib/title";
 import {
+  getProvider,
   modelIconForModel,
-  providerIdentityForBaseUrl,
-} from "@/lib/providers/meta";
+} from "@/lib/providers/catalog";
+import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import { buildRuntimeContext } from "@/lib/runtime-context";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
@@ -118,17 +118,19 @@ export async function POST(req: Request) {
     await touchChat(chatId);
   }
 
-  const { model, providerOptions } = buildModel({
+  const { model, providerOptions } = createConfiguredLanguageModel({
+    providerId: modelConfig.providerId,
+    apiFormat: modelConfig.apiFormat,
     baseUrl: modelConfig.baseUrl,
     apiKey: modelConfig.apiKey,
     model: modelConfig.model,
-    extraBody: modelConfig.extraBody,
+    providerOptions: modelConfig.providerOptions,
   });
 
   const inlined = await inlineUploads(messages, userId);
-  const providerIdentity = providerIdentityForBaseUrl(modelConfig.baseUrl);
+  const provider = getProvider(modelConfig.providerId);
   const modelIconId =
-    modelIconForModel(modelConfig.model) ?? providerIdentity.iconId ?? undefined;
+    modelIconForModel(modelConfig.model) ?? provider.iconId ?? undefined;
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
   let streamError: unknown = null;
@@ -219,8 +221,8 @@ export async function POST(req: Request) {
             ? undefined
             : outputTokens / (generationMs / 1000),
         finishReason: part.finishReason,
-        providerLabel: providerIdentity.label,
-        providerIconId: providerIdentity.iconId ?? undefined,
+        providerLabel: provider.label,
+        providerIconId: provider.iconId ?? undefined,
         model: modelConfig.model,
         modelIconId,
       };

@@ -7,13 +7,13 @@ import {
 } from "@/lib/db/modelConfigs";
 import { ModelConfigSchema, type PublicModelConfig } from "@/lib/config";
 import {
+  getProvider,
   modelIconForModel,
-  providerIdentityForBaseUrl,
-} from "@/lib/providers/meta";
+} from "@/lib/providers/catalog";
 import { preflight, withCors } from "@/lib/cors";
 
 function toPublic(row: ModelConfigRow): PublicModelConfig {
-  const provider = providerIdentityForBaseUrl(row.baseUrl);
+  const provider = getProvider(row.providerId);
   return {
     id: row.id,
     label: row.label,
@@ -21,7 +21,8 @@ function toPublic(row: ModelConfigRow): PublicModelConfig {
     providerIconId: provider.iconId ?? undefined,
     modelIconId: modelIconForModel(row.model) ?? undefined,
     model: row.model,
-    hasExtraBody: !!row.extraBody && Object.keys(row.extraBody).length > 0,
+    hasProviderOptions:
+      !!row.providerOptions && Object.keys(row.providerOptions).length > 0,
   };
 }
 

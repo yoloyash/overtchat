@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UIMessage } from "ai";
 
 const mocks = vi.hoisted(() => ({
-  buildModel: vi.fn(),
+  createConfiguredLanguageModel: vi.fn(),
   generateText: vi.fn(),
   setTitleIfNull: vi.fn(),
 }));
@@ -12,7 +12,9 @@ vi.mock("ai", () => ({ generateText: mocks.generateText }));
 vi.mock("@/lib/db/chats", () => ({
   setTitleIfNull: mocks.setTitleIfNull,
 }));
-vi.mock("@/lib/llm", () => ({ buildModel: mocks.buildModel }));
+vi.mock("@/lib/providers/server/registry", () => ({
+  createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
+}));
 
 import {
   buildTitlePromptText,
@@ -24,10 +26,12 @@ import {
 type Part = UIMessage["parts"][number];
 
 const modelConfig = {
+  providerId: "custom" as const,
+  apiFormat: "openai-chat" as const,
   baseUrl: "http://example.test/v1",
   apiKey: "key",
   model: "title-model",
-  extraBody: null,
+  providerOptions: null,
 };
 
 function text(value: string): Part {
@@ -57,9 +61,9 @@ const firstUserParts = [text("How should we simplify title generation?")];
 describe("title helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.buildModel.mockReturnValue({
+    mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "model",
-      providerOptions: { "openai-compatible": {} },
+      providerOptions: { custom: {} },
     });
     mocks.generateText.mockResolvedValue({ text: "Server Owned Titles" });
     mocks.setTitleIfNull.mockImplementation(async (_chatId, title) => title);

@@ -12,9 +12,9 @@ import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AdminModelConfig } from "@/lib/config";
 import { getErrorMessage } from "@/lib/errors";
 import {
+  getProvider,
   modelIconForModel,
-  providerIdentityForBaseUrl,
-} from "@/lib/providers/meta";
+} from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -43,7 +43,7 @@ export function ModelsPanel() {
     const q = query.trim().toLowerCase();
     if (!q) return models;
     return models.filter((m) => {
-      const provider = providerIdentityForBaseUrl(m.baseUrl);
+      const provider = getProvider(m.providerId);
       const host = hostnameOf(m.baseUrl);
       return [
         m.label,
@@ -66,11 +66,13 @@ export function ModelsPanel() {
         id: m.id,
         input: {
           label: m.label,
+          providerId: m.providerId,
+          apiFormat: m.apiFormat,
           baseUrl: m.baseUrl,
           apiKey: m.apiKey,
           model: m.model,
           systemPrompt: m.systemPrompt,
-          extraBody: m.extraBody,
+          providerOptions: m.providerOptions,
           enabled: next,
           sortOrder: m.sortOrder,
         },
@@ -154,7 +156,7 @@ export function ModelsPanel() {
       ) : (
         <div className="@container divide-y divide-border/70 border-y">
           {filteredModels.map((m) => {
-            const provider = providerIdentityForBaseUrl(m.baseUrl);
+            const provider = getProvider(m.providerId);
             const host = hostnameOf(m.baseUrl);
             const iconId = modelIconForModel(m.model) ?? provider.iconId;
             return (
