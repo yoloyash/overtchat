@@ -1,5 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowDown,
   ArrowRight,
   Boxes,
   Braces,
@@ -18,6 +19,7 @@ import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { GitHubIcon } from "@/components/GitHubIcon";
 import { HeroVignette } from "@/components/HeroVignette";
+import { SectionRail } from "@/components/SectionRail";
 
 const quickStart = `git clone https://github.com/yoloyash/overtchat
 cd overtchat
@@ -97,7 +99,9 @@ const principles = [
 export default function HomePage() {
   return (
     <main className="site-main">
-      <section className="hero site-container">
+      <SectionRail />
+
+      <section className="hero site-container home-snap" id="intro">
         <div className="hero-copy">
           <p className="eyebrow">Open source · self-hosted</p>
           <h1 className="display-title">Chat without the sprawl.</h1>
@@ -126,6 +130,10 @@ export default function HomePage() {
           </div>
         </div>
         <HeroVignette />
+        <a className="hero-scroll-cue" href="#how-it-works">
+          Continue
+          <ArrowDown aria-hidden="true" />
+        </a>
       </section>
 
       <section className="trust-strip" aria-label="Supported deployment targets">
@@ -138,7 +146,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container" id="how-it-works">
+      <section className="site-section site-container home-snap" id="how-it-works">
         <div className="section-heading">
           <div>
             <p className="eyebrow">How it works</p>
@@ -161,7 +169,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container" id="features">
+      <section className="site-section site-container home-snap" id="features">
         <div className="section-heading compact-heading">
           <div>
             <p className="eyebrow">What’s in the box</p>
@@ -179,7 +187,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section architecture-section">
+      <section className="site-section architecture-section home-snap" id="architecture">
         <div className="site-container architecture-grid">
           <div className="architecture-copy">
             <p className="eyebrow">Deliberately boring infrastructure</p>
@@ -221,7 +229,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container clients-section">
+      <section className="site-section site-container clients-section home-snap" id="clients">
         <div className="client-card client-card-web">
           <span className="client-icon"><Globe2 aria-hidden="true" /></span>
           <p className="eyebrow">On the web</p>
@@ -251,7 +259,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container quick-start-section" id="quick-start">
+      <section className="site-section site-container quick-start-section home-snap" id="quick-start">
         <div className="quick-start-copy">
           <p className="eyebrow">Quick start</p>
           <h2 className="section-title">From clone to chat in one stack.</h2>
@@ -280,7 +288,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container release-cta">
+      <section className="site-section site-container release-cta home-snap" id="releases">
         <div>
           <p className="eyebrow">Built in public</p>
           <h2 className="section-title">See what changed, without digging.</h2>

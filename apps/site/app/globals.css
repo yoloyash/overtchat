@@ -48,6 +48,7 @@
 
 html {
   scroll-behavior: smooth;
+  scroll-padding-top: 5.25rem;
   scrollbar-color: color-mix(in oklch, var(--muted-foreground) 45%, transparent)
     transparent;
   scrollbar-width: thin;
@@ -61,6 +62,7 @@ body {
     var(--background);
   color: var(--foreground);
   font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
@@ -181,12 +183,42 @@ a:focus-visible {
 }
 
 .hero {
+  position: relative;
   display: grid;
   min-height: calc(100vh - 4.25rem);
   grid-template-columns: minmax(0, 0.88fr) minmax(32rem, 1.12fr);
   align-items: center;
   gap: clamp(2rem, 6vw, 6rem);
   padding-block: clamp(4.5rem, 9vw, 8rem);
+}
+
+.hero-scroll-cue {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: translateX(-50%);
+  transition: color 140ms ease;
+}
+
+.hero-scroll-cue:hover {
+  color: var(--foreground);
+}
+
+.hero-scroll-cue svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.section-rail {
+  display: none;
 }
 
 .hero-copy {
@@ -255,60 +287,106 @@ a:focus-visible {
 
 .vignette-sidebar {
   display: flex;
-  padding: 1.1rem 0.8rem;
+  padding: 0.55rem 0.55rem 0.65rem;
   border-right: 1px solid var(--border);
   background: var(--sidebar);
   flex-direction: column;
 }
 
+.vignette-sidebar-header {
+  display: flex;
+  min-height: 2.7rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.45rem;
+}
+
+.vignette-sidebar-header > svg {
+  width: 0.82rem;
+  height: 0.82rem;
+  color: var(--muted-foreground);
+}
+
 .vignette-brand {
-  margin: 0.15rem 0.4rem 1.35rem;
   font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 0.72rem;
   font-weight: 650;
   letter-spacing: -0.035em;
 }
 
-.vignette-new-chat {
+.vignette-sidebar-nav {
   display: flex;
-  width: 100%;
-  align-items: center;
-  gap: 0.5rem;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 0.6rem;
-  padding: 0.55rem 0.65rem;
-  background: var(--background);
-  color: var(--foreground);
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 600;
+  margin-top: 0.35rem;
+  flex-direction: column;
+  gap: 0.12rem;
 }
 
-.vignette-new-chat span {
+.vignette-sidebar-action,
+.vignette-project {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 0.42rem;
+  padding: 0.4rem 0.45rem;
+  font-size: 0.62rem;
+}
+
+.vignette-sidebar-action svg,
+.vignette-project svg {
+  width: 0.72rem;
+  height: 0.72rem;
+  flex-shrink: 0;
   color: var(--muted-foreground);
-  font-size: 1rem;
-  line-height: 1;
+}
+
+.vignette-sidebar-action kbd {
+  margin-left: auto;
+  border: 1px solid var(--sidebar-border);
+  border-radius: 0.2rem;
+  padding: 0.08rem 0.18rem;
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 0.42rem;
 }
 
 .vignette-sidebar-label {
-  margin: 1.45rem 0.55rem 0.45rem;
+  margin: 1rem 0.45rem 0.3rem;
   color: var(--muted-foreground);
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 0.56rem;
-  letter-spacing: 0.08em;
+  font-size: 0.49rem;
+  font-weight: 600;
+  letter-spacing: 0.055em;
   text-transform: uppercase;
 }
 
-.vignette-thread {
+.vignette-project span {
   overflow: hidden;
-  border-radius: 0.5rem;
-  padding: 0.53rem 0.6rem;
-  color: var(--muted-foreground);
-  font-size: 0.68rem;
+  flex: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vignette-thread.is-active {
+.vignette-project svg:last-child {
+  width: 0.58rem;
+  height: 0.58rem;
+}
+
+.vignette-project-thread,
+.vignette-thread {
+  overflow: hidden;
+  border-radius: 0.42rem;
+  padding: 0.4rem 0.45rem;
+  color: var(--muted-foreground);
+  font-size: 0.59rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vignette-project-thread {
+  margin-left: 1rem;
+}
+
+.vignette-project-thread.is-active {
   background: var(--sidebar-accent);
   color: var(--sidebar-accent-foreground);
 }
@@ -320,25 +398,30 @@ a:focus-visible {
 .vignette-profile {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.6rem 0.4rem 0;
+  gap: 0.45rem;
+  padding: 0.6rem 0.35rem 0;
   border-top: 1px solid var(--sidebar-border);
 }
 
 .vignette-profile > span {
   display: grid;
-  width: 1.65rem;
-  height: 1.65rem;
+  width: 1.45rem;
+  height: 1.45rem;
   border-radius: 50%;
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 0.62rem;
+  background: var(--muted);
+  color: var(--muted-foreground);
   place-items: center;
+}
+
+.vignette-profile > span svg {
+  width: 0.68rem;
+  height: 0.68rem;
 }
 
 .vignette-profile div {
   display: flex;
   min-width: 0;
+  flex: 1;
   flex-direction: column;
 }
 
@@ -348,8 +431,18 @@ a:focus-visible {
 }
 
 .vignette-profile small {
+  overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 0.55rem;
+  font-size: 0.48rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vignette-profile > svg {
+  width: 0.62rem;
+  height: 0.62rem;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
 }
 
 .vignette-chat {
@@ -360,37 +453,47 @@ a:focus-visible {
 
 .vignette-chat-header {
   display: flex;
-  min-height: 3.75rem;
+  min-height: 3rem;
   align-items: center;
-  justify-content: space-between;
-  padding: 0.85rem 1.1rem;
+  padding: 0.55rem 0.75rem;
   border-bottom: 1px solid var(--border);
 }
 
-.vignette-chat-header div {
+.vignette-model-picker {
   display: flex;
   min-width: 0;
-  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 0.45rem;
+  padding: 0.35rem 0.45rem;
 }
 
-.vignette-chat-header strong {
+.vignette-model-picker strong {
   overflow: hidden;
-  font-size: 0.7rem;
-  font-weight: 650;
+  font-size: 0.62rem;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.vignette-chat-header div span,
-.vignette-status {
+.vignette-model-picker svg {
+  width: 0.62rem;
+  height: 0.62rem;
+  flex-shrink: 0;
   color: var(--muted-foreground);
-  font-size: 0.56rem;
 }
 
-.vignette-status {
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 0.24rem 0.45rem;
+.vignette-model-mark {
+  display: grid;
+  width: 1rem;
+  height: 1rem;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-size: 0.48rem;
+  font-weight: 700;
+  place-items: center;
 }
 
 .vignette-messages {
@@ -476,7 +579,7 @@ a:focus-visible {
 .vignette-composer {
   margin: 0 clamp(0.85rem, 3vw, 1.75rem) 1.1rem;
   border: 1px solid var(--border);
-  border-radius: 0.9rem;
+  border-radius: 1.2rem;
   padding: 0.7rem 0.8rem;
   box-shadow: 0 8px 26px color-mix(in oklch, var(--foreground) 5%, transparent);
 }
@@ -489,18 +592,45 @@ a:focus-visible {
 .vignette-composer-actions {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.35rem;
   margin-top: 1.05rem;
   color: var(--muted-foreground);
 }
 
-.vignette-composer-actions > svg {
-  width: 0.8rem;
-  height: 0.8rem;
+.vignette-composer-icon,
+.vignette-search-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
 }
 
-.vignette-model {
-  font-size: 0.52rem;
+.vignette-composer-icon {
+  width: 1.55rem;
+  height: 1.55rem;
+}
+
+.vignette-composer-icon svg {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.vignette-search-toggle {
+  gap: 0.25rem;
+  padding: 0.4rem 0.55rem;
+  background: var(--accent);
+  color: var(--accent-foreground);
+  font-size: 0.5rem;
+  font-weight: 600;
+}
+
+.vignette-search-toggle svg {
+  width: 0.65rem;
+  height: 0.65rem;
+}
+
+.vignette-composer-spacer {
+  flex: 1;
 }
 
 .vignette-send {
@@ -790,13 +920,13 @@ a:focus-visible {
 }
 
 .client-card h2 {
-  max-width: 12ch;
+  max-width: 14ch;
   margin: 0;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: clamp(2rem, 4vw, 3.25rem);
-  font-weight: 570;
-  letter-spacing: -0.05em;
-  line-height: 1;
+  font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  font-size: clamp(1.9rem, 4vw, 3rem);
+  font-weight: 650;
+  letter-spacing: -0.055em;
+  line-height: 1.02;
 }
 
 .client-card > p:not(.eyebrow) {
@@ -1024,11 +1154,11 @@ a:focus-visible {
 .release-card h2 {
   max-width: 25ch;
   margin: 0.45rem 0 0;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: clamp(1.65rem, 3vw, 2.35rem);
-  font-weight: 580;
-  letter-spacing: -0.04em;
-  line-height: 1.1;
+  font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  font-size: clamp(1.55rem, 3vw, 2.2rem);
+  font-weight: 650;
+  letter-spacing: -0.045em;
+  line-height: 1.12;
 }
 
 .release-source-link {
@@ -1203,10 +1333,10 @@ a:focus-visible {
 
 .legal-content h2 {
   margin: 0 0 1rem;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: clamp(1.5rem, 3vw, 2rem);
-  font-weight: 590;
-  letter-spacing: -0.035em;
+  font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  font-size: clamp(1.4rem, 3vw, 1.85rem);
+  font-weight: 650;
+  letter-spacing: -0.04em;
 }
 
 .legal-content p,
@@ -1257,6 +1387,86 @@ a:focus-visible {
 
 .not-found .page-lede {
   margin: 1.5rem 0 2rem;
+}
+
+@media (min-width: 1100px) and (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-snap-type: y proximity;
+  }
+
+  .home-snap {
+    scroll-snap-align: start;
+  }
+}
+
+@media (min-width: 1280px) {
+  .section-rail {
+    position: fixed;
+    z-index: 30;
+    top: 50%;
+    right: clamp(1rem, 2.2vw, 2.5rem);
+    display: flex;
+    align-items: flex-end;
+    flex-direction: column;
+    gap: 0.18rem;
+    transform: translateY(-50%);
+  }
+
+  .section-rail a {
+    position: relative;
+    display: flex;
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+  }
+
+  .section-rail-label {
+    pointer-events: none;
+    border: 1px solid color-mix(in oklch, var(--border) 72%, transparent);
+    border-radius: 999px;
+    padding: 0.28rem 0.48rem;
+    background: color-mix(in oklch, var(--background) 88%, transparent);
+    color: var(--muted-foreground);
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-size: 0.58rem;
+    letter-spacing: 0.055em;
+    opacity: 0;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 4px 16px color-mix(in oklch, var(--foreground) 7%, transparent);
+    text-transform: uppercase;
+    transform: translateX(0.25rem);
+    transition: color 140ms ease, opacity 140ms ease, transform 140ms ease;
+    white-space: nowrap;
+  }
+
+  .section-rail-dot {
+    width: 0.38rem;
+    height: 0.38rem;
+    flex-shrink: 0;
+    border: 1px solid color-mix(in oklch, var(--foreground) 42%, transparent);
+    border-radius: 50%;
+    background: color-mix(in oklch, var(--background) 86%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--background) 76%, transparent);
+    transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+  }
+
+  .section-rail a:hover .section-rail-label,
+  .section-rail a:focus-visible .section-rail-label,
+  .section-rail a[aria-current="location"] .section-rail-label {
+    color: var(--foreground);
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  .section-rail a:hover .section-rail-dot,
+  .section-rail a:focus-visible .section-rail-dot,
+  .section-rail a[aria-current="location"] .section-rail-dot {
+    border-color: var(--primary);
+    background: var(--primary);
+    transform: scale(1.35);
+  }
 }
 
 @media (max-width: 850px) {
@@ -1313,6 +1523,10 @@ a:focus-visible {
   .hero {
     grid-template-columns: 1fr;
     padding-top: 6rem;
+  }
+
+  .hero-scroll-cue {
+    display: none;
   }
 
   .hero-copy {
@@ -1432,36 +1646,34 @@ a:focus-visible {
 }
 
 .display-title {
-  max-width: 13ch;
+  max-width: 12ch;
   margin: 0;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: clamp(3.25rem, 8vw, 6.8rem);
-  font-variation-settings: "opsz" 72;
-  font-weight: 560;
-  letter-spacing: -0.065em;
-  line-height: 0.93;
+  font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  font-size: clamp(3.1rem, 7.4vw, 6.3rem);
+  font-weight: 650;
+  letter-spacing: -0.075em;
+  line-height: 0.94;
   text-wrap: balance;
 }
 
 .page-title {
   margin: 0;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: clamp(3rem, 7vw, 5.8rem);
-  font-variation-settings: "opsz" 72;
-  font-weight: 560;
-  letter-spacing: -0.06em;
-  line-height: 0.95;
+  font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  font-size: clamp(2.8rem, 6.5vw, 5.35rem);
+  font-weight: 650;
+  letter-spacing: -0.07em;
+  line-height: 0.97;
   text-wrap: balance;
 }
 
 .section-title {
-  max-width: 16ch;
+  max-width: 17ch;
   margin: 0;
-  font-family: var(--font-fraunces), Georgia, serif;
-  font-size: clamp(2.25rem, 5vw, 3.7rem);
-  font-weight: 570;
-  letter-spacing: -0.05em;
-  line-height: 1;
+  font-family: var(--font-plus-jakarta-sans), system-ui, sans-serif;
+  font-size: clamp(2.1rem, 4.6vw, 3.45rem);
+  font-weight: 650;
+  letter-spacing: -0.06em;
+  line-height: 1.02;
   text-wrap: balance;
 }
 
