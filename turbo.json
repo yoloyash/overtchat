@@ -9,6 +9,10 @@
     "@overtchat/mobile#build": {
       "cache": false
     },
+    "@overtchat/site#build": {
+      "env": ["GITHUB_TOKEN", "NEXT_PUBLIC_BASE_PATH", "NEXT_PUBLIC_SITE_ORIGIN"],
+      "outputs": [".next/**", "!.next/cache/**", "out/**"]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },
