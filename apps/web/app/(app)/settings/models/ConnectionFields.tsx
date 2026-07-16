@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchModelsForProvider } from "@/lib/config";
+import { fetchModelsForProvider } from "@/lib/model-config/client";
 import { motionClasses } from "@/lib/motion";
 import {
   API_FORMATS,
@@ -114,13 +114,7 @@ export function ConnectionFields({
     lastAutoProbeKeyRef.current = probeKey;
     const t = setTimeout(() => void probe(draft), 500);
     return () => clearTimeout(t);
-  }, [
-    autoFetchModels,
-    canProbe,
-    draft,
-    probe,
-    probeKey,
-  ]);
+  }, [autoFetchModels, canProbe, draft, probe, probeKey]);
 
   const currentModelWasFetched = models.includes(draft.model);
   const currentModelIsManual =
@@ -297,7 +291,11 @@ export function ConnectionFields({
               onClick={() => void probe(draft)}
               className="@lg:w-auto"
             >
-              {probing ? <Loader2 className={motionClasses.spinner} /> : <RefreshCw />}
+              {probing ? (
+                <Loader2 className={motionClasses.spinner} />
+              ) : (
+                <RefreshCw />
+              )}
               {models.length > 0 ? "Refresh" : "Fetch"}
             </Button>
           </div>

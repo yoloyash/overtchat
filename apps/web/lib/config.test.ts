@@ -1,11 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("@/lib/useLocalStorage", () => ({ useLocalStorage: vi.fn() }));
+import { describe, expect, it } from "vitest";
 
 import {
   ModelConfigSchema,
   ProviderConnectionSchema,
-} from "./config";
+} from "./model-config/schema";
 
 describe("provider configuration", () => {
   it("accepts automatic routing for a registered provider", () => {
@@ -44,6 +42,17 @@ describe("provider configuration", () => {
       baseUrl: "https://api.openai.com/v1",
       apiKey: "secret",
     });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects endpoints that are not absolute HTTP URLs", () => {
+    const result = ProviderConnectionSchema.safeParse({
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "localhost:11434/v1",
+      apiKey: "",
+    });
+
     expect(result.success).toBe(false);
   });
 

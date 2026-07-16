@@ -12,7 +12,7 @@ import {
   ModelConfigSchema,
   type AdminModelConfig,
   type ModelConfigInput,
-} from "@/lib/config";
+} from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
 import {
   useAdminModelConfigs,
@@ -238,7 +238,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               id="p-label"
               className="w-full @2xl:max-w-xl"
               placeholder={
-                draft.model ? defaultLabelFor(draft.model) : "Shown in the picker"
+                draft.model
+                  ? defaultLabelFor(draft.model)
+                  : "Shown in the picker"
               }
               value={draft.label}
               onChange={(e) =>

@@ -1,5 +1,6 @@
 import "server-only";
 import { generateText } from "ai";
+import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import type { ProviderModelConfig } from "@/lib/providers/server/types";
 
@@ -11,14 +12,19 @@ export type PingResult =
       inputTokens: number | null;
       outputTokens: number | null;
     }
-  | { ok: false; error: string; elapsedMs: number };
+  | {
+      ok: false;
+      error: string;
+      elapsedMs: number;
+      kind: "configuration" | "upstream";
+    };
 
 export async function pingModel(
   config: ProviderModelConfig,
 ): Promise<PingResult> {
-  const { model, providerOptions } = createConfiguredLanguageModel(config);
   const started = Date.now();
   try {
+    const { model, providerOptions } = createConfiguredLanguageModel(config);
     const { text, usage } = await generateText({
       model,
       prompt: "Say hi in one short sentence.",
@@ -38,6 +44,7 @@ export async function pingModel(
       ok: false,
       error: err instanceof Error ? err.message : String(err),
       elapsedMs: Date.now() - started,
+      kind: isProviderConfigurationError(err) ? "configuration" : "upstream",
     };
   }
 }

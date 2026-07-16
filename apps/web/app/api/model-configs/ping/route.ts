@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth/server";
-import { RuntimeModelConfigSchema } from "@/lib/config";
+import { RuntimeModelConfigSchema } from "@/lib/model-config/schema";
 import { pingModel } from "@/lib/modelHealth";
 
 export async function POST(req: Request) {
@@ -9,7 +9,14 @@ export async function POST(req: Request) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const parsed = RuntimeModelConfigSchema.safeParse(await req.json());
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = RuntimeModelConfigSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -19,7 +26,10 @@ export async function POST(req: Request) {
 
   const result = await pingModel(parsed.data);
   if (!result.ok) {
-    return Response.json({ error: result.error }, { status: 502 });
+    return Response.json(
+      { error: result.error },
+      { status: result.kind === "configuration" ? 400 : 502 },
+    );
   }
   return Response.json({
     text: result.text,

@@ -1,10 +1,15 @@
 import "server-only";
-import { appendPath, listAnthropicModels, listOpenAIModels } from "@/lib/providers/server/http";
+import {
+  appendPath,
+  listAnthropicModels,
+  listOpenAIModels,
+} from "@/lib/providers/server/http";
 import {
   createAnthropicMessagesModel,
   createOpenAICompatibleChatModel,
   createOpenResponsesModel,
 } from "@/lib/providers/server/transports";
+import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import type {
   ProviderAdapter,
   ProviderConnection,
@@ -54,7 +59,9 @@ function createCustomLanguageModel(
         providerOptionsKey: "custom",
       };
     case "auto":
-      throw new Error("Custom providers require an explicit API format.");
+      throw new ProviderConfigurationError(
+        "Custom providers require an explicit API format.",
+      );
   }
 }
 
@@ -66,6 +73,8 @@ function listCustomModels(connection: ProviderConnection): Promise<string[]> {
     case "anthropic-messages":
       return listAnthropicModels(connection.baseUrl, connection.apiKey);
     case "auto":
-      throw new Error("Custom providers require an explicit API format.");
+      throw new ProviderConfigurationError(
+        "Custom providers require an explicit API format.",
+      );
   }
 }

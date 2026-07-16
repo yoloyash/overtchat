@@ -1,10 +1,15 @@
 import "server-only";
-import { appendPath, listOpenAIModels, normalizeBaseUrl } from "@/lib/providers/server/http";
+import {
+  appendPath,
+  listOpenAIModels,
+  normalizeBaseUrl,
+} from "@/lib/providers/server/http";
 import {
   createAnthropicMessagesModel,
   createOpenAICompatibleChatModel,
   createOpenResponsesModel,
 } from "@/lib/providers/server/transports";
+import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import type { ProviderAdapter } from "@/lib/providers/server/types";
 
 export type BedrockTransport =
@@ -27,6 +32,12 @@ const BEDROCK_CHAT_NAMESPACES = [
 
 export const bedrockAdapter: ProviderAdapter = {
   id: "bedrock",
+  validateConnection(connection) {
+    getMantleRoot(connection.baseUrl);
+  },
+  validateModelConfig(config) {
+    resolveBedrockTransport(config.model);
+  },
   createLanguageModel(config) {
     const transport = resolveBedrockTransport(config.model);
     const mantleRoot = getMantleRoot(config.baseUrl);
@@ -66,7 +77,10 @@ export const bedrockAdapter: ProviderAdapter = {
     }
   },
   async listModels(connection) {
-    const models = await listOpenAIModels(connection.baseUrl, connection.apiKey);
+    const models = await listOpenAIModels(
+      connection.baseUrl,
+      connection.apiKey,
+    );
     return models.filter(isSupportedBedrockModel);
   },
 };
@@ -84,7 +98,7 @@ export function resolveBedrockTransport(modelId: string): BedrockTransport {
     return "openai-chat";
   }
 
-  throw new Error(
+  throw new ProviderConfigurationError(
     `Unsupported Bedrock model "${modelId}": no Mantle API route is registered.`,
   );
 }
@@ -92,7 +106,9 @@ export function resolveBedrockTransport(modelId: string): BedrockTransport {
 export function getMantleRoot(baseUrl: string): string {
   const normalized = normalizeBaseUrl(baseUrl);
   if (!normalized.endsWith("/v1")) {
-    throw new Error("Amazon Bedrock endpoints must end with /v1.");
+    throw new ProviderConfigurationError(
+      "Amazon Bedrock endpoints must end with /v1.",
+    );
   }
   return normalized.slice(0, -3);
 }

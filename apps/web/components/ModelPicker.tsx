@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
-import type { PublicModelConfig } from "@/lib/config";
+import type { PublicModelConfig } from "@/lib/model-config/schema";
 import { motionClasses } from "@/lib/motion";
 
 interface Props {
@@ -37,10 +37,7 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter((m) =>
-      [m.label, m.model, m.displayProvider]
-        .join(" ")
-        .toLowerCase()
-        .includes(q),
+      [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
   }, [models, search]);
 
@@ -111,7 +108,9 @@ export function ModelPicker({ models, selectedId, onSelect }: Props) {
                       m.id === selectedId && "bg-accent text-accent-foreground",
                     )}
                   >
-                    <ModelBrandIcon iconId={m.modelIconId ?? m.providerIconId} />
+                    <ModelBrandIcon
+                      iconId={m.modelIconId ?? m.providerIconId}
+                    />
                     <span className="min-w-0 flex-1 truncate">{m.label}</span>
                     <span className="flex size-4 shrink-0 items-center justify-center">
                       {m.id === selectedId ? (

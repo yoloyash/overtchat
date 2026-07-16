@@ -5,12 +5,14 @@ import {
   toAdminModelConfig,
   type ModelConfigRow,
 } from "@/lib/db/modelConfigs";
-import { ModelConfigSchema, type PublicModelConfig } from "@/lib/config";
 import {
-  getProvider,
-  modelIconForModel,
-} from "@/lib/providers/catalog";
+  ModelConfigSchema,
+  type PublicModelConfig,
+} from "@/lib/model-config/schema";
+import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { preflight, withCors } from "@/lib/cors";
+import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
 function toPublic(row: ModelConfigRow): PublicModelConfig {
   const provider = getProvider(row.providerId);
@@ -32,7 +34,8 @@ export function OPTIONS(req: Request) {
 
 export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return withCors(req, new Response("Unauthorized", { status: 401 }));
+  if (!session)
+    return withCors(req, new Response("Unauthorized", { status: 401 }));
 
   const url = new URL(req.url);
   const wantAdmin = url.searchParams.get("admin") === "1";
@@ -42,7 +45,10 @@ export async function GET(req: Request) {
     if (session.user.role !== "admin") {
       return withCors(req, new Response("Forbidden", { status: 403 }));
     }
-    return withCors(req, Response.json({ modelConfigs: rows.map(toAdminModelConfig) }));
+    return withCors(
+      req,
+      Response.json({ modelConfigs: rows.map(toAdminModelConfig) }),
+    );
   }
   return withCors(
     req,
@@ -59,13 +65,29 @@ export async function POST(req: Request) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  const parsed = ModelConfigSchema.safeParse(await req.json());
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const parsed = ModelConfigSchema.safeParse(body);
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
       { status: 400 },
     );
   }
+  try {
+    createConfiguredLanguageModel(parsed.data);
+  } catch (error) {
+    if (!isProviderConfigurationError(error)) throw error;
+    return Response.json({ error: error.message }, { status: 400 });
+  }
   const row = await createModelConfig(parsed.data);
-  return Response.json({ modelConfig: toAdminModelConfig(row) }, { status: 201 });
+  return Response.json(
+    { modelConfig: toAdminModelConfig(row) },
+    { status: 201 },
+  );
 }

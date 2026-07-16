@@ -9,12 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
-import type { AdminModelConfig } from "@/lib/config";
+import type { AdminModelConfig } from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
-import {
-  getProvider,
-  modelIconForModel,
-} from "@/lib/providers/catalog";
+import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -34,8 +31,9 @@ export function ModelsPanel() {
   const updateMut = useUpdateModelConfig();
 
   const [query, setQuery] = useState("");
-  const [pendingDelete, setPendingDelete] =
-    useState<AdminModelConfig | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(
+    null,
+  );
   const [deleteError, setDeleteError] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -150,7 +148,8 @@ export function ModelsPanel() {
       ) : filteredModels.length === 0 ? (
         <div className="border-y px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No models match <span className="text-foreground">{query.trim()}</span>.
+            No models match{" "}
+            <span className="text-foreground">{query.trim()}</span>.
           </p>
         </div>
       ) : (
@@ -180,7 +179,10 @@ export function ModelsPanel() {
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <span>{provider.label}</span>
-                      <span aria-hidden="true" className="text-muted-foreground/50">
+                      <span
+                        aria-hidden="true"
+                        className="text-muted-foreground/50"
+                      >
                         /
                       </span>
                       <span className="font-mono">{host}</span>
@@ -249,7 +251,10 @@ export function ModelsPanel() {
       >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
-            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/40",
+              motionClasses.overlay,
+            )}
           />
           <AlertDialog.Popup
             className={cn(

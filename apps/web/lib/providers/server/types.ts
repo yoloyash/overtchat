@@ -1,8 +1,5 @@
 import type { LanguageModelV3 } from "@ai-sdk/provider";
-import type {
-  ApiFormat,
-  ProviderId,
-} from "@/lib/providers/catalog";
+import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
 export interface ProviderConnection {
   providerId: ProviderId;
@@ -24,6 +21,8 @@ export interface ResolvedLanguageModel {
 
 export interface ProviderAdapter {
   readonly id: ProviderId;
+  validateConnection?(connection: ProviderConnection): void;
+  validateModelConfig?(config: ProviderModelConfig): void;
   createLanguageModel(config: ProviderModelConfig): ResolvedLanguageModel;
   listModels(connection: ProviderConnection): Promise<string[]>;
 }

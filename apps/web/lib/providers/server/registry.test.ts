@@ -3,10 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import { PROVIDER_IDS } from "@/lib/providers/catalog";
+import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   createConfiguredLanguageModel,
   getProviderAdapter,
   registeredProviderIds,
+  validateProviderConnection,
+  validateProviderModelConfig,
 } from "./registry";
 
 const baseConfig = {
@@ -67,5 +70,58 @@ describe("provider registry", () => {
         apiFormat: "openai-chat",
       }),
     ).toThrow("manages its API format automatically");
+  });
+
+  it("rejects malformed endpoints and missing registered-provider credentials", () => {
+    expect(() =>
+      validateProviderConnection({
+        ...baseConfig,
+        providerId: "openai",
+        baseUrl: "not a URL",
+      }),
+    ).toThrow("absolute HTTP or HTTPS URL");
+    expect(() =>
+      validateProviderConnection({
+        ...baseConfig,
+        providerId: "anthropic",
+        apiKey: "",
+      }),
+    ).toThrow("requires an API key");
+  });
+
+  it("runs Bedrock endpoint and model-family validation before construction", () => {
+    expect(() =>
+      validateProviderModelConfig({
+        ...baseConfig,
+        providerId: "bedrock",
+        baseUrl: "https://bedrock-mantle.us-east-1.api.aws",
+        model: "openai.gpt-5.6-terra",
+      }),
+    ).toThrow("must end with /v1");
+    expect(() =>
+      validateProviderModelConfig({
+        ...baseConfig,
+        providerId: "bedrock",
+        baseUrl: "https://bedrock-mantle.us-east-1.api.aws/v1",
+        model: "future.unknown-model",
+      }),
+    ).toThrow('Unsupported Bedrock model "future.unknown-model"');
+  });
+
+  it("fails malformed persisted provider identities with a typed error", () => {
+    let error: unknown;
+    try {
+      validateProviderModelConfig({
+        ...baseConfig,
+        providerId: "corrupt-provider" as never,
+      });
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(ProviderConfigurationError);
+    expect(error).toMatchObject({
+      message: 'Unsupported model provider "corrupt-provider".',
+    });
   });
 });

@@ -2,7 +2,10 @@ import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
-import type { AdminModelConfig, ModelConfigInput } from "@/lib/config";
+import type {
+  AdminModelConfig,
+  ModelConfigInput,
+} from "@/lib/model-config/schema";
 
 export type { ModelConfigInput };
 export type ModelConfigRow = typeof modelConfigs.$inferSelect;
@@ -30,7 +33,9 @@ export async function listModelConfigs(): Promise<ModelConfigRow[]> {
     .orderBy(asc(modelConfigs.sortOrder), asc(modelConfigs.label));
 }
 
-export async function getModelConfig(id: string): Promise<ModelConfigRow | null> {
+export async function getModelConfig(
+  id: string,
+): Promise<ModelConfigRow | null> {
   const [row] = await db
     .select()
     .from(modelConfigs)
@@ -39,7 +44,9 @@ export async function getModelConfig(id: string): Promise<ModelConfigRow | null>
   return row ?? null;
 }
 
-export async function createModelConfig(input: ModelConfigInput): Promise<ModelConfigRow> {
+export async function createModelConfig(
+  input: ModelConfigInput,
+): Promise<ModelConfigRow> {
   const [row] = await db
     .insert(modelConfigs)
     .values({ id: crypto.randomUUID(), ...input })

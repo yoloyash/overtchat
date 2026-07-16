@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -7,6 +6,7 @@ import {
   type ApiFormat,
   type ProviderId,
 } from "@/lib/providers/catalog";
+
 export type { PublicModelConfig } from "@overtchat/shared";
 
 /** Admin-facing model config DTO. Includes secrets and provider options for editing. */
@@ -24,20 +24,25 @@ export interface AdminModelConfig {
   sortOrder: number;
 }
 
+const EndpointSchema = z
+  .string()
+  .trim()
+  .min(1, "Endpoint is required")
+  .refine(isHttpEndpoint, "Endpoint must be an absolute HTTP or HTTPS URL")
+  .transform((value) => value.replace(/\/+$/, ""));
+
 /**
- * Single source of truth for model-config input — used by the form and by the
- * POST/PATCH API routes. Provider identity and API format are explicit; URLs
- * are normalized and empty optionals become null.
+ * Structural model-config validation shared by HTTP routes and the settings UI.
+ * Provider-specific semantics are validated by the server registry before save.
  */
 const ProviderConnectionObject = z.object({
   providerId: z.enum(PROVIDER_IDS),
   apiFormat: z.enum(API_FORMAT_IDS),
-  baseUrl: z
+  baseUrl: EndpointSchema,
+  apiKey: z
     .string()
-    .trim()
-    .min(1, "Endpoint is required")
-    .transform((value) => value.replace(/\/+$/, "")),
-  apiKey: z.string().nullish().transform((value) => value ?? null),
+    .nullish()
+    .transform((value) => value ?? null),
 });
 
 export const ProviderConnectionSchema = ProviderConnectionObject.superRefine(
@@ -66,36 +71,24 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
       const trimmed = value?.trim();
       return trimmed ? trimmed : null;
     }),
-  enabled: z.boolean().nullish().transform((value) => value ?? true),
-  sortOrder: z.number().int().nullish().transform((value) => value ?? 0),
+  enabled: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? true),
+  sortOrder: z
+    .number()
+    .int()
+    .nullish()
+    .transform((value) => value ?? 0),
 }).superRefine(validateProviderConnection);
 
 export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
-
-const SELECTED_MODEL_KEY = "overtchat_selected_model";
-
-export function useSelectedModel(): [string, (id: string) => void] {
-  return useLocalStorage<string>(SELECTED_MODEL_KEY, "");
-}
 
 export interface ModelDiscoveryInput {
   providerId: ProviderId;
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey?: string | null;
-}
-
-export async function fetchModelsForProvider(
-  input: ModelDiscoveryInput,
-): Promise<string[]> {
-  const res = await fetch("/api/models", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  const json = (await res.json()) as { models?: string[]; error?: string };
-  if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
-  return json.models ?? [];
 }
 
 function validateProviderConnection(
@@ -123,5 +116,14 @@ function validateProviderConnection(
       path: ["apiFormat"],
       message: `${provider.label} manages its API format automatically`,
     });
+  }
+}
+
+function isHttpEndpoint(value: string): boolean {
+  try {
+    const endpoint = new URL(value);
+    return endpoint.protocol === "http:" || endpoint.protocol === "https:";
+  } catch {
+    return false;
   }
 }
