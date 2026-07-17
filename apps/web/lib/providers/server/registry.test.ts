@@ -7,7 +7,6 @@ import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   createConfiguredLanguageModel,
   getProviderAdapter,
-  registeredProviderIds,
   validateProviderConnection,
   validateProviderModelConfig,
 } from "./registry";
@@ -21,8 +20,7 @@ const baseConfig = {
 };
 
 describe("provider registry", () => {
-  it("registers exactly one adapter for every catalog provider", () => {
-    expect(registeredProviderIds()).toEqual(PROVIDER_IDS);
+  it("maps every catalog provider to its matching adapter", () => {
     for (const providerId of PROVIDER_IDS) {
       expect(getProviderAdapter(providerId).id).toBe(providerId);
     }

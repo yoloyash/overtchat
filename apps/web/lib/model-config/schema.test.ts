@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  ModelConfigSchema,
-  ProviderConnectionSchema,
-} from "./model-config/schema";
+import { ModelConfigSchema, ProviderConnectionSchema } from "./schema";
 
 describe("provider configuration", () => {
   it("accepts automatic routing for a registered provider", () => {

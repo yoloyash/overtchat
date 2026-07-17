@@ -93,10 +93,6 @@ export function getProviderAdapter(providerId: ProviderId): ProviderAdapter {
   return adapter;
 }
 
-export function registeredProviderIds(): readonly ProviderId[] {
-  return PROVIDER_IDS.filter((id) => PROVIDER_REGISTRY[id].id === id);
-}
-
 export function validateProviderConnection(
   connection: ProviderConnection,
 ): void {

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,6 +109,8 @@ export function ConnectionFields({
     [draft.model, onChange],
   );
 
+  const runAutoProbe = useEffectEvent(() => probe(draft));
+
   useEffect(() => {
     if (
       !autoFetchModels ||
@@ -111,10 +119,12 @@ export function ConnectionFields({
     ) {
       return;
     }
-    lastAutoProbeKeyRef.current = probeKey;
-    const t = setTimeout(() => void probe(draft), 500);
+    const t = setTimeout(() => {
+      lastAutoProbeKeyRef.current = probeKey;
+      void runAutoProbe();
+    }, 500);
     return () => clearTimeout(t);
-  }, [autoFetchModels, canProbe, draft, probe, probeKey]);
+  }, [autoFetchModels, canProbe, probeKey]);
 
   const currentModelWasFetched = models.includes(draft.model);
   const currentModelIsManual =
