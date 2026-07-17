@@ -336,7 +336,7 @@ describe("chat route setup boundary", () => {
     consoleSpy.mockRestore();
   });
 
-  it("clears ownership without persisting a partial assistant on abort", async () => {
+  it("persists a partial assistant when the user aborts", async () => {
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
     const onFinish = mocks.streamOptions?.onFinish as (
@@ -355,9 +355,67 @@ describe("chat route setup boundary", () => {
     expect(mocks.completeChatStream).toHaveBeenCalledWith({
       chatId: "chat",
       streamId: claim.streamId,
-      assistantMessage: undefined,
+      assistantMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Partial" }],
+      },
     });
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
+  });
+
+  it("does not persist a partial assistant when the provider stream errors", async () => {
+    await POST(request());
+    const claim = mocks.commitChatTurn.mock.calls[0][0];
+    const streamConfig = mocks.streamText.mock.calls[0][0] as {
+      onError: (event: { error: unknown }) => void;
+    };
+    const onFinish = mocks.streamOptions?.onFinish as (
+      event: unknown,
+    ) => Promise<void>;
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    streamConfig.onError({ error: new Error("provider failed") });
+    await onFinish({
+      isAborted: false,
+      responseMessage: {
+        id: "assistant-message",
+        role: "assistant",
+        parts: [{ type: "text", text: "Broken partial" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: claim.streamId,
+      assistantMessage: undefined,
+    });
+    consoleSpy.mockRestore();
+  });
+
+  it("does not tee the response stream when resumability is disabled", async () => {
+    await POST(request());
+
+    expect(mocks.getStreamContext).toHaveBeenCalledOnce();
+    expect(mocks.streamOptions?.consumeSseStream).toBeUndefined();
+  });
+
+  it("buffers a response-stream copy when resumability is enabled", async () => {
+    const createNewResumableStream = vi.fn().mockResolvedValue(undefined);
+    mocks.getStreamContext.mockReturnValue({ createNewResumableStream });
+
+    await POST(request());
+    const claim = mocks.commitChatTurn.mock.calls[0][0];
+    const consumeSseStream = mocks.streamOptions?.consumeSseStream as (event: {
+      stream: ReadableStream<string>;
+    }) => Promise<void>;
+    const stream = new ReadableStream<string>();
+    await consumeSseStream({ stream });
+
+    expect(createNewResumableStream).toHaveBeenCalledWith(
+      claim.streamId,
+      expect.any(Function),
+    );
+    expect(createNewResumableStream.mock.calls[0][1]()).toBe(stream);
   });
 
   it("blocks a second request while the claimed stream is active", async () => {

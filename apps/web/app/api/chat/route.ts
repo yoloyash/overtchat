@@ -237,6 +237,7 @@ async function handlePost(req: Request): Promise<Response> {
       });
     }
 
+    const streamContext = temporary ? null : getStreamContext();
     const streamHeaders = corsHeaders(req);
     streamHeaders.set("Content-Encoding", "none");
     return result.toUIMessageStreamResponse({
@@ -246,12 +247,8 @@ async function handlePost(req: Request): Promise<Response> {
       headers: streamHeaders,
       onError: (error) =>
         error instanceof Error ? error.message : "Something went wrong.",
-      consumeSseStream: temporary
-        ? undefined
-        : async ({ stream }) => {
-            const streamContext = getStreamContext();
-            if (!streamContext) return;
-
+      consumeSseStream: streamContext
+        ? async ({ stream }) => {
             try {
               await streamContext.createNewResumableStream(
                 streamId,
@@ -260,7 +257,8 @@ async function handlePost(req: Request): Promise<Response> {
             } catch (error) {
               console.warn("[resumable-stream] failed to buffer stream", error);
             }
-          },
+          }
+        : undefined,
       messageMetadata: ({ part }) => {
         if (part.type !== "finish") return undefined;
 
@@ -288,10 +286,12 @@ async function handlePost(req: Request): Promise<Response> {
 
         return { stats };
       },
-      onFinish: async ({ responseMessage, isAborted }) => {
+      onFinish: async ({ responseMessage }) => {
         if (temporary) return;
+        // Stop is an intentional user abort, so retain whatever the model
+        // produced. Provider stream errors still discard broken fragments.
         const assistantMessage =
-          !streamError && !isAborted && responseMessage.parts.length > 0
+          !streamError && responseMessage.parts.length > 0
             ? {
                 id: responseMessage.id,
                 parts: responseMessage.parts,

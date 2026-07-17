@@ -217,7 +217,8 @@ function ChatSurface({
     resume: !isNew,
     transport,
     messages: initialMessages,
-    onFinish: () => {
+    onFinish: ({ isAbort }) => {
+      if (isAbort) return;
       qc.invalidateQueries({ queryKey: queryKeys.chats() });
       qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
     },
