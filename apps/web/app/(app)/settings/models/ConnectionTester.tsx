@@ -4,12 +4,15 @@ import { useState } from "react";
 import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motionClasses } from "@/lib/motion";
+import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
 export interface PingArgs {
+  providerId: ProviderId;
+  apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string;
   model: string;
-  extraBody: Record<string, unknown> | null;
+  providerOptions: Record<string, unknown> | null;
 }
 
 type PingResult =

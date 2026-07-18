@@ -1,0 +1,141 @@
+import type { ModelBrandIconId } from "@overtchat/shared";
+
+export const PROVIDER_IDS = [
+  "openai",
+  "anthropic",
+  "google",
+  "bedrock",
+  "custom",
+] as const;
+
+export type ProviderId = (typeof PROVIDER_IDS)[number];
+
+export const API_FORMAT_IDS = [
+  "auto",
+  "openai-chat",
+  "openai-responses",
+  "anthropic-messages",
+] as const;
+
+export type ApiFormat = (typeof API_FORMAT_IDS)[number];
+export type ExplicitApiFormat = Exclude<ApiFormat, "auto">;
+
+export interface ProviderDefinition {
+  id: ProviderId;
+  label: string;
+  iconId: ModelBrandIconId | null;
+  defaultBaseUrl: string;
+  defaultApiFormat: ApiFormat;
+  modelPlaceholder: string;
+  requiresApiKey: boolean;
+}
+
+export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
+  openai: {
+    id: "openai",
+    label: "OpenAI",
+    iconId: "openai",
+    defaultBaseUrl: "https://api.openai.com/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "gpt-4o-mini",
+    requiresApiKey: true,
+  },
+  anthropic: {
+    id: "anthropic",
+    label: "Anthropic",
+    iconId: "anthropic",
+    defaultBaseUrl: "https://api.anthropic.com/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "claude-sonnet-4-6",
+    requiresApiKey: true,
+  },
+  google: {
+    id: "google",
+    label: "Google Gemini",
+    iconId: "gemini",
+    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "gemini-2.5-flash",
+    requiresApiKey: true,
+  },
+  bedrock: {
+    id: "bedrock",
+    label: "Amazon Bedrock",
+    iconId: "bedrock",
+    defaultBaseUrl: "https://bedrock-mantle.us-east-1.api.aws/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "openai.gpt-5.6-terra",
+    requiresApiKey: true,
+  },
+  custom: {
+    id: "custom",
+    label: "Custom",
+    iconId: null,
+    defaultBaseUrl: "",
+    defaultApiFormat: "openai-chat",
+    modelPlaceholder: "model-id",
+    requiresApiKey: false,
+  },
+};
+
+export const API_FORMATS: Record<
+  ExplicitApiFormat,
+  { id: ExplicitApiFormat; label: string; description: string }
+> = {
+  "openai-chat": {
+    id: "openai-chat",
+    label: "OpenAI Chat Completions",
+    description: "For OpenAI-compatible /chat/completions endpoints.",
+  },
+  "openai-responses": {
+    id: "openai-responses",
+    label: "OpenAI Responses",
+    description: "For Open Responses-compatible /responses endpoints.",
+  },
+  "anthropic-messages": {
+    id: "anthropic-messages",
+    label: "Anthropic Messages",
+    description: "For Anthropic-compatible /messages endpoints.",
+  },
+};
+
+export const EXPLICIT_API_FORMAT_IDS = Object.keys(
+  API_FORMATS,
+) as ExplicitApiFormat[];
+
+export function getProvider(providerId: ProviderId): ProviderDefinition {
+  return PROVIDERS[providerId];
+}
+
+export function modelIconForModel(model: string): ModelBrandIconId | null {
+  const normalized = model.toLowerCase();
+
+  if (/\bclaude\b/.test(normalized)) return "claude";
+  if (normalized.includes("anthropic")) return "anthropic";
+  if (normalized.includes("gemini")) return "gemini";
+  if (normalized.includes("deepseek")) return "deepseek";
+  if (normalized.includes("qwen") || /\bqwq\b/.test(normalized)) return "qwen";
+  if (
+    normalized.includes("mistral") ||
+    normalized.includes("mixtral") ||
+    normalized.includes("codestral") ||
+    normalized.includes("magistral")
+  ) {
+    return "mistral";
+  }
+  if (normalized.includes("minimax")) return "minimax";
+  if (normalized.includes("openrouter")) return "openrouter";
+  if (normalized.includes("ollama")) return "ollama";
+  if (normalized.includes("vllm")) return "vllm";
+  if (normalized.includes("groq")) return "groq";
+  if (normalized.includes("llama") || normalized.includes("meta-")) return "meta";
+  if (
+    /\bgpt[-\d]/.test(normalized) ||
+    normalized.includes("chatgpt") ||
+    /\bo[1345](?:-|$)/.test(normalized)
+  ) {
+    return "openai";
+  }
+
+  return null;
+}

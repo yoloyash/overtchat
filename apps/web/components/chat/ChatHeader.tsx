@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
-import type { PublicModelConfig } from "@/lib/config";
+import type { PublicModelConfig } from "@/lib/model-config/schema";
 
 export function ChatHeader({
   models,

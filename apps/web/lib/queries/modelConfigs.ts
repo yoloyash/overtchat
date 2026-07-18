@@ -1,16 +1,12 @@
 "use client";
 
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { modelConfigKeys } from "@/lib/queries/keys";
 import type {
   AdminModelConfig,
   ModelConfigInput,
   PublicModelConfig,
-} from "@/lib/config";
+} from "@/lib/model-config/schema";
 
 export function useModelConfigs() {
   return useQuery({

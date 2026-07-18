@@ -12,14 +12,14 @@ import {
   ModelConfigSchema,
   type AdminModelConfig,
   type ModelConfigInput,
-} from "@/lib/config";
+} from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
 import {
   useAdminModelConfigs,
   useCreateModelConfig,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
-import { PRESETS, presetFor, type PresetId } from "@/lib/providers/meta";
+import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
 import { AdvancedFields } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
@@ -43,82 +43,99 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     : undefined;
   const isEditing = Boolean(modelId);
 
-  const [preset, setPreset] = useState<PresetId>(() =>
-    existing ? presetFor(existing.baseUrl) : "openai",
-  );
-
   const [draft, setDraft] = useState<ModelConfigInput>(() => {
     if (existing) {
       return {
         label: existing.label,
+        providerId: existing.providerId,
+        apiFormat: existing.apiFormat,
         baseUrl: existing.baseUrl,
         apiKey: existing.apiKey ?? "",
         model: existing.model,
         systemPrompt: existing.systemPrompt ?? "",
-        extraBody: existing.extraBody,
+        providerOptions: existing.providerOptions,
         enabled: existing.enabled,
         sortOrder: existing.sortOrder,
       };
     }
     return {
       label: "",
-      baseUrl: PRESETS.openai.defaultBaseUrl,
+      providerId: "openai",
+      apiFormat: PROVIDERS.openai.defaultApiFormat,
+      baseUrl: PROVIDERS.openai.defaultBaseUrl,
       apiKey: "",
       model: "",
       systemPrompt: "",
-      extraBody: null,
+      providerOptions: null,
       enabled: true,
       sortOrder: 0,
     };
   });
 
-  const [extraBodyText, setExtraBodyText] = useState(() =>
-    existing?.extraBody ? JSON.stringify(existing.extraBody, null, 2) : "",
+  const [providerOptionsText, setProviderOptionsText] = useState(() =>
+    existing?.providerOptions
+      ? JSON.stringify(existing.providerOptions, null, 2)
+      : "",
   );
-  const [extraBodyError, setExtraBodyError] = useState<string | null>(null);
+  const [providerOptionsError, setProviderOptionsError] = useState<
+    string | null
+  >(null);
   const [saveError, setSaveError] = useState("");
 
   const createMut = useCreateModelConfig();
   const updateMut = useUpdateModelConfig();
   const saving = createMut.isPending || updateMut.isPending;
 
-  const requiresKey = preset !== "custom";
+  const requiresKey = getProvider(draft.providerId).requiresApiKey;
 
   const canSave =
     !saving &&
     !!draft.baseUrl &&
     !!draft.model &&
-    !extraBodyError &&
+    !providerOptionsError &&
     !(requiresKey && !draft.apiKey);
 
   const pingArgs = useMemo(() => {
-    let parsedExtra: Record<string, unknown> | null = null;
-    if (extraBodyText.trim() && !extraBodyError) {
+    let parsedOptions: Record<string, unknown> | null = null;
+    if (providerOptionsText.trim() && !providerOptionsError) {
       try {
-        parsedExtra = JSON.parse(extraBodyText) as Record<string, unknown>;
+        parsedOptions = JSON.parse(providerOptionsText) as Record<
+          string,
+          unknown
+        >;
       } catch {
-        parsedExtra = null;
+        parsedOptions = null;
       }
     }
     return {
+      providerId: draft.providerId,
+      apiFormat: draft.apiFormat,
       baseUrl: draft.baseUrl,
       apiKey: draft.apiKey ?? "",
       model: draft.model,
-      extraBody: parsedExtra,
+      providerOptions: parsedOptions,
     };
-  }, [draft.baseUrl, draft.apiKey, draft.model, extraBodyText, extraBodyError]);
+  }, [
+    draft.providerId,
+    draft.apiFormat,
+    draft.baseUrl,
+    draft.apiKey,
+    draft.model,
+    providerOptionsText,
+    providerOptionsError,
+  ]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaveError("");
 
-    let extraBody: unknown = null;
-    if (extraBodyText.trim()) {
+    let providerOptions: unknown = null;
+    if (providerOptionsText.trim()) {
       try {
-        extraBody = JSON.parse(extraBodyText);
+        providerOptions = JSON.parse(providerOptionsText);
       } catch (err) {
         setSaveError(
-          `Extra body must be valid JSON object: ${getErrorMessage(
+          `Provider options must be a valid JSON object: ${getErrorMessage(
             err,
             "Invalid JSON",
           )}`,
@@ -130,7 +147,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     const parsed = ModelConfigSchema.safeParse({
       ...draft,
       label: draft.label.trim() || defaultLabelFor(draft.model),
-      extraBody,
+      providerOptions,
     });
     if (!parsed.success) {
       setSaveError(parsed.error.issues[0]?.message ?? "Invalid input");
@@ -183,22 +200,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         >
           <ConnectionFields
             draft={{
+              providerId: draft.providerId,
+              apiFormat: draft.apiFormat,
               baseUrl: draft.baseUrl,
               apiKey: draft.apiKey ?? "",
               model: draft.model,
             }}
             onChange={(next) => setDraft((d) => ({ ...d, ...next }))}
-            preset={preset}
             autoFetchModels={!isEditing}
-            onPresetChange={(next) => {
-              setPreset(next);
-              setDraft((d) => ({
-                ...d,
-                baseUrl: PRESETS[next].defaultBaseUrl,
-                apiKey: "",
-                model: "",
-              }));
-            }}
           />
 
           <SettingsRow
@@ -207,7 +216,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             controlAlign="end"
           >
             <ConnectionTester
-              key={`${draft.baseUrl}|${draft.apiKey}|${draft.model}|${extraBodyText}`}
+              key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${providerOptionsText}`}
               args={pingArgs}
               disabled={requiresKey && !draft.apiKey}
             />
@@ -229,7 +238,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               id="p-label"
               className="w-full @2xl:max-w-xl"
               placeholder={
-                draft.model ? defaultLabelFor(draft.model) : "Shown in the picker"
+                draft.model
+                  ? defaultLabelFor(draft.model)
+                  : "Shown in the picker"
               }
               value={draft.label}
               onChange={(e) =>
@@ -259,12 +270,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           onSystemPromptChange={(next) =>
             setDraft((d) => ({ ...d, systemPrompt: next }))
           }
-          extraBodyText={extraBodyText}
-          onExtraBodyTextChange={(next, err) => {
-            setExtraBodyText(next);
-            setExtraBodyError(err);
+          providerOptionsText={providerOptionsText}
+          onProviderOptionsTextChange={(next, err) => {
+            setProviderOptionsText(next);
+            setProviderOptionsError(err);
           }}
-          defaultOpen={Boolean(existing?.systemPrompt || existing?.extraBody)}
+          defaultOpen={Boolean(
+            existing?.systemPrompt || existing?.providerOptions,
+          )}
         />
 
         {saveError && (

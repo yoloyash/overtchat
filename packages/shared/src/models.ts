@@ -1,5 +1,6 @@
 export const MODEL_BRAND_ICON_IDS = [
   "anthropic",
+  "bedrock",
   "claude",
   "deepseek",
   "gemini",
@@ -23,5 +24,5 @@ export interface PublicModelConfig {
   providerIconId?: ModelBrandIconId;
   modelIconId?: ModelBrandIconId;
   model: string;
-  hasExtraBody: boolean;
+  hasProviderOptions: boolean;
 }

@@ -1,26 +1,53 @@
 import { auth } from "@/lib/auth/server";
-import { listOpenAICompatibleModels } from "@/lib/llm";
+import { ProviderConnectionSchema } from "@/lib/model-config/schema";
+import { preflight, withCors } from "@/lib/cors";
+import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import { listProviderModels } from "@/lib/providers/server/registry";
 
-interface Body {
-  baseUrl: string;
-  apiKey?: string;
+export function OPTIONS(req: Request) {
+  return preflight(req);
 }
 
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
-  if (!session) return new Response("Unauthorized", { status: 401 });
+  if (!session)
+    return withCors(req, new Response("Unauthorized", { status: 401 }));
   if (session.user.role !== "admin") {
-    return new Response("Forbidden", { status: 403 });
+    return withCors(req, new Response("Forbidden", { status: 403 }));
   }
 
-  const { baseUrl, apiKey } = (await req.json()) as Body;
-  if (!baseUrl) return new Response("Missing baseUrl", { status: 400 });
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return withCors(
+      req,
+      Response.json({ error: "Invalid JSON body" }, { status: 400 }),
+    );
+  }
+
+  const parsed = ProviderConnectionSchema.safeParse(body);
+  if (!parsed.success) {
+    return withCors(
+      req,
+      Response.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 },
+      ),
+    );
+  }
 
   try {
-    const models = await listOpenAICompatibleModels(baseUrl, apiKey);
-    return Response.json({ models });
+    const models = await listProviderModels(parsed.data);
+    return withCors(req, Response.json({ models }));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return Response.json({ error: msg }, { status: 502 });
+    return withCors(
+      req,
+      Response.json(
+        { error: msg },
+        { status: isProviderConfigurationError(err) ? 400 : 502 },
+      ),
+    );
   }
 }
