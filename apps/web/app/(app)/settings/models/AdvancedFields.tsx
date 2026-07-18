@@ -8,11 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
 
-const EXTRA_BODY_EXAMPLE = {
-  chat_template_kwargs: { thinking: true },
-};
-
-function parseExtraBody(text: string): string | null {
+function parseProviderOptions(text: string): string | null {
   if (!text.trim()) return null;
   try {
     const parsed = JSON.parse(text);
@@ -28,8 +24,11 @@ function parseExtraBody(text: string): string | null {
 export interface AdvancedFieldsProps {
   systemPrompt: string;
   onSystemPromptChange: (next: string) => void;
-  extraBodyText: string;
-  onExtraBodyTextChange: (next: string, parseError: string | null) => void;
+  providerOptionsText: string;
+  onProviderOptionsTextChange: (
+    next: string,
+    parseError: string | null,
+  ) => void;
   /** Open by default when editing a model that already has these fields populated. */
   defaultOpen?: boolean;
 }
@@ -37,19 +36,19 @@ export interface AdvancedFieldsProps {
 export function AdvancedFields({
   systemPrompt,
   onSystemPromptChange,
-  extraBodyText,
-  onExtraBodyTextChange,
+  providerOptionsText,
+  onProviderOptionsTextChange,
   defaultOpen,
 }: AdvancedFieldsProps) {
   const [open, setOpen] = useState(Boolean(defaultOpen));
-  const extraBodyError = parseExtraBody(extraBodyText);
+  const providerOptionsError = parseProviderOptions(providerOptionsText);
 
-  function handleExtraBodyBlur() {
-    if (!extraBodyText.trim() || extraBodyError) return;
+  function handleProviderOptionsBlur() {
+    if (!providerOptionsText.trim() || providerOptionsError) return;
     try {
-      const formatted = JSON.stringify(JSON.parse(extraBodyText), null, 2);
-      if (formatted !== extraBodyText) {
-        onExtraBodyTextChange(formatted, null);
+      const formatted = JSON.stringify(JSON.parse(providerOptionsText), null, 2);
+      if (formatted !== providerOptionsText) {
+        onProviderOptionsTextChange(formatted, null);
       }
     } catch {
       // Invalid JSON is already reported live.
@@ -59,7 +58,7 @@ export function AdvancedFields({
   return (
     <SettingsSection
       title="Advanced"
-      description="Optional prompt and request-body overrides for this model."
+      description="Optional prompt and provider-specific behavior for this model."
       action={
         <Button
           type="button"
@@ -96,35 +95,38 @@ export function AdvancedFields({
           </SettingsRow>
 
           <SettingsRow
-            title="Extra body"
-            description="Optional JSON object merged into each provider request."
-            htmlFor="p-extra"
+            title="Provider options"
+            description="Optional AI SDK options for the selected provider."
+            htmlFor="p-provider-options"
           >
             <div className="space-y-2">
               <div
                 className={cn(
                   "rounded-lg border border-input bg-transparent motion-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30",
-                  extraBodyError &&
+                  providerOptionsError &&
                     "border-destructive focus-within:border-destructive focus-within:ring-destructive/20",
                 )}
               >
                 <Editor
-                  value={extraBodyText}
+                  value={providerOptionsText}
                   onValueChange={(next) =>
-                    onExtraBodyTextChange(next, parseExtraBody(next))
+                    onProviderOptionsTextChange(
+                      next,
+                      parseProviderOptions(next),
+                    )
                   }
                   highlight={(code) => code}
                   tabSize={2}
                   insertSpaces
                   padding={12}
-                  textareaId="p-extra"
-                  placeholder='{ "chat_template_kwargs": { "thinking": true } }'
-                  onBlur={handleExtraBodyBlur}
+                  textareaId="p-provider-options"
+                  placeholder="{}"
+                  onBlur={handleProviderOptionsBlur}
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
-                  aria-label="Extra request body JSON"
-                  aria-invalid={extraBodyError ? true : undefined}
+                  aria-label="Provider options JSON"
+                  aria-invalid={providerOptionsError ? true : undefined}
                   style={{
                     fontFamily:
                       'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
@@ -135,30 +137,15 @@ export function AdvancedFields({
                 />
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                {extraBodyError ? (
+                {providerOptionsError ? (
                   <p className="break-words text-destructive">
-                    {extraBodyError}
+                    {providerOptionsError}
                   </p>
                 ) : (
                   <p className="text-muted-foreground">
-                    Must be a JSON object. Leave empty to send no override.
+                    Must be a JSON object using the selected provider&apos;s AI
+                    SDK option keys.
                   </p>
-                )}
-                {!extraBodyText.trim() && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const formatted = JSON.stringify(
-                        EXTRA_BODY_EXAMPLE,
-                        null,
-                        2,
-                      );
-                      onExtraBodyTextChange(formatted, null);
-                    }}
-                    className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                  >
-                    Insert example
-                  </button>
                 )}
               </div>
             </div>

@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,19 +18,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchModelsForEndpoint } from "@/lib/config";
+import { fetchModelsForProvider } from "@/lib/model-config/client";
 import { motionClasses } from "@/lib/motion";
 import {
+  API_FORMATS,
+  EXPLICIT_API_FORMAT_IDS,
+  getProvider,
   modelIconForModel,
-  PRESETS,
-  PRESET_IDS,
-  providerIconForPreset,
-  type PresetId,
-} from "@/lib/providers/meta";
+  PROVIDERS,
+  PROVIDER_IDS,
+  type ApiFormat,
+  type ProviderId,
+} from "@/lib/providers/catalog";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { SettingsRow } from "../_components/SettingsRows";
 
 export interface ConnectionDraft {
+  providerId: ProviderId;
+  apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -33,21 +44,16 @@ export interface ConnectionDraft {
 export interface ConnectionFieldsProps {
   draft: ConnectionDraft;
   onChange: (next: Partial<ConnectionDraft>) => void;
-  preset: PresetId;
-  onPresetChange?: (next: PresetId) => void;
   autoFetchModels?: boolean;
 }
 
 export function ConnectionFields({
   draft,
   onChange,
-  preset,
-  onPresetChange,
   autoFetchModels = false,
 }: ConnectionFieldsProps) {
-  const requiresKey = preset !== "custom";
-  const presetMeta = PRESETS[preset];
-  const presetIconId = providerIconForPreset(preset);
+  const provider = getProvider(draft.providerId);
+  const requiresKey = provider.requiresApiKey;
 
   const [models, setModels] = useState<string[]>([]);
   const [modelMode, setModelMode] = useState<"manual" | "list">("manual");
@@ -56,7 +62,12 @@ export function ConnectionFields({
   const lastAutoProbeKeyRef = useRef("");
 
   const canProbe = Boolean(draft.baseUrl) && !(requiresKey && !draft.apiKey);
-  const probeKey = `${draft.baseUrl}\n${draft.apiKey}`;
+  const probeKey = [
+    draft.providerId,
+    draft.apiFormat,
+    draft.baseUrl,
+    draft.apiKey,
+  ].join("\n");
 
   function clearProbeState() {
     setModels([]);
@@ -65,12 +76,17 @@ export function ConnectionFields({
   }
 
   const probe = useCallback(
-    async (baseUrl: string, apiKey: string) => {
-      if (!baseUrl) return;
+    async (connection: ConnectionDraft) => {
+      if (!connection.baseUrl) return;
       setProbing(true);
       setProbeError("");
       try {
-        const ids = await fetchModelsForEndpoint(baseUrl, apiKey);
+        const ids = await fetchModelsForProvider({
+          providerId: connection.providerId,
+          apiFormat: connection.apiFormat,
+          baseUrl: connection.baseUrl,
+          apiKey: connection.apiKey,
+        });
         setModels(ids);
         if (ids.length === 0) {
           setModelMode("manual");
@@ -93,6 +109,8 @@ export function ConnectionFields({
     [draft.model, onChange],
   );
 
+  const runAutoProbe = useEffectEvent(() => probe(draft));
+
   useEffect(() => {
     if (
       !autoFetchModels ||
@@ -101,17 +119,12 @@ export function ConnectionFields({
     ) {
       return;
     }
-    lastAutoProbeKeyRef.current = probeKey;
-    const t = setTimeout(() => void probe(draft.baseUrl, draft.apiKey), 500);
+    const t = setTimeout(() => {
+      lastAutoProbeKeyRef.current = probeKey;
+      void runAutoProbe();
+    }, 500);
     return () => clearTimeout(t);
-  }, [
-    autoFetchModels,
-    canProbe,
-    draft.apiKey,
-    draft.baseUrl,
-    probe,
-    probeKey,
-  ]);
+  }, [autoFetchModels, canProbe, probeKey]);
 
   const currentModelWasFetched = models.includes(draft.model);
   const currentModelIsManual =
@@ -122,33 +135,74 @@ export function ConnectionFields({
     <>
       <SettingsRow
         title="Provider"
-        description="Sets endpoint defaults and picker grouping."
-        htmlFor="p-preset"
+        description="Selects model discovery, authentication, and runtime behavior."
+        htmlFor="p-provider"
         align="center"
         controlAlign="end"
       >
         <Select
-          value={preset}
+          value={draft.providerId}
           onValueChange={(next) => {
-            if (!next || next === preset) return;
-            onPresetChange?.(next as PresetId);
+            if (!next || next === draft.providerId) return;
+            const selected = getProvider(next as ProviderId);
+            onChange({
+              providerId: selected.id,
+              apiFormat: selected.defaultApiFormat,
+              baseUrl: selected.defaultBaseUrl,
+              apiKey: "",
+              model: "",
+            });
             clearProbeState();
           }}
         >
-          <SelectTrigger id="p-preset" className="w-full @2xl:max-w-xl">
-            <ModelBrandIcon iconId={presetIconId} />
+          <SelectTrigger id="p-provider" className="w-full @2xl:max-w-xl">
+            <ModelBrandIcon iconId={provider.iconId} />
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {PRESET_IDS.map((id) => (
+            {PROVIDER_IDS.map((id) => (
               <SelectItem key={id} value={id}>
-                <ModelBrandIcon iconId={providerIconForPreset(id)} />
-                {PRESETS[id].label}
+                <ModelBrandIcon iconId={PROVIDERS[id].iconId} />
+                {PROVIDERS[id].label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </SettingsRow>
+
+      {draft.providerId === "custom" && (
+        <SettingsRow
+          title="API format"
+          description={
+            draft.apiFormat === "auto"
+              ? "Choose the protocol exposed by this endpoint."
+              : API_FORMATS[draft.apiFormat].description
+          }
+          htmlFor="p-api-format"
+          align="center"
+          controlAlign="end"
+        >
+          <Select
+            value={draft.apiFormat}
+            onValueChange={(next) => {
+              if (!next || next === draft.apiFormat) return;
+              onChange({ apiFormat: next as ApiFormat, model: "" });
+              clearProbeState();
+            }}
+          >
+            <SelectTrigger id="p-api-format" className="w-full @2xl:max-w-xl">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EXPLICIT_API_FORMAT_IDS.map((id) => (
+                <SelectItem key={id} value={id}>
+                  {API_FORMATS[id].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </SettingsRow>
+      )}
 
       <SettingsRow
         title="Endpoint"
@@ -160,9 +214,9 @@ export function ConnectionFields({
         <Input
           id="p-base-url"
           className="w-full @2xl:max-w-xl"
-          placeholder="https://api.openai.com/v1"
+          placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
           required
-          autoFocus={preset === "custom"}
+          autoFocus={draft.providerId === "custom"}
           value={draft.baseUrl}
           onChange={(e) => {
             onChange({ baseUrl: e.target.value });
@@ -175,7 +229,7 @@ export function ConnectionFields({
         title="API key"
         description={
           requiresKey
-            ? "Required for this hosted preset."
+            ? `Required for ${provider.label}.`
             : "Optional for local or custom endpoints."
         }
         htmlFor="p-api-key"
@@ -230,7 +284,7 @@ export function ConnectionFields({
               <Input
                 id="p-model"
                 className="min-w-0 flex-1 font-mono text-xs"
-                placeholder={presetMeta.modelPlaceholder}
+                placeholder={provider.modelPlaceholder}
                 required
                 value={draft.model}
                 onChange={(e) => {
@@ -244,10 +298,14 @@ export function ConnectionFields({
               variant="outline"
               size="sm"
               disabled={!canProbe || probing}
-              onClick={() => void probe(draft.baseUrl, draft.apiKey)}
+              onClick={() => void probe(draft)}
               className="@lg:w-auto"
             >
-              {probing ? <Loader2 className={motionClasses.spinner} /> : <RefreshCw />}
+              {probing ? (
+                <Loader2 className={motionClasses.spinner} />
+              ) : (
+                <RefreshCw />
+              )}
               {models.length > 0 ? "Refresh" : "Fetch"}
             </Button>
           </div>

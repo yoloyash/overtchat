@@ -7,7 +7,7 @@ function seedModelConfig() {
   try {
     db.prepare(
       `INSERT INTO model_configs
-        (id, label, base_url, api_key, model, system_prompt, extra_body, enabled, sort_order, created_at, updated_at)
+        (id, label, base_url, api_key, model, system_prompt, provider_options, enabled, sort_order, created_at, updated_at)
        VALUES
         (@id, @label, @baseUrl, @apiKey, @model, NULL, NULL, 1, 0, @now, @now)`,
     ).run({

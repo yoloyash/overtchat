@@ -21,10 +21,10 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
 
   await test.step("configure Gemini model", async () => {
     await page.goto("/settings/models/new");
-    await page.locator("#p-preset").click();
+    await page.locator("#p-provider").click();
     await page.getByRole("option", { name: "Google Gemini" }).click();
     await expect(page.locator("#p-base-url")).toHaveValue(
-      "https://generativelanguage.googleapis.com/v1beta/openai"
+      "https://generativelanguage.googleapis.com/v1beta"
     );
     await page.locator("#p-api-key").fill(process.env.GEMINI_API_KEY!);
 

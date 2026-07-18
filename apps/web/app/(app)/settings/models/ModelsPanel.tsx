@@ -9,12 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
-import type { AdminModelConfig } from "@/lib/config";
+import type { AdminModelConfig } from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
-import {
-  modelIconForModel,
-  providerIdentityForBaseUrl,
-} from "@/lib/providers/meta";
+import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
@@ -34,8 +31,9 @@ export function ModelsPanel() {
   const updateMut = useUpdateModelConfig();
 
   const [query, setQuery] = useState("");
-  const [pendingDelete, setPendingDelete] =
-    useState<AdminModelConfig | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(
+    null,
+  );
   const [deleteError, setDeleteError] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -43,7 +41,7 @@ export function ModelsPanel() {
     const q = query.trim().toLowerCase();
     if (!q) return models;
     return models.filter((m) => {
-      const provider = providerIdentityForBaseUrl(m.baseUrl);
+      const provider = getProvider(m.providerId);
       const host = hostnameOf(m.baseUrl);
       return [
         m.label,
@@ -66,11 +64,13 @@ export function ModelsPanel() {
         id: m.id,
         input: {
           label: m.label,
+          providerId: m.providerId,
+          apiFormat: m.apiFormat,
           baseUrl: m.baseUrl,
           apiKey: m.apiKey,
           model: m.model,
           systemPrompt: m.systemPrompt,
-          extraBody: m.extraBody,
+          providerOptions: m.providerOptions,
           enabled: next,
           sortOrder: m.sortOrder,
         },
@@ -148,13 +148,14 @@ export function ModelsPanel() {
       ) : filteredModels.length === 0 ? (
         <div className="border-y px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
-            No models match <span className="text-foreground">{query.trim()}</span>.
+            No models match{" "}
+            <span className="text-foreground">{query.trim()}</span>.
           </p>
         </div>
       ) : (
         <div className="@container divide-y divide-border/70 border-y">
           {filteredModels.map((m) => {
-            const provider = providerIdentityForBaseUrl(m.baseUrl);
+            const provider = getProvider(m.providerId);
             const host = hostnameOf(m.baseUrl);
             const iconId = modelIconForModel(m.model) ?? provider.iconId;
             return (
@@ -178,7 +179,10 @@ export function ModelsPanel() {
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <span>{provider.label}</span>
-                      <span aria-hidden="true" className="text-muted-foreground/50">
+                      <span
+                        aria-hidden="true"
+                        className="text-muted-foreground/50"
+                      >
                         /
                       </span>
                       <span className="font-mono">{host}</span>
@@ -247,7 +251,10 @@ export function ModelsPanel() {
       >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
-            className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+            className={cn(
+              "fixed inset-0 z-40 bg-black/40",
+              motionClasses.overlay,
+            )}
           />
           <AlertDialog.Popup
             className={cn(

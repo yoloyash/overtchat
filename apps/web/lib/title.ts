@@ -3,14 +3,19 @@ import { generateText, type UIMessage } from "ai";
 import { stripCitationMarkers } from "@/lib/citations";
 import { setTitleIfNull } from "@/lib/db/chats";
 import type { ModelConfigRow } from "@/lib/db/modelConfigs";
-import { buildModel } from "@/lib/llm";
+import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
 const TITLE_CONTEXT_CHAR_LIMIT = 2000;
 const TITLE_OUTPUT_CHAR_LIMIT = 80;
 
 type TitleModelConfig = Pick<
   ModelConfigRow,
-  "baseUrl" | "apiKey" | "model" | "extraBody"
+  | "providerId"
+  | "apiFormat"
+  | "baseUrl"
+  | "apiKey"
+  | "model"
+  | "providerOptions"
 >;
 
 export async function generateChatTitle({
@@ -26,11 +31,13 @@ export async function generateChatTitle({
     const prompt = buildTitlePromptText(userParts);
     if (!prompt) return null;
 
-    const { model, providerOptions } = buildModel({
+    const { model, providerOptions } = createConfiguredLanguageModel({
+      providerId: modelConfig.providerId,
+      apiFormat: modelConfig.apiFormat,
       baseUrl: modelConfig.baseUrl,
       apiKey: modelConfig.apiKey,
       model: modelConfig.model,
-      extraBody: modelConfig.extraBody,
+      providerOptions: modelConfig.providerOptions,
     });
     const { text } = await generateText({
       model,

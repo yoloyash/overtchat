@@ -5,7 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { FileUp } from "lucide-react";
-import { useSelectedModel } from "@/lib/config";
+import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import { chatKeys } from "@/lib/queries/keys";
 import { useChats, type ChatListItem } from "@/lib/queries/chats";
@@ -48,7 +48,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const { data: chats } = useChats();
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
-  const models = modelsError ? [] : modelsData ?? null;
+  const models = modelsError ? [] : (modelsData ?? null);
   const [selectedId, setSelectedId] = useSelectedModel();
 
   useEffect(() => {
@@ -100,7 +100,12 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     () =>
       new DefaultChatTransport<UIMessage>({
         api: "/api/chat",
-        prepareSendMessagesRequest: ({ messages, body, trigger, messageId }) => ({
+        prepareSendMessagesRequest: ({
+          messages,
+          body,
+          trigger,
+          messageId,
+        }) => ({
           body: { ...body, messages, trigger, messageId },
         }),
       }),
@@ -134,10 +139,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const speech = useSpeech();
   const { data: session } = authClient.useSession();
   const isAdmin = session?.user.role === "admin";
-  const [onboardingDismissed, setOnboardingDismissed] = useLocalStorage<boolean>(
-    "overtchat_onboarding_dismissed",
-    false,
-  );
+  const [onboardingDismissed, setOnboardingDismissed] =
+    useLocalStorage<boolean>("overtchat_onboarding_dismissed", false);
   const showOnboarding =
     isAdmin &&
     !temporary &&
@@ -266,7 +269,9 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       {dropActive && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-ring bg-background/90 px-8 py-6 text-center shadow-lg ring-1 ring-ring/20">
-            <div className={`flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ${motionClasses.dropIcon}`}>
+            <div
+              className={`flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ${motionClasses.dropIcon}`}
+            >
               <FileUp className="size-6" />
             </div>
             <div>
@@ -293,7 +298,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
               </h1>
               {!configured && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
-                  No models configured. An admin can add one in Settings → Models.
+                  No models configured. An admin can add one in Settings →
+                  Models.
                 </p>
               )}
               {configured && temporary && (

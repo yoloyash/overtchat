@@ -1,6 +1,10 @@
 import { relations, sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import {
+  API_FORMAT_IDS,
+  PROVIDER_IDS,
+} from "@/lib/providers/catalog";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -248,11 +252,19 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
 export const modelConfigs = sqliteTable("model_configs", {
   id: text("id").primaryKey(),
   label: text("label").notNull(),
+  providerId: text("provider_id", { enum: PROVIDER_IDS })
+    .default("custom")
+    .notNull(),
+  apiFormat: text("api_format", { enum: API_FORMAT_IDS })
+    .default("openai-chat")
+    .notNull(),
   baseUrl: text("base_url").notNull(),
   apiKey: text("api_key"),
   model: text("model").notNull(),
   systemPrompt: text("system_prompt"),
-  extraBody: text("extra_body", { mode: "json" }).$type<Record<string, unknown>>(),
+  providerOptions: text("provider_options", { mode: "json" }).$type<
+    Record<string, unknown>
+  >(),
   enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })

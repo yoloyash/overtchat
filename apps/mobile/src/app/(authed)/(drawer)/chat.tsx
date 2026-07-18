@@ -8,7 +8,14 @@ import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import { useNavigation } from "expo-router";
 import { fetch as expoFetch } from "expo/fetch";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Keyboard,
@@ -103,7 +110,10 @@ function ChatGate({
           <Text
             style={[
               styles.gateRetryText,
-              { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
+              {
+                color: colors.primaryForeground,
+                fontFamily: fonts.sansSemiBold,
+              },
             ]}
           >
             Try again
@@ -148,8 +158,11 @@ function ChatSurface({
     "admin";
   const speech = useSpeech();
 
-  const { data: models, isPending: modelsPending, error: modelsError } =
-    useModelConfigs();
+  const {
+    data: models,
+    isPending: modelsPending,
+    error: modelsError,
+  } = useModelConfigs();
   const {
     isFetching: hydrationFetching,
     error: hydrationError,
@@ -175,21 +188,37 @@ function ChatSurface({
     () =>
       new DefaultChatTransport<UIMessage>({
         api: `${baseURL}/api/chat`,
-        fetch: ((input: Parameters<typeof expoFetch>[0], init?: Parameters<typeof expoFetch>[1]) =>
-          authFetch(input, init)) as unknown as typeof globalThis.fetch,
-        prepareSendMessagesRequest: ({ messages, body, trigger, messageId }) => ({
+        fetch: ((
+          input: Parameters<typeof expoFetch>[0],
+          init?: Parameters<typeof expoFetch>[1],
+        ) => authFetch(input, init)) as unknown as typeof globalThis.fetch,
+        prepareSendMessagesRequest: ({
+          messages,
+          body,
+          trigger,
+          messageId,
+        }) => ({
           body: { ...body, messages, trigger, messageId },
         }),
       }),
     [baseURL],
   );
 
-  const { messages, setMessages, sendMessage, regenerate, status, stop, error } = useChat({
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    regenerate,
+    status,
+    stop,
+    error,
+  } = useChat({
     id: chatId,
     resume: !isNew,
     transport,
     messages: initialMessages,
-    onFinish: () => {
+    onFinish: ({ isAbort }) => {
+      if (isAbort) return;
       qc.invalidateQueries({ queryKey: queryKeys.chats() });
       qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
     },
@@ -295,7 +324,9 @@ function ChatSurface({
           ) : (
             <>
               <ModelBrandIcon
-                iconId={selectedModel?.modelIconId ?? selectedModel?.providerIconId}
+                iconId={
+                  selectedModel?.modelIconId ?? selectedModel?.providerIconId
+                }
                 color={colors.mutedForeground}
                 size={16}
                 style={styles.headerTitleIcon}
@@ -354,29 +385,6 @@ function ChatSurface({
 
   const isNewRef = useRef(isNew);
 
-  async function requestTitle(userText: string) {
-    if (!selectedId) return;
-    try {
-      const r = await authFetch(`${baseURL}/api/chats/${chatId}/title`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          modelConfigId: selectedId,
-          userText,
-          projectId,
-        }),
-      });
-      if (!r.ok) return;
-      const { title } = (await r.json()) as { title: string };
-      if (!title) return;
-      qc.setQueryData<ChatListItem[]>(queryKeys.chats(), (prev) =>
-        prev?.map((c) => (c.id === chatId ? { ...c, title } : c)),
-      );
-    } catch {
-      // title generation is non-critical; silent failure matches web
-    }
-  }
-
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const lastErrorRef = useRef<Error | undefined>(undefined);
@@ -395,7 +403,8 @@ function ChatSurface({
       !hydrationFetching &&
       userRefreshingMessages.current
     ) {
-      if (hydrationError) toastError("Couldn't refresh messages", hydrationError);
+      if (hydrationError)
+        toastError("Couldn't refresh messages", hydrationError);
       userRefreshingMessages.current = false;
     }
     wasFetchingMessages.current = hydrationFetching;
@@ -425,7 +434,6 @@ function ChatSurface({
         if (prev.some((c) => c.id === chatId)) return prev;
         return [next, ...prev];
       });
-      if (text) void requestTitle(text);
     }
     sendMessage({ text, files }, { body: requestBody() });
     clearAttachments();
@@ -436,7 +444,11 @@ function ChatSurface({
     regenerate({ messageId, body: requestBody() });
   }
 
-  function handleSaveEdit(messageId: string, text: string, files: FileUIPart[]) {
+  function handleSaveEdit(
+    messageId: string,
+    text: string,
+    files: FileUIPart[],
+  ) {
     setEditingId(null);
     if (streaming || !configured) return;
     const trimmed = text.trim();
@@ -470,7 +482,10 @@ function ChatSurface({
             <Text
               style={[
                 styles.emptySub,
-                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                {
+                  color: colors.mutedForeground,
+                  fontFamily: fonts.sansRegular,
+                },
               ]}
             >
               An admin can add one in Settings → Models on the web.

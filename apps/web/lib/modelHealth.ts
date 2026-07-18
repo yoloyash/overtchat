@@ -1,13 +1,8 @@
 import "server-only";
 import { generateText } from "ai";
-import { buildModel } from "@/lib/llm";
-
-export interface PingArgs {
-  baseUrl: string;
-  apiKey?: string | null;
-  model: string;
-  extraBody?: Record<string, unknown> | null;
-}
+import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
+import type { ProviderModelConfig } from "@/lib/providers/server/types";
 
 export type PingResult =
   | {
@@ -17,19 +12,21 @@ export type PingResult =
       inputTokens: number | null;
       outputTokens: number | null;
     }
-  | { ok: false; error: string; elapsedMs: number };
+  | {
+      ok: false;
+      error: string;
+      elapsedMs: number;
+      kind: "configuration" | "upstream";
+    };
 
-export async function pingModel(args: PingArgs): Promise<PingResult> {
-  const { model: llm, providerOptions } = buildModel({
-    baseUrl: args.baseUrl,
-    apiKey: args.apiKey ?? null,
-    model: args.model,
-    extraBody: args.extraBody ?? null,
-  });
+export async function pingModel(
+  config: ProviderModelConfig,
+): Promise<PingResult> {
   const started = Date.now();
   try {
+    const { model, providerOptions } = createConfiguredLanguageModel(config);
     const { text, usage } = await generateText({
-      model: llm,
+      model,
       prompt: "Say hi in one short sentence.",
       maxOutputTokens: 64,
       abortSignal: AbortSignal.timeout(30_000),
@@ -47,6 +44,7 @@ export async function pingModel(args: PingArgs): Promise<PingResult> {
       ok: false,
       error: err instanceof Error ? err.message : String(err),
       elapsedMs: Date.now() - started,
+      kind: isProviderConfigurationError(err) ? "configuration" : "upstream",
     };
   }
 }
