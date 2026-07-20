@@ -23,30 +23,26 @@ export const webTools = {
   }),
 };
 
+/** Full stable registry sent to every tool-capable model request. */
+export const chatTools = Object.freeze({
+  ...webTools,
+});
+
+/** Exhaustive registry names, also used as deterministic provider ordering. */
+export const CHAT_TOOL_NAMES = Object.freeze(
+  Object.keys(chatTools) as Array<keyof typeof chatTools>,
+);
+export const CHAT_TOOL_ORDER = CHAT_TOOL_NAMES;
+
+/** Tools controlled by the user's Web Search toggle. */
+export const WEB_TOOL_NAMES: ReadonlySet<keyof typeof chatTools> = new Set([
+  "web_search",
+  "fetch_url",
+]);
+
 /**
- * Citation format instructions for `web_search`.
- *
- * Ported verbatim from LibreChat's buildWebSearchContext() in
- * packages/api/src/tools/toolkits/web.ts. LibreChat injects this as part of
- * the system prompt (via toolContextMap → systemContent), NOT as the tool
- * description — placement matters: tool descriptions only inform tool calls,
- * not output formatting, so the model ignores them when writing prose.
+ * Stable output-format instruction. It stays in the system prefix whenever
+ * the selected model supports tools, regardless of the current toggle state.
  */
-export const WEB_SEARCH_CITATION_PROMPT = `# \`web_search\`:
-**Execute immediately without preface.** After search, provide a brief summary addressing the query directly, then structure your response with clear Markdown formatting (## headers, lists, tables). Cite sources properly, tailor tone to query type, and provide comprehensive details.
-
-Use the conversation date/time from the dynamic runtime context when recency matters.
-
-**CITATION FORMAT - UNICODE ESCAPE SEQUENCES ONLY:**
-Use these EXACT escape sequences (copy verbatim): \\ue202 (before each anchor), \\ue200 (group start), \\ue201 (group end), \\ue203 (highlight start), \\ue204 (highlight end)
-
-Anchor pattern: \\ue202turn{N}{type}{index} where N=turn number, type=search|news|image|ref, index=0,1,2...
-
-**Examples (copy these exactly):**
-- Single: "Statement.\\ue202turn0search0"
-- Multiple: "Statement.\\ue202turn0search0\\ue202turn0news1"
-- Group: "Statement. \\ue200\\ue202turn0search0\\ue202turn0news1\\ue201"
-- Highlight: "\\ue203Cited text.\\ue204\\ue202turn0search0"
-- Image: "See photo\\ue202turn0image0."
-
-**CRITICAL:** Output escape sequences EXACTLY as shown. Do NOT substitute with † or other symbols. Place anchors AFTER punctuation. Cite every non-obvious fact/quote. NEVER use markdown links, [1], footnotes, or HTML tags.`;
+export const WEB_SEARCH_CITATION_PROMPT =
+  "When using web_search, cite sourced claims with the literal anchor \\ue202turn{N}search{index}, using Current turn N from runtime_context and counting results zero-based across web_search calls in call order. Place anchors after punctuation. Do not use Markdown links or footnotes for these citations.";

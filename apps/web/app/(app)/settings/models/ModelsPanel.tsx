@@ -71,6 +71,7 @@ export function ModelsPanel() {
           model: m.model,
           systemPrompt: m.systemPrompt,
           providerOptions: m.providerOptions,
+          toolCallingEnabled: m.toolCallingEnabled,
           enabled: next,
           sortOrder: m.sortOrder,
         },

@@ -19,6 +19,7 @@ export const googleAdapter: ProviderAdapter = {
       }),
       providerOptionsKey: "google",
       defaultProviderOptions: GOOGLE_THINKING_DEFAULTS,
+      toolSelectionStrategy: "tool-choice",
     };
   },
   listModels(connection) {

@@ -31,6 +31,18 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     stats.contextTokens !== undefined
       ? { label: "Context tokens", value: formatInteger(stats.contextTokens) }
       : null,
+    stats.uncachedInputTokens !== undefined
+      ? {
+          label: "Uncached input",
+          value: formatInteger(stats.uncachedInputTokens),
+        }
+      : null,
+    stats.cacheReadTokens !== undefined
+      ? { label: "Cache read", value: formatInteger(stats.cacheReadTokens) }
+      : null,
+    stats.cacheWriteTokens !== undefined
+      ? { label: "Cache write", value: formatInteger(stats.cacheWriteTokens) }
+      : null,
     stats.responseTokens !== undefined
       ? { label: "Response tokens", value: formatInteger(stats.responseTokens) }
       : null,

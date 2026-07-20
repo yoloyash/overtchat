@@ -43,6 +43,7 @@ export interface ComposerHandle {
 interface ComposerProps {
   configured: boolean;
   streaming: boolean;
+  searchAvailable: boolean;
   searchEnabled: boolean;
   dropActive: boolean;
   onToggleSearch: () => void;
@@ -54,6 +55,7 @@ interface ComposerProps {
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
   configured,
   streaming,
+  searchAvailable,
   searchEnabled,
   dropActive,
   onToggleSearch,
@@ -204,8 +206,18 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   "bg-accent text-foreground hover:bg-accent",
               )}
               onClick={onToggleSearch}
+              disabled={!searchAvailable}
+              title={
+                searchAvailable
+                  ? undefined
+                  : "Web search is unavailable for this model"
+              }
               aria-label={
-                searchEnabled ? "Disable web search" : "Enable web search"
+                !searchAvailable
+                  ? "Web search unavailable for this model"
+                  : searchEnabled
+                    ? "Disable web search"
+                    : "Enable web search"
               }
               aria-pressed={searchEnabled}
             >

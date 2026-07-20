@@ -44,6 +44,14 @@ describe("chat request parsing", () => {
     });
   });
 
+  it("accepts the client's IANA timezone hint", async () => {
+    await expect(
+      parseChatRequest(
+        request({ ...validBody, timeZone: "America/Los_Angeles" }),
+      ),
+    ).resolves.toMatchObject({ timeZone: "America/Los_Angeles" });
+  });
+
   it("rejects missing and structurally invalid messages", async () => {
     await expect(
       parseChatRequest(request({ ...validBody, messages: undefined })),

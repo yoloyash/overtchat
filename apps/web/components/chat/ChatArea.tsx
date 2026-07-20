@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { modelSupportsToolCalling } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -60,6 +61,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   }, [models]);
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
+  const selectedModel = models?.find((model) => model.id === selectedId);
+  const searchAvailable = modelSupportsToolCalling(selectedModel);
 
   const [searchEnabled, setSearchEnabled] = useLocalStorage<boolean>(
     SEARCH_STORAGE_KEY,
@@ -150,7 +153,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const requestBody = () => ({
     modelConfigId: selectedId,
-    searchEnabled,
+    searchEnabled: searchAvailable && searchEnabled,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     projectId: projectId ?? null,
     temporary,
@@ -238,9 +242,12 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       ref={composerRef}
       configured={configured}
       streaming={streaming}
-      searchEnabled={searchEnabled}
+      searchAvailable={searchAvailable}
+      searchEnabled={searchAvailable && searchEnabled}
       dropActive={dropActive}
-      onToggleSearch={() => setSearchEnabled(!searchEnabled)}
+      onToggleSearch={() => {
+        if (searchAvailable) setSearchEnabled(!searchEnabled);
+      }}
       onSubmit={handleSubmit}
       onStop={handleStop}
       isAdmin={isAdmin}

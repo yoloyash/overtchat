@@ -13,6 +13,7 @@ import { AttachmentChip } from "./AttachmentChip";
 export function Composer({
   configured,
   streaming,
+  searchAvailable,
   searchEnabled,
   attachments,
   attachmentMeta,
@@ -28,6 +29,7 @@ export function Composer({
 }: {
   configured: boolean;
   streaming: boolean;
+  searchAvailable: boolean;
   searchEnabled: boolean;
   attachments: FileUIPart[];
   attachmentMeta: Record<string, AttachmentMeta>;
@@ -212,7 +214,11 @@ export function Composer({
         <View style={styles.inputRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add to chat"
+            accessibilityLabel={
+              searchAvailable
+                ? "Add to chat"
+                : "Add to chat; web search unavailable for this model"
+            }
             onPress={openAdd}
             style={({ pressed }) => [
               styles.iconButton,

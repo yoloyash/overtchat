@@ -23,6 +23,7 @@ export async function POST(
     apiKey: row.apiKey,
     model: row.model,
     providerOptions: row.providerOptions,
+    toolCallingEnabled: row.toolCallingEnabled,
   });
 
   if (!result.ok) {

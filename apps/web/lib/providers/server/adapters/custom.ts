@@ -36,6 +36,7 @@ function createCustomLanguageModel(
           model: config.model,
         }),
         providerOptionsKey: "custom",
+        toolSelectionStrategy: "tool-choice",
       };
     case "openai-responses":
       return {
@@ -46,6 +47,7 @@ function createCustomLanguageModel(
           model: config.model,
         }),
         providerOptionsKey: "custom",
+        toolSelectionStrategy: "tool-choice",
       };
     case "anthropic-messages":
       return {
@@ -57,6 +59,7 @@ function createCustomLanguageModel(
           authentication: "api-key",
         }),
         providerOptionsKey: "custom",
+        toolSelectionStrategy: "approval-only",
       };
     case "auto":
       throw new ProviderConfigurationError(

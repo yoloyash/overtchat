@@ -53,6 +53,7 @@ export const bedrockAdapter: ProviderAdapter = {
             authentication: "bearer",
           }),
           providerOptionsKey: "bedrock",
+          toolSelectionStrategy: "approval-only",
         };
       case "openai-responses":
         return {
@@ -63,6 +64,7 @@ export const bedrockAdapter: ProviderAdapter = {
             model: config.model,
           }),
           providerOptionsKey: "bedrock",
+          toolSelectionStrategy: "tool-choice",
         };
       case "openai-chat":
         return {
@@ -73,6 +75,7 @@ export const bedrockAdapter: ProviderAdapter = {
             model: config.model,
           }),
           providerOptionsKey: "bedrock",
+          toolSelectionStrategy: "tool-choice",
         };
     }
   },

@@ -39,6 +39,28 @@ describe("provider registry", () => {
     });
   });
 
+  it("exposes transport tool-selection capabilities without route branching", () => {
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openai",
+      }).toolSelectionStrategy,
+    ).toBe("openai-allowed-tools");
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "openai-chat",
+      }).toolSelectionStrategy,
+    ).toBe("tool-choice");
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "anthropic",
+      }).toolSelectionStrategy,
+    ).toBe("approval-only");
+  });
+
   it("merges native provider defaults with saved options", () => {
     const configured = createConfiguredLanguageModel({
       ...baseConfig,

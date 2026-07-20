@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
+import { modelSupportsToolCalling } from "@overtchat/shared";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
@@ -234,6 +235,7 @@ function ChatSurface({
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const searchAvailable = modelSupportsToolCalling(selectedModel);
 
   const {
     attachments,
@@ -376,7 +378,8 @@ function ChatSurface({
   function requestBody() {
     return {
       modelConfigId: selectedId,
-      searchEnabled,
+      searchEnabled: searchAvailable && searchEnabled,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       chatId,
       projectId,
       temporary: false,
@@ -528,7 +531,8 @@ function ChatSurface({
         <Composer
           configured={configured}
           streaming={streaming}
-          searchEnabled={searchEnabled}
+          searchAvailable={searchAvailable}
+          searchEnabled={searchAvailable && searchEnabled}
           attachments={attachments}
           attachmentMeta={attachmentMeta}
           uploading={uploading}
@@ -557,7 +561,8 @@ function ChatSurface({
 
       <AddToChatSheet
         ref={addSheetRef}
-        searchEnabled={searchEnabled}
+        searchAvailable={searchAvailable}
+        searchEnabled={searchAvailable && searchEnabled}
         onToggleSearch={(next) => setSearchEnabled(next)}
         onPickTool={onPickTool}
       />

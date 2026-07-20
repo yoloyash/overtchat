@@ -23,11 +23,15 @@ const TOOLS: { key: ToolKey; label: string; icon: keyof typeof Ionicons.glyphMap
 export const AddToChatSheet = forwardRef<
   AddToChatSheetRef,
   {
+    searchAvailable: boolean;
     searchEnabled: boolean;
     onToggleSearch: (next: boolean) => void;
     onPickTool?: (tool: ToolKey) => void;
   }
->(function AddToChatSheet({ searchEnabled, onToggleSearch, onPickTool }, ref) {
+>(function AddToChatSheet(
+  { searchAvailable, searchEnabled, onToggleSearch, onPickTool },
+  ref,
+) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -113,20 +117,41 @@ export const AddToChatSheet = forwardRef<
             size={18}
             color={colors.popoverForeground}
           />
-          <Text
-            style={[
-              styles.toggleLabel,
-              {
-                color: colors.popoverForeground,
-                fontFamily: fonts.sansMedium,
-              },
-            ]}
-          >
-            Web search
-          </Text>
+          <View style={styles.toggleCopy}>
+            <Text
+              style={[
+                styles.toggleLabel,
+                {
+                  color: colors.popoverForeground,
+                  fontFamily: fonts.sansMedium,
+                },
+              ]}
+            >
+              Web search
+            </Text>
+            {!searchAvailable ? (
+              <Text
+                style={[
+                  styles.unavailableLabel,
+                  {
+                    color: colors.mutedForeground,
+                    fontFamily: fonts.sansRegular,
+                  },
+                ]}
+              >
+                Unavailable for this model
+              </Text>
+            ) : null}
+          </View>
           <Switch
             value={searchEnabled}
             onValueChange={onToggleSearch}
+            disabled={!searchAvailable}
+            accessibilityLabel={
+              searchAvailable
+                ? "Web search"
+                : "Web search unavailable for this model"
+            }
             trackColor={{ true: colors.primary, false: colors.border }}
             thumbColor={colors.background}
           />
@@ -155,5 +180,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  toggleLabel: { flex: 1, fontSize: 14 },
+  toggleCopy: { flex: 1 },
+  toggleLabel: { fontSize: 14 },
+  unavailableLabel: { fontSize: 12, marginTop: 1 },
 });

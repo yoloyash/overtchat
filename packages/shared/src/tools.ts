@@ -1,8 +1,24 @@
 export type ToolState =
   | "input-streaming"
   | "input-available"
+  | "approval-requested"
+  | "approval-responded"
   | "output-available"
-  | "output-error";
+  | "output-error"
+  | "output-denied";
+
+export interface ToolApproval {
+  id: string;
+  approved?: boolean;
+  reason?: string;
+  isAutomatic?: boolean;
+  signature?: string;
+}
+
+export interface ToolStatePart {
+  state?: string;
+  approval?: Partial<ToolApproval>;
+}
 
 export interface WebSearchResult {
   link: string;
@@ -24,6 +40,7 @@ export type WebSearchPart = {
   input?: { query?: string; limit?: number };
   output?: WebSearchResult[];
   errorText?: string;
+  approval?: ToolApproval;
 };
 
 export type FetchUrlPart = {
@@ -33,7 +50,35 @@ export type FetchUrlPart = {
   input?: { url?: string };
   output?: FetchedPage;
   errorText?: string;
+  approval?: ToolApproval;
 };
+
+/**
+ * AI SDK 7 emits a terminal `output-denied` state after a rejected approval.
+ * The preceding `approval-responded` state can briefly reach clients first,
+ * so treat an explicit negative response as denied as well.
+ */
+export function isToolDenied(part: ToolStatePart): boolean {
+  return (
+    part.state === "output-denied" ||
+    (part.state === "approval-responded" &&
+      part.approval?.approved === false)
+  );
+}
+
+export function toolDenialReason(part: ToolStatePart): string | undefined {
+  if (!isToolDenied(part)) return undefined;
+  const reason = part.approval?.reason?.trim();
+  return reason || undefined;
+}
+
+export function isToolSettled(part: ToolStatePart): boolean {
+  return (
+    part.state === "output-available" ||
+    part.state === "output-error" ||
+    isToolDenied(part)
+  );
+}
 
 export function cleanDomain(url: string): string {
   try {

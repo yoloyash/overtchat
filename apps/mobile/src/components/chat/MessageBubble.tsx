@@ -1,4 +1,5 @@
 import type { FileUIPart, UIMessage } from "ai";
+import { isToolSettled } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -176,8 +177,9 @@ export function MessageBubble({
           const trailingDone =
             trailing.type === "reasoning"
               ? (trailing as { state?: string }).state === "done"
-              : (trailing as { state?: string }).state === "output-available" ||
-                (trailing as { state?: string }).state === "output-error";
+              : isToolSettled(
+                  trailing as Parameters<typeof isToolSettled>[0],
+                );
           const active = streaming && isLast && !trailingDone;
           return (
             <ChainOfThought

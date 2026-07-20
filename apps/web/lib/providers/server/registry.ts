@@ -2,9 +2,8 @@ import "server-only";
 import {
   extractReasoningMiddleware,
   wrapLanguageModel,
-  type LanguageModel,
 } from "ai";
-import type { JSONValue } from "@ai-sdk/provider";
+import type { JSONValue, LanguageModelV4 } from "@ai-sdk/provider";
 import {
   API_FORMAT_IDS,
   getProvider,
@@ -21,6 +20,7 @@ import type {
   ProviderAdapter,
   ProviderConnection,
   ProviderModelConfig,
+  ToolSelectionStrategy,
 } from "@/lib/providers/server/types";
 
 const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
@@ -32,8 +32,9 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
 };
 
 export interface ConfiguredLanguageModel {
-  model: LanguageModel;
+  model: LanguageModelV4;
   providerOptions: Record<string, Record<string, JSONValue>> | undefined;
+  toolSelectionStrategy: ToolSelectionStrategy;
 }
 
 export function createConfiguredLanguageModel(
@@ -71,6 +72,9 @@ export function createConfiguredLanguageModel(
             [resolved.providerOptionsKey]: options as Record<string, JSONValue>,
           }
         : undefined,
+    // Unknown transports get the cache-safe fallback: keep definitions on the
+    // wire and let application approval deny forbidden calls.
+    toolSelectionStrategy: resolved.toolSelectionStrategy ?? "approval-only",
   };
 }
 

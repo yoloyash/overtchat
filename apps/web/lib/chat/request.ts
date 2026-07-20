@@ -6,6 +6,7 @@ const ChatRequestEnvelopeSchema = z.object({
   modelConfigId: z.string().trim().min(1, "Missing modelConfigId"),
   chatId: z.string().trim().min(1, "Missing chatId"),
   searchEnabled: z.boolean().optional().default(false),
+  timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
   trigger: z
     .enum(["submit-message", "regenerate-message"])
@@ -20,6 +21,7 @@ export interface ParsedChatRequest {
   modelConfigId: string;
   chatId: string;
   searchEnabled: boolean;
+  timeZone?: string;
   projectId?: string | null;
   trigger: "submit-message" | "regenerate-message";
   messageId?: string;

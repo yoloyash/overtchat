@@ -1,5 +1,10 @@
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
+
+export type ToolSelectionStrategy =
+  | "openai-allowed-tools"
+  | "tool-choice"
+  | "approval-only";
 
 export interface ProviderConnection {
   providerId: ProviderId;
@@ -11,12 +16,16 @@ export interface ProviderConnection {
 export interface ProviderModelConfig extends ProviderConnection {
   model: string;
   providerOptions: Record<string, unknown> | null | undefined;
+  /** App capability policy; provider adapters do not infer this from model IDs. */
+  toolCallingEnabled?: boolean;
 }
 
 export interface ResolvedLanguageModel {
-  model: LanguageModelV3;
+  model: LanguageModelV4;
   providerOptionsKey: string;
   defaultProviderOptions?: Record<string, unknown>;
+  /** Transport-native way to vary the callable subset without hiding tools. */
+  toolSelectionStrategy?: ToolSelectionStrategy;
 }
 
 export interface ProviderAdapter {
