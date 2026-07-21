@@ -14,7 +14,6 @@ export const openAIAdapter: ProviderAdapter = {
         model: config.model,
       }),
       providerOptionsKey: "openai",
-      toolSelectionStrategy: "openai-allowed-tools",
     };
   },
   listModels(connection) {

@@ -10,7 +10,6 @@ import {
   chatTools,
 } from "@/lib/tools";
 import type { ChatRuntimeContext } from "@/lib/runtime-context";
-import type { ToolSelectionStrategy } from "@/lib/providers/server/types";
 
 const WEB_DISABLED_REASON =
   "Web search is disabled by the user for this turn.";
@@ -21,8 +20,7 @@ const SEARCH_FIRST_REASON =
 
 export interface ToolStepPolicy {
   allowedToolNames: string[];
-  toolChoice: "auto" | "none" | "required";
-  providerOptions?: ProviderOptions;
+  toolChoice: "auto";
   runtimeContext: ChatRuntimeContext;
 }
 
@@ -57,12 +55,10 @@ export function getAllowedToolNames(
 export function resolveToolStepPolicy({
   runtimeContext,
   webSearchAttempted = runtimeContext.webSearchAttempted,
-  strategy,
   toolNames = CHAT_TOOL_NAMES,
 }: {
   runtimeContext: ChatRuntimeContext;
   webSearchAttempted?: boolean;
-  strategy: ToolSelectionStrategy;
   toolNames?: readonly string[];
 }): ToolStepPolicy {
   const nextRuntimeContext =
@@ -73,35 +69,13 @@ export function resolveToolStepPolicy({
     nextRuntimeContext,
     toolNames,
   );
-  const searchStillRequired =
-    nextRuntimeContext.webSearchMode === "required" &&
-    !nextRuntimeContext.webSearchAttempted;
-
-  if (allowedToolNames.length === 0) {
-    return {
-      allowedToolNames,
-      // Some APIs (notably Anthropic) have no native `none`; their SDK drops
-      // tool definitions to emulate it. `auto` plus approval denial keeps the
-      // cache-stable registry on the wire without allowing execution.
-      toolChoice: strategy === "approval-only" ? "auto" : "none",
-      runtimeContext: nextRuntimeContext,
-    };
-  }
-
   return {
     allowedToolNames,
-    toolChoice: searchStillRequired ? "required" : "auto",
-    providerOptions:
-      strategy === "openai-allowed-tools"
-        ? {
-            openai: {
-              allowedTools: {
-                toolNames: allowedToolNames,
-                mode: searchStillRequired ? "required" : "auto",
-              },
-            },
-          }
-        : undefined,
+    // Provider-native tool choice is deliberately invariant. Gemini includes
+    // this field in its cache identity, and some SDKs implement `none` by
+    // deleting tool definitions. Runtime instructions steer compliant models;
+    // application approval remains the execution boundary.
+    toolChoice: "auto",
     runtimeContext: nextRuntimeContext,
   };
 }
@@ -140,9 +114,10 @@ export function getToolApprovalStatus(
   return { type: "not-applicable" };
 }
 
-export function createChatPrepareStep(
-  strategy: ToolSelectionStrategy,
-): PrepareStepFunction<typeof chatTools, ChatRuntimeContext> {
+export function createChatPrepareStep(): PrepareStepFunction<
+  typeof chatTools,
+  ChatRuntimeContext
+> {
   return ({ steps, runtimeContext }) => {
     const webSearchAttempted =
       runtimeContext.webSearchAttempted ||
@@ -153,12 +128,10 @@ export function createChatPrepareStep(
     const policy = resolveToolStepPolicy({
       runtimeContext,
       webSearchAttempted,
-      strategy,
     });
 
     return {
       toolChoice: policy.toolChoice,
-      providerOptions: policy.providerOptions,
       runtimeContext: policy.runtimeContext,
     };
   };
@@ -167,9 +140,8 @@ export function createChatPrepareStep(
 /** Remove saved values for the provider option owned by runtime policy. */
 export function sanitizeToolProviderOptions(
   providerOptions: ProviderOptions | undefined,
-  strategy: ToolSelectionStrategy,
 ): ProviderOptions | undefined {
-  if (strategy !== "openai-allowed-tools" || !providerOptions?.openai) {
+  if (!providerOptions?.openai) {
     return providerOptions;
   }
 

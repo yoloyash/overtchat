@@ -7,6 +7,7 @@ import {
   type TextStreamPart,
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
+import { markSystemCacheBoundary } from "@/lib/chat/prompt-cache";
 import {
   chatToolApproval,
   createChatPrepareStep,
@@ -120,16 +121,15 @@ async function handlePost(req: Request): Promise<Response> {
   // Everything above and through message conversion is read-only. A saved
   // configuration, missing upload, or malformed message therefore cannot
   // truncate an edit/regenerate branch or persist a partial turn.
-  const { model, providerOptions, toolSelectionStrategy } =
-    createConfiguredLanguageModel({
-      providerId: modelConfig.providerId,
-      apiFormat: modelConfig.apiFormat,
-      baseUrl: modelConfig.baseUrl,
-      apiKey: modelConfig.apiKey,
-      model: modelConfig.model,
-      providerOptions: modelConfig.providerOptions,
-      toolCallingEnabled: modelConfig.toolCallingEnabled,
-    });
+  const { model, providerOptions } = createConfiguredLanguageModel({
+    providerId: modelConfig.providerId,
+    apiFormat: modelConfig.apiFormat,
+    baseUrl: modelConfig.baseUrl,
+    apiKey: modelConfig.apiKey,
+    model: modelConfig.model,
+    providerOptions: modelConfig.providerOptions,
+    toolCallingEnabled: modelConfig.toolCallingEnabled,
+  });
   const inlined = await inlineUploads(messages, userId);
   const convertedMessages = await convertToModelMessages(inlined);
 
@@ -158,6 +158,9 @@ async function handlePost(req: Request): Promise<Response> {
     toolCallingEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
+  const instructions = system
+    ? markSystemCacheBoundary({ role: "system", content: system })
+    : undefined;
 
   const last = messages[messages.length - 1];
   const userMessageCount = messages.filter(
@@ -221,17 +224,14 @@ async function handlePost(req: Request): Promise<Response> {
     const result = toolCallingEnabled
       ? await new ToolLoopAgent<never, typeof chatTools, ChatRuntimeContext>({
           model,
-          instructions: system,
+          instructions,
           tools: chatTools,
           toolOrder: CHAT_TOOL_ORDER,
           stopWhen: isStepCount(50),
           runtimeContext,
           toolApproval: chatToolApproval,
-          prepareStep: createChatPrepareStep(toolSelectionStrategy),
-          providerOptions: sanitizeToolProviderOptions(
-            providerOptions,
-            toolSelectionStrategy,
-          ),
+          prepareStep: createChatPrepareStep(),
+          providerOptions: sanitizeToolProviderOptions(providerOptions),
         }).stream({ messages: modelMessages, abortSignal })
       : await new ToolLoopAgent<
           never,
@@ -239,7 +239,7 @@ async function handlePost(req: Request): Promise<Response> {
           ChatRuntimeContext
         >({
           model,
-          instructions: system,
+          instructions,
           runtimeContext,
           providerOptions,
         }).stream({ messages: modelMessages, abortSignal });

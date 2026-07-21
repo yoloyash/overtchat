@@ -50,3 +50,29 @@ docker exec overtchat-app npx tsx scripts/seed.ts
 The copied files vanish on the next `docker compose up -d --build`, which is
 what we want — seed credentials and the homelab IP in `seed.ts` have no
 business being baked into the image.
+
+## Provider cache smoke test
+
+`provider-cache-smoke.ts` is an opt-in live integration test. It sends the
+same stable tool registry through the app's actual AI SDK transports and runs
+Cold Off → Warm Off → On → Off. It fails if disabled tools execute, enabled
+search does not execute, or the first request's system/tool definitions change
+across the toggle. Its JSON output also includes each provider's cache token
+counters.
+
+Run all configured targets from `apps/web/`:
+
+```bash
+npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
+```
+
+The full run requires `GEMINI_API_KEY`, `AWS_BEARER_TOKEN`, and llama.cpp on
+`127.0.0.1:9876`. Select a comma-separated subset with
+`CACHE_SMOKE_TARGETS`; unrelated credentials and servers are then optional.
+`CACHE_SMOKE_CORPUS_WORDS` reduces or enlarges the stable synthetic prefix.
+
+```bash
+CACHE_SMOKE_TARGETS='llama.cpp/Qwen3.5-122B-A10B' \
+CACHE_SMOKE_CORPUS_WORDS=120 \
+npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
+```

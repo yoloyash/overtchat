@@ -20,7 +20,6 @@ import type {
   ProviderAdapter,
   ProviderConnection,
   ProviderModelConfig,
-  ToolSelectionStrategy,
 } from "@/lib/providers/server/types";
 
 const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
@@ -34,7 +33,6 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
 export interface ConfiguredLanguageModel {
   model: LanguageModelV4;
   providerOptions: Record<string, Record<string, JSONValue>> | undefined;
-  toolSelectionStrategy: ToolSelectionStrategy;
 }
 
 export function createConfiguredLanguageModel(
@@ -72,9 +70,6 @@ export function createConfiguredLanguageModel(
             [resolved.providerOptionsKey]: options as Record<string, JSONValue>,
           }
         : undefined,
-    // Unknown transports get the cache-safe fallback: keep definitions on the
-    // wire and let application approval deny forbidden calls.
-    toolSelectionStrategy: resolved.toolSelectionStrategy ?? "approval-only",
   };
 }
 

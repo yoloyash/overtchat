@@ -15,9 +15,6 @@ export const anthropicAdapter: ProviderAdapter = {
         authentication: "api-key",
       }),
       providerOptionsKey: "anthropic",
-      // Anthropic has no native `none`; its SDK implements that choice by
-      // removing all tool definitions, which would break the stable prefix.
-      toolSelectionStrategy: "approval-only",
     };
   },
   listModels(connection) {

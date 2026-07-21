@@ -52,7 +52,26 @@ describe("runtime context", () => {
     const result = prependRuntimeContext(messages, "<runtime_context />");
 
     expect(result).not.toBe(messages);
-    expect(result[0]).toBe(messages[0]);
+    expect(result[0]).not.toBe(messages[0]);
+    expect(result[0]).toMatchObject({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "Earlier question",
+          providerOptions: {
+            openai: { promptCacheBreakpoint: { type: "ephemeral" } },
+          },
+        },
+      ],
+    });
+    expect(result[1]).not.toBe(messages[1]);
+    expect(result[1]).toMatchObject({
+      role: "assistant",
+      providerOptions: {
+        anthropic: { cacheControl: { type: "ephemeral" } },
+      },
+    });
     expect(result[2]).not.toBe(messages[2]);
     expect(result[2]).toMatchObject({
       role: "user",

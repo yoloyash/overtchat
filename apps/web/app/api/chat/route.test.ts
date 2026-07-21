@@ -211,7 +211,6 @@ describe("chat route setup boundary", () => {
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
       providerOptions: undefined,
-      toolSelectionStrategy: "tool-choice",
     });
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
@@ -333,7 +332,6 @@ describe("chat route setup boundary", () => {
       return {
         model: "language-model",
         providerOptions: undefined,
-        toolSelectionStrategy: "tool-choice",
       };
     });
     mocks.inlineUploads.mockImplementation(async () => {
@@ -557,7 +555,16 @@ describe("chat route setup boundary", () => {
         expect.objectContaining({
           tools: mocks.chatTools,
           toolOrder: mocks.toolOrder,
-          instructions: mocks.citationPrompt,
+          instructions: expect.objectContaining({
+            role: "system",
+            content: mocks.citationPrompt,
+            providerOptions: {
+              anthropic: { cacheControl: { type: "ephemeral" } },
+              openai: {
+                promptCacheBreakpoint: { type: "ephemeral" },
+              },
+            },
+          }),
           toolApproval: chatToolApproval,
           prepareStep: expect.any(Function),
           stopWhen: "stop-at-50",
@@ -571,7 +578,7 @@ describe("chat route setup boundary", () => {
       expect.objectContaining({ webSearchMode: "required" }),
     );
     expect(searchOff.tools).toBe(searchOn.tools);
-    expect(searchOff.instructions).toBe(searchOn.instructions);
+    expect(searchOff.instructions).toEqual(searchOn.instructions);
     const prepareSearchOff = searchOff.prepareStep as (options: {
       steps: unknown[];
       runtimeContext: Record<string, unknown>;
@@ -582,13 +589,13 @@ describe("chat route setup boundary", () => {
         steps: [],
         runtimeContext: searchOff.runtimeContext as Record<string, unknown>,
       }),
-    ).toEqual(expect.objectContaining({ toolChoice: "none" }));
+    ).toEqual(expect.objectContaining({ toolChoice: "auto" }));
     expect(
       await prepareSearchOn({
         steps: [],
         runtimeContext: searchOn.runtimeContext as Record<string, unknown>,
       }),
-    ).toEqual(expect.objectContaining({ toolChoice: "required" }));
+    ).toEqual(expect.objectContaining({ toolChoice: "auto" }));
     expect(mocks.toUIMessageStream.mock.calls[0][0].tools).toBe(
       mocks.chatTools,
     );
@@ -597,11 +604,10 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("keeps tools present and uses approval enforcement when native none is unavailable", async () => {
+  it("keeps tools present and uses approval enforcement while disabled", async () => {
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
       providerOptions: undefined,
-      toolSelectionStrategy: "approval-only",
     });
 
     await POST(request());
@@ -690,7 +696,7 @@ describe("chat route setup boundary", () => {
       expect.objectContaining({ userParts: messages[0].parts }),
     );
     expect(messages).toEqual(originalMessages);
-    expect(mocks.agentSettings[0].instructions).not.toContain(
+    expect(JSON.stringify(mocks.agentSettings[0].instructions)).not.toContain(
       "runtime context",
     );
   });

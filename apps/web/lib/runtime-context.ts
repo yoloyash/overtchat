@@ -1,4 +1,8 @@
 import type { ModelMessage } from "ai";
+import {
+  markAnthropicCacheBoundary,
+  markOpenAICacheBoundary,
+} from "@/lib/chat/prompt-cache";
 
 export type WebSearchMode = "required" | "disabled" | "unavailable";
 
@@ -67,8 +71,9 @@ export function renderRuntimeContext(context: ChatRuntimeContext): string {
 
 /**
  * Put ephemeral runtime context immediately before the current user content.
- * The input array and message objects are left untouched so persistence,
- * exports, search indexing, and title generation only see user-authored data.
+ * The preceding message gets Anthropic's cache boundary; the preceding user
+ * message gets OpenAI's supported boundary. The input array and messages are
+ * left untouched so persistence and exports only see user-authored data.
  */
 export function prependRuntimeContext(
   messages: ModelMessage[],
@@ -80,9 +85,21 @@ export function prependRuntimeContext(
   if (currentUserIndex === -1) {
     throw new Error("Runtime context requires a current user message");
   }
+  const priorUserIndex = messages.findLastIndex(
+    (message, index) => index < currentUserIndex && message.role === "user",
+  );
 
-  return messages.map((message, index) => {
-    if (index !== currentUserIndex || message.role !== "user") return message;
+  return messages.map((message, index): ModelMessage => {
+    let preparedMessage: ModelMessage = message;
+    if (index === currentUserIndex - 1) {
+      preparedMessage = markAnthropicCacheBoundary(preparedMessage);
+    }
+    if (index === priorUserIndex) {
+      preparedMessage = markOpenAICacheBoundary(preparedMessage);
+    }
+    if (index !== currentUserIndex || message.role !== "user") {
+      return preparedMessage;
+    }
 
     const runtimePart = { type: "text" as const, text: runtimeText };
     const content =

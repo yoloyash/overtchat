@@ -1,11 +1,6 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
-export type ToolSelectionStrategy =
-  | "openai-allowed-tools"
-  | "tool-choice"
-  | "approval-only";
-
 export interface ProviderConnection {
   providerId: ProviderId;
   apiFormat: ApiFormat;
@@ -24,8 +19,6 @@ export interface ResolvedLanguageModel {
   model: LanguageModelV4;
   providerOptionsKey: string;
   defaultProviderOptions?: Record<string, unknown>;
-  /** Transport-native way to vary the callable subset without hiding tools. */
-  toolSelectionStrategy?: ToolSelectionStrategy;
 }
 
 export interface ProviderAdapter {

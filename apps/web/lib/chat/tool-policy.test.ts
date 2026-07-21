@@ -27,18 +27,16 @@ describe("chat tool policy", () => {
     expect(CHAT_TOOL_ORDER).toEqual(Object.keys(chatTools));
   });
 
-  it("uses none only when every registered tool is disallowed", () => {
+  it("keeps provider-native tool choice invariant across runtime policy", () => {
     expect(
       resolveToolStepPolicy({
         runtimeContext: runtime(),
-        strategy: "tool-choice",
       }),
-    ).toMatchObject({ allowedToolNames: [], toolChoice: "none" });
+    ).toMatchObject({ allowedToolNames: [], toolChoice: "auto" });
 
     expect(
       resolveToolStepPolicy({
         runtimeContext: runtime(),
-        strategy: "tool-choice",
         toolNames: ["web_search", "fetch_url", "calculator"],
       }),
     ).toMatchObject({
@@ -47,30 +45,19 @@ describe("chat tool policy", () => {
     });
   });
 
-  it("keeps definitions visible when a provider emulates none by hiding tools", () => {
-    expect(
-      resolveToolStepPolicy({
-        runtimeContext: runtime(),
-        strategy: "approval-only",
-      }),
-    ).toMatchObject({ allowedToolNames: [], toolChoice: "auto" });
-  });
-
-  it("forces a search attempt before exposing the rest of the registry", () => {
+  it("tracks a search attempt without changing provider-native tool choice", () => {
     const before = runtime({ webSearchMode: "required" });
     expect(getAllowedToolNames(before, ["web_search", "fetch_url", "clock"]))
       .toEqual(["web_search"]);
     expect(
       resolveToolStepPolicy({
         runtimeContext: before,
-        strategy: "tool-choice",
       }).toolChoice,
-    ).toBe("required");
+    ).toBe("auto");
 
     const after = resolveToolStepPolicy({
       runtimeContext: before,
       webSearchAttempted: true,
-      strategy: "tool-choice",
       toolNames: ["web_search", "fetch_url", "clock"],
     });
     expect(after).toMatchObject({
@@ -78,20 +65,6 @@ describe("chat tool policy", () => {
       toolChoice: "auto",
       runtimeContext: { webSearchAttempted: true },
     });
-  });
-
-  it("uses OpenAI allowed_tools without changing the full tool registry", () => {
-    const policy = resolveToolStepPolicy({
-      runtimeContext: runtime({ webSearchMode: "required" }),
-      strategy: "openai-allowed-tools",
-    });
-
-    expect(policy.providerOptions).toEqual({
-      openai: {
-        allowedTools: { toolNames: ["web_search"], mode: "required" },
-      },
-    });
-    expect(policy.toolChoice).toBe("required");
   });
 
   it("denies disabled and out-of-sequence calls with an explicit reason", () => {
@@ -123,7 +96,6 @@ describe("chat tool policy", () => {
           },
           custom: { temperatureHint: 2 },
         },
-        "openai-allowed-tools",
       ),
     ).toEqual({
       openai: { reasoningEffort: "high" },
