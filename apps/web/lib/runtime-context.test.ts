@@ -15,10 +15,13 @@ describe("runtime context", () => {
     });
 
     expect(context).toMatchObject({
-      currentDateTime: "Sunday, July 19, 2026 at 4:42:18 PM PDT",
+      currentDateTime: "2026-07-19 16:42",
       timeZone: "America/Los_Angeles",
       webSearchMode: "enabled",
     });
+    expect(renderRuntimeContext(context)).toContain(
+      "Current time: 2026-07-19 16:42 America/Los_Angeles",
+    );
     expect(renderRuntimeContext(context)).toContain(
       "Web tools: enabled. Use web_search for discovery or fetch_url for a provided URL when useful.",
     );

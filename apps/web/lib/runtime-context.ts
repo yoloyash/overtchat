@@ -31,12 +31,22 @@ export function buildRuntimeContext({
 }: RuntimeContextOptions): ChatRuntimeContext {
   const normalizedTimeZone = normalizeTimeZone(timeZone);
 
-  return {
-    currentDateTime: new Intl.DateTimeFormat("en-US", {
+  const dateTimeParts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
       timeZone: normalizedTimeZone,
-      dateStyle: "full",
-      timeStyle: "long",
-    }).format(now),
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(now)
+      .map(({ type, value }) => [type, value]),
+  );
+
+  return {
+    currentDateTime: `${dateTimeParts.year}-${dateTimeParts.month}-${dateTimeParts.day} ${dateTimeParts.hour}:${dateTimeParts.minute}`,
     timeZone: normalizedTimeZone,
     webSearchMode,
   };
@@ -59,7 +69,7 @@ export function renderRuntimeContext(context: ChatRuntimeContext): string {
 
   return [
     "<runtime_context>",
-    `Date/time: ${context.currentDateTime} (${context.timeZone})`,
+    `Current time: ${context.currentDateTime} ${context.timeZone}`,
     ...webLines,
     "</runtime_context>",
   ].join("\n");
