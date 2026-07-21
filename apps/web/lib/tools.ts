@@ -15,7 +15,7 @@ export const webTools = {
 
   fetch_url: tool({
     description:
-      "Fetch a URL as markdown (~8k chars). Use after web_search to read promising pages.",
+      "Fetch a provided or discovered URL as markdown (~8k chars) when its contents are needed.",
     inputSchema: z.object({
       url: z.string().url(),
     }),
@@ -45,4 +45,4 @@ export const WEB_TOOL_NAMES: ReadonlySet<keyof typeof chatTools> = new Set([
  * the selected model supports tools, regardless of the current toggle state.
  */
 export const WEB_SEARCH_CITATION_PROMPT =
-  "When using web_search, cite sourced claims with the literal anchor \\ue202turn{N}search{index}, using Current turn N from runtime_context and counting results zero-based across web_search calls in call order. Place anchors after punctuation. Do not use Markdown links or footnotes for these citations.";
+  "After web_search, cite claims as literal \\ue202turn0search{index}, with index zero-based across all returned results. Do not use Markdown links or footnotes.";

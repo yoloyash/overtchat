@@ -7,12 +7,13 @@ import {
   type TextStreamPart,
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
-import { markSystemCacheBoundary } from "@/lib/chat/prompt-cache";
 import {
-  chatToolApproval,
-  createChatPrepareStep,
-  sanitizeToolProviderOptions,
-} from "@/lib/chat/tool-policy";
+  markSystemCacheBoundary,
+  promptCacheKeyForChat,
+  supportsOpenAIExplicitPromptCaching,
+  withOpenAIPromptCacheKey,
+} from "@/lib/chat/prompt-cache";
+import { chatToolApproval } from "@/lib/chat/tool-policy";
 import {
   CHAT_TOOL_ORDER,
   chatTools,
@@ -136,21 +137,32 @@ async function handlePost(req: Request): Promise<Response> {
   const provider = getProvider(modelConfig.providerId);
   const modelIconId =
     modelIconForModel(modelConfig.model) ?? provider.iconId ?? undefined;
-  const turnNumber =
-    messages.filter((message) => message.role === "user").length - 1;
+  const usesOpenAIResponsesCacheControls =
+    modelConfig.providerId === "openai" ||
+    (modelConfig.providerId === "bedrock" &&
+      /^openai\.gpt-\d/i.test(modelConfig.model));
+  const openAIExplicit =
+    usesOpenAIResponsesCacheControls &&
+    supportsOpenAIExplicitPromptCaching(modelConfig.model);
+  const requestProviderOptions = usesOpenAIResponsesCacheControls
+    ? withOpenAIPromptCacheKey(
+        providerOptions,
+        promptCacheKeyForChat(chatId),
+      )
+    : providerOptions;
   const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
   const runtimeContext = buildRuntimeContext({
-    turn: Math.max(0, turnNumber),
     webSearchMode: !toolCallingEnabled
       ? "unavailable"
       : searchEnabled
-        ? "required"
+        ? "enabled"
         : "disabled",
     timeZone,
   });
   const modelMessages = prependRuntimeContext(
     convertedMessages,
     renderRuntimeContext(runtimeContext),
+    { openAIExplicit },
   );
   const systemParts = [
     project?.instructions,
@@ -159,7 +171,10 @@ async function handlePost(req: Request): Promise<Response> {
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
   const instructions = system
-    ? markSystemCacheBoundary({ role: "system", content: system })
+    ? markSystemCacheBoundary(
+        { role: "system", content: system },
+        { openAIExplicit },
+      )
     : undefined;
 
   const last = messages[messages.length - 1];
@@ -230,8 +245,8 @@ async function handlePost(req: Request): Promise<Response> {
           stopWhen: isStepCount(50),
           runtimeContext,
           toolApproval: chatToolApproval,
-          prepareStep: createChatPrepareStep(),
-          providerOptions: sanitizeToolProviderOptions(providerOptions),
+          toolChoice: "auto",
+          providerOptions: requestProviderOptions,
         }).stream({ messages: modelMessages, abortSignal })
       : await new ToolLoopAgent<
           never,
@@ -241,7 +256,7 @@ async function handlePost(req: Request): Promise<Response> {
           model,
           instructions,
           runtimeContext,
-          providerOptions,
+          providerOptions: requestProviderOptions,
         }).stream({ messages: modelMessages, abortSignal });
 
     if (

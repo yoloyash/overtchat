@@ -1,6 +1,6 @@
 # Database Seeding
 
-This directory contains scripts for seeding the database with initial data (such as the admin user and model configurations). 
+This directory contains scripts for seeding the database with initial data (such as the admin user and model configurations).
 
 The `seed.ts` script interacts directly with the Drizzle ORM and Better Auth client to programmatically insert data without relying on the UI.
 
@@ -55,10 +55,12 @@ business being baked into the image.
 
 `provider-cache-smoke.ts` is an opt-in live integration test. It sends the
 same stable tool registry through the app's actual AI SDK transports and runs
-Cold Off → Warm Off → On → Off. It fails if disabled tools execute, enabled
-search does not execute, or the first request's system/tool definitions change
-across the toggle. Its JSON output also includes each provider's cache token
-counters.
+Cold Off → Warm Off → On → Direct URL → Off. It fails if disabled tools
+execute, enabled search does not execute, a directly supplied URL is searched
+before being fetched, or the first request's system/tool definitions change
+across the toggle. Providers with reliable cache counters must also reuse the
+stable prefix after the cold request. The JSON output includes those cache
+token counters.
 
 Run all configured targets from `apps/web/`:
 
@@ -66,13 +68,17 @@ Run all configured targets from `apps/web/`:
 npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
 ```
 
-The full run requires `GEMINI_API_KEY`, `AWS_BEARER_TOKEN`, and llama.cpp on
-`127.0.0.1:9876`. Select a comma-separated subset with
-`CACHE_SMOKE_TARGETS`; unrelated credentials and servers are then optional.
-`CACHE_SMOKE_CORPUS_WORDS` reduces or enlarges the stable synthetic prefix.
+The full baseline run requires `GEMINI_API_KEY`, `AWS_BEARER_TOKEN`, and
+llama.cpp on `127.0.0.1:9876`. Native OpenAI and Anthropic targets are also
+included when `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are present. Select a
+comma-separated subset with `CACHE_SMOKE_TARGETS`; unrelated credentials and
+servers are then optional. `CACHE_SMOKE_CORPUS_WORDS` reduces or enlarges the
+stable synthetic prefix. The llama.cpp target sends `id_slot: 0` by default so
+multi-slot servers still produce an unambiguous cache signal; override it with
+`CACHE_SMOKE_LLAMA_SLOT`.
 
 ```bash
-CACHE_SMOKE_TARGETS='llama.cpp/Qwen3.5-122B-A10B' \
+CACHE_SMOKE_TARGETS='llama.cpp/local' \
 CACHE_SMOKE_CORPUS_WORDS=120 \
 npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
 ```

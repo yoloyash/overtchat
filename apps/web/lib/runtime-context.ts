@@ -2,24 +2,22 @@ import type { ModelMessage } from "ai";
 import {
   markAnthropicCacheBoundary,
   markOpenAICacheBoundary,
+  type CacheBoundaryOptions,
 } from "@/lib/chat/prompt-cache";
 
-export type WebSearchMode = "required" | "disabled" | "unavailable";
+export type WebSearchMode = "enabled" | "disabled" | "unavailable";
 
 /**
  * Private, per-request state for the AI SDK tool loop. The SDK propagates this
  * object to policy callbacks, but does not put it in the model prompt.
  */
 export type ChatRuntimeContext = {
-  currentTurn: number;
   currentDateTime: string;
   timeZone: string;
   webSearchMode: WebSearchMode;
-  webSearchAttempted: boolean;
 };
 
 export interface RuntimeContextOptions {
-  turn: number;
   webSearchMode: WebSearchMode;
   timeZone?: string;
   now?: Date;
@@ -27,7 +25,6 @@ export interface RuntimeContextOptions {
 
 /** Build the single current request's runtime state from server-owned facts. */
 export function buildRuntimeContext({
-  turn,
   webSearchMode,
   timeZone,
   now = new Date(),
@@ -35,7 +32,6 @@ export function buildRuntimeContext({
   const normalizedTimeZone = normalizeTimeZone(timeZone);
 
   return {
-    currentTurn: turn,
     currentDateTime: new Intl.DateTimeFormat("en-US", {
       timeZone: normalizedTimeZone,
       dateStyle: "full",
@@ -43,7 +39,6 @@ export function buildRuntimeContext({
     }).format(now),
     timeZone: normalizedTimeZone,
     webSearchMode,
-    webSearchAttempted: false,
   };
 }
 
@@ -53,31 +48,35 @@ export function buildRuntimeContext({
  * persisted in chat history.
  */
 export function renderRuntimeContext(context: ChatRuntimeContext): string {
-  const webSearchLine =
-    context.webSearchMode === "required"
-      ? "Web search: required for this turn; call web_search before answering."
+  const webLines =
+    context.webSearchMode === "enabled"
+      ? [
+          "Web tools: enabled. Use web_search for discovery or fetch_url for a provided URL when useful.",
+        ]
       : context.webSearchMode === "disabled"
-        ? "Web search: disabled by the user for this turn."
-        : "Web search: unavailable for the selected model.";
+        ? ["Web tools: disabled by the user."]
+        : ["Web tools: unavailable for the selected model."];
 
   return [
     "<runtime_context>",
-    `Current date/time: ${context.currentDateTime} (${context.timeZone})`,
-    `Current turn: ${context.currentTurn}`,
-    webSearchLine,
+    `Date/time: ${context.currentDateTime} (${context.timeZone})`,
+    ...webLines,
     "</runtime_context>",
   ].join("\n");
 }
 
 /**
  * Put ephemeral runtime context immediately before the current user content.
- * The preceding message gets Anthropic's cache boundary; the preceding user
- * message gets OpenAI's supported boundary. The input array and messages are
- * left untouched so persistence and exports only see user-authored data.
+ * The preceding message gets Anthropic's cache boundary. Native GPT-5.6+
+ * requests also mark the preceding user message, the latest Responses API
+ * block type that supports an explicit OpenAI boundary. The input array and
+ * messages are left untouched so persistence and exports only see
+ * user-authored data. Other providers use their implicit prefix caches.
  */
 export function prependRuntimeContext(
   messages: ModelMessage[],
   runtimeText: string,
+  { openAIExplicit = false }: CacheBoundaryOptions = {},
 ): ModelMessage[] {
   const currentUserIndex = messages.findLastIndex(
     (message) => message.role === "user",
@@ -85,10 +84,11 @@ export function prependRuntimeContext(
   if (currentUserIndex === -1) {
     throw new Error("Runtime context requires a current user message");
   }
-  const priorUserIndex = messages.findLastIndex(
-    (message, index) => index < currentUserIndex && message.role === "user",
-  );
-
+  const priorUserIndex = openAIExplicit
+    ? messages.findLastIndex(
+        (message, index) => index < currentUserIndex && message.role === "user",
+      )
+    : -1;
   return messages.map((message, index): ModelMessage => {
     let preparedMessage: ModelMessage = message;
     if (index === currentUserIndex - 1) {
@@ -104,10 +104,7 @@ export function prependRuntimeContext(
     const runtimePart = { type: "text" as const, text: runtimeText };
     const content =
       typeof message.content === "string"
-        ? [
-            runtimePart,
-            { type: "text" as const, text: message.content },
-          ]
+        ? [runtimePart, { type: "text" as const, text: message.content }]
         : [runtimePart, ...message.content];
 
     return { ...message, content };

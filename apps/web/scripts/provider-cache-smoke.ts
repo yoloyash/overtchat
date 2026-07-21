@@ -1,19 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenResponses } from "@ai-sdk/open-responses";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { SharedV4ProviderOptions as ProviderOptions } from "@ai-sdk/provider";
 import {
   isStepCount,
   ToolLoopAgent,
   type LanguageModelUsage,
   type ModelMessage,
 } from "ai";
-import {
-  createChatPrepareStep,
-  getToolApprovalStatus,
-} from "@/lib/chat/tool-policy";
+import { getToolApprovalStatus } from "@/lib/chat/tool-policy";
 import { markSystemCacheBoundary } from "@/lib/chat/prompt-cache";
 import {
   buildRuntimeContext,
@@ -29,7 +27,12 @@ import {
 } from "@/lib/tools";
 
 type WireFormat = "anthropic" | "gemini" | "open-responses" | "openai-chat";
-type RunName = "cold-off" | "warm-off" | "on" | "off-after-toggle";
+type RunName =
+  | "cold-off"
+  | "warm-off"
+  | "on"
+  | "direct-url"
+  | "off-after-toggle";
 
 interface WireRecord {
   run: RunName;
@@ -39,6 +42,8 @@ interface WireRecord {
   instructionsHash: string;
   messagePrefixHash: string;
   toolChoice: string;
+  promptCacheKeyHash: string;
+  slotId: number | null;
 }
 
 interface RunResult {
@@ -62,6 +67,11 @@ interface Target {
   label: string;
   model: LanguageModelV4;
   recorder: WireRecorder;
+  expectCacheReads?: boolean;
+  expectCacheWrite?: boolean;
+  expectedSlotId?: number;
+  openAIExplicit?: boolean;
+  providerOptions?: ProviderOptions;
 }
 
 class WireRecorder {
@@ -93,10 +103,7 @@ class WireRecorder {
     return record;
   }
 
-  private inspect(
-    body: Record<string, unknown>,
-    request: number,
-  ): WireRecord {
+  private inspect(body: Record<string, unknown>, request: number): WireRecord {
     const tools = Array.isArray(body.tools) ? body.tools : [];
     const toolCount =
       this.format === "gemini"
@@ -151,6 +158,8 @@ class WireRecorder {
       instructionsHash: hash(instructions ?? null),
       messagePrefixHash: hash(messagePrefix ?? null),
       toolChoice: JSON.stringify(toolChoice ?? null),
+      promptCacheKeyHash: hash(body.prompt_cache_key ?? null),
+      slotId: typeof body.id_slot === "number" ? body.id_slot : null,
     };
   }
 }
@@ -183,7 +192,8 @@ const runSequence: Array<{
 }> = [
   { name: "cold-off", mode: "disabled" },
   { name: "warm-off", mode: "disabled" },
-  { name: "on", mode: "required" },
+  { name: "on", mode: "enabled" },
+  { name: "direct-url", mode: "enabled" },
   { name: "off-after-toggle", mode: "disabled" },
 ];
 
@@ -224,6 +234,9 @@ async function createTargets(
   const targets: Target[] = [];
   const selected = (label: string) =>
     requestedTargets.size === 0 || requestedTargets.has(label);
+  const selectedWhenConfigured = (label: string, envName: string) =>
+    requestedTargets.has(label) ||
+    (requestedTargets.size === 0 && Boolean(process.env[envName]));
   const geminiLabels = ["gemini-3.5-flash", "gemini-3.1-pro-preview"];
   const bedrockLabels = [
     "anthropic.claude-sonnet-5",
@@ -249,6 +262,7 @@ async function createTargets(
         fetch: recorder.fetch,
       }).chat(modelId),
       recorder,
+      expectCacheReads: true,
     });
   }
 
@@ -260,12 +274,13 @@ async function createTargets(
         label: modelId,
         model: createAnthropic({
           name: "bedrock.messages",
-          baseURL:
-            "https://bedrock-mantle.us-east-1.api.aws/anthropic/v1",
+          baseURL: "https://bedrock-mantle.us-east-1.api.aws/anthropic/v1",
           authToken: awsBearerToken,
           fetch: recorder.fetch,
         }).messages(modelId),
         recorder,
+        expectCacheReads: true,
+        expectCacheWrite: true,
       });
     }
   }
@@ -275,17 +290,65 @@ async function createTargets(
     const recorder = new WireRecorder("open-responses");
     targets.push({
       label: modelId,
-      model: createOpenResponses({
+      model: createOpenAI({
         name: "bedrock",
-        url: "https://bedrock-mantle.us-east-1.api.aws/openai/v1/responses",
+        baseURL: "https://bedrock-mantle.us-east-1.api.aws/openai/v1",
         apiKey: awsBearerToken,
         fetch: recorder.fetch,
-      })(modelId),
+      }).responses(modelId),
       recorder,
+      expectCacheReads: true,
+      expectCacheWrite: true,
+      openAIExplicit: true,
+      providerOptions: {
+        openai: {
+          forceReasoning: true,
+          promptCacheKey: `cache-smoke:${smokeRunId}:${modelId}`,
+          reasoningEffort: "low",
+        },
+      },
     });
   }
 
-  const llamaLabel = "llama.cpp/Qwen3.5-122B-A10B";
+  {
+    const label = "openai-native/gpt-5.6-sol";
+    if (selectedWhenConfigured(label, "OPENAI_API_KEY")) {
+      const recorder = new WireRecorder("open-responses");
+      targets.push({
+        label,
+        model: createOpenAI({
+          apiKey: requiredEnv("OPENAI_API_KEY"),
+          fetch: recorder.fetch,
+        }).responses("gpt-5.6-sol"),
+        recorder,
+        expectCacheReads: true,
+        expectCacheWrite: true,
+        openAIExplicit: true,
+        providerOptions: {
+          openai: { promptCacheKey: `cache-smoke:${smokeRunId}` },
+        },
+      });
+    }
+  }
+
+  {
+    const label = "anthropic-native/claude-sonnet-5";
+    if (selectedWhenConfigured(label, "ANTHROPIC_API_KEY")) {
+      const recorder = new WireRecorder("anthropic");
+      targets.push({
+        label,
+        model: createAnthropic({
+          apiKey: requiredEnv("ANTHROPIC_API_KEY"),
+          fetch: recorder.fetch,
+        }).messages("claude-sonnet-5"),
+        recorder,
+        expectCacheReads: true,
+        expectCacheWrite: true,
+      });
+    }
+  }
+
+  const llamaLabel = "llama.cpp/local";
   if (selected(llamaLabel)) {
     const llamaHealth = await fetch("http://127.0.0.1:9876/health");
     if (!llamaHealth.ok) {
@@ -296,6 +359,13 @@ async function createTargets(
     )) as { data?: Array<{ id?: string }> };
     const llamaModelId = llamaModels.data?.[0]?.id;
     if (!llamaModelId) throw new Error("llama.cpp returned no model ID");
+    const slotId = Number.parseInt(
+      process.env.CACHE_SMOKE_LLAMA_SLOT ?? "0",
+      10,
+    );
+    if (!Number.isSafeInteger(slotId) || slotId < 0) {
+      throw new Error("CACHE_SMOKE_LLAMA_SLOT must be a non-negative integer");
+    }
     const recorder = new WireRecorder("openai-chat");
     targets.push({
       label: llamaLabel,
@@ -307,6 +377,9 @@ async function createTargets(
         fetch: recorder.fetch,
       }).chatModel(llamaModelId),
       recorder,
+      expectCacheReads: true,
+      expectedSlotId: slotId,
+      providerOptions: { custom: { id_slot: slotId } },
     });
   }
 
@@ -319,7 +392,6 @@ async function runOnce(
   mode: WebSearchMode,
 ): Promise<RunResult> {
   const runtimeContext = buildRuntimeContext({
-    turn: runSequence.findIndex((candidate) => candidate.name === run) + 2,
     webSearchMode: mode,
     timeZone: "America/Los_Angeles",
     now: new Date(
@@ -333,35 +405,38 @@ async function runOnce(
     ),
   });
   const messages = prependRuntimeContext(
-    stableMessages(target.label),
+    stableMessages(target.label, run),
     renderRuntimeContext(runtimeContext),
+    { openAIExplicit: target.openAIExplicit },
   );
   const executedTools: string[] = [];
-  const agent = new ToolLoopAgent<
-    never,
-    typeof smokeTools,
-    ChatRuntimeContext
-  >({
-    model: target.model,
-    instructions: markSystemCacheBoundary({
-      role: "system",
-      content: [
-        "You are running an automated provider integration test.",
-        WEB_SEARCH_CITATION_PROMPT,
-      ].join("\n\n"),
-    }),
-    tools: smokeTools,
-    toolOrder: CHAT_TOOL_ORDER,
-    runtimeContext,
-    toolApproval: ({ toolCall, runtimeContext: currentRuntimeContext }) =>
-      getToolApprovalStatus(toolCall.toolName, currentRuntimeContext),
-    prepareStep: createChatPrepareStep(),
-    stopWhen: isStepCount(4),
-    maxOutputTokens: 384,
-    onToolExecutionStart: ({ toolCall }) => {
-      executedTools.push(toolCall.toolName);
+  const agent = new ToolLoopAgent<never, typeof smokeTools, ChatRuntimeContext>(
+    {
+      model: target.model,
+      instructions: markSystemCacheBoundary(
+        {
+          role: "system",
+          content: [
+            "You are running an automated provider integration test.",
+            WEB_SEARCH_CITATION_PROMPT,
+          ].join("\n\n"),
+        },
+        { openAIExplicit: target.openAIExplicit },
+      ),
+      tools: smokeTools,
+      toolOrder: CHAT_TOOL_ORDER,
+      runtimeContext,
+      toolApproval: ({ toolCall, runtimeContext: currentRuntimeContext }) =>
+        getToolApprovalStatus(toolCall.toolName, currentRuntimeContext),
+      toolChoice: "auto",
+      providerOptions: target.providerOptions,
+      stopWhen: isStepCount(4),
+      maxOutputTokens: 384,
+      onToolExecutionStart: ({ toolCall }) => {
+        executedTools.push(toolCall.toolName);
+      },
     },
-  });
+  );
 
   const streamResult = await agent.stream({
     messages,
@@ -389,7 +464,7 @@ async function runOnce(
   };
 }
 
-function stableMessages(label: string): ModelMessage[] {
+function stableMessages(label: string, run: RunName): ModelMessage[] {
   const corpusWords = Number.parseInt(
     process.env.CACHE_SMOKE_CORPUS_WORDS ?? "900",
     10,
@@ -416,7 +491,9 @@ function stableMessages(label: string): ModelMessage[] {
     {
       role: "user",
       content:
-        "Follow runtime_context exactly. If web search is required, call web_search with query exactly 'overtchat cache smoke'. If web search is disabled, do not call any tool and answer exactly WEB_DISABLED.",
+        run === "direct-url"
+          ? "The user supplied this URL directly: https://example.com/cache-smoke. Summarize it using the appropriate web tool."
+          : "Follow runtime_context exactly. If web tools are enabled, call web_search with query exactly 'overtchat cache smoke'. If web tools are disabled, do not call any tool and answer exactly WEB_DISABLED.",
     },
   ];
 }
@@ -432,6 +509,10 @@ function assertTarget(target: Target, results: RunResult[]) {
   if (!on?.executedTools.includes("web_search")) {
     throw new Error(`${target.label}: enabled run did not execute web_search`);
   }
+  const directUrl = results.find((result) => result.run === "direct-url");
+  if (directUrl?.executedTools[0] !== "fetch_url") {
+    throw new Error(`${target.label}: direct URL run searched before fetching`);
+  }
 
   const wireRecords = results.map((result) => result.firstWireRequest);
   const toolCounts = new Set(wireRecords.map((record) => record.toolCount));
@@ -442,6 +523,11 @@ function assertTarget(target: Target, results: RunResult[]) {
   const messagePrefixHashes = new Set(
     wireRecords.map((record) => record.messagePrefixHash),
   );
+  const toolChoices = new Set(wireRecords.map((record) => record.toolChoice));
+  const promptCacheKeys = new Set(
+    wireRecords.map((record) => record.promptCacheKeyHash),
+  );
+  const slotIds = new Set(wireRecords.map((record) => record.slotId));
   if (toolCounts.size !== 1 || !toolCounts.has(2)) {
     throw new Error(
       `${target.label}: full tool registry was not always present`,
@@ -457,6 +543,34 @@ function assertTarget(target: Target, results: RunResult[]) {
     throw new Error(
       `${target.label}: pre-runtime messages changed across toggle`,
     );
+  }
+  if (toolChoices.size !== 1) {
+    throw new Error(`${target.label}: tool choice changed across toggle`);
+  }
+  if (promptCacheKeys.size !== 1) {
+    throw new Error(`${target.label}: prompt cache key changed across toggle`);
+  }
+  if (slotIds.size !== 1) {
+    throw new Error(`${target.label}: slot selection changed across toggle`);
+  }
+  if (target.expectedSlotId != null && !slotIds.has(target.expectedSlotId)) {
+    throw new Error(`${target.label}: requests were not pinned to one slot`);
+  }
+  if (target.expectCacheWrite) {
+    const cold = results.find((result) => result.run === "cold-off");
+    if ((cold?.usage.cacheWrite ?? 0) <= 0) {
+      throw new Error(`${target.label}: cold run did not write a cache prefix`);
+    }
+  }
+  if (target.expectCacheReads) {
+    const missed = results
+      .filter((result) => result.run !== "cold-off")
+      .find((result) => (result.usage.cacheRead ?? 0) <= 0);
+    if (missed) {
+      throw new Error(
+        `${target.label}: ${missed.run} did not reuse the cache prefix`,
+      );
+    }
   }
 }
 
