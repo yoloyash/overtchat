@@ -28,21 +28,20 @@ export const chatTools = Object.freeze({
   ...webTools,
 });
 
-/** Exhaustive registry names, also used as deterministic provider ordering. */
-export const CHAT_TOOL_NAMES = Object.freeze(
+/** Exhaustive registry names in deterministic provider order. */
+export const CHAT_TOOL_ORDER = Object.freeze(
   Object.keys(chatTools) as Array<keyof typeof chatTools>,
 );
-export const CHAT_TOOL_ORDER = CHAT_TOOL_NAMES;
 
-/** Tools controlled by the user's Web Search toggle. */
-export const WEB_TOOL_NAMES: ReadonlySet<keyof typeof chatTools> = new Set([
+/** Tools available when the user explicitly requests Search for one message. */
+export const WEB_TOOL_NAMES = Object.freeze([
   "web_search",
   "fetch_url",
-]);
+] satisfies Array<keyof typeof chatTools>);
 
 /**
  * Stable output-format instruction. It stays in the system prefix whenever
- * the selected model supports tools, regardless of the current toggle state.
+ * the selected model supports tools, including one-shot Search requests.
  */
 export const WEB_SEARCH_CITATION_PROMPT =
-  "After web_search, cite claims as literal \\ue202turn0search{index}, with index zero-based across all returned results. Do not use Markdown links or footnotes.";
+  "Use the available tools when they materially improve the answer. After web_search, cite supported claims as literal \\ue202turn0search{index}, with index zero-based across all returned results. Do not use Markdown links or footnotes.";

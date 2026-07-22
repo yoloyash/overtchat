@@ -44,7 +44,6 @@ import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
-import { useSecureFlag } from "@/lib/useSecureFlag";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
@@ -171,10 +170,7 @@ function ChatSurface({
   } = useChatMessages(isNew ? null : chatId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [searchEnabled, setSearchEnabled] = useSecureFlag(
-    "overtchat.searchEnabled",
-    false,
-  );
+  const [searchRequested, setSearchRequested] = useState(false);
   const pickerRef = useRef<BottomSheetModal>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
 
@@ -375,11 +371,14 @@ function ChatSurface({
     onNewChat,
   ]);
 
-  function requestBody() {
+  function requestBody(forceSearch = false) {
+    const requested = searchAvailable && forceSearch;
     return {
       modelConfigId: selectedId,
-      searchEnabled: searchAvailable && searchEnabled,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      forceSearch: requested,
+      // Older self-hosted servers only understand the persisted-toggle name.
+      // New servers give `forceSearch` precedence and discard this alias.
+      searchEnabled: requested,
       chatId,
       projectId,
       temporary: false,
@@ -438,7 +437,11 @@ function ChatSurface({
         return [next, ...prev];
       });
     }
-    sendMessage({ text, files }, { body: requestBody() });
+    sendMessage(
+      { text, files },
+      { body: requestBody(searchRequested) },
+    );
+    setSearchRequested(false);
     clearAttachments();
   }
 
@@ -532,13 +535,13 @@ function ChatSurface({
           configured={configured}
           streaming={streaming}
           searchAvailable={searchAvailable}
-          searchEnabled={searchAvailable && searchEnabled}
+          searchRequested={searchAvailable && searchRequested}
           attachments={attachments}
           attachmentMeta={attachmentMeta}
           uploading={uploading}
           uploadError={uploadError}
           isAdmin={isAdmin}
-          onDisableSearch={() => setSearchEnabled(false)}
+          onClearSearch={() => setSearchRequested(false)}
           onOpenAddSheet={() => {
             Keyboard.dismiss();
             addSheetRef.current?.present();
@@ -556,14 +559,17 @@ function ChatSurface({
         selectedId={selectedId}
         loading={modelsPending}
         error={modelsError}
-        onSelect={setSelectedId}
+        onSelect={(modelId) => {
+          setSearchRequested(false);
+          setSelectedId(modelId);
+        }}
       />
 
       <AddToChatSheet
         ref={addSheetRef}
         searchAvailable={searchAvailable}
-        searchEnabled={searchAvailable && searchEnabled}
-        onToggleSearch={(next) => setSearchEnabled(next)}
+        searchRequested={searchAvailable && searchRequested}
+        onToggleSearchRequested={setSearchRequested}
         onPickTool={onPickTool}
       />
     </KeyboardAvoidingView>

@@ -19,9 +19,7 @@ import {
   cleanDomain,
   faviconUrl,
   type FetchUrlPart,
-  isToolDenied,
   isToolSettled,
-  toolDenialReason,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
@@ -86,8 +84,6 @@ export function ChainOfThought({
   const lastTool = [...parts]
     .reverse()
     .find((part) => isWebSearch(part) || isFetchUrl(part));
-  const lastToolDenied =
-    lastTool !== undefined && isToolDenied(lastTool);
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
@@ -110,7 +106,6 @@ export function ChainOfThought({
         <StatusIcon
           active={active}
           hasTools={hasTools}
-          denied={lastToolDenied}
           failed={lastToolFailed}
           color={colors.mutedForeground}
         />
@@ -148,28 +143,16 @@ export function ChainOfThought({
 function StatusIcon({
   active,
   hasTools,
-  denied,
   failed,
   color,
 }: {
   active: boolean;
   hasTools: boolean;
-  denied: boolean;
   failed: boolean;
   color: string;
 }) {
   if (active) {
     return <ActivityIndicator size="small" color={color} style={styles.statusIcon} />;
-  }
-  if (denied) {
-    return (
-      <Ionicons
-        name="close-circle-outline"
-        size={15}
-        color={color}
-        style={styles.statusIcon}
-      />
-    );
   }
   if (failed) {
     return (
@@ -237,10 +220,8 @@ function ShimmerLabel({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part)) && isToolDenied(part)
-      ? "denied"
-      : (isWebSearch(part) || isFetchUrl(part)) &&
-          part.state === "output-error"
+    (isWebSearch(part) || isFetchUrl(part)) &&
+    part.state === "output-error"
         ? "failed"
       : isWebSearch(part)
           ? "search"
@@ -264,7 +245,7 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   );
 }
 
-type RailIcon = "search" | "globe" | "brain" | "denied" | "failed";
+type RailIcon = "search" | "globe" | "brain" | "failed";
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
 function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
@@ -272,9 +253,7 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
   return (
     <View style={styles.rail}>
       <View style={[styles.railDot, { backgroundColor: colors.muted }]}>
-        {icon === "denied" ? (
-          <Ionicons name="close" size={11} color={colors.mutedForeground} />
-        ) : icon === "failed" ? (
+        {icon === "failed" ? (
           <Ionicons name="alert" size={11} color={colors.mutedForeground} />
         ) : icon === "search" ? (
           <Ionicons name="search" size={11} color={colors.mutedForeground} />
@@ -305,8 +284,6 @@ function SearchStep({ part }: { part: WebSearchPart }) {
   const [showAll, setShowAll] = useState(false);
   const query = part.input?.query?.trim();
   const results = part.output ?? [];
-  const denied = isToolDenied(part);
-  const denialReason = toolDenialReason(part);
   const running = !isToolSettled(part);
   const visible = showAll ? results : results.slice(0, RESULTS_PREVIEW);
   const hidden = results.length - visible.length;
@@ -342,16 +319,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
         ) : null}
       </View>
 
-      {denied ? (
-        <Text
-          style={[
-            styles.metaText,
-            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-          ]}
-        >
-          {denialReason ?? "Web search was not allowed for this request."}
-        </Text>
-      ) : part.state === "output-error" ? (
+      {part.state === "output-error" ? (
         <Text
           style={[
             styles.errorText,
@@ -359,15 +327,6 @@ function SearchStep({ part }: { part: WebSearchPart }) {
           ]}
         >
           {part.errorText}
-        </Text>
-      ) : part.state === "approval-requested" ? (
-        <Text
-          style={[
-            styles.metaText,
-            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-          ]}
-        >
-          Waiting for approval…
         </Text>
       ) : running && results.length === 0 ? null : (
         <View
@@ -452,33 +411,8 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   const { colors, fonts } = useTheme();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
-  const denied = isToolDenied(part);
-  const denialReason = toolDenialReason(part);
   const running = !isToolSettled(part);
   const page = part.output;
-
-  if (denied) {
-    return (
-      <View style={styles.searchStep}>
-        <Text
-          style={[
-            styles.stepTitle,
-            { color: colors.foreground, fontFamily: fonts.sansMedium },
-          ]}
-        >
-          Read {domain || "page"}
-        </Text>
-        <Text
-          style={[
-            styles.metaText,
-            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-          ]}
-        >
-          {denialReason ?? "Page fetch was not allowed for this request."}
-        </Text>
-      </View>
-    );
-  }
 
   if (part.state === "output-error") {
     return (
@@ -574,18 +508,10 @@ function Favicon({ domain }: { domain: string }) {
 function activeLabel(last: ActivityPart | undefined): string {
   if (!last) return "Working…";
   if (last.type === "tool-web_search") {
-    if (isToolDenied(last)) return "Web search was denied";
-    if (last.state === "approval-requested") {
-      return "Waiting for search approval…";
-    }
     const query = last.input?.query?.trim();
     return query ? `Searching "${query}"` : "Searching the web…";
   }
   if (last.type === "tool-fetch_url") {
-    if (isToolDenied(last)) return "Page fetch was denied";
-    if (last.state === "approval-requested") {
-      return "Waiting for fetch approval…";
-    }
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
@@ -596,25 +522,13 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   const lastTool = [...parts]
     .reverse()
     .find((part) => isWebSearch(part) || isFetchUrl(part));
-  if (lastTool?.type === "tool-web_search" && isToolDenied(lastTool)) {
-    return "Web search was denied";
-  }
-  if (lastTool?.type === "tool-fetch_url" && isToolDenied(lastTool)) {
-    return "Page fetch was denied";
-  }
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
-    if (lastTool.state === "approval-requested") {
-      return "Waiting for search approval…";
-    }
     if (lastTool.state === "output-available") return "Searched the web";
     return "Web search did not complete";
   }
   if (lastTool?.type === "tool-fetch_url") {
     if (lastTool.state === "output-error") return "Page fetch failed";
-    if (lastTool.state === "approval-requested") {
-      return "Waiting for fetch approval…";
-    }
     if (lastTool.state === "output-available") return "Searched the web";
     return "Page fetch did not complete";
   }

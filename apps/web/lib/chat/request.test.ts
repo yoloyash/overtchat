@@ -25,7 +25,7 @@ describe("chat request parsing", () => {
   it("validates and normalizes a normal submit request", async () => {
     await expect(parseChatRequest(request(validBody))).resolves.toMatchObject({
       ...validBody,
-      searchEnabled: false,
+      forceSearch: false,
       temporary: false,
       trigger: "submit-message",
     });
@@ -44,12 +44,19 @@ describe("chat request parsing", () => {
     });
   });
 
-  it("accepts the client's IANA timezone hint", async () => {
+  it("accepts an explicit one-message Search request", async () => {
     await expect(
-      parseChatRequest(
-        request({ ...validBody, timeZone: "America/Los_Angeles" }),
-      ),
-    ).resolves.toMatchObject({ timeZone: "America/Los_Angeles" });
+      parseChatRequest(request({ ...validBody, forceSearch: true })),
+    ).resolves.toMatchObject({ forceSearch: true });
+  });
+
+  it("maps the legacy mobile search flag without exposing it downstream", async () => {
+    const parsed = await parseChatRequest(
+      request({ ...validBody, searchEnabled: true }),
+    );
+
+    expect(parsed.forceSearch).toBe(true);
+    expect(parsed).not.toHaveProperty("searchEnabled");
   });
 
   it("rejects missing and structurally invalid messages", async () => {

@@ -30,7 +30,6 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
-const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 function shouldAutofocusComposer() {
@@ -64,10 +63,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const selectedModel = models?.find((model) => model.id === selectedId);
   const searchAvailable = modelSupportsToolCalling(selectedModel);
 
-  const [searchEnabled, setSearchEnabled] = useLocalStorage<boolean>(
-    SEARCH_STORAGE_KEY,
-    false,
-  );
+  const [searchRequested, setSearchRequested] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
     false,
@@ -151,10 +147,9 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     !onboardingDismissed &&
     models !== null;
 
-  const requestBody = () => ({
+  const requestBody = (forceSearch = false) => ({
     modelConfigId: selectedId,
-    searchEnabled: searchAvailable && searchEnabled,
-    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    forceSearch: searchAvailable && forceSearch,
     chatId,
     projectId: projectId ?? null,
     temporary,
@@ -219,7 +214,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         return [next, ...prev];
       });
     }
-    sendMessage({ text, files: attachments }, { body: requestBody() });
+    sendMessage(
+      { text, files: attachments },
+      { body: requestBody(searchRequested) },
+    );
+    setSearchRequested(false);
   }
 
   function handleRegenerate(messageId: string) {
@@ -243,10 +242,10 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       configured={configured}
       streaming={streaming}
       searchAvailable={searchAvailable}
-      searchEnabled={searchAvailable && searchEnabled}
+      searchRequested={searchAvailable && searchRequested}
       dropActive={dropActive}
       onToggleSearch={() => {
-        if (searchAvailable) setSearchEnabled(!searchEnabled);
+        if (searchAvailable) setSearchRequested((selected) => !selected);
       }}
       onSubmit={handleSubmit}
       onStop={handleStop}
@@ -265,7 +264,10 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       <ChatHeader
         models={models}
         selectedId={selectedId}
-        onSelectModel={setSelectedId}
+        onSelectModel={(modelId) => {
+          setSearchRequested(false);
+          setSelectedId(modelId);
+        }}
         showTempToggle={Boolean(isNew) && messages.length === 0}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}

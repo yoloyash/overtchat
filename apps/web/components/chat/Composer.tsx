@@ -44,7 +44,7 @@ interface ComposerProps {
   configured: boolean;
   streaming: boolean;
   searchAvailable: boolean;
-  searchEnabled: boolean;
+  searchRequested: boolean;
   dropActive: boolean;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
@@ -56,7 +56,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   configured,
   streaming,
   searchAvailable,
-  searchEnabled,
+  searchRequested,
   dropActive,
   onToggleSearch,
   onSubmit,
@@ -202,7 +202,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               size="sm"
               className={cn(
                 "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
-                searchEnabled &&
+                searchRequested &&
                   "bg-accent text-foreground hover:bg-accent",
               )}
               onClick={onToggleSearch}
@@ -215,11 +215,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               aria-label={
                 !searchAvailable
                   ? "Web search unavailable for this model"
-                  : searchEnabled
-                    ? "Disable web search"
-                    : "Enable web search"
+                  : searchRequested
+                    ? "Remove Search from this message"
+                    : "Search the web for this message"
               }
-              aria-pressed={searchEnabled}
+              aria-pressed={searchRequested}
             >
               <Globe />
               <span className="text-xs">Search</span>

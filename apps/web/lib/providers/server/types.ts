@@ -1,4 +1,5 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
+import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
 export interface ProviderConnection {
@@ -19,7 +20,16 @@ export interface ResolvedLanguageModel {
   model: LanguageModelV4;
   providerOptionsKey: string;
   defaultProviderOptions?: Record<string, unknown>;
+  promptCacheKind?: "anthropic" | "openai";
 }
+
+export type AnthropicCacheControl = NonNullable<
+  AnthropicProviderOptions["cacheControl"]
+>;
+
+export type PromptCacheStrategy =
+  | { kind: "anthropic"; cacheControl: AnthropicCacheControl }
+  | { kind: "openai" };
 
 export interface ProviderAdapter {
   readonly id: ProviderId;

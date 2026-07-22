@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   markAnthropicCacheBoundary,
-  markOpenAICacheBoundary,
-  markSystemCacheBoundary,
+  markAnthropicConversationCacheBoundary,
+  markAnthropicSystemCacheBoundary,
   promptCacheKeyForChat,
-  supportsOpenAIExplicitPromptCaching,
   withOpenAIPromptCacheKey,
 } from "./prompt-cache";
 
@@ -12,7 +11,7 @@ describe("prompt cache boundary", () => {
   it("marks a stable system prefix without changing content", () => {
     const message = { role: "system" as const, content: "Stable prompt" };
 
-    expect(markSystemCacheBoundary(message)).toEqual({
+    expect(markAnthropicSystemCacheBoundary(message)).toEqual({
       role: "system",
       content: "Stable prompt",
       providerOptions: {
@@ -41,50 +40,45 @@ describe("prompt cache boundary", () => {
     });
   });
 
-  it("adds a correctly shaped OpenAI breakpoint only when requested", () => {
-    expect(
-      markSystemCacheBoundary(
-        { role: "system", content: "Stable prompt" },
-        { openAIExplicit: true },
-      ),
-    ).toEqual({
-      role: "system",
-      content: "Stable prompt",
+  it("marks only the latest user without changing prompt content", () => {
+    const messages = [
+      { role: "user" as const, content: "First question" },
+      { role: "assistant" as const, content: "First answer" },
+      { role: "user" as const, content: "Follow-up" },
+    ];
+
+    const result = markAnthropicConversationCacheBoundary(messages);
+
+    expect(result[0]).toBe(messages[0]);
+    expect(result[1]).toBe(messages[1]);
+    expect(result[2]).toEqual({
+      role: "user",
+      content: "Follow-up",
       providerOptions: {
         anthropic: { cacheControl: { type: "ephemeral" } },
-        openai: { promptCacheBreakpoint: { mode: "explicit" } },
       },
     });
-
-    expect(
-      markOpenAICacheBoundary({
-        role: "user",
-        content: "Stable user content",
-      }),
-    ).toEqual({
+    expect(messages[2]).toEqual({
       role: "user",
-      content: [
-        {
-          type: "text",
-          text: "Stable user content",
-          providerOptions: {
-            openai: {
-              promptCacheBreakpoint: { mode: "explicit" },
-            },
-          },
-        },
-      ],
+      content: "Follow-up",
     });
   });
 
-  it("detects only OpenAI models that accept explicit breakpoints", () => {
-    expect(supportsOpenAIExplicitPromptCaching("gpt-5.5-pro")).toBe(false);
-    expect(supportsOpenAIExplicitPromptCaching("gpt-5.6-sol")).toBe(true);
-    expect(supportsOpenAIExplicitPromptCaching("gpt-6")).toBe(true);
-    expect(supportsOpenAIExplicitPromptCaching("openai.gpt-5.6-sol")).toBe(
-      true,
-    );
-    expect(supportsOpenAIExplicitPromptCaching("claude-sonnet-5")).toBe(false);
+  it("marks a first-turn user for reuse on the next turn", () => {
+    const messages = [{ role: "user" as const, content: "First question" }];
+
+    expect(markAnthropicConversationCacheBoundary(messages)).toEqual([
+      {
+        role: "user",
+        content: "First question",
+        providerOptions: {
+          anthropic: { cacheControl: { type: "ephemeral" } },
+        },
+      },
+    ]);
+    expect(messages).toEqual([
+      { role: "user", content: "First question" },
+    ]);
   });
 
   it("adds a per-chat OpenAI routing key without overriding admin options", () => {

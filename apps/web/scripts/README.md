@@ -54,13 +54,19 @@ business being baked into the image.
 ## Provider cache smoke test
 
 `provider-cache-smoke.ts` is an opt-in live integration test. It sends the
-same stable tool registry through the app's actual AI SDK transports and runs
-Cold Off → Warm Off → On → Direct URL → Off. It fails if disabled tools
-execute, enabled search does not execute, a directly supplied URL is searched
-before being fetched, or the first request's system/tool definitions change
-across the toggle. Providers with reliable cache counters must also reuse the
-stable prefix after the cold request. The JSON output includes those cache
-token counters.
+same stable tool registry through the app's actual AI SDK transports in one
+append-only conversation. The sequence is Cold Auto → Warm Auto → Forced
+Search → Forced Direct URL → Auto After Force. Automatic turns must remain
+tool-free for explicit tool-free prompts. Forced turns must require a web tool
+only on their first step, return to automatic tool choice afterward, and choose
+`web_search` for a query or `fetch_url` when the user supplied a URL.
+
+The smoke test also fails if the system instructions or full tool registry
+change, or if a provider's serialized conversation rewrites an earlier prefix
+instead of appending to it. Cache counters are always included in the JSON
+report, but hard cache hit/write assertions are limited to providers whose APIs
+return dependable counters. llama.cpp LCP selection remains useful diagnostic
+output, not a cross-provider correctness contract.
 
 Run all configured targets from `apps/web/`:
 

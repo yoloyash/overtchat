@@ -5,7 +5,6 @@ import {
   Brain,
   ChevronDown,
   CircleAlert,
-  CircleSlash2,
   Globe,
   Loader2,
   type LucideIcon,
@@ -16,9 +15,7 @@ import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import {
   type FetchUrlPart,
-  isToolDenied,
   isToolSettled,
-  toolDenialReason,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
@@ -81,20 +78,16 @@ export function ChainOfThought({
   const lastTool = [...parts]
     .reverse()
     .find((part) => isWebSearch(part) || isFetchUrl(part));
-  const lastToolDenied =
-    lastTool !== undefined && isToolDenied(lastTool);
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
 
   const StatusIcon = active
     ? Loader2
-    : lastToolDenied
-      ? CircleSlash2
-      : lastToolFailed
-        ? CircleAlert
-        : hasTools
-          ? Globe
-          : Brain;
+    : lastToolFailed
+      ? CircleAlert
+      : hasTools
+        ? Globe
+        : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
   return (
@@ -148,16 +141,14 @@ export function ChainOfThought({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part)) && isToolDenied(part)
-      ? CircleSlash2
-      : (isWebSearch(part) || isFetchUrl(part)) &&
-          part.state === "output-error"
-        ? CircleAlert
+    (isWebSearch(part) || isFetchUrl(part)) &&
+    part.state === "output-error"
+      ? CircleAlert
       : isWebSearch(part)
-          ? Search
-          : isFetchUrl(part)
-            ? Globe
-            : Brain;
+        ? Search
+        : isFetchUrl(part)
+          ? Globe
+          : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -190,8 +181,6 @@ function Rail({ icon: Icon, isLast }: { icon: LucideIcon; isLast: boolean }) {
 function SearchStep({ part }: { part: WebSearchPart }) {
   const query = part.input?.query?.trim();
   const results = part.output ?? [];
-  const denied = isToolDenied(part);
-  const denialReason = toolDenialReason(part);
   const running = !isToolSettled(part);
 
   return (
@@ -207,14 +196,8 @@ function SearchStep({ part }: { part: WebSearchPart }) {
         )}
       </div>
 
-      {denied ? (
-        <p className="text-muted-foreground">
-          {denialReason ?? "Web search was not allowed for this request."}
-        </p>
-      ) : part.state === "output-error" ? (
+      {part.state === "output-error" ? (
         <p className="text-destructive">{part.errorText}</p>
-      ) : part.state === "approval-requested" ? (
-        <p className="text-muted-foreground">Waiting for approval…</p>
       ) : running && results.length === 0 ? null : (
         <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-lg border bg-background/40">
           {results.map((r, i) => (
@@ -249,23 +232,8 @@ function ResultRow({ result }: { result: WebSearchResult }) {
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
-  const denied = isToolDenied(part);
-  const denialReason = toolDenialReason(part);
   const running = !isToolSettled(part);
   const page = part.output;
-
-  if (denied) {
-    return (
-      <div className="space-y-1.5">
-        <div className="font-medium text-foreground">
-          Read {domain || "page"}
-        </div>
-        <p className="text-muted-foreground">
-          {denialReason ?? "Page fetch was not allowed for this request."}
-        </p>
-      </div>
-    );
-  }
 
   if (part.state === "output-error") {
     return (
@@ -345,18 +313,10 @@ function Favicon({
 function activeLabel(last: ActivityPart | undefined): string {
   if (!last) return "Working…";
   if (last.type === "tool-web_search") {
-    if (isToolDenied(last)) return "Web search was denied";
-    if (last.state === "approval-requested") {
-      return "Waiting for search approval…";
-    }
     const query = last.input?.query?.trim();
     return query ? `Searching "${query}"` : "Searching the web…";
   }
   if (last.type === "tool-fetch_url") {
-    if (isToolDenied(last)) return "Page fetch was denied";
-    if (last.state === "approval-requested") {
-      return "Waiting for fetch approval…";
-    }
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
@@ -367,25 +327,13 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   const lastTool = [...parts]
     .reverse()
     .find((part) => isWebSearch(part) || isFetchUrl(part));
-  if (lastTool?.type === "tool-web_search" && isToolDenied(lastTool)) {
-    return "Web search was denied";
-  }
-  if (lastTool?.type === "tool-fetch_url" && isToolDenied(lastTool)) {
-    return "Page fetch was denied";
-  }
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
-    if (lastTool.state === "approval-requested") {
-      return "Waiting for search approval…";
-    }
     if (lastTool.state === "output-available") return "Searched the web";
     return "Web search did not complete";
   }
   if (lastTool?.type === "tool-fetch_url") {
     if (lastTool.state === "output-error") return "Page fetch failed";
-    if (lastTool.state === "approval-requested") {
-      return "Waiting for fetch approval…";
-    }
     if (lastTool.state === "output-available") return "Searched the web";
     return "Page fetch did not complete";
   }

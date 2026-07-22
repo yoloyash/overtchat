@@ -24,12 +24,17 @@ export const AddToChatSheet = forwardRef<
   AddToChatSheetRef,
   {
     searchAvailable: boolean;
-    searchEnabled: boolean;
-    onToggleSearch: (next: boolean) => void;
+    searchRequested: boolean;
+    onToggleSearchRequested: (next: boolean) => void;
     onPickTool?: (tool: ToolKey) => void;
   }
 >(function AddToChatSheet(
-  { searchAvailable, searchEnabled, onToggleSearch, onPickTool },
+  {
+    searchAvailable,
+    searchRequested,
+    onToggleSearchRequested,
+    onPickTool,
+  },
   ref,
 ) {
   const { colors, radii, fonts } = useTheme();
@@ -127,7 +132,7 @@ export const AddToChatSheet = forwardRef<
                 },
               ]}
             >
-              Web search
+              Search this message
             </Text>
             {!searchAvailable ? (
               <Text
@@ -144,12 +149,12 @@ export const AddToChatSheet = forwardRef<
             ) : null}
           </View>
           <Switch
-            value={searchEnabled}
-            onValueChange={onToggleSearch}
+            value={searchRequested}
+            onValueChange={onToggleSearchRequested}
             disabled={!searchAvailable}
             accessibilityLabel={
               searchAvailable
-                ? "Web search"
+                ? "Search the web for this message"
                 : "Web search unavailable for this model"
             }
             trackColor={{ true: colors.primary, false: colors.border }}

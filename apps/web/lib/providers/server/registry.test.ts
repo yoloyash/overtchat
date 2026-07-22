@@ -42,6 +42,75 @@ describe("provider registry", () => {
     expect(configured.providerOptions).toEqual({
       openai: { forceReasoning: true, reasoningEffort: "high" },
     });
+    expect(configured.promptCacheStrategy).toEqual({ kind: "openai" });
+  });
+
+  it("lets adapters declare prompt-cache behavior without chat-route inference", () => {
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openai",
+      }).promptCacheStrategy,
+    ).toEqual({ kind: "openai" });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "anthropic",
+        providerOptions: {
+          cacheControl: { type: "ephemeral", ttl: "1h" },
+        },
+      }).promptCacheStrategy,
+    ).toEqual({
+      kind: "anthropic",
+      cacheControl: { type: "ephemeral", ttl: "1h" },
+    });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "bedrock",
+        model: "anthropic.claude-sonnet-5",
+      }).promptCacheStrategy,
+    ).toEqual({
+      kind: "anthropic",
+      cacheControl: { type: "ephemeral" },
+    });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "anthropic-messages",
+      }).promptCacheStrategy,
+    ).toEqual({
+      kind: "anthropic",
+      cacheControl: { type: "ephemeral" },
+    });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "google",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "openai-responses",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "openai-chat",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "bedrock",
+        model: "qwen.qwen3-coder-next",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
   });
 
   it("serializes namespaced Bedrock GPT models as reasoning models", async () => {

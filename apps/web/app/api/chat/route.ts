@@ -8,15 +8,15 @@ import {
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
 import {
-  markSystemCacheBoundary,
+  markAnthropicConversationCacheBoundary,
+  markAnthropicSystemCacheBoundary,
   promptCacheKeyForChat,
-  supportsOpenAIExplicitPromptCaching,
   withOpenAIPromptCacheKey,
 } from "@/lib/chat/prompt-cache";
-import { chatToolApproval } from "@/lib/chat/tool-policy";
 import {
   CHAT_TOOL_ORDER,
   chatTools,
+  WEB_TOOL_NAMES,
   WEB_SEARCH_CITATION_PROMPT,
 } from "@/lib/tools";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
@@ -36,12 +36,6 @@ import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
-import {
-  buildRuntimeContext,
-  prependRuntimeContext,
-  renderRuntimeContext,
-  type ChatRuntimeContext,
-} from "@/lib/runtime-context";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
 
@@ -68,8 +62,7 @@ async function handlePost(req: Request): Promise<Response> {
   const {
     messages,
     modelConfigId,
-    searchEnabled,
-    timeZone,
+    forceSearch,
     chatId,
     projectId,
     trigger,
@@ -122,48 +115,34 @@ async function handlePost(req: Request): Promise<Response> {
   // Everything above and through message conversion is read-only. A saved
   // configuration, missing upload, or malformed message therefore cannot
   // truncate an edit/regenerate branch or persist a partial turn.
-  const { model, providerOptions } = createConfiguredLanguageModel({
-    providerId: modelConfig.providerId,
-    apiFormat: modelConfig.apiFormat,
-    baseUrl: modelConfig.baseUrl,
-    apiKey: modelConfig.apiKey,
-    model: modelConfig.model,
-    providerOptions: modelConfig.providerOptions,
-    toolCallingEnabled: modelConfig.toolCallingEnabled,
-  });
+  const { model, providerOptions, promptCacheStrategy } =
+    createConfiguredLanguageModel({
+      providerId: modelConfig.providerId,
+      apiFormat: modelConfig.apiFormat,
+      baseUrl: modelConfig.baseUrl,
+      apiKey: modelConfig.apiKey,
+      model: modelConfig.model,
+      providerOptions: modelConfig.providerOptions,
+      toolCallingEnabled: modelConfig.toolCallingEnabled,
+    });
   const inlined = await inlineUploads(messages, userId);
   const convertedMessages = await convertToModelMessages(inlined);
+  const modelMessages =
+    promptCacheStrategy?.kind === "anthropic"
+      ? markAnthropicConversationCacheBoundary(
+          convertedMessages,
+          promptCacheStrategy.cacheControl,
+        )
+      : convertedMessages;
 
   const provider = getProvider(modelConfig.providerId);
   const modelIconId =
     modelIconForModel(modelConfig.model) ?? provider.iconId ?? undefined;
-  const usesOpenAIResponsesCacheControls =
-    modelConfig.providerId === "openai" ||
-    (modelConfig.providerId === "bedrock" &&
-      /^openai\.gpt-\d/i.test(modelConfig.model));
-  const openAIExplicit =
-    usesOpenAIResponsesCacheControls &&
-    supportsOpenAIExplicitPromptCaching(modelConfig.model);
-  const requestProviderOptions = usesOpenAIResponsesCacheControls
-    ? withOpenAIPromptCacheKey(
-        providerOptions,
-        promptCacheKeyForChat(chatId),
-      )
-    : providerOptions;
+  const requestProviderOptions =
+    promptCacheStrategy?.kind === "openai"
+      ? withOpenAIPromptCacheKey(providerOptions, promptCacheKeyForChat(chatId))
+      : providerOptions;
   const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
-  const runtimeContext = buildRuntimeContext({
-    webSearchMode: !toolCallingEnabled
-      ? "unavailable"
-      : searchEnabled
-        ? "enabled"
-        : "disabled",
-    timeZone,
-  });
-  const modelMessages = prependRuntimeContext(
-    convertedMessages,
-    renderRuntimeContext(runtimeContext),
-    { openAIExplicit },
-  );
   const systemParts = [
     project?.instructions,
     modelConfig.systemPrompt,
@@ -171,10 +150,12 @@ async function handlePost(req: Request): Promise<Response> {
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
   const instructions = system
-    ? markSystemCacheBoundary(
-        { role: "system", content: system },
-        { openAIExplicit },
-      )
+    ? promptCacheStrategy?.kind === "anthropic"
+      ? markAnthropicSystemCacheBoundary(
+          { role: "system", content: system },
+          promptCacheStrategy.cacheControl,
+        )
+      : { role: "system" as const, content: system }
     : undefined;
 
   const last = messages[messages.length - 1];
@@ -237,25 +218,27 @@ async function handlePost(req: Request): Promise<Response> {
   try {
     const abortSignal = controller?.signal ?? req.signal;
     const result = toolCallingEnabled
-      ? await new ToolLoopAgent<never, typeof chatTools, ChatRuntimeContext>({
+      ? await new ToolLoopAgent<never, typeof chatTools>({
           model,
           instructions,
           tools: chatTools,
           toolOrder: CHAT_TOOL_ORDER,
           stopWhen: isStepCount(50),
-          runtimeContext,
-          toolApproval: chatToolApproval,
           toolChoice: "auto",
+          prepareStep: forceSearch
+            ? ({ stepNumber }) =>
+                stepNumber === 0
+                  ? {
+                      activeTools: WEB_TOOL_NAMES,
+                      toolChoice: "required",
+                    }
+                  : undefined
+            : undefined,
           providerOptions: requestProviderOptions,
         }).stream({ messages: modelMessages, abortSignal })
-      : await new ToolLoopAgent<
-          never,
-          Record<string, never>,
-          ChatRuntimeContext
-        >({
+      : await new ToolLoopAgent<never, Record<string, never>>({
           model,
           instructions,
-          runtimeContext,
           providerOptions: requestProviderOptions,
         }).stream({ messages: modelMessages, abortSignal });
 
@@ -308,12 +291,9 @@ async function handlePost(req: Request): Promise<Response> {
           firstTokenAt === null ? undefined : finishedAt - firstTokenAt;
         const stats: MessageStats = {
           contextTokens: part.totalUsage.inputTokens,
-          cacheReadTokens:
-            part.totalUsage.inputTokenDetails.cacheReadTokens,
-          cacheWriteTokens:
-            part.totalUsage.inputTokenDetails.cacheWriteTokens,
-          uncachedInputTokens:
-            part.totalUsage.inputTokenDetails.noCacheTokens,
+          cacheReadTokens: part.totalUsage.inputTokenDetails.cacheReadTokens,
+          cacheWriteTokens: part.totalUsage.inputTokenDetails.cacheWriteTokens,
+          uncachedInputTokens: part.totalUsage.inputTokenDetails.noCacheTokens,
           responseTokens: outputTokens,
           totalTokens: part.totalUsage.totalTokens,
           ttftMs: firstTokenAt === null ? undefined : firstTokenAt - startedAt,

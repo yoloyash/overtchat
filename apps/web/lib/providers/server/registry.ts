@@ -1,8 +1,5 @@
 import "server-only";
-import {
-  extractReasoningMiddleware,
-  wrapLanguageModel,
-} from "ai";
+import { extractReasoningMiddleware, wrapLanguageModel } from "ai";
 import type { JSONValue, LanguageModelV4 } from "@ai-sdk/provider";
 import {
   API_FORMAT_IDS,
@@ -20,6 +17,8 @@ import type {
   ProviderAdapter,
   ProviderConnection,
   ProviderModelConfig,
+  AnthropicCacheControl,
+  PromptCacheStrategy,
 } from "@/lib/providers/server/types";
 
 const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
@@ -33,6 +32,7 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
 export interface ConfiguredLanguageModel {
   model: LanguageModelV4;
   providerOptions: Record<string, Record<string, JSONValue>> | undefined;
+  promptCacheStrategy: PromptCacheStrategy | undefined;
 }
 
 export function createConfiguredLanguageModel(
@@ -70,7 +70,40 @@ export function createConfiguredLanguageModel(
             [resolved.providerOptionsKey]: options as Record<string, JSONValue>,
           }
         : undefined,
+    promptCacheStrategy: resolvePromptCacheStrategy(
+      resolved.promptCacheKind,
+      options,
+    ),
   };
+}
+
+function resolvePromptCacheStrategy(
+  kind: "anthropic" | "openai" | undefined,
+  providerOptions: Record<string, unknown>,
+): PromptCacheStrategy | undefined {
+  if (kind === "openai") return { kind };
+  if (kind !== "anthropic") return undefined;
+
+  return {
+    kind,
+    cacheControl: readAnthropicCacheControl(providerOptions.cacheControl),
+  };
+}
+
+function readAnthropicCacheControl(value: unknown): AnthropicCacheControl {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const ttl = record.ttl;
+    if (
+      record.type === "ephemeral" &&
+      (ttl === undefined || ttl === "5m" || ttl === "1h")
+    ) {
+      return ttl === undefined
+        ? { type: "ephemeral" }
+        : { type: "ephemeral", ttl };
+    }
+  }
+  return { type: "ephemeral" };
 }
 
 export function listProviderModels(

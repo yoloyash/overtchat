@@ -22,9 +22,6 @@ const mocks = vi.hoisted(() => {
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
-    buildRuntimeContext: vi.fn(),
-    renderRuntimeContext: vi.fn(),
-    prependRuntimeContext: vi.fn(),
     cancelRegister: vi.fn(),
     cancelUnregister: vi.fn(),
     cancelHas: vi.fn(),
@@ -66,8 +63,7 @@ vi.mock("@/lib/tools", () => ({
   chatTools: mocks.chatTools,
   webTools: mocks.webTools,
   CHAT_TOOL_ORDER: mocks.toolOrder,
-  CHAT_TOOL_NAMES: mocks.toolOrder,
-  WEB_TOOL_NAMES: new Set(mocks.toolOrder),
+  WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
 }));
 vi.mock("@/lib/auth/server", () => ({
@@ -110,11 +106,6 @@ vi.mock("@/lib/providers/catalog", () => ({
 vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
 }));
-vi.mock("@/lib/runtime-context", () => ({
-  buildRuntimeContext: mocks.buildRuntimeContext,
-  prependRuntimeContext: mocks.prependRuntimeContext,
-  renderRuntimeContext: mocks.renderRuntimeContext,
-}));
 vi.mock("@/lib/streams/cancel-registry", () => ({
   register: mocks.cancelRegister,
   unregister: mocks.cancelUnregister,
@@ -125,7 +116,6 @@ vi.mock("@/lib/streams/context", () => ({
 }));
 
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
-import { chatToolApproval } from "@/lib/chat/tool-policy";
 import { POST } from "./route";
 
 const messages = [
@@ -137,22 +127,11 @@ const messages = [
 ];
 
 const convertedMessages = [{ role: "user", content: "Hello" }];
-const providerMessages = [
-  {
-    role: "user",
-    content: [
-      { type: "text", text: "runtime context" },
-      { type: "text", text: "Hello" },
-    ],
-  },
-];
-
 const parsedRequest = {
   messages,
   modelConfigId: "model-config",
   chatId: "chat",
-  searchEnabled: false,
-  timeZone: "America/Los_Angeles",
+  forceSearch: false,
   projectId: null,
   trigger: "submit-message" as const,
   messageId: undefined,
@@ -211,6 +190,7 @@ describe("chat route setup boundary", () => {
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
       providerOptions: undefined,
+      promptCacheStrategy: undefined,
     });
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
@@ -219,15 +199,6 @@ describe("chat route setup boundary", () => {
       iconId: null,
     });
     mocks.modelIconForModel.mockReturnValue(null);
-    mocks.buildRuntimeContext.mockImplementation(
-      ({ webSearchMode, timeZone }) => ({
-        currentDateTime: "Sunday, July 19, 2026 at 4:42:18 PM PDT",
-        timeZone,
-        webSearchMode,
-      }),
-    );
-    mocks.renderRuntimeContext.mockReturnValue("runtime context");
-    mocks.prependRuntimeContext.mockReturnValue(providerMessages);
     mocks.isStepCount.mockReturnValue("stop-at-50");
     mocks.cancelHas.mockReturnValue(false);
     mocks.commitChatTurn.mockReturnValue("committed");
@@ -330,6 +301,7 @@ describe("chat route setup boundary", () => {
       return {
         model: "language-model",
         providerOptions: undefined,
+        promptCacheStrategy: undefined,
       };
     });
     mocks.inlineUploads.mockImplementation(async () => {
@@ -539,41 +511,42 @@ describe("chat route setup boundary", () => {
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
   });
 
-  it("keeps the full tool registry and citation prefix stable when search toggles", async () => {
+  it("uses automatic tools normally and forces only the first requested step", async () => {
     await POST(request());
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
-      searchEnabled: true,
+      forceSearch: true,
     });
     await POST(request());
 
-    const [searchOff, searchOn] = mocks.agentSettings;
-    for (const settings of [searchOff, searchOn]) {
+    const [automatic, forced] = mocks.agentSettings;
+    for (const settings of [automatic, forced]) {
       expect(settings).toEqual(
         expect.objectContaining({
           tools: mocks.chatTools,
           toolOrder: mocks.toolOrder,
-          instructions: expect.objectContaining({
+          instructions: {
             role: "system",
             content: mocks.citationPrompt,
-            providerOptions: {
-              anthropic: { cacheControl: { type: "ephemeral" } },
-            },
-          }),
-          toolApproval: chatToolApproval,
+          },
           toolChoice: "auto",
           stopWhen: "stop-at-50",
         }),
       );
+      expect(settings).not.toHaveProperty("runtimeContext");
+      expect(settings).not.toHaveProperty("toolApproval");
     }
-    expect(searchOff.runtimeContext).toEqual(
-      expect.objectContaining({ webSearchMode: "disabled" }),
-    );
-    expect(searchOn.runtimeContext).toEqual(
-      expect.objectContaining({ webSearchMode: "enabled" }),
-    );
-    expect(searchOff.tools).toBe(searchOn.tools);
-    expect(searchOff.instructions).toEqual(searchOn.instructions);
+    expect(automatic.prepareStep).toBeUndefined();
+    const prepareStep = forced.prepareStep as (options: {
+      stepNumber: number;
+    }) => unknown;
+    expect(prepareStep({ stepNumber: 0 })).toEqual({
+      activeTools: mocks.toolOrder,
+      toolChoice: "required",
+    });
+    expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
+    expect(automatic.tools).toBe(forced.tools);
+    expect(automatic.instructions).toEqual(forced.instructions);
     expect(mocks.toUIMessageStream.mock.calls[0][0].tools).toBe(
       mocks.chatTools,
     );
@@ -582,38 +555,11 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("keeps tools present and uses approval enforcement while disabled", async () => {
-    mocks.createConfiguredLanguageModel.mockReturnValue({
-      model: "language-model",
-      providerOptions: undefined,
-    });
-
-    await POST(request());
-
-    const settings = mocks.agentSettings[0];
-    const approve = settings.toolApproval as (options: {
-      toolCall: { toolName: string };
-      runtimeContext: Record<string, unknown>;
-    }) => unknown;
-
-    expect(settings.tools).toBe(mocks.chatTools);
-    expect(settings.toolChoice).toBe("auto");
-    expect(
-      approve({
-        toolCall: { toolName: "web_search" },
-        runtimeContext: settings.runtimeContext as Record<string, unknown>,
-      }),
-    ).toEqual({
-      type: "denied",
-      reason: "Web tools are disabled by the user for this turn.",
-    });
-  });
-
   it.each([
     ["openai", "gpt-5.6-sol"],
     ["bedrock", "openai.gpt-5.6-sol"],
   ] as const)(
-    "uses %s GPT-5.6 cache routing and explicit stable-prefix markers",
+    "uses a stable per-chat cache routing key for %s GPT-5.6",
     async (providerId, model) => {
       mocks.getModelConfig.mockResolvedValue({
         ...modelConfig,
@@ -624,15 +570,11 @@ describe("chat route setup boundary", () => {
       mocks.createConfiguredLanguageModel.mockReturnValue({
         model: "language-model",
         providerOptions: { openai: { reasoningEffort: "high" } },
+        promptCacheStrategy: { kind: "openai" },
       });
 
       await POST(request());
 
-      expect(mocks.prependRuntimeContext).toHaveBeenCalledWith(
-        convertedMessages,
-        "runtime context",
-        { openAIExplicit: true },
-      );
       expect(mocks.agentSettings[0]).toMatchObject({
         providerOptions: {
           openai: {
@@ -643,16 +585,50 @@ describe("chat route setup boundary", () => {
           },
         },
         instructions: {
-          providerOptions: {
-            anthropic: { cacheControl: { type: "ephemeral" } },
-            openai: {
-              promptCacheBreakpoint: { mode: "explicit" },
-            },
-          },
+          role: "system",
+          content: mocks.citationPrompt,
         },
       });
+      expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
     },
   );
+
+  it("applies the adapter-provided Anthropic cache strategy", async () => {
+    mocks.createConfiguredLanguageModel.mockReturnValue({
+      model: "language-model",
+      providerOptions: undefined,
+      promptCacheStrategy: {
+        kind: "anthropic",
+        cacheControl: { type: "ephemeral", ttl: "1h" },
+      },
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0].instructions).toEqual({
+      role: "system",
+      content: mocks.citationPrompt,
+      providerOptions: {
+        anthropic: {
+          cacheControl: { type: "ephemeral", ttl: "1h" },
+        },
+      },
+    });
+    expect(mocks.agentStreamArgs[0].messages).toEqual([
+      {
+        role: "user",
+        content: "Hello",
+        providerOptions: {
+          anthropic: {
+            cacheControl: { type: "ephemeral", ttl: "1h" },
+          },
+        },
+      },
+    ]);
+    expect(convertedMessages).toEqual([
+      { role: "user", content: "Hello" },
+    ]);
+  });
 
   it("omits all tool machinery for a tool-incapable model", async () => {
     mocks.getModelConfig.mockResolvedValue({
@@ -662,9 +638,6 @@ describe("chat route setup boundary", () => {
 
     await POST(request());
 
-    expect(mocks.buildRuntimeContext).toHaveBeenCalledWith(
-      expect.objectContaining({ webSearchMode: "unavailable" }),
-    );
     expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
       expect.objectContaining({ toolCallingEnabled: false }),
     );
@@ -683,23 +656,12 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("prepends current runtime context only to provider messages", async () => {
+  it("keeps prompt content and persisted UI messages unchanged", async () => {
     const originalMessages = structuredClone(messages);
 
     await POST(request());
 
-    const runtimeContext = mocks.buildRuntimeContext.mock.results[0].value;
-    expect(mocks.buildRuntimeContext).toHaveBeenCalledWith({
-      webSearchMode: "disabled",
-      timeZone: "America/Los_Angeles",
-    });
-    expect(mocks.renderRuntimeContext).toHaveBeenCalledWith(runtimeContext);
-    expect(mocks.prependRuntimeContext).toHaveBeenCalledWith(
-      convertedMessages,
-      "runtime context",
-      { openAIExplicit: false },
-    );
-    expect(mocks.agentStreamArgs[0].messages).toBe(providerMessages);
+    expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
     expect(mocks.uiStreamOptions?.originalMessages).toBe(messages);
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -710,9 +672,7 @@ describe("chat route setup boundary", () => {
       expect.objectContaining({ userParts: messages[0].parts }),
     );
     expect(messages).toEqual(originalMessages);
-    expect(JSON.stringify(mocks.agentSettings[0].instructions)).not.toContain(
-      "runtime context",
-    );
+    expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
   });
 
   it("emits provider cache token details in finish metadata", async () => {
