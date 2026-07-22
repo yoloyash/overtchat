@@ -19,7 +19,6 @@ import {
   chatTools,
   WEB_TOOL_NAMES,
   WEB_SEARCH_CITATION_PROMPT,
-  WEB_SEARCH_DISABLED_PROMPT,
 } from "@/lib/tools";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
@@ -42,6 +41,28 @@ import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
 
 export const maxDuration = 300;
+
+function projectSystemPrompt(project: {
+  name: string;
+  instructions: string | null;
+} | null): string | null {
+  if (!project) return null;
+
+  const parts = [
+    "Project context:",
+    `You are working in a project named ${JSON.stringify(project.name)}.`,
+  ];
+
+  if (project.instructions?.trim()) {
+    parts.push(
+      "",
+      "User-provided project instructions:",
+      project.instructions,
+    );
+  }
+
+  return parts.join("\n");
+}
 
 export function OPTIONS(req: Request) {
   return preflight(req);
@@ -149,11 +170,10 @@ async function handlePost(req: Request): Promise<Response> {
   const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
   const webToolsEnabled = toolCallingEnabled && webSearchEnabled;
   const systemParts = [
-    currentDateSystemPrompt(timeZone),
-    project?.instructions,
     modelConfig.systemPrompt,
+    projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
-    !webSearchEnabled ? WEB_SEARCH_DISABLED_PROMPT : null,
+    currentDateSystemPrompt(timeZone),
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
   const instructions = system

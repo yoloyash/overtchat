@@ -45,6 +45,3 @@ export const WEB_TOOL_NAMES = Object.freeze([
  */
 export const WEB_SEARCH_CITATION_PROMPT =
   "Use the available tools when they materially improve the answer. After web_search, cite supported claims with literal anchors such as \\ue202turn0search0. The number after turn is the zero-based web_search call number in this response; the final number is the zero-based result index within that call (for example, the fourth result from the second search is \\ue202turn1search3). Copy this syntax exactly without braces, and place anchors after punctuation. Do not use Markdown links or footnotes for these citations.";
-
-export const WEB_SEARCH_DISABLED_PROMPT =
-  "Web access is disabled by the user.";

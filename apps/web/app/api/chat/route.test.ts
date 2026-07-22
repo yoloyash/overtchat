@@ -40,7 +40,6 @@ const mocks = vi.hoisted(() => {
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
-    disabledPrompt: "Web access is disabled by the user.",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
 });
@@ -68,7 +67,6 @@ vi.mock("@/lib/tools", () => ({
   CHAT_TOOL_ORDER: mocks.toolOrder,
   WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
-  WEB_SEARCH_DISABLED_PROMPT: mocks.disabledPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -537,7 +535,7 @@ describe("chat route setup boundary", () => {
           toolOrder: mocks.toolOrder,
           instructions: {
             role: "system",
-            content: `${mocks.currentDatePrompt}\n\n${mocks.citationPrompt}`,
+            content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
           },
           toolChoice: "auto",
           stopWhen: "stop-at-50",
@@ -568,7 +566,7 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("removes web tools and explains the user-disabled capability", async () => {
+  it("removes web tools when the capability is disabled", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
       webSearchEnabled: false,
@@ -582,7 +580,7 @@ describe("chat route setup boundary", () => {
         model: "language-model",
         instructions: {
           role: "system",
-          content: `${mocks.currentDatePrompt}\n\n${mocks.disabledPrompt}`,
+          content: mocks.currentDatePrompt,
         },
       }),
     );
@@ -594,13 +592,14 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("orders date, project, model, and citation instructions", async () => {
+  it("labels project context between model and web instructions", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
       projectId: "project",
     });
     mocks.getProject.mockResolvedValue({
       id: "project",
+      name: "Research",
       instructions: "project instructions",
     });
     mocks.getModelConfig.mockResolvedValue({
@@ -613,10 +612,16 @@ describe("chat route setup boundary", () => {
     expect(mocks.agentSettings[0].instructions).toEqual({
       role: "system",
       content: [
-        mocks.currentDatePrompt,
-        "project instructions",
         "model instructions",
+        [
+          "Project context:",
+          'You are working in a project named "Research".',
+          "",
+          "User-provided project instructions:",
+          "project instructions",
+        ].join("\n"),
         mocks.citationPrompt,
+        mocks.currentDatePrompt,
       ].join("\n\n"),
     });
   });
@@ -652,7 +657,7 @@ describe("chat route setup boundary", () => {
         },
         instructions: {
           role: "system",
-          content: `${mocks.currentDatePrompt}\n\n${mocks.citationPrompt}`,
+          content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
         },
       });
       expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
@@ -673,7 +678,7 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.agentSettings[0].instructions).toEqual({
       role: "system",
-      content: `${mocks.currentDatePrompt}\n\n${mocks.citationPrompt}`,
+      content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
       providerOptions: {
         anthropic: {
           cacheControl: { type: "ephemeral", ttl: "1h" },
