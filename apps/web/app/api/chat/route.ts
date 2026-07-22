@@ -7,6 +7,7 @@ import {
   type TextStreamPart,
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
+import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   markAnthropicConversationCacheBoundary,
   markAnthropicSystemCacheBoundary,
@@ -63,6 +64,7 @@ async function handlePost(req: Request): Promise<Response> {
     messages,
     modelConfigId,
     forceSearch,
+    timeZone,
     chatId,
     projectId,
     trigger,
@@ -144,6 +146,7 @@ async function handlePost(req: Request): Promise<Response> {
       : providerOptions;
   const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
   const systemParts = [
+    currentDateSystemPrompt(timeZone),
     project?.instructions,
     modelConfig.systemPrompt,
     toolCallingEnabled ? WEB_SEARCH_CITATION_PROMPT : null,

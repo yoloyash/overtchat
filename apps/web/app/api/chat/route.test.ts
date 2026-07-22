@@ -26,6 +26,7 @@ const mocks = vi.hoisted(() => {
     cancelUnregister: vi.fn(),
     cancelHas: vi.fn(),
     getStreamContext: vi.fn(),
+    currentDateSystemPrompt: vi.fn(),
     convertToModelMessages: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
@@ -39,6 +40,7 @@ const mocks = vi.hoisted(() => {
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
+    currentDatePrompt: "Current date: 2026-07-22 (America/Los_Angeles).",
   };
 });
 
@@ -65,6 +67,9 @@ vi.mock("@/lib/tools", () => ({
   CHAT_TOOL_ORDER: mocks.toolOrder,
   WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
+}));
+vi.mock("@/lib/chat/current-date", () => ({
+  currentDateSystemPrompt: mocks.currentDateSystemPrompt,
 }));
 vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
@@ -132,6 +137,7 @@ const parsedRequest = {
   modelConfigId: "model-config",
   chatId: "chat",
   forceSearch: false,
+  timeZone: "America/Los_Angeles",
   projectId: null,
   trigger: "submit-message" as const,
   messageId: undefined,
@@ -206,6 +212,7 @@ describe("chat route setup boundary", () => {
     mocks.clearActiveStreamId.mockResolvedValue(undefined);
     mocks.generateChatTitle.mockResolvedValue(null);
     mocks.getStreamContext.mockReturnValue(null);
+    mocks.currentDateSystemPrompt.mockReturnValue(mocks.currentDatePrompt);
     mocks.agentStream.mockImplementation(async () => ({
       stream: new ReadableStream(),
     }));
@@ -527,7 +534,7 @@ describe("chat route setup boundary", () => {
           toolOrder: mocks.toolOrder,
           instructions: {
             role: "system",
-            content: mocks.citationPrompt,
+            content: `${mocks.currentDatePrompt}\n\n${mocks.citationPrompt}`,
           },
           toolChoice: "auto",
           stopWhen: "stop-at-50",
@@ -547,12 +554,42 @@ describe("chat route setup boundary", () => {
     expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
     expect(automatic.tools).toBe(forced.tools);
     expect(automatic.instructions).toEqual(forced.instructions);
+    expect(mocks.currentDateSystemPrompt).toHaveBeenCalledWith(
+      parsedRequest.timeZone,
+    );
     expect(mocks.toUIMessageStream.mock.calls[0][0].tools).toBe(
       mocks.chatTools,
     );
     expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toBe(
       mocks.chatTools,
     );
+  });
+
+  it("orders date, project, model, and citation instructions", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      projectId: "project",
+    });
+    mocks.getProject.mockResolvedValue({
+      id: "project",
+      instructions: "project instructions",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      systemPrompt: "model instructions",
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0].instructions).toEqual({
+      role: "system",
+      content: [
+        mocks.currentDatePrompt,
+        "project instructions",
+        "model instructions",
+        mocks.citationPrompt,
+      ].join("\n\n"),
+    });
   });
 
   it.each([
@@ -586,7 +623,7 @@ describe("chat route setup boundary", () => {
         },
         instructions: {
           role: "system",
-          content: mocks.citationPrompt,
+          content: `${mocks.currentDatePrompt}\n\n${mocks.citationPrompt}`,
         },
       });
       expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
@@ -607,7 +644,7 @@ describe("chat route setup boundary", () => {
 
     expect(mocks.agentSettings[0].instructions).toEqual({
       role: "system",
-      content: mocks.citationPrompt,
+      content: `${mocks.currentDatePrompt}\n\n${mocks.citationPrompt}`,
       providerOptions: {
         anthropic: {
           cacheControl: { type: "ephemeral", ttl: "1h" },
@@ -644,7 +681,10 @@ describe("chat route setup boundary", () => {
     expect(mocks.agentSettings[0]).toEqual(
       expect.objectContaining({
         model: "language-model",
-        instructions: undefined,
+        instructions: {
+          role: "system",
+          content: mocks.currentDatePrompt,
+        },
       }),
     );
     expect(mocks.agentSettings[0]).not.toHaveProperty("tools");

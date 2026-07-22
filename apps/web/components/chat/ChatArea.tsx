@@ -150,6 +150,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   const requestBody = (forceSearch = false) => ({
     modelConfigId: selectedId,
     forceSearch: searchAvailable && forceSearch,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     projectId: projectId ?? null,
     temporary,

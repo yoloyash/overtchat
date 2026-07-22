@@ -12,6 +12,7 @@ function request(body: unknown): Request {
 const validBody = {
   modelConfigId: "model-config",
   chatId: "chat",
+  timeZone: "America/Los_Angeles",
   messages: [
     {
       id: "user-message",
@@ -48,6 +49,15 @@ describe("chat request parsing", () => {
     await expect(
       parseChatRequest(request({ ...validBody, forceSearch: true })),
     ).resolves.toMatchObject({ forceSearch: true });
+  });
+
+  it("trims timezone metadata without putting it in message content", async () => {
+    const parsed = await parseChatRequest(
+      request({ ...validBody, timeZone: "  America/Los_Angeles  " }),
+    );
+
+    expect(parsed.timeZone).toBe("America/Los_Angeles");
+    expect(parsed.messages).toEqual(validBody.messages);
   });
 
   it("maps the legacy mobile search flag without exposing it downstream", async () => {

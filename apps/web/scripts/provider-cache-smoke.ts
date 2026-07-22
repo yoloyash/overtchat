@@ -15,6 +15,7 @@ import {
   markAnthropicConversationCacheBoundary,
   markAnthropicSystemCacheBoundary,
 } from "@/lib/chat/prompt-cache";
+import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   CHAT_TOOL_ORDER,
   chatTools,
@@ -492,6 +493,7 @@ async function runOnce(
   const instructions = {
     role: "system" as const,
     content: [
+      currentDateSystemPrompt("UTC"),
       "You are running an automated provider integration test.",
       WEB_SEARCH_CITATION_PROMPT,
     ].join("\n\n"),

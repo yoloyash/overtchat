@@ -9,6 +9,7 @@ const ChatRequestEnvelopeSchema = z.object({
   // Accepted during the mobile rollout. `true` maps cleanly to the new
   // one-message action; `false` now means the normal automatic policy.
   searchEnabled: z.boolean().optional(),
+  timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
   trigger: z
     .enum(["submit-message", "regenerate-message"])
@@ -23,6 +24,7 @@ export interface ParsedChatRequest {
   modelConfigId: string;
   chatId: string;
   forceSearch: boolean;
+  timeZone?: string;
   projectId?: string | null;
   trigger: "submit-message" | "regenerate-message";
   messageId?: string;

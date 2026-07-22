@@ -379,6 +379,7 @@ function ChatSurface({
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
       searchEnabled: requested,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       chatId,
       projectId,
       temporary: false,

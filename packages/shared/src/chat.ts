@@ -5,6 +5,7 @@ export interface ChatRequestBody {
   modelConfigId: string;
   chatId: string;
   forceSearch?: boolean;
+  timeZone?: string;
   projectId?: string | null;
   trigger?: "submit-message" | "regenerate-message";
   messageId?: string;
