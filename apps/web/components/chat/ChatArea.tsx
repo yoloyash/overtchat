@@ -13,6 +13,10 @@ import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { motionClasses } from "@/lib/motion";
+import {
+  DEFAULT_WEB_SEARCH_ENABLED,
+  WEB_SEARCH_ENABLED_STORAGE_KEY,
+} from "@/lib/tool-preferences";
 import { authClient } from "@/lib/auth/client";
 import {
   readMessageStats,
@@ -61,7 +65,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
   const selectedModel = models?.find((model) => model.id === selectedId);
-  const searchAvailable = modelSupportsToolCalling(selectedModel);
+  const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
+  const [webSearchEnabled] = useLocalStorage<boolean>(
+    WEB_SEARCH_ENABLED_STORAGE_KEY,
+    DEFAULT_WEB_SEARCH_ENABLED,
+  );
+  const searchAvailable = webSearchEnabled && modelSupportsSearch;
+  const searchUnavailableReason = !webSearchEnabled
+    ? "Web search is disabled in Settings → Tools"
+    : "Web search is unavailable for this model";
 
   const [searchRequested, setSearchRequested] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
@@ -149,6 +161,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
 
   const requestBody = (forceSearch = false) => ({
     modelConfigId: selectedId,
+    webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
@@ -243,6 +256,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       configured={configured}
       streaming={streaming}
       searchAvailable={searchAvailable}
+      searchUnavailableReason={searchUnavailableReason}
       searchRequested={searchAvailable && searchRequested}
       dropActive={dropActive}
       onToggleSearch={() => {

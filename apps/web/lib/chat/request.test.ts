@@ -26,6 +26,7 @@ describe("chat request parsing", () => {
   it("validates and normalizes a normal submit request", async () => {
     await expect(parseChatRequest(request(validBody))).resolves.toMatchObject({
       ...validBody,
+      webSearchEnabled: true,
       forceSearch: false,
       temporary: false,
       trigger: "submit-message",
@@ -49,6 +50,21 @@ describe("chat request parsing", () => {
     await expect(
       parseChatRequest(request({ ...validBody, forceSearch: true })),
     ).resolves.toMatchObject({ forceSearch: true });
+  });
+
+  it("discards a forced Search request when web search is disabled", async () => {
+    await expect(
+      parseChatRequest(
+        request({
+          ...validBody,
+          webSearchEnabled: false,
+          forceSearch: true,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      webSearchEnabled: false,
+      forceSearch: false,
+    });
   });
 
   it("trims timezone metadata without putting it in message content", async () => {

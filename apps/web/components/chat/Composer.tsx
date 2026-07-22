@@ -44,6 +44,7 @@ interface ComposerProps {
   configured: boolean;
   streaming: boolean;
   searchAvailable: boolean;
+  searchUnavailableReason: string;
   searchRequested: boolean;
   dropActive: boolean;
   onToggleSearch: () => void;
@@ -56,6 +57,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   configured,
   streaming,
   searchAvailable,
+  searchUnavailableReason,
   searchRequested,
   dropActive,
   onToggleSearch,
@@ -210,11 +212,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               title={
                 searchAvailable
                   ? undefined
-                  : "Web search is unavailable for this model"
+                  : searchUnavailableReason
               }
               aria-label={
                 !searchAvailable
-                  ? "Web search unavailable for this model"
+                  ? searchUnavailableReason
                   : searchRequested
                     ? "Remove Search from this message"
                     : "Search the web for this message"

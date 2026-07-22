@@ -5,6 +5,7 @@ const ChatRequestEnvelopeSchema = z.object({
   messages: z.unknown(),
   modelConfigId: z.string().trim().min(1, "Missing modelConfigId"),
   chatId: z.string().trim().min(1, "Missing chatId"),
+  webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
   // Accepted during the mobile rollout. `true` maps cleanly to the new
   // one-message action; `false` now means the normal automatic policy.
@@ -23,6 +24,7 @@ export interface ParsedChatRequest {
   messages: UIMessage[];
   modelConfigId: string;
   chatId: string;
+  webSearchEnabled: boolean;
   forceSearch: boolean;
   timeZone?: string;
   projectId?: string | null;
@@ -80,9 +82,10 @@ export async function parseChatRequest(
   }
 
   const { searchEnabled, ...data } = envelope.data;
+  const forceSearch = data.forceSearch ?? searchEnabled ?? false;
   return {
     ...data,
     messages: validated.data,
-    forceSearch: data.forceSearch ?? searchEnabled ?? false,
+    forceSearch: data.webSearchEnabled && forceSearch,
   };
 }

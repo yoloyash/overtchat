@@ -40,6 +40,7 @@ const mocks = vi.hoisted(() => {
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
+    disabledPrompt: "Web access is disabled by the user.",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
 });
@@ -67,6 +68,7 @@ vi.mock("@/lib/tools", () => ({
   CHAT_TOOL_ORDER: mocks.toolOrder,
   WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
+  WEB_SEARCH_DISABLED_PROMPT: mocks.disabledPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -136,6 +138,7 @@ const parsedRequest = {
   messages,
   modelConfigId: "model-config",
   chatId: "chat",
+  webSearchEnabled: true,
   forceSearch: false,
   timeZone: "America/Los_Angeles",
   projectId: null,
@@ -562,6 +565,32 @@ describe("chat route setup boundary", () => {
     );
     expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toBe(
       mocks.chatTools,
+    );
+  });
+
+  it("removes web tools and explains the user-disabled capability", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+      forceSearch: true,
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        model: "language-model",
+        instructions: {
+          role: "system",
+          content: `${mocks.currentDatePrompt}\n\n${mocks.disabledPrompt}`,
+        },
+      }),
+    );
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolOrder");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolChoice");
+    expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: undefined }),
     );
   });
 

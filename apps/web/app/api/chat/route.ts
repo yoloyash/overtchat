@@ -19,6 +19,7 @@ import {
   chatTools,
   WEB_TOOL_NAMES,
   WEB_SEARCH_CITATION_PROMPT,
+  WEB_SEARCH_DISABLED_PROMPT,
 } from "@/lib/tools";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
@@ -63,6 +64,7 @@ async function handlePost(req: Request): Promise<Response> {
   const {
     messages,
     modelConfigId,
+    webSearchEnabled,
     forceSearch,
     timeZone,
     chatId,
@@ -145,11 +147,13 @@ async function handlePost(req: Request): Promise<Response> {
       ? withOpenAIPromptCacheKey(providerOptions, promptCacheKeyForChat(chatId))
       : providerOptions;
   const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
+  const webToolsEnabled = toolCallingEnabled && webSearchEnabled;
   const systemParts = [
     currentDateSystemPrompt(timeZone),
     project?.instructions,
     modelConfig.systemPrompt,
-    toolCallingEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    !webSearchEnabled ? WEB_SEARCH_DISABLED_PROMPT : null,
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
   const instructions = system
@@ -220,7 +224,7 @@ async function handlePost(req: Request): Promise<Response> {
 
   try {
     const abortSignal = controller?.signal ?? req.signal;
-    const result = toolCallingEnabled
+    const result = webToolsEnabled
       ? await new ToolLoopAgent<never, typeof chatTools>({
           model,
           instructions,
@@ -277,7 +281,7 @@ async function handlePost(req: Request): Promise<Response> {
     );
     const uiStream = toUIMessageStream({
       stream: observedStream,
-      tools: toolCallingEnabled ? chatTools : undefined,
+      tools: webToolsEnabled ? chatTools : undefined,
       sendReasoning: true,
       originalMessages: messages,
       generateMessageId: () => crypto.randomUUID(),
