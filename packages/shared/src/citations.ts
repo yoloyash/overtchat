@@ -2,8 +2,10 @@
  * Citation Regex Patterns (based on LibreChat client/src/utils/citations.ts)
  *
  * These patterns handle two formats that LLMs may output:
- * 1. Literal escape sequences: "turn0search0" (backslash + "ue202" = 6 chars)
- * 2. Actual Unicode characters: "turn0search0" (U+E202 = 1 char, private use area)
+ * 1. Literal escape sequences: "\\ue202turn0search0" (6 ASCII characters
+ *    for the marker)
+ * 2. Actual Unicode characters: "turn0search0" (U+E202 = 1 private-use
+ *    character)
  *
  * The system instructs LLMs to output literal escape sequences, but some models
  * may convert them to actual Unicode characters during text generation. These

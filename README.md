@@ -95,7 +95,7 @@ The Android client adds one exception: crash reports go to Sentry (no chat conte
 
 ## Stack
 
-Next.js 16 · Vercel AI SDK v6 · Better Auth · Drizzle + SQLite · Redis (resume buffer) · base-ui · Tailwind · SearXNG · Kokoro TTS
+Next.js 16 · Vercel AI SDK v7 · Better Auth · Drizzle + SQLite · Redis (resume buffer) · base-ui · Tailwind · SearXNG · Kokoro TTS
 
 ## More
 
