@@ -14,7 +14,7 @@ export function normalizeTimeZone(timeZone?: string): string {
   }
 }
 
-/** Build stable, date-only system metadata in the user's local time zone. */
+/** Build stable, date-only system metadata using the user's local time zone. */
 export function currentDateSystemPrompt(
   timeZone?: string,
   now = new Date(),
@@ -31,5 +31,5 @@ export function currentDateSystemPrompt(
       .map(({ type, value }) => [type, value]),
   );
 
-  return `Current date: ${parts.year}-${parts.month}-${parts.day} (${normalizedTimeZone}).`;
+  return `Current date: ${parts.year}-${parts.month}-${parts.day}.`;
 }

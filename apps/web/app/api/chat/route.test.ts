@@ -40,7 +40,7 @@ const mocks = vi.hoisted(() => {
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
-    currentDatePrompt: "Current date: 2026-07-22 (America/Los_Angeles).",
+    currentDatePrompt: "Current date: 2026-07-22.",
   };
 });
 
