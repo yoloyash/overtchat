@@ -12,8 +12,14 @@ import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+interface StatsRow {
+  iconId?: MessageStats["providerIconId"];
+  label: string;
+  value: string;
+}
+
 export function StatsPopover({ stats }: { stats: MessageStats }) {
-  const rows = [
+  const candidateRows: Array<StatsRow | null> = [
     stats.providerLabel !== undefined
       ? {
           iconId: stats.providerIconId,
@@ -56,15 +62,8 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     stats.finishReason !== undefined
       ? { label: "Finish reason", value: stats.finishReason }
       : null,
-  ].filter(
-    (
-      row,
-    ): row is {
-      iconId?: MessageStats["providerIconId"];
-      label: string;
-      value: string;
-    } => row !== null,
-  );
+  ];
+  const rows = candidateRows.filter((row): row is StatsRow => row !== null);
 
   if (!rows.length) return null;
 

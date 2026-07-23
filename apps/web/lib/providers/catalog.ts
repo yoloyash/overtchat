@@ -113,8 +113,52 @@ export function modelIconForModel(model: string): ModelBrandIconId | null {
   if (/\bclaude\b/.test(normalized)) return "claude";
   if (normalized.includes("anthropic")) return "anthropic";
   if (normalized.includes("gemini")) return "gemini";
+  if (normalized.includes("gemma")) return "gemma";
   if (normalized.includes("deepseek")) return "deepseek";
   if (normalized.includes("qwen") || /\bqwq\b/.test(normalized)) return "qwen";
+  if (normalized.includes("xiaomi") || /\bmimo\b/.test(normalized)) {
+    return "xiaomimimo";
+  }
+  if (
+    normalized.includes("z-ai") ||
+    normalized.includes("zai-org") ||
+    /\bglm(?:\b|[-_.]\d)/.test(normalized)
+  ) {
+    return "zai";
+  }
+  if (normalized.includes("nvidia") || normalized.includes("nemotron")) {
+    return "nvidia";
+  }
+  if (normalized.includes("kimi") || normalized.includes("moonshot")) {
+    return "kimi";
+  }
+  if (normalized.includes("poolside") || normalized.includes("laguna")) {
+    return "poolside";
+  }
+  if (normalized.includes("grok") || normalized.includes("x-ai")) return "grok";
+  if (
+    normalized.includes("hunyuan") ||
+    normalized.includes("tencent/") ||
+    /\bhy3\b/.test(normalized)
+  ) {
+    return "hunyuan";
+  }
+  if (normalized.includes("stepfun")) return "stepfun";
+  if (
+    normalized.includes("cohere") ||
+    /\bcommand-(?:a|r)\b/.test(normalized) ||
+    /\baya-/.test(normalized) ||
+    /\bnorth-/.test(normalized)
+  ) {
+    return "cohere";
+  }
+  if (
+    normalized.includes("ibm-granite") ||
+    /\bgranite[-_.\d]/.test(normalized)
+  ) {
+    return "ibm";
+  }
+  if (/\bnova(?:\b|[-_.]\w)/.test(normalized)) return "nova";
   if (
     normalized.includes("mistral") ||
     normalized.includes("mixtral") ||
@@ -128,7 +172,13 @@ export function modelIconForModel(model: string): ModelBrandIconId | null {
   if (normalized.includes("ollama")) return "ollama";
   if (normalized.includes("vllm")) return "vllm";
   if (normalized.includes("groq")) return "groq";
-  if (normalized.includes("llama") || normalized.includes("meta-")) return "meta";
+  if (
+    normalized.includes("llama") ||
+    normalized.includes("meta-") ||
+    normalized.startsWith("meta/")
+  ) {
+    return "meta";
+  }
   if (
     /\bgpt[-\d]/.test(normalized) ||
     normalized.includes("chatgpt") ||
