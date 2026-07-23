@@ -41,9 +41,10 @@ interface Props {
   initialMessages?: UIMessage[];
   isNew?: boolean;
   projectId?: string | null;
+  initialQuery?: string;
 }
 
-export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
+export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQuery }: Props) {
   const qc = useQueryClient();
   const { data: chats } = useChats();
 
@@ -217,6 +218,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     }
     sendMessage({ text, files: attachments }, { body: requestBody() });
   }
+
+  const initialQueryFiredRef = useRef(false);
+  useEffect(() => {
+    if (!initialQuery || initialQueryFiredRef.current || !configured) return;
+    initialQueryFiredRef.current = true;
+    handleSubmit(initialQuery, []);
+  }, [initialQuery, configured]);
 
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
