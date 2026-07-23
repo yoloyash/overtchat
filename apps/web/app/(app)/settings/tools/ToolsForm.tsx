@@ -1,10 +1,10 @@
 "use client";
 
-import { Switch } from "@/components/ui/switch";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
-} from "@/lib/tool-preferences";
+} from "@overtchat/shared";
+import { Switch } from "@/components/ui/switch";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
   SettingsPageHeader,

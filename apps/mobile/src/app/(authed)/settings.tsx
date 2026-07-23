@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
@@ -16,6 +17,7 @@ import { FONT_OPTIONS, FONT_SANS } from "@/lib/fonts";
 import { setFontPref, useFontPref } from "@/lib/fontPref";
 import { getServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
+import { useWebSearchEnabled } from "@/lib/toolPreferences";
 
 export default function SettingsScreen() {
   const { colors, radii, fonts } = useTheme();
@@ -27,6 +29,7 @@ export default function SettingsScreen() {
 
   const themePref = useThemePref();
   const fontPref = useFontPref();
+  const [webSearchEnabled, setWebSearchEnabled] = useWebSearchEnabled();
   const [signingOut, setSigningOut] = useState(false);
   const serverUrl = getServerUrl();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
@@ -77,6 +80,25 @@ export default function SettingsScreen() {
           <Section title="Account" description="Signed in on this device.">
             <Row label="Name" right={user?.name ?? "—"} />
             <Row label="Email" right={user?.email ?? "—"} />
+          </Section>
+
+          <Section
+            title="Tools"
+            description="Control which capabilities models can use on this device."
+          >
+            <Row
+              label="Web search"
+              sub="Allow supported models to search the web and fetch pages. Disabling this also turns off the Search action in chat."
+              right={
+                <Switch
+                  value={webSearchEnabled}
+                  onValueChange={setWebSearchEnabled}
+                  accessibilityLabel="Enable web search"
+                  trackColor={{ true: colors.primary, false: colors.border }}
+                  thumbColor={colors.background}
+                />
+              }
+            />
           </Section>
 
           <Section

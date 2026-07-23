@@ -47,6 +47,7 @@ import { queryKeys } from "@/lib/queries/keys";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
+import { useWebSearchEnabled } from "@/lib/toolPreferences";
 
 export default function ChatScreen() {
   const { activeChatId, isNewChat, activeProjectId } = useChatSession();
@@ -231,7 +232,16 @@ function ChatSurface({
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
-  const searchAvailable = modelSupportsToolCalling(selectedModel);
+  const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
+  const [webSearchEnabled] = useWebSearchEnabled();
+  const searchAvailable = webSearchEnabled && modelSupportsSearch;
+  const searchUnavailableReason = !webSearchEnabled
+    ? "Web search is disabled in Settings → Tools"
+    : "Web search is unavailable for this model";
+
+  useEffect(() => {
+    if (!searchAvailable) setSearchRequested(false);
+  }, [searchAvailable]);
 
   const {
     attachments,
@@ -375,10 +385,8 @@ function ChatSurface({
     const requested = searchAvailable && forceSearch;
     return {
       modelConfigId: selectedId,
+      webSearchEnabled,
       forceSearch: requested,
-      // Older self-hosted servers only understand the persisted-toggle name.
-      // New servers give `forceSearch` precedence and discard this alias.
-      searchEnabled: requested,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       chatId,
       projectId,
@@ -536,6 +544,7 @@ function ChatSurface({
           configured={configured}
           streaming={streaming}
           searchAvailable={searchAvailable}
+          searchUnavailableReason={searchUnavailableReason}
           searchRequested={searchAvailable && searchRequested}
           attachments={attachments}
           attachmentMeta={attachmentMeta}
@@ -569,6 +578,7 @@ function ChatSurface({
       <AddToChatSheet
         ref={addSheetRef}
         searchAvailable={searchAvailable}
+        searchUnavailableReason={searchUnavailableReason}
         searchRequested={searchAvailable && searchRequested}
         onToggleSearchRequested={setSearchRequested}
         onPickTool={onPickTool}

@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
-import { modelSupportsToolCalling } from "@overtchat/shared";
+import {
+  DEFAULT_WEB_SEARCH_ENABLED,
+  modelSupportsToolCalling,
+  WEB_SEARCH_ENABLED_STORAGE_KEY,
+} from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -13,10 +17,6 @@ import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { motionClasses } from "@/lib/motion";
-import {
-  DEFAULT_WEB_SEARCH_ENABLED,
-  WEB_SEARCH_ENABLED_STORAGE_KEY,
-} from "@/lib/tool-preferences";
 import { authClient } from "@/lib/auth/client";
 import {
   readMessageStats,

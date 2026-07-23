@@ -76,15 +76,6 @@ describe("chat request parsing", () => {
     expect(parsed.messages).toEqual(validBody.messages);
   });
 
-  it("maps the legacy mobile search flag without exposing it downstream", async () => {
-    const parsed = await parseChatRequest(
-      request({ ...validBody, searchEnabled: true }),
-    );
-
-    expect(parsed.forceSearch).toBe(true);
-    expect(parsed).not.toHaveProperty("searchEnabled");
-  });
-
   it("rejects missing and structurally invalid messages", async () => {
     await expect(
       parseChatRequest(request({ ...validBody, messages: undefined })),

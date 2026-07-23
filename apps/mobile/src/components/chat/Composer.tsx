@@ -14,6 +14,7 @@ export function Composer({
   configured,
   streaming,
   searchAvailable,
+  searchUnavailableReason,
   searchRequested,
   attachments,
   attachmentMeta,
@@ -30,6 +31,7 @@ export function Composer({
   configured: boolean;
   streaming: boolean;
   searchAvailable: boolean;
+  searchUnavailableReason: string;
   searchRequested: boolean;
   attachments: FileUIPart[];
   attachmentMeta: Record<string, AttachmentMeta>;
@@ -181,7 +183,7 @@ export function Composer({
             {searchRequested && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Remove Search from this message"
+                accessibilityLabel="Remove Web search from this message"
                 onPress={clearSearch}
                 style={({ pressed }) => [
                   styles.pill,
@@ -203,7 +205,7 @@ export function Composer({
                     { color: colors.foreground, fontFamily: fonts.sansMedium },
                   ]}
                 >
-                  Search
+                  Web search
                 </Text>
                 <Ionicons name="close" size={14} color={colors.foreground} />
               </Pressable>
@@ -217,7 +219,7 @@ export function Composer({
             accessibilityLabel={
               searchAvailable
                 ? "Add to chat"
-                : "Add to chat; web search unavailable for this model"
+                : `Add to chat; ${searchUnavailableReason}`
             }
             onPress={openAdd}
             style={({ pressed }) => [

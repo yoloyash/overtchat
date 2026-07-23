@@ -7,9 +7,6 @@ const ChatRequestEnvelopeSchema = z.object({
   chatId: z.string().trim().min(1, "Missing chatId"),
   webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
-  // Accepted during the mobile rollout. `true` maps cleanly to the new
-  // one-message action; `false` now means the normal automatic policy.
-  searchEnabled: z.boolean().optional(),
   timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
   trigger: z
@@ -81,11 +78,10 @@ export async function parseChatRequest(
     throw new ChatRequestError("Regenerate requires a messageId");
   }
 
-  const { searchEnabled, ...data } = envelope.data;
-  const forceSearch = data.forceSearch ?? searchEnabled ?? false;
+  const data = envelope.data;
   return {
     ...data,
     messages: validated.data,
-    forceSearch: data.webSearchEnabled && forceSearch,
+    forceSearch: data.webSearchEnabled && (data.forceSearch ?? false),
   };
 }
