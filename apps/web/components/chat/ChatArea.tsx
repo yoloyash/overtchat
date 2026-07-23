@@ -45,9 +45,10 @@ interface Props {
   initialMessages?: UIMessage[];
   isNew?: boolean;
   projectId?: string | null;
+  initialQuery?: string;
 }
 
-export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
+export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQuery }: Props) {
   const qc = useQueryClient();
   const { data: chats } = useChats();
 
@@ -234,6 +235,18 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     );
     setSearchRequested(false);
   }
+
+  const initialQueryFiredRef = useRef(false);
+  useEffect(() => {
+    const query = initialQuery?.trim();
+    const selectedModelReady = models?.some(
+      (model) => model.id === selectedId,
+    );
+    if (!query || initialQueryFiredRef.current || !selectedModelReady) return;
+    initialQueryFiredRef.current = true;
+    handleSubmit(query, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery, models, selectedId]);
 
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
