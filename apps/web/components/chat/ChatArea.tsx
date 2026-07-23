@@ -221,10 +221,15 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
 
   const initialQueryFiredRef = useRef(false);
   useEffect(() => {
-    if (!initialQuery || initialQueryFiredRef.current || !configured) return;
+    const query = initialQuery?.trim();
+    const selectedModelReady = models?.some(
+      (model) => model.id === selectedId,
+    );
+    if (!query || initialQueryFiredRef.current || !selectedModelReady) return;
     initialQueryFiredRef.current = true;
-    handleSubmit(initialQuery, []);
-  }, [initialQuery, configured]);
+    handleSubmit(query, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery, models, selectedId]);
 
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
