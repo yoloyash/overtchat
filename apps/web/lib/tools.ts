@@ -44,4 +44,19 @@ export const WEB_TOOL_NAMES = Object.freeze([
  * the selected model supports tools, including one-shot Search requests.
  */
 export const WEB_SEARCH_CITATION_PROMPT =
-  "Use web tools only when the user's query depends on current or likely-to-change information or if they explicitly ask. After web_search, cite supported claims with literal anchors such as \\ue202turn0search0. The number after turn is the zero-based web_search call number in this response; the final number is the zero-based result index within that call (for example, the fourth result from the second search is \\ue202turn1search3). Copy this syntax exactly without braces, and place anchors after punctuation. Do not use Markdown links or footnotes for these citations.";
+  `Web search:
+Use web tools only when the user's request requires current or likely-to-change information, or when they explicitly ask. Cite every non-obvious factual claim derived from web_search results.
+
+Citation format:
+Use these literal escape sequences exactly: \\ue202 before each citation anchor, \\ue200 and \\ue201 around a citation group, and \\ue203 and \\ue204 around highlighted cited text.
+
+An anchor is \\ue202turnNsearchI, where N is the zero-based web_search call in the current response and I is the zero-based result index within that call. Replace N and I with digits; do not output braces.
+
+Examples:
+- Single: "Statement.\\ue202turn0search0"
+- Multiple: "Statement.\\ue202turn0search0\\ue202turn0search1"
+- Group: "Statement. \\ue200\\ue202turn0search0\\ue202turn0search1\\ue201"
+- Highlight: "\\ue203Cited text.\\ue204\\ue202turn0search0"
+- Fourth result from the second search: "Statement.\\ue202turn1search3"
+
+Place anchors after punctuation. Do not use Markdown links, footnotes, or HTML tags for web_search citations.`;
