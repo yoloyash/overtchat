@@ -13,6 +13,7 @@ export interface PingArgs {
   apiKey: string;
   model: string;
   providerOptions: Record<string, unknown> | null;
+  toolCallingEnabled: boolean;
 }
 
 type PingResult =

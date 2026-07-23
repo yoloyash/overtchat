@@ -3,26 +3,18 @@
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { UIMessage } from "ai";
-import { cleanDomain, faviconUrl, type WebSearchResult } from "@/lib/web-client";
-import type { WebSearchPart } from "@overtchat/shared";
+import {
+  cleanDomain,
+  faviconUrl,
+  type WebSearchResult,
+} from "@/lib/web-client";
+import { buildWebCitationIndex } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 
 export function Sources({ message }: { message: UIMessage }) {
   const [open, setOpen] = useState(false);
 
-  const all: WebSearchResult[] = [];
-  const seen = new Set<string>();
-  for (const part of message.parts) {
-    const sp = part as unknown as WebSearchPart;
-    if (sp.type !== "tool-web_search") continue;
-    const results = sp.output;
-    if (!Array.isArray(results)) continue;
-    for (const r of results) {
-      if (seen.has(r.link)) continue;
-      seen.add(r.link);
-      all.push(r);
-    }
-  }
+  const all: WebSearchResult[] = buildWebCitationIndex(message.parts).sources;
   if (all.length === 0) return null;
 
   const preview = all.slice(0, 5);
@@ -51,10 +43,7 @@ export function Sources({ message }: { message: UIMessage }) {
         </div>
         <span className="font-medium">{all.length} Sources</span>
         <ChevronRight
-          className={cn(
-            "size-3.5 motion-transform",
-            open && "rotate-90",
-          )}
+          className={cn("size-3.5 motion-transform", open && "rotate-90")}
         />
       </button>
 

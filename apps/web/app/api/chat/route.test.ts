@@ -1,40 +1,75 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  parseChatRequest: vi.fn(),
-  getChat: vi.fn(),
-  clearActiveStreamId: vi.fn(),
-  commitChatTurn: vi.fn(),
-  completeChatStream: vi.fn(),
-  getChatMessage: vi.fn(),
-  inlineUploads: vi.fn(),
-  getModelConfig: vi.fn(),
-  getProject: vi.fn(),
-  generateChatTitle: vi.fn(),
-  getProvider: vi.fn(),
-  modelIconForModel: vi.fn(),
-  createConfiguredLanguageModel: vi.fn(),
-  buildRuntimeContext: vi.fn(),
-  cancelRegister: vi.fn(),
-  cancelUnregister: vi.fn(),
-  cancelHas: vi.fn(),
-  getStreamContext: vi.fn(),
-  convertToModelMessages: vi.fn(),
-  streamText: vi.fn(),
-  stepCountIs: vi.fn(),
-  streamOptions: undefined as Record<string, unknown> | undefined,
-}));
+const mocks = vi.hoisted(() => {
+  const webTools = {
+    web_search: { description: "search" },
+    fetch_url: { description: "fetch" },
+  };
+  const chatTools = { ...webTools };
+
+  return {
+    getSession: vi.fn(),
+    parseChatRequest: vi.fn(),
+    getChat: vi.fn(),
+    clearActiveStreamId: vi.fn(),
+    commitChatTurn: vi.fn(),
+    completeChatStream: vi.fn(),
+    getChatMessage: vi.fn(),
+    inlineUploads: vi.fn(),
+    getModelConfig: vi.fn(),
+    getProject: vi.fn(),
+    generateChatTitle: vi.fn(),
+    getProvider: vi.fn(),
+    modelIconForModel: vi.fn(),
+    createConfiguredLanguageModel: vi.fn(),
+    cancelRegister: vi.fn(),
+    cancelUnregister: vi.fn(),
+    cancelHas: vi.fn(),
+    getStreamContext: vi.fn(),
+    currentDateSystemPrompt: vi.fn(),
+    convertToModelMessages: vi.fn(),
+    agentStream: vi.fn(),
+    isStepCount: vi.fn(),
+    toUIMessageStream: vi.fn(),
+    createUIMessageStreamResponse: vi.fn(),
+    agentSettings: [] as Array<Record<string, unknown>>,
+    agentStreamArgs: [] as Array<Record<string, unknown>>,
+    uiStreamOptions: undefined as Record<string, unknown> | undefined,
+    responseOptions: undefined as Record<string, unknown> | undefined,
+    webTools,
+    chatTools,
+    toolOrder: ["web_search", "fetch_url"],
+    citationPrompt: "stable web citation instruction",
+    currentDatePrompt: "Current date: 2026-07-22.",
+  };
+});
 
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({
   convertToModelMessages: mocks.convertToModelMessages,
-  streamText: mocks.streamText,
-  stepCountIs: mocks.stepCountIs,
+  createUIMessageStreamResponse: mocks.createUIMessageStreamResponse,
+  isStepCount: mocks.isStepCount,
+  ToolLoopAgent: class MockToolLoopAgent {
+    constructor(settings: Record<string, unknown>) {
+      mocks.agentSettings.push(settings);
+    }
+
+    stream(args: Record<string, unknown>) {
+      mocks.agentStreamArgs.push(args);
+      return mocks.agentStream(args);
+    }
+  },
+  toUIMessageStream: mocks.toUIMessageStream,
 }));
 vi.mock("@/lib/tools", () => ({
-  webTools: {},
-  WEB_SEARCH_CITATION_PROMPT: "cite sources",
+  chatTools: mocks.chatTools,
+  webTools: mocks.webTools,
+  CHAT_TOOL_ORDER: mocks.toolOrder,
+  WEB_TOOL_NAMES: mocks.toolOrder,
+  WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
+}));
+vi.mock("@/lib/chat/current-date", () => ({
+  currentDateSystemPrompt: mocks.currentDateSystemPrompt,
 }));
 vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
@@ -76,9 +111,6 @@ vi.mock("@/lib/providers/catalog", () => ({
 vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
 }));
-vi.mock("@/lib/runtime-context", () => ({
-  buildRuntimeContext: mocks.buildRuntimeContext,
-}));
 vi.mock("@/lib/streams/cancel-registry", () => ({
   register: mocks.cancelRegister,
   unregister: mocks.cancelUnregister,
@@ -99,11 +131,14 @@ const messages = [
   },
 ];
 
+const convertedMessages = [{ role: "user", content: "Hello" }];
 const parsedRequest = {
   messages,
   modelConfigId: "model-config",
   chatId: "chat",
-  searchEnabled: false,
+  webSearchEnabled: true,
+  forceSearch: false,
+  timeZone: "America/Los_Angeles",
   projectId: null,
   trigger: "submit-message" as const,
   messageId: undefined,
@@ -120,6 +155,7 @@ const modelConfig = {
   model: "test-model",
   systemPrompt: null,
   providerOptions: null,
+  toolCallingEnabled: true,
   enabled: true,
   sortOrder: 0,
 };
@@ -147,7 +183,11 @@ function existingChat(activeStreamId: string | null = null) {
 describe("chat route setup boundary", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mocks.streamOptions = undefined;
+    mocks.agentSettings.length = 0;
+    mocks.agentStreamArgs.length = 0;
+    mocks.uiStreamOptions = undefined;
+    mocks.responseOptions = undefined;
+
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
@@ -157,32 +197,41 @@ describe("chat route setup boundary", () => {
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
       providerOptions: undefined,
+      promptCacheStrategy: undefined,
     });
     mocks.inlineUploads.mockResolvedValue(messages);
-    mocks.convertToModelMessages.mockResolvedValue([
-      { role: "user", content: "Hello" },
-    ]);
+    mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
       label: "Custom",
       iconId: null,
     });
     mocks.modelIconForModel.mockReturnValue(null);
-    mocks.buildRuntimeContext.mockReturnValue("runtime context");
+    mocks.isStepCount.mockReturnValue("stop-at-50");
     mocks.cancelHas.mockReturnValue(false);
     mocks.commitChatTurn.mockReturnValue("committed");
     mocks.completeChatStream.mockReturnValue(true);
     mocks.clearActiveStreamId.mockResolvedValue(undefined);
     mocks.generateChatTitle.mockResolvedValue(null);
     mocks.getStreamContext.mockReturnValue(null);
-    mocks.streamText.mockImplementation(() => ({
-      toUIMessageStreamResponse: (options: Record<string, unknown>) => {
-        mocks.streamOptions = options;
+    mocks.currentDateSystemPrompt.mockReturnValue(mocks.currentDatePrompt);
+    mocks.agentStream.mockImplementation(async () => ({
+      stream: new ReadableStream(),
+    }));
+    mocks.toUIMessageStream.mockImplementation(
+      (options: Record<string, unknown>) => {
+        mocks.uiStreamOptions = options;
+        return options.stream;
+      },
+    );
+    mocks.createUIMessageStreamResponse.mockImplementation(
+      (options: Record<string, unknown>) => {
+        mocks.responseOptions = options;
         return new Response("stream", {
           status: 200,
           headers: options.headers as Headers,
         });
       },
-    }));
+    );
   });
 
   it("returns a CORS-wrapped configuration error without mutating chat", async () => {
@@ -257,7 +306,11 @@ describe("chat route setup boundary", () => {
     });
     mocks.createConfiguredLanguageModel.mockImplementation(() => {
       events.push("model");
-      return { model: "language-model", providerOptions: undefined };
+      return {
+        model: "language-model",
+        providerOptions: undefined,
+        promptCacheStrategy: undefined,
+      };
     });
     mocks.inlineUploads.mockImplementation(async () => {
       events.push("uploads");
@@ -265,23 +318,16 @@ describe("chat route setup boundary", () => {
     });
     mocks.convertToModelMessages.mockImplementation(async () => {
       events.push("convert");
-      return [{ role: "user", content: "Hello" }];
+      return convertedMessages;
     });
     mocks.cancelRegister.mockImplementation(() => events.push("register"));
     mocks.commitChatTurn.mockImplementation(() => {
       events.push("commit");
       return "committed";
     });
-    mocks.streamText.mockImplementation(() => {
+    mocks.agentStream.mockImplementation(async () => {
       events.push("stream");
-      return {
-        toUIMessageStreamResponse: (options: Record<string, unknown>) => {
-          mocks.streamOptions = options;
-          return new Response("stream", {
-            headers: options.headers as Headers,
-          });
-        },
-      };
+      return { stream: new ReadableStream() };
     });
 
     const response = await POST(request());
@@ -314,15 +360,13 @@ describe("chat route setup boundary", () => {
 
     expect(response.status).toBe(500);
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(streamId);
-    expect(mocks.streamText).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 
   it("cleans the controller and active claim when stream setup throws", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    mocks.streamText.mockImplementation(() => {
-      throw new Error("stream setup failed");
-    });
+    mocks.agentStream.mockRejectedValue(new Error("stream setup failed"));
 
     const response = await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
@@ -339,11 +383,11 @@ describe("chat route setup boundary", () => {
   it("persists a partial assistant when the user aborts", async () => {
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
-    const onFinish = mocks.streamOptions?.onFinish as (
+    const onEnd = mocks.uiStreamOptions?.onEnd as (
       event: unknown,
     ) => Promise<void>;
 
-    await onFinish({
+    await onEnd({
       isAborted: true,
       responseMessage: {
         id: "assistant-message",
@@ -364,18 +408,34 @@ describe("chat route setup boundary", () => {
   });
 
   it("does not persist a partial assistant when the provider stream errors", async () => {
+    const providerError = new Error("provider failed");
+    let observedRead: Promise<ReadableStreamReadResult<unknown>> | undefined;
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "error", error: providerError });
+          controller.close();
+        },
+      }),
+    });
+    mocks.toUIMessageStream.mockImplementation(
+      (options: Record<string, unknown>) => {
+        mocks.uiStreamOptions = options;
+        const stream = options.stream as ReadableStream<unknown>;
+        observedRead = stream.getReader().read();
+        return new ReadableStream();
+      },
+    );
+
     await POST(request());
+    await observedRead;
     const claim = mocks.commitChatTurn.mock.calls[0][0];
-    const streamConfig = mocks.streamText.mock.calls[0][0] as {
-      onError: (event: { error: unknown }) => void;
-    };
-    const onFinish = mocks.streamOptions?.onFinish as (
+    const onEnd = mocks.uiStreamOptions?.onEnd as (
       event: unknown,
     ) => Promise<void>;
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-    streamConfig.onError({ error: new Error("provider failed") });
-    await onFinish({
+    await onEnd({
       isAborted: false,
       responseMessage: {
         id: "assistant-message",
@@ -392,11 +452,41 @@ describe("chat route setup boundary", () => {
     consoleSpy.mockRestore();
   });
 
+  it("does not discard an assistant for an ordinary UI tool error", async () => {
+    await POST(request());
+    const claim = mocks.commitChatTurn.mock.calls[0][0];
+    const onError = mocks.uiStreamOptions?.onError as (error: unknown) => string;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (
+      event: unknown,
+    ) => Promise<void>;
+
+    expect(onError(new Error("tool execution failed"))).toBe(
+      "tool execution failed",
+    );
+    await onEnd({
+      isAborted: false,
+      responseMessage: {
+        id: "assistant-message",
+        role: "assistant",
+        parts: [{ type: "text", text: "Recovered answer" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: claim.streamId,
+      assistantMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Recovered answer" }],
+      },
+    });
+  });
+
   it("does not tee the response stream when resumability is disabled", async () => {
     await POST(request());
 
     expect(mocks.getStreamContext).toHaveBeenCalledOnce();
-    expect(mocks.streamOptions?.consumeSseStream).toBeUndefined();
+    expect(mocks.responseOptions?.consumeSseStream).toBeUndefined();
   });
 
   it("buffers a response-stream copy when resumability is enabled", async () => {
@@ -405,7 +495,7 @@ describe("chat route setup boundary", () => {
 
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
-    const consumeSseStream = mocks.streamOptions?.consumeSseStream as (event: {
+    const consumeSseStream = mocks.responseOptions?.consumeSseStream as (event: {
       stream: ReadableStream<string>;
     }) => Promise<void>;
     const stream = new ReadableStream<string>();
@@ -427,5 +517,271 @@ describe("chat route setup boundary", () => {
     expect(response.status).toBe(409);
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("uses automatic tools normally and forces only the first requested step", async () => {
+    await POST(request());
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      forceSearch: true,
+    });
+    await POST(request());
+
+    const [automatic, forced] = mocks.agentSettings;
+    for (const settings of [automatic, forced]) {
+      expect(settings).toEqual(
+        expect.objectContaining({
+          tools: mocks.chatTools,
+          toolOrder: mocks.toolOrder,
+          instructions: {
+            role: "system",
+            content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
+          },
+          toolChoice: "auto",
+          stopWhen: "stop-at-50",
+        }),
+      );
+      expect(settings).not.toHaveProperty("runtimeContext");
+      expect(settings).not.toHaveProperty("toolApproval");
+    }
+    expect(automatic.prepareStep).toBeUndefined();
+    const prepareStep = forced.prepareStep as (options: {
+      stepNumber: number;
+    }) => unknown;
+    expect(prepareStep({ stepNumber: 0 })).toEqual({
+      activeTools: mocks.toolOrder,
+      toolChoice: "required",
+    });
+    expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
+    expect(automatic.tools).toBe(forced.tools);
+    expect(automatic.instructions).toEqual(forced.instructions);
+    expect(mocks.currentDateSystemPrompt).toHaveBeenCalledWith(
+      parsedRequest.timeZone,
+    );
+    expect(mocks.toUIMessageStream.mock.calls[0][0].tools).toBe(
+      mocks.chatTools,
+    );
+    expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toBe(
+      mocks.chatTools,
+    );
+  });
+
+  it("removes web tools when the capability is disabled", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+      forceSearch: true,
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        model: "language-model",
+        instructions: {
+          role: "system",
+          content: mocks.currentDatePrompt,
+        },
+      }),
+    );
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolOrder");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolChoice");
+    expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: undefined }),
+    );
+  });
+
+  it("labels project context between model and web instructions", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      projectId: "project",
+    });
+    mocks.getProject.mockResolvedValue({
+      id: "project",
+      name: "Research",
+      instructions: "project instructions",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      systemPrompt: "model instructions",
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0].instructions).toEqual({
+      role: "system",
+      content: [
+        "model instructions",
+        [
+          "Project context:",
+          'You are working in a project named "Research".',
+          "",
+          "User-provided project instructions:",
+          "project instructions",
+        ].join("\n"),
+        mocks.citationPrompt,
+        mocks.currentDatePrompt,
+      ].join("\n\n"),
+    });
+  });
+
+  it.each([
+    ["openai", "gpt-5.6-sol"],
+    ["bedrock", "openai.gpt-5.6-sol"],
+  ] as const)(
+    "uses a stable per-chat cache routing key for %s GPT-5.6",
+    async (providerId, model) => {
+      mocks.getModelConfig.mockResolvedValue({
+        ...modelConfig,
+        providerId,
+        apiFormat: "auto",
+        model,
+      });
+      mocks.createConfiguredLanguageModel.mockReturnValue({
+        model: "language-model",
+        providerOptions: { openai: { reasoningEffort: "high" } },
+        promptCacheStrategy: { kind: "openai" },
+      });
+
+      await POST(request());
+
+      expect(mocks.agentSettings[0]).toMatchObject({
+        providerOptions: {
+          openai: {
+            reasoningEffort: "high",
+            promptCacheKey: expect.stringMatching(
+              /^chat:[A-Za-z0-9_-]{43}$/,
+            ),
+          },
+        },
+        instructions: {
+          role: "system",
+          content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
+        },
+      });
+      expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
+    },
+  );
+
+  it("applies the adapter-provided Anthropic cache strategy", async () => {
+    mocks.createConfiguredLanguageModel.mockReturnValue({
+      model: "language-model",
+      providerOptions: undefined,
+      promptCacheStrategy: {
+        kind: "anthropic",
+        cacheControl: { type: "ephemeral", ttl: "1h" },
+      },
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0].instructions).toEqual({
+      role: "system",
+      content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
+      providerOptions: {
+        anthropic: {
+          cacheControl: { type: "ephemeral", ttl: "1h" },
+        },
+      },
+    });
+    expect(mocks.agentStreamArgs[0].messages).toEqual([
+      {
+        role: "user",
+        content: "Hello",
+        providerOptions: {
+          anthropic: {
+            cacheControl: { type: "ephemeral", ttl: "1h" },
+          },
+        },
+      },
+    ]);
+    expect(convertedMessages).toEqual([
+      { role: "user", content: "Hello" },
+    ]);
+  });
+
+  it("omits all tool machinery for a tool-incapable model", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      toolCallingEnabled: false,
+    });
+
+    await POST(request());
+
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ toolCallingEnabled: false }),
+    );
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        model: "language-model",
+        instructions: {
+          role: "system",
+          content: mocks.currentDatePrompt,
+        },
+      }),
+    );
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolOrder");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolApproval");
+    expect(mocks.agentSettings[0]).not.toHaveProperty("toolChoice");
+    expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: undefined }),
+    );
+  });
+
+  it("keeps prompt content and persisted UI messages unchanged", async () => {
+    const originalMessages = structuredClone(messages);
+
+    await POST(request());
+
+    expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
+    expect(mocks.uiStreamOptions?.originalMessages).toBe(messages);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userMessage: { id: "user-message", parts: messages[0].parts },
+      }),
+    );
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+      expect.objectContaining({ userParts: messages[0].parts }),
+    );
+    expect(messages).toEqual(originalMessages);
+    expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
+  });
+
+  it("emits provider cache token details in finish metadata", async () => {
+    await POST(request());
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+
+    const metadata = messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 80,
+            cacheWriteTokens: 5,
+            noCacheTokens: 15,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+
+    expect(metadata).toEqual({
+      stats: expect.objectContaining({
+        contextTokens: 100,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 5,
+        uncachedInputTokens: 15,
+        responseTokens: 10,
+        totalTokens: 110,
+        finishReason: "stop",
+      }),
+    });
   });
 });

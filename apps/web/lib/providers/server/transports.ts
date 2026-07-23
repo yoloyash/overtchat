@@ -4,7 +4,7 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenResponses } from "@ai-sdk/open-responses";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV3 } from "@ai-sdk/provider";
+import type { LanguageModelV4 } from "@ai-sdk/provider";
 
 interface TransportConfig {
   providerName: string;
@@ -15,7 +15,7 @@ interface TransportConfig {
 
 export function createOpenAIResponsesModel(
   config: TransportConfig,
-): LanguageModelV3 {
+): LanguageModelV4 {
   return createOpenAI({
     name: config.providerName,
     baseURL: config.baseUrl,
@@ -25,7 +25,7 @@ export function createOpenAIResponsesModel(
 
 export function createOpenAICompatibleChatModel(
   config: TransportConfig,
-): LanguageModelV3 {
+): LanguageModelV4 {
   return createOpenAICompatible({
     name: config.providerName,
     baseURL: config.baseUrl,
@@ -35,7 +35,7 @@ export function createOpenAICompatibleChatModel(
 
 export function createOpenResponsesModel(
   config: Omit<TransportConfig, "baseUrl"> & { url: string },
-): LanguageModelV3 {
+): LanguageModelV4 {
   return createOpenResponses({
     name: config.providerName,
     url: config.url,
@@ -45,7 +45,7 @@ export function createOpenResponsesModel(
 
 export function createAnthropicMessagesModel(
   config: TransportConfig & { authentication: "api-key" | "bearer" },
-): LanguageModelV3 {
+): LanguageModelV4 {
   const apiKey = credential(config.apiKey);
   return createAnthropic({
     name: `${config.providerName}.messages`,
@@ -58,7 +58,7 @@ export function createAnthropicMessagesModel(
 
 export function createGoogleGenerativeModel(
   config: TransportConfig,
-): LanguageModelV3 {
+): LanguageModelV4 {
   return createGoogleGenerativeAI({
     name: `${config.providerName}.generative-ai`,
     baseURL: config.baseUrl,

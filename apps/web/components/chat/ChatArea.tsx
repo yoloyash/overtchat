@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { modelSupportsToolCalling } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -12,6 +13,10 @@ import { useChats, type ChatListItem } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { motionClasses } from "@/lib/motion";
+import {
+  DEFAULT_WEB_SEARCH_ENABLED,
+  WEB_SEARCH_ENABLED_STORAGE_KEY,
+} from "@/lib/tool-preferences";
 import { authClient } from "@/lib/auth/client";
 import {
   readMessageStats,
@@ -29,7 +34,6 @@ import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
 
-const SEARCH_STORAGE_KEY = "overtchat_search_enabled";
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 function shouldAutofocusComposer() {
@@ -60,11 +64,18 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
   }, [models]);
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
-
-  const [searchEnabled, setSearchEnabled] = useLocalStorage<boolean>(
-    SEARCH_STORAGE_KEY,
-    false,
+  const selectedModel = models?.find((model) => model.id === selectedId);
+  const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
+  const [webSearchEnabled] = useLocalStorage<boolean>(
+    WEB_SEARCH_ENABLED_STORAGE_KEY,
+    DEFAULT_WEB_SEARCH_ENABLED,
   );
+  const searchAvailable = webSearchEnabled && modelSupportsSearch;
+  const searchUnavailableReason = !webSearchEnabled
+    ? "Web search is disabled in Settings → Tools"
+    : "Web search is unavailable for this model";
+
+  const [searchRequested, setSearchRequested] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
     false,
@@ -148,9 +159,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
     !onboardingDismissed &&
     models !== null;
 
-  const requestBody = () => ({
+  const requestBody = (forceSearch = false) => ({
     modelConfigId: selectedId,
-    searchEnabled,
+    webSearchEnabled,
+    forceSearch: searchAvailable && forceSearch,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     projectId: projectId ?? null,
     temporary,
@@ -215,7 +228,11 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
         return [next, ...prev];
       });
     }
-    sendMessage({ text, files: attachments }, { body: requestBody() });
+    sendMessage(
+      { text, files: attachments },
+      { body: requestBody(searchRequested) },
+    );
+    setSearchRequested(false);
   }
 
   function handleRegenerate(messageId: string) {
@@ -238,9 +255,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       ref={composerRef}
       configured={configured}
       streaming={streaming}
-      searchEnabled={searchEnabled}
+      searchAvailable={searchAvailable}
+      searchUnavailableReason={searchUnavailableReason}
+      searchRequested={searchAvailable && searchRequested}
       dropActive={dropActive}
-      onToggleSearch={() => setSearchEnabled(!searchEnabled)}
+      onToggleSearch={() => {
+        if (searchAvailable) setSearchRequested((selected) => !selected);
+      }}
       onSubmit={handleSubmit}
       onStop={handleStop}
       isAdmin={isAdmin}
@@ -258,7 +279,10 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId }: Props) {
       <ChatHeader
         models={models}
         selectedId={selectedId}
-        onSelectModel={setSelectedId}
+        onSelectModel={(modelId) => {
+          setSearchRequested(false);
+          setSelectedId(modelId);
+        }}
         showTempToggle={Boolean(isNew) && messages.length === 0}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}

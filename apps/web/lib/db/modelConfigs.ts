@@ -21,6 +21,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     model: row.model,
     systemPrompt: row.systemPrompt,
     providerOptions: row.providerOptions,
+    toolCallingEnabled: row.toolCallingEnabled,
     enabled: row.enabled,
     sortOrder: row.sortOrder,
   };

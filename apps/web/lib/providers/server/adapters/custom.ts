@@ -57,6 +57,7 @@ function createCustomLanguageModel(
           authentication: "api-key",
         }),
         providerOptionsKey: "custom",
+        promptCacheKind: "anthropic",
       };
     case "auto":
       throw new ProviderConfigurationError(

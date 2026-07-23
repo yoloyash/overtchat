@@ -8,6 +8,9 @@ const MESSAGE_STATS_STORAGE_KEY = "overtchat_message_stats";
 
 export interface MessageStats {
   contextTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  uncachedInputTokens?: number;
   responseTokens?: number;
   totalTokens?: number;
   ttftMs?: number;
@@ -45,10 +48,16 @@ function optionalIconId(value: unknown): ModelBrandIconId | undefined {
 
 export function readMessageStats(message: UIMessage): MessageStats | null {
   if (!isRecord(message.metadata)) return null;
-  const rawStats = message.metadata.stats;
+  return parseMessageStats(message.metadata.stats);
+}
+
+function parseMessageStats(rawStats: unknown): MessageStats | null {
   if (!isRecord(rawStats)) return null;
   const stats: MessageStats = {
     contextTokens: optionalNumber(rawStats.contextTokens),
+    cacheReadTokens: optionalNumber(rawStats.cacheReadTokens),
+    cacheWriteTokens: optionalNumber(rawStats.cacheWriteTokens),
+    uncachedInputTokens: optionalNumber(rawStats.uncachedInputTokens),
     responseTokens: optionalNumber(rawStats.responseTokens),
     totalTokens: optionalNumber(rawStats.totalTokens),
     ttftMs: optionalNumber(rawStats.ttftMs),
@@ -75,21 +84,8 @@ export function readStoredMessageStats(): StoredMessageStats {
       Object.entries(parsed)
         .map(([id, value]) => {
           if (!isRecord(value)) return null;
-          const stats: MessageStats = {
-            contextTokens: optionalNumber(value.contextTokens),
-            responseTokens: optionalNumber(value.responseTokens),
-            totalTokens: optionalNumber(value.totalTokens),
-            ttftMs: optionalNumber(value.ttftMs),
-            tps: optionalNumber(value.tps),
-            finishReason: optionalString(value.finishReason),
-            providerLabel: optionalString(value.providerLabel),
-            providerIconId: optionalIconId(value.providerIconId),
-            model: optionalString(value.model),
-            modelIconId: optionalIconId(value.modelIconId),
-          };
-          return Object.values(stats).some((v) => v !== undefined)
-            ? [id, stats]
-            : null;
+          const stats = parseMessageStats(value);
+          return stats ? [id, stats] : null;
         })
         .filter((entry): entry is [string, MessageStats] => entry !== null),
     );
