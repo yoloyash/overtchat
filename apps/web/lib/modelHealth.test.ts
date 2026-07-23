@@ -111,7 +111,8 @@ describe("model health", () => {
     ).resolves.toMatchObject({
       ok: false,
       kind: "upstream",
-      error: "Model did not call the required connection test tool.",
+      error:
+        "Connection succeeded, but the model did not call the required test tool. Turn off Tool calling if this model does not support tools.",
     });
   });
 });

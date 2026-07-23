@@ -117,9 +117,11 @@ export function buildWebCitationIndex(
       const exact = byTurn[turn]?.[index];
       if (exact) return exact;
 
-      // Older Overtchat prompts used turn0 plus an index flattened across all
-      // search calls. Keep those persisted messages useful when the exact
-      // turn-local coordinate does not exist.
+      // Older Overtchat prompts used the conversation turn plus an index
+      // flattened across all search calls. Fall back when that coordinate
+      // does not also look valid under the current per-search-call format.
+      // Ambiguous collisions cannot be distinguished because persisted
+      // messages do not carry a citation-format version.
       return flat[index];
     },
   };

@@ -57,7 +57,9 @@ export async function pingModel(
         (toolCall) => toolCall.toolName === CONNECTION_CHECK_TOOL_NAME,
       )
     ) {
-      throw new Error("Model did not call the required connection test tool.");
+      throw new Error(
+        "Connection succeeded, but the model did not call the required test tool. Turn off Tool calling if this model does not support tools.",
+      );
     }
 
     return {
