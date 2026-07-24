@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "overtchat-site",
+  "name": "overtchat",
   "compatibility_date": "2026-07-23",
   "assets": {
     "directory": "./apps/site/out",
