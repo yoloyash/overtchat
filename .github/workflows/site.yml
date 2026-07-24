@@ -1,8 +1,23 @@
-name: Deploy project site
+name: Project site
 
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/site.yml"
+      - "apps/site/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - "wrangler.jsonc"
+  pull_request:
+    paths:
+      - ".github/workflows/site.yml"
+      - "apps/site/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - "wrangler.jsonc"
   release:
     types: [published, edited, deleted]
   workflow_dispatch:
@@ -10,20 +25,19 @@ on:
 permissions: {}
 
 concurrency:
-  group: pages
+  group: project-site-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  build:
+  validate:
+    if: github.event_name != 'release'
     permissions:
       contents: read
-      pages: read
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: main
           persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -42,33 +56,25 @@ jobs:
           npm run lint -w apps/site --
           npm run test -w apps/site --
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
-
       - name: Build static site
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NEXT_PUBLIC_BASE_PATH: /overtchat
-          NEXT_PUBLIC_SITE_ORIGIN: https://yoloyash.github.io
+          NEXT_PUBLIC_SITE_ORIGIN: https://overtchat.com
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build -w apps/site --
 
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
-        with:
-          path: apps/site/out
-
-  deploy:
-    permissions:
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  rebuild-releases:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: build
+    timeout-minutes: 5
     steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+      - name: Rebuild Cloudflare site from main
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_SITE_DEPLOY_HOOK }}
+        run: |
+          test -n "$DEPLOY_HOOK_URL"
+          curl --fail --silent --show-error \
+            --retry 2 \
+            --retry-all-errors \
+            --request POST \
+            "$DEPLOY_HOOK_URL"
