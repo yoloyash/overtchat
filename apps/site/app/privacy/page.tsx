@@ -4,7 +4,7 @@ import { createPageMetadata } from "@/lib/metadata";
 export const metadata: Metadata = createPageMetadata({
   title: "Privacy Policy",
   description:
-    "How the OvertChat mobile client handles data, permissions, and crash reports.",
+    "How the OvertChat app and project website handle data, permissions, and diagnostics.",
   path: "/privacy/",
 });
 
@@ -22,9 +22,9 @@ export default function PrivacyPage() {
           <p className="legal-updated">Last updated 23 July 2026</p>
           <p className="page-lede">
             OvertChat is an open-source chat client that connects to a server you
-            choose. The short version: the app is a client, we do not run a
-            server for you, and the server you point it at is governed by whoever
-            operates it—which may be you.
+            choose. The short version: we do not operate a hosted chat service,
+            and the server you point the app at is governed by whoever operates
+            it—which may be you.
           </p>
         </header>
 
@@ -36,7 +36,7 @@ export default function PrivacyPage() {
               URL—usually one you self-host, but it can be any compatible
               deployment. Your chats, messages, projects, and uploaded files live
               on that server, not on our infrastructure. We do not operate a
-              hosted backend.
+              hosted chat backend.
             </p>
           </section>
 
@@ -92,13 +92,34 @@ export default function PrivacyPage() {
             <h2>What we collect</h2>
             <p>
               We—the publisher of the app—do not operate a hosted OvertChat
-              backend, and the app does not include usage analytics or
-              advertising SDKs.
+              backend. The app and project website do not include usage analytics
+              or advertising SDKs.
             </p>
             <p>
               We receive limited crash diagnostics through Sentry when crash
               reporting is configured in the distributed app, as described
               next.
+            </p>
+          </section>
+
+          <section>
+            <h2>Project website hosting</h2>
+            <p>
+              The project website at overtchat.com is delivered through{" "}
+              <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>.
+              When you visit, Cloudflare processes ordinary web request data
+              such as your IP address, browser and device information, requested
+              URL, and request time to deliver and protect the site.
+            </p>
+            <p>
+              We do not add web analytics, advertising trackers, or analytics
+              cookies to the site. Cloudflare handles request data under its own{" "}
+              <a href="https://www.cloudflare.com/privacypolicy/">
+                privacy policy
+              </a>
+              . This website hosting is separate from your chats: visiting the
+              project website does not send your conversations, account
+              credentials, or configured OvertChat server URL to us.
             </p>
           </section>
 
