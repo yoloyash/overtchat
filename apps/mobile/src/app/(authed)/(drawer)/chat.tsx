@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
+import { modelSupportsToolCalling } from "@overtchat/shared";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
@@ -43,10 +44,10 @@ import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
-import { useSecureFlag } from "@/lib/useSecureFlag";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
+import { useWebSearchEnabled } from "@/lib/toolPreferences";
 
 export default function ChatScreen() {
   const { activeChatId, isNewChat, activeProjectId } = useChatSession();
@@ -170,10 +171,7 @@ function ChatSurface({
   } = useChatMessages(isNew ? null : chatId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [searchEnabled, setSearchEnabled] = useSecureFlag(
-    "overtchat.searchEnabled",
-    false,
-  );
+  const [searchRequested, setSearchRequested] = useState(false);
   const pickerRef = useRef<BottomSheetModal>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
 
@@ -234,6 +232,16 @@ function ChatSurface({
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
+  const [webSearchEnabled] = useWebSearchEnabled();
+  const searchAvailable = webSearchEnabled && modelSupportsSearch;
+  const searchUnavailableReason = !webSearchEnabled
+    ? "Web search is disabled in Settings → Tools"
+    : "Web search is unavailable for this model";
+
+  useEffect(() => {
+    if (!searchAvailable) setSearchRequested(false);
+  }, [searchAvailable]);
 
   const {
     attachments,
@@ -373,10 +381,13 @@ function ChatSurface({
     onNewChat,
   ]);
 
-  function requestBody() {
+  function requestBody(forceSearch = false) {
+    const requested = searchAvailable && forceSearch;
     return {
       modelConfigId: selectedId,
-      searchEnabled,
+      webSearchEnabled,
+      forceSearch: requested,
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       chatId,
       projectId,
       temporary: false,
@@ -435,7 +446,11 @@ function ChatSurface({
         return [next, ...prev];
       });
     }
-    sendMessage({ text, files }, { body: requestBody() });
+    sendMessage(
+      { text, files },
+      { body: requestBody(searchRequested) },
+    );
+    setSearchRequested(false);
     clearAttachments();
   }
 
@@ -528,13 +543,15 @@ function ChatSurface({
         <Composer
           configured={configured}
           streaming={streaming}
-          searchEnabled={searchEnabled}
+          searchAvailable={searchAvailable}
+          searchUnavailableReason={searchUnavailableReason}
+          searchRequested={searchAvailable && searchRequested}
           attachments={attachments}
           attachmentMeta={attachmentMeta}
           uploading={uploading}
           uploadError={uploadError}
           isAdmin={isAdmin}
-          onDisableSearch={() => setSearchEnabled(false)}
+          onClearSearch={() => setSearchRequested(false)}
           onOpenAddSheet={() => {
             Keyboard.dismiss();
             addSheetRef.current?.present();
@@ -552,13 +569,18 @@ function ChatSurface({
         selectedId={selectedId}
         loading={modelsPending}
         error={modelsError}
-        onSelect={setSelectedId}
+        onSelect={(modelId) => {
+          setSearchRequested(false);
+          setSelectedId(modelId);
+        }}
       />
 
       <AddToChatSheet
         ref={addSheetRef}
-        searchEnabled={searchEnabled}
-        onToggleSearch={(next) => setSearchEnabled(next)}
+        searchAvailable={searchAvailable}
+        searchUnavailableReason={searchUnavailableReason}
+        searchRequested={searchAvailable && searchRequested}
+        onToggleSearchRequested={setSearchRequested}
         onPickTool={onPickTool}
       />
     </KeyboardAvoidingView>

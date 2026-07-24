@@ -13,13 +13,15 @@ import { AttachmentChip } from "./AttachmentChip";
 export function Composer({
   configured,
   streaming,
-  searchEnabled,
+  searchAvailable,
+  searchUnavailableReason,
+  searchRequested,
   attachments,
   attachmentMeta,
   uploading,
   uploadError,
   isAdmin,
-  onDisableSearch,
+  onClearSearch,
   onOpenAddSheet,
   onRemoveAttachment,
   onDismissUploadError,
@@ -28,13 +30,15 @@ export function Composer({
 }: {
   configured: boolean;
   streaming: boolean;
-  searchEnabled: boolean;
+  searchAvailable: boolean;
+  searchUnavailableReason: string;
+  searchRequested: boolean;
   attachments: FileUIPart[];
   attachmentMeta: Record<string, AttachmentMeta>;
   uploading: boolean;
   uploadError: string | null;
   isAdmin: boolean;
-  onDisableSearch: () => void;
+  onClearSearch: () => void;
   onOpenAddSheet: () => void;
   onRemoveAttachment: (index: number) => void;
   onDismissUploadError: () => void;
@@ -80,9 +84,9 @@ export function Composer({
     onOpenAddSheet();
   }
 
-  function disableSearch() {
+  function clearSearch() {
     Haptics.selectionAsync().catch(() => { });
-    onDisableSearch();
+    onClearSearch();
   }
 
   const canSend =
@@ -90,7 +94,7 @@ export function Composer({
     !streaming &&
     !uploading &&
     configured;
-  const showPillsRow = searchEnabled;
+  const showPillsRow = searchRequested;
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
   return (
@@ -176,11 +180,11 @@ export function Composer({
 
         {showPillsRow && (
           <View style={styles.pillsRow}>
-            {searchEnabled && (
+            {searchRequested && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Disable web search"
-                onPress={disableSearch}
+                accessibilityLabel="Remove Web search from this message"
+                onPress={clearSearch}
                 style={({ pressed }) => [
                   styles.pill,
                   {
@@ -201,7 +205,7 @@ export function Composer({
                     { color: colors.foreground, fontFamily: fonts.sansMedium },
                   ]}
                 >
-                  Search
+                  Web search
                 </Text>
                 <Ionicons name="close" size={14} color={colors.foreground} />
               </Pressable>
@@ -212,7 +216,11 @@ export function Composer({
         <View style={styles.inputRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add to chat"
+            accessibilityLabel={
+              searchAvailable
+                ? "Add to chat"
+                : `Add to chat; ${searchUnavailableReason}`
+            }
             onPress={openAdd}
             style={({ pressed }) => [
               styles.iconButton,

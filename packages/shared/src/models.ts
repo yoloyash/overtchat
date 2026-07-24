@@ -25,4 +25,15 @@ export interface PublicModelConfig {
   modelIconId?: ModelBrandIconId;
   model: string;
   hasProviderOptions: boolean;
+  toolCallingEnabled: boolean;
+}
+
+/** Treat older servers that omit the capability as tool-capable. */
+export function modelSupportsToolCalling(
+  model:
+    | Partial<Pick<PublicModelConfig, "toolCallingEnabled">>
+    | null
+    | undefined,
+): boolean {
+  return Boolean(model && model.toolCallingEnabled !== false);
 }

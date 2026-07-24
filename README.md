@@ -66,7 +66,7 @@ It's a thin client: **bring your own server**. On first launch, enter the URL of
 - Persistent chat history, auto-titled, full-text searchable
 - File uploads — images, PDFs, Word, Excel, CSV, source code
 - Projects with per-project system prompts
-- Web search via bundled SearXNG. No API key.
+- Automatic web search via bundled SearXNG, plus a one-message Search action and a persistent hard-disable under Settings → Tools. No API key.
 - Text-to-speech via bundled Kokoro. No setup.
 - Speech-to-text via Parakeet TDT v3 (opt-in, CPU or NVIDIA GPU)
 - Chat export (JSON / Markdown)
@@ -96,7 +96,7 @@ The Android client can send crash diagnostics to Sentry. These may include techn
 
 ## Stack
 
-Next.js 16 · Vercel AI SDK v6 · Better Auth · Drizzle + SQLite · Redis (resume buffer) · base-ui · Tailwind · SearXNG · Kokoro TTS
+Next.js 16 · Vercel AI SDK v7 · Better Auth · Drizzle + SQLite · Redis (resume buffer) · base-ui · Tailwind · SearXNG · Kokoro TTS
 
 ## More
 

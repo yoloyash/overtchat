@@ -54,6 +54,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         model: existing.model,
         systemPrompt: existing.systemPrompt ?? "",
         providerOptions: existing.providerOptions,
+        toolCallingEnabled: existing.toolCallingEnabled !== false,
         enabled: existing.enabled,
         sortOrder: existing.sortOrder,
       };
@@ -67,6 +68,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       model: "",
       systemPrompt: "",
       providerOptions: null,
+      toolCallingEnabled: true,
       enabled: true,
       sortOrder: 0,
     };
@@ -114,6 +116,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       apiKey: draft.apiKey ?? "",
       model: draft.model,
       providerOptions: parsedOptions,
+      toolCallingEnabled: draft.toolCallingEnabled,
     };
   }, [
     draft.providerId,
@@ -121,6 +124,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     draft.baseUrl,
     draft.apiKey,
     draft.model,
+    draft.toolCallingEnabled,
     providerOptionsText,
     providerOptionsError,
   ]);
@@ -211,12 +215,35 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           />
 
           <SettingsRow
+            title="Tool calling"
+            description="Allow this model to use tools such as web search. Turn off if the endpoint does not support tool schemas."
+            align="center"
+            controlAlign="end"
+          >
+            <Switch
+              checked={draft.toolCallingEnabled}
+              onCheckedChange={(next) =>
+                setDraft((d) => ({ ...d, toolCallingEnabled: next }))
+              }
+              aria-label={
+                draft.toolCallingEnabled
+                  ? "Disable tool calling"
+                  : "Enable tool calling"
+              }
+            />
+          </SettingsRow>
+
+          <SettingsRow
             title="Test connection"
-            description="Send a short request with the current connection settings."
+            description={
+              draft.toolCallingEnabled
+                ? "Send a short request and verify tool calling with the current connection settings."
+                : "Send a short text request with the current connection settings."
+            }
             controlAlign="end"
           >
             <ConnectionTester
-              key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${providerOptionsText}`}
+              key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}`}
               args={pingArgs}
               disabled={requiresKey && !draft.apiKey}
             />

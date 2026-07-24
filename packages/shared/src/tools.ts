@@ -4,6 +4,15 @@ export type ToolState =
   | "output-available"
   | "output-error";
 
+export const WEB_SEARCH_ENABLED_STORAGE_KEY =
+  "overtchat_web_search_enabled";
+
+export const DEFAULT_WEB_SEARCH_ENABLED = true;
+
+export interface ToolStatePart {
+  state?: string;
+}
+
 export interface WebSearchResult {
   link: string;
   title: string;
@@ -34,6 +43,13 @@ export type FetchUrlPart = {
   output?: FetchedPage;
   errorText?: string;
 };
+
+export function isToolSettled(part: ToolStatePart): boolean {
+  return (
+    part.state === "output-available" ||
+    part.state === "output-error"
+  );
+}
 
 export function cleanDomain(url: string): string {
   try {

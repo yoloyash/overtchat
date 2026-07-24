@@ -15,6 +15,7 @@ export const anthropicAdapter: ProviderAdapter = {
         authentication: "api-key",
       }),
       providerOptionsKey: "anthropic",
+      promptCacheKind: "anthropic",
     };
   },
   listModels(connection) {

@@ -23,11 +23,22 @@ const TOOLS: { key: ToolKey; label: string; icon: keyof typeof Ionicons.glyphMap
 export const AddToChatSheet = forwardRef<
   AddToChatSheetRef,
   {
-    searchEnabled: boolean;
-    onToggleSearch: (next: boolean) => void;
+    searchAvailable: boolean;
+    searchUnavailableReason: string;
+    searchRequested: boolean;
+    onToggleSearchRequested: (next: boolean) => void;
     onPickTool?: (tool: ToolKey) => void;
   }
->(function AddToChatSheet({ searchEnabled, onToggleSearch, onPickTool }, ref) {
+>(function AddToChatSheet(
+  {
+    searchAvailable,
+    searchUnavailableReason,
+    searchRequested,
+    onToggleSearchRequested,
+    onPickTool,
+  },
+  ref,
+) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
 
@@ -113,20 +124,41 @@ export const AddToChatSheet = forwardRef<
             size={18}
             color={colors.popoverForeground}
           />
-          <Text
-            style={[
-              styles.toggleLabel,
-              {
-                color: colors.popoverForeground,
-                fontFamily: fonts.sansMedium,
-              },
-            ]}
-          >
-            Web search
-          </Text>
+          <View style={styles.toggleCopy}>
+            <Text
+              style={[
+                styles.toggleLabel,
+                {
+                  color: colors.popoverForeground,
+                  fontFamily: fonts.sansMedium,
+                },
+              ]}
+            >
+              Web search
+            </Text>
+            <Text
+              style={[
+                styles.unavailableLabel,
+                {
+                  color: colors.mutedForeground,
+                  fontFamily: fonts.sansRegular,
+                },
+              ]}
+            >
+              {searchAvailable
+                ? "Always search for this message"
+                : searchUnavailableReason}
+            </Text>
+          </View>
           <Switch
-            value={searchEnabled}
-            onValueChange={onToggleSearch}
+            value={searchRequested}
+            onValueChange={onToggleSearchRequested}
+            disabled={!searchAvailable}
+            accessibilityLabel={
+              searchAvailable
+                ? "Search the web for this message"
+                : searchUnavailableReason
+            }
             trackColor={{ true: colors.primary, false: colors.border }}
             thumbColor={colors.background}
           />
@@ -155,5 +187,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  toggleLabel: { flex: 1, fontSize: 14 },
+  toggleCopy: { flex: 1 },
+  toggleLabel: { fontSize: 14 },
+  unavailableLabel: { fontSize: 12, marginTop: 1 },
 });

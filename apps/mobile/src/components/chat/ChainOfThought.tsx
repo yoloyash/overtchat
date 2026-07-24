@@ -19,6 +19,7 @@ import {
   cleanDomain,
   faviconUrl,
   type FetchUrlPart,
+  isToolSettled,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
@@ -80,8 +81,12 @@ export function ChainOfThought({
   }, [active]);
 
   const hasTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const lastTool = [...parts]
+    .reverse()
+    .find((part) => isWebSearch(part) || isFetchUrl(part));
+  const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
-  const label = active ? activeLabel(last) : settledLabel(hasTools, duration);
+  const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
   function toggle() {
     LayoutAnimation.configureNext(
@@ -98,7 +103,12 @@ export function ChainOfThought({
         hitSlop={6}
         style={({ pressed }) => [styles.header, { opacity: pressed ? 0.7 : 1 }]}
       >
-        <StatusIcon active={active} hasTools={hasTools} color={colors.mutedForeground} />
+        <StatusIcon
+          active={active}
+          hasTools={hasTools}
+          failed={lastToolFailed}
+          color={colors.mutedForeground}
+        />
         <ShimmerLabel active={active}>
           <Text
             numberOfLines={1}
@@ -133,14 +143,26 @@ export function ChainOfThought({
 function StatusIcon({
   active,
   hasTools,
+  failed,
   color,
 }: {
   active: boolean;
   hasTools: boolean;
+  failed: boolean;
   color: string;
 }) {
   if (active) {
     return <ActivityIndicator size="small" color={color} style={styles.statusIcon} />;
+  }
+  if (failed) {
+    return (
+      <Ionicons
+        name="alert-circle-outline"
+        size={15}
+        color={color}
+        style={styles.statusIcon}
+      />
+    );
   }
   if (hasTools) {
     return (
@@ -197,11 +219,15 @@ function ShimmerLabel({
 
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
-  const icon = isWebSearch(part)
-    ? "search"
-    : isFetchUrl(part)
-      ? "globe"
-      : "brain";
+  const icon =
+    (isWebSearch(part) || isFetchUrl(part)) &&
+    part.state === "output-error"
+        ? "failed"
+      : isWebSearch(part)
+          ? "search"
+          : isFetchUrl(part)
+            ? "globe"
+            : "brain";
 
   return (
     <View style={styles.step}>
@@ -219,7 +245,7 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   );
 }
 
-type RailIcon = "search" | "globe" | "brain";
+type RailIcon = "search" | "globe" | "brain" | "failed";
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
 function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
@@ -227,7 +253,9 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
   return (
     <View style={styles.rail}>
       <View style={[styles.railDot, { backgroundColor: colors.muted }]}>
-        {icon === "search" ? (
+        {icon === "failed" ? (
+          <Ionicons name="alert" size={11} color={colors.mutedForeground} />
+        ) : icon === "search" ? (
           <Ionicons name="search" size={11} color={colors.mutedForeground} />
         ) : icon === "globe" ? (
           <Ionicons name="globe-outline" size={11} color={colors.mutedForeground} />
@@ -256,8 +284,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
   const [showAll, setShowAll] = useState(false);
   const query = part.input?.query?.trim();
   const results = part.output ?? [];
-  const running =
-    part.state !== "output-available" && part.state !== "output-error";
+  const running = !isToolSettled(part);
   const visible = showAll ? results : results.slice(0, RESULTS_PREVIEW);
   const hidden = results.length - visible.length;
 
@@ -384,8 +411,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
   const { colors, fonts } = useTheme();
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
-  const running =
-    part.state !== "output-available" && part.state !== "output-error";
+  const running = !isToolSettled(part);
   const page = part.output;
 
   if (part.state === "output-error") {
@@ -492,8 +518,20 @@ function activeLabel(last: ActivityPart | undefined): string {
   return "Thinking";
 }
 
-function settledLabel(hasTools: boolean, duration: number): string {
-  if (hasTools) return "Searched the web";
+function settledLabel(parts: ActivityPart[], duration: number): string {
+  const lastTool = [...parts]
+    .reverse()
+    .find((part) => isWebSearch(part) || isFetchUrl(part));
+  if (lastTool?.type === "tool-web_search") {
+    if (lastTool.state === "output-error") return "Web search failed";
+    if (lastTool.state === "output-available") return "Searched the web";
+    return "Web search did not complete";
+  }
+  if (lastTool?.type === "tool-fetch_url") {
+    if (lastTool.state === "output-error") return "Page fetch failed";
+    if (lastTool.state === "output-available") return "Searched the web";
+    return "Page fetch did not complete";
+  }
   return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
 }
 

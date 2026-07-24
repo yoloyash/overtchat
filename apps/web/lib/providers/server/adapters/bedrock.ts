@@ -7,7 +7,7 @@ import {
 import {
   createAnthropicMessagesModel,
   createOpenAICompatibleChatModel,
-  createOpenResponsesModel,
+  createOpenAIResponsesModel,
 } from "@/lib/providers/server/transports";
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import type { ProviderAdapter } from "@/lib/providers/server/types";
@@ -53,16 +53,24 @@ export const bedrockAdapter: ProviderAdapter = {
             authentication: "bearer",
           }),
           providerOptionsKey: "bedrock",
+          promptCacheKind: "anthropic",
         };
       case "openai-responses":
         return {
-          model: createOpenResponsesModel({
+          model: createOpenAIResponsesModel({
             providerName: "bedrock",
-            url: appendPath(mantleRoot, "openai/v1/responses"),
+            baseUrl: appendPath(mantleRoot, "openai/v1"),
             apiKey: config.apiKey,
             model: config.model,
           }),
-          providerOptionsKey: "bedrock",
+          // Mantle's proprietary GPT endpoint implements OpenAI's full
+          // Responses schema, including GPT-5.6 prompt-cache controls.
+          providerOptionsKey: "openai",
+          promptCacheKind: "openai",
+          // The SDK's capability detector does not recognize Bedrock's
+          // `openai.` model-ID namespace. Preserve the wire model ID while
+          // enabling reasoning parameters and the developer-message role.
+          defaultProviderOptions: { forceReasoning: true },
         };
       case "openai-chat":
         return {

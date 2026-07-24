@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createConfiguredLanguageModel: vi.fn(),
   generateText: vi.fn(),
+  tool: vi.fn((definition) => definition),
 }));
 
 vi.mock("server-only", () => ({}));
-vi.mock("ai", () => ({ generateText: mocks.generateText }));
+vi.mock("ai", () => ({
+  generateText: mocks.generateText,
+  tool: mocks.tool,
+}));
 vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
 }));
@@ -21,6 +25,7 @@ const config = {
   apiKey: "key",
   model: "test-model",
   providerOptions: null,
+  toolCallingEnabled: false,
 };
 
 describe("model health", () => {
@@ -32,6 +37,7 @@ describe("model health", () => {
     });
     mocks.generateText.mockResolvedValue({
       text: "Hi.",
+      toolCalls: [],
       usage: { inputTokens: 3, outputTokens: 2 },
     });
   });
@@ -65,6 +71,47 @@ describe("model health", () => {
       text: "Hi.",
       inputTokens: 3,
       outputTokens: 2,
+    });
+  });
+
+  it("requires a harmless tool call for tool-capable models", async () => {
+    mocks.generateText.mockResolvedValue({
+      text: "",
+      toolCalls: [{ toolName: "connection_check", input: {} }],
+      usage: { inputTokens: 5, outputTokens: 1 },
+    });
+
+    await expect(
+      pingModel({ ...config, toolCallingEnabled: true }),
+    ).resolves.toMatchObject({
+      ok: true,
+      text: "Tool calling verified.",
+      inputTokens: 5,
+      outputTokens: 1,
+    });
+
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: "Call connection_check exactly once.",
+        toolChoice: "required",
+        tools: expect.objectContaining({ connection_check: expect.anything() }),
+      }),
+    );
+  });
+
+  it("rejects a tool-capable model that ignores required tool choice", async () => {
+    mocks.generateText.mockResolvedValue({
+      text: "I cannot call tools.",
+      toolCalls: [],
+      usage: { inputTokens: 5, outputTokens: 5 },
+    });
+
+    await expect(
+      pingModel({ ...config, toolCallingEnabled: true }),
+    ).resolves.toMatchObject({
+      ok: false,
+      kind: "upstream",
+      error: "Model did not call the required connection test tool.",
     });
   });
 });
