@@ -168,7 +168,7 @@ export default function PrivacyPage() {
             <p>
               If we change this policy, we will update the “Last updated” date at
               the top of this page. The change history is visible on{" "}
-              <a href="https://github.com/yoloyash/overtchat/commits/main/docs/privacy.html">
+              <a href="https://github.com/yoloyash/overtchat/commits/main/apps/site/app/privacy/page.tsx">
                 GitHub
               </a>.
             </p>
