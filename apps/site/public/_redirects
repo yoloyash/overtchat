@@ -1,0 +1,2 @@
+# Preserve the pre-Next privacy policy URL for old bookmarks and listings.
+/privacy.html /privacy/ 301
