@@ -1,24 +1,20 @@
 import type { Metadata } from "next";
-import { absoluteSiteUrl } from "@/lib/site";
+import { createPageMetadata } from "@/lib/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPageMetadata({
   title: "Privacy Policy",
   description:
     "How the OvertChat mobile client handles data, permissions, and crash reports.",
-  alternates: {
-    canonical: absoluteSiteUrl("/privacy/"),
-  },
-  openGraph: {
-    title: "OvertChat privacy policy",
-    description:
-      "How the OvertChat mobile client handles data, permissions, and crash reports.",
-    url: absoluteSiteUrl("/privacy/"),
-  },
-};
+  path: "/privacy/",
+});
 
 export default function PrivacyPage() {
   return (
-    <main className="site-main legal-page">
+    <main
+      className="site-main legal-page"
+      id="main-content"
+      tabIndex={-1}
+    >
       <article className="legal-document site-container">
         <header className="legal-header">
           <p className="eyebrow">Legal</p>

@@ -3,6 +3,11 @@ import { Fraunces, Geist_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import {
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_TITLE,
+  SITE_NAME,
+} from "@/lib/metadata";
 import { absoluteSiteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -30,29 +35,11 @@ const mono = Geist_Mono({
 export const metadata: Metadata = {
   metadataBase: new URL(absoluteSiteUrl("/")),
   title: {
-    default: "overtchat — self-hosted chat, without the sprawl",
+    default: DEFAULT_SITE_TITLE,
     template: "%s — overtchat",
   },
-  description:
-    "A lightweight self-hosted chat client for hosted and local language models. One Docker Compose command and you're in.",
-  applicationName: "overtchat",
-  alternates: {
-    canonical: absoluteSiteUrl("/"),
-  },
-  openGraph: {
-    type: "website",
-    siteName: "overtchat",
-    title: "overtchat — self-hosted chat, without the sprawl",
-    description:
-      "A lightweight self-hosted chat client for hosted and local language models.",
-    url: absoluteSiteUrl("/"),
-  },
-  twitter: {
-    card: "summary",
-    title: "overtchat — self-hosted chat, without the sprawl",
-    description:
-      "A lightweight self-hosted chat client for hosted and local language models.",
-  },
+  description: DEFAULT_SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
 };
 
 export const viewport: Viewport = {
@@ -73,6 +60,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       suppressHydrationWarning
     >
       <body>
+        <a className="skip-link" href="#main-content">
+          Skip to content
+        </a>
         <ThemeProvider>
           <SiteHeader />
           {children}

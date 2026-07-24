@@ -11,7 +11,6 @@ export function SiteHeader() {
         </Link>
         <nav className="site-nav" aria-label="Primary navigation">
           <Link href="/releases/">Releases</Link>
-          <a href="https://github.com/yoloyash/overtchat">GitHub</a>
           <a
             className="icon-button"
             href="https://github.com/yoloyash/overtchat"

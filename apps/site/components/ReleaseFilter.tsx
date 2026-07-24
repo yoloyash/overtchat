@@ -19,6 +19,7 @@ export function ReleaseFilter({
   counts: Record<ReleaseFilterValue, number>;
 }) {
   const [filter, setFilter] = useState<ReleaseFilterValue>("all");
+  const visibleCount = counts[filter];
 
   return (
     <div className="release-collection" data-filter={filter}>
@@ -28,6 +29,7 @@ export function ReleaseFilter({
             type="button"
             key={option.value}
             aria-pressed={filter === option.value}
+            aria-controls="release-list"
             onClick={() => setFilter(option.value)}
           >
             {option.label}
@@ -35,7 +37,12 @@ export function ReleaseFilter({
           </button>
         ))}
       </div>
-      <div className="release-list">{children}</div>
+      <output className="sr-only" aria-live="polite">
+        Showing {visibleCount} {visibleCount === 1 ? "release" : "releases"}.
+      </output>
+      <div className="release-list" id="release-list">
+        {children}
+      </div>
     </div>
   );
 }

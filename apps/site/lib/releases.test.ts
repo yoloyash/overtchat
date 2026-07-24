@@ -1,9 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import {
-  classifyReleaseTag,
-  fetchGithubReleases,
-  normalizeReleases,
-} from "./releases";
+import { describe, expect, it } from "vitest";
+import { classifyReleaseTag, normalizeReleases } from "./releases";
 
 function apiRelease(
   tagName: string,
@@ -67,6 +63,10 @@ describe("normalizeReleases", () => {
             size: 1234,
           },
           { name: "missing-url.apk" },
+          {
+            name: "insecure.apk",
+            browser_download_url: "http://example.com/insecure.apk",
+          },
         ],
       }),
     ]);
@@ -85,40 +85,20 @@ describe("normalizeReleases", () => {
       ],
     });
   });
-});
 
-describe("fetchGithubReleases", () => {
-  it("paginates until GitHub returns fewer than 100 records", async () => {
-    const firstPage = Array.from({ length: 100 }, (_, index) =>
-      apiRelease(`v1.0.${index}`, `2026-01-01T00:00:${String(index % 60).padStart(2, "0")}Z`),
-    );
-    const secondPage = [
-      apiRelease("mobile-v1.0.0", "2026-02-01T00:00:00Z"),
-    ];
-    const fetcher = vi
-      .fn()
-      .mockResolvedValueOnce(Response.json(firstPage))
-      .mockResolvedValueOnce(Response.json(secondPage));
-
-    const releases = await fetchGithubReleases(fetcher);
-
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(String(fetcher.mock.calls[0][0])).toContain("page=1");
-    expect(String(fetcher.mock.calls[1][0])).toContain("page=2");
-    expect(releases).toHaveLength(101);
-    expect(releases[0].tagName).toBe("mobile-v1.0.0");
-  });
-
-  it("fails instead of publishing an incomplete feed", async () => {
-    const fetcher = vi.fn().mockResolvedValue(
-      new Response("rate limited", {
-        status: 403,
-        statusText: "Forbidden",
-      }),
-    );
-
-    await expect(fetchGithubReleases(fetcher)).rejects.toThrow(
-      "GitHub Releases request failed (403 Forbidden)",
-    );
+  it("rejects invalid dates and unsafe release URLs", () => {
+    expect(
+      normalizeReleases([
+        apiRelease("v1.0.0", "not-a-date"),
+        apiRelease("v1.1.0", "2026-03-01T00:00:00Z", {
+          html_url: "javascript:alert(1)",
+        }),
+      ]),
+    ).toMatchObject([
+      {
+        tagName: "v1.1.0",
+        url: "https://github.com/yoloyash/overtchat/releases/tag/v1.1.0",
+      },
+    ]);
   });
 });

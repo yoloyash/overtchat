@@ -6,7 +6,7 @@ export function SiteFooter() {
       <div className="site-container footer-inner">
         <div>
           <div className="footer-wordmark">overtchat</div>
-          <p>A lightweight self-hosted chat client that stays out of your way.</p>
+          <p>A complete, self-hosted chat client that runs on a server you own.</p>
         </div>
         <nav className="footer-links" aria-label="Footer navigation">
           <Link href="/releases/">Releases</Link>

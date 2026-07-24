@@ -1,56 +1,66 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { HOME_SECTIONS } from "@/lib/home-sections";
 
-const sections = [
-  { id: "intro", label: "Introduction" },
-  { id: "how-it-works", label: "How it works" },
-  { id: "features", label: "Features" },
-  { id: "architecture", label: "Architecture" },
-  { id: "clients", label: "Web + mobile" },
-  { id: "quick-start", label: "Quick start" },
-  { id: "releases", label: "Releases" },
-];
+const OBSERVER_ROOT_MARGIN = "-84px 0px -55% 0px";
+type HomeSectionId = (typeof HOME_SECTIONS)[number]["id"];
 
 export function SectionRail() {
-  const [activeSection, setActiveSection] = useState(sections[0].id);
+  const [activeSection, setActiveSection] = useState<HomeSectionId>(HOME_SECTIONS[0].id);
 
   useEffect(() => {
-    let frame = 0;
+    const visibleSections = new Set<HomeSectionId>();
+    const sectionIds = new Set(HOME_SECTIONS.map((section) => section.id));
+    const elements = HOME_SECTIONS.flatMap((section) => {
+      const element = document.getElementById(section.id);
+      return element ? [element] : [];
+    });
 
-    const updateActiveSection = () => {
-      const threshold = window.innerHeight * 0.34;
-      let current = sections[0].id;
-
-      for (const section of sections) {
-        const element = document.getElementById(section.id);
-        if (element && element.getBoundingClientRect().top <= threshold) {
-          current = section.id;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            visibleSections.add(entry.target.id as HomeSectionId);
+          } else {
+            visibleSections.delete(entry.target.id as HomeSectionId);
+          }
         }
+
+        let nextSection: HomeSectionId | null = null;
+        for (const section of HOME_SECTIONS) {
+          if (visibleSections.has(section.id)) nextSection = section.id;
+        }
+
+        if (nextSection) setActiveSection(nextSection);
+      },
+      {
+        rootMargin: OBSERVER_ROOT_MARGIN,
+        threshold: 0,
+      },
+    );
+
+    const syncSectionFromHash = () => {
+      const sectionId = window.location.hash.slice(1) as HomeSectionId;
+
+      if (sectionIds.has(sectionId)) {
+        setActiveSection(sectionId);
       }
-
-      setActiveSection(current);
-      frame = 0;
     };
 
-    const handleScroll = () => {
-      if (!frame) frame = window.requestAnimationFrame(updateActiveSection);
-    };
-
-    updateActiveSection();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    window.addEventListener("resize", handleScroll);
+    elements.forEach((element) => observer.observe(element));
+    syncSectionFromHash();
+    window.addEventListener("hashchange", syncSectionFromHash);
 
     return () => {
-      if (frame) window.cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", handleScroll);
-      window.removeEventListener("resize", handleScroll);
+      observer.disconnect();
+      window.removeEventListener("hashchange", syncSectionFromHash);
     };
   }, []);
 
   return (
     <nav className="section-rail" aria-label="Home page sections">
-      {sections.map((section) => {
+      {HOME_SECTIONS.map((section) => {
         const active = activeSection === section.id;
 
         return (

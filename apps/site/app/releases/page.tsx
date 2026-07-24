@@ -2,21 +2,14 @@ import type { Metadata } from "next";
 import { GitHubIcon } from "@/components/GitHubIcon";
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { ReleaseFilter } from "@/components/ReleaseFilter";
-import { absoluteSiteUrl } from "@/lib/site";
-import { fetchGithubReleases } from "@/lib/releases";
+import { createPageMetadata } from "@/lib/metadata";
+import { fetchGithubReleases } from "@/lib/releases.server";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = createPageMetadata({
   title: "Releases",
   description: "Web and mobile release notes for OvertChat.",
-  alternates: {
-    canonical: absoluteSiteUrl("/releases/"),
-  },
-  openGraph: {
-    title: "OvertChat releases",
-    description: "Web and mobile release notes for OvertChat.",
-    url: absoluteSiteUrl("/releases/"),
-  },
-};
+  path: "/releases/",
+});
 
 export default async function ReleasesPage() {
   const releases = await fetchGithubReleases();
@@ -24,7 +17,7 @@ export default async function ReleasesPage() {
   const mobileCount = releases.length - webCount;
 
   return (
-    <main className="site-main">
+    <main className="site-main" id="main-content" tabIndex={-1}>
       <section className="page-hero site-container release-page-hero">
         <div>
           <p className="eyebrow">Changelog</p>

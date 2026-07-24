@@ -1,3 +1,4 @@
+import { MODEL_BRAND_ICONS } from "@overtchat/shared";
 import {
   ArrowUp,
   ChevronDown,
@@ -12,6 +13,8 @@ import {
   Search,
   User,
 } from "lucide-react";
+
+const qwenIcon = MODEL_BRAND_ICONS.qwen;
 
 export function HeroVignette() {
   return (
@@ -68,34 +71,48 @@ export function HeroVignette() {
         <section className="vignette-chat">
           <header className="vignette-chat-header">
             <div className="vignette-model-picker">
-              <span className="vignette-model-mark">G</span>
-              <strong>Gemini 2.5 Pro</strong>
+              <span className="vignette-model-mark">
+                <svg viewBox={qwenIcon.viewBox} fill="currentColor">
+                  {qwenIcon.paths.map((path, index) => (
+                    <path
+                      key={index}
+                      d={path.d}
+                      fillRule={path.fillRule}
+                      clipRule={path.fillRule}
+                    />
+                  ))}
+                </svg>
+              </span>
+              <strong>Qwen 3.6 27B (Q6)</strong>
               <ChevronDown />
             </div>
           </header>
 
           <div className="vignette-messages">
             <div className="vignette-message vignette-message-user">
-              Give me the practical tradeoffs. Keep it concise.
+              Why run my own chat instead of just using ChatGPT?
             </div>
             <div className="vignette-tool">
               <Search />
-              <span>Searched 6 sources</span>
-              <span className="vignette-tool-time">1.8s</span>
+              <span>Searched 5 sources</span>
+              <span className="vignette-tool-time">1.4s</span>
             </div>
             <div className="vignette-message vignette-message-assistant">
               <p>
-                The simple version: keep the server boundary boring. One app,
-                one SQLite file, and a small resume buffer.
+                Mostly privacy. With hosted assistants, your conversations
+                aren&rsquo;t really yours:
               </p>
               <ul>
-                <li>Less infrastructure to operate</li>
-                <li>Backups stay portable</li>
-                <li>Local and hosted models use the same path</li>
+                <li>They live on servers you don&rsquo;t control</li>
+                <li>They can be read by human reviewers</li>
+                <li>They&rsquo;re often used to train the next model</li>
               </ul>
+              <p>
+                Self-hosting keeps everything on hardware you own.
+              </p>
               <div className="vignette-citations">
-                <span><Globe /> 1</span>
-                <span><FileText /> 2</span>
+                <span><Globe /> futurism.com</span>
+                <span><FileText /> openai.com</span>
               </div>
             </div>
           </div>

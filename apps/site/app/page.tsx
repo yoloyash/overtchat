@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowDown,
@@ -6,6 +8,7 @@ import {
   Braces,
   Check,
   Database,
+  EyeOff,
   Globe2,
   HardDrive,
   MessageSquareText,
@@ -14,12 +17,26 @@ import {
   Smartphone,
   Volume2,
   WandSparkles,
+  WifiOff,
 } from "lucide-react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
 import { GitHubIcon } from "@/components/GitHubIcon";
 import { HeroVignette } from "@/components/HeroVignette";
 import { SectionRail } from "@/components/SectionRail";
+import { HOME_SECTION_IDS } from "@/lib/home-sections";
+import {
+  createPageMetadata,
+  DEFAULT_SITE_DESCRIPTION,
+  DEFAULT_SITE_TITLE,
+} from "@/lib/metadata";
+
+export const metadata: Metadata = createPageMetadata({
+  title: DEFAULT_SITE_TITLE,
+  description: DEFAULT_SITE_DESCRIPTION,
+  path: "/",
+  absoluteTitle: true,
+});
 
 const quickStart = `git clone https://github.com/yoloyash/overtchat
 cd overtchat
@@ -78,7 +95,7 @@ const features: Array<{
   {
     icon: WandSparkles,
     title: "Model flexibility",
-    body: "Use Anthropic, Gemini, OpenAI, Groq, OpenRouter, xAI, Mistral, DeepSeek, Ollama, vLLM, llama.cpp, and more.",
+    body: "Native support for OpenAI, Anthropic, Google Gemini, and Amazon Bedrock, plus any OpenAI-compatible endpoint—hosted or on hardware you own.",
   },
   {
     icon: ShieldCheck,
@@ -96,19 +113,38 @@ const principles = [
   "No hosted control plane",
 ];
 
+function HomePageShell({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <SectionRail />
+      <main className="site-main" id="main-content" tabIndex={-1}>
+        {children}
+      </main>
+    </>
+  );
+}
+
 export default function HomePage() {
   return (
-    <main className="site-main">
-      <SectionRail />
-
-      <section className="hero site-container home-snap" id="intro">
+    <HomePageShell>
+      <section
+        className="hero site-container"
+        id={HOME_SECTION_IDS.intro}
+      >
         <div className="hero-copy">
           <p className="eyebrow">Open source · self-hosted</p>
-          <h1 className="display-title">Chat without the sprawl.</h1>
+          <h1 className="hero-headline">
+            <span className="hero-headline-setup">
+              Your therapist has confidentiality.
+            </span>
+            <span className="hero-headline-punch">
+              Now your chat app does too.
+            </span>
+          </h1>
           <p className="hero-lede">
-            OvertChat is a lightweight chat client for the language models you
-            already use. One Compose command, a focused interface, and data that
-            stays on your server.
+            OvertChat is a complete chat client for hosted and local models,
+            running on a server you own. Your conversations stay there, and
+            they stay yours.
           </p>
           <div className="button-row">
             <a
@@ -118,19 +154,22 @@ export default function HomePage() {
               <GitHubIcon aria-hidden="true" />
               View on GitHub
             </a>
-            <a className="button" href="#quick-start">
+            <a className="button" href={`#${HOME_SECTION_IDS.quickStart}`}>
               Quick start
               <ArrowRight aria-hidden="true" />
             </a>
           </div>
           <div className="hero-facts" aria-label="Project highlights">
-            <span><Check /> Zero telemetry</span>
-            <span><Check /> MIT licensed</span>
-            <span><Check /> Web + mobile</span>
+            <span><WifiOff aria-hidden="true" /> Fully offline-capable</span>
+            <span><EyeOff aria-hidden="true" /> Zero telemetry</span>
+            <span><Smartphone aria-hidden="true" /> Native mobile app</span>
           </div>
         </div>
         <HeroVignette />
-        <a className="hero-scroll-cue" href="#how-it-works">
+        <a
+          className="hero-scroll-cue"
+          href={`#${HOME_SECTION_IDS.howItWorks}`}
+        >
           Continue
           <ArrowDown aria-hidden="true" />
         </a>
@@ -138,15 +177,19 @@ export default function HomePage() {
 
       <section className="trust-strip" aria-label="Supported deployment targets">
         <div className="site-container trust-strip-inner">
-          <span>Hosted APIs</span>
+          <span className="trust-strip-label">Connects to</span>
           <span>Ollama</span>
           <span>vLLM</span>
           <span>llama.cpp</span>
-          <span>OpenAI-compatible</span>
+          <span>Hosted APIs</span>
+          <span>Any OpenAI-compatible endpoint</span>
         </div>
       </section>
 
-      <section className="site-section site-container home-snap" id="how-it-works">
+      <section
+        className="site-section site-container"
+        id={HOME_SECTION_IDS.howItWorks}
+      >
         <div className="section-heading">
           <div>
             <p className="eyebrow">How it works</p>
@@ -169,11 +212,14 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container home-snap" id="features">
+      <section
+        className="site-section site-container"
+        id={HOME_SECTION_IDS.features}
+      >
         <div className="section-heading compact-heading">
           <div>
             <p className="eyebrow">What’s in the box</p>
-            <h2 className="section-title">The useful parts, already wired up.</h2>
+            <h2 className="section-title">The whole client, already wired up.</h2>
           </div>
         </div>
         <div className="feature-grid">
@@ -187,7 +233,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section architecture-section home-snap" id="architecture">
+      <section
+        className="site-section architecture-section"
+        id={HOME_SECTION_IDS.architecture}
+      >
         <div className="site-container architecture-grid">
           <div className="architecture-copy">
             <p className="eyebrow">Deliberately boring infrastructure</p>
@@ -229,37 +278,47 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container clients-section home-snap" id="clients">
+      <section
+        className="site-section site-container clients-section"
+        id={HOME_SECTION_IDS.clients}
+      >
         <div className="client-card client-card-web">
           <span className="client-icon"><Globe2 aria-hidden="true" /></span>
-          <p className="eyebrow">On the web</p>
-          <h2>Open it and get to work.</h2>
-          <p>
-            A responsive interface for long conversations, projects, files,
-            web research, voice, and every model connected to your server.
-          </p>
-          <a href="https://github.com/yoloyash/overtchat#quick-start" className="text-link">
-            Self-host the web app <ArrowRight aria-hidden="true" />
-          </a>
+          <div className="client-card-body">
+            <p className="eyebrow">On the web</p>
+            <h2>Open it and get to work.</h2>
+            <p>
+              A responsive interface for long conversations, projects, files,
+              web research, voice, and every model connected to your server.
+            </p>
+            <a href="https://github.com/yoloyash/overtchat#quick-start" className="text-link">
+              Self-host the web app <ArrowRight aria-hidden="true" />
+            </a>
+          </div>
         </div>
         <div className="client-card client-card-mobile">
           <span className="client-icon"><Smartphone aria-hidden="true" /></span>
-          <p className="eyebrow">On mobile</p>
-          <h2>Your server, in your pocket.</h2>
-          <p>
-            The native client connects directly to your OvertChat instance.
-            Chats and attachments stay on that server—not in a hosted mobile backend.
-          </p>
-          <a
-            href="https://github.com/yoloyash/overtchat/blob/main/docs/android-testing.md"
-            className="text-link"
-          >
-            Get the Android app <ArrowRight aria-hidden="true" />
-          </a>
+          <div className="client-card-body">
+            <p className="eyebrow">On mobile</p>
+            <h2>Your server, in your pocket.</h2>
+            <p>
+              The native client connects directly to your OvertChat instance.
+              Chats and attachments stay on that server—not in a hosted mobile backend.
+            </p>
+            <a
+              href="https://github.com/yoloyash/overtchat/blob/main/docs/android-testing.md"
+              className="text-link"
+            >
+              Get the Android app <ArrowRight aria-hidden="true" />
+            </a>
+          </div>
         </div>
       </section>
 
-      <section className="site-section site-container quick-start-section home-snap" id="quick-start">
+      <section
+        className="site-section site-container quick-start-section"
+        id={HOME_SECTION_IDS.quickStart}
+      >
         <div className="quick-start-copy">
           <p className="eyebrow">Quick start</p>
           <h2 className="section-title">From clone to chat in one stack.</h2>
@@ -288,7 +347,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="site-section site-container release-cta home-snap" id="releases">
+      <section
+        className="site-section site-container release-cta"
+        id={HOME_SECTION_IDS.releases}
+      >
         <div>
           <p className="eyebrow">Built in public</p>
           <h2 className="section-title">See what changed, without digging.</h2>
@@ -304,6 +366,6 @@ export default function HomePage() {
           </Link>
         </div>
       </section>
-    </main>
+    </HomePageShell>
   );
 }

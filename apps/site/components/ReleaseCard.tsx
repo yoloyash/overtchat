@@ -47,15 +47,27 @@ export function ReleaseCard({ release }: { release: ProductRelease }) {
           </a>
         </header>
         {release.body ? (
-          <div className="release-markdown">
+          <div className="release-markdown prose prose-sm">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
+              skipHtml
               components={{
-                a: ({ children, ...props }) => (
-                  <a {...props} target="_blank" rel="noreferrer">
+                a: ({ children, href, title }) => (
+                  <a
+                    href={href}
+                    title={title}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     {children}
                   </a>
                 ),
+                h1: ({ children }) => <h3>{children}</h3>,
+                h2: ({ children }) => <h3>{children}</h3>,
+                h3: ({ children }) => <h4>{children}</h4>,
+                h4: ({ children }) => <h5>{children}</h5>,
+                h5: ({ children }) => <h6>{children}</h6>,
+                h6: ({ children }) => <h6>{children}</h6>,
               }}
             >
               {release.body}
