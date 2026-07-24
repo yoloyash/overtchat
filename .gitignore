@@ -13,6 +13,7 @@ playwright/.cache/
 # next.js
 .next/
 /out/
+/apps/site/out/
 
 # turborepo
 .turbo

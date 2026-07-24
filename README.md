@@ -7,8 +7,9 @@
 </p>
 
 <p align="center">
+  <a href="https://yoloyash.github.io/overtchat/"><img src="https://img.shields.io/badge/Website-overtchat-0D9488" alt="Project website" valign="middle"></a>&nbsp; • &nbsp;
   <a href="docs/android-testing.md"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
-  <a href="https://yoloyash.github.io/overtchat/privacy.html"><img src="https://img.shields.io/badge/Privacy-Zero_Telemetry-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="https://yoloyash.github.io/overtchat/privacy/"><img src="https://img.shields.io/badge/Privacy-No_Usage_Analytics-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
   <a href=".github/actions/repo-tokens/README.md"><img src=".github/badges/tokens.svg" alt="source tokens" valign="middle"></a>
 </p>
 
@@ -83,9 +84,9 @@ Multilingual (25 languages, auto-detected). All processing stays on your machine
 
 ## Privacy
 
-No telemetry, no analytics. No external calls except the LLM endpoint you configure and SearXNG (bundled by default, or your own if you point overtchat at it). All data lives in a single SQLite file you can copy, back up, or delete.
+No usage analytics, no advertising. The server sends model requests only to endpoints you configure and sends web searches through its configured SearXNG instance. Stored application data lives in a single SQLite file you can copy, back up, or delete.
 
-The Android client adds one exception: crash reports go to Sentry (no chat content, no credentials). Details in the [privacy policy](https://yoloyash.github.io/overtchat/privacy.html).
+The Android client can send crash diagnostics to Sentry. These may include technical request metadata; the app does not intentionally attach chat content, attachments, or credentials. Details are in the [privacy policy](https://yoloyash.github.io/overtchat/privacy/).
 
 ## Requirements
 
