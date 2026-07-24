@@ -104,7 +104,9 @@ describe("title helpers", () => {
       text("More detail"),
     ]);
 
-    expect(prompt).toContain("User:\nReal question More detail");
+    expect(prompt).toContain(
+      "<user_message>\nReal question More detail\n</user_message>",
+    );
     expect(prompt).not.toContain("Assistant:");
     expect(prompt).not.toContain("private thought");
     expect(prompt).not.toContain("hidden query");
@@ -134,7 +136,7 @@ describe("title helpers", () => {
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
         maxRetries: 0,
-        prompt: expect.stringContaining("User:"),
+        prompt: expect.stringContaining("<user_message>"),
       }),
     );
     expect(mocks.generateText.mock.calls[0][0]).not.toHaveProperty(
