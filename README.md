@@ -7,6 +7,7 @@
 </p>
 
 <p align="center">
+  <a href="https://yoloyash.github.io/overtchat/"><img src="https://img.shields.io/badge/Website-overtchat-0D9488" alt="Project website" valign="middle"></a>&nbsp; • &nbsp;
   <a href="docs/android-testing.md"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
   <a href="https://yoloyash.github.io/overtchat/privacy/"><img src="https://img.shields.io/badge/Privacy-Zero_Telemetry-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
   <a href=".github/actions/repo-tokens/README.md"><img src=".github/badges/tokens.svg" alt="source tokens" valign="middle"></a>
