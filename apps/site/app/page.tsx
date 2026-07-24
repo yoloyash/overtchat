@@ -63,7 +63,7 @@ const steps: Array<{
   {
     number: "03",
     title: "Chat from anywhere",
-    body: "Use the responsive web app or connect the native mobile client to the server you control. Your data stays there.",
+    body: "Use the responsive web app or connect the native mobile client to the server you control. Your account, chat history, and files stay on that server.",
   },
 ];
 
