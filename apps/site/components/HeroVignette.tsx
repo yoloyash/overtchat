@@ -90,7 +90,7 @@ export function HeroVignette() {
 
           <div className="vignette-messages">
             <div className="vignette-message vignette-message-user">
-              Why run my own chat instead of just using ChatGPT?
+              How do hosted and local models differ for privacy?
             </div>
             <div className="vignette-tool">
               <Search />
@@ -98,20 +98,15 @@ export function HeroVignette() {
               <span className="vignette-tool-time">1.4s</span>
             </div>
             <div className="vignette-message vignette-message-assistant">
-              <p>
-                Mostly privacy. With hosted assistants, your conversations
-                aren&rsquo;t really yours:
-              </p>
+              <p>Mostly in where requests go:</p>
               <ul>
-                <li>They live on servers you don&rsquo;t control</li>
-                <li>They can be read by human reviewers</li>
-                <li>They&rsquo;re often used to train the next model</li>
+                <li>A hosted model receives prompts at its API</li>
+                <li>A local model can process them on your hardware</li>
+                <li>OvertChat stores chat history on your server</li>
               </ul>
-              <p>
-                Self-hosting keeps everything on hardware you own.
-              </p>
+              <p>You choose the endpoint for each conversation.</p>
               <div className="vignette-citations">
-                <span><Globe /> futurism.com</span>
+                <span><Globe /> ollama.com</span>
                 <span><FileText /> openai.com</span>
               </div>
             </div>
