@@ -2,6 +2,14 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "overtchat",
   "compatibility_date": "2026-07-23",
+  "workers_dev": false,
+  "preview_urls": true,
+  "routes": [
+    {
+      "pattern": "overtchat.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./apps/site/out",
     "not_found_handling": "404-page"
