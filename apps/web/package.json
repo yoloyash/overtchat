@@ -32,7 +32,7 @@
     "@tanstack/react-query": "^5.100.10",
     "@tanstack/react-query-devtools": "^5.100.10",
     "ai": "^6.0.176",
-    "better-auth": "^1.6.9",
+    "better-auth": "^1.6.13",
     "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clipboard-polyfill": "^4.1.1",
