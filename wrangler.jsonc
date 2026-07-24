@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "overtchat-site",
+  "compatibility_date": "2026-07-23",
+  "assets": {
+    "directory": "./apps/site/out",
+    "not_found_handling": "404-page"
+  }
+}
