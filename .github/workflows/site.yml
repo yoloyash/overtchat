@@ -30,7 +30,6 @@ concurrency:
 
 jobs:
   validate:
-    if: github.event_name != 'release'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -38,6 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
+          ref: ${{ github.event_name == 'release' && 'main' || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -63,18 +63,12 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build -w apps/site --
 
-  rebuild-releases:
-    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Rebuild Cloudflare site from main
+      - name: Deploy site to Cloudflare
+        if: github.event_name != 'pull_request'
         env:
-          DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_SITE_DEPLOY_HOOK }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
-          test -n "$DEPLOY_HOOK_URL"
-          curl --fail --silent --show-error \
-            --retry 2 \
-            --retry-all-errors \
-            --request POST \
-            "$DEPLOY_HOOK_URL"
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npm run site:deploy
