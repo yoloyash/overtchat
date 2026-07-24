@@ -19,7 +19,7 @@ export default function PrivacyPage() {
         <header className="legal-header">
           <p className="eyebrow">Legal</p>
           <h1 className="page-title">Privacy Policy</h1>
-          <p className="legal-updated">Last updated 27 May 2026</p>
+          <p className="legal-updated">Last updated 23 July 2026</p>
           <p className="page-lede">
             OvertChat is an open-source chat client that connects to a server you
             choose. The short version: the app is a client, we do not run a
@@ -43,8 +43,9 @@ export default function PrivacyPage() {
           <section>
             <h2>What the app sends to your server</h2>
             <p>
-              The app communicates only with the server URL you configured, over
-              HTTPS or HTTP, in order to:
+              Except for crash reporting described below, the app communicates
+              with the server URL you configured, over HTTPS or HTTP, in order
+              to:
             </p>
             <ul>
               <li>
@@ -72,10 +73,13 @@ export default function PrivacyPage() {
             <ul>
               <li>The server URL you entered (in Android secure storage).</li>
               <li>Your auth session cookie (in Android secure storage).</li>
-              <li>Your appearance preference (light / dark / system).</li>
               <li>
-                Cached image previews and any files you have attached during a
-                session.
+                Your appearance, chat font, and web-search toggle preferences.
+              </li>
+              <li>
+                Cached image previews and temporary copies of files you select,
+                which the operating system may retain in the app cache until
+                cleanup or uninstall.
               </li>
             </ul>
             <p>
@@ -87,21 +91,25 @@ export default function PrivacyPage() {
           <section>
             <h2>What we collect</h2>
             <p>
-              We—the publisher of the app—do not run a backend, so there is no
-              usage analytics service, telemetry pipeline, or advertising SDK in
-              the app. We do not know who installs it, how often it is opened, or
-              what you type into it.
+              We—the publisher of the app—do not operate a hosted OvertChat
+              backend, and the app does not include usage analytics or
+              advertising SDKs.
             </p>
-            <p>The one exception is crash reporting, described next.</p>
+            <p>
+              We receive limited crash diagnostics through Sentry when crash
+              reporting is configured in the distributed app, as described
+              next.
+            </p>
           </section>
 
           <section>
             <h2>Crash reporting (Sentry)</h2>
             <p>
-              When the app crashes, a crash report is sent to{" "}
+              When the app encounters an unhandled error or crashes, it may send
+              a diagnostic report to{" "}
               <a href="https://sentry.io/security/">Sentry</a>, a third-party
-              error monitoring service, so we can fix bugs. A crash report
-              contains:
+              error monitoring service, so we can fix bugs. A report may
+              contain:
             </p>
             <ul>
               <li>the JavaScript error and stack trace,</li>
@@ -110,17 +118,25 @@ export default function PrivacyPage() {
                 a randomly generated install identifier (not tied to your name
                 or email).
               </li>
-            </ul>
-            <p>A crash report does <strong>not</strong> contain:</p>
-            <ul>
-              <li>the contents of your chats, messages, or attachments,</li>
-              <li>your auth session cookie or any credentials,</li>
-              <li>the server URL you configured.</li>
+              <li>
+                recent network request metadata, which may include the
+                configured server URL, HTTP method, and status code.
+              </li>
             </ul>
             <p>
-              Sentry is bound by their own privacy terms, linked above. If you
-              would prefer no crash reports leave your device, you can build the
-              app from source without the Sentry DSN configured.
+              Sentry is initialized with default PII collection disabled. The
+              app does not intentionally attach chat or attachment contents,
+              session cookies, API keys, or other credentials to crash reports.
+              Because reports capture diagnostic context, we do not make an
+              absolute guarantee that user-provided data can never appear in an
+              error message.
+            </p>
+            <p>
+              Sentry is governed by its own{" "}
+              <a href="https://sentry.io/privacy/">privacy notice</a> and{" "}
+              <a href="https://sentry.io/security/">security information</a>. If
+              you would prefer no crash reports leave your device, you can build
+              the app from source without the Sentry DSN configured.
             </p>
           </section>
 
@@ -130,8 +146,8 @@ export default function PrivacyPage() {
               <li>
                 <strong>Microphone</strong>—used only when you tap the dictation
                 button. The recording is sent to your configured server for
-                transcription and is not retained on the device after the chat
-                is sent.
+                transcription when you stop recording and is deleted from the
+                app cache after transcription completes.
               </li>
               <li>
                 <strong>Camera</strong>—used only when you choose “Take Photo” to
@@ -148,9 +164,12 @@ export default function PrivacyPage() {
               </li>
             </ul>
             <p>
-              None of these permissions cause data to leave the device on their
-              own. Data leaves only when you send a message, and then only to the
-              server URL you configured.
+              None of these permissions transmit data simply by being granted.
+              Data selected through them leaves the device only when you choose
+              an app action that uses it—for example, selecting an attachment
+              uploads it to your server, and stopping dictation sends the
+              recording for transcription. Crash diagnostics are a separate
+              data flow to Sentry, described above.
             </p>
           </section>
 
@@ -158,8 +177,8 @@ export default function PrivacyPage() {
             <h2>Children</h2>
             <p>
               OvertChat is not directed at children under 13. We do not knowingly
-              collect data from children, and as noted above, we do not collect
-              data from anyone in the first place.
+              collect personal information from children. Crash reporting
+              handles limited technical diagnostics as described above.
             </p>
           </section>
 

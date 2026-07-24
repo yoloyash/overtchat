@@ -5,7 +5,7 @@ export const SITE_NAME = "overtchat";
 export const DEFAULT_SITE_TITLE =
   "overtchat — chat you actually own";
 export const DEFAULT_SITE_DESCRIPTION =
-  "A complete, self-hosted chat client for hosted and local language models. One Docker command brings up the whole stack, and your conversations stay on your server.";
+  "A complete, self-hosted chat client for hosted and local language models. One Docker command brings up the whole stack, and your chat history is stored on your server.";
 
 export function createPageMetadata({
   title,

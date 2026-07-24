@@ -80,9 +80,16 @@ a {
 }
 
 button:focus-visible,
-a:focus-visible {
+a:focus-visible,
+.trust-strip-inner:focus-visible,
+.code-window pre:focus-visible {
   outline: 3px solid var(--ring);
   outline-offset: 3px;
+}
+
+.trust-strip-inner:focus-visible,
+.code-window pre:focus-visible {
+  outline-offset: -3px;
 }
 
 .skip-link {

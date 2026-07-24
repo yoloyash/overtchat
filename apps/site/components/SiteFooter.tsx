@@ -19,7 +19,7 @@ export function SiteFooter() {
       </div>
       <div className="site-container footer-meta">
         <span>MIT licensed.</span>
-        <span>No telemetry. No hosted backend.</span>
+        <span>No usage analytics. No hosted backend.</span>
       </div>
     </footer>
   );

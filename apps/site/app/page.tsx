@@ -100,7 +100,7 @@ const features: Array<{
   {
     icon: ShieldCheck,
     title: "Private by construction",
-    body: "No analytics, advertising SDK, hosted account system, or telemetry pipeline. The server belongs to you.",
+    body: "No usage analytics, advertising SDK, or hosted account system. The server belongs to you.",
   },
 ];
 
@@ -143,8 +143,8 @@ export default function HomePage() {
           </h1>
           <p className="hero-lede">
             OvertChat is a complete chat client for hosted and local models,
-            running on a server you own. Your conversations stay there, and
-            they stay yours.
+            running on a server you own. Your account and chat history stay
+            there; model requests go only to the endpoints you choose.
           </p>
           <div className="button-row">
             <a
@@ -161,7 +161,7 @@ export default function HomePage() {
           </div>
           <div className="hero-facts" aria-label="Project highlights">
             <span><WifiOff aria-hidden="true" /> Fully offline-capable</span>
-            <span><EyeOff aria-hidden="true" /> Zero telemetry</span>
+            <span><EyeOff aria-hidden="true" /> No usage analytics</span>
             <span><Smartphone aria-hidden="true" /> Native mobile app</span>
           </div>
         </div>
@@ -176,7 +176,12 @@ export default function HomePage() {
       </section>
 
       <section className="trust-strip" aria-label="Supported deployment targets">
-        <div className="site-container trust-strip-inner">
+        <div
+          className="site-container trust-strip-inner"
+          role="region"
+          aria-label="Supported model endpoints"
+          tabIndex={0}
+        >
           <span className="trust-strip-label">Connects to</span>
           <span>Ollama</span>
           <span>vLLM</span>
@@ -196,9 +201,10 @@ export default function HomePage() {
             <h2 className="section-title">Your server is the product.</h2>
           </div>
           <p className="section-lede">
-            OvertChat does not proxy your conversations through somebody else’s
-            cloud. You operate one compact stack and choose exactly which model
-            endpoints it can reach.
+            OvertChat keeps your account, chat history, and files on your
+            server. Model requests go directly to the local or hosted endpoints
+            you configure—never through an OvertChat-operated relay or control
+            plane.
           </p>
         </div>
         <div className="steps-grid">
@@ -343,7 +349,9 @@ export default function HomePage() {
             <span>terminal</span>
             <CopyButton value={quickStart} />
           </div>
-          <pre><code>{quickStart}</code></pre>
+          <pre tabIndex={0} aria-label="Quick start commands">
+            <code>{quickStart}</code>
+          </pre>
         </div>
       </section>
 
