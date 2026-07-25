@@ -9,11 +9,13 @@ on:
 permissions: {}
 
 concurrency:
-  group: validate-${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  validate:
+  # Named distinctly from the project-site workflow's `validate` job so the two
+  # are tellable apart in a pull request's check list.
+  workspaces:
     permissions:
       contents: read
     runs-on: ubuntu-latest
