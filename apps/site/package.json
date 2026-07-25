@@ -6,6 +6,7 @@
     "dev": "next dev -p 4719",
     "build": "next build",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {

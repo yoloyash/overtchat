@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "mkdir -p data && next start -p 4717",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "rm -f data/test.db* && playwright test",
