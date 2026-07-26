@@ -44,6 +44,7 @@ import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
+import { useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
@@ -171,6 +172,7 @@ function ChatSurface({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchRequested, setSearchRequested] = useState(false);
+  const webSearchEnabled = useWebSearchEnabled();
   const pickerRef = useRef<BottomSheetModal>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
 
@@ -231,7 +233,11 @@ function ChatSurface({
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
-  const searchAvailable = modelSupportsToolCalling(selectedModel);
+  const searchAvailable =
+    webSearchEnabled && modelSupportsToolCalling(selectedModel);
+  const searchUnavailableReason = !webSearchEnabled
+    ? "Web search is disabled in Settings → Tools"
+    : "Unavailable for this model";
 
   const {
     attachments,
@@ -375,6 +381,7 @@ function ChatSurface({
     const requested = searchAvailable && forceSearch;
     return {
       modelConfigId: selectedId,
+      webSearchEnabled,
       forceSearch: requested,
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
@@ -569,6 +576,7 @@ function ChatSurface({
       <AddToChatSheet
         ref={addSheetRef}
         searchAvailable={searchAvailable}
+        searchUnavailableReason={searchUnavailableReason}
         searchRequested={searchAvailable && searchRequested}
         onToggleSearchRequested={setSearchRequested}
         onPickTool={onPickTool}

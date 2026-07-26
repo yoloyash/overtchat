@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from "react-native";
@@ -16,6 +17,7 @@ import { FONT_OPTIONS, FONT_SANS } from "@/lib/fonts";
 import { setFontPref, useFontPref } from "@/lib/fontPref";
 import { getServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
+import { setWebSearchEnabled, useWebSearchEnabled } from "@/lib/toolPreferences";
 
 export default function SettingsScreen() {
   const { colors, radii, fonts } = useTheme();
@@ -27,6 +29,7 @@ export default function SettingsScreen() {
 
   const themePref = useThemePref();
   const fontPref = useFontPref();
+  const webSearchEnabled = useWebSearchEnabled();
   const [signingOut, setSigningOut] = useState(false);
   const serverUrl = getServerUrl();
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
@@ -116,6 +119,19 @@ export default function SettingsScreen() {
                 onPress={() => setFontPref(opt.id)}
               />
             ))}
+          </Section>
+
+          <Section
+            title="Tools"
+            description="Control which capabilities models can use on this device."
+          >
+            <SwitchRow
+              label="Web search"
+              sub="Allow supported models to search the web and fetch pages. Disabling this also turns off the Search action in chat."
+              value={webSearchEnabled}
+              onValueChange={setWebSearchEnabled}
+              accessibilityLabel="Enable web search"
+            />
           </Section>
 
           <Section
@@ -316,6 +332,51 @@ function RadioRow({
         ) : null}
       </View>
     </Pressable>
+  );
+}
+
+function SwitchRow({
+  label,
+  sub,
+  value,
+  onValueChange,
+  accessibilityLabel,
+}: {
+  label: string;
+  sub: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  accessibilityLabel: string;
+}) {
+  const { colors, fonts } = useTheme();
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowText}>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: colors.foreground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.rowSub,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {sub}
+        </Text>
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        accessibilityLabel={accessibilityLabel}
+        trackColor={{ true: colors.primary, false: colors.border }}
+        thumbColor={colors.background}
+      />
+    </View>
   );
 }
 
