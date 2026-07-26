@@ -29,7 +29,7 @@
     "site:preview": "npx --yes wrangler@4.114.0 versions upload"
   },
   "devDependencies": {
-    "turbo": "^2.9.6"
+    "turbo": "^2.10.7"
   },
   "dependencies": {
     "expo-crypto": "~56.0.3"

@@ -17,11 +17,11 @@
     "submit:android": "npx eas-cli@20 submit --non-interactive --platform android --profile production --path ../../dist/mobile/overtchat.aab"
   },
   "dependencies": {
-    "@ai-sdk/react": "^3.0.193",
+    "@ai-sdk/react": "^4.0.40",
     "@better-auth/expo": "1.6.23",
     "@expo-google-fonts/fraunces": "^0.4.1",
     "@expo-google-fonts/geist": "^0.4.2",
-    "@expo-google-fonts/geist-mono": "^0.4.2",
+    "@expo-google-fonts/geist-mono": "^0.4.3",
     "@expo-google-fonts/ibm-plex-sans": "^0.4.1",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/plus-jakarta-sans": "^0.4.2",
@@ -30,12 +30,12 @@
     "@gorhom/bottom-sheet": "^5.2.14",
     "@overtchat/shared": "*",
     "@react-native-community/slider": "5.2.0",
-    "@sentry/react-native": "~7.11.0",
-    "@shopify/flash-list": "2.0.2",
+    "@sentry/react-native": "~8.20.0",
+    "@shopify/flash-list": "2.3.2",
     "@stardazed/streams-text-encoding": "^1.0.2",
-    "@tanstack/react-query": "^5.100.14",
-    "@ungap/structured-clone": "^1.3.1",
-    "ai": "^6.0.191",
+    "@tanstack/react-query": "^5.101.4",
+    "@ungap/structured-clone": "^1.3.3",
+    "ai": "^7.0.37",
     "better-auth": "1.6.23",
     "burnt": "^0.13.0",
     "expo": "~56.0.8",
@@ -58,8 +58,8 @@
     "expo-splash-screen": "~56.0.10",
     "expo-status-bar": "~56.0.4",
     "expo-system-ui": "~56.0.5",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-native": "0.85.3",
     "react-native-gesture-handler": "~2.31.1",
     "react-native-image-viewing": "^0.2.2",
@@ -75,7 +75,7 @@
     "react-native-worklets": "0.8.3"
   },
   "devDependencies": {
-    "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "@types/react": "~19.2.17",
+    "typescript": "~7.0.2"
   }
 }
