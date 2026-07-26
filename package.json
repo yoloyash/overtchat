@@ -32,7 +32,7 @@
     "turbo": "^2.9.6"
   },
   "dependencies": {
-    "expo-crypto": "~56.0.3"
+    "expo-crypto": "~57.0.1"
   },
   "overrides": {
     "@better-auth/core": "1.6.23"
