@@ -14,6 +14,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
+import { isToolSettled } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -202,9 +203,9 @@ function AssistantBubble({
             const trailingDone =
               trailing.type === "reasoning"
                 ? (trailing as { state?: string }).state === "done"
-                : (trailing as { state?: string }).state ===
-                    "output-available" ||
-                  (trailing as { state?: string }).state === "output-error";
+                : isToolSettled(
+                    trailing as Parameters<typeof isToolSettled>[0],
+                  );
             const active = streaming && isLast && !trailingDone;
             return (
               <ChainOfThought

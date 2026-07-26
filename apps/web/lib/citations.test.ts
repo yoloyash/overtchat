@@ -5,8 +5,10 @@ import {
   STANDALONE_PATTERN,
   CLEANUP_REGEX,
   INVALID_CITATION_REGEX,
+  buildWebCitationIndex,
   stripCitationMarkers,
 } from "./citations";
+import { unicodeCitation } from "./citations-remark";
 
 describe("Citation Regex Patterns", () => {
   beforeEach(() => {
@@ -46,7 +48,8 @@ describe("Citation Regex Patterns", () => {
       });
 
       it("should match multiple literal text citations", () => {
-        const text = "Fact one \\ue202turn0search0 and fact two \\ue202turn0file1";
+        const text =
+          "Fact one \\ue202turn0search0 and fact two \\ue202turn0file1";
         const matches: RegExpExecArray[] = [];
         let match: RegExpExecArray | null;
         STANDALONE_PATTERN.lastIndex = 0;
@@ -56,6 +59,15 @@ describe("Citation Regex Patterns", () => {
         expect(matches).toHaveLength(2);
         expect(matches[0][2]).toBe("search");
         expect(matches[1][2]).toBe("file");
+      });
+
+      it("accepts the legacy brace form without exposing it as raw text", () => {
+        const text = "Fact \\ue202turn0search{4}";
+        STANDALONE_PATTERN.lastIndex = 0;
+        const match = STANDALONE_PATTERN.exec(text);
+        expect(match?.[1]).toBe("0");
+        expect(match?.[2]).toBe("search");
+        expect(match?.[3]).toBe("4");
       });
 
       it("should match all supported types in literal text format", () => {
@@ -124,7 +136,8 @@ describe("Citation Regex Patterns", () => {
 
   describe("COMPOSITE_REGEX", () => {
     it("should match literal text composite markers", () => {
-      const text = "Statement \\ue200\\ue202turn0search0\\ue202turn0news0\\ue201";
+      const text =
+        "Statement \\ue200\\ue202turn0search0\\ue202turn0news0\\ue201";
       COMPOSITE_REGEX.lastIndex = 0;
       expect(COMPOSITE_REGEX.exec(text)).not.toBeNull();
     });
@@ -177,6 +190,118 @@ describe("Citation Regex Patterns", () => {
       expect(cleaned).not.toContain("turn0search0");
       expect(cleaned).toContain("Finding A");
       expect(cleaned).toContain("Quoted line.");
+    });
+
+    it("removes legacy brace-form citations", () => {
+      expect(stripCitationMarkers("Fact. \\ue202turn0search{4}")).toBe("Fact.");
+    });
+  });
+
+  describe("citation rendering", () => {
+    it("turns a legacy brace-form marker into a citation node", () => {
+      const tree = {
+        type: "root",
+        children: [
+          {
+            type: "paragraph",
+            children: [{ type: "text", value: "Fact. \\ue202turn0search{4}" }],
+          },
+        ],
+      };
+
+      unicodeCitation()(tree);
+
+      expect(tree.children[0].children).toMatchObject([
+        { type: "text", value: "Fact. " },
+        {
+          type: "citation",
+          data: {
+            hProperties: { turn: 0, reftype: "search", index: 4 },
+          },
+        },
+      ]);
+    });
+  });
+
+  describe("buildWebCitationIndex", () => {
+    const sourceA = { link: "https://a.example/", title: "A", snippet: "a" };
+    const sourceB = { link: "https://b.example/", title: "B", snippet: "b" };
+    const sourceC = { link: "https://c.example/", title: "C", snippet: "c" };
+
+    it("resolves the search call and local result index independently", () => {
+      const index = buildWebCitationIndex([
+        {
+          type: "tool-web_search",
+          toolCallId: "search-0",
+          state: "output-available",
+          output: [sourceA, sourceB],
+        },
+        { type: "tool-fetch_url", output: {} },
+        {
+          type: "tool-web_search",
+          toolCallId: "search-1",
+          state: "output-available",
+          output: [sourceB, sourceC],
+        },
+      ]);
+
+      expect(index.sources).toEqual([sourceA, sourceB, sourceC]);
+      expect(index.resolve(0, "search", 1)).toEqual({
+        source: sourceB,
+        number: 2,
+      });
+      expect(index.resolve(1, "search", 0)).toEqual({
+        source: sourceB,
+        number: 2,
+      });
+      expect(index.resolve(1, "search", 1)).toEqual({
+        source: sourceC,
+        number: 3,
+      });
+    });
+
+    it("counts failed web searches when assigning turn coordinates", () => {
+      const index = buildWebCitationIndex([
+        {
+          type: "tool-web_search",
+          toolCallId: "failed-search",
+          state: "output-error",
+        },
+        {
+          type: "tool-web_search",
+          toolCallId: "search-1",
+          state: "output-available",
+          output: [sourceA],
+        },
+      ]);
+
+      expect(index.resolve(1, "search", 0)).toEqual({
+        source: sourceA,
+        number: 1,
+      });
+    });
+
+    it("falls back to legacy flattened result indexes", () => {
+      const index = buildWebCitationIndex([
+        {
+          type: "tool-web_search",
+          toolCallId: "search-0",
+          state: "output-available",
+          output: [sourceA, sourceB],
+        },
+        {
+          type: "tool-web_search",
+          toolCallId: "search-1",
+          state: "output-available",
+          output: [sourceC],
+        },
+      ]);
+
+      expect(index.resolve(0, "search", 2)).toEqual({
+        source: sourceC,
+        number: 3,
+      });
+      expect(index.resolve(0, "image", 0)).toBeUndefined();
     });
   });
 });

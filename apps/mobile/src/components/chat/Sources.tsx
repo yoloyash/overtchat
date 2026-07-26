@@ -11,9 +11,9 @@ import {
 } from "react-native";
 import type { UIMessage } from "ai";
 import {
+  buildWebCitationIndex,
   cleanDomain,
   faviconUrl,
-  type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
 import { useTheme } from "@/lib/theme";
@@ -22,19 +22,7 @@ export function Sources({ message }: { message: UIMessage }) {
   const { colors, fonts } = useTheme();
   const [open, setOpen] = useState(false);
 
-  const all: WebSearchResult[] = [];
-  const seen = new Set<string>();
-  for (const part of message.parts) {
-    const sp = part as unknown as WebSearchPart;
-    if (sp.type !== "tool-web_search") continue;
-    const results = sp.output;
-    if (!Array.isArray(results)) continue;
-    for (const r of results) {
-      if (seen.has(r.link)) continue;
-      seen.add(r.link);
-      all.push(r);
-    }
-  }
+  const all: WebSearchResult[] = buildWebCitationIndex(message.parts).sources;
   if (all.length === 0) return null;
 
   function toggle() {
@@ -99,7 +87,10 @@ export function Sources({ message }: { message: UIMessage }) {
                 <Text
                   style={[
                     styles.index,
-                    { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                    {
+                      color: colors.mutedForeground,
+                      fontFamily: fonts.sansRegular,
+                    },
                   ]}
                 >
                   {i + 1}.
@@ -108,7 +99,10 @@ export function Sources({ message }: { message: UIMessage }) {
                   <Text
                     style={[
                       styles.title,
-                      { color: colors.foreground, fontFamily: fonts.sansSemiBold },
+                      {
+                        color: colors.foreground,
+                        fontFamily: fonts.sansSemiBold,
+                      },
                     ]}
                     numberOfLines={1}
                   >
@@ -122,7 +116,10 @@ export function Sources({ message }: { message: UIMessage }) {
                     <Text
                       style={[
                         styles.domain,
-                        { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                        {
+                          color: colors.mutedForeground,
+                          fontFamily: fonts.sansRegular,
+                        },
                       ]}
                       numberOfLines={1}
                     >
@@ -133,7 +130,10 @@ export function Sources({ message }: { message: UIMessage }) {
                     <Text
                       style={[
                         styles.snippet,
-                        { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+                        {
+                          color: colors.mutedForeground,
+                          fontFamily: fonts.sansRegular,
+                        },
                       ]}
                       numberOfLines={2}
                     >

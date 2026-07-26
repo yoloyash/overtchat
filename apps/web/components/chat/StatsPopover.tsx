@@ -12,8 +12,14 @@ import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
+interface StatsRow {
+  iconId?: MessageStats["providerIconId"];
+  label: string;
+  value: string;
+}
+
 export function StatsPopover({ stats }: { stats: MessageStats }) {
-  const rows = [
+  const candidateRows: Array<StatsRow | null> = [
     stats.providerLabel !== undefined
       ? {
           iconId: stats.providerIconId,
@@ -31,6 +37,18 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     stats.contextTokens !== undefined
       ? { label: "Context tokens", value: formatInteger(stats.contextTokens) }
       : null,
+    stats.uncachedInputTokens !== undefined
+      ? {
+          label: "Uncached input",
+          value: formatInteger(stats.uncachedInputTokens),
+        }
+      : null,
+    stats.cacheReadTokens !== undefined
+      ? { label: "Cache read", value: formatInteger(stats.cacheReadTokens) }
+      : null,
+    stats.cacheWriteTokens !== undefined
+      ? { label: "Cache write", value: formatInteger(stats.cacheWriteTokens) }
+      : null,
     stats.responseTokens !== undefined
       ? { label: "Response tokens", value: formatInteger(stats.responseTokens) }
       : null,
@@ -44,15 +62,8 @@ export function StatsPopover({ stats }: { stats: MessageStats }) {
     stats.finishReason !== undefined
       ? { label: "Finish reason", value: stats.finishReason }
       : null,
-  ].filter(
-    (
-      row,
-    ): row is {
-      iconId?: MessageStats["providerIconId"];
-      label: string;
-      value: string;
-    } => row !== null,
-  );
+  ];
+  const rows = candidateRows.filter((row): row is StatsRow => row !== null);
 
   if (!rows.length) return null;
 

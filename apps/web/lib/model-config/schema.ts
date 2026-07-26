@@ -20,6 +20,7 @@ export interface AdminModelConfig {
   model: string;
   systemPrompt: string | null;
   providerOptions: Record<string, unknown> | null;
+  toolCallingEnabled: boolean;
   enabled: boolean;
   sortOrder: number;
 }
@@ -55,6 +56,10 @@ const RuntimeModelFields = {
     .record(z.string(), z.unknown())
     .nullish()
     .transform((value) => value ?? null),
+  toolCallingEnabled: z
+    .boolean()
+    .nullish()
+    .transform((value) => value ?? true),
 };
 
 export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(

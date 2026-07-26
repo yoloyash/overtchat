@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { modelSupportsToolCalling } from "@overtchat/shared";
 
 import { ModelConfigSchema, ProviderConnectionSchema } from "./schema";
 
@@ -70,8 +71,29 @@ describe("provider configuration", () => {
       model: "qwen",
       systemPrompt: "Be concise.",
       providerOptions: null,
+      toolCallingEnabled: true,
       enabled: true,
       sortOrder: 0,
     });
+  });
+
+  it("preserves an explicit tool-calling capability override", () => {
+    const result = ModelConfigSchema.parse({
+      label: "Text only",
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "",
+      model: "text-only",
+      toolCallingEnabled: false,
+    });
+
+    expect(result.toolCallingEnabled).toBe(false);
+  });
+
+  it("treats disabled models as tool-incompatible without breaking old DTOs", () => {
+    expect(modelSupportsToolCalling({ toolCallingEnabled: false })).toBe(false);
+    expect(modelSupportsToolCalling({})).toBe(true);
+    expect(modelSupportsToolCalling(null)).toBe(false);
   });
 });

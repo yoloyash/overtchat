@@ -11,13 +11,16 @@ import type { FileUIPart } from "ai";
 import {
   AlertCircle,
   ArrowUp,
+  Check,
   Globe,
   Loader2,
   Mic,
   Paperclip,
+  Plus,
   Square,
   X,
 } from "lucide-react";
+import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -43,7 +46,9 @@ export interface ComposerHandle {
 interface ComposerProps {
   configured: boolean;
   streaming: boolean;
-  searchEnabled: boolean;
+  searchAvailable: boolean;
+  searchUnavailableReason: string;
+  searchRequested: boolean;
   dropActive: boolean;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
@@ -54,7 +59,9 @@ interface ComposerProps {
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
   configured,
   streaming,
-  searchEnabled,
+  searchAvailable,
+  searchUnavailableReason,
+  searchRequested,
   dropActive,
   onToggleSearch,
   onSubmit,
@@ -183,35 +190,79 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               className="hidden"
               onChange={(e) => void handleFiles(e.target.files)}
             />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="rounded-full"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              aria-label="Attach file"
-            >
-              <Paperclip />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-8 rounded-full px-3 max-md:h-10 max-md:px-4",
-                searchEnabled &&
-                  "bg-accent text-foreground hover:bg-accent",
-              )}
-              onClick={onToggleSearch}
-              aria-label={
-                searchEnabled ? "Disable web search" : "Enable web search"
-              }
-              aria-pressed={searchEnabled}
-            >
-              <Globe />
-              <span className="text-xs">Search</span>
-            </Button>
+            <Menu.Root>
+              <Menu.Trigger
+                render={
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-full"
+                    aria-label="Add to message"
+                  />
+                }
+              >
+                <Plus />
+              </Menu.Trigger>
+              <Menu.Portal>
+                <Menu.Positioner side="top" align="start" sideOffset={8}>
+                  <Menu.Popup
+                    className={cn(
+                      "z-50 w-72 rounded-xl border bg-popover p-1.5 text-sm text-popover-foreground shadow-md outline-none",
+                      motionClasses.popup,
+                    )}
+                  >
+                    <Menu.Item
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploading}
+                      className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                    >
+                      <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">
+                          Add photos &amp; files
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          Upload from your device
+                        </span>
+                      </span>
+                    </Menu.Item>
+                    <Menu.CheckboxItem
+                      checked={searchRequested}
+                      onCheckedChange={onToggleSearch}
+                      closeOnClick
+                      disabled={!searchAvailable}
+                      className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                    >
+                      <Globe className="size-4 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">Web search</span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {searchAvailable
+                            ? "Always search for this message"
+                            : searchUnavailableReason}
+                        </span>
+                      </span>
+                      <span className="flex size-4 shrink-0 items-center justify-center">
+                        {searchRequested ? <Check className="size-3.5" /> : null}
+                      </span>
+                    </Menu.CheckboxItem>
+                  </Menu.Popup>
+                </Menu.Positioner>
+              </Menu.Portal>
+            </Menu.Root>
+            {searchRequested && (
+              <button
+                type="button"
+                onClick={onToggleSearch}
+                className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:px-3"
+                aria-label="Remove Web search from this message"
+              >
+                <Globe className="size-3.5" />
+                <span>Web search</span>
+                <X className="size-3" />
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-1">
             <Button

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Brain,
   ChevronDown,
+  CircleAlert,
   Globe,
   Loader2,
   type LucideIcon,
@@ -12,10 +13,11 @@ import {
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
-import type {
-  FetchUrlPart,
-  WebSearchPart,
-  WebSearchResult,
+import {
+  type FetchUrlPart,
+  isToolSettled,
+  type WebSearchPart,
+  type WebSearchResult,
 } from "@overtchat/shared";
 import { ThinkingContent } from "./ThinkingContent";
 
@@ -73,12 +75,20 @@ export function ChainOfThought({
   }, [active]);
 
   const hasTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const lastTool = [...parts]
+    .reverse()
+    .find((part) => isWebSearch(part) || isFetchUrl(part));
+  const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
 
-  const StatusIcon = active ? Loader2 : hasTools ? Globe : Brain;
-  const label = active
-    ? activeLabel(last)
-    : settledLabel(hasTools, duration);
+  const StatusIcon = active
+    ? Loader2
+    : lastToolFailed
+      ? CircleAlert
+      : hasTools
+        ? Globe
+        : Brain;
+  const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
   return (
     <div className="text-xs">
@@ -130,11 +140,15 @@ export function ChainOfThought({
 
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
-  const icon = isWebSearch(part)
-    ? Search
-    : isFetchUrl(part)
-      ? Globe
-      : Brain;
+  const icon =
+    (isWebSearch(part) || isFetchUrl(part)) &&
+    part.state === "output-error"
+      ? CircleAlert
+      : isWebSearch(part)
+        ? Search
+        : isFetchUrl(part)
+          ? Globe
+          : Brain;
 
   return (
     <div className="flex gap-2.5">
@@ -167,8 +181,7 @@ function Rail({ icon: Icon, isLast }: { icon: LucideIcon; isLast: boolean }) {
 function SearchStep({ part }: { part: WebSearchPart }) {
   const query = part.input?.query?.trim();
   const results = part.output ?? [];
-  const running =
-    part.state !== "output-available" && part.state !== "output-error";
+  const running = !isToolSettled(part);
 
   return (
     <div className="space-y-1.5">
@@ -219,8 +232,7 @@ function ResultRow({ result }: { result: WebSearchResult }) {
 function FetchStep({ part }: { part: FetchUrlPart }) {
   const url = part.input?.url;
   const domain = url ? cleanDomain(url) : "";
-  const running =
-    part.state !== "output-available" && part.state !== "output-error";
+  const running = !isToolSettled(part);
   const page = part.output;
 
   if (part.state === "output-error") {
@@ -311,7 +323,19 @@ function activeLabel(last: ActivityPart | undefined): string {
   return "Thinking";
 }
 
-function settledLabel(hasTools: boolean, duration: number): string {
-  if (hasTools) return "Searched the web";
+function settledLabel(parts: ActivityPart[], duration: number): string {
+  const lastTool = [...parts]
+    .reverse()
+    .find((part) => isWebSearch(part) || isFetchUrl(part));
+  if (lastTool?.type === "tool-web_search") {
+    if (lastTool.state === "output-error") return "Web search failed";
+    if (lastTool.state === "output-available") return "Searched the web";
+    return "Web search did not complete";
+  }
+  if (lastTool?.type === "tool-fetch_url") {
+    if (lastTool.state === "output-error") return "Page fetch failed";
+    if (lastTool.state === "output-available") return "Searched the web";
+    return "Page fetch did not complete";
+  }
   return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
 }

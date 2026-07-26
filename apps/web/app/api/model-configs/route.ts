@@ -25,6 +25,7 @@ function toPublic(row: ModelConfigRow): PublicModelConfig {
     model: row.model,
     hasProviderOptions:
       !!row.providerOptions && Object.keys(row.providerOptions).length > 0,
+    toolCallingEnabled: row.toolCallingEnabled,
   };
 }
 
