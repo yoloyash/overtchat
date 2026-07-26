@@ -53,12 +53,14 @@ Already run SearXNG or Kokoro elsewhere? You can point overtchat at them; see [d
 
 ## Mobile
 
-overtchat now ships as a native Android app — same chat surface, same model picker, same uploads, voice, and web search you have on web.
+<a href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"><img src="https://img.shields.io/badge/Get_it_on-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Get it on Google Play"></a>
 
-It's a thin client: **bring your own server**. On first launch, enter the URL of an overtchat instance you control. Chats and files live there, not in the app.
+The Android app is a **thin client for your own server** — there is no overtchat cloud to sign up for. On first launch it asks for the URL of an instance you control; your account, chats, and files stay on that server. Requests go to it and nowhere else.
 
-- **Android:** [Get it on Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile), or [sideload the APK](docs/android.md#sideload-apk) from any `mobile-v*` release.
-- **iOS:** In progress, no timeline yet.
+Native chat with streaming replies, the model picker, projects, full-text search over your history, image and document uploads, web search with citations, text-to-speech, and dictation.
+
+- **Android:** [Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile), or [sideload the APK](docs/android.md#sideload-apk) attached to any `mobile-v*` release.
+- **iOS:** internal/TestFlight only, no timeline for a store release.
 
 ## What's in the box
 
