@@ -1,30 +1,10 @@
 #!/usr/bin/env node
 /**
- * Fails if any package listed below resolves to more than one version in the
- * installed tree.
+ * Fails when type-coupled Better Auth packages resolve to multiple versions.
  *
- * Most duplicate dependencies are harmless — npm hoists what it can and nests
- * the rest, and two copies of a leaf utility cost nothing but disk. The Better
- * Auth packages are different, for two reasons that compound:
- *
- *   1. better-auth pins the rest of the family exactly (@better-auth/core,
- *      @better-fetch/fetch, better-call and the adapters are all "=X", not
- *      "^X"), while @better-auth/expo declares @better-auth/core as a caret
- *      peer. npm satisfies the caret with the newest matching minor, so bumping
- *      one package on its own leaves two copies of core in the tree.
- *
- *   2. The admin() plugin contributes session.user.role and auth.api.listUsers
- *      through module augmentation against @better-auth/core's declarations.
- *      TypeScript keys that augmentation to the file it came from, so with two
- *      copies it is registered on one and read from the other. Those members
- *      quietly stop existing and the web build fails to compile.
- *
- * The failure surfaces well downstream of its cause, which is what makes an
- * explicit gate worthwhile: one red "two versions of @better-auth/core" line
- * names the problem, where a wall of TS2339s in unrelated components does not.
- *
- * Run locally with `npm run deps:check`. Add a package here when its
- * correctness depends on there being exactly one copy of it in the tree.
+ * Duplicate @better-auth/core versions break Better Auth's TypeScript module
+ * augmentation and surface as missing auth fields far from the dependency
+ * change. Other duplicate packages are not treated as errors.
  */
 
 import { execFileSync } from "node:child_process";
@@ -90,9 +70,8 @@ for (const name of WATCHED) {
 
 if (failed) {
   console.error(
-    "\nDeduplicate the tree before merging. Bump the Better Auth packages together so " +
-      "their internal pins agree, and set the root `overrides` entry for " +
-      "@better-auth/core to the version the family resolves to.",
+    "\nAlign Better Auth versions across every workspace, regenerate package-lock.json " +
+      "with npm 10.9.8, and rerun `npm run deps:check`.",
   );
   process.exit(1);
 }
