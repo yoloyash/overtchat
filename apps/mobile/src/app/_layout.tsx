@@ -50,13 +50,22 @@ import { useTheme } from "@/lib/theme";
 
 SplashScreen.preventAutoHideAsync();
 
+// Must be stored in EAS with plain-text visibility: releases build with
+// `eas build --local`, which never receives secret-visibility variables.
 const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
 if (SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
     debug: __DEV__,
     sendDefaultPii: false,
+    environment:
+      process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT ??
+      (__DEV__ ? "development" : "production"),
   });
+} else if (__DEV__) {
+  console.warn(
+    "[sentry] EXPO_PUBLIC_SENTRY_DSN is unset — crash reporting is disabled.",
+  );
 }
 
 function RootLayout() {

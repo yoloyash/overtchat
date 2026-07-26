@@ -48,6 +48,26 @@ jobs:
             echo "expected_tag=$EXPECTED_TAG"
           } >> "$GITHUB_OUTPUT"
 
+      # A secret-visibility DSN is unreadable here and ships crash reporting
+      # silently disabled, which is how 1.2.3 went out.
+      - name: Check crash reporting is configured
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        # `env:exec` runs this through `sh`, so keep it POSIX.
+        run: |
+          npx eas-cli@20 env:exec production '
+            if [ -z "$EXPO_PUBLIC_SENTRY_DSN" ]; then
+              echo "::error::EXPO_PUBLIC_SENTRY_DSN is not readable in the production environment. It must have plain-text visibility; local builds cannot read secret variables."
+              exit 1
+            fi
+            if [ -z "$SENTRY_AUTH_TOKEN" ]; then
+              echo "::error::SENTRY_AUTH_TOKEN is not readable in the production environment. Source maps would upload unsymbolicated."
+              exit 1
+            fi
+            echo "Crash reporting is configured."
+          '
+
       - name: Install local Android credentials
         run: |
           if [[ -f apps/mobile/credentials.json ]]; then
