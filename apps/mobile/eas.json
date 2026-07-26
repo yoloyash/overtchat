@@ -7,6 +7,7 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "android": {
         "buildType": "apk",
         "withoutCredentials": true
@@ -17,18 +18,21 @@
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "android": {
         "buildType": "apk",
         "credentialsSource": "local"
       }
     },
     "production": {
+      "environment": "production",
       "android": {
         "buildType": "app-bundle",
         "credentialsSource": "local"
       }
     },
     "production-apk": {
+      "environment": "production",
       "android": {
         "buildType": "apk",
         "credentialsSource": "local"
@@ -38,8 +42,8 @@
   "submit": {
     "production": {
       "android": {
-        "track": "alpha",
-        "releaseStatus": "draft"
+        "track": "production",
+        "releaseStatus": "completed"
       }
     }
   }
