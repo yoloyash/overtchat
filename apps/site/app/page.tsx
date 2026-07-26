@@ -312,10 +312,10 @@ export default function HomePage() {
               Chats and attachments stay on that server—not in a hosted mobile backend.
             </p>
             <a
-              href="https://github.com/yoloyash/overtchat/blob/main/docs/android-testing.md"
+              href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"
               className="text-link"
             >
-              Get the Android app <ArrowRight aria-hidden="true" />
+              Get it on Google Play <ArrowRight aria-hidden="true" />
             </a>
           </div>
         </div>
