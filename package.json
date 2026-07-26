@@ -31,5 +31,8 @@
   },
   "dependencies": {
     "expo-crypto": "~56.0.3"
+  },
+  "overrides": {
+    "@better-auth/core": "1.6.23"
   }
 }
