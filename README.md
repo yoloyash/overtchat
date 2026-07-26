@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://overtchat.com/"><img src="https://img.shields.io/badge/Website-overtchat-0D9488" alt="Project website" valign="middle"></a>&nbsp; • &nbsp;
-  <a href="docs/android-testing.md"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
   <a href="https://overtchat.com/privacy/"><img src="https://img.shields.io/badge/Privacy-No_Usage_Analytics-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
   <a href=".github/actions/repo-tokens/README.md"><img src=".github/badges/tokens.svg" alt="source tokens" valign="middle"></a>
 </p>
@@ -57,7 +57,7 @@ overtchat now ships as a native Android app — same chat surface, same model pi
 
 It's a thin client: **bring your own server**. On first launch, enter the URL of an overtchat instance you control. Chats and files live there, not in the app.
 
-- **Android:** Install through [Google Play](docs/android-testing.md).
+- **Android:** [Get it on Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile), or [sideload the APK](docs/android.md#sideload-apk) from any `mobile-v*` release.
 - **iOS:** In progress, no timeline yet.
 
 ## What's in the box
