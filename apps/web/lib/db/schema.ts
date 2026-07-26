@@ -265,6 +265,9 @@ export const modelConfigs = sqliteTable("model_configs", {
   providerOptions: text("provider_options", { mode: "json" }).$type<
     Record<string, unknown>
   >(),
+  toolCallingEnabled: integer("tool_calling_enabled", { mode: "boolean" })
+    .default(true)
+    .notNull(),
   enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: integer("created_at", { mode: "timestamp_ms" })

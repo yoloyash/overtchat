@@ -5,7 +5,12 @@ const ChatRequestEnvelopeSchema = z.object({
   messages: z.unknown(),
   modelConfigId: z.string().trim().min(1, "Missing modelConfigId"),
   chatId: z.string().trim().min(1, "Missing chatId"),
-  searchEnabled: z.boolean().optional().default(false),
+  webSearchEnabled: z.boolean().optional().default(true),
+  forceSearch: z.boolean().optional(),
+  // Accepted during the mobile rollout. `true` maps cleanly to the new
+  // one-message action; `false` now means the normal automatic policy.
+  searchEnabled: z.boolean().optional(),
+  timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
   trigger: z
     .enum(["submit-message", "regenerate-message"])
@@ -19,7 +24,9 @@ export interface ParsedChatRequest {
   messages: UIMessage[];
   modelConfigId: string;
   chatId: string;
-  searchEnabled: boolean;
+  webSearchEnabled: boolean;
+  forceSearch: boolean;
+  timeZone?: string;
   projectId?: string | null;
   trigger: "submit-message" | "regenerate-message";
   messageId?: string;
@@ -74,5 +81,11 @@ export async function parseChatRequest(
     throw new ChatRequestError("Regenerate requires a messageId");
   }
 
-  return { ...envelope.data, messages: validated.data };
+  const { searchEnabled, ...data } = envelope.data;
+  const forceSearch = data.forceSearch ?? searchEnabled ?? false;
+  return {
+    ...data,
+    messages: validated.data,
+    forceSearch: data.webSearchEnabled && forceSearch,
+  };
 }

@@ -2,32 +2,20 @@ import type { UIMessage } from "ai";
 import {
   STANDALONE_PATTERN,
   brandName,
+  buildWebCitationIndex,
   stripCitationMarkers,
   type CitationRefType,
-  type WebSearchPart,
-  type WebSearchResult,
+  type ResolvedWebCitation,
 } from "@overtchat/shared";
-
-const SOURCE_REF_TYPES = new Set<CitationRefType>(["search", "news", "ref"]);
 
 export type SourceLookup = (
   turn: number,
   refType: CitationRefType,
   index: number,
-) => WebSearchResult | undefined;
+) => ResolvedWebCitation | undefined;
 
 export function buildSourceLookup(message: UIMessage): SourceLookup {
-  const flat: WebSearchResult[] = [];
-  for (const part of message.parts) {
-    const sp = part as unknown as WebSearchPart;
-    if (sp.type === "tool-web_search" && Array.isArray(sp.output)) {
-      flat.push(...sp.output);
-    }
-  }
-  return (_turn, refType, index) => {
-    if (!SOURCE_REF_TYPES.has(refType)) return undefined;
-    return flat[index];
-  };
+  return buildWebCitationIndex(message.parts).resolve;
 }
 
 /**
@@ -51,14 +39,14 @@ export function applyCitationsToMarkdown(
   while ((match = pattern.exec(text)) !== null) {
     const [whole, turnStr, refType, indexStr] = match;
     out += text.slice(lastIndex, match.index);
-    const source = lookup(
+    const resolved = lookup(
       Number(turnStr),
       refType as CitationRefType,
       Number(indexStr),
     );
-    if (source) {
-      out += ` [${brandName(source.link)}](${source.link}) `;
-      citationUrls.add(source.link);
+    if (resolved) {
+      out += ` [${brandName(resolved.source.link)}](${resolved.source.link}) `;
+      citationUrls.add(resolved.source.link);
     } else {
       // unknown source — drop the marker entirely
       out += "";

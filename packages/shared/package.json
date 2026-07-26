@@ -14,6 +14,9 @@
     "theme:generate": "tsx scripts/generate-theme-css.ts",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "ai": "^7.0.31"
+  },
   "devDependencies": {
     "@types/culori": "^4.0.0",
     "culori": "^4.0.2",

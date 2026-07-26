@@ -63,12 +63,22 @@ export function buildTitlePromptText(
   if (!userText) return null;
 
   return [
-    "Generate a concise chat title in 3 to 6 words.",
-    "No quotes, no trailing punctuation, no emoji.",
-    "Base it on the user's first message.",
+    "### Task:",
+    "Generate a short chat title (2-5 words) summarizing the user's message.",
     "",
-    "User:",
+    "### Guidelines:",
+    "- Output ONLY the title text. No prefixes, no markdown formatting elements.",
+    '- Never output hashtags, prefixes like "Title:", or quotes.',
+    "",
+    "### Examples:",
+    '- "what\'s the weather in nyc" → Weather in NYC',
+    '- "help me write an essay about space" → Space Essay Help',
+    '- "hi" → Greeting',
+    "",
+    "### User Message:",
+    "<user_message>",
     userText,
+    "</user_message>",
   ].join("\n");
 }
 

@@ -4,7 +4,9 @@ export interface ChatRequestBody {
   messages: UIMessage[];
   modelConfigId: string;
   chatId: string;
-  searchEnabled?: boolean;
+  webSearchEnabled?: boolean;
+  forceSearch?: boolean;
+  timeZone?: string;
   projectId?: string | null;
   trigger?: "submit-message" | "regenerate-message";
   messageId?: string;

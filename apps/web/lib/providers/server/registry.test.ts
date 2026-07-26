@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { generateText } from "ai";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -19,6 +20,10 @@ const baseConfig = {
   providerOptions: null,
 };
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 describe("provider registry", () => {
   it("maps every catalog provider to its matching adapter", () => {
     for (const providerId of PROVIDER_IDS) {
@@ -26,7 +31,7 @@ describe("provider registry", () => {
     }
   });
 
-  it("mounts provider options under the stable provider identity", () => {
+  it("mounts provider options under the transport SDK identity", () => {
     const configured = createConfiguredLanguageModel({
       ...baseConfig,
       providerId: "bedrock",
@@ -35,7 +40,123 @@ describe("provider registry", () => {
     });
 
     expect(configured.providerOptions).toEqual({
-      bedrock: { reasoningEffort: "high" },
+      openai: { forceReasoning: true, reasoningEffort: "high" },
+    });
+    expect(configured.promptCacheStrategy).toEqual({ kind: "openai" });
+  });
+
+  it("lets adapters declare prompt-cache behavior without chat-route inference", () => {
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openai",
+      }).promptCacheStrategy,
+    ).toEqual({ kind: "openai" });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "anthropic",
+        providerOptions: {
+          cacheControl: { type: "ephemeral", ttl: "1h" },
+        },
+      }).promptCacheStrategy,
+    ).toEqual({
+      kind: "anthropic",
+      cacheControl: { type: "ephemeral", ttl: "1h" },
+    });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "bedrock",
+        model: "anthropic.claude-sonnet-5",
+      }).promptCacheStrategy,
+    ).toEqual({
+      kind: "anthropic",
+      cacheControl: { type: "ephemeral" },
+    });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "anthropic-messages",
+      }).promptCacheStrategy,
+    ).toEqual({
+      kind: "anthropic",
+      cacheControl: { type: "ephemeral" },
+    });
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "google",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "openai-responses",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "openai-chat",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+    expect(
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "bedrock",
+        model: "qwen.qwen3-coder-next",
+      }).promptCacheStrategy,
+    ).toBeUndefined();
+  });
+
+  it("serializes namespaced Bedrock GPT models as reasoning models", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "intentional test response",
+              type: "invalid_request_error",
+              param: null,
+              code: null,
+            },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }),
+    );
+    const configured = createConfiguredLanguageModel({
+      ...baseConfig,
+      providerId: "bedrock",
+      model: "openai.gpt-5.6-terra",
+      providerOptions: { reasoningEffort: "high" },
+    });
+
+    await expect(
+      generateText({
+        model: configured.model,
+        system: "Stable system instructions",
+        prompt: "Hello",
+        providerOptions: configured.providerOptions,
+      }),
+    ).rejects.toThrow("intentional test response");
+
+    expect(requestBody).toMatchObject({
+      reasoning: { effort: "high", summary: "detailed" },
+      input: [
+        expect.objectContaining({ role: "developer" }),
+        expect.objectContaining({ role: "user" }),
+      ],
     });
   });
 

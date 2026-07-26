@@ -1,0 +1,1 @@
+ALTER TABLE `model_configs` ADD `tool_calling_enabled` integer DEFAULT true NOT NULL;

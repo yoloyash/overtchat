@@ -1,30 +1,25 @@
 "use client";
 
 import type { UIMessage } from "ai";
-import { cleanDomain, faviconUrl, type WebSearchResult } from "@/lib/web-client";
-import type { WebSearchPart } from "@overtchat/shared";
-import type { CitationRefType } from "@/lib/citations";
-
-const SOURCE_REF_TYPES = new Set<CitationRefType>(["search", "news", "ref"]);
+import {
+  cleanDomain,
+  faviconUrl,
+  type WebSearchResult,
+} from "@/lib/web-client";
+import {
+  buildWebCitationIndex,
+  type CitationRefType,
+  type ResolvedWebCitation,
+} from "@overtchat/shared";
 
 export type SourceLookup = (
   turn: number,
   refType: CitationRefType,
   index: number,
-) => WebSearchResult | undefined;
+) => ResolvedWebCitation | undefined;
 
 export function buildSourceLookup(message: UIMessage): SourceLookup {
-  const flat: WebSearchResult[] = [];
-  for (const part of message.parts) {
-    const sp = part as unknown as WebSearchPart;
-    if (sp.type === "tool-web_search" && Array.isArray(sp.output)) {
-      flat.push(...sp.output);
-    }
-  }
-  return (_turn, refType, index) => {
-    if (!SOURCE_REF_TYPES.has(refType)) return undefined;
-    return flat[index];
-  };
+  return buildWebCitationIndex(message.parts).resolve;
 }
 
 function CitationPill({ source, n }: { source: WebSearchResult; n: number }) {
@@ -58,16 +53,17 @@ export function Citation(props: {
   const turn = Number(props.turn ?? 0);
   const refType = (props.reftype ?? "search") as CitationRefType;
   const index = Number(props.index ?? 0);
-  const source = props.lookup(turn, refType, index);
-  if (!source) return null;
-  return <CitationPill source={source} n={index + 1} />;
+  const resolved = props.lookup(turn, refType, index);
+  if (!resolved) return null;
+  return <CitationPill source={resolved.source} n={resolved.number} />;
 }
 
 export function CompositeCitation(props: {
   citations?: string;
   lookup: SourceLookup;
 }) {
-  let parsed: Array<{ turn: number; refType: CitationRefType; index: number }> = [];
+  let parsed: Array<{ turn: number; refType: CitationRefType; index: number }> =
+    [];
   try {
     parsed = JSON.parse(props.citations ?? "[]");
   } catch {
@@ -88,10 +84,6 @@ export function CompositeCitation(props: {
   );
 }
 
-export function HighlightedText({
-  children,
-}: {
-  children?: React.ReactNode;
-}) {
+export function HighlightedText({ children }: { children?: React.ReactNode }) {
   return <span className="rounded bg-amber-300/20 px-0.5">{children}</span>;
 }

@@ -13,13 +13,14 @@ import { AttachmentChip } from "./AttachmentChip";
 export function Composer({
   configured,
   streaming,
-  searchEnabled,
+  searchAvailable,
+  searchRequested,
   attachments,
   attachmentMeta,
   uploading,
   uploadError,
   isAdmin,
-  onDisableSearch,
+  onClearSearch,
   onOpenAddSheet,
   onRemoveAttachment,
   onDismissUploadError,
@@ -28,13 +29,14 @@ export function Composer({
 }: {
   configured: boolean;
   streaming: boolean;
-  searchEnabled: boolean;
+  searchAvailable: boolean;
+  searchRequested: boolean;
   attachments: FileUIPart[];
   attachmentMeta: Record<string, AttachmentMeta>;
   uploading: boolean;
   uploadError: string | null;
   isAdmin: boolean;
-  onDisableSearch: () => void;
+  onClearSearch: () => void;
   onOpenAddSheet: () => void;
   onRemoveAttachment: (index: number) => void;
   onDismissUploadError: () => void;
@@ -80,9 +82,9 @@ export function Composer({
     onOpenAddSheet();
   }
 
-  function disableSearch() {
+  function clearSearch() {
     Haptics.selectionAsync().catch(() => { });
-    onDisableSearch();
+    onClearSearch();
   }
 
   const canSend =
@@ -90,7 +92,7 @@ export function Composer({
     !streaming &&
     !uploading &&
     configured;
-  const showPillsRow = searchEnabled;
+  const showPillsRow = searchRequested;
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
   return (
@@ -176,11 +178,11 @@ export function Composer({
 
         {showPillsRow && (
           <View style={styles.pillsRow}>
-            {searchEnabled && (
+            {searchRequested && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel="Disable web search"
-                onPress={disableSearch}
+                accessibilityLabel="Remove Search from this message"
+                onPress={clearSearch}
                 style={({ pressed }) => [
                   styles.pill,
                   {
@@ -212,7 +214,11 @@ export function Composer({
         <View style={styles.inputRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Add to chat"
+            accessibilityLabel={
+              searchAvailable
+                ? "Add to chat"
+                : "Add to chat; web search unavailable for this model"
+            }
             onPress={openAdd}
             style={({ pressed }) => [
               styles.iconButton,

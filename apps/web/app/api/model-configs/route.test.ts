@@ -17,7 +17,7 @@ vi.mock("@/lib/db/modelConfigs", () => ({
   toAdminModelConfig: mocks.toAdminModelConfig,
 }));
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 function request(input: Record<string, unknown>): Request {
   return new Request("http://server.test/api/model-configs", {
@@ -66,5 +66,49 @@ describe("model config save validation", () => {
       error: expect.stringContaining(message),
     });
     expect(mocks.createModelConfig).not.toHaveBeenCalled();
+  });
+});
+
+describe("public model configs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSession.mockResolvedValue({
+      user: { id: "user", role: "user" },
+    });
+  });
+
+  it("exposes whether the selected model supports tool calling", async () => {
+    mocks.listModelConfigs.mockResolvedValue([
+      {
+        id: "text-only",
+        label: "Text only",
+        providerId: "custom",
+        apiFormat: "openai-chat",
+        baseUrl: "http://localhost:8000/v1",
+        apiKey: null,
+        model: "text-only",
+        systemPrompt: null,
+        providerOptions: null,
+        toolCallingEnabled: false,
+        enabled: true,
+        sortOrder: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+
+    const response = await GET(
+      new Request("http://server.test/api/model-configs"),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      modelConfigs: [
+        {
+          id: "text-only",
+          toolCallingEnabled: false,
+        },
+      ],
+    });
   });
 });

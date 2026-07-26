@@ -14,6 +14,7 @@ export const openAIAdapter: ProviderAdapter = {
         model: config.model,
       }),
       providerOptionsKey: "openai",
+      promptCacheKind: "openai",
     };
   },
   listModels(connection) {

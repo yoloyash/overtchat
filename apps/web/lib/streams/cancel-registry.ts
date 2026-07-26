@@ -1,7 +1,7 @@
 import "server-only";
 
-// Process-local map of streamId -> AbortController for the in-flight streamText
-// call. The AbortController is a live JS object, so this can't move to Redis;
+// Process-local map of streamId -> AbortController for in-flight chat
+// generation. The AbortController is a live JS object, so this can't move to Redis;
 // cancel only works in the process that originated the stream. Correct under
 // single-replica deploy. Multi-replica would need Redis pub/sub to fan the
 // abort out to whichever process holds the controller.

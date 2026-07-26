@@ -12,6 +12,7 @@ function request(body: unknown): Request {
 const validBody = {
   modelConfigId: "model-config",
   chatId: "chat",
+  timeZone: "America/Los_Angeles",
   messages: [
     {
       id: "user-message",
@@ -25,7 +26,8 @@ describe("chat request parsing", () => {
   it("validates and normalizes a normal submit request", async () => {
     await expect(parseChatRequest(request(validBody))).resolves.toMatchObject({
       ...validBody,
-      searchEnabled: false,
+      webSearchEnabled: true,
+      forceSearch: false,
       temporary: false,
       trigger: "submit-message",
     });
@@ -42,6 +44,45 @@ describe("chat request parsing", () => {
       message: "Invalid JSON body",
       status: 400,
     });
+  });
+
+  it("accepts an explicit one-message Search request", async () => {
+    await expect(
+      parseChatRequest(request({ ...validBody, forceSearch: true })),
+    ).resolves.toMatchObject({ forceSearch: true });
+  });
+
+  it("discards a forced Search request when web search is disabled", async () => {
+    await expect(
+      parseChatRequest(
+        request({
+          ...validBody,
+          webSearchEnabled: false,
+          forceSearch: true,
+        }),
+      ),
+    ).resolves.toMatchObject({
+      webSearchEnabled: false,
+      forceSearch: false,
+    });
+  });
+
+  it("trims timezone metadata without putting it in message content", async () => {
+    const parsed = await parseChatRequest(
+      request({ ...validBody, timeZone: "  America/Los_Angeles  " }),
+    );
+
+    expect(parsed.timeZone).toBe("America/Los_Angeles");
+    expect(parsed.messages).toEqual(validBody.messages);
+  });
+
+  it("maps the legacy mobile search flag without exposing it downstream", async () => {
+    const parsed = await parseChatRequest(
+      request({ ...validBody, searchEnabled: true }),
+    );
+
+    expect(parsed.forceSearch).toBe(true);
+    expect(parsed).not.toHaveProperty("searchEnabled");
   });
 
   it("rejects missing and structurally invalid messages", async () => {

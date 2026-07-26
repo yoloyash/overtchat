@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Cpu, Database, Settings2, User, Users } from "lucide-react";
+import { Cpu, Database, Settings2, User, Users, Wrench } from "lucide-react";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth/client";
@@ -15,6 +15,7 @@ type Item = {
 
 const USER_ITEMS: Item[] = [
   { href: "/settings/general", label: "General", icon: Settings2 },
+  { href: "/settings/tools", label: "Tools", icon: Wrench },
   { href: "/settings/account", label: "Account", icon: User },
   { href: "/settings/data", label: "Data", icon: Database },
 ];
