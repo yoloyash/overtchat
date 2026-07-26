@@ -1,0 +1,53 @@
+name: Validate
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Named distinctly from the project-site workflow's `validate` job so the two
+  # are tellable apart in a pull request's check list.
+  workspaces:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+
+      - run: npm ci
+
+      - name: Check dependency resolution
+        run: npm run deps:check
+
+      - name: Lint
+        run: npm run lint
+
+      # apps/mobile ships no build and no tests, so type-checking is the only
+      # signal it produces. Running tsc across every workspace also keeps a
+      # dependency update that breaks types legible here rather than surfacing
+      # it later as a failed Playwright run.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test

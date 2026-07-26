@@ -11,11 +11,13 @@
     "./theme.rn": "./src/theme.rn.ts"
   },
   "scripts": {
-    "theme:generate": "tsx scripts/generate-theme-css.ts"
+    "theme:generate": "tsx scripts/generate-theme-css.ts",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/culori": "^4.0.0",
     "culori": "^4.0.2",
-    "tsx": "^4.22.3"
+    "tsx": "^4.22.3",
+    "typescript": "~6.0.3"
   }
 }
