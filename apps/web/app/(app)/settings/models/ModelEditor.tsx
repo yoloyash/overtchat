@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
+import { DEFAULT_MODEL_SYSTEM_PROMPT } from "@/lib/model-config/defaults";
 import {
   ModelConfigSchema,
   type AdminModelConfig,
@@ -66,7 +67,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       baseUrl: PROVIDERS.openai.defaultBaseUrl,
       apiKey: "",
       model: "",
-      systemPrompt: "",
+      systemPrompt: DEFAULT_MODEL_SYSTEM_PROMPT,
       providerOptions: null,
       toolCallingEnabled: true,
       enabled: true,
@@ -89,6 +90,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const saving = createMut.isPending || updateMut.isPending;
 
   const requiresKey = getProvider(draft.providerId).requiresApiKey;
+
+  // A new model's prefilled prompt has to be visible to be worth prefilling.
+  // When editing, stay collapsed unless the section holds more than the default.
+  const advancedDefaultOpen = isEditing
+    ? Boolean(
+        (existing?.systemPrompt &&
+          existing.systemPrompt !== DEFAULT_MODEL_SYSTEM_PROMPT) ||
+          existing?.providerOptions,
+      )
+    : true;
 
   const canSave =
     !saving &&
@@ -302,9 +313,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             setProviderOptionsText(next);
             setProviderOptionsError(err);
           }}
-          defaultOpen={Boolean(
-            existing?.systemPrompt || existing?.providerOptions,
-          )}
+          defaultOpen={advancedDefaultOpen}
         />
 
         {saveError && (
