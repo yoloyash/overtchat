@@ -3,7 +3,9 @@
 import {
   forwardRef,
   useEffect,
+  useId,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -12,11 +14,16 @@ import {
   AlertCircle,
   ArrowUp,
   Check,
+  Cpu,
+  Ghost,
   Globe,
   Loader2,
   Mic,
   Paperclip,
+  Pencil,
   Plus,
+  Search,
+  Settings2,
   Square,
   X,
 } from "lucide-react";
@@ -32,7 +39,22 @@ import {
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { motionClasses } from "@/lib/motion";
 import { useDictation } from "@/lib/useDictation";
+import {
+  filterSlashCommandModels,
+  filterSlashCommands,
+  isSlashCommandAvailable,
+  parseSlashCommandQuery,
+  resolveSlashCommand,
+  type SlashCommand,
+} from "@/lib/chat/slash-commands";
+import type { PublicModelConfig } from "@/lib/model-config/schema";
 import { CategoryIcon } from "./attachment-icons";
+import {
+  SlashCommandMenu,
+  toSlashCommandModelRows,
+  toSlashCommandRows,
+  type SlashCommandRow,
+} from "./SlashCommandMenu";
 import {
   type ChatAttachment,
   useChatAttachments,
@@ -43,6 +65,19 @@ export interface ComposerHandle {
   focus: (options?: FocusOptions) => void;
 }
 
+/**
+ * Commands the composer owns itself (attach, dictate) are appended by the
+ * composer; everything that mutates chat-level state is declared by `ChatArea`.
+ */
+export interface ComposerCommandActions {
+  /** Runs `/temporary`; omitted once the chat has messages. */
+  temporary?: { active: boolean; onToggle: () => void };
+  onNewChat: () => void;
+  onSearchChats: () => void;
+  onOpenSettings: () => void;
+  onSelectModel: (modelId: string) => void;
+}
+
 interface ComposerProps {
   configured: boolean;
   streaming: boolean;
@@ -50,6 +85,9 @@ interface ComposerProps {
   searchUnavailableReason: string;
   searchRequested: boolean;
   dropActive: boolean;
+  models: PublicModelConfig[] | null;
+  selectedModelId: string;
+  commandActions: ComposerCommandActions;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
   onStop: () => void;
@@ -63,6 +101,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   searchUnavailableReason,
   searchRequested,
   dropActive,
+  models,
+  selectedModelId,
+  commandActions,
   onToggleSearch,
   onSubmit,
   onStop,
@@ -114,6 +155,234 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     el.style.height = `${el.scrollHeight}px`;
   }, [input]);
 
+  function startDictation() {
+    if (dictation.status === "idle") void dictation.start();
+  }
+
+  const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const listboxId = useId();
+  const optionIdPrefix = useId();
+
+  const commands = useMemo<SlashCommand[]>(() => {
+    const list: SlashCommand[] = [
+      {
+        name: "search",
+        title: "Web search",
+        description: "Search the web for this message",
+        group: "actions",
+        icon: Globe,
+        keywords: ["web", "browse"],
+        toggle: {
+          active: searchRequested,
+          unavailableReason: searchAvailable
+            ? undefined
+            : searchUnavailableReason,
+        },
+        run: onToggleSearch,
+      },
+      {
+        name: "attach",
+        title: "Add photos & files",
+        description: "Upload from your device",
+        group: "actions",
+        icon: Paperclip,
+        keywords: ["file", "upload", "image", "photo", "pdf"],
+        action: "attach",
+      },
+      {
+        name: "dictate",
+        title: "Dictate",
+        description: "Record and transcribe speech",
+        group: "actions",
+        icon: Mic,
+        keywords: ["voice", "speak", "microphone", "transcribe"],
+        action: "dictate",
+      },
+    ];
+
+    if (commandActions.temporary) {
+      list.push({
+        name: "temporary",
+        title: "Temporary chat",
+        description: "Chat without saving to history",
+        group: "actions",
+        icon: Ghost,
+        keywords: ["incognito", "private", "unsaved"],
+        toggle: { active: commandActions.temporary.active },
+        run: commandActions.temporary.onToggle,
+      });
+    }
+
+    list.push(
+      {
+        name: "model",
+        title: "Switch model",
+        description: "Choose which model answers",
+        group: "actions",
+        icon: Cpu,
+        keywords: ["models", "switch"],
+        submenu: "model",
+      },
+      {
+        name: "new",
+        title: "New chat",
+        description: "Start a fresh conversation",
+        group: "navigate",
+        icon: Pencil,
+        shortcut: ["Ctrl", "Shift", "O"],
+        run: commandActions.onNewChat,
+      },
+      {
+        name: "chats",
+        title: "Search chats",
+        description: "Find an earlier conversation",
+        group: "navigate",
+        icon: Search,
+        keywords: ["history", "find"],
+        shortcut: ["Ctrl", "K"],
+        run: commandActions.onSearchChats,
+      },
+      {
+        name: "settings",
+        title: "Settings",
+        description: "Models, tools, and preferences",
+        group: "navigate",
+        icon: Settings2,
+        keywords: ["preferences", "config"],
+        run: commandActions.onOpenSettings,
+      },
+    );
+
+    return list;
+  }, [
+    commandActions,
+    searchAvailable,
+    searchRequested,
+    searchUnavailableReason,
+    onToggleSearch,
+  ]);
+
+  const query = parseSlashCommandQuery(input);
+  const exactCommand = query
+    ? (commands.find((command) => command.name === query.name) ?? null)
+    : null;
+  // `/model foo` filters the model list; any other command with an argument is
+  // a finished invocation, so the menu closes.
+  const submenu = query?.hasArgument ? exactCommand?.submenu ?? null : null;
+
+  const commandQuery = query && !submenu ? query.name : null;
+  const filteredCommands = useMemo(
+    () =>
+      commandQuery === null ? [] : filterSlashCommands(commands, commandQuery),
+    [commands, commandQuery],
+  );
+  const submenuModels = useMemo(
+    () =>
+      submenu === "model"
+        ? filterSlashCommandModels(models ?? [], query?.argument ?? "")
+        : null,
+    [models, query?.argument, submenu],
+  );
+
+  const rows = submenuModels
+    ? toSlashCommandModelRows(submenuModels)
+    : toSlashCommandRows(filteredCommands);
+  const menuOpen =
+    query !== null &&
+    input !== dismissedQuery &&
+    (submenu !== null || !query.hasArgument);
+  // Filtering shrinks the list under the cursor, so clamp on read rather than
+  // syncing an effect against the row count.
+  const activeRow = Math.min(activeIndex, Math.max(0, rows.length - 1));
+
+  function closeMenu() {
+    setDismissedQuery(input);
+    setActiveIndex(0);
+  }
+
+  function replaceDraft(next: string) {
+    setInput(next);
+    setDismissedQuery(null);
+    setActiveIndex(0);
+    textareaRef.current?.focus({ preventScroll: true });
+  }
+
+  function runCommand(command: SlashCommand) {
+    if (!isSlashCommandAvailable(command)) return;
+    if (command.submenu) {
+      replaceDraft(`/${command.name} `);
+      return;
+    }
+    // Clear the draft before running: navigation unmounts the composer, and a
+    // toggle should leave an empty box ready for the real message.
+    replaceDraft("");
+    if (command.action === "attach") fileInputRef.current?.click();
+    else if (command.action === "dictate") startDictation();
+    else command.run?.();
+  }
+
+  function selectRow(row: SlashCommandRow) {
+    if (row.kind === "model") {
+      replaceDraft("");
+      commandActions.onSelectModel(row.model.id);
+      return;
+    }
+    runCommand(row.command);
+  }
+
+  /** Returns true when the menu consumed the key. */
+  function handleMenuKeyDown(
+    e: React.KeyboardEvent<HTMLTextAreaElement>,
+  ): boolean {
+    if (!query) return false;
+
+    if (e.key === "Escape" && menuOpen) {
+      e.preventDefault();
+      // Back out of the submenu one level before closing the menu.
+      if (submenu) replaceDraft(`/${query.name}`);
+      else closeMenu();
+      return true;
+    }
+
+    if (e.key === "Enter" && !e.shiftKey) {
+      if (menuOpen && rows.length > 0) {
+        e.preventDefault();
+        selectRow(rows[activeRow]);
+        return true;
+      }
+      // With the menu closed, a fully typed command still runs on Enter instead
+      // of sending "/temporary" as a message.
+      if (!submenu) {
+        const command = resolveSlashCommand(commands, query);
+        if (command && isSlashCommandAvailable(command) && !command.submenu) {
+          e.preventDefault();
+          runCommand(command);
+          return true;
+        }
+      }
+      return false;
+    }
+
+    if (!menuOpen || rows.length === 0) return false;
+
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const delta = e.key === "ArrowDown" ? 1 : -1;
+      setActiveIndex((activeRow + delta + rows.length) % rows.length);
+      return true;
+    }
+
+    if (e.key === "Tab" && !e.shiftKey && !submenu) {
+      e.preventDefault();
+      const command = filteredCommands[activeRow];
+      if (command) replaceDraft(`/${command.name}${command.submenu ? " " : ""}`);
+      return true;
+    }
+
+    return false;
+  }
+
   function submit() {
     const text = input.trim();
     if (streaming || uploading) return;
@@ -121,6 +390,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!configured) return;
     onSubmit(text, readyParts);
     setInput("");
+    setDismissedQuery(null);
+    setActiveIndex(0);
     clearAttachments();
   }
 
@@ -131,6 +402,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (handleMenuKeyDown(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
@@ -151,179 +423,208 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           {dictationErrorMessage(dictation.error, isAdmin)}
         </p>
       )}
-      <div
-        className={cn(
-          "flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
-          dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
+      <div className="relative">
+        {menuOpen && query && (
+          <SlashCommandMenu
+            id={listboxId}
+            optionIdPrefix={optionIdPrefix}
+            commands={filteredCommands}
+            models={submenuModels}
+            selectedModelId={selectedModelId}
+            activeIndex={activeRow}
+            query={query.name}
+            onActiveIndexChange={setActiveIndex}
+            onSelect={selectRow}
+          />
         )}
-      >
-        {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 px-1 pt-1">
-            {attachments.map((att) => (
-              <AttachmentChip
-                key={att.id}
-                attachment={att}
-                onRemove={() => removeAttachment(att.id)}
+        <div
+          className={cn(
+            "flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring",
+            dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
+          )}
+        >
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-1 pt-1">
+              {attachments.map((att) => (
+                <AttachmentChip
+                  key={att.id}
+                  attachment={att}
+                  onRemove={() => removeAttachment(att.id)}
+                />
+              ))}
+            </div>
+          )}
+          <Textarea
+            ref={textareaRef}
+            rows={1}
+            placeholder={
+              configured ? "Message… or / for commands" : "No models configured"
+            }
+            className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            // The textarea stays focused and owns the keyboard; the menu below is
+            // the listbox it controls.
+            role="combobox"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? listboxId : undefined}
+            aria-activedescendant={
+              menuOpen && rows.length > 0
+                ? `${optionIdPrefix}-${activeRow}`
+                : undefined
+            }
+            aria-autocomplete="list"
+          />
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={ATTACH_ACCEPT}
+                multiple
+                className="hidden"
+                onChange={(e) => void handleFiles(e.target.files)}
               />
-            ))}
-          </div>
-        )}
-        <Textarea
-          ref={textareaRef}
-          rows={1}
-          placeholder={
-            configured ? "Message…" : "No models configured"
-          }
-          className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-        />
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept={ATTACH_ACCEPT}
-              multiple
-              className="hidden"
-              onChange={(e) => void handleFiles(e.target.files)}
-            />
-            <Menu.Root>
-              <Menu.Trigger
-                render={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="rounded-full"
-                    aria-label="Add to message"
-                  />
-                }
-              >
-                <Plus />
-              </Menu.Trigger>
-              <Menu.Portal>
-                <Menu.Positioner side="top" align="start" sideOffset={8}>
-                  <Menu.Popup
-                    className={cn(
-                      "z-50 w-72 rounded-xl border bg-popover p-1.5 text-sm text-popover-foreground shadow-md outline-none",
-                      motionClasses.popup,
-                    )}
-                  >
-                    <Menu.Item
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploading}
-                      className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              <Menu.Root>
+                <Menu.Trigger
+                  render={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="rounded-full"
+                      aria-label="Add to message"
+                    />
+                  }
+                >
+                  <Plus />
+                </Menu.Trigger>
+                <Menu.Portal>
+                  <Menu.Positioner side="top" align="start" sideOffset={8}>
+                    <Menu.Popup
+                      className={cn(
+                        "z-50 w-72 rounded-xl border bg-popover p-1.5 text-sm text-popover-foreground shadow-md outline-none",
+                        motionClasses.popup,
+                      )}
                     >
-                      <Paperclip className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-medium">
-                          Add photos &amp; files
+                      <Menu.Item
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploading}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">
+                            Add photos &amp; files
+                          </span>
+                          <span className="block text-xs text-muted-foreground">
+                            Upload from your device
+                          </span>
                         </span>
-                        <span className="block text-xs text-muted-foreground">
-                          Upload from your device
+                      </Menu.Item>
+                      <Menu.CheckboxItem
+                        checked={searchRequested}
+                        onCheckedChange={onToggleSearch}
+                        closeOnClick
+                        disabled={!searchAvailable}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <Globe className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">Web search</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {searchAvailable
+                              ? "Always search for this message"
+                              : searchUnavailableReason}
+                          </span>
                         </span>
-                      </span>
-                    </Menu.Item>
-                    <Menu.CheckboxItem
-                      checked={searchRequested}
-                      onCheckedChange={onToggleSearch}
-                      closeOnClick
-                      disabled={!searchAvailable}
-                      className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                    >
-                      <Globe className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-medium">Web search</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {searchAvailable
-                            ? "Always search for this message"
-                            : searchUnavailableReason}
+                        <span className="flex size-4 shrink-0 items-center justify-center">
+                          {searchRequested ? <Check className="size-3.5" /> : null}
                         </span>
-                      </span>
-                      <span className="flex size-4 shrink-0 items-center justify-center">
-                        {searchRequested ? <Check className="size-3.5" /> : null}
-                      </span>
-                    </Menu.CheckboxItem>
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
-            {searchRequested && (
-              <button
+                      </Menu.CheckboxItem>
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.Root>
+              {searchRequested && (
+                <button
+                  type="button"
+                  onClick={onToggleSearch}
+                  className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:px-3"
+                  aria-label="Remove Web search from this message"
+                >
+                  <Globe className="size-3.5" />
+                  <span>Web search</span>
+                  <X className="size-3" />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
                 type="button"
-                onClick={onToggleSearch}
-                className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:px-3"
-                aria-label="Remove Web search from this message"
-              >
-                <Globe className="size-3.5" />
-                <span>Web search</span>
-                <X className="size-3" />
-              </button>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className={cn(
-                "rounded-full",
-                dictation.status === "recording" &&
-                  "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
-              )}
-              onClick={() => {
-                if (dictation.status === "recording") {
-                  dictation.stop();
-                } else if (dictation.status === "idle") {
-                  void dictation.start();
+                variant="ghost"
+                size="icon-sm"
+                className={cn(
+                  "rounded-full",
+                  dictation.status === "recording" &&
+                    "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
+                )}
+                onClick={() => {
+                  if (dictation.status === "recording") {
+                    dictation.stop();
+                  } else if (dictation.status === "idle") {
+                    void dictation.start();
+                  }
+                }}
+                disabled={dictation.status === "transcribing"}
+                aria-label={
+                  dictation.status === "recording"
+                    ? "Stop dictation"
+                    : dictation.status === "transcribing"
+                      ? "Transcribing"
+                      : "Dictate"
                 }
-              }}
-              disabled={dictation.status === "transcribing"}
-              aria-label={
-                dictation.status === "recording"
-                  ? "Stop dictation"
-                  : dictation.status === "transcribing"
-                    ? "Transcribing"
-                    : "Dictate"
-              }
-              aria-pressed={dictation.status === "recording"}
-            >
-              {dictation.status === "transcribing" ? (
-                <Loader2 className={motionClasses.spinner} />
-              ) : dictation.status === "recording" ? (
-                <Square className="size-3 fill-current" />
+                aria-pressed={dictation.status === "recording"}
+              >
+                {dictation.status === "transcribing" ? (
+                  <Loader2 className={motionClasses.spinner} />
+                ) : dictation.status === "recording" ? (
+                  <Square className="size-3 fill-current" />
+                ) : (
+                  <Mic />
+                )}
+              </Button>
+              {streaming ? (
+                <Button
+                  size="icon-sm"
+                  variant="secondary"
+                  className="shrink-0 rounded-full"
+                  onClick={onStop}
+                  aria-label="Stop generating"
+                >
+                  <Square className="size-3 fill-current" />
+                </Button>
               ) : (
-                <Mic />
+                <Button
+                  size="icon-sm"
+                  className="shrink-0 rounded-full"
+                  disabled={
+                    uploading ||
+                    (!input.trim() &&
+                      readyParts.length === 0)
+                  }
+                  onClick={submit}
+                  aria-label="Send message"
+                >
+                  {uploading ? <Loader2 className={motionClasses.spinner} /> : <ArrowUp />}
+                </Button>
               )}
-            </Button>
-            {streaming ? (
-              <Button
-                size="icon-sm"
-                variant="secondary"
-                className="shrink-0 rounded-full"
-                onClick={onStop}
-                aria-label="Stop generating"
-              >
-                <Square className="size-3 fill-current" />
-              </Button>
-            ) : (
-              <Button
-                size="icon-sm"
-                className="shrink-0 rounded-full"
-                disabled={
-                  uploading ||
-                  (!input.trim() &&
-                    readyParts.length === 0)
-                }
-                onClick={submit}
-                aria-label="Send message"
-              >
-                {uploading ? <Loader2 className={motionClasses.spinner} /> : <ArrowUp />}
-              </Button>
-            )}
+            </div>
           </div>
         </div>
       </div>
