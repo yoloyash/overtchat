@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
@@ -29,6 +30,7 @@ import {
   hasDataTransferFiles,
 } from "@/lib/chat/attachments";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
+import { useSidebar } from "@/components/sidebar-context";
 import { ChatHeader } from "./ChatHeader";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -50,6 +52,8 @@ interface Props {
 
 export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQuery }: Props) {
   const qc = useQueryClient();
+  const router = useRouter();
+  const { openPalette } = useSidebar();
   const { data: chats } = useChats();
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
@@ -263,6 +267,17 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
     sendMessage({ text, files, messageId }, { body: requestBody() });
   }
 
+  // A per-message search request is scoped to the model that supports it, so
+  // switching models drops it.
+  function handleSelectModel(modelId: string) {
+    setSearchRequested(false);
+    setSelectedId(modelId);
+  }
+
+  // Temporary mode is only switchable before the first message, matching the
+  // header toggle's visibility rule.
+  const canToggleTemporary = Boolean(isNew) && messages.length === 0;
+
   const composer = (
     <Composer
       ref={composerRef}
@@ -272,6 +287,17 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
       searchUnavailableReason={searchUnavailableReason}
       searchRequested={searchAvailable && searchRequested}
       dropActive={dropActive}
+      models={models}
+      selectedModelId={selectedId}
+      commandActions={{
+        temporary: canToggleTemporary
+          ? { active: temporary, onToggle: () => setTemporary((t) => !t) }
+          : undefined,
+        onNewChat: () => router.push("/"),
+        onSearchChats: openPalette,
+        onOpenSettings: () => router.push("/settings"),
+        onSelectModel: handleSelectModel,
+      }}
       onToggleSearch={() => {
         if (searchAvailable) setSearchRequested((selected) => !selected);
       }}
@@ -292,11 +318,8 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
       <ChatHeader
         models={models}
         selectedId={selectedId}
-        onSelectModel={(modelId) => {
-          setSearchRequested(false);
-          setSelectedId(modelId);
-        }}
-        showTempToggle={Boolean(isNew) && messages.length === 0}
+        onSelectModel={handleSelectModel}
+        showTempToggle={canToggleTemporary}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}
       />
