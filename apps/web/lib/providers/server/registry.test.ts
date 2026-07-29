@@ -42,6 +42,7 @@ describe("provider registry", () => {
     expect(configured.providerOptions).toEqual({
       openai: { forceReasoning: true, reasoningEffort: "high" },
     });
+    expect(configured.providerOptionsKey).toBe("openai");
     expect(configured.promptCacheStrategy).toEqual({ kind: "openai" });
   });
 
@@ -157,6 +158,54 @@ describe("provider registry", () => {
         expect.objectContaining({ role: "developer" }),
         expect.objectContaining({ role: "user" }),
       ],
+    });
+  });
+
+  it("serializes disabled reasoning for custom OpenAI-compatible models", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(
+          JSON.stringify({
+            error: {
+              message: "intentional test response",
+              type: "invalid_request_error",
+              param: null,
+              code: null,
+            },
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }),
+    );
+    const configured = createConfiguredLanguageModel({
+      ...baseConfig,
+      providerId: "custom",
+      apiFormat: "openai-chat",
+    });
+    const providerOptions = {
+      ...configured.providerOptions,
+      [configured.providerOptionsKey]: {
+        ...configured.providerOptions?.[configured.providerOptionsKey],
+        reasoningEffort: "none",
+      },
+    };
+
+    await expect(
+      generateText({
+        model: configured.model,
+        prompt: "Generate a title",
+        providerOptions,
+      }),
+    ).rejects.toThrow("intentional test response");
+
+    expect(requestBody).toMatchObject({
+      reasoning_effort: "none",
     });
   });
 

@@ -31,19 +31,25 @@ export async function generateChatTitle({
     const prompt = buildTitlePromptText(userParts);
     if (!prompt) return null;
 
-    const { model, providerOptions } = createConfiguredLanguageModel({
-      providerId: modelConfig.providerId,
-      apiFormat: modelConfig.apiFormat,
-      baseUrl: modelConfig.baseUrl,
-      apiKey: modelConfig.apiKey,
-      model: modelConfig.model,
-      providerOptions: modelConfig.providerOptions,
-    });
+    const { model, providerOptions, providerOptionsKey } =
+      createConfiguredLanguageModel({
+        providerId: modelConfig.providerId,
+        apiFormat: modelConfig.apiFormat,
+        baseUrl: modelConfig.baseUrl,
+        apiKey: modelConfig.apiKey,
+        model: modelConfig.model,
+        providerOptions: modelConfig.providerOptions,
+      });
     const { text } = await generateText({
       model,
       prompt,
-      reasoningEffort: "low",
-      providerOptions,
+      providerOptions: {
+        ...providerOptions,
+        [providerOptionsKey]: {
+          ...providerOptions?.[providerOptionsKey],
+          reasoningEffort: "none",
+        },
+      },
       // Do not cap title-task output tokens here. Some reasoning models spend
       // the first output budget on thoughts before emitting final text.
       maxRetries: 0,
