@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   createModelConfig: vi.fn(),
   listModelConfigs: vi.fn(),
   toAdminModelConfig: vi.fn((row) => row),
+  resolveModelContextWindow: vi.fn(),
+  resolveModelCapabilities: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -15,6 +17,10 @@ vi.mock("@/lib/db/modelConfigs", () => ({
   createModelConfig: mocks.createModelConfig,
   listModelConfigs: mocks.listModelConfigs,
   toAdminModelConfig: mocks.toAdminModelConfig,
+}));
+vi.mock("@/lib/providers/server/model-catalog", () => ({
+  resolveModelContextWindow: mocks.resolveModelContextWindow,
+  resolveModelCapabilities: mocks.resolveModelCapabilities,
 }));
 
 import { GET, POST } from "./route";
@@ -42,6 +48,10 @@ function request(input: Record<string, unknown>): Request {
 describe("model config save validation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveModelContextWindow.mockReturnValue(128_000);
+    mocks.resolveModelCapabilities.mockReturnValue({
+      inputModalities: ["text"],
+    });
     mocks.getSession.mockResolvedValue({
       user: { id: "admin", role: "admin" },
     });
@@ -72,6 +82,10 @@ describe("model config save validation", () => {
 describe("public model configs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveModelContextWindow.mockReturnValue(128_000);
+    mocks.resolveModelCapabilities.mockReturnValue({
+      inputModalities: ["text"],
+    });
     mocks.getSession.mockResolvedValue({
       user: { id: "user", role: "user" },
     });
@@ -87,6 +101,9 @@ describe("public model configs", () => {
         baseUrl: "http://localhost:8000/v1",
         apiKey: null,
         model: "text-only",
+        contextWindow: null,
+        discoveredContextWindow: null,
+        discoveredCapabilities: null,
         systemPrompt: null,
         providerOptions: null,
         toolCallingEnabled: false,
@@ -102,10 +119,23 @@ describe("public model configs", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(mocks.resolveModelContextWindow).toHaveBeenCalledWith(
+      null,
+      null,
+      "custom",
+      "text-only",
+    );
+    expect(mocks.resolveModelCapabilities).toHaveBeenCalledWith(
+      null,
+      "custom",
+      "text-only",
+    );
     await expect(response.json()).resolves.toMatchObject({
       modelConfigs: [
         {
           id: "text-only",
+          contextWindow: 128_000,
+          capabilities: { inputModalities: ["text"] },
           toolCallingEnabled: false,
         },
       ],

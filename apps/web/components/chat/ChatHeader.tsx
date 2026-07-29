@@ -6,11 +6,13 @@ import { cn } from "@/lib/utils";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type { PublicModelConfig } from "@/lib/model-config/schema";
+import { ContextMeter } from "./ContextMeter";
 
 export function ChatHeader({
   models,
   selectedId,
   onSelectModel,
+  contextUsage,
   showTempToggle,
   temporary,
   onToggleTemporary,
@@ -18,6 +20,7 @@ export function ChatHeader({
   models: PublicModelConfig[] | null;
   selectedId: string;
   onSelectModel: (id: string) => void;
+  contextUsage?: { usedTokens: number; contextWindow?: number };
   showTempToggle: boolean;
   temporary: boolean;
   onToggleTemporary: () => void;
@@ -31,6 +34,12 @@ export function ChatHeader({
         onSelect={onSelectModel}
       />
       <div className="ml-auto flex items-center">
+        {contextUsage ? (
+          <ContextMeter
+            usedTokens={contextUsage.usedTokens}
+            contextWindow={contextUsage.contextWindow}
+          />
+        ) : null}
         {showTempToggle ? (
           <Button
             type="button"

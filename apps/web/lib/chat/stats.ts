@@ -7,7 +7,9 @@ import {
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_message_stats";
 
 export interface MessageStats {
+  /** Latest-step input plus output: the approximate footprint of the next turn. */
   contextTokens?: number;
+  contextWindow?: number;
   cacheReadTokens?: number;
   cacheWriteTokens?: number;
   uncachedInputTokens?: number;
@@ -34,6 +36,14 @@ function optionalNumber(value: unknown): number | undefined {
     : undefined;
 }
 
+function optionalPositiveInteger(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+    ? value
+    : undefined;
+}
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
@@ -55,6 +65,7 @@ function parseMessageStats(rawStats: unknown): MessageStats | null {
   if (!isRecord(rawStats)) return null;
   const stats: MessageStats = {
     contextTokens: optionalNumber(rawStats.contextTokens),
+    contextWindow: optionalPositiveInteger(rawStats.contextWindow),
     cacheReadTokens: optionalNumber(rawStats.cacheReadTokens),
     cacheWriteTokens: optionalNumber(rawStats.cacheWriteTokens),
     uncachedInputTokens: optionalNumber(rawStats.uncachedInputTokens),

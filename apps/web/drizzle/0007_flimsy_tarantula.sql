@@ -1,0 +1,1 @@
+ALTER TABLE `model_configs` ADD `discovered_context_window` integer;

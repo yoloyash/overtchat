@@ -69,12 +69,78 @@ describe("provider configuration", () => {
       label: "Local model",
       baseUrl: "http://localhost:8000/v1",
       model: "qwen",
+      contextWindow: null,
+      discoveredContextWindow: null,
+      discoveredCapabilities: null,
       systemPrompt: "Be concise.",
       providerOptions: null,
       toolCallingEnabled: true,
       enabled: true,
       sortOrder: 0,
     });
+  });
+
+  it("validates reported model capabilities without treating omissions as false", () => {
+    const result = ModelConfigSchema.parse({
+      label: "Local model",
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "",
+      model: "local-model",
+      discoveredCapabilities: {
+        maxOutputTokens: 8192,
+        inputModalities: ["text", "image"],
+        toolCalling: false,
+      },
+    });
+
+    expect(result.discoveredCapabilities).toEqual({
+      maxOutputTokens: 8192,
+      inputModalities: ["text", "image"],
+      toolCalling: false,
+    });
+    expect(
+      ModelConfigSchema.safeParse({
+        ...result,
+        discoveredCapabilities: { maxOutputTokens: -1 },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("accepts only positive integer override and discovered limits", () => {
+    const base = {
+      label: "Local model",
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "",
+      model: "local-model",
+    };
+
+    expect(
+      ModelConfigSchema.parse({ ...base, contextWindow: 32_768 })
+        .contextWindow,
+    ).toBe(32_768);
+    expect(
+      ModelConfigSchema.safeParse({ ...base, contextWindow: 0 }).success,
+    ).toBe(false);
+    expect(
+      ModelConfigSchema.safeParse({ ...base, contextWindow: 32_768.5 })
+        .success,
+    ).toBe(false);
+    expect(
+      ModelConfigSchema.parse({
+        ...base,
+        discoveredContextWindow: 131_072,
+      }).discoveredContextWindow,
+    ).toBe(131_072);
+    expect(
+      ModelConfigSchema.safeParse({
+        ...base,
+        discoveredContextWindow: -1,
+      }).success,
+    ).toBe(false);
   });
 
   it("preserves an explicit tool-calling capability override", () => {

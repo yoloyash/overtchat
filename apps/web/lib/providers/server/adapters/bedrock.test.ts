@@ -1,11 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
 import {
+  bedrockAdapter,
   getMantleRoot,
   resolveBedrockTransport,
 } from "./bedrock";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("Amazon Bedrock model routing", () => {
   it.each([
@@ -41,5 +46,41 @@ describe("Amazon Bedrock model routing", () => {
     expect(() =>
       getMantleRoot("https://bedrock-mantle.eu-west-1.api.aws"),
     ).toThrow("must end with /v1");
+  });
+
+  it("filters unsupported discovery results without dropping model metadata", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        Response.json({
+          data: [
+            {
+              id: "anthropic.claude-sonnet-5",
+              max_context_length: 1_000_000,
+            },
+            {
+              id: "future.unknown-model",
+              max_context_length: 32_768,
+            },
+            { id: "qwen.qwen3-coder-next" },
+          ],
+        }),
+      ),
+    );
+
+    await expect(
+      bedrockAdapter.listModels({
+        providerId: "bedrock",
+        apiFormat: "auto",
+        baseUrl: "https://bedrock-mantle.us-east-1.api.aws/v1",
+        apiKey: "secret",
+      }),
+    ).resolves.toEqual([
+      {
+        id: "anthropic.claude-sonnet-5",
+        contextWindow: 1_000_000,
+      },
+      { id: "qwen.qwen3-coder-next" },
+    ]);
   });
 });

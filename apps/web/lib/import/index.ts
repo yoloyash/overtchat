@@ -71,6 +71,7 @@ function writeChats(
             chatId,
             role: msg.role,
             parts: msg.parts,
+            metadata: msg.metadata,
             createdAt: msg.createdAt,
           })
           .run();

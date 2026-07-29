@@ -2,6 +2,10 @@ import { auth } from "@/lib/auth/server";
 import { ProviderConnectionSchema } from "@/lib/model-config/schema";
 import { preflight, withCors } from "@/lib/cors";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import {
+  catalogCapabilitiesFor,
+  catalogContextWindowFor,
+} from "@/lib/providers/server/model-catalog";
 import { listProviderModels } from "@/lib/providers/server/registry";
 
 export function OPTIONS(req: Request) {
@@ -38,7 +42,25 @@ export async function POST(req: Request) {
   }
 
   try {
-    const models = await listProviderModels(parsed.data);
+    const models = (await listProviderModels(parsed.data)).map((model) => {
+      const catalogContextWindow = catalogContextWindowFor(
+        parsed.data.providerId,
+        model.id,
+      );
+      const catalogCapabilities = catalogCapabilitiesFor(
+        parsed.data.providerId,
+        model.id,
+      );
+      return {
+        ...model,
+        ...(catalogContextWindow === undefined
+          ? {}
+          : { catalogContextWindow }),
+        ...(catalogCapabilities === undefined
+          ? {}
+          : { catalogCapabilities }),
+      };
+    });
     return withCors(req, Response.json({ models }));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         baseUrl: existing.baseUrl,
         apiKey: existing.apiKey ?? "",
         model: existing.model,
+        contextWindow: existing.contextWindow,
+        discoveredContextWindow: existing.discoveredContextWindow,
+        discoveredCapabilities: existing.discoveredCapabilities,
         systemPrompt: existing.systemPrompt ?? "",
         providerOptions: existing.providerOptions,
         toolCallingEnabled: existing.toolCallingEnabled !== false,
@@ -67,6 +71,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       baseUrl: PROVIDERS.openai.defaultBaseUrl,
       apiKey: "",
       model: "",
+      contextWindow: null,
+      discoveredContextWindow: null,
+      discoveredCapabilities: null,
       systemPrompt: DEFAULT_MODEL_SYSTEM_PROMPT,
       providerOptions: null,
       toolCallingEnabled: true,
@@ -84,6 +91,20 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     string | null
   >(null);
   const [saveError, setSaveError] = useState("");
+  // undefined means discovery was not touched in this editor session; null
+  // means the current connection did not report a limit.
+  const [detectedContextWindow, setDetectedContextWindow] = useState<
+    number | null | undefined
+  >();
+  const [catalogContextWindow, setCatalogContextWindow] = useState<
+    number | undefined
+  >();
+  const [detectedCapabilities, setDetectedCapabilities] = useState<
+    ModelCapabilities | null | undefined
+  >();
+  const [catalogCapabilities, setCatalogCapabilities] = useState<
+    ModelCapabilities | undefined
+  >();
 
   const createMut = useCreateModelConfig();
   const updateMut = useUpdateModelConfig();
@@ -97,7 +118,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     ? Boolean(
         (existing?.systemPrompt &&
           existing.systemPrompt !== DEFAULT_MODEL_SYSTEM_PROMPT) ||
-          existing?.providerOptions,
+          existing?.providerOptions ||
+          existing?.contextWindow,
       )
     : true;
 
@@ -107,6 +129,24 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !!draft.model &&
     !providerOptionsError &&
     !(requiresKey && !draft.apiKey);
+  const stillEditingOriginalConnection =
+    existing !== undefined &&
+    draft.providerId === existing.providerId &&
+    draft.apiFormat === existing.apiFormat &&
+    draft.baseUrl === existing.baseUrl &&
+    draft.model === existing.model;
+  const contextWindowPlaceholder =
+    detectedContextWindow === undefined
+      ? (draft.discoveredContextWindow ?? catalogContextWindow)
+      : (detectedContextWindow ?? catalogContextWindow);
+  const capabilitiesHint =
+    detectedCapabilities === undefined
+      ? (draft.discoveredCapabilities ??
+        catalogCapabilities ??
+        (stillEditingOriginalConnection
+          ? existing?.resolvedCapabilities
+          : undefined))
+      : (detectedCapabilities ?? catalogCapabilities);
 
   const pingArgs = useMemo(() => {
     let parsedOptions: Record<string, unknown> | null = null;
@@ -162,6 +202,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     const parsed = ModelConfigSchema.safeParse({
       ...draft,
       label: draft.label.trim() || defaultLabelFor(draft.model),
+      discoveredContextWindow:
+        detectedContextWindow === undefined
+          ? draft.discoveredContextWindow
+          : detectedContextWindow,
+      discoveredCapabilities:
+        detectedCapabilities === undefined
+          ? draft.discoveredCapabilities
+          : detectedCapabilities,
       providerOptions,
     });
     if (!parsed.success) {
@@ -221,13 +269,54 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               apiKey: draft.apiKey ?? "",
               model: draft.model,
             }}
-            onChange={(next) => setDraft((d) => ({ ...d, ...next }))}
+            onChange={(next) =>
+              setDraft((current) => {
+                const connectionIdentityChanged =
+                  (next.providerId !== undefined &&
+                    next.providerId !== current.providerId) ||
+                  (next.apiFormat !== undefined &&
+                    next.apiFormat !== current.apiFormat) ||
+                  (next.baseUrl !== undefined &&
+                    next.baseUrl !== current.baseUrl) ||
+                  (next.model !== undefined && next.model !== current.model);
+                return {
+                  ...current,
+                  ...next,
+                  ...(connectionIdentityChanged
+                    ? {
+                        contextWindow: null,
+                        discoveredContextWindow: null,
+                        discoveredCapabilities: null,
+                      }
+                    : {}),
+                };
+              })
+            }
+            onDiscoveredContextWindow={(next) =>
+              setDetectedContextWindow(next ?? null)
+            }
+            onCatalogContextWindow={setCatalogContextWindow}
+            onDiscoveredCapabilities={(next) =>
+              setDetectedCapabilities(next ?? null)
+            }
+            onCatalogCapabilities={setCatalogCapabilities}
+            onCapabilitySuggestion={(next) => {
+              if (
+                !isEditing &&
+                typeof next?.toolCalling === "boolean"
+              ) {
+                setDraft((current) => ({
+                  ...current,
+                  toolCallingEnabled: next.toolCalling ?? true,
+                }));
+              }
+            }}
             autoFetchModels={!isEditing}
           />
 
           <SettingsRow
             title="Tool calling"
-            description="Allow this model to use tools such as web search. Turn off if the endpoint does not support tool schemas."
+            description={toolCallingDescription(capabilitiesHint)}
             align="center"
             controlAlign="end"
           >
@@ -304,6 +393,17 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         </SettingsSection>
 
         <AdvancedFields
+          contextWindow={draft.contextWindow}
+          onContextWindowChange={(next) =>
+            setDraft((d) => ({ ...d, contextWindow: next }))
+          }
+          contextWindowPlaceholder={contextWindowPlaceholder}
+          resolvedContextWindow={
+            stillEditingOriginalConnection &&
+            detectedContextWindow === undefined
+              ? existing.resolvedContextWindow
+              : undefined
+          }
           systemPrompt={draft.systemPrompt ?? ""}
           onSystemPromptChange={(next) =>
             setDraft((d) => ({ ...d, systemPrompt: next }))
@@ -344,4 +444,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 function defaultLabelFor(model: string): string {
   if (!model) return "";
   return model.split("/").pop() ?? model;
+}
+
+function toolCallingDescription(
+  capabilities: ModelCapabilities | null | undefined,
+): string {
+  if (capabilities?.toolCalling === true) {
+    return "This model or endpoint reports tool support. Test the connection to verify the configured template and parser.";
+  }
+  if (capabilities?.toolCalling === false) {
+    return "This model or endpoint reports no tool support. Override only if the served configuration adds it.";
+  }
+  return "Allow tools such as web search. Custom servers rarely report this reliably, so use Test connection to verify the served template and parser.";
 }

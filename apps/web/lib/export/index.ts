@@ -9,6 +9,7 @@ export type ExportedMessage = {
   id: string;
   role: "user" | "assistant" | "system";
   parts: unknown;
+  metadata?: Record<string, unknown>;
   createdAt: string;
 };
 
@@ -50,6 +51,7 @@ async function loadOne(chatId: string, userId: string): Promise<ExportedChat | n
       id: r.id,
       role: r.role as "user" | "assistant" | "system",
       parts: r.parts,
+      ...(r.metadata ? { metadata: r.metadata } : {}),
       createdAt: r.createdAt.toISOString(),
     })),
   };

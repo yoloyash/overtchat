@@ -1,5 +1,6 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
+import type { ModelCapabilities } from "@overtchat/shared";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
 export interface ProviderConnection {
@@ -23,6 +24,12 @@ export interface ResolvedLanguageModel {
   promptCacheKind?: "anthropic" | "openai";
 }
 
+export interface DiscoveredModel {
+  id: string;
+  contextWindow?: number;
+  capabilities?: ModelCapabilities;
+}
+
 export type AnthropicCacheControl = NonNullable<
   AnthropicProviderOptions["cacheControl"]
 >;
@@ -36,5 +43,5 @@ export interface ProviderAdapter {
   validateConnection?(connection: ProviderConnection): void;
   validateModelConfig?(config: ProviderModelConfig): void;
   createLanguageModel(config: ProviderModelConfig): ResolvedLanguageModel;
-  listModels(connection: ProviderConnection): Promise<string[]>;
+  listModels(connection: ProviderConnection): Promise<DiscoveredModel[]>;
 }

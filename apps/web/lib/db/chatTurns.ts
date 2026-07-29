@@ -18,7 +18,12 @@ export async function getChatMessage(
   messageId: string,
 ): Promise<UIMessage | null> {
   const [row] = await db
-    .select({ id: messages.id, role: messages.role, parts: messages.parts })
+    .select({
+      id: messages.id,
+      role: messages.role,
+      parts: messages.parts,
+      metadata: messages.metadata,
+    })
     .from(messages)
     .where(and(eq(messages.chatId, chatId), eq(messages.id, messageId)))
     .limit(1);
@@ -27,6 +32,7 @@ export async function getChatMessage(
     id: row.id,
     role: row.role as UIMessage["role"],
     parts: row.parts,
+    ...(row.metadata ? { metadata: row.metadata } : {}),
   };
 }
 
@@ -119,7 +125,11 @@ export function completeChatStream({
 }: {
   chatId: string;
   streamId: string;
-  assistantMessage?: { id: string; parts: AnyPart[] };
+  assistantMessage?: {
+    id: string;
+    parts: AnyPart[];
+    metadata?: Record<string, unknown>;
+  };
 }): boolean {
   return db.transaction((tx) => {
     const chat = tx
@@ -140,6 +150,7 @@ export function completeChatStream({
           chatId,
           role: "assistant",
           parts: assistantMessage.parts,
+          metadata: assistantMessage.metadata,
         })
         .run();
       const content = extractSearchText(assistantMessage.parts);
