@@ -42,6 +42,7 @@ export async function generateChatTitle({
     const { text } = await generateText({
       model,
       prompt,
+      reasoningEffort: "low",
       providerOptions,
       // Do not cap title-task output tokens here. Some reasoning models spend
       // the first output budget on thoughts before emitting final text.
