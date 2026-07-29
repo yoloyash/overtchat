@@ -32,6 +32,7 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
 export interface ConfiguredLanguageModel {
   model: LanguageModelV4;
   providerOptions: Record<string, Record<string, JSONValue>> | undefined;
+  providerOptionsKey: string;
   promptCacheStrategy: PromptCacheStrategy | undefined;
 }
 
@@ -70,6 +71,7 @@ export function createConfiguredLanguageModel(
             [resolved.providerOptionsKey]: options as Record<string, JSONValue>,
           }
         : undefined,
+    providerOptionsKey: resolved.providerOptionsKey,
     promptCacheStrategy: resolvePromptCacheStrategy(
       resolved.promptCacheKind,
       options,
