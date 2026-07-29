@@ -29,6 +29,22 @@ export const MODEL_BRAND_ICON_IDS = [
 
 export type ModelBrandIconId = (typeof MODEL_BRAND_ICON_IDS)[number];
 
+/**
+ * Capabilities reported by a provider/runtime or supplied by the exact
+ * vendored model catalog. Missing fields are unknown, not false.
+ */
+export interface ModelCapabilities {
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  inputModalities?: string[];
+  outputModalities?: string[];
+  attachment?: boolean;
+  toolCalling?: boolean;
+  reasoning?: boolean;
+  structuredOutput?: boolean;
+  temperature?: boolean;
+}
+
 export interface PublicModelConfig {
   id: string;
   label: string;
@@ -36,6 +52,8 @@ export interface PublicModelConfig {
   providerIconId?: ModelBrandIconId;
   modelIconId?: ModelBrandIconId;
   model: string;
+  contextWindow?: number;
+  capabilities?: ModelCapabilities;
   hasProviderOptions: boolean;
   toolCallingEnabled: boolean;
 }

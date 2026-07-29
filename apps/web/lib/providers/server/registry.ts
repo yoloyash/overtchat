@@ -19,6 +19,7 @@ import type {
   ProviderModelConfig,
   AnthropicCacheControl,
   PromptCacheStrategy,
+  DiscoveredModel,
 } from "@/lib/providers/server/types";
 
 const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
@@ -110,7 +111,7 @@ function readAnthropicCacheControl(value: unknown): AnthropicCacheControl {
 
 export function listProviderModels(
   connection: ProviderConnection,
-): Promise<string[]> {
+): Promise<DiscoveredModel[]> {
   validateProviderConnection(connection);
   return getProviderAdapter(connection.providerId).listModels(connection);
 }

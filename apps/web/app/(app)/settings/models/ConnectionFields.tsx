@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
+import type { ModelCapabilities } from "@overtchat/shared";
 import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchModelsForProvider } from "@/lib/model-config/client";
+import {
+  fetchModelsForProvider,
+  type AvailableModel,
+} from "@/lib/model-config/client";
 import { motionClasses } from "@/lib/motion";
 import {
   API_FORMATS,
@@ -44,18 +48,28 @@ export interface ConnectionDraft {
 export interface ConnectionFieldsProps {
   draft: ConnectionDraft;
   onChange: (next: Partial<ConnectionDraft>) => void;
+  onDiscoveredContextWindow?: (next: number | undefined) => void;
+  onCatalogContextWindow?: (next: number | undefined) => void;
+  onDiscoveredCapabilities?: (next: ModelCapabilities | undefined) => void;
+  onCatalogCapabilities?: (next: ModelCapabilities | undefined) => void;
+  onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
 }
 
 export function ConnectionFields({
   draft,
   onChange,
+  onDiscoveredContextWindow,
+  onCatalogContextWindow,
+  onDiscoveredCapabilities,
+  onCatalogCapabilities,
+  onCapabilitySuggestion,
   autoFetchModels = false,
 }: ConnectionFieldsProps) {
   const provider = getProvider(draft.providerId);
   const requiresKey = provider.requiresApiKey;
 
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<AvailableModel[]>([]);
   const [modelMode, setModelMode] = useState<"manual" | "list">("manual");
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState("");
@@ -73,7 +87,34 @@ export function ConnectionFields({
     setModels([]);
     setProbeError("");
     setModelMode("manual");
+    onDiscoveredContextWindow?.(undefined);
+    onCatalogContextWindow?.(undefined);
+    onDiscoveredCapabilities?.(undefined);
+    onCatalogCapabilities?.(undefined);
+    onCapabilitySuggestion?.(undefined);
   }
+
+  const selectDiscoveredModel = useCallback(
+    (model: AvailableModel) => {
+      onChange({ model: model.id });
+      onDiscoveredContextWindow?.(model.contextWindow);
+      onCatalogContextWindow?.(model.catalogContextWindow);
+      onDiscoveredCapabilities?.(model.capabilities);
+      onCatalogCapabilities?.(model.catalogCapabilities);
+      onCapabilitySuggestion?.({
+        ...model.catalogCapabilities,
+        ...model.capabilities,
+      });
+    },
+    [
+      onCapabilitySuggestion,
+      onCatalogCapabilities,
+      onCatalogContextWindow,
+      onChange,
+      onDiscoveredCapabilities,
+      onDiscoveredContextWindow,
+    ],
+  );
 
   const probe = useCallback(
     async (connection: ConnectionDraft) => {
@@ -81,32 +122,61 @@ export function ConnectionFields({
       setProbing(true);
       setProbeError("");
       try {
-        const ids = await fetchModelsForProvider({
+        const discovered = await fetchModelsForProvider({
           providerId: connection.providerId,
           apiFormat: connection.apiFormat,
           baseUrl: connection.baseUrl,
           apiKey: connection.apiKey,
         });
-        setModels(ids);
-        if (ids.length === 0) {
+        setModels(discovered);
+        const current = discovered.find((model) => model.id === draft.model);
+        if (discovered.length === 0) {
+          onDiscoveredContextWindow?.(undefined);
+          onCatalogContextWindow?.(undefined);
+          onDiscoveredCapabilities?.(undefined);
+          onCatalogCapabilities?.(undefined);
+          onCapabilitySuggestion?.(undefined);
           setModelMode("manual");
         } else if (!draft.model) {
-          onChange({ model: ids[0] });
+          selectDiscoveredModel(discovered[0]);
           setModelMode("list");
-        } else if (ids.includes(draft.model)) {
+        } else if (current) {
+          onDiscoveredContextWindow?.(current.contextWindow);
+          onCatalogContextWindow?.(current.catalogContextWindow);
+          onDiscoveredCapabilities?.(current.capabilities);
+          onCatalogCapabilities?.(current.catalogCapabilities);
+          onCapabilitySuggestion?.({
+            ...current.catalogCapabilities,
+            ...current.capabilities,
+          });
           setModelMode("list");
         } else {
+          onDiscoveredContextWindow?.(undefined);
+          onCatalogContextWindow?.(undefined);
+          onDiscoveredCapabilities?.(undefined);
+          onCatalogCapabilities?.(undefined);
+          onCapabilitySuggestion?.(undefined);
           setModelMode("manual");
         }
       } catch (e) {
         setModels([]);
+        // A transient fetch failure is not evidence that a previously
+        // discovered limit changed. Connection edits clear it separately.
         setModelMode("manual");
         setProbeError(e instanceof Error ? e.message : String(e));
       } finally {
         setProbing(false);
       }
     },
-    [draft.model, onChange],
+    [
+      draft.model,
+      onCapabilitySuggestion,
+      onCatalogCapabilities,
+      onCatalogContextWindow,
+      onDiscoveredCapabilities,
+      onDiscoveredContextWindow,
+      selectDiscoveredModel,
+    ],
   );
 
   const runAutoProbe = useEffectEvent(() => probe(draft));
@@ -126,7 +196,9 @@ export function ConnectionFields({
     return () => clearTimeout(t);
   }, [autoFetchModels, canProbe, probeKey]);
 
-  const currentModelWasFetched = models.includes(draft.model);
+  const currentModelWasFetched = models.some(
+    (model) => model.id === draft.model,
+  );
   const currentModelIsManual =
     models.length > 0 && draft.model && !currentModelWasFetched;
   const showList = modelMode === "list" && models.length > 0;
@@ -264,7 +336,8 @@ export function ConnectionFields({
                 value={draft.model}
                 onValueChange={(value) => {
                   if (value == null) return;
-                  onChange({ model: value });
+                  const model = models.find((item) => item.id === value);
+                  if (model) selectDiscoveredModel(model);
                 }}
               >
                 <SelectTrigger id="p-model" className="min-w-0 flex-1">
@@ -272,10 +345,10 @@ export function ConnectionFields({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {models.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      <ModelBrandIcon iconId={modelIconForModel(m)} />
-                      {m}
+                  {models.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      <ModelBrandIcon iconId={modelIconForModel(model.id)} />
+                      {model.id}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -289,6 +362,11 @@ export function ConnectionFields({
                 value={draft.model}
                 onChange={(e) => {
                   setModelMode("manual");
+                  onDiscoveredContextWindow?.(undefined);
+                  onCatalogContextWindow?.(undefined);
+                  onDiscoveredCapabilities?.(undefined);
+                  onCatalogCapabilities?.(undefined);
+                  onCapabilitySuggestion?.(undefined);
                   onChange({ model: e.target.value });
                 }}
               />
@@ -352,7 +430,9 @@ export function ConnectionFields({
                 className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
                 onClick={() => {
                   setModelMode("list");
-                  if (!currentModelWasFetched) onChange({ model: models[0] });
+                  if (!currentModelWasFetched) {
+                    selectDiscoveredModel(models[0]);
+                  }
                 }}
               >
                 Choose fetched model

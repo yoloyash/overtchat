@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ModelCapabilities } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -18,6 +19,16 @@ export interface AdminModelConfig {
   baseUrl: string;
   apiKey: string | null;
   model: string;
+  /** Explicit administrator override. */
+  contextWindow: number | null;
+  /** Last limit reported by model discovery. */
+  discoveredContextWindow: number | null;
+  /** Last capabilities explicitly reported by model discovery. */
+  discoveredCapabilities: ModelCapabilities | null;
+  /** Effective override, discovered, or catalog value for admin UI guidance. */
+  resolvedContextWindow?: number;
+  /** Runtime fields with exact-catalog fallback for admin UI guidance. */
+  resolvedCapabilities?: ModelCapabilities;
   systemPrompt: string | null;
   providerOptions: Record<string, unknown> | null;
   toolCallingEnabled: boolean;
@@ -62,6 +73,20 @@ const RuntimeModelFields = {
     .transform((value) => value ?? true),
 };
 
+const ModelCapabilitiesSchema = z
+  .object({
+    maxInputTokens: z.number().int().positive().optional(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    inputModalities: z.array(z.string().trim().min(1)).optional(),
+    outputModalities: z.array(z.string().trim().min(1)).optional(),
+    attachment: z.boolean().optional(),
+    toolCalling: z.boolean().optional(),
+    reasoning: z.boolean().optional(),
+    structuredOutput: z.boolean().optional(),
+    temperature: z.boolean().optional(),
+  })
+  .transform((value) => (Object.keys(value).length > 0 ? value : null));
+
 export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(
   RuntimeModelFields,
 ).superRefine(validateProviderConnection);
@@ -69,6 +94,21 @@ export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(
 export const ModelConfigSchema = ProviderConnectionObject.extend({
   label: z.string().trim().min(1, "Display name is required"),
   ...RuntimeModelFields,
+  contextWindow: z
+    .number()
+    .int()
+    .positive("Context window must be a positive integer")
+    .nullish()
+    .transform((value) => value ?? null),
+  discoveredContextWindow: z
+    .number()
+    .int()
+    .positive("Detected context window must be a positive integer")
+    .nullish()
+    .transform((value) => value ?? null),
+  discoveredCapabilities: ModelCapabilitiesSchema.nullish().transform(
+    (value) => value ?? null,
+  ),
   systemPrompt: z
     .string()
     .nullish()

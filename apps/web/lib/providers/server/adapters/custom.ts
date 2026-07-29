@@ -15,6 +15,7 @@ import type {
   ProviderConnection,
   ProviderModelConfig,
   ResolvedLanguageModel,
+  DiscoveredModel,
 } from "@/lib/providers/server/types";
 
 export const customAdapter: ProviderAdapter = {
@@ -66,7 +67,9 @@ function createCustomLanguageModel(
   }
 }
 
-function listCustomModels(connection: ProviderConnection): Promise<string[]> {
+function listCustomModels(
+  connection: ProviderConnection,
+): Promise<DiscoveredModel[]> {
   switch (connection.apiFormat) {
     case "openai-chat":
     case "openai-responses":

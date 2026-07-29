@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import type { ModelCapabilities } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
   PROVIDER_IDS,
@@ -160,6 +161,9 @@ export const messages = sqliteTable(
     parts: text("parts", { mode: "json" })
       .$type<UIMessagePart<UIDataTypes, UITools>[]>()
       .notNull(),
+    metadata: text("metadata", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -261,6 +265,11 @@ export const modelConfigs = sqliteTable("model_configs", {
   baseUrl: text("base_url").notNull(),
   apiKey: text("api_key"),
   model: text("model").notNull(),
+  contextWindow: integer("context_window"),
+  discoveredContextWindow: integer("discovered_context_window"),
+  discoveredCapabilities: text("discovered_capabilities", {
+    mode: "json",
+  }).$type<ModelCapabilities>(),
   systemPrompt: text("system_prompt"),
   providerOptions: text("provider_options", { mode: "json" }).$type<
     Record<string, unknown>

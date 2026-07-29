@@ -23,6 +23,7 @@ export function sniffFormat(data: unknown): ImportFormat | null {
 
   if (typeof data === "object") {
     const d = data as Record<string, unknown>;
+    if (d.format === "overtchat" && Array.isArray(d.chats)) return "ours";
     const chat = d.chat as Record<string, unknown> | undefined;
     if (chat && typeof chat === "object") {
       const history = chat.history as Record<string, unknown> | undefined;
@@ -31,7 +32,7 @@ export function sniffFormat(data: unknown): ImportFormat | null {
     }
     // Single ChatGPT conversation (rare, but supported)
     if ("mapping" in d && "current_node" in d) return "chatgpt";
-    // Single overtchat export
+    // Legacy single-chat overtchat export
     if ("messages" in d && Array.isArray(d.messages)) {
       const msgs = d.messages as unknown[];
       if (msgs[0] && typeof msgs[0] === "object" && "parts" in (msgs[0] as object))

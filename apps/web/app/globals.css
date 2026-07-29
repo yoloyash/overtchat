@@ -77,6 +77,11 @@
     --motion-ease-enter: cubic-bezier(0, 0, 0.2, 1);
     --motion-ease-exit: cubic-bezier(0.4, 0, 1, 1);
     --motion-ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --context-warning: oklch(0.56 0.14 75);
+  }
+
+  .dark {
+    --context-warning: oklch(0.76 0.13 75);
   }
 
   * {

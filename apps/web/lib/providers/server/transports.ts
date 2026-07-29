@@ -30,6 +30,11 @@ export function createOpenAICompatibleChatModel(
     name: config.providerName,
     baseURL: config.baseUrl,
     apiKey: credential(config.apiKey),
+    // OpenAI-compatible servers do not include usage in streamed responses
+    // unless the client requests it. vLLM and llama.cpp support this standard
+    // stream option, and the final usage chunk supplies the context meter's
+    // numerator.
+    includeUsage: true,
   }).chatModel(config.model);
 }
 

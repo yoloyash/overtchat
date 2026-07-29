@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { MessageStats } from "@/lib/chat/stats";
 
 const mocks = vi.hoisted(() => {
   const webTools = {
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => {
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
+    resolveModelContextWindow: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
     cancelRegister: vi.fn(),
     cancelUnregister: vi.fn(),
@@ -111,6 +113,9 @@ vi.mock("@/lib/providers/catalog", () => ({
 vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
 }));
+vi.mock("@/lib/providers/server/model-catalog", () => ({
+  resolveModelContextWindow: mocks.resolveModelContextWindow,
+}));
 vi.mock("@/lib/streams/cancel-registry", () => ({
   register: mocks.cancelRegister,
   unregister: mocks.cancelUnregister,
@@ -153,6 +158,9 @@ const modelConfig = {
   baseUrl: "https://example.test/v1",
   apiKey: "key",
   model: "test-model",
+  contextWindow: null,
+  discoveredContextWindow: null,
+  discoveredCapabilities: null,
   systemPrompt: null,
   providerOptions: null,
   toolCallingEnabled: true,
@@ -206,6 +214,7 @@ describe("chat route setup boundary", () => {
       iconId: null,
     });
     mocks.modelIconForModel.mockReturnValue(null);
+    mocks.resolveModelContextWindow.mockReturnValue(128_000);
     mocks.isStepCount.mockReturnValue("stop-at-50");
     mocks.cancelHas.mockReturnValue(false);
     mocks.commitChatTurn.mockReturnValue("committed");
@@ -774,7 +783,8 @@ describe("chat route setup boundary", () => {
 
     expect(metadata).toEqual({
       stats: expect.objectContaining({
-        contextTokens: 100,
+        contextTokens: 110,
+        contextWindow: 128_000,
         cacheReadTokens: 80,
         cacheWriteTokens: 5,
         uncachedInputTokens: 15,
@@ -782,6 +792,96 @@ describe("chat route setup boundary", () => {
         totalTokens: 110,
         finishReason: "stop",
       }),
+    });
+  });
+
+  it("uses the latest step usage for context instead of summing tool-loop steps", async () => {
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            type: "finish-step",
+            usage: {
+              inputTokens: 100,
+              outputTokens: 20,
+            },
+          });
+          controller.enqueue({
+            type: "finish-step",
+            usage: {
+              inputTokens: 140,
+              outputTokens: 30,
+            },
+          });
+          controller.close();
+        },
+      }),
+    });
+
+    await POST(request());
+
+    const observed = mocks.uiStreamOptions
+      ?.stream as ReadableStream<Record<string, unknown>>;
+    const reader = observed.getReader();
+    while (!(await reader.read()).done) {
+      // Consume the observed stream so finish-step callbacks run.
+    }
+
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => { stats: MessageStats };
+    const metadata = messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 240,
+          inputTokenDetails: {
+            cacheReadTokens: 40,
+            cacheWriteTokens: 0,
+            noCacheTokens: 200,
+          },
+          outputTokens: 50,
+          totalTokens: 290,
+        },
+      },
+    });
+
+    expect(metadata.stats).toMatchObject({
+      contextTokens: 170,
+      responseTokens: 50,
+      totalTokens: 290,
+    });
+  });
+
+  it("persists assistant message metadata at stream completion", async () => {
+    await POST(request());
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+        metadata?: Record<string, unknown>;
+      };
+    }) => Promise<void>;
+
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+        metadata: { stats: { contextTokens: 110, contextWindow: 128_000 } },
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: expect.any(String),
+      assistantMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+        metadata: {
+          stats: { contextTokens: 110, contextWindow: 128_000 },
+        },
+      },
     });
   });
 });

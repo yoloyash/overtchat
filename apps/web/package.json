@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "rm -f data/test.db* && playwright test",
     "test:e2e:ui": "rm -f data/test.db* && playwright test --ui",
+    "catalog:generate": "tsx scripts/generate-model-catalog.ts",
     "auth:generate": "npx --yes auth@1.6.11 generate --config lib/auth/server.ts --output lib/db/schema.ts --y",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "mkdir -p data && drizzle-kit migrate",
@@ -80,6 +81,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
     "tailwindcss": "^4",
+    "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "^4.1.6"
   }

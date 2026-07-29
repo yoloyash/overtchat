@@ -43,6 +43,13 @@
       "when": 1785278430797,
       "tag": "0005_default_model_system_prompt",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1785355122236,
+      "tag": "0006_lovely_kid_colt",
+      "breakpoints": true
     }
   ]
 }
