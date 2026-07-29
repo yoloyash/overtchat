@@ -63,7 +63,8 @@ describe("title helpers", () => {
     vi.clearAllMocks();
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "model",
-      providerOptions: { custom: {} },
+      providerOptions: undefined,
+      providerOptionsKey: "custom",
     });
     mocks.generateText.mockResolvedValue({ text: "Server Owned Titles" });
     mocks.setTitleIfNull.mockImplementation(async (_chatId, title) => title);
@@ -137,6 +138,7 @@ describe("title helpers", () => {
       expect.objectContaining({
         maxRetries: 0,
         prompt: expect.stringContaining("<user_message>"),
+        providerOptions: { custom: { reasoningEffort: "none" } },
       }),
     );
     expect(mocks.generateText.mock.calls[0][0]).not.toHaveProperty(
@@ -147,6 +149,28 @@ describe("title helpers", () => {
       "Dependency Cleanup",
     );
     expect(title).toBe("Dependency Cleanup");
+  });
+
+  it("preserves saved provider options while disabling reasoning", async () => {
+    mocks.createConfiguredLanguageModel.mockReturnValue({
+      model: "model",
+      providerOptions: { custom: { user: "saved-user" } },
+      providerOptionsKey: "custom",
+    });
+
+    await generateChatTitle({
+      chatId: "chat",
+      modelConfig,
+      userParts: firstUserParts,
+    });
+
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerOptions: {
+          custom: { user: "saved-user", reasoningEffort: "none" },
+        },
+      }),
+    );
   });
 
   it("does not persist anything when generation fails", async () => {
