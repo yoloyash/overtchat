@@ -20,6 +20,24 @@ describe("provider configuration", () => {
     });
   });
 
+  it.each([
+    ["vllm", "http://localhost:8000/v1"],
+    ["llamacpp", "http://localhost:8080/v1"],
+    ["sglang", "http://localhost:30000/v1"],
+  ] as const)(
+    "accepts the %s preset without an API key",
+    (providerId, baseUrl) => {
+      expect(
+        ProviderConnectionSchema.safeParse({
+          providerId,
+          apiFormat: "auto",
+          baseUrl,
+          apiKey: "",
+        }),
+      ).toMatchObject({ success: true });
+    },
+  );
+
   it("requires custom endpoints to declare an API format", () => {
     const result = ProviderConnectionSchema.safeParse({
       providerId: "custom",

@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 import {
   listAnthropicModels,
   listGoogleModels,
+  listLlamaCppModels,
   listOpenAIModels,
 } from "./http";
 
@@ -241,6 +242,39 @@ describe("provider model discovery", () => {
       2,
       "http://localhost:8080/props?model=local-model",
       expect.objectContaining({ headers: {} }),
+    );
+  });
+
+  it("probes llama.cpp properties from the explicit preset without ownership metadata", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          data: [{ id: "proxied-model", owned_by: "local-proxy" }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          default_generation_settings: { n_ctx: 16_384 },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listLlamaCppModels("http://localhost:8080/v1", "local-secret"),
+    ).resolves.toEqual([
+      {
+        id: "proxied-model",
+        contextWindow: 16_384,
+        capabilities: { temperature: true },
+      },
+    ]);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8080/props?model=proxied-model",
+      expect.objectContaining({
+        headers: { Authorization: "Bearer local-secret" },
+      }),
     );
   });
 });
