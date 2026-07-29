@@ -11,7 +11,10 @@ import { anthropicAdapter } from "@/lib/providers/server/adapters/anthropic";
 import { bedrockAdapter } from "@/lib/providers/server/adapters/bedrock";
 import { customAdapter } from "@/lib/providers/server/adapters/custom";
 import { googleAdapter } from "@/lib/providers/server/adapters/google";
+import { llamaCppAdapter } from "@/lib/providers/server/adapters/llamacpp";
 import { openAIAdapter } from "@/lib/providers/server/adapters/openai";
+import { sglangAdapter } from "@/lib/providers/server/adapters/sglang";
+import { vllmAdapter } from "@/lib/providers/server/adapters/vllm";
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import type {
   ProviderAdapter,
@@ -27,6 +30,9 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
   anthropic: anthropicAdapter,
   google: googleAdapter,
   bedrock: bedrockAdapter,
+  vllm: vllmAdapter,
+  llamacpp: llamaCppAdapter,
+  sglang: sglangAdapter,
   custom: customAdapter,
 };
 

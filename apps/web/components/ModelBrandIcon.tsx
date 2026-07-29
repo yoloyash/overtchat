@@ -30,8 +30,13 @@ export function ModelBrandIcon({
         <path
           key={index}
           d={path.d}
+          fill={path.filled === false ? "none" : undefined}
           fillRule={path.fillRule}
           clipRule={path.fillRule}
+          stroke={path.strokeWidth === undefined ? undefined : "currentColor"}
+          strokeWidth={path.strokeWidth}
+          strokeLinecap={path.strokeLinecap}
+          strokeLinejoin={path.strokeLinejoin}
         />
       ))}
     </svg>

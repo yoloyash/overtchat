@@ -240,6 +240,27 @@ describe("provider registry", () => {
     ).toThrow("manages its API format automatically");
   });
 
+  it.each(["vllm", "llamacpp", "sglang"] as const)(
+    "uses the shared OpenAI-compatible transport for %s without requiring a key",
+    (providerId) => {
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId,
+        apiKey: "",
+      });
+
+      expect(configured.providerOptionsKey).toBe(providerId);
+      expect(configured.promptCacheStrategy).toBeUndefined();
+      expect(() =>
+        validateProviderConnection({
+          ...baseConfig,
+          providerId,
+          apiKey: "",
+        }),
+      ).not.toThrow();
+    },
+  );
+
   it("rejects malformed endpoints and missing registered-provider credentials", () => {
     expect(() =>
       validateProviderConnection({
