@@ -47,22 +47,8 @@
     {
       "idx": 6,
       "version": "6",
-      "when": 1785315165613,
-      "tag": "0006_abandoned_dagger",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "6",
-      "when": 1785316505904,
-      "tag": "0007_flimsy_tarantula",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1785349189285,
-      "tag": "0008_boring_thunderbird",
+      "when": 1785355122236,
+      "tag": "0006_lovely_kid_colt",
       "breakpoints": true
     }
   ]

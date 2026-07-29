@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "00688cf5-a3f6-4c27-8a02-83ce701ef58d",
+  "id": "0953a321-0300-4842-82a3-5e947ca253ff",
   "prevId": "52686e54-e7d8-4514-aa6f-3aa904e50ee6",
   "tables": {
     "account": {
@@ -367,6 +367,20 @@
         "context_window": {
           "name": "context_window",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "discovered_context_window": {
+          "name": "discovered_context_window",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "discovered_capabilities": {
+          "name": "discovered_capabilities",
+          "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false

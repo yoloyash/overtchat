@@ -1,1 +1,0 @@
-ALTER TABLE `model_configs` ADD `discovered_capabilities` text;
