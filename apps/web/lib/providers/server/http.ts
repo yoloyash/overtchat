@@ -65,6 +65,21 @@ export async function listOpenAIModels(
   baseUrl: string,
   apiKey: string | null | undefined,
 ): Promise<DiscoveredModel[]> {
+  return listOpenAIModelsWithOptions(baseUrl, apiKey, false);
+}
+
+export async function listLlamaCppModels(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+): Promise<DiscoveredModel[]> {
+  return listOpenAIModelsWithOptions(baseUrl, apiKey, true);
+}
+
+async function listOpenAIModelsWithOptions(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  probeAllLlamaCppProps: boolean,
+): Promise<DiscoveredModel[]> {
   const json = await fetchJson<OpenAIModelList>(appendPath(baseUrl, "models"), {
     headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
   });
@@ -82,8 +97,9 @@ export async function listOpenAIModels(
     json.data
       ?.filter(
         (model) =>
-          typeof model.owned_by === "string" &&
-          model.owned_by.toLowerCase() === "llamacpp",
+          probeAllLlamaCppProps ||
+          (typeof model.owned_by === "string" &&
+            model.owned_by.toLowerCase() === "llamacpp"),
       )
       .flatMap((model) => {
         if (typeof model.id !== "string") return [];

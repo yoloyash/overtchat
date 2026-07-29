@@ -5,6 +5,9 @@ export const PROVIDER_IDS = [
   "anthropic",
   "google",
   "bedrock",
+  "vllm",
+  "llamacpp",
+  "sglang",
   "custom",
 ] as const;
 
@@ -28,6 +31,7 @@ export interface ProviderDefinition {
   defaultApiFormat: ApiFormat;
   modelPlaceholder: string;
   requiresApiKey: boolean;
+  localRuntime?: boolean;
 }
 
 export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
@@ -66,6 +70,36 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     defaultApiFormat: "auto",
     modelPlaceholder: "openai.gpt-5.6-terra",
     requiresApiKey: true,
+  },
+  vllm: {
+    id: "vllm",
+    label: "vLLM",
+    iconId: "vllm",
+    defaultBaseUrl: "http://localhost:8000/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "model-id",
+    requiresApiKey: false,
+    localRuntime: true,
+  },
+  llamacpp: {
+    id: "llamacpp",
+    label: "llama.cpp",
+    iconId: "llamacpp",
+    defaultBaseUrl: "http://localhost:8080/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "model-id",
+    requiresApiKey: false,
+    localRuntime: true,
+  },
+  sglang: {
+    id: "sglang",
+    label: "SGLang",
+    iconId: "sglang",
+    defaultBaseUrl: "http://localhost:30000/v1",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "model-id",
+    requiresApiKey: false,
+    localRuntime: true,
   },
   custom: {
     id: "custom",
