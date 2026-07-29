@@ -26,12 +26,14 @@ describe("provider catalog", () => {
       localRuntime: true,
     });
     expect(PROVIDERS.llamacpp).toMatchObject({
+      iconId: "llamacpp",
       defaultApiFormat: "auto",
       defaultBaseUrl: "http://localhost:8080/v1",
       requiresApiKey: false,
       localRuntime: true,
     });
     expect(PROVIDERS.sglang).toMatchObject({
+      iconId: "sglang",
       defaultApiFormat: "auto",
       defaultBaseUrl: "http://localhost:30000/v1",
       requiresApiKey: false,

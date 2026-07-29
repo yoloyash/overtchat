@@ -84,7 +84,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   llamacpp: {
     id: "llamacpp",
     label: "llama.cpp",
-    iconId: null,
+    iconId: "llamacpp",
     defaultBaseUrl: "http://localhost:8080/v1",
     defaultApiFormat: "auto",
     modelPlaceholder: "model-id",
@@ -94,7 +94,7 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
   sglang: {
     id: "sglang",
     label: "SGLang",
-    iconId: null,
+    iconId: "sglang",
     defaultBaseUrl: "http://localhost:30000/v1",
     defaultApiFormat: "auto",
     modelPlaceholder: "model-id",
