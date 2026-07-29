@@ -19,6 +19,24 @@ describe("provider catalog", () => {
   it("keeps API formats separate from provider identity", () => {
     expect(PROVIDERS.openai.defaultApiFormat).toBe("auto");
     expect(PROVIDERS.bedrock.defaultApiFormat).toBe("auto");
+    expect(PROVIDERS.vllm).toMatchObject({
+      defaultApiFormat: "auto",
+      defaultBaseUrl: "http://localhost:8000/v1",
+      requiresApiKey: false,
+      localRuntime: true,
+    });
+    expect(PROVIDERS.llamacpp).toMatchObject({
+      defaultApiFormat: "auto",
+      defaultBaseUrl: "http://localhost:8080/v1",
+      requiresApiKey: false,
+      localRuntime: true,
+    });
+    expect(PROVIDERS.sglang).toMatchObject({
+      defaultApiFormat: "auto",
+      defaultBaseUrl: "http://localhost:30000/v1",
+      requiresApiKey: false,
+      localRuntime: true,
+    });
     expect(PROVIDERS.custom.defaultApiFormat).toBe("openai-chat");
     expect(API_FORMATS["anthropic-messages"].label).toBe(
       "Anthropic Messages",

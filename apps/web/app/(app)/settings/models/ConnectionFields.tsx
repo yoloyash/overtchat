@@ -278,7 +278,11 @@ export function ConnectionFields({
 
       <SettingsRow
         title="Endpoint"
-        description="Base URL for the model API."
+        description={
+          provider.localRuntime
+            ? "Base URL for the model API. If overtchat runs in Docker, use host.docker.internal instead of localhost."
+            : "Base URL for the model API."
+        }
         htmlFor="p-base-url"
         align="center"
         controlAlign="end"
