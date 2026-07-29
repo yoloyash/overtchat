@@ -4,6 +4,7 @@ import {
   isStepCount,
   ToolLoopAgent,
   toUIMessageStream,
+  type LanguageModelUsage,
   type TextStreamPart,
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
@@ -36,6 +37,7 @@ import { getProject } from "@/lib/db/projects";
 import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import { resolveModelContextWindow } from "@/lib/providers/server/model-catalog";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
@@ -161,6 +163,12 @@ async function handlePost(req: Request): Promise<Response> {
       : convertedMessages;
 
   const provider = getProvider(modelConfig.providerId);
+  const contextWindow = resolveModelContextWindow(
+    modelConfig.contextWindow,
+    modelConfig.discoveredContextWindow,
+    modelConfig.providerId,
+    modelConfig.model,
+  );
   const modelIconId =
     modelIconForModel(modelConfig.model) ?? provider.iconId ?? undefined;
   const requestProviderOptions =
@@ -240,6 +248,7 @@ async function handlePost(req: Request): Promise<Response> {
 
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
+  let lastStepUsage: LanguageModelUsage | null = null;
   let streamError: unknown = null;
 
   try {
@@ -291,6 +300,9 @@ async function handlePost(req: Request): Promise<Response> {
         onFirstToken() {
           firstTokenAt ??= Date.now();
         },
+        onFinishStep(usage) {
+          lastStepUsage = usage;
+        },
         onError(error) {
           if (streamError === null) {
             streamError = error;
@@ -314,10 +326,18 @@ async function handlePost(req: Request): Promise<Response> {
 
         const finishedAt = Date.now();
         const outputTokens = part.totalUsage.outputTokens;
+        const contextUsage = lastStepUsage ?? part.totalUsage;
+        const stepInputTokens = contextUsage.inputTokens;
+        const stepOutputTokens = contextUsage.outputTokens;
+        const contextTokens =
+          stepInputTokens === undefined && stepOutputTokens === undefined
+            ? undefined
+            : (stepInputTokens ?? 0) + (stepOutputTokens ?? 0);
         const generationMs =
           firstTokenAt === null ? undefined : finishedAt - firstTokenAt;
         const stats: MessageStats = {
-          contextTokens: part.totalUsage.inputTokens,
+          contextTokens,
+          contextWindow,
           cacheReadTokens: part.totalUsage.inputTokenDetails.cacheReadTokens,
           cacheWriteTokens: part.totalUsage.inputTokenDetails.cacheWriteTokens,
           uncachedInputTokens: part.totalUsage.inputTokenDetails.noCacheTokens,
@@ -348,6 +368,12 @@ async function handlePost(req: Request): Promise<Response> {
             ? {
                 id: responseMessage.id,
                 parts: responseMessage.parts,
+                metadata:
+                  responseMessage.metadata &&
+                  typeof responseMessage.metadata === "object" &&
+                  !Array.isArray(responseMessage.metadata)
+                    ? (responseMessage.metadata as Record<string, unknown>)
+                    : undefined,
               }
             : undefined;
 
@@ -398,7 +424,11 @@ async function handlePost(req: Request): Promise<Response> {
 
 function observeChatStream(
   stream: ReadableStream<TextStreamPart<typeof chatTools>>,
-  callbacks: { onFirstToken(): void; onError(error: unknown): void },
+  callbacks: {
+    onFirstToken(): void;
+    onFinishStep(usage: LanguageModelUsage): void;
+    onError(error: unknown): void;
+  },
 ): ReadableStream<TextStreamPart<typeof chatTools>> {
   const reader = stream.getReader();
 
@@ -416,6 +446,8 @@ function observeChatStream(
           part.text.length > 0
         ) {
           callbacks.onFirstToken();
+        } else if (part.type === "finish-step") {
+          callbacks.onFinishStep(part.usage);
         } else if (part.type === "error") {
           callbacks.onError(part.error);
         }

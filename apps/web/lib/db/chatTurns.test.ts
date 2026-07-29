@@ -36,6 +36,7 @@ raw.exec(`
     chat_id TEXT NOT NULL,
     role TEXT NOT NULL,
     parts TEXT NOT NULL,
+    metadata TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
   );
   CREATE VIRTUAL TABLE messages_fts USING fts5(
@@ -50,9 +51,11 @@ raw.exec(`
 `);
 
 let chatTurns: typeof import("./chatTurns");
+let chatDb: typeof import("./chats");
 
 beforeAll(async () => {
   chatTurns = await import("./chatTurns");
+  chatDb = await import("./chats");
 });
 
 beforeEach(() => {
@@ -198,6 +201,12 @@ describe("transactional chat turns", () => {
         assistantMessage: {
           id: "assistant-message",
           parts: [{ type: "text", text: "Hi" }],
+          metadata: {
+            stats: {
+              contextTokens: 4_096,
+              responseTokens: 128,
+            },
+          },
         },
       }),
     ).toBe(true);
@@ -212,6 +221,55 @@ describe("transactional chat turns", () => {
     ).toEqual([
       { message_id: "user-message" },
       { message_id: "assistant-message" },
+    ]);
+    expect(
+      raw.prepare("SELECT metadata FROM messages WHERE id = ?").get(
+        "assistant-message",
+      ),
+    ).toEqual({
+      metadata: JSON.stringify({
+        stats: {
+          contextTokens: 4_096,
+          responseTokens: 128,
+        },
+      }),
+    });
+  });
+
+  it("reads persisted metadata through both message loaders", async () => {
+    seedChat();
+    raw
+      .prepare("UPDATE messages SET metadata = ? WHERE id = ?")
+      .run(
+        JSON.stringify({ stats: { contextTokens: 2_048 } }),
+        "assistant",
+      );
+
+    await expect(
+      chatTurns.getChatMessage("chat", "assistant"),
+    ).resolves.toEqual({
+      id: "assistant",
+      role: "assistant",
+      parts: [{ type: "text", text: "Old answer" }],
+      metadata: { stats: { contextTokens: 2_048 } },
+    });
+    await expect(chatDb.getMessages("chat")).resolves.toEqual([
+      {
+        id: "before",
+        role: "user",
+        parts: [{ type: "text", text: "Before" }],
+      },
+      {
+        id: "edit",
+        role: "user",
+        parts: [{ type: "text", text: "Original" }],
+      },
+      {
+        id: "assistant",
+        role: "assistant",
+        parts: [{ type: "text", text: "Old answer" }],
+        metadata: { stats: { contextTokens: 2_048 } },
+      },
     ]);
   });
 });

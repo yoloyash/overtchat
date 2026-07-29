@@ -12,6 +12,10 @@ import {
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { preflight, withCors } from "@/lib/cors";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import {
+  resolveModelCapabilities,
+  resolveModelContextWindow,
+} from "@/lib/providers/server/model-catalog";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
 function toPublic(row: ModelConfigRow): PublicModelConfig {
@@ -23,6 +27,17 @@ function toPublic(row: ModelConfigRow): PublicModelConfig {
     providerIconId: provider.iconId ?? undefined,
     modelIconId: modelIconForModel(row.model) ?? undefined,
     model: row.model,
+    contextWindow: resolveModelContextWindow(
+      row.contextWindow,
+      row.discoveredContextWindow,
+      row.providerId,
+      row.model,
+    ),
+    capabilities: resolveModelCapabilities(
+      row.discoveredCapabilities,
+      row.providerId,
+      row.model,
+    ),
     hasProviderOptions:
       !!row.providerOptions && Object.keys(row.providerOptions).length > 0,
     toolCallingEnabled: row.toolCallingEnabled,

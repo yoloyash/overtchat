@@ -25,6 +25,10 @@ import {
   FONT_STORAGE_KEY,
   type FontId,
 } from "@/lib/fonts";
+import {
+  CONTEXT_METER_STORAGE_KEY,
+  DEFAULT_CONTEXT_METER_ENABLED,
+} from "@/lib/chat/context-meter";
 
 type ThemeValue = "light" | "dark" | "system";
 
@@ -48,6 +52,11 @@ export function GeneralForm() {
     MESSAGE_STATS_STORAGE_KEY,
     false,
   );
+  const [contextMeterEnabled, setContextMeterEnabled] =
+    useLocalStorage<boolean>(
+      CONTEXT_METER_STORAGE_KEY,
+      DEFAULT_CONTEXT_METER_ENABLED,
+    );
   const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
   const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
 
@@ -137,6 +146,21 @@ export function GeneralForm() {
             checked={messageStatsEnabled}
             onCheckedChange={(next) => setMessageStatsEnabled(next)}
             aria-label="Show message stats"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Context meter"
+          description="Show context-window usage in the chat header."
+          htmlFor="context-meter"
+          align="center"
+          controlAlign="end"
+        >
+          <Switch
+            id="context-meter"
+            checked={contextMeterEnabled}
+            onCheckedChange={(next) => setContextMeterEnabled(next)}
+            aria-label="Show context meter"
           />
         </SettingsRow>
       </SettingsSection>

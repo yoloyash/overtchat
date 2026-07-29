@@ -4,6 +4,7 @@ import { useState } from "react";
 import Editor from "react-simple-code-editor";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
@@ -22,6 +23,10 @@ function parseProviderOptions(text: string): string | null {
 }
 
 export interface AdvancedFieldsProps {
+  contextWindow: number | null;
+  onContextWindowChange: (next: number | null) => void;
+  contextWindowPlaceholder?: number;
+  resolvedContextWindow?: number;
   systemPrompt: string;
   onSystemPromptChange: (next: string) => void;
   providerOptionsText: string;
@@ -34,6 +39,10 @@ export interface AdvancedFieldsProps {
 }
 
 export function AdvancedFields({
+  contextWindow,
+  onContextWindowChange,
+  contextWindowPlaceholder,
+  resolvedContextWindow,
   systemPrompt,
   onSystemPromptChange,
   providerOptionsText,
@@ -79,6 +88,36 @@ export function AdvancedFields({
     >
       {open ? (
         <>
+          <SettingsRow
+            title="Context window"
+            description="Maximum tokens this model can hold. Leave blank to use the detected or catalog value."
+            htmlFor="p-context-window"
+            align="center"
+            controlAlign="end"
+          >
+            <Input
+              id="p-context-window"
+              type="number"
+              min={1}
+              step={1}
+              inputMode="numeric"
+              className="w-full font-mono @2xl:max-w-xl"
+              placeholder={
+                contextWindowPlaceholder === undefined &&
+                resolvedContextWindow === undefined
+                  ? "Automatically detected"
+                  : String(
+                      contextWindowPlaceholder ?? resolvedContextWindow,
+                    )
+              }
+              value={contextWindow ?? ""}
+              onChange={(event) => {
+                const value = event.target.value;
+                onContextWindowChange(value === "" ? null : Number(value));
+              }}
+            />
+          </SettingsRow>
+
           <SettingsRow
             title="System prompt"
             description="Optional instructions sent before each chat."

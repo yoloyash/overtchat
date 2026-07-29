@@ -26,6 +26,10 @@ import {
   type StoredMessageStats,
 } from "@/lib/chat/stats";
 import {
+  CONTEXT_METER_STORAGE_KEY,
+  DEFAULT_CONTEXT_METER_ENABLED,
+} from "@/lib/chat/context-meter";
+import {
   getDataTransferFiles,
   hasDataTransferFiles,
 } from "@/lib/chat/attachments";
@@ -84,6 +88,10 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
     false,
+  );
+  const [contextMeterEnabled] = useLocalStorage<boolean>(
+    CONTEXT_METER_STORAGE_KEY,
+    DEFAULT_CONTEXT_METER_ENABLED,
   );
 
   const [temporary, setTemporary] = useState(false);
@@ -277,6 +285,26 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
   const canToggleTemporary = Boolean(isNew) && messages.length === 0;
+  let contextUsage:
+    | { usedTokens: number; contextWindow?: number }
+    | undefined;
+  if (contextMeterEnabled) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (message.role !== "assistant") continue;
+      const stats = readMessageStats(message) ?? storedStats[message.id];
+      if (stats?.contextTokens === undefined) continue;
+      contextUsage = {
+        usedTokens: stats.contextTokens,
+        // The header describes the next turn, so a model switch must update
+        // the limit immediately. The message snapshot is only an offline/error
+        // fallback when the selected model config is unavailable.
+        contextWindow:
+          selectedModel?.contextWindow ?? stats.contextWindow,
+      };
+      break;
+    }
+  }
 
   const composer = (
     <Composer
@@ -319,6 +347,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
         models={models}
         selectedId={selectedId}
         onSelectModel={handleSelectModel}
+        contextUsage={contextUsage}
         showTempToggle={canToggleTemporary}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}

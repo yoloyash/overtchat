@@ -5,6 +5,7 @@ export type ImportedPart = UIMessagePart<UIDataTypes, UITools>;
 export type ImportedMessage = {
   role: "user" | "assistant" | "system";
   parts: ImportedPart[];
+  metadata?: Record<string, unknown>;
   createdAt: Date;
 };
 

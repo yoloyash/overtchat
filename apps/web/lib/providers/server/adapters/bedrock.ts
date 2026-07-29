@@ -89,7 +89,7 @@ export const bedrockAdapter: ProviderAdapter = {
       connection.baseUrl,
       connection.apiKey,
     );
-    return models.filter(isSupportedBedrockModel);
+    return models.filter((model) => isSupportedBedrockModel(model.id));
   },
 };
 

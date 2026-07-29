@@ -79,6 +79,7 @@ export async function getMessages(chatId: string): Promise<UIMessage[]> {
     id: row.id,
     role: row.role as UIMessage["role"],
     parts: row.parts as UIMessage["parts"],
+    ...(row.metadata ? { metadata: row.metadata } : {}),
   }));
 }
 

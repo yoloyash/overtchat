@@ -25,6 +25,7 @@ describe("message stats", () => {
       readMessageStats(
         messageWithStats({
           contextTokens: 1200,
+          contextWindow: 128_000,
           cacheReadTokens: 900,
           cacheWriteTokens: 25,
           uncachedInputTokens: 275,
@@ -33,6 +34,7 @@ describe("message stats", () => {
       ),
     ).toEqual({
       contextTokens: 1200,
+      contextWindow: 128_000,
       cacheReadTokens: 900,
       cacheWriteTokens: 25,
       uncachedInputTokens: 275,
@@ -68,6 +70,7 @@ describe("message stats", () => {
     expect(readStoredMessageStats()).toEqual({
       "assistant-1": {
         contextTokens: undefined,
+        contextWindow: undefined,
         cacheReadTokens: 640,
         cacheWriteTokens: 32,
         uncachedInputTokens: 128,
@@ -81,6 +84,20 @@ describe("message stats", () => {
         model: undefined,
         modelIconId: undefined,
       },
+    });
+  });
+
+  it("ignores malformed context windows", () => {
+    expect(
+      readMessageStats(
+        messageWithStats({
+          contextTokens: 42,
+          contextWindow: -1,
+        }),
+      ),
+    ).toMatchObject({
+      contextTokens: 42,
+      contextWindow: undefined,
     });
   });
 

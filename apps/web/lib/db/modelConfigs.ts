@@ -2,6 +2,10 @@ import "server-only";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
+import {
+  resolveModelCapabilities,
+  resolveModelContextWindow,
+} from "@/lib/providers/server/model-catalog";
 import type {
   AdminModelConfig,
   ModelConfigInput,
@@ -19,6 +23,20 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: row.model,
+    contextWindow: row.contextWindow,
+    discoveredContextWindow: row.discoveredContextWindow,
+    discoveredCapabilities: row.discoveredCapabilities,
+    resolvedContextWindow: resolveModelContextWindow(
+      row.contextWindow,
+      row.discoveredContextWindow,
+      row.providerId,
+      row.model,
+    ),
+    resolvedCapabilities: resolveModelCapabilities(
+      row.discoveredCapabilities,
+      row.providerId,
+      row.model,
+    ),
     systemPrompt: row.systemPrompt,
     providerOptions: row.providerOptions,
     toolCallingEnabled: row.toolCallingEnabled,

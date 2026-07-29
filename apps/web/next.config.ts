@@ -5,7 +5,10 @@ const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname, "../../"),
   outputFileTracingIncludes: {
-    "/*": ["./drizzle/**/*"],
+    "/*": [
+      "./drizzle/**/*",
+      "./lib/providers/server/model-catalog.NOTICE",
+    ],
   },
   transpilePackages: ["@overtchat/shared"],
   // Hosts allowed to load `next dev` assets cross-origin. Only used in dev
