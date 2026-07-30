@@ -30,6 +30,7 @@ import {
   commitChatTurn,
   completeChatStream,
   getChatMessage,
+  type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
@@ -249,6 +250,7 @@ async function handlePost(req: Request): Promise<Response> {
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
   let lastStepUsage: LanguageModelUsage | null = null;
+  let completedGenerationUsage: CompletedGenerationUsage | undefined;
   let streamError: unknown = null;
 
   try {
@@ -357,6 +359,34 @@ async function handlePost(req: Request): Promise<Response> {
           modelIconId,
         };
 
+        const tokenUsage = [
+          part.totalUsage.inputTokens,
+          part.totalUsage.inputTokenDetails.noCacheTokens,
+          part.totalUsage.outputTokens,
+          part.totalUsage.inputTokenDetails.cacheReadTokens,
+          part.totalUsage.inputTokenDetails.cacheWriteTokens,
+          part.totalUsage.totalTokens,
+        ];
+        completedGenerationUsage = tokenUsage.some(
+          (value) => value !== undefined,
+        )
+          ? {
+              occurredAt: new Date(finishedAt),
+              providerId: modelConfig.providerId,
+              model: modelConfig.model,
+              inputTokens: part.totalUsage.inputTokens,
+              uncachedInputTokens:
+                part.totalUsage.inputTokenDetails.noCacheTokens,
+              outputTokens: part.totalUsage.outputTokens,
+              cacheReadTokens:
+                part.totalUsage.inputTokenDetails.cacheReadTokens,
+              cacheWriteTokens:
+                part.totalUsage.inputTokenDetails.cacheWriteTokens,
+              totalTokens: part.totalUsage.totalTokens,
+              finishReason: part.finishReason,
+            }
+          : undefined;
+
         return { stats };
       },
       onEnd: async ({ responseMessage }) => {
@@ -378,7 +408,14 @@ async function handlePost(req: Request): Promise<Response> {
             : undefined;
 
         try {
-          completeChatStream({ chatId, streamId, assistantMessage });
+          completeChatStream({
+            chatId,
+            streamId,
+            assistantMessage,
+            ...(assistantMessage && completedGenerationUsage
+              ? { usage: completedGenerationUsage }
+              : {}),
+          });
         } catch (error) {
           console.error("[persist-assistant]", error);
           try {

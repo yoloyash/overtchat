@@ -22,6 +22,14 @@ export const userKeys = {
   list: () => [...userKeys.all(), "list"] as const,
 };
 
+export const activityKeys = {
+  all: () => ["activity"] as const,
+  leaderboard: (period: string) =>
+    [...activityKeys.all(), "leaderboard", period] as const,
+  profile: (userId: string, timeZone: string) =>
+    [...activityKeys.all(), "profile", userId, timeZone] as const,
+};
+
 export const searchKeys = {
   all: () => ["search"] as const,
   byQuery: (q: string) => [...searchKeys.all(), q] as const,

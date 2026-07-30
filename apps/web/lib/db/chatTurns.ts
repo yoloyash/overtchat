@@ -2,10 +2,23 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
-import { chats, messages } from "@/lib/db/schema";
+import { chats, generationUsage, messages } from "@/lib/db/schema";
 import { extractSearchText } from "@/lib/search/extract";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
+
+export type CompletedGenerationUsage = {
+  occurredAt: Date;
+  providerId: string;
+  model: string;
+  inputTokens?: number;
+  uncachedInputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  totalTokens?: number;
+  finishReason?: string;
+};
 
 export type CommitChatTurnResult =
   | "committed"
@@ -122,6 +135,7 @@ export function completeChatStream({
   chatId,
   streamId,
   assistantMessage,
+  usage,
 }: {
   chatId: string;
   streamId: string;
@@ -130,6 +144,7 @@ export function completeChatStream({
     parts: AnyPart[];
     metadata?: Record<string, unknown>;
   };
+  usage?: CompletedGenerationUsage;
 }): boolean {
   return db.transaction((tx) => {
     const chat = tx
@@ -159,6 +174,17 @@ export function completeChatStream({
           INSERT INTO messages_fts (content, message_id, chat_id, user_id)
           VALUES (${content}, ${assistantMessage.id}, ${chatId}, ${chat.userId})
         `);
+      }
+      if (usage) {
+        tx.insert(generationUsage)
+          .values({
+            id: streamId,
+            userId: chat.userId,
+            chatId,
+            messageId: assistantMessage.id,
+            ...usage,
+          })
+          .run();
       }
     }
 

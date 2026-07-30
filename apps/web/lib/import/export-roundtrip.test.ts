@@ -31,6 +31,16 @@ raw.exec(`
     metadata TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
   );
+  CREATE TABLE generation_usage (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    chat_id TEXT,
+    message_id TEXT,
+    occurred_at INTEGER NOT NULL,
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    total_tokens INTEGER
+  );
   CREATE VIRTUAL TABLE messages_fts USING fts5(
     content,
     message_id UNINDEXED,
@@ -89,6 +99,23 @@ function seedExportSource() {
     }),
     2_000,
   );
+  raw
+    .prepare(
+      `INSERT INTO generation_usage (
+        id, user_id, chat_id, message_id, occurred_at, provider_id, model,
+        total_tokens
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      "source-stream",
+      "user",
+      "source-chat",
+      "source-assistant",
+      2_000,
+      "custom",
+      "test-model",
+      8_448,
+    );
 }
 
 describe("native export/import compatibility", () => {
@@ -157,6 +184,9 @@ describe("native export/import compatibility", () => {
         }),
       },
     ]);
+    expect(
+      raw.prepare("SELECT id FROM generation_usage ORDER BY id").all(),
+    ).toEqual([{ id: "source-stream" }]);
   });
 
   it("keeps legacy direct-chat and chat-array imports working", () => {

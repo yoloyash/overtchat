@@ -21,7 +21,11 @@ const databasePath = path.join(
 process.env.DATABASE_URL = databasePath;
 
 const raw = new Database(databasePath);
+raw.pragma("foreign_keys = ON");
 raw.exec(`
+  CREATE TABLE user (
+    id TEXT PRIMARY KEY NOT NULL
+  );
   CREATE TABLE chats (
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
@@ -29,7 +33,8 @@ raw.exec(`
     title TEXT,
     active_stream_id TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
-    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
+    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
   );
   CREATE TABLE messages (
     id TEXT PRIMARY KEY NOT NULL,
@@ -37,7 +42,27 @@ raw.exec(`
     role TEXT NOT NULL,
     parts TEXT NOT NULL,
     metadata TEXT,
-    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
+    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE
+  );
+  CREATE TABLE generation_usage (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    chat_id TEXT,
+    message_id TEXT,
+    occurred_at INTEGER NOT NULL,
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    input_tokens INTEGER,
+    uncached_input_tokens INTEGER,
+    output_tokens INTEGER,
+    cache_read_tokens INTEGER,
+    cache_write_tokens INTEGER,
+    total_tokens INTEGER,
+    finish_reason TEXT,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE SET NULL,
+    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
   );
   CREATE VIRTUAL TABLE messages_fts USING fts5(
     content,
@@ -60,9 +85,12 @@ beforeAll(async () => {
 
 beforeEach(() => {
   raw.exec(`
+    DELETE FROM generation_usage;
     DELETE FROM messages;
     DELETE FROM messages_fts;
     DELETE FROM chats;
+    DELETE FROM user;
+    INSERT INTO user (id) VALUES ('user');
   `);
 });
 
@@ -208,6 +236,18 @@ describe("transactional chat turns", () => {
             },
           },
         },
+        usage: {
+          occurredAt: new Date("2026-07-30T12:00:00.000Z"),
+          providerId: "anthropic",
+          model: "claude-sonnet-4-5",
+          inputTokens: 4_096,
+          uncachedInputTokens: 1_024,
+          outputTokens: 128,
+          cacheReadTokens: 3_072,
+          cacheWriteTokens: 0,
+          totalTokens: 4_224,
+          finishReason: "stop",
+        },
       }),
     ).toBe(true);
     expect(
@@ -234,6 +274,162 @@ describe("transactional chat turns", () => {
         },
       }),
     });
+    expect(
+      raw
+        .prepare(
+          `SELECT
+             id,
+             user_id AS userId,
+             chat_id AS chatId,
+             message_id AS messageId,
+             occurred_at AS occurredAt,
+             provider_id AS providerId,
+             model,
+             input_tokens AS inputTokens,
+             uncached_input_tokens AS uncachedInputTokens,
+             output_tokens AS outputTokens,
+             cache_read_tokens AS cacheReadTokens,
+             cache_write_tokens AS cacheWriteTokens,
+             total_tokens AS totalTokens,
+             finish_reason AS finishReason
+           FROM generation_usage`,
+        )
+        .get(),
+    ).toEqual({
+      id: "stream-one",
+      userId: "user",
+      chatId: "chat",
+      messageId: "assistant-message",
+      occurredAt: new Date("2026-07-30T12:00:00.000Z").getTime(),
+      providerId: "anthropic",
+      model: "claude-sonnet-4-5",
+      inputTokens: 4_096,
+      uncachedInputTokens: 1_024,
+      outputTokens: 128,
+      cacheReadTokens: 3_072,
+      cacheWriteTokens: 0,
+      totalTokens: 4_224,
+      finishReason: "stop",
+    });
+  });
+
+  it("rolls back assistant persistence when usage insertion fails", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Hello" }],
+        },
+      }),
+    ).toBe("committed");
+    raw
+      .prepare(
+        `INSERT INTO generation_usage (
+          id, user_id, chat_id, occurred_at, provider_id, model
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run("stream", "user", "chat", 1_000, "custom", "old-model");
+
+    expect(() =>
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "stream",
+        assistantMessage: {
+          id: "assistant-message",
+          parts: [{ type: "text", text: "Hi" }],
+        },
+        usage: {
+          occurredAt: new Date(2_000),
+          providerId: "custom",
+          model: "new-model",
+          totalTokens: 10,
+        },
+      }),
+    ).toThrow();
+
+    expect(messageIds()).toEqual(["user-message"]);
+    expect(
+      raw
+        .prepare("SELECT active_stream_id AS id FROM chats WHERE id = 'chat'")
+        .get(),
+    ).toEqual({ id: "stream" });
+    expect(
+      raw.prepare("SELECT message_id FROM messages_fts ORDER BY rowid").all(),
+    ).toEqual([{ message_id: "user-message" }]);
+  });
+
+  it("keeps usage when its message branch and chat are deleted", async () => {
+    seedChat();
+    raw
+      .prepare(
+        `INSERT INTO generation_usage (
+          id, user_id, chat_id, message_id, occurred_at, provider_id, model,
+          total_tokens
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "old-stream",
+        "user",
+        "chat",
+        "assistant",
+        1_000,
+        "custom",
+        "model",
+        50,
+      );
+
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "new-stream",
+        staleStreamId: null,
+        truncateFromMessageId: "edit",
+        userMessage: {
+          id: "edit",
+          parts: [{ type: "text", text: "Edited" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      raw
+        .prepare(
+          "SELECT chat_id AS chatId, message_id AS messageId FROM generation_usage",
+        )
+        .get(),
+    ).toEqual({ chatId: "chat", messageId: null });
+
+    await chatDb.deleteChat("chat", "user");
+    expect(
+      raw
+        .prepare(
+          "SELECT chat_id AS chatId, message_id AS messageId FROM generation_usage",
+        )
+        .get(),
+    ).toEqual({ chatId: null, messageId: null });
+  });
+
+  it("removes usage when the owning account is deleted", () => {
+    seedChat();
+    raw
+      .prepare(
+        `INSERT INTO generation_usage (
+          id, user_id, chat_id, occurred_at, provider_id, model
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run("stream", "user", "chat", 1_000, "custom", "model");
+
+    raw.prepare("DELETE FROM user WHERE id = ?").run("user");
+
+    expect(
+      raw.prepare("SELECT COUNT(*) AS count FROM generation_usage").get(),
+    ).toEqual({ count: 0 });
   });
 
   it("reads persisted metadata through both message loaders", async () => {

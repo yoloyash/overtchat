@@ -795,6 +795,63 @@ describe("chat route setup boundary", () => {
     });
   });
 
+  it("records reported generation usage with the saved assistant", async () => {
+    await POST(request());
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+
+    messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 80,
+            cacheWriteTokens: 5,
+            noCacheTokens: 15,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: expect.any(String),
+      assistantMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+      },
+      usage: {
+        occurredAt: expect.any(Date),
+        providerId: "custom",
+        model: "test-model",
+        inputTokens: 100,
+        uncachedInputTokens: 15,
+        outputTokens: 10,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 5,
+        totalTokens: 110,
+        finishReason: "stop",
+      },
+    });
+  });
+
   it("uses the latest step usage for context instead of summing tool-loop steps", async () => {
     mocks.agentStream.mockResolvedValue({
       stream: new ReadableStream({

@@ -173,11 +173,52 @@ export const messages = sqliteTable(
   ],
 );
 
+export const generationUsage = sqliteTable(
+  "generation_usage",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    chatId: text("chat_id").references(() => chats.id, {
+      onDelete: "set null",
+    }),
+    messageId: text("message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull(),
+    providerId: text("provider_id").notNull(),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens"),
+    uncachedInputTokens: integer("uncached_input_tokens"),
+    outputTokens: integer("output_tokens"),
+    cacheReadTokens: integer("cache_read_tokens"),
+    cacheWriteTokens: integer("cache_write_tokens"),
+    totalTokens: integer("total_tokens"),
+    finishReason: text("finish_reason"),
+  },
+  (table) => [
+    index("generation_usage_userId_occurredAt_idx").on(
+      table.userId,
+      table.occurredAt,
+    ),
+    index("generation_usage_userId_providerId_model_occurredAt_idx").on(
+      table.userId,
+      table.providerId,
+      table.model,
+      table.occurredAt,
+    ),
+    index("generation_usage_chatId_idx").on(table.chatId),
+    index("generation_usage_messageId_idx").on(table.messageId),
+  ],
+);
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
   chats: many(chats),
   projects: many(projects),
+  generationUsage: many(generationUsage),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
@@ -204,6 +245,7 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
     references: [projects.id],
   }),
   messages: many(messages),
+  generationUsage: many(generationUsage),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -214,12 +256,34 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   chats: many(chats),
 }));
 
-export const messagesRelations = relations(messages, ({ one }) => ({
+export const messagesRelations = relations(messages, ({ one, many }) => ({
   chat: one(chats, {
     fields: [messages.chatId],
     references: [chats.id],
   }),
+  generationUsage: many(generationUsage),
 }));
+
+export const generationUsageRelations = relations(
+  generationUsage,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [generationUsage.userId],
+      references: [user.id],
+    }),
+    chat: one(chats, {
+      fields: [generationUsage.chatId],
+      references: [chats.id],
+    }),
+    message: one(messages, {
+      fields: [generationUsage.messageId],
+      references: [messages.id],
+    }),
+  }),
+);
+
+export type GenerationUsageRow = typeof generationUsage.$inferSelect;
+export type NewGenerationUsageRow = typeof generationUsage.$inferInsert;
 
 export const uploads = sqliteTable(
   "uploads",
