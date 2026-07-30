@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import { initials } from "./activity-format";
 
 const AVATAR_STYLES = [
   "bg-teal-100 text-teal-800 dark:bg-teal-950 dark:text-teal-200",
@@ -17,7 +16,7 @@ function avatarStyle(id: string): string {
   return AVATAR_STYLES[hash % AVATAR_STYLES.length];
 }
 
-export function ActivityAvatar({
+export function ProfileAvatar({
   id,
   name,
   image,
@@ -26,7 +25,7 @@ export function ActivityAvatar({
   id: string;
   name: string;
   image: string | null;
-  size?: "md" | "lg";
+  size?: "sm" | "md" | "lg";
 }) {
   return (
     <span
@@ -35,12 +34,14 @@ export function ActivityAvatar({
       className={cn(
         "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold",
         avatarStyle(id),
-        size === "lg" ? "size-16 text-lg md:size-20 md:text-xl" : "size-9 text-xs",
+        size === "sm" && "size-7 text-[10px]",
+        size === "md" && "size-9 text-xs",
+        size === "lg" && "size-16 text-lg md:size-20 md:text-xl",
       )}
       style={
         image
           ? {
-              backgroundImage: `url(${image})`,
+              backgroundImage: `url(${JSON.stringify(image)})`,
               backgroundPosition: "center",
               backgroundSize: "cover",
             }
@@ -50,4 +51,13 @@ export function ActivityAvatar({
       {!image && initials(name)}
     </span>
   );
+}
+
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }

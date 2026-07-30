@@ -8,9 +8,9 @@ import {
   type ActivityPeriod,
   type ActivityTotals,
 } from "@/lib/activity/types";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { useActivityLeaderboard } from "@/lib/queries/activity";
 import { cn } from "@/lib/utils";
-import { ActivityAvatar } from "./ActivityAvatar";
 import { formatCompact, formatDate, formatExact } from "./activity-format";
 
 const PERIOD_LABELS: Record<ActivityPeriod, string> = {
@@ -53,7 +53,7 @@ export function ActivityLeaderboard() {
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            Family leaderboard
+            Leaderboard
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {data?.trackingStartedAt
@@ -122,7 +122,7 @@ export function ActivityLeaderboard() {
                   active={entry.generations > 0}
                 />
                 <span className="flex min-w-0 items-center gap-3">
-                  <ActivityAvatar
+                  <ProfileAvatar
                     id={entry.userId}
                     name={entry.name}
                     image={entry.image}

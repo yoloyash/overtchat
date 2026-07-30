@@ -100,7 +100,7 @@ test.afterAll(async () => {
   });
 });
 
-function seedFamilyData() {
+function seedActivityData() {
   const db = openE2eDatabase();
   const now = Date.now();
   try {
@@ -122,7 +122,7 @@ function seedFamilyData() {
         id, name, email, email_verified, created_at, updated_at, role, banned
       ) VALUES (?, ?, ?, 1, ?, ?, 'user', 0)`,
     ).run(
-      "activity-family-member",
+      "activity-member",
       "Taylor",
       "taylor@overtchat-test.local",
       now,
@@ -142,10 +142,10 @@ function seedFamilyData() {
     );
     insert.run({
       id: "taylor-recent",
-      userId: "activity-family-member",
+      userId: "activity-member",
       occurredAt: now - 120_000,
       providerId: "openai",
-      model: "gpt-family",
+      model: "gpt-activity",
       inputTokens: 400,
       uncachedInputTokens: 400,
       outputTokens: 100,
@@ -155,10 +155,10 @@ function seedFamilyData() {
     });
     insert.run({
       id: "taylor-older",
-      userId: "activity-family-member",
+      userId: "activity-member",
       occurredAt: now - 10 * 24 * 60 * 60 * 1_000,
       providerId: "openai",
-      model: "gpt-family",
+      model: "gpt-activity",
       inputTokens: 900,
       uncachedInputTokens: 900,
       outputTokens: 100,
@@ -184,10 +184,21 @@ function trackedUsageCount(): number {
   }
 }
 
-test("family leaderboard and person activity profile are verifiable", async ({
+function profileForEmail(email: string): { name: string; image: string | null } {
+  const db = openE2eDatabase();
+  try {
+    return db
+      .prepare("SELECT name, image FROM user WHERE email = ?")
+      .get(email) as { name: string; image: string | null };
+  } finally {
+    db.close();
+  }
+}
+
+test("leaderboard, activity profiles, and personal profile are verifiable", async ({
   page,
 }) => {
-  await test.step("create the family admin and stream tracked usage", async () => {
+  await test.step("create the admin and stream tracked usage", async () => {
     await page.goto("/signup");
     await page.locator("#name").fill("Activity Admin");
     await page
@@ -196,7 +207,7 @@ test("family leaderboard and person activity profile are verifiable", async ({
     await page.locator("#password").fill("test-password-123");
     await page.getByRole("button", { name: "Create account" }).click();
     await page.waitForURL("**/", { timeout: 15_000 });
-    seedFamilyData();
+    seedActivityData();
     await page.reload();
 
     const composer = page.getByPlaceholder("Message…");
@@ -208,9 +219,7 @@ test("family leaderboard and person activity profile are verifiable", async ({
 
   await test.step("compare the 30-day and 7-day rankings", async () => {
     await page.goto("/activity");
-    await expect(
-      page.getByRole("heading", { name: "Family leaderboard" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
     const people = page.locator('a[href^="/activity/"]');
     await expect(people.nth(0)).toContainText("Taylor");
     await expect(people.nth(0)).toContainText("1.5K");
@@ -223,23 +232,54 @@ test("family leaderboard and person activity profile are verifiable", async ({
 
   await test.step("open a person profile with heatmap and models", async () => {
     await page.getByRole("link", { name: /Taylor/ }).click();
-    await page.waitForURL("**/activity/activity-family-member");
+    await page.waitForURL("**/activity/activity-member");
     await expect(
       page.getByRole("heading", { name: "Taylor" }),
     ).toBeVisible();
-    await expect(page.getByText("gpt-family")).toBeVisible();
+    await expect(page.getByText("gpt-activity")).toBeVisible();
     await expect(
       page.getByRole("gridcell", { name: /500 chat tokens/ }),
     ).toBeVisible();
     await expect(page.getByText("1.5K").first()).toBeVisible();
   });
 
+  await test.step("edit the personal profile and open its activity page", async () => {
+    await page.goto("/settings/profile");
+    await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+    await page.getByLabel("Display name").fill("Alex Admin");
+    await page
+      .getByLabel("Avatar URL")
+      .fill("https://avatars.overtchat.test/alex.png");
+    await page.getByRole("button", { name: "Save profile" }).click();
+    await expect(page.getByText("Profile updated")).toBeVisible();
+    await expect
+      .poll(() => profileForEmail("activity-admin@overtchat-test.local"))
+      .toEqual({
+        name: "Alex Admin",
+        image: "https://avatars.overtchat.test/alex.png",
+      });
+    await expect(
+      page.getByRole("button", { name: /Alex Admin/ }),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "View activity profile" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Alex Admin" }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("img", { name: "Alex Admin avatar" }),
+    ).toHaveCSS(
+      "background-image",
+      'url("https://avatars.overtchat.test/alex.png")',
+    );
+  });
+
   await test.step("remain usable without page overflow on mobile", async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/activity");
-    await expect(
-      page.getByRole("heading", { name: "Family leaderboard" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
     expect(
       await page.evaluate(
         () =>
@@ -248,7 +288,7 @@ test("family leaderboard and person activity profile are verifiable", async ({
       ),
     ).toBe(true);
 
-    await page.goto("/activity/activity-family-member");
+    await page.goto("/activity/activity-member");
     await expect(
       page.getByRole("heading", { name: "Taylor" }),
     ).toBeVisible();
@@ -259,5 +299,15 @@ test("family leaderboard and person activity profile are verifiable", async ({
     await expect(
       page.getByRole("gridcell", { name: /500 chat tokens/ }),
     ).toBeVisible();
+
+    await page.goto("/settings/profile");
+    await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
   });
 });

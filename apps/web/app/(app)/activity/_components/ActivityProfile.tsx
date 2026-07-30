@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Bot, CalendarDays, MessageSquareText } from "lucide-react";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
 import type { ActivityTotals } from "@/lib/activity/types";
 import { useActivityProfile } from "@/lib/queries/activity";
 import { cn } from "@/lib/utils";
-import { ActivityAvatar } from "./ActivityAvatar";
 import { formatCompact, formatDate, formatExact } from "./activity-format";
 
 const EMPTY_TOTALS: ActivityTotals = {
@@ -53,7 +53,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
       </Link>
 
       <section className="mt-6 flex items-center gap-4 md:gap-5">
-        <ActivityAvatar
+        <ProfileAvatar
           id={data.member.id}
           name={data.member.name}
           image={data.member.image}

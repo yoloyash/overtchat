@@ -49,7 +49,7 @@ describe("activity leaderboard API", () => {
     expect(mocks.listUsageLeaderboard).not.toHaveBeenCalled();
   });
 
-  it("defaults to 30 days and returns family-safe profile fields", async () => {
+  it("defaults to 30 days and returns leaderboard profile fields", async () => {
     const now = Date.now();
     const response = await GET(
       new Request("http://server.test/api/activity?period=invalid"),

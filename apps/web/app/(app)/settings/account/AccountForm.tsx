@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
 import {
@@ -13,43 +12,13 @@ import {
   SettingsSection,
 } from "../_components/SettingsRows";
 
-export function AccountForm({
-  email,
-  name: initialName,
-}: {
-  email: string;
-  name: string;
-}) {
-  const [name, setName] = useState(initialName);
-  const [profileStatus, setProfileStatus] = useState<
-    "idle" | "submitting" | "ok"
-  >("idle");
-  const [profileError, setProfileError] = useState("");
-
+export function AccountForm({ email }: { email: string }) {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [pwError, setPwError] = useState("");
   const [pwStatus, setPwStatus] = useState<"idle" | "submitting" | "ok">(
     "idle",
   );
-
-  async function saveProfile(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = name.trim();
-    if (!trimmed) {
-      setProfileError("Name is required.");
-      return;
-    }
-    setProfileStatus("submitting");
-    setProfileError("");
-    const { error } = await authClient.updateUser({ name: trimmed });
-    if (error) {
-      setProfileStatus("idle");
-      setProfileError(error.message ?? "Failed to update profile");
-      return;
-    }
-    setProfileStatus("ok");
-  }
 
   async function changePassword(e: React.FormEvent) {
     e.preventDefault();
@@ -81,130 +50,79 @@ export function AccountForm({
         }
       />
 
-      <div className="space-y-10">
-        <form onSubmit={saveProfile} className="space-y-4">
-          <SettingsSection
-            title="Profile"
-            description="Shown in the sidebar and around chats."
+      <form onSubmit={changePassword} className="space-y-4">
+        {/* Hidden username anchor so password managers associate this
+            credential with the signed-in account. */}
+        <input
+          type="email"
+          name="email"
+          autoComplete="username"
+          defaultValue={email}
+          readOnly
+          hidden
+        />
+        <SettingsSection
+          title="Password"
+          description="Changing your password signs you out of all other sessions."
+        >
+          <SettingsRow
+            title="Current password"
+            htmlFor="current"
+            align="center"
+            controlAlign="end"
           >
-            <SettingsRow
-              title="Name"
-              description="Use the name people should recognize on this server."
-              htmlFor="name"
-              align="center"
-              controlAlign="end"
-            >
-              <Input
-                id="name"
-                type="text"
-                autoComplete="name"
-                className="w-full @2xl:max-w-sm"
+            <div className="w-full @2xl:max-w-sm">
+              <PasswordInput
+                id="current"
+                autoComplete="current-password"
                 required
-                value={name}
+                value={currentPassword}
                 onChange={(e) => {
-                  setName(e.target.value);
-                  setProfileStatus("idle");
-                  setProfileError("");
+                  setCurrentPassword(e.target.value);
+                  setPwStatus("idle");
+                  setPwError("");
                 }}
               />
-            </SettingsRow>
-          </SettingsSection>
+            </div>
+          </SettingsRow>
 
-          {profileError && (
-            <SettingsNotice tone="error">{profileError}</SettingsNotice>
-          )}
-
-          <SettingsActions bordered={false}>
-            {profileStatus === "ok" && (
-              <SettingsNotice tone="success" className="mr-auto">
-                Profile updated
-              </SettingsNotice>
-            )}
-            <Button
-              type="submit"
-              disabled={
-                profileStatus === "submitting" || name.trim() === initialName
-              }
-            >
-              {profileStatus === "submitting" ? "Saving…" : "Save"}
-            </Button>
-          </SettingsActions>
-        </form>
-
-        <form onSubmit={changePassword} className="space-y-4">
-          {/* Hidden username anchor so password managers associate this
-              credential with the signed-in account. */}
-          <input
-            type="email"
-            name="email"
-            autoComplete="username"
-            defaultValue={email}
-            readOnly
-            hidden
-          />
-          <SettingsSection
-            title="Password"
-            description="Changing your password signs you out of all other sessions."
+          <SettingsRow
+            title="New password"
+            description="Use at least 8 characters."
+            htmlFor="new"
+            align="center"
+            controlAlign="end"
           >
-            <SettingsRow
-              title="Current password"
-              htmlFor="current"
-              align="center"
-              controlAlign="end"
-            >
-              <div className="w-full @2xl:max-w-sm">
-                <PasswordInput
-                  id="current"
-                  autoComplete="current-password"
-                  required
-                  value={currentPassword}
-                  onChange={(e) => {
-                    setCurrentPassword(e.target.value);
-                    setPwStatus("idle");
-                    setPwError("");
-                  }}
-                />
-              </div>
-            </SettingsRow>
+            <div className="w-full @2xl:max-w-sm">
+              <PasswordInput
+                id="new"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                value={newPassword}
+                onChange={(e) => {
+                  setNewPassword(e.target.value);
+                  setPwStatus("idle");
+                  setPwError("");
+                }}
+              />
+            </div>
+          </SettingsRow>
+        </SettingsSection>
 
-            <SettingsRow
-              title="New password"
-              description="Use at least 8 characters."
-              htmlFor="new"
-              align="center"
-              controlAlign="end"
-            >
-              <div className="w-full @2xl:max-w-sm">
-                <PasswordInput
-                  id="new"
-                  autoComplete="new-password"
-                  required
-                  minLength={8}
-                  value={newPassword}
-                  onChange={(e) => {
-                    setNewPassword(e.target.value);
-                    setPwStatus("idle");
-                    setPwError("");
-                  }}
-                />
-              </div>
-            </SettingsRow>
-          </SettingsSection>
+        {pwError && <SettingsNotice tone="error">{pwError}</SettingsNotice>}
 
-          {pwError && <SettingsNotice tone="error">{pwError}</SettingsNotice>}
-
-          <SettingsActions bordered={false}>
-            {pwStatus === "ok" && (
-              <SettingsNotice tone="success" className="mr-auto">
-                Password updated
-              </SettingsNotice>
-            )}
-            <Button type="submit" disabled={pwStatus === "submitting"}>
-              {pwStatus === "submitting" ? "Saving…" : "Change password"}
-            </Button>
-          </SettingsActions>
-        </form>
-      </div>
+        <SettingsActions bordered={false}>
+          {pwStatus === "ok" && (
+            <SettingsNotice tone="success" className="mr-auto">
+              Password updated
+            </SettingsNotice>
+          )}
+          <Button type="submit" disabled={pwStatus === "submitting"}>
+            {pwStatus === "submitting" ? "Saving…" : "Change password"}
+          </Button>
+        </SettingsActions>
+      </form>
     </div>
   );
 }

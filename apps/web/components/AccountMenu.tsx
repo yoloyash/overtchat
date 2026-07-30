@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Menu } from "@base-ui/react/menu";
 import { ChevronUp, LogOut, Settings, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import { getErrorMessage } from "@/lib/errors";
@@ -52,9 +53,18 @@ export function AccountMenu() {
           />
         }
       >
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-          <User className="size-3.5" />
-        </span>
+        {isPending || !session ? (
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+            <User className="size-3.5" />
+          </span>
+        ) : (
+          <ProfileAvatar
+            id={session.user.id}
+            name={session.user.name}
+            image={session.user.image ?? null}
+            size="sm"
+          />
+        )}
         <span className="flex min-w-0 flex-1 flex-col text-left">
           {isPending || !session ? (
             <span className="text-sm font-medium text-muted-foreground">

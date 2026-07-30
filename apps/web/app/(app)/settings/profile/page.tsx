@@ -1,10 +1,17 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
-import { AccountForm } from "./AccountForm";
+import { ProfileForm } from "./ProfileForm";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
-  return <AccountForm email={session.user.email} />;
+
+  return (
+    <ProfileForm
+      userId={session.user.id}
+      name={session.user.name}
+      image={session.user.image ?? null}
+    />
+  );
 }
