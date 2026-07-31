@@ -195,6 +195,37 @@ describe("title helpers", () => {
     expect(title).toBe("Dependency Cleanup");
   });
 
+  it("persists the historical cost estimate with title usage", async () => {
+    mocks.generateText.mockResolvedValue(
+      generationResult("Priced Title"),
+    );
+
+    await generateChatTitle({
+      chatId: "chat",
+      userId: "user",
+      modelConfig: {
+        ...modelConfig,
+        providerId: "anthropic",
+        apiFormat: "auto",
+        model: "claude-sonnet-4-6",
+      },
+      userParts: firstUserParts,
+    });
+
+    expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "anthropic",
+        model: "claude-sonnet-4-6",
+        costSource: "models.dev",
+        inputCostNanoUsd: 12_000,
+        outputCostNanoUsd: 30_000,
+        cacheReadCostNanoUsd: 1_800,
+        cacheWriteCostNanoUsd: 3_750,
+        totalCostNanoUsd: 47_550,
+      }),
+    );
+  });
+
   it("preserves saved provider options while disabling reasoning", async () => {
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "model",

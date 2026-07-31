@@ -21,12 +21,18 @@ const PERIOD_LABELS: Record<ActivityPeriod, string> = {
 
 const EMPTY_TOTALS: ActivityTotals = {
   generations: 0,
+  pricedGenerations: 0,
   inputTokens: 0,
   uncachedInputTokens: 0,
   outputTokens: 0,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   totalTokens: 0,
+  inputCostNanoUsd: 0,
+  outputCostNanoUsd: 0,
+  cacheReadCostNanoUsd: 0,
+  cacheWriteCostNanoUsd: 0,
+  totalCostNanoUsd: 0,
 };
 
 export function ActivityLeaderboard() {
@@ -35,6 +41,7 @@ export function ActivityLeaderboard() {
   const totals = (data?.entries ?? []).reduce<ActivityTotals>(
     (sum, entry) => ({
       generations: sum.generations + entry.generations,
+      pricedGenerations: sum.pricedGenerations + entry.pricedGenerations,
       inputTokens: sum.inputTokens + entry.inputTokens,
       uncachedInputTokens:
         sum.uncachedInputTokens + entry.uncachedInputTokens,
@@ -42,6 +49,16 @@ export function ActivityLeaderboard() {
       cacheReadTokens: sum.cacheReadTokens + entry.cacheReadTokens,
       cacheWriteTokens: sum.cacheWriteTokens + entry.cacheWriteTokens,
       totalTokens: sum.totalTokens + entry.totalTokens,
+      inputCostNanoUsd:
+        sum.inputCostNanoUsd + entry.inputCostNanoUsd,
+      outputCostNanoUsd:
+        sum.outputCostNanoUsd + entry.outputCostNanoUsd,
+      cacheReadCostNanoUsd:
+        sum.cacheReadCostNanoUsd + entry.cacheReadCostNanoUsd,
+      cacheWriteCostNanoUsd:
+        sum.cacheWriteCostNanoUsd + entry.cacheWriteCostNanoUsd,
+      totalCostNanoUsd:
+        sum.totalCostNanoUsd + entry.totalCostNanoUsd,
     }),
     EMPTY_TOTALS,
   );

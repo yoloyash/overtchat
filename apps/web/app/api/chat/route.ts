@@ -38,6 +38,11 @@ import { getProject } from "@/lib/db/projects";
 import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import {
+  estimateGenerationCost,
+  sumEstimatedGenerationCosts,
+  type EstimatedGenerationCost,
+} from "@/lib/providers/server/model-cost";
 import { resolveModelContextWindow } from "@/lib/providers/server/model-catalog";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
@@ -250,6 +255,8 @@ async function handlePost(req: Request): Promise<Response> {
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
   let lastStepUsage: LanguageModelUsage | null = null;
+  const stepCosts: EstimatedGenerationCost[] = [];
+  let hasUnpricedStep = false;
   let completedGenerationUsage: CompletedGenerationUsage | undefined;
   let streamError: unknown = null;
 
@@ -305,6 +312,20 @@ async function handlePost(req: Request): Promise<Response> {
         },
         onFinishStep(usage) {
           lastStepUsage = usage;
+          const cost = estimateGenerationCost({
+            providerId: modelConfig.providerId,
+            model: modelConfig.model,
+            usage,
+            cacheWriteTtl:
+              promptCacheStrategy?.kind === "anthropic"
+                ? (promptCacheStrategy.cacheControl.ttl ?? "5m")
+                : undefined,
+          });
+          if (cost) {
+            stepCosts.push(cost);
+          } else {
+            hasUnpricedStep = true;
+          }
         },
         onError(error) {
           if (streamError === null) {
@@ -368,25 +389,40 @@ async function handlePost(req: Request): Promise<Response> {
           part.totalUsage.inputTokenDetails.cacheWriteTokens,
           part.totalUsage.totalTokens,
         ];
-        completedGenerationUsage = tokenUsage.some(
-          (value) => value !== undefined,
-        )
-          ? {
-              occurredAt: new Date(finishedAt),
-              providerId: modelConfig.providerId,
-              model: modelConfig.model,
-              inputTokens: part.totalUsage.inputTokens,
-              uncachedInputTokens:
-                part.totalUsage.inputTokenDetails.noCacheTokens,
-              outputTokens: part.totalUsage.outputTokens,
-              cacheReadTokens:
-                part.totalUsage.inputTokenDetails.cacheReadTokens,
-              cacheWriteTokens:
-                part.totalUsage.inputTokenDetails.cacheWriteTokens,
-              totalTokens: part.totalUsage.totalTokens,
-              finishReason: part.finishReason,
-            }
-          : undefined;
+        if (tokenUsage.some((value) => value !== undefined)) {
+          const estimatedCost =
+            stepCosts.length > 0 || hasUnpricedStep
+              ? hasUnpricedStep
+                ? null
+                : sumEstimatedGenerationCosts(stepCosts)
+              : estimateGenerationCost({
+                  providerId: modelConfig.providerId,
+                  model: modelConfig.model,
+                  usage: part.totalUsage,
+                  cacheWriteTtl:
+                    promptCacheStrategy?.kind === "anthropic"
+                      ? (promptCacheStrategy.cacheControl.ttl ?? "5m")
+                      : undefined,
+                });
+          completedGenerationUsage = {
+            occurredAt: new Date(finishedAt),
+            providerId: modelConfig.providerId,
+            model: modelConfig.model,
+            inputTokens: part.totalUsage.inputTokens,
+            uncachedInputTokens:
+              part.totalUsage.inputTokenDetails.noCacheTokens,
+            outputTokens: part.totalUsage.outputTokens,
+            cacheReadTokens:
+              part.totalUsage.inputTokenDetails.cacheReadTokens,
+            cacheWriteTokens:
+              part.totalUsage.inputTokenDetails.cacheWriteTokens,
+            totalTokens: part.totalUsage.totalTokens,
+            finishReason: part.finishReason,
+            ...(estimatedCost ?? {}),
+          };
+        } else {
+          completedGenerationUsage = undefined;
+        }
 
         return { stats };
       },

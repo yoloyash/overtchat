@@ -11,12 +11,18 @@ import { formatCompact, formatDate, formatExact } from "./activity-format";
 
 const EMPTY_TOTALS: ActivityTotals = {
   generations: 0,
+  pricedGenerations: 0,
   inputTokens: 0,
   uncachedInputTokens: 0,
   outputTokens: 0,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   totalTokens: 0,
+  inputCostNanoUsd: 0,
+  outputCostNanoUsd: 0,
+  cacheReadCostNanoUsd: 0,
+  cacheWriteCostNanoUsd: 0,
+  totalCostNanoUsd: 0,
 };
 
 export function ActivityProfile({ userId }: { userId: string }) {

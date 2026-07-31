@@ -10,12 +10,18 @@ export type UsageRange = {
 
 export type UsageTotals = {
   generations: number;
+  pricedGenerations: number;
   inputTokens: number;
   uncachedInputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
   cacheWriteTokens: number;
   totalTokens: number;
+  inputCostNanoUsd: number;
+  outputCostNanoUsd: number;
+  cacheReadCostNanoUsd: number;
+  cacheWriteCostNanoUsd: number;
+  totalCostNanoUsd: number;
 };
 
 export type UsageLeaderboardEntry = UsageTotals & {
@@ -59,6 +65,8 @@ function rangeConditions(range: UsageRange): SQL[] {
 function aggregateUsage() {
   return {
     generations: sql<number>`count(${generationUsage.id})`,
+    pricedGenerations:
+      sql<number>`count(${generationUsage.totalCostNanoUsd})`,
     inputTokens: sql<number>`coalesce(sum(${generationUsage.inputTokens}), 0)`,
     uncachedInputTokens:
       sql<number>`coalesce(sum(${generationUsage.uncachedInputTokens}), 0)`,
@@ -69,6 +77,16 @@ function aggregateUsage() {
     cacheWriteTokens:
       sql<number>`coalesce(sum(${generationUsage.cacheWriteTokens}), 0)`,
     totalTokens: sql<number>`coalesce(sum(${effectiveTotalTokens}), 0)`,
+    inputCostNanoUsd:
+      sql<number>`coalesce(sum(${generationUsage.inputCostNanoUsd}), 0)`,
+    outputCostNanoUsd:
+      sql<number>`coalesce(sum(${generationUsage.outputCostNanoUsd}), 0)`,
+    cacheReadCostNanoUsd:
+      sql<number>`coalesce(sum(${generationUsage.cacheReadCostNanoUsd}), 0)`,
+    cacheWriteCostNanoUsd:
+      sql<number>`coalesce(sum(${generationUsage.cacheWriteCostNanoUsd}), 0)`,
+    totalCostNanoUsd:
+      sql<number>`coalesce(sum(${generationUsage.totalCostNanoUsd}), 0)`,
   };
 }
 
@@ -193,6 +211,11 @@ export async function listUserDailyUsage(
       cacheReadTokens: generationUsage.cacheReadTokens,
       cacheWriteTokens: generationUsage.cacheWriteTokens,
       totalTokens: sql<number>`${effectiveTotalTokens}`,
+      inputCostNanoUsd: generationUsage.inputCostNanoUsd,
+      outputCostNanoUsd: generationUsage.outputCostNanoUsd,
+      cacheReadCostNanoUsd: generationUsage.cacheReadCostNanoUsd,
+      cacheWriteCostNanoUsd: generationUsage.cacheWriteCostNanoUsd,
+      totalCostNanoUsd: generationUsage.totalCostNanoUsd,
     })
     .from(generationUsage)
     .where(
@@ -219,20 +242,32 @@ export async function listUserDailyUsage(
     const current = byDate.get(date) ?? {
       date,
       generations: 0,
+      pricedGenerations: 0,
       inputTokens: 0,
       uncachedInputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       totalTokens: 0,
+      inputCostNanoUsd: 0,
+      outputCostNanoUsd: 0,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 0,
     };
     current.generations += 1;
+    current.pricedGenerations += row.totalCostNanoUsd === null ? 0 : 1;
     current.inputTokens += row.inputTokens ?? 0;
     current.uncachedInputTokens += row.uncachedInputTokens ?? 0;
     current.outputTokens += row.outputTokens ?? 0;
     current.cacheReadTokens += row.cacheReadTokens ?? 0;
     current.cacheWriteTokens += row.cacheWriteTokens ?? 0;
     current.totalTokens += row.totalTokens;
+    current.inputCostNanoUsd += row.inputCostNanoUsd ?? 0;
+    current.outputCostNanoUsd += row.outputCostNanoUsd ?? 0;
+    current.cacheReadCostNanoUsd += row.cacheReadCostNanoUsd ?? 0;
+    current.cacheWriteCostNanoUsd += row.cacheWriteCostNanoUsd ?? 0;
+    current.totalCostNanoUsd += row.totalCostNanoUsd ?? 0;
     byDate.set(date, current);
   }
 

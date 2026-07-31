@@ -4,13 +4,15 @@ import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
 import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
 import { chats, messages } from "@/lib/db/schema";
+import type { ProviderId } from "@/lib/providers/catalog";
+import type { EstimatedGenerationCost } from "@/lib/providers/server/model-cost";
 import { extractSearchText } from "@/lib/search/extract";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
 
 export type CompletedGenerationUsage = {
   occurredAt: Date;
-  providerId: string;
+  providerId: ProviderId;
   model: string;
   inputTokens?: number;
   uncachedInputTokens?: number;
@@ -19,7 +21,7 @@ export type CompletedGenerationUsage = {
   cacheWriteTokens?: number;
   totalTokens?: number;
   finishReason?: string;
-};
+} & Partial<EstimatedGenerationCost>;
 
 export type CommitChatTurnResult =
   | "committed"

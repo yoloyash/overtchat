@@ -198,6 +198,12 @@ export const generationUsage = sqliteTable(
     cacheReadTokens: integer("cache_read_tokens"),
     cacheWriteTokens: integer("cache_write_tokens"),
     totalTokens: integer("total_tokens"),
+    costSource: text("cost_source", { enum: ["models.dev"] }),
+    inputCostNanoUsd: integer("input_cost_nano_usd"),
+    outputCostNanoUsd: integer("output_cost_nano_usd"),
+    cacheReadCostNanoUsd: integer("cache_read_cost_nano_usd"),
+    cacheWriteCostNanoUsd: integer("cache_write_cost_nano_usd"),
+    totalCostNanoUsd: integer("total_cost_nano_usd"),
     finishReason: text("finish_reason"),
   },
   (table) => [

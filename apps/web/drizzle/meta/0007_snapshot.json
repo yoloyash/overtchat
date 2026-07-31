@@ -336,6 +336,48 @@
           "notNull": false,
           "autoincrement": false
         },
+        "cost_source": {
+          "name": "cost_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_cost_nano_usd": {
+          "name": "input_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_cost_nano_usd": {
+          "name": "output_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cache_read_cost_nano_usd": {
+          "name": "cache_read_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cache_write_cost_nano_usd": {
+          "name": "cache_write_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_cost_nano_usd": {
+          "name": "total_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "finish_reason": {
           "name": "finish_reason",
           "type": "text",

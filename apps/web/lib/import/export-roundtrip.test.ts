@@ -40,7 +40,9 @@ raw.exec(`
     occurred_at INTEGER NOT NULL,
     provider_id TEXT NOT NULL,
     model TEXT NOT NULL,
-    total_tokens INTEGER
+    total_tokens INTEGER,
+    cost_source TEXT,
+    total_cost_nano_usd INTEGER
   );
   CREATE VIRTUAL TABLE messages_fts USING fts5(
     content,
@@ -104,8 +106,8 @@ function seedExportSource() {
     .prepare(
       `INSERT INTO generation_usage (
         id, user_id, chat_id, message_id, occurred_at, provider_id, model,
-        total_tokens
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        total_tokens, cost_source, total_cost_nano_usd
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       "source-stream",
@@ -116,6 +118,8 @@ function seedExportSource() {
       "custom",
       "test-model",
       8_448,
+      "models.dev",
+      12_345,
     );
 }
 
@@ -186,8 +190,23 @@ describe("native export/import compatibility", () => {
       },
     ]);
     expect(
-      raw.prepare("SELECT id FROM generation_usage ORDER BY id").all(),
-    ).toEqual([{ id: "source-stream" }]);
+      raw
+        .prepare(
+          `SELECT
+             id,
+             cost_source AS costSource,
+             total_cost_nano_usd AS totalCostNanoUsd
+           FROM generation_usage
+           ORDER BY id`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: "source-stream",
+        costSource: "models.dev",
+        totalCostNanoUsd: 12_345,
+      },
+    ]);
   });
 
   it("keeps legacy direct-chat and chat-array imports working", () => {

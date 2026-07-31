@@ -4,6 +4,7 @@ import { stripCitationMarkers } from "@/lib/citations";
 import { setTitleIfNull } from "@/lib/db/chats";
 import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
 import type { ModelConfigRow } from "@/lib/db/modelConfigs";
+import { estimateGenerationCost } from "@/lib/providers/server/model-cost";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
 const TITLE_CONTEXT_CHAR_LIMIT = 2000;
@@ -67,6 +68,11 @@ export async function generateChatTitle({
       result.usage.totalTokens,
     ];
     if (tokenUsage.some((value) => value !== undefined)) {
+      const estimatedCost = estimateGenerationCost({
+        providerId: modelConfig.providerId,
+        model: modelConfig.model,
+        usage: result.usage,
+      });
       tryRecordGenerationUsage({
         id: crypto.randomUUID(),
         userId,
@@ -82,6 +88,7 @@ export async function generateChatTitle({
         cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens,
         totalTokens: result.usage.totalTokens,
         finishReason: result.finishReason,
+        ...(estimatedCost ?? {}),
       });
     }
 

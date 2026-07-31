@@ -35,6 +35,12 @@ raw.exec(`
     cache_read_tokens INTEGER,
     cache_write_tokens INTEGER,
     total_tokens INTEGER,
+    cost_source TEXT,
+    input_cost_nano_usd INTEGER,
+    output_cost_nano_usd INTEGER,
+    cache_read_cost_nano_usd INTEGER,
+    cache_write_cost_nano_usd INTEGER,
+    total_cost_nano_usd INTEGER,
     finish_reason TEXT
   );
 `);
@@ -59,6 +65,12 @@ const insertUsage = raw.prepare(`
     cache_read_tokens,
     cache_write_tokens,
     total_tokens,
+    cost_source,
+    input_cost_nano_usd,
+    output_cost_nano_usd,
+    cache_read_cost_nano_usd,
+    cache_write_cost_nano_usd,
+    total_cost_nano_usd,
     finish_reason
   ) VALUES (
     @id,
@@ -74,6 +86,12 @@ const insertUsage = raw.prepare(`
     @cacheReadTokens,
     @cacheWriteTokens,
     @totalTokens,
+    @costSource,
+    @inputCostNanoUsd,
+    @outputCostNanoUsd,
+    @cacheReadCostNanoUsd,
+    @cacheWriteCostNanoUsd,
+    @totalCostNanoUsd,
     'stop'
   )
 `);
@@ -92,6 +110,12 @@ insertUsage.run({
   cacheReadTokens: 80,
   cacheWriteTokens: 5,
   totalTokens: 120,
+  costSource: "models.dev",
+  inputCostNanoUsd: 1_000,
+  outputCostNanoUsd: 2_000,
+  cacheReadCostNanoUsd: 300,
+  cacheWriteCostNanoUsd: 400,
+  totalCostNanoUsd: 3_700,
 });
 insertUsage.run({
   id: "alice-two",
@@ -107,6 +131,12 @@ insertUsage.run({
   cacheReadTokens: null,
   cacheWriteTokens: null,
   totalTokens: null,
+  costSource: null,
+  inputCostNanoUsd: null,
+  outputCostNanoUsd: null,
+  cacheReadCostNanoUsd: null,
+  cacheWriteCostNanoUsd: null,
+  totalCostNanoUsd: null,
 });
 insertUsage.run({
   id: "bob-one",
@@ -122,6 +152,12 @@ insertUsage.run({
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   totalTokens: 500,
+  costSource: "models.dev",
+  inputCostNanoUsd: 4_000,
+  outputCostNanoUsd: 1_000,
+  cacheReadCostNanoUsd: 0,
+  cacheWriteCostNanoUsd: 0,
+  totalCostNanoUsd: 5_000,
 });
 insertUsage.run({
   id: "alice-title",
@@ -137,6 +173,12 @@ insertUsage.run({
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   totalTokens: 11_000,
+  costSource: "models.dev",
+  inputCostNanoUsd: 100_000,
+  outputCostNanoUsd: 50_000,
+  cacheReadCostNanoUsd: 0,
+  cacheWriteCostNanoUsd: 0,
+  totalCostNanoUsd: 150_000,
 });
 
 let usage: typeof import("./usage");
@@ -164,12 +206,18 @@ describe("chat usage aggregates", () => {
         name: "Alice",
         image: "alice.png",
         generations: 2,
+        pricedGenerations: 1,
         inputTokens: 150,
         uncachedInputTokens: 20,
         outputTokens: 30,
         cacheReadTokens: 80,
         cacheWriteTokens: 5,
         totalTokens: 180,
+        inputCostNanoUsd: 1_000,
+        outputCostNanoUsd: 2_000,
+        cacheReadCostNanoUsd: 300,
+        cacheWriteCostNanoUsd: 400,
+        totalCostNanoUsd: 3_700,
       },
     ]);
 
@@ -198,12 +246,18 @@ describe("chat usage aggregates", () => {
         providerId: "anthropic",
         model: "claude-sonnet",
         generations: 2,
+        pricedGenerations: 1,
         inputTokens: 150,
         uncachedInputTokens: 20,
         outputTokens: 30,
         cacheReadTokens: 80,
         cacheWriteTokens: 5,
         totalTokens: 180,
+        inputCostNanoUsd: 1_000,
+        outputCostNanoUsd: 2_000,
+        cacheReadCostNanoUsd: 300,
+        cacheWriteCostNanoUsd: 400,
+        totalCostNanoUsd: 3_700,
       },
     ]);
   });
@@ -232,23 +286,35 @@ describe("chat usage aggregates", () => {
       usage.getChatUsageTotals("alice-chat", "alice"),
     ).resolves.toEqual({
       generations: 3,
+      pricedGenerations: 2,
       inputTokens: 10_150,
       uncachedInputTokens: 10_020,
       outputTokens: 1_030,
       cacheReadTokens: 80,
       cacheWriteTokens: 5,
       totalTokens: 11_180,
+      inputCostNanoUsd: 101_000,
+      outputCostNanoUsd: 52_000,
+      cacheReadCostNanoUsd: 300,
+      cacheWriteCostNanoUsd: 400,
+      totalCostNanoUsd: 153_700,
     });
     await expect(
       usage.getChatUsageTotals("alice-chat", "bob"),
     ).resolves.toEqual({
       generations: 0,
+      pricedGenerations: 0,
       inputTokens: 0,
       uncachedInputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
       totalTokens: 0,
+      inputCostNanoUsd: 0,
+      outputCostNanoUsd: 0,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 0,
     });
   });
 
@@ -262,12 +328,18 @@ describe("chat usage aggregates", () => {
     await expect(usage.getUsageMember("missing")).resolves.toBeNull();
     await expect(usage.getUserUsageTotals("alice")).resolves.toEqual({
       generations: 2,
+      pricedGenerations: 1,
       inputTokens: 150,
       uncachedInputTokens: 20,
       outputTokens: 30,
       cacheReadTokens: 80,
       cacheWriteTokens: 5,
       totalTokens: 180,
+      inputCostNanoUsd: 1_000,
+      outputCostNanoUsd: 2_000,
+      cacheReadCostNanoUsd: 300,
+      cacheWriteCostNanoUsd: 400,
+      totalCostNanoUsd: 3_700,
     });
     await expect(usage.getUsageTrackingStart("alice")).resolves.toEqual(
       new Date("2026-07-30T01:00:00.000Z"),

@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
+    catalogEntryFor: vi.fn(),
     resolveModelContextWindow: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
     cancelRegister: vi.fn(),
@@ -114,6 +115,7 @@ vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
 }));
 vi.mock("@/lib/providers/server/model-catalog", () => ({
+  catalogEntryFor: mocks.catalogEntryFor,
   resolveModelContextWindow: mocks.resolveModelContextWindow,
 }));
 vi.mock("@/lib/streams/cancel-registry", () => ({
@@ -856,6 +858,25 @@ describe("chat route setup boundary", () => {
   });
 
   it("uses the latest step usage for context instead of summing tool-loop steps", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "openai",
+      apiFormat: "auto",
+      model: "tiered-model",
+    });
+    mocks.catalogEntryFor.mockReturnValue({
+      cost: {
+        input: 1,
+        output: 2,
+        tiers: [
+          {
+            input: 10,
+            output: 20,
+            tier: { type: "context", size: 150 },
+          },
+        ],
+      },
+    });
     mocks.agentStream.mockResolvedValue({
       stream: new ReadableStream({
         start(controller) {
@@ -863,6 +884,11 @@ describe("chat route setup boundary", () => {
             type: "finish-step",
             usage: {
               inputTokens: 100,
+              inputTokenDetails: {
+                noCacheTokens: 100,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+              },
               outputTokens: 20,
             },
           });
@@ -870,6 +896,11 @@ describe("chat route setup boundary", () => {
             type: "finish-step",
             usage: {
               inputTokens: 140,
+              inputTokenDetails: {
+                noCacheTokens: 140,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+              },
               outputTokens: 30,
             },
           });
@@ -912,6 +943,30 @@ describe("chat route setup boundary", () => {
       responseTokens: 50,
       totalTokens: 290,
     });
+
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Done" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: expect.objectContaining({
+          costSource: "models.dev",
+          inputCostNanoUsd: 240_000,
+          outputCostNanoUsd: 100_000,
+          totalCostNanoUsd: 340_000,
+        }),
+      }),
+    );
   });
 
   it("persists assistant message metadata at stream completion", async () => {
