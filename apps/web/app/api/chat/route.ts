@@ -288,6 +288,7 @@ async function handlePost(req: Request): Promise<Response> {
     ) {
       titlePromise = generateChatTitle({
         chatId,
+        userId,
         modelConfig,
         userParts: last.parts,
       });

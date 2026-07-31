@@ -131,11 +131,11 @@ function seedActivityData() {
 
     const insert = db.prepare(
       `INSERT INTO generation_usage (
-        id, user_id, occurred_at, provider_id, model, input_tokens,
+        id, user_id, context, occurred_at, provider_id, model, input_tokens,
         uncached_input_tokens, output_tokens, cache_read_tokens,
         cache_write_tokens, total_tokens, finish_reason
       ) VALUES (
-        @id, @userId, @occurredAt, @providerId, @model, @inputTokens,
+        @id, @userId, 'chat', @occurredAt, @providerId, @model, @inputTokens,
         @uncachedInputTokens, @outputTokens, @cacheReadTokens,
         @cacheWriteTokens, @totalTokens, 'stop'
       )`,
@@ -171,14 +171,21 @@ function seedActivityData() {
   }
 }
 
-function trackedUsageCount(): number {
+function trackedUsageCounts(): Record<string, number> {
   const db = openE2eDatabase();
   try {
-    return (
-      db
-        .prepare("SELECT count(*) AS count FROM generation_usage")
-        .get() as { count: number }
-    ).count;
+    return Object.fromEntries(
+      (
+        db
+          .prepare(
+            `SELECT context, count(*) AS count
+             FROM generation_usage
+             GROUP BY context
+             ORDER BY context`,
+          )
+          .all() as Array<{ context: string; count: number }>
+      ).map(({ context, count }) => [context, count]),
+    );
   } finally {
     db.close();
   }
@@ -214,7 +221,7 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await composer.fill("Record this response.");
     await page.getByLabel("Send message").click();
     await expect(page.getByText("Tracked response")).toBeVisible();
-    await expect.poll(trackedUsageCount).toBe(3);
+    await expect.poll(trackedUsageCounts).toEqual({ chat: 3, title: 1 });
   });
 
   await test.step("compare the 30-day and 7-day rankings", async () => {

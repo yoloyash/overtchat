@@ -1,0 +1,1 @@
+ALTER TABLE `generation_usage` ADD `context` text DEFAULT 'chat' NOT NULL;

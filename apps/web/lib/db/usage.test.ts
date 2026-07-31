@@ -25,6 +25,7 @@ raw.exec(`
     user_id TEXT NOT NULL,
     chat_id TEXT,
     message_id TEXT,
+    context TEXT NOT NULL DEFAULT 'chat',
     occurred_at INTEGER NOT NULL,
     provider_id TEXT NOT NULL,
     model TEXT NOT NULL,
@@ -48,6 +49,7 @@ const insertUsage = raw.prepare(`
     id,
     user_id,
     chat_id,
+    context,
     occurred_at,
     provider_id,
     model,
@@ -62,6 +64,7 @@ const insertUsage = raw.prepare(`
     @id,
     @userId,
     @chatId,
+    @context,
     @occurredAt,
     @providerId,
     @model,
@@ -79,6 +82,7 @@ insertUsage.run({
   id: "alice-one",
   userId: "alice",
   chatId: "alice-chat",
+  context: "chat",
   occurredAt: Date.parse("2026-07-30T01:00:00.000Z"),
   providerId: "anthropic",
   model: "claude-sonnet",
@@ -93,6 +97,7 @@ insertUsage.run({
   id: "alice-two",
   userId: "alice",
   chatId: "alice-chat",
+  context: "chat",
   occurredAt: Date.parse("2026-07-30T23:00:00.000Z"),
   providerId: "anthropic",
   model: "claude-sonnet",
@@ -107,6 +112,7 @@ insertUsage.run({
   id: "bob-one",
   userId: "bob",
   chatId: "bob-chat",
+  context: "chat",
   occurredAt: Date.parse("2026-07-29T12:00:00.000Z"),
   providerId: "openai",
   model: "gpt",
@@ -116,6 +122,21 @@ insertUsage.run({
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   totalTokens: 500,
+});
+insertUsage.run({
+  id: "alice-title",
+  userId: "alice",
+  chatId: "alice-chat",
+  context: "title",
+  occurredAt: Date.parse("2026-07-28T12:00:00.000Z"),
+  providerId: "anthropic",
+  model: "claude-sonnet",
+  inputTokens: 10_000,
+  uncachedInputTokens: 10_000,
+  outputTokens: 1_000,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  totalTokens: 11_000,
 });
 
 let usage: typeof import("./usage");
@@ -129,7 +150,7 @@ afterAll(() => {
   fs.rmSync(databasePath, { force: true });
 });
 
-describe("usage aggregates", () => {
+describe("chat usage aggregates", () => {
   it("ranks all users and applies an inclusive/exclusive date range", async () => {
     await expect(usage.listUsageLeaderboard()).resolves.toEqual([
       expect.objectContaining({
@@ -206,17 +227,17 @@ describe("usage aggregates", () => {
     ]);
   });
 
-  it("scopes per-chat totals to the owning user", async () => {
+  it("includes hidden generation work in owner-scoped chat totals", async () => {
     await expect(
       usage.getChatUsageTotals("alice-chat", "alice"),
     ).resolves.toEqual({
-      generations: 2,
-      inputTokens: 150,
-      uncachedInputTokens: 20,
-      outputTokens: 30,
+      generations: 3,
+      inputTokens: 10_150,
+      uncachedInputTokens: 10_020,
+      outputTokens: 1_030,
       cacheReadTokens: 80,
       cacheWriteTokens: 5,
-      totalTokens: 180,
+      totalTokens: 11_180,
     });
     await expect(
       usage.getChatUsageTotals("alice-chat", "bob"),

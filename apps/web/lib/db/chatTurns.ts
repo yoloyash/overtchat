@@ -196,6 +196,7 @@ export function completeChatStream({
       userId: completed.userId,
       chatId,
       messageId: assistantMessage.id,
+      context: "chat",
       ...usage,
     });
   }

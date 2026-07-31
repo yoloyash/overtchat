@@ -50,6 +50,7 @@ const effectiveTotalTokens = sql`
 
 function rangeConditions(range: UsageRange): SQL[] {
   return [
+    eq(generationUsage.context, "chat"),
     ...(range.from ? [gte(generationUsage.occurredAt, range.from)] : []),
     ...(range.to ? [lt(generationUsage.occurredAt, range.to)] : []),
   ];
@@ -114,6 +115,7 @@ export async function getChatUsageTotals(
   chatId: string,
   userId: string,
 ): Promise<UsageTotals> {
+  // Session totals include hidden generation work such as title creation.
   const [totals] = await db
     .select(aggregateUsage())
     .from(generationUsage)
@@ -166,7 +168,12 @@ export async function getUsageTrackingStart(
         ),
     })
     .from(generationUsage)
-    .where(userId ? eq(generationUsage.userId, userId) : undefined);
+    .where(
+      and(
+        eq(generationUsage.context, "chat"),
+        ...(userId ? [eq(generationUsage.userId, userId)] : []),
+      ),
+    );
   return row.occurredAt;
 }
 

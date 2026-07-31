@@ -186,6 +186,9 @@ export const generationUsage = sqliteTable(
     messageId: text("message_id").references(() => messages.id, {
       onDelete: "set null",
     }),
+    context: text("context", { enum: ["chat", "title"] })
+      .default("chat")
+      .notNull(),
     occurredAt: integer("occurred_at", { mode: "timestamp_ms" }).notNull(),
     providerId: text("provider_id").notNull(),
     model: text("model").notNull(),

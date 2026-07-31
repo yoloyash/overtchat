@@ -50,6 +50,7 @@ raw.exec(`
     user_id TEXT NOT NULL,
     chat_id TEXT,
     message_id TEXT,
+    context TEXT NOT NULL DEFAULT 'chat',
     occurred_at INTEGER NOT NULL,
     provider_id TEXT NOT NULL,
     model TEXT NOT NULL,

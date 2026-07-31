@@ -752,7 +752,10 @@ describe("chat route setup boundary", () => {
       }),
     );
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
-      expect.objectContaining({ userParts: messages[0].parts }),
+      expect.objectContaining({
+        userId: "user",
+        userParts: messages[0].parts,
+      }),
     );
     expect(messages).toEqual(originalMessages);
     expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
