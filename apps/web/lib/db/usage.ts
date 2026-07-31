@@ -2,26 +2,13 @@ import "server-only";
 import { and, asc, desc, eq, gte, lt, sql, type SQL } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { generationUsage, user } from "@/lib/db/schema";
+import type { UsageTotals } from "@/lib/usage/types";
+
+export type { UsageTotals } from "@/lib/usage/types";
 
 export type UsageRange = {
   from?: Date;
   to?: Date;
-};
-
-export type UsageTotals = {
-  generations: number;
-  pricedGenerations: number;
-  inputTokens: number;
-  uncachedInputTokens: number;
-  outputTokens: number;
-  cacheReadTokens: number;
-  cacheWriteTokens: number;
-  totalTokens: number;
-  inputCostNanoUsd: number;
-  outputCostNanoUsd: number;
-  cacheReadCostNanoUsd: number;
-  cacheWriteCostNanoUsd: number;
-  totalCostNanoUsd: number;
 };
 
 export type UsageLeaderboardEntry = UsageTotals & {

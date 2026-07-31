@@ -6,13 +6,16 @@ import { cn } from "@/lib/utils";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type { PublicModelConfig } from "@/lib/model-config/schema";
+import type { UsageTotals } from "@/lib/usage/types";
 import { ContextMeter } from "./ContextMeter";
+import { SessionUsage } from "./SessionUsage";
 
 export function ChatHeader({
   models,
   selectedId,
   onSelectModel,
   contextUsage,
+  sessionUsage,
   showTempToggle,
   temporary,
   onToggleTemporary,
@@ -21,6 +24,7 @@ export function ChatHeader({
   selectedId: string;
   onSelectModel: (id: string) => void;
   contextUsage?: { usedTokens: number; contextWindow?: number };
+  sessionUsage?: UsageTotals;
   showTempToggle: boolean;
   temporary: boolean;
   onToggleTemporary: () => void;
@@ -34,6 +38,7 @@ export function ChatHeader({
         onSelect={onSelectModel}
       />
       <div className="ml-auto flex items-center">
+        {sessionUsage ? <SessionUsage usage={sessionUsage} /> : null}
         {contextUsage ? (
           <ContextMeter
             usedTokens={contextUsage.usedTokens}

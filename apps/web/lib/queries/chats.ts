@@ -6,7 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { chatKeys } from "@/lib/queries/keys";
-
+import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
 
 export type ChatListItem = {
   id: string;
@@ -26,6 +26,31 @@ export function useChats() {
   return useQuery({
     queryKey: chatKeys.list(),
     queryFn: fetchChats,
+  });
+}
+
+export function useChatUsage(
+  id: string,
+  {
+    enabled = true,
+    initialData,
+  }: {
+    enabled?: boolean;
+    initialData?: UsageTotals;
+  } = {},
+) {
+  return useQuery({
+    queryKey: chatKeys.usage(id),
+    queryFn: async (): Promise<UsageTotals> => {
+      const response = await fetch(
+        `/api/chat/${encodeURIComponent(id)}/usage`,
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const body = (await response.json()) as ChatUsageResponse;
+      return body.usage;
+    },
+    enabled,
+    initialData,
   });
 }
 

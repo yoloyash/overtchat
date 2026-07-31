@@ -224,6 +224,24 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await expect.poll(trackedUsageCounts).toEqual({ chat: 3, title: 1 });
   });
 
+  await test.step("inspect honest per-chat usage", async () => {
+    const sessionUsage = page.getByRole("button", {
+      name: "Session cost unavailable. Show details",
+    });
+    await expect(sessionUsage).toBeVisible();
+    await sessionUsage.click();
+    await expect(page.getByText("Session usage", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Pricing coverage").locator(".."),
+    ).toContainText("0 of 2");
+    await expect(page.getByText("Total tokens").locator("..")).toContainText(
+      "1,212",
+    );
+    await expect(
+      page.getByText(/Pricing was unavailable for these model calls/),
+    ).toBeVisible();
+  });
+
   await test.step("compare the 30-day and 7-day rankings", async () => {
     await page.goto("/activity");
     await expect(page.getByRole("heading", { name: "Leaderboard" })).toBeVisible();
