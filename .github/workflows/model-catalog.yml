@@ -1,0 +1,77 @@
+name: Refresh model catalog
+
+on:
+  schedule:
+    # Keep the vendored pricing snapshot fresh without adding a runtime
+    # dependency on models.dev.
+    - cron: "17 12 * * 1-5"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: refresh-model-catalog
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+
+      - run: npm ci
+
+      - name: Generate and validate catalog
+        run: |
+          npm run catalog:generate
+          npm run catalog:check
+          npm run test -w apps/web -- \
+            lib/providers/server/model-catalog-artifacts.test.ts \
+            lib/providers/server/model-catalog.test.ts \
+            lib/providers/server/model-cost.test.ts
+
+      - name: Open catalog refresh pull request
+        id: catalog-pr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: automation/model-catalog
+          delete-branch: true
+          add-paths: |
+            apps/web/lib/providers/server/model-catalog.json
+            apps/web/lib/providers/server/model-catalog.manifest.json
+          commit-message: "chore(web): refresh model catalog"
+          title: "chore(web): refresh model catalog"
+          body: |
+            Automated refresh of the vendored `models.dev` snapshot.
+
+            The generator validates the catalog hash, source provenance, and
+            focused pricing tests before this pull request is created.
+
+      # GITHUB_TOKEN-authored pull requests do not emit push/pull_request
+      # events. Dispatch the regular checks against the bot branch explicitly.
+      - name: Run pull request checks
+        if: >-
+          steps.catalog-pr.outputs.pull-request-operation == 'created' ||
+          steps.catalog-pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ steps.catalog-pr.outputs.pull-request-branch }}
+        run: |
+          gh workflow run validate.yml --ref "$PR_BRANCH"
+          gh workflow run web-e2e.yml --ref "$PR_BRANCH"

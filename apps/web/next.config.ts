@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     "/*": [
       "./drizzle/**/*",
       "./lib/providers/server/model-catalog.NOTICE",
+      "./lib/providers/server/model-catalog.manifest.json",
     ],
   },
   transpilePackages: ["@overtchat/shared"],

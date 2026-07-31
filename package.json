@@ -25,6 +25,7 @@
     "db:migrate": "npm run db:migrate -w apps/web --",
     "db:studio": "npm run db:studio -w apps/web --",
     "catalog:generate": "npm run catalog:generate -w apps/web --",
+    "catalog:check": "npm run catalog:check -w apps/web --",
     "auth:generate": "npm run auth:generate -w apps/web --",
     "site:deploy": "npx --yes wrangler@4.114.0 deploy",
     "site:preview": "npx --yes wrangler@4.114.0 versions upload"
