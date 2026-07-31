@@ -211,6 +211,10 @@ export const generationUsage = sqliteTable(
       table.model,
       table.occurredAt,
     ),
+    index("generation_usage_context_occurredAt_idx").on(
+      table.context,
+      table.occurredAt,
+    ),
     index("generation_usage_chatId_idx").on(table.chatId),
     index("generation_usage_messageId_idx").on(table.messageId),
   ],

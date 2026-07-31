@@ -363,6 +363,14 @@
           ],
           "isUnique": false
         },
+        "generation_usage_context_occurredAt_idx": {
+          "name": "generation_usage_context_occurredAt_idx",
+          "columns": [
+            "context",
+            "occurred_at"
+          ],
+          "isUnique": false
+        },
         "generation_usage_chatId_idx": {
           "name": "generation_usage_chatId_idx",
           "columns": [
