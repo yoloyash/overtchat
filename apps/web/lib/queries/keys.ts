@@ -14,6 +14,7 @@ export const projectKeys = {
 export const agentConnectionKeys = {
   all: () => ["agentConnections"] as const,
   list: () => [...agentConnectionKeys.all(), "list"] as const,
+  sshHosts: () => [...agentConnectionKeys.all(), "sshHosts"] as const,
   directories: (id: string, path: string) =>
     [...agentConnectionKeys.all(), "directories", id, path] as const,
 };

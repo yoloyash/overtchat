@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
@@ -10,6 +11,7 @@ import type {
   AgentSessionCommand,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
+import { normalizePiSessionCommand } from "@/lib/agents/pi/commands";
 import {
   useAgentSession,
   useAgentSessionCommand,
@@ -66,6 +68,7 @@ export function AgentSessionView({
   workspaceName: string;
   initialSessionName: string;
 }) {
+  const router = useRouter();
   const session = useAgentSession(sessionId);
   const command = useAgentSessionCommand(sessionId);
   const [renameOpen, setRenameOpen] = useState(false);
@@ -88,7 +91,14 @@ export function AgentSessionView({
   ) {
     setDialogError("");
     try {
-      await command.mutateAsync(input);
+      const result = await command.mutateAsync(input);
+      if (input.type === "new_session") {
+        if (!result.sessionId) {
+          throw new Error("Pi did not return the new session.");
+        }
+        router.push(`/agents/${result.sessionId}`);
+        return;
+      }
       if (options.closeRename) setRenameOpen(false);
       if (options.closeCompact) setCompactOpen(false);
       if (options.toastTitle) toast.success({ title: options.toastTitle });
@@ -101,6 +111,39 @@ export function AgentSessionView({
         toast.error({ title: "Pi command failed", description: message });
       }
     }
+  }
+
+  function submit(message: string) {
+    let input: AgentSessionCommand;
+    try {
+      input = normalizePiSessionCommand(
+        {
+          type: "prompt",
+          message,
+          ...(snapshot?.status === "running"
+            ? { streamingBehavior: "steer" as const }
+            : {}),
+        },
+        snapshot?.state ?? {},
+      );
+    } catch (cause) {
+      toast.error({
+        title: "Pi command failed",
+        description:
+          cause instanceof Error ? cause.message : "Invalid Pi command.",
+      });
+      return;
+    }
+
+    const toastTitle =
+      input.type === "compact"
+        ? "Context compacted"
+        : input.type === "set_session_name"
+          ? "Session renamed"
+          : input.type === "set_auto_compaction"
+            ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
+            : undefined;
+    void run(input, { toastTitle });
   }
 
   if (session.isPending) return <AgentSessionLoading />;
@@ -181,13 +224,7 @@ export function AgentSessionView({
             running={running}
             pending={command.isPending}
             disabled={exited || Boolean(snapshot.pendingExtensionRequest)}
-            onSubmit={(message) =>
-              void run({
-                type: "prompt",
-                message,
-                ...(running ? { streamingBehavior: "steer" as const } : {}),
-              })
-            }
+            onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
           />
         </div>

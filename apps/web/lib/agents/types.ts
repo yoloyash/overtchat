@@ -143,6 +143,13 @@ export type AgentConnectionProbe =
   | AgentReadyConnectionProbe
   | AgentHostKeyProbe;
 
+export type AgentSshHostCandidate = {
+  alias: string;
+  hostname: string;
+  port: number;
+  username: string;
+};
+
 export type AgentDirectoryListing = {
   path: string;
   parent: string | null;
@@ -155,7 +162,8 @@ export type AgentDirectoryListing = {
 export type AgentSlashCommand = {
   name: string;
   description?: string;
-  source: "extension" | "prompt" | "skill";
+  source: "builtin" | "extension" | "prompt" | "skill";
+  argumentHint?: string;
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
@@ -179,9 +187,14 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     customInstructions: z.string().trim().max(20_000).optional(),
   }),
   z.object({
+    type: z.literal("set_auto_compaction"),
+    enabled: z.boolean(),
+  }),
+  z.object({
     type: z.literal("set_session_name"),
     name: z.string().trim().min(1).max(120),
   }),
+  z.object({ type: z.literal("new_session") }),
   z.object({
     type: z.literal("extension_ui_response"),
     id: z.string().min(1).max(500),

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 vi.mock("server-only", () => ({}));
 
@@ -9,6 +10,10 @@ import { startPiRpc } from "./client";
 import { probePiConnection } from "./probe";
 
 const runIntegration = process.env.RUN_PI_INTEGRATION === "1";
+const fixtureDirectory = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "fixtures",
+);
 
 describe.runIf(runIntegration)("installed Pi integration", () => {
   it(
@@ -77,6 +82,81 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
         await expect(client.getMessages()).resolves.toEqual({ messages: [] });
         await expect(client.getSessionStats()).resolves.toMatchObject({
           sessionId: state.sessionId,
+          totalMessages: 0,
+          cost: 0,
+        });
+      } finally {
+        await client.stop();
+        fs.rmSync(root, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
+  it(
+    "discovers every remote command kind and executes an extension command",
+    async () => {
+      const root = fs.mkdtempSync(
+        path.join(os.tmpdir(), "overtchat-pi-commands-"),
+      );
+      const workspace = path.join(root, "workspace");
+      fs.mkdirSync(workspace);
+      const client = startPiRpc(
+        { transport: "local" },
+        {
+          executable: process.env.PI_COMMAND ?? "pi",
+          cwd: workspace,
+          noSession: true,
+          extraArgs: [
+            "--no-extensions",
+            "--extension",
+            path.join(fixtureDirectory, "rpc-command.js"),
+            "--no-prompt-templates",
+            "--prompt-template",
+            path.join(fixtureDirectory, "overtchat-test-prompt.md"),
+            "--no-skills",
+            "--skill",
+            path.join(
+              fixtureDirectory,
+              "overtchat-test-skill",
+              "SKILL.md",
+            ),
+            "--no-context-files",
+          ],
+        },
+      );
+
+      try {
+        await expect(client.getCommands()).resolves.toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              name: "compact",
+              source: "builtin",
+            }),
+            expect.objectContaining({
+              name: "overtchat-test-name",
+              source: "extension",
+            }),
+            expect.objectContaining({
+              name: "overtchat-test-prompt",
+              source: "prompt",
+            }),
+            expect.objectContaining({
+              name: "skill:overtchat-test-skill",
+              source: "skill",
+            }),
+          ]),
+        );
+
+        await client.prompt("/overtchat-test-name Slash commands work");
+
+        await expect(client.getState()).resolves.toMatchObject({
+          sessionName: "Slash commands work",
+          messageCount: 0,
+          isStreaming: false,
+        });
+        await expect(client.getMessages()).resolves.toEqual({ messages: [] });
+        await expect(client.getSessionStats()).resolves.toMatchObject({
           totalMessages: 0,
           cost: 0,
         });

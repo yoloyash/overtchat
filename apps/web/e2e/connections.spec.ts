@@ -1,12 +1,53 @@
 import os from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import {
+  openE2eDatabase,
+  resetE2eDatabase,
+} from "./helpers/database";
 
 const workspacePath = path.resolve(process.cwd(), "../..");
 const workspaceName = path.basename(workspacePath);
 
 test.beforeEach(resetE2eDatabase);
+
+function seedSidebarSessions(count: number) {
+  const db = openE2eDatabase();
+  try {
+    const workspace = db
+      .prepare("SELECT id FROM agent_workspaces LIMIT 1")
+      .get() as { id: string } | undefined;
+    if (!workspace) throw new Error("Expected an attached agent workspace.");
+    const insert = db.prepare(`
+      INSERT INTO agent_sessions (
+        id, workspace_id, provider_session_id, provider_session_path,
+        name, first_message, message_count, provider_created_at,
+        provider_modified_at, last_synced_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, NULL, 0, ?, ?, ?, ?, ?)
+    `);
+    const now = Date.now();
+    db.transaction(() => {
+      for (let index = 0; index < count; index += 1) {
+        const timestamp = now - (index + 1) * 60_000;
+        insert.run(
+          randomUUID(),
+          workspace.id,
+          `sidebar-provider-${index}`,
+          `/tmp/overtchat-sidebar-${index}.jsonl`,
+          `Sidebar fixture ${index + 1}`,
+          timestamp,
+          timestamp,
+          timestamp,
+          timestamp,
+          timestamp,
+        );
+      }
+    })();
+  } finally {
+    db.close();
+  }
+}
 
 test("connect local Pi, attach a workspace, and open a native session", async ({
   page,
@@ -34,6 +75,27 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
   });
 
   await test.step("connect the server's Pi installation", async () => {
+    await page.route("**/api/agent-connections/ssh-hosts", async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          hosts: [
+            {
+              alias: "docease-linode",
+              hostname: "104.237.153.169",
+              port: 22,
+              username: "root",
+            },
+            {
+              alias: "test-server",
+              hostname: "10.0.0.91",
+              port: 2222,
+              username: "developer",
+            },
+          ],
+        }),
+      });
+    });
     await page.goto("/settings/connections");
     await expect(
       page.getByRole("heading", { name: "Connections" }),
@@ -46,6 +108,29 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
       page.getByRole("button", { name: /Codex.*Coming soon/ }),
     ).toBeDisabled();
     await page.getByRole("button", { name: "Pi", exact: true }).click();
+    const location = page.getByLabel("Connection location");
+    await location.getByText("Remote", { exact: true }).click();
+    await expect(
+      page.getByRole("heading", { name: "Add SSH connection" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /docease-linode.*104\.237\.153\.169/ }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", { name: /test-server.*10\.0\.0\.91:2222/ })
+      .click();
+    await expect(page.getByRole("button", { name: "Add", exact: true }))
+      .toBeEnabled();
+    await page.screenshot({
+      path: testInfo.outputPath("pi-ssh-picker.png"),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "Add manually" }).click();
+    await expect(page.getByLabel("Hostname")).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "SSH config" }),
+    ).toBeVisible();
+    await location.getByText("This server", { exact: true }).click();
     await expect(page.getByLabel("Connection location")).toContainText(
       "This server",
     );
@@ -103,6 +188,58 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     ).toBeVisible();
     await expect(page.getByLabel("Session usage")).toBeVisible();
     await expect(page.getByLabel("Session actions")).toBeVisible();
+  });
+
+  await test.step("select and execute a built-in slash command", async () => {
+    const composer = page.getByPlaceholder(
+      "Message Pi or type / for commands",
+    );
+    await composer.fill("/na");
+    const nameCommand = page.getByRole("option", {
+      name: /\/name.*Set the session name.*Built-in/,
+    });
+    await expect(nameCommand).toBeVisible();
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("/name ");
+    await composer.fill("/name Slash Command Session");
+    await composer.press("Enter");
+    await expect(page).toHaveTitle("Slash Command Session · Pi", {
+      timeout: 30_000,
+    });
+    await expect(page.getByText("Session renamed")).toBeVisible();
+    await composer.fill("/autocompact off");
+    await composer.press("Enter");
+    await expect(page.getByText("Auto-compaction disabled")).toBeVisible();
+
+    const previousUrl = page.url();
+    await composer.fill("/new");
+    await composer.press("Enter");
+    await page.waitForURL(
+      (url) =>
+        url.pathname.startsWith("/agents/") && url.href !== previousUrl,
+      { timeout: 30_000 },
+    );
+    await expect(page.getByText("New Pi session")).toBeVisible();
+  });
+
+  await test.step("limit and expand workspace sessions in the sidebar", async () => {
+    seedSidebarSessions(12);
+    await page.reload();
+    const showMore = page.getByRole("button", {
+      name: /Show \d+ more/,
+    });
+    await expect(showMore).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Sidebar fixture 12" }),
+    ).not.toBeVisible();
+    await showMore.click();
+    await expect(
+      page.getByRole("link", { name: "Sidebar fixture 12" }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Show less" }).click();
+    await expect(
+      page.getByRole("link", { name: "Sidebar fixture 12" }),
+    ).not.toBeVisible();
   });
 
   await test.step("rename the native session and verify responsive layout", async () => {

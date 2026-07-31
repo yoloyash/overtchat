@@ -22,6 +22,7 @@ import {
   type PiRpcCommand,
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
+import { mergePiSlashCommands } from "@/lib/agents/pi/commands";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_STDERR_CHARS = 64 * 1024;
@@ -159,7 +160,9 @@ export class PiRpcClient {
   }
 
   async getCommands(): Promise<AgentSlashCommand[]> {
-    return parsePiCommands(await this.request({ type: "get_commands" }));
+    return mergePiSlashCommands(
+      parsePiCommands(await this.request({ type: "get_commands" })),
+    );
   }
 
   getMessages(): Promise<{ messages: unknown[] }> {
@@ -197,6 +200,10 @@ export class PiRpcClient {
       },
       0x7fffffff,
     );
+  }
+
+  setAutoCompaction(enabled: boolean): Promise<unknown> {
+    return this.request({ type: "set_auto_compaction", enabled });
   }
 
   setSessionName(name: string): Promise<unknown> {

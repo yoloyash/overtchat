@@ -53,7 +53,9 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function remoteCommand(launch: AgentProcessLaunch): string {
+export function buildSshRemoteCommand(
+  launch: AgentProcessLaunch,
+): string {
   const env = Object.entries(launch.env ?? {})
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
     .join(" ");
@@ -61,9 +63,11 @@ function remoteCommand(launch: AgentProcessLaunch): string {
     .map(shellQuote)
     .join(" ");
   const invocation = `${env ? `${env} ` : ""}exec ${command}`;
-  return launch.cwd
+  const agentCommand = launch.cwd
     ? `cd -- ${shellQuote(launch.cwd)} && ${invocation}`
     : invocation;
+  const loginCommand = `exec 1>&3 3>&-; ${agentCommand}`;
+  return `exec "\${SHELL:-/bin/sh}" -lic ${shellQuote(loginCommand)} 3>&1 1>&2`;
 }
 
 function sshHostFiles(target: Extract<HostTarget, { transport: "ssh" }>): {
@@ -147,7 +151,7 @@ export function spawnOnHost(
   }
   args.push(
     `${target.username}@${target.hostname}`,
-    remoteCommand(launch),
+    buildSshRemoteCommand(launch),
   );
   return wrapProcess(
     spawn("ssh", args, { stdio: ["pipe", "pipe", "pipe"] }),

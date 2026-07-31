@@ -4,10 +4,15 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentSlashCommand,
+  AgentSessionCommand,
   AgentSessionStats,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
 import { startPiRpc, type PiRpcClient } from "@/lib/agents/pi/client";
+import {
+  normalizePiSessionCommand,
+  PI_BUILTIN_COMMANDS,
+} from "@/lib/agents/pi/commands";
 import type { PiRpcEvent } from "@/lib/agents/pi/protocol";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import {
@@ -237,23 +242,17 @@ export class PiSessionRuntime {
     };
   }
 
-  command(
-    command:
-      | { type: "prompt"; message: string; streamingBehavior?: "steer" | "followUp" }
-      | { type: "abort" }
-      | { type: "set_model"; provider: string; modelId: string }
-      | { type: "set_thinking_level"; level: string }
-      | { type: "compact"; customInstructions?: string }
-      | { type: "set_session_name"; name: string }
-      | {
-          type: "extension_ui_response";
-          id: string;
-          value?: string;
-          confirmed?: boolean;
-          cancelled?: boolean;
-        },
-  ): Promise<unknown> {
+  normalizeCommand(command: AgentSessionCommand): AgentSessionCommand {
+    return normalizePiSessionCommand(command, this.state);
+  }
+
+  command(input: AgentSessionCommand): Promise<unknown> {
+    const command = this.normalizeCommand(input);
     switch (command.type) {
+      case "new_session":
+        return Promise.reject(
+          new Error("New sessions must be created by the runtime registry."),
+        );
       case "prompt":
         return this.client.prompt(
           command.message,
@@ -276,6 +275,13 @@ export class PiSessionRuntime {
       case "compact":
         return this.client
           .compact(command.customInstructions)
+          .then(async (value) => {
+            await this.refresh();
+            return value;
+          });
+      case "set_auto_compaction":
+        return this.client
+          .setAutoCompaction(command.enabled)
           .then(async (value) => {
             await this.refresh();
             return value;
@@ -540,7 +546,9 @@ export class AgentRuntimeRegistry {
       client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
       client.getSessionStats().catch(() => emptyStats()),
         client.getAvailableThinkingLevels().catch(() => []),
-        client.getCommands().catch(() => []),
+        client
+          .getCommands()
+          .catch(() => PI_BUILTIN_COMMANDS.map((command) => ({ ...command }))),
       ]);
     return {
       state,

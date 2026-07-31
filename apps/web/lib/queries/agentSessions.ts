@@ -69,19 +69,25 @@ export function useAgentSession(id: string) {
 export function useAgentSessionCommand(id: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (command: AgentSessionCommand) => {
+    mutationFn: async (
+      command: AgentSessionCommand,
+    ): Promise<{ sessionId?: string }> => {
       const response = await fetch(`/api/agent-sessions/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(command),
       });
       if (!response.ok) throw await responseError(response);
+      return (await response.json()) as { sessionId?: string };
     },
     onSuccess: (_data, command) => {
       if (
         command.type === "set_model" ||
         command.type === "set_thinking_level" ||
-        command.type === "set_session_name"
+        command.type === "compact" ||
+        command.type === "set_auto_compaction" ||
+        command.type === "set_session_name" ||
+        command.type === "new_session"
       ) {
         void queryClient.invalidateQueries({
           queryKey: agentSessionKeys.detail(id),
@@ -89,7 +95,8 @@ export function useAgentSessionCommand(id: string) {
       }
       if (
         command.type === "prompt" ||
-        command.type === "set_session_name"
+        command.type === "set_session_name" ||
+        command.type === "new_session"
       ) {
         void queryClient.invalidateQueries({
           queryKey: agentConnectionKeys.list(),

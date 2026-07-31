@@ -13,6 +13,7 @@ export type ScannedSshHostKey = {
 export async function scanSshHostKey(
   hostname: string,
   port: number,
+  aliases: string[] = [],
 ): Promise<ScannedSshHostKey> {
   const child = spawn(
     "ssh-keyscan",
@@ -87,8 +88,15 @@ export async function scanSshHostKey(
     .update(Buffer.from(encodedKey, "base64"))
     .digest("base64")
     .replace(/=+$/u, "");
+  const hostPatterns = new Set(preferred.parts[0]?.split(",") ?? []);
+  for (const alias of aliases) {
+    hostPatterns.add(port === 22 ? alias : `[${alias}]:${port}`);
+  }
   return {
-    hostKey: preferred.line,
+    hostKey: [
+      [...hostPatterns].join(","),
+      ...preferred.parts.slice(1),
+    ].join(" "),
     fingerprint: `SHA256:${digest}`,
   };
 }

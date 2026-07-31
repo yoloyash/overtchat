@@ -88,6 +88,43 @@ describe("PiRpcClient", () => {
     await client.stop();
   });
 
+  it("merges built-ins with discovered commands and toggles auto-compaction", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "get_commands") {
+        fake.reply(command, {
+          commands: [
+            {
+              name: "skill:docs",
+              description: "Read docs",
+              source: "skill",
+            },
+          ],
+        });
+      } else {
+        fake.reply(command);
+      }
+    });
+    const client = new PiRpcClient(process);
+
+    await expect(client.getCommands()).resolves.toEqual([
+      expect.objectContaining({ name: "new", source: "builtin" }),
+      expect.objectContaining({ name: "compact", source: "builtin" }),
+      expect.objectContaining({ name: "autocompact", source: "builtin" }),
+      expect.objectContaining({ name: "name", source: "builtin" }),
+      {
+        name: "skill:docs",
+        description: "Read docs",
+        source: "skill",
+      },
+    ]);
+    await client.setAutoCompaction(false);
+    expect(process.commands.at(-1)).toMatchObject({
+      type: "set_auto_compaction",
+      enabled: false,
+    });
+    await client.stop();
+  });
+
   it("rejects a failed command with Pi's error", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       fake.stdout.write(

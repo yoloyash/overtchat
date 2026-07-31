@@ -8,6 +8,7 @@ import type {
   AgentConnectionProbe,
   AgentDirectoryListing,
   AgentReadyConnectionProbe,
+  AgentSshHostCandidate,
   AgentWorkspaceListItem,
 } from "@/lib/agents/types";
 import { agentConnectionKeys } from "@/lib/queries/keys";
@@ -32,6 +33,21 @@ export function useAgentConnections() {
   return useQuery({
     queryKey: agentConnectionKeys.list(),
     queryFn: fetchAgentConnections,
+  });
+}
+
+export function useAgentSshHosts(enabled = true) {
+  return useQuery({
+    queryKey: agentConnectionKeys.sshHosts(),
+    queryFn: async (): Promise<AgentSshHostCandidate[]> => {
+      const response = await fetch("/api/agent-connections/ssh-hosts");
+      if (!response.ok) throw await responseError(response);
+      return ((await response.json()) as {
+        hosts: AgentSshHostCandidate[];
+      }).hosts;
+    },
+    enabled,
+    retry: false,
   });
 }
 

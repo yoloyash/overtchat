@@ -10,6 +10,7 @@ import {
   executeOnHost,
 } from "@/lib/agents/runtime/process";
 import { scanSshHostKey } from "@/lib/agents/runtime/ssh";
+import { resolveConfiguredSshHost } from "@/lib/agents/runtime/sshConfig";
 import { startPiRpc } from "@/lib/agents/pi/client";
 
 const MODEL_PROBE_TIMEOUT_MS = 120_000;
@@ -89,7 +90,12 @@ export async function probePiConnection(
   draft: AgentConnectionDraft,
 ): Promise<AgentConnectionProbe> {
   if (draft.transport === "ssh" && !draft.hostKey?.trim()) {
-    const scanned = await scanSshHostKey(draft.hostname, draft.port);
+    const configured = await resolveConfiguredSshHost(draft.hostname);
+    const scanned = await scanSshHostKey(
+      configured?.hostname ?? draft.hostname,
+      draft.port,
+      configured ? [draft.hostname] : [],
+    );
     return {
       status: "host_key",
       hostKey: scanned.hostKey,

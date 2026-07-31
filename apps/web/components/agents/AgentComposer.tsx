@@ -10,17 +10,15 @@ import {
 import { ArrowUp, Command, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { piSlashCommandQuery } from "@/lib/agents/pi/commands";
 import type { AgentSlashCommand } from "@/lib/agents/types";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-function slashQuery(value: string): string | null {
-  const match = /^\/([a-z0-9-]*)$/iu.exec(value);
-  return match ? match[1].toLowerCase() : null;
-}
-
 function commandSource(source: AgentSlashCommand["source"]): string {
-  return source === "extension"
+  return source === "builtin"
+    ? "Built-in"
+    : source === "extension"
     ? "Extension"
     : source === "prompt"
       ? "Prompt"
@@ -56,7 +54,7 @@ export function AgentComposer({
     element.style.height = `${element.scrollHeight}px`;
   }, [input]);
 
-  const query = slashQuery(input);
+  const query = piSlashCommandQuery(input);
   const filteredCommands = useMemo(() => {
     if (query === null) return [];
     if (!query) return commands;
@@ -77,6 +75,19 @@ export function AgentComposer({
   );
 
   function selectCommand(command: AgentSlashCommand) {
+    if (
+      command.source === "builtin" &&
+      !command.argumentHint &&
+      !pending &&
+      !disabled
+    ) {
+      onSubmit(`/${command.name}`);
+      setInput("");
+      setDismissedDraft(null);
+      setActiveIndex(0);
+      return;
+    }
+
     setInput(`/${command.name} `);
     setDismissedDraft(null);
     setActiveIndex(0);
@@ -167,6 +178,11 @@ export function AgentComposer({
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium">
                     /{command.name}
+                    {command.argumentHint && (
+                      <span className="ml-1.5 font-normal text-muted-foreground">
+                        {command.argumentHint}
+                      </span>
+                    )}
                   </span>
                   {command.description && (
                     <span className="block truncate text-xs text-muted-foreground">

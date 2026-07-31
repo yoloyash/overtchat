@@ -68,6 +68,7 @@ class FakePiClient {
   readonly setModel = vi.fn(async () => ({}));
   readonly setThinkingLevel = vi.fn(async () => ({}));
   readonly compact = vi.fn(async () => ({}));
+  readonly setAutoCompaction = vi.fn(async () => ({}));
   readonly setSessionName = vi.fn(async () => ({}));
   readonly respondToExtensionUi = vi.fn();
   readonly getState = vi.fn(async () => ({
@@ -76,6 +77,7 @@ class FakePiClient {
     sessionName: null,
     model,
     thinkingLevel: "medium",
+    autoCompactionEnabled: false,
     isStreaming: false,
   }));
   readonly getMessages = vi.fn(async () => ({ messages: [] }));
@@ -166,6 +168,73 @@ function owned(): OwnedAgentSession {
 }
 
 describe("Pi session runtime", () => {
+  it("executes Overtchat slash commands through native Pi RPC methods", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        state: {
+          ...initial().state,
+          autoCompactionEnabled: false,
+        },
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({
+      type: "prompt",
+      message: "/compact focus on tests",
+    });
+    await runtime.command({
+      type: "prompt",
+      message: "/autocompact",
+    });
+    await runtime.command({
+      type: "prompt",
+      message: "/name Release prep",
+    });
+
+    expect(client.compact).toHaveBeenCalledWith("focus on tests");
+    expect(client.setAutoCompaction).toHaveBeenCalledWith(true);
+    expect(client.setSessionName).toHaveBeenCalledWith("Release prep");
+    expect(client.prompt).not.toHaveBeenCalled();
+    await runtime.stop();
+  });
+
+  it("forwards Pi-discovered slash commands through prompt", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({
+      type: "prompt",
+      message: "/skill:docs explain caching",
+    });
+
+    expect(client.prompt).toHaveBeenCalledWith(
+      "/skill:docs explain caching",
+      undefined,
+    );
+    expect(client.compact).not.toHaveBeenCalled();
+    await runtime.stop();
+  });
+
   it("replays sequenced events and clears answered extension requests", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(

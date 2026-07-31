@@ -1,18 +1,20 @@
 "use client";
 
+import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import {
-  Bot,
   CheckCircle2,
-  Code2,
+  ChevronLeft,
   KeyRound,
   Loader2,
   Monitor,
   Server,
-  TerminalSquare,
   Wifi,
 } from "lucide-react";
+import claudeCodeIcon from "@/assets/agent-providers/claude-code.png";
+import codexIcon from "@/assets/agent-providers/codex.png";
+import piIcon from "@/assets/agent-providers/pi.svg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,9 +25,11 @@ import type {
   AgentConnectionDraft,
   AgentHostKeyProbe,
   AgentReadyConnectionProbe,
+  AgentSshHostCandidate,
 } from "@/lib/agents/types";
 import {
   useCreateAgentConnection,
+  useAgentSshHosts,
   useProbeAgentConnection,
 } from "@/lib/queries/agentConnections";
 import { motionClasses } from "@/lib/motion";
@@ -34,9 +38,11 @@ import {
   SettingsActions,
   SettingsNotice,
 } from "../_components/SettingsRows";
+import { SshHostPicker } from "./SshHostPicker";
 
 type Transport = "local" | "ssh";
 type SshAuth = "agent" | "private_key";
+type RemoteMode = "detected" | "manual";
 
 type TestedConnection = {
   signature: string;
@@ -58,6 +64,12 @@ export function AddConnectionDialog({
   const createMutation = useCreateAgentConnection();
   const [providerSelected, setProviderSelected] = useState(false);
   const [transport, setTransport] = useState<Transport>(initialTransport);
+  const [remoteMode, setRemoteMode] = useState<RemoteMode>(
+    isAdmin ? "detected" : "manual",
+  );
+  const [selectedSshAlias, setSelectedSshAlias] = useState<string | null>(
+    null,
+  );
   const [name, setName] = useState(
     initialTransport === "local" ? "This server" : "Remote Pi",
   );
@@ -72,10 +84,19 @@ export function AddConnectionDialog({
     useState<AgentHostKeyProbe | null>(null);
   const [tested, setTested] = useState<TestedConnection | null>(null);
   const [error, setError] = useState("");
+  const sshHosts = useAgentSshHosts(
+    open &&
+      providerSelected &&
+      transport === "ssh" &&
+      remoteMode === "detected" &&
+      isAdmin,
+  );
 
   function reset() {
     setProviderSelected(false);
     setTransport(initialTransport);
+    setRemoteMode(isAdmin ? "detected" : "manual");
+    setSelectedSshAlias(null);
     setName(initialTransport === "local" ? "This server" : "Remote Pi");
     setExecutable("pi");
     setHostname("");
@@ -96,6 +117,44 @@ export function AddConnectionDialog({
     setPendingHostKey(null);
     setConfirmedHostKey("");
     setError("");
+  }
+
+  function selectSshHost(host: AgentSshHostCandidate) {
+    invalidateTest();
+    setSelectedSshAlias(host.alias);
+    setName(host.alias);
+    setHostname(host.alias);
+    setPort(String(host.port));
+    setUsername(host.username);
+    setSshAuth("agent");
+    setPrivateKey("");
+    setExecutable("pi");
+  }
+
+  function showManualConnection() {
+    invalidateTest();
+    setRemoteMode("manual");
+    setSelectedSshAlias(null);
+    setName("Remote Pi");
+    setHostname("");
+    setPort("22");
+    setUsername("");
+    setSshAuth(initialAuth);
+    setPrivateKey("");
+    setExecutable("pi");
+  }
+
+  function showDetectedConnections() {
+    invalidateTest();
+    setRemoteMode("detected");
+    setSelectedSshAlias(null);
+    setName("Remote Pi");
+    setHostname("");
+    setPort("22");
+    setUsername("");
+    setSshAuth("agent");
+    setPrivateKey("");
+    setExecutable("pi");
   }
 
   function buildDraft(hostKey = confirmedHostKey):
@@ -166,6 +225,8 @@ export function AddConnectionDialog({
   const isTested =
     currentSignature !== null && tested?.signature === currentSignature;
   const pending = probeMutation.isPending || createMutation.isPending;
+  const choosingSshHost =
+    transport === "ssh" && remoteMode === "detected" && isAdmin;
 
   async function testConnection() {
     const result = buildDraft();
@@ -244,6 +305,17 @@ export function AddConnectionDialog({
     }
   }
 
+  const dialogTitle = !providerSelected
+    ? "Add connection"
+    : transport === "ssh"
+      ? "Add SSH connection"
+      : "Add Pi connection";
+  const dialogDescription = !providerSelected
+    ? "Choose a coding agent."
+    : choosingSshHost
+      ? "Choose a host from this server's SSH config."
+      : "Connect OvertChat to an existing Pi installation.";
+
   return (
     <Dialog.Root
       open={open}
@@ -263,23 +335,25 @@ export function AddConnectionDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Add connection
+            {dialogTitle}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {providerSelected
-              ? "Connect OvertChat to an existing Pi installation."
-              : "Choose a coding agent."}
+            {dialogDescription}
           </Dialog.Description>
 
           {!providerSelected ? (
             <div className="mt-5 grid gap-2 sm:grid-cols-3">
               <ProviderChoice
-                icon={TerminalSquare}
+                icon={piIcon}
                 label="Pi"
                 onClick={() => setProviderSelected(true)}
               />
-              <ProviderChoice icon={Bot} label="Claude Code" disabled />
-              <ProviderChoice icon={Code2} label="Codex" disabled />
+              <ProviderChoice
+                icon={claudeCodeIcon}
+                label="Claude Code"
+                disabled
+              />
+              <ProviderChoice icon={codexIcon} label="Codex" disabled />
             </div>
           ) : (
             <form
@@ -289,18 +363,20 @@ export function AddConnectionDialog({
                 void (isTested ? connect() : testConnection());
               }}
             >
-              <div className="space-y-1.5">
-                <Label htmlFor="agent-connection-name">Name</Label>
-                <Input
-                  id="agent-connection-name"
-                  value={name}
-                  onChange={(event) => {
-                    invalidateTest();
-                    setName(event.target.value);
-                  }}
-                  autoFocus
-                />
-              </div>
+              {!choosingSshHost && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-connection-name">Name</Label>
+                  <Input
+                    id="agent-connection-name"
+                    value={name}
+                    onChange={(event) => {
+                      invalidateTest();
+                      setName(event.target.value);
+                    }}
+                    autoFocus
+                  />
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <Label>Location</Label>
@@ -311,8 +387,17 @@ export function AddConnectionDialog({
                     const value = next as Transport;
                     invalidateTest();
                     setTransport(value);
-                    if (name === "This server" || name === "Remote Pi") {
-                      setName(value === "local" ? "This server" : "Remote Pi");
+                    setSelectedSshAlias(null);
+                    if (value === "local") {
+                      setName("This server");
+                    } else {
+                      setName("Remote Pi");
+                      setRemoteMode(isAdmin ? "detected" : "manual");
+                      setHostname("");
+                      setPort("22");
+                      setUsername("");
+                      setSshAuth(initialAuth);
+                      setPrivateKey("");
                     }
                   }}
                   className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1"
@@ -336,8 +421,39 @@ export function AddConnectionDialog({
                 )}
               </div>
 
-              {transport === "ssh" && (
+              {choosingSshHost && (
+                <SshHostPicker
+                  hosts={sshHosts.data ?? []}
+                  selectedAlias={selectedSshAlias}
+                  loading={sshHosts.isLoading}
+                  refreshing={sshHosts.isFetching}
+                  disabled={pending}
+                  error={
+                    sshHosts.error instanceof Error
+                      ? sshHosts.error.message
+                      : undefined
+                  }
+                  onSelect={selectSshHost}
+                  onRefresh={() => void sshHosts.refetch()}
+                  onAddManually={showManualConnection}
+                />
+              )}
+
+              {transport === "ssh" && remoteMode === "manual" && (
                 <>
+                  {isAdmin && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-2"
+                      disabled={pending}
+                      onClick={showDetectedConnections}
+                    >
+                      <ChevronLeft />
+                      SSH config
+                    </Button>
+                  )}
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6rem]">
                     <div className="space-y-1.5">
                       <Label htmlFor="agent-hostname">Hostname</Label>
@@ -426,19 +542,21 @@ export function AddConnectionDialog({
                 </>
               )}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="agent-executable">Pi executable</Label>
-                <Input
-                  id="agent-executable"
-                  value={executable}
-                  onChange={(event) => {
-                    invalidateTest();
-                    setExecutable(event.target.value);
-                  }}
-                  className="font-mono"
-                  spellCheck={false}
-                />
-              </div>
+              {!choosingSshHost && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="agent-executable">Pi executable</Label>
+                  <Input
+                    id="agent-executable"
+                    value={executable}
+                    onChange={(event) => {
+                      invalidateTest();
+                      setExecutable(event.target.value);
+                    }}
+                    className="font-mono"
+                    spellCheck={false}
+                  />
+                </div>
+              )}
 
               {pendingHostKey?.hostKeyFingerprint && (
                 <div className="border-y py-3">
@@ -488,23 +606,36 @@ export function AddConnectionDialog({
                 >
                   Cancel
                 </Button>
+                {!choosingSshHost && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => void testConnection()}
+                  >
+                    {probeMutation.isPending && (
+                      <Loader2 className="animate-spin motion-reduce:animate-none" />
+                    )}
+                    {isTested ? "Test again" : "Test connection"}
+                  </Button>
+                )}
                 <Button
-                  type="button"
-                  variant="outline"
+                  type="submit"
                   size="sm"
-                  disabled={pending}
-                  onClick={() => void testConnection()}
+                  disabled={
+                    pending ||
+                    Boolean(pendingHostKey) ||
+                    (choosingSshHost
+                      ? !selectedSshAlias
+                      : !isTested)
+                  }
                 >
-                  {probeMutation.isPending && (
+                  {(createMutation.isPending ||
+                    (choosingSshHost && probeMutation.isPending)) && (
                     <Loader2 className="animate-spin motion-reduce:animate-none" />
                   )}
-                  {isTested ? "Test again" : "Test connection"}
-                </Button>
-                <Button type="submit" size="sm" disabled={!isTested || pending}>
-                  {createMutation.isPending && (
-                    <Loader2 className="animate-spin motion-reduce:animate-none" />
-                  )}
-                  Connect
+                  {choosingSshHost && !isTested ? "Add" : "Connect"}
                 </Button>
               </SettingsActions>
             </form>
@@ -529,12 +660,12 @@ export function AddConnectionDialog({
 }
 
 function ProviderChoice({
-  icon: Icon,
+  icon,
   label,
   disabled = false,
   onClick,
 }: {
-  icon: typeof TerminalSquare;
+  icon: StaticImageData;
   label: string;
   disabled?: boolean;
   onClick?: () => void;
@@ -546,7 +677,7 @@ function ProviderChoice({
       onClick={onClick}
       className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border bg-background px-3 py-4 text-sm font-medium outline-none motion-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-55"
     >
-      <Icon className="size-5" />
+      <Image src={icon} alt="" className="size-6 object-contain" />
       <span>{label}</span>
       {disabled && (
         <span className="text-[10px] font-normal text-muted-foreground">
@@ -571,13 +702,15 @@ function TransportChoice({
   return (
     <Label
       className={cn(
-        "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground",
+        "relative flex h-8 cursor-pointer items-center justify-center rounded-md px-8 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground",
         disabled && "cursor-not-allowed opacity-50",
       )}
     >
       <RadioGroupItem value={value} className="sr-only" disabled={disabled} />
-      <Icon className="size-3.5" />
-      <span>{label}</span>
+      <span className="absolute left-3 flex size-4 items-center justify-center">
+        <Icon className="size-3.5" />
+      </span>
+      <span className="truncate">{label}</span>
     </Label>
   );
 }

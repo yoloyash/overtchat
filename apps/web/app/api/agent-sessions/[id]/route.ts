@@ -76,16 +76,24 @@ export async function POST(
 
   try {
     const runtime = await agentRuntimeRegistry.getOrStart(authorized.owned);
-    await runtime.command(parsed.data);
-    if (parsed.data.type === "prompt") {
+    const normalized = runtime.normalizeCommand(parsed.data);
+    if (normalized.type === "new_session") {
+      const created = await agentRuntimeRegistry.create(authorized.owned);
+      return Response.json({
+        accepted: true,
+        sessionId: created.sessionId,
+      });
+    }
+    await runtime.command(normalized);
+    if (normalized.type === "prompt") {
       await updateAgentSessionMetadata(id, {
         ...(!authorized.owned.agentSession.firstMessage
-          ? { firstMessage: parsed.data.message }
+          ? { firstMessage: normalized.message }
           : {}),
         providerModifiedAt: new Date(),
       });
-    } else if (parsed.data.type === "set_session_name") {
-      await updateAgentSessionMetadata(id, { name: parsed.data.name });
+    } else if (normalized.type === "set_session_name") {
+      await updateAgentSessionMetadata(id, { name: normalized.name });
     }
     return Response.json({ accepted: true });
   } catch (error) {

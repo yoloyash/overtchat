@@ -4,7 +4,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import {
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Folder,
   FolderPlus,
   Loader2,
@@ -16,6 +18,10 @@ import type {
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@/lib/agents/types";
+import {
+  AGENT_SESSION_PREVIEW_COUNT,
+  visibleAgentSessions,
+} from "@/lib/agents/sidebar";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
 import { useCreateAgentSession } from "@/lib/queries/agentConnections";
@@ -106,6 +112,18 @@ function WorkspaceNode({
     (session) => pathname === `/agents/${session.id}`,
   );
   const [open, setOpen] = useState(hasActiveSession);
+  const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const activeSessionId =
+    workspace.sessions.find(
+      (session) => pathname === `/agents/${session.id}`,
+    )?.id ?? null;
+  const visibleSessions = visibleAgentSessions(
+    workspace.sessions,
+    sessionsExpanded,
+    activeSessionId,
+  );
+  const hiddenSessionCount =
+    workspace.sessions.length - visibleSessions.length;
 
   async function startSession() {
     try {
@@ -176,9 +194,29 @@ function WorkspaceNode({
               <span>New session</span>
             </button>
           </li>
-          {workspace.sessions.map((session) => (
+          {visibleSessions.map((session) => (
             <SessionLink key={session.id} session={session} />
           ))}
+          {workspace.sessions.length > AGENT_SESSION_PREVIEW_COUNT && (
+            <li>
+              <button
+                type="button"
+                onClick={() => setSessionsExpanded((current) => !current)}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+              >
+                {sessionsExpanded ? (
+                  <ChevronUp className="size-3.5" />
+                ) : (
+                  <ChevronDown className="size-3.5" />
+                )}
+                <span>
+                  {sessionsExpanded
+                    ? "Show less"
+                    : `Show ${hiddenSessionCount} more`}
+                </span>
+              </button>
+            </li>
+          )}
         </ul>
       )}
     </div>
