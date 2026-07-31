@@ -32,6 +32,13 @@ describe("model discovery client", () => {
               id: "catalog-only",
               catalogContextWindow: 128_000,
               catalogCapabilities: { reasoning: true },
+              catalogPricing: {
+                input: 2,
+                output: 8,
+                cacheRead: 0.2,
+                cacheWrite: 2.5,
+                tiered: true,
+              },
             },
             { id: "unknown" },
           ],
@@ -53,6 +60,13 @@ describe("model discovery client", () => {
         id: "catalog-only",
         catalogContextWindow: 128_000,
         catalogCapabilities: { reasoning: true },
+        catalogPricing: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.2,
+          cacheWrite: 2.5,
+          tiered: true,
+        },
       },
       { id: "unknown" },
     ]);
@@ -69,6 +83,16 @@ describe("model discovery client", () => {
             { id: "" },
             { id: "negative", contextWindow: -1 },
             { id: "fractional", contextWindow: 1.5 },
+            {
+              id: "bad-pricing",
+              catalogPricing: {
+                input: 2,
+                output: -1,
+                cacheRead: 0.2,
+                cacheWrite: 2.5,
+                tiered: false,
+              },
+            },
           ],
         }),
       ),
@@ -77,6 +101,7 @@ describe("model discovery client", () => {
     await expect(fetchModelsForProvider(connection)).resolves.toEqual([
       { id: "negative" },
       { id: "fractional" },
+      { id: "bad-pricing" },
     ]);
   });
 });

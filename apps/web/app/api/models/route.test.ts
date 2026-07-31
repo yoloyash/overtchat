@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   listProviderModels: vi.fn(),
   catalogContextWindowFor: vi.fn(),
   catalogCapabilitiesFor: vi.fn(),
+  catalogPricingFor: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -17,6 +18,7 @@ vi.mock("@/lib/providers/server/registry", () => ({
 vi.mock("@/lib/providers/server/model-catalog", () => ({
   catalogContextWindowFor: mocks.catalogContextWindowFor,
   catalogCapabilitiesFor: mocks.catalogCapabilitiesFor,
+  catalogPricingFor: mocks.catalogPricingFor,
 }));
 
 import { POST } from "./route";
@@ -47,6 +49,18 @@ describe("model discovery route", () => {
           : model === "catalog-model"
             ? { reasoning: true }
             : undefined,
+    );
+    mocks.catalogPricingFor.mockImplementation(
+      (_providerId: string, model: string) =>
+        model === "catalog-model"
+          ? {
+              input: 2,
+              output: 8,
+              cacheRead: 0.2,
+              cacheWrite: 2.5,
+              tiered: true,
+            }
+          : undefined,
     );
   });
 
@@ -80,6 +94,13 @@ describe("model discovery route", () => {
           id: "catalog-model",
           catalogContextWindow: 128_000,
           catalogCapabilities: { reasoning: true },
+          catalogPricing: {
+            input: 2,
+            output: 8,
+            cacheRead: 0.2,
+            cacheWrite: 2.5,
+            tiered: true,
+          },
         },
         { id: "unknown-model" },
       ],

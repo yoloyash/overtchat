@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
     catalogEntryFor: vi.fn(),
+    catalogPricingFor: vi.fn(),
     resolveModelContextWindow: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
     cancelRegister: vi.fn(),
@@ -116,6 +117,7 @@ vi.mock("@/lib/providers/server/registry", () => ({
 }));
 vi.mock("@/lib/providers/server/model-catalog", () => ({
   catalogEntryFor: mocks.catalogEntryFor,
+  catalogPricingFor: mocks.catalogPricingFor,
   resolveModelContextWindow: mocks.resolveModelContextWindow,
 }));
 vi.mock("@/lib/streams/cancel-registry", () => ({
@@ -936,6 +938,13 @@ describe("chat route setup boundary", () => {
           },
         ],
       },
+    });
+    mocks.catalogPricingFor.mockReturnValue({
+      input: 1,
+      output: 2,
+      cacheRead: 1,
+      cacheWrite: 1,
+      tiered: true,
     });
     mocks.agentStream.mockResolvedValue({
       stream: new ReadableStream({

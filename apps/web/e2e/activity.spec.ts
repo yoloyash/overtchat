@@ -124,6 +124,16 @@ function seedActivityData() {
       now,
     );
     db.prepare(
+      `INSERT INTO model_configs (
+        id, label, provider_id, api_format, base_url, api_key, model,
+        pricing, tool_calling_enabled, enabled, sort_order, created_at, updated_at
+      ) VALUES (
+        'catalog-model', 'Catalog Model', 'openai', 'auto',
+        'https://api.openai.com/v1', 'test-key', 'gpt-5.4',
+        NULL, 1, 0, 99, ?, ?
+      )`,
+    ).run(now, now);
+    db.prepare(
       `INSERT INTO user (
         id, name, email, email_verified, created_at, updated_at, role, banned
       ) VALUES (?, ?, ?, 1, ?, ?, 'user', 0)`,
@@ -302,6 +312,52 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await expect(
       page.getByRole("region", { name: "Session" }),
     ).toHaveCount(0);
+  });
+
+  await test.step("preview, override, and restore model pricing", async () => {
+    await page.goto("/settings/models/catalog-model");
+    await page.getByRole("button", { name: "Show", exact: true }).click();
+
+    const customPricing = page.getByRole("switch", {
+      name: "Custom pricing",
+    });
+    const inputRate = page.locator("#p-price-input");
+    const outputRate = page.locator("#p-price-output");
+    const cacheReadRate = page.locator("#p-price-cache-read");
+    const cacheWriteRate = page.locator("#p-price-cache-write");
+
+    await expect(customPricing).not.toBeChecked();
+    await expect(inputRate).toHaveValue("2.5");
+    await expect(outputRate).toHaveValue("15");
+    await expect(cacheReadRate).toHaveValue("0.25");
+    await expect(cacheWriteRate).toHaveValue("2.5");
+    await expect(inputRate).toHaveAttribute("readonly", "");
+    await expect(
+      page.getByText("Context tiers apply automatically."),
+    ).toBeVisible();
+
+    await customPricing.click();
+    await expect(customPricing).toBeChecked();
+    await expect(inputRate).not.toHaveAttribute("readonly");
+    await inputRate.fill("3");
+    await expect(
+      page.getByText("Flat custom rates replace catalog context tiers."),
+    ).toBeVisible();
+
+    await page.getByRole("button", { name: "Use catalog pricing" }).click();
+    await expect(customPricing).not.toBeChecked();
+    await expect(inputRate).toHaveValue("2.5");
+    await expect(inputRate).toHaveAttribute("readonly", "");
+
+    await page.goto("/settings/models/activity-model");
+    await page.getByRole("button", { name: "Remove custom pricing" }).click();
+    await expect(customPricing).not.toBeChecked();
+    await customPricing.click();
+    await expect(inputRate).toHaveValue("");
+    await expect(outputRate).toHaveValue("");
+    await expect(cacheReadRate).toHaveValue("");
+    await expect(cacheWriteRate).toHaveValue("");
+    await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
   await test.step("compare the 30-day and 7-day rankings", async () => {

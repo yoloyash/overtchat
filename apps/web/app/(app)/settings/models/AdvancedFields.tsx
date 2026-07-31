@@ -168,7 +168,7 @@ export function AdvancedFields({
                     htmlFor="p-custom-pricing"
                     className="text-xs text-muted-foreground"
                   >
-                    Custom
+                    Custom pricing
                   </label>
                   <Switch
                     id="p-custom-pricing"
