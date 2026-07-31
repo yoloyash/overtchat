@@ -2,7 +2,8 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
-import { chats, generationUsage, messages } from "@/lib/db/schema";
+import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
+import { chats, messages } from "@/lib/db/schema";
 import { extractSearchText } from "@/lib/search/extract";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
@@ -146,7 +147,7 @@ export function completeChatStream({
   };
   usage?: CompletedGenerationUsage;
 }): boolean {
-  return db.transaction((tx) => {
+  const completed = db.transaction((tx) => {
     const chat = tx
       .select({
         userId: chats.userId,
@@ -156,7 +157,7 @@ export function completeChatStream({
       .where(eq(chats.id, chatId))
       .limit(1)
       .get();
-    if (!chat || chat.activeStreamId !== streamId) return false;
+    if (!chat || chat.activeStreamId !== streamId) return null;
 
     if (assistantMessage) {
       tx.insert(messages)
@@ -175,17 +176,6 @@ export function completeChatStream({
           VALUES (${content}, ${assistantMessage.id}, ${chatId}, ${chat.userId})
         `);
       }
-      if (usage) {
-        tx.insert(generationUsage)
-          .values({
-            id: streamId,
-            userId: chat.userId,
-            chatId,
-            messageId: assistantMessage.id,
-            ...usage,
-          })
-          .run();
-      }
     }
 
     tx.update(chats)
@@ -195,8 +185,22 @@ export function completeChatStream({
       })
       .where(and(eq(chats.id, chatId), eq(chats.activeStreamId, streamId)))
       .run();
-    return true;
+    return { userId: chat.userId };
   });
+
+  if (!completed) return false;
+
+  if (assistantMessage && usage) {
+    tryRecordGenerationUsage({
+      id: streamId,
+      userId: completed.userId,
+      chatId,
+      messageId: assistantMessage.id,
+      ...usage,
+    });
+  }
+
+  return true;
 }
 
 export async function clearActiveStreamId(

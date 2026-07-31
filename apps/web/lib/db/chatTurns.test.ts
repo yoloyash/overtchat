@@ -313,7 +313,7 @@ describe("transactional chat turns", () => {
     });
   });
 
-  it("rolls back assistant persistence when usage insertion fails", () => {
+  it("keeps assistant persistence when usage insertion fails", () => {
     expect(
       chatTurns.commitChatTurn({
         chatId: "chat",
@@ -335,7 +335,8 @@ describe("transactional chat turns", () => {
       )
       .run("stream", "user", "chat", 1_000, "custom", "old-model");
 
-    expect(() =>
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(
       chatTurns.completeChatStream({
         chatId: "chat",
         streamId: "stream",
@@ -350,17 +351,32 @@ describe("transactional chat turns", () => {
           totalTokens: 10,
         },
       }),
-    ).toThrow();
+    ).toBe(true);
 
-    expect(messageIds()).toEqual(["user-message"]);
+    expect(messageIds()).toEqual(["user-message", "assistant-message"]);
     expect(
       raw
         .prepare("SELECT active_stream_id AS id FROM chats WHERE id = 'chat'")
         .get(),
-    ).toEqual({ id: "stream" });
+    ).toEqual({ id: null });
     expect(
       raw.prepare("SELECT message_id FROM messages_fts ORDER BY rowid").all(),
-    ).toEqual([{ message_id: "user-message" }]);
+    ).toEqual([
+      { message_id: "user-message" },
+      { message_id: "assistant-message" },
+    ]);
+    expect(
+      raw
+        .prepare(
+          "SELECT model, message_id AS messageId FROM generation_usage WHERE id = ?",
+        )
+        .get("stream"),
+    ).toEqual({ model: "old-model", messageId: null });
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "[generation-usage]",
+      expect.any(Error),
+    );
+    consoleSpy.mockRestore();
   });
 
   it("keeps usage when its message branch and chat are deleted", async () => {
