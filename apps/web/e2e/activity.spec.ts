@@ -252,27 +252,36 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
   });
 
   await test.step("inspect Pi-style per-chat usage", async () => {
-    await expect(page.getByTitle("Session usage")).toHaveCount(0);
+    const usage = page.getByTitle("Usage");
+    await expect(usage).toBeVisible();
+    await expect(usage).not.toContainText("$");
+    await usage.click();
+    await expect(
+      page.getByRole("region", { name: "Context" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Session" }),
+    ).toHaveCount(0);
+
     priceAdminChatUsage();
     await page.reload();
 
-    const sessionUsage = page.getByRole("button", {
-      name: "Session cost: $0.056. Show details",
-    });
-    await expect(sessionUsage).toBeVisible();
-    await sessionUsage.click();
-    await expect(page.getByText("Session usage", { exact: true })).toBeVisible();
-    await expect(page.getByText("Input").locator("..")).toContainText("1,000");
-    await expect(page.getByText("Cache read").locator("..")).toContainText(
+    await expect(usage).toContainText("$0.056");
+    await usage.click();
+    await expect(page.getByText("Usage", { exact: true })).toBeVisible();
+    const session = page.getByRole("region", { name: "Session" });
+    await expect(session).toBeVisible();
+    await expect(session.getByText("Input").locator("..")).toContainText(
+      "1,000",
+    );
+    await expect(session.getByText("Cache read").locator("..")).toContainText(
       "600",
     );
-    await expect(page.getByText("Output").locator("..")).toContainText("200");
-    await expect(page.getByText("Total", { exact: true }).locator("..")).toContainText(
-      "1,200",
+    await expect(session.getByText("Output").locator("..")).toContainText(
+      "200",
     );
-    await expect(page.getByText("Cost", { exact: true }).locator("..")).toContainText(
-      "$0.056",
-    );
+    await expect(session).toContainText("1,200 tokens");
+    await expect(session).toContainText("$0.056");
   });
 
   await test.step("hide session cost from General settings", async () => {
@@ -286,7 +295,13 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await expect(sessionCost).not.toBeChecked();
 
     await page.goto(chatUrl);
-    await expect(page.getByTitle("Session usage")).toHaveCount(0);
+    const usage = page.getByTitle("Usage");
+    await expect(usage).toBeVisible();
+    await expect(usage).not.toContainText("$0.056");
+    await usage.click();
+    await expect(
+      page.getByRole("region", { name: "Session" }),
+    ).toHaveCount(0);
   });
 
   await test.step("compare the 30-day and 7-day rankings", async () => {

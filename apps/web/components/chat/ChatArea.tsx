@@ -376,7 +376,7 @@ export function ChatArea({
         selectedId={selectedId}
         onSelectModel={handleSelectModel}
         contextUsage={contextUsage}
-        sessionUsage={sessionUsage}
+        sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}
