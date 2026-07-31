@@ -2,12 +2,10 @@ import { describe, expect, it } from "vitest";
 import { formatNanoUsd, getCostCoverage } from "./cost";
 
 describe("session cost formatting", () => {
-  it("keeps small estimates visible without noisy precision", () => {
-    expect(formatNanoUsd(0)).toBe("$0.00");
-    expect(formatNanoUsd(1)).toBe("<$0.000001");
-    expect(formatNanoUsd(153_700)).toBe("$0.000154");
-    expect(formatNanoUsd(12_345_678)).toBe("$0.0123");
-    expect(formatNanoUsd(1_500_000_000)).toBe("$1.50");
+  it("matches Pi's terse three-decimal session format", () => {
+    expect(formatNanoUsd(0)).toBe("$0.000");
+    expect(formatNanoUsd(55_900_000)).toBe("$0.056");
+    expect(formatNanoUsd(1_500_000_000)).toBe("$1.500");
   });
 
   it("distinguishes complete, partial, and unavailable pricing", () => {

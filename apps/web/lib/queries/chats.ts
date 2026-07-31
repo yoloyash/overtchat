@@ -29,16 +29,7 @@ export function useChats() {
   });
 }
 
-export function useChatUsage(
-  id: string,
-  {
-    enabled = true,
-    initialData,
-  }: {
-    enabled?: boolean;
-    initialData?: UsageTotals;
-  } = {},
-) {
+export function useChatUsage(id: string, enabled = true) {
   return useQuery({
     queryKey: chatKeys.usage(id),
     queryFn: async (): Promise<UsageTotals> => {
@@ -50,7 +41,6 @@ export function useChatUsage(
       return body.usage;
     },
     enabled,
-    initialData,
   });
 }
 

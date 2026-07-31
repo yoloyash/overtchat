@@ -120,7 +120,6 @@ export async function getChatUsageTotals(
   chatId: string,
   userId: string,
 ): Promise<UsageTotals> {
-  // Session totals include hidden generation work such as title creation.
   const [totals] = await db
     .select(aggregateUsage())
     .from(generationUsage)
@@ -128,6 +127,7 @@ export async function getChatUsageTotals(
       and(
         eq(generationUsage.chatId, chatId),
         eq(generationUsage.userId, userId),
+        eq(generationUsage.context, "chat"),
       ),
     );
   return totals;

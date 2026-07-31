@@ -15,7 +15,6 @@ import {
   useChatUsage,
   type ChatListItem,
 } from "@/lib/queries/chats";
-import type { UsageTotals } from "@/lib/usage/types";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { motionClasses } from "@/lib/motion";
@@ -34,6 +33,10 @@ import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
 } from "@/lib/chat/context-meter";
+import {
+  DEFAULT_SESSION_COST_ENABLED,
+  SESSION_COST_STORAGE_KEY,
+} from "@/lib/chat/session-cost";
 import {
   getDataTransferFiles,
   hasDataTransferFiles,
@@ -57,7 +60,6 @@ interface Props {
   isNew?: boolean;
   projectId?: string | null;
   initialQuery?: string;
-  initialUsage?: UsageTotals;
 }
 
 export function ChatArea({
@@ -66,7 +68,6 @@ export function ChatArea({
   isNew,
   projectId,
   initialQuery,
-  initialUsage,
 }: Props) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -106,13 +107,17 @@ export function ChatArea({
     CONTEXT_METER_STORAGE_KEY,
     DEFAULT_CONTEXT_METER_ENABLED,
   );
+  const [sessionCostEnabled] = useLocalStorage<boolean>(
+    SESSION_COST_STORAGE_KEY,
+    DEFAULT_SESSION_COST_ENABLED,
+  );
 
   const [temporary, setTemporary] = useState(false);
   const [chatPersisted, setChatPersisted] = useState(!isNew);
-  const { data: sessionUsage } = useChatUsage(chatId, {
-    enabled: chatPersisted && !temporary,
-    initialData: initialUsage,
-  });
+  const { data: sessionUsage } = useChatUsage(
+    chatId,
+    sessionCostEnabled && chatPersisted && !temporary,
+  );
   useEffect(() => {
     if (temporary) {
       document.title = "overtchat";

@@ -4,11 +4,7 @@ import { Popover } from "@base-ui/react/popover";
 import { CircleDollarSign } from "lucide-react";
 import { formatInteger } from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
-import {
-  formatNanoUsd,
-  getCostCoverage,
-  type CostCoverage,
-} from "@/lib/usage/cost";
+import { formatNanoUsd, getCostCoverage } from "@/lib/usage/cost";
 import type { UsageTotals } from "@/lib/usage/types";
 import { cn } from "@/lib/utils";
 
@@ -21,34 +17,16 @@ function UsageRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function descriptionFor(usage: UsageTotals, coverage: CostCoverage): string {
-  if (coverage === "complete") {
-    return "Based on models.dev rates captured at generation time. Includes assistant responses and title generation; provider billing may differ.";
-  }
-  if (coverage === "partial") {
-    return `${formatInteger(usage.pricedGenerations)} of ${formatInteger(usage.generations)} model calls had known pricing. The shown subtotal excludes unpriced calls and may be lower than provider billing.`;
-  }
-  return "Pricing was unavailable for these model calls. Token usage still includes assistant responses and title generation.";
-}
-
 export function SessionUsage({ usage }: { usage: UsageTotals }) {
-  if (usage.generations <= 0) return null;
+  if (usage.generations <= 0 || usage.pricedGenerations <= 0) return null;
 
   const coverage = getCostCoverage(usage);
-  const cost =
-    coverage === "unavailable"
-      ? "Unavailable"
-      : formatNanoUsd(usage.totalCostNanoUsd);
-  const visibleCost =
-    coverage === "unavailable"
-      ? "--"
-      : `~${cost}${coverage === "partial" ? "+" : ""}`;
+  const cost = formatNanoUsd(usage.totalCostNanoUsd);
+  const visibleCost = `${cost}${coverage === "partial" ? "+" : ""}`;
   const triggerLabel =
     coverage === "complete"
-      ? `Estimated session cost: ${cost}. Show details`
-      : coverage === "partial"
-        ? `Partial session cost estimate: ${cost} from ${usage.pricedGenerations} of ${usage.generations} model calls. Show details`
-        : "Session cost unavailable. Show details";
+      ? `Session cost: ${cost}. Show details`
+      : `Known session cost: ${cost} from ${usage.pricedGenerations} of ${usage.generations} model calls. Show details`;
 
   return (
     <Popover.Root>
@@ -79,49 +57,42 @@ export function SessionUsage({ usage }: { usage: UsageTotals }) {
             </Popover.Title>
             <div className="space-y-2">
               <UsageRow
-                label={
-                  coverage === "partial"
-                    ? "Known cost"
-                    : "Estimated cost"
-                }
-                value={coverage === "partial" ? `${cost}+` : cost}
+                label="Input"
+                value={formatInteger(usage.inputTokens)}
               />
-              <UsageRow
-                label="Model calls"
-                value={formatInteger(usage.generations)}
-              />
-              <UsageRow
-                label="Total tokens"
-                value={formatInteger(usage.totalTokens)}
-              />
-              <UsageRow
-                label="Pricing coverage"
-                value={`${formatInteger(usage.pricedGenerations)} of ${formatInteger(usage.generations)}`}
-              />
-            </div>
-            {coverage !== "unavailable" ? (
-              <div className="mt-3 space-y-2 border-t pt-3">
-                <UsageRow
-                  label="Input"
-                  value={formatNanoUsd(usage.inputCostNanoUsd)}
-                />
-                <UsageRow
-                  label="Output"
-                  value={formatNanoUsd(usage.outputCostNanoUsd)}
-                />
+              {usage.cacheReadTokens > 0 ? (
                 <UsageRow
                   label="Cache read"
-                  value={formatNanoUsd(usage.cacheReadCostNanoUsd)}
+                  value={formatInteger(usage.cacheReadTokens)}
                 />
+              ) : null}
+              {usage.cacheWriteTokens > 0 ? (
                 <UsageRow
                   label="Cache write"
-                  value={formatNanoUsd(usage.cacheWriteCostNanoUsd)}
+                  value={formatInteger(usage.cacheWriteTokens)}
                 />
-              </div>
-            ) : null}
-            <Popover.Description className="mt-3 border-t pt-3 leading-relaxed text-muted-foreground">
-              {descriptionFor(usage, coverage)}
-            </Popover.Description>
+              ) : null}
+              <UsageRow
+                label="Output"
+                value={formatInteger(usage.outputTokens)}
+              />
+              <UsageRow
+                label="Total"
+                value={formatInteger(usage.totalTokens)}
+              />
+            </div>
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <UsageRow
+                label={coverage === "partial" ? "Known cost" : "Cost"}
+                value={visibleCost}
+              />
+              {coverage === "partial" ? (
+                <UsageRow
+                  label="Pricing"
+                  value={`${formatInteger(usage.pricedGenerations)} of ${formatInteger(usage.generations)} calls`}
+                />
+              ) : null}
+            </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

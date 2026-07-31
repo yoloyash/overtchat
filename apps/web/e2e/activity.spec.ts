@@ -191,6 +191,33 @@ function trackedUsageCounts(): Record<string, number> {
   }
 }
 
+function priceAdminChatUsage() {
+  const db = openE2eDatabase();
+  try {
+    const result = db
+      .prepare(
+        `UPDATE generation_usage
+         SET cost_source = 'models.dev',
+             input_cost_nano_usd = 28900000,
+             output_cost_nano_usd = 27000000,
+             cache_read_cost_nano_usd = 0,
+             cache_write_cost_nano_usd = 0,
+             total_cost_nano_usd = 55900000
+         WHERE context = 'chat'
+           AND user_id = (
+             SELECT id FROM user
+             WHERE email = 'activity-admin@overtchat-test.local'
+           )`,
+      )
+      .run();
+    if (result.changes !== 1) {
+      throw new Error(`Expected to price one chat response, got ${result.changes}`);
+    }
+  } finally {
+    db.close();
+  }
+}
+
 function profileForEmail(email: string): { name: string; image: string | null } {
   const db = openE2eDatabase();
   try {
@@ -224,22 +251,42 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await expect.poll(trackedUsageCounts).toEqual({ chat: 3, title: 1 });
   });
 
-  await test.step("inspect honest per-chat usage", async () => {
+  await test.step("inspect Pi-style per-chat usage", async () => {
+    await expect(page.getByTitle("Session usage")).toHaveCount(0);
+    priceAdminChatUsage();
+    await page.reload();
+
     const sessionUsage = page.getByRole("button", {
-      name: "Session cost unavailable. Show details",
+      name: "Session cost: $0.056. Show details",
     });
     await expect(sessionUsage).toBeVisible();
     await sessionUsage.click();
     await expect(page.getByText("Session usage", { exact: true })).toBeVisible();
-    await expect(
-      page.getByText("Pricing coverage").locator(".."),
-    ).toContainText("0 of 2");
-    await expect(page.getByText("Total tokens").locator("..")).toContainText(
-      "1,212",
+    await expect(page.getByText("Input").locator("..")).toContainText("1,000");
+    await expect(page.getByText("Cache read").locator("..")).toContainText(
+      "600",
     );
-    await expect(
-      page.getByText(/Pricing was unavailable for these model calls/),
-    ).toBeVisible();
+    await expect(page.getByText("Output").locator("..")).toContainText("200");
+    await expect(page.getByText("Total", { exact: true }).locator("..")).toContainText(
+      "1,200",
+    );
+    await expect(page.getByText("Cost", { exact: true }).locator("..")).toContainText(
+      "$0.056",
+    );
+  });
+
+  await test.step("hide session cost from General settings", async () => {
+    const chatUrl = page.url();
+    await page.goto("/settings/general");
+    const sessionCost = page.getByRole("switch", {
+      name: "Session cost",
+    });
+    await expect(sessionCost).toBeChecked();
+    await sessionCost.click();
+    await expect(sessionCost).not.toBeChecked();
+
+    await page.goto(chatUrl);
+    await expect(page.getByTitle("Session usage")).toHaveCount(0);
   });
 
   await test.step("compare the 30-day and 7-day rankings", async () => {

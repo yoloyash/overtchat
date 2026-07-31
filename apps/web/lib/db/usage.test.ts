@@ -281,23 +281,23 @@ describe("chat usage aggregates", () => {
     ]);
   });
 
-  it("includes hidden generation work in owner-scoped chat totals", async () => {
+  it("returns owner-scoped response usage without hidden title work", async () => {
     await expect(
       usage.getChatUsageTotals("alice-chat", "alice"),
     ).resolves.toEqual({
-      generations: 3,
-      pricedGenerations: 2,
-      inputTokens: 10_150,
-      uncachedInputTokens: 10_020,
-      outputTokens: 1_030,
+      generations: 2,
+      pricedGenerations: 1,
+      inputTokens: 150,
+      uncachedInputTokens: 20,
+      outputTokens: 30,
       cacheReadTokens: 80,
       cacheWriteTokens: 5,
-      totalTokens: 11_180,
-      inputCostNanoUsd: 101_000,
-      outputCostNanoUsd: 52_000,
+      totalTokens: 180,
+      inputCostNanoUsd: 1_000,
+      outputCostNanoUsd: 2_000,
       cacheReadCostNanoUsd: 300,
       cacheWriteCostNanoUsd: 400,
-      totalCostNanoUsd: 153_700,
+      totalCostNanoUsd: 3_700,
     });
     await expect(
       usage.getChatUsageTotals("alice-chat", "bob"),
