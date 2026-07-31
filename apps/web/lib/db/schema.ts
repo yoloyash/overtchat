@@ -6,6 +6,7 @@ import {
   API_FORMAT_IDS,
   PROVIDER_IDS,
 } from "@/lib/providers/catalog";
+import type { ModelPricing } from "@/lib/model-config/schema";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -198,7 +199,9 @@ export const generationUsage = sqliteTable(
     cacheReadTokens: integer("cache_read_tokens"),
     cacheWriteTokens: integer("cache_write_tokens"),
     totalTokens: integer("total_tokens"),
-    costSource: text("cost_source", { enum: ["models.dev"] }),
+    costSource: text("cost_source", {
+      enum: ["models.dev", "model_config"],
+    }),
     inputCostNanoUsd: integer("input_cost_nano_usd"),
     outputCostNanoUsd: integer("output_cost_nano_usd"),
     cacheReadCostNanoUsd: integer("cache_read_cost_nano_usd"),
@@ -342,6 +345,7 @@ export const modelConfigs = sqliteTable("model_configs", {
   baseUrl: text("base_url").notNull(),
   apiKey: text("api_key"),
   model: text("model").notNull(),
+  pricing: text("pricing", { mode: "json" }).$type<ModelPricing>(),
   contextWindow: integer("context_window"),
   discoveredContextWindow: integer("discovered_context_window"),
   discoveredCapabilities: text("discovered_capabilities", {

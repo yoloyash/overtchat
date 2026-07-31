@@ -23,6 +23,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: row.model,
+    pricing: row.pricing,
     contextWindow: row.contextWindow,
     discoveredContextWindow: row.discoveredContextWindow,
     discoveredCapabilities: row.discoveredCapabilities,

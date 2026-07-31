@@ -35,6 +35,7 @@ const modelConfig = {
   baseUrl: "http://example.test/v1",
   apiKey: "key",
   model: "title-model",
+  pricing: null,
   providerOptions: null,
 };
 
@@ -222,6 +223,38 @@ describe("title helpers", () => {
         cacheReadCostNanoUsd: 1_800,
         cacheWriteCostNanoUsd: 3_750,
         totalCostNanoUsd: 47_550,
+      }),
+    );
+  });
+
+  it("uses configured pricing for title usage", async () => {
+    mocks.generateText.mockResolvedValue(
+      generationResult("Configured Price"),
+    );
+
+    await generateChatTitle({
+      chatId: "chat",
+      userId: "user",
+      modelConfig: {
+        ...modelConfig,
+        pricing: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.2,
+          cacheWrite: 2.5,
+        },
+      },
+      userParts: firstUserParts,
+    });
+
+    expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        costSource: "model_config",
+        inputCostNanoUsd: 8_000,
+        outputCostNanoUsd: 16_000,
+        cacheReadCostNanoUsd: 1_200,
+        cacheWriteCostNanoUsd: 2_500,
+        totalCostNanoUsd: 27_700,
       }),
     );
   });

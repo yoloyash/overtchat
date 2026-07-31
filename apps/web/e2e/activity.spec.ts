@@ -107,13 +107,19 @@ function seedActivityData() {
     db.prepare(
       `INSERT INTO model_configs (
         id, label, provider_id, api_format, base_url, api_key, model,
-        tool_calling_enabled, enabled, sort_order, created_at, updated_at
-      ) VALUES (?, ?, 'custom', 'openai-chat', ?, 'test-key', ?, 1, 1, 0, ?, ?)`,
+        pricing, tool_calling_enabled, enabled, sort_order, created_at, updated_at
+      ) VALUES (?, ?, 'custom', 'openai-chat', ?, 'test-key', ?, ?, 1, 1, 0, ?, ?)`,
     ).run(
       "activity-model",
       "Activity Test Model",
       modelBaseUrl,
       "activity-test-model",
+      JSON.stringify({
+        input: 2,
+        output: 8,
+        cacheRead: 0.2,
+        cacheWrite: 2.5,
+      }),
       now,
       now,
     );
@@ -191,28 +197,27 @@ function trackedUsageCounts(): Record<string, number> {
   }
 }
 
-function priceAdminChatUsage() {
+function adminChatCost(): {
+  costSource: string | null;
+  totalCostNanoUsd: number | null;
+} {
   const db = openE2eDatabase();
   try {
-    const result = db
+    return db
       .prepare(
-        `UPDATE generation_usage
-         SET cost_source = 'models.dev',
-             input_cost_nano_usd = 28900000,
-             output_cost_nano_usd = 27000000,
-             cache_read_cost_nano_usd = 0,
-             cache_write_cost_nano_usd = 0,
-             total_cost_nano_usd = 55900000
+        `SELECT cost_source AS costSource,
+                total_cost_nano_usd AS totalCostNanoUsd
+         FROM generation_usage
          WHERE context = 'chat'
            AND user_id = (
              SELECT id FROM user
              WHERE email = 'activity-admin@overtchat-test.local'
            )`,
       )
-      .run();
-    if (result.changes !== 1) {
-      throw new Error(`Expected to price one chat response, got ${result.changes}`);
-    }
+      .get() as {
+        costSource: string | null;
+        totalCostNanoUsd: number | null;
+      };
   } finally {
     db.close();
   }
@@ -249,26 +254,21 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await page.getByLabel("Send message").click();
     await expect(page.getByText("Tracked response")).toBeVisible();
     await expect.poll(trackedUsageCounts).toEqual({ chat: 3, title: 1 });
+    await expect.poll(adminChatCost).toEqual({
+      costSource: "model_config",
+      totalCostNanoUsd: 2_520_000,
+    });
   });
 
   await test.step("inspect Pi-style per-chat usage", async () => {
     const usage = page.getByTitle("Usage");
     await expect(usage).toBeVisible();
-    await expect(usage).not.toContainText("$");
+    await expect(usage).toContainText("$0.003");
     await usage.click();
+    await expect(page.getByText("Usage", { exact: true })).toBeVisible();
     await expect(
       page.getByRole("region", { name: "Context" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("region", { name: "Session" }),
-    ).toHaveCount(0);
-
-    priceAdminChatUsage();
-    await page.reload();
-
-    await expect(usage).toContainText("$0.056");
-    await usage.click();
-    await expect(page.getByText("Usage", { exact: true })).toBeVisible();
     const session = page.getByRole("region", { name: "Session" });
     await expect(session).toBeVisible();
     await expect(session.getByText("Input").locator("..")).toContainText(
@@ -281,7 +281,7 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
       "200",
     );
     await expect(session).toContainText("1,200 tokens");
-    await expect(session).toContainText("$0.056");
+    await expect(session).toContainText("$0.003");
   });
 
   await test.step("hide session cost from General settings", async () => {
@@ -297,7 +297,7 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await page.goto(chatUrl);
     const usage = page.getByTitle("Usage");
     await expect(usage).toBeVisible();
-    await expect(usage).not.toContainText("$0.056");
+    await expect(usage).not.toContainText("$0.003");
     await usage.click();
     await expect(
       page.getByRole("region", { name: "Session" }),

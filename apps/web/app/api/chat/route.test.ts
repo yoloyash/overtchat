@@ -160,6 +160,7 @@ const modelConfig = {
   baseUrl: "https://example.test/v1",
   apiKey: "key",
   model: "test-model",
+  pricing: null,
   contextWindow: null,
   discoveredContextWindow: null,
   discoveredCapabilities: null,
@@ -855,6 +856,65 @@ describe("chat route setup boundary", () => {
         finishReason: "stop",
       },
     });
+  });
+
+  it("records configured model pricing with chat usage", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      pricing: {
+        input: 2,
+        output: 8,
+        cacheRead: 0.2,
+        cacheWrite: 2.5,
+      },
+    });
+
+    await POST(request());
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+
+    messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 80,
+            cacheWriteTokens: 5,
+            noCacheTokens: 15,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: expect.objectContaining({
+          costSource: "model_config",
+          inputCostNanoUsd: 30_000,
+          outputCostNanoUsd: 80_000,
+          cacheReadCostNanoUsd: 16_000,
+          cacheWriteCostNanoUsd: 12_500,
+          totalCostNanoUsd: 138_500,
+        }),
+      }),
+    );
   });
 
   it("uses the latest step usage for context instead of summing tool-loop steps", async () => {

@@ -316,6 +316,7 @@ async function handlePost(req: Request): Promise<Response> {
             providerId: modelConfig.providerId,
             model: modelConfig.model,
             usage,
+            pricing: modelConfig.pricing,
             cacheWriteTtl:
               promptCacheStrategy?.kind === "anthropic"
                 ? (promptCacheStrategy.cacheControl.ttl ?? "5m")
@@ -399,6 +400,7 @@ async function handlePost(req: Request): Promise<Response> {
                   providerId: modelConfig.providerId,
                   model: modelConfig.model,
                   usage: part.totalUsage,
+                  pricing: modelConfig.pricing,
                   cacheWriteTtl:
                     promptCacheStrategy?.kind === "anthropic"
                       ? (promptCacheStrategy.cacheControl.ttl ?? "5m")

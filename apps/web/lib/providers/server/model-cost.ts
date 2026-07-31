@@ -1,12 +1,18 @@
 import "server-only";
 import type { LanguageModelUsage } from "ai";
+import type { ModelPricing } from "@/lib/model-config/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import { catalogEntryFor } from "@/lib/providers/server/model-catalog";
 
 export const MODEL_CATALOG_COST_SOURCE = "models.dev" as const;
+export const MODEL_CONFIG_COST_SOURCE = "model_config" as const;
+
+export type GenerationCostSource =
+  | typeof MODEL_CATALOG_COST_SOURCE
+  | typeof MODEL_CONFIG_COST_SOURCE;
 
 export type EstimatedGenerationCost = {
-  costSource: typeof MODEL_CATALOG_COST_SOURCE;
+  costSource: GenerationCostSource;
   inputCostNanoUsd: number;
   outputCostNanoUsd: number;
   cacheReadCostNanoUsd: number;
@@ -34,6 +40,7 @@ export function estimateGenerationCost({
   providerId: ProviderId;
   model: string;
   usage: LanguageModelUsage;
+  pricing?: ModelPricing | null;
   cacheWriteTtl?: "5m" | "1h";
 }): EstimatedGenerationCost | null {
   try {
@@ -48,20 +55,31 @@ function estimateGenerationCostUnchecked({
   providerId,
   model,
   usage,
+  pricing,
   cacheWriteTtl,
 }: {
   providerId: ProviderId;
   model: string;
   usage: LanguageModelUsage;
+  pricing?: ModelPricing | null;
   cacheWriteTtl?: "5m" | "1h";
 }): EstimatedGenerationCost | null {
   const tokens = tokenBuckets(usage);
-  const catalogCost = catalogEntryFor(providerId, model)?.cost;
-  if (!tokens || !catalogCost) return null;
+  if (!tokens) return null;
 
-  const rates = pricingRates(catalogCost, totalInputTokens(tokens));
+  const costSource =
+    pricing === null || pricing === undefined
+      ? MODEL_CATALOG_COST_SOURCE
+      : MODEL_CONFIG_COST_SOURCE;
+  const rates =
+    pricing === null || pricing === undefined
+      ? catalogRatesFor(providerId, model, tokens)
+      : configuredPricingRates(pricing);
   if (!rates) return null;
-  if (cacheWriteTtl === "1h") {
+  if (
+    costSource === MODEL_CATALOG_COST_SOURCE &&
+    cacheWriteTtl === "1h"
+  ) {
     rates.cacheWrite = rates.input * 2;
   }
 
@@ -92,7 +110,7 @@ function estimateGenerationCostUnchecked({
   if (!Number.isSafeInteger(totalCostNanoUsd)) return null;
 
   return {
-    costSource: MODEL_CATALOG_COST_SOURCE,
+    costSource,
     inputCostNanoUsd,
     outputCostNanoUsd,
     cacheReadCostNanoUsd,
@@ -105,10 +123,12 @@ export function sumEstimatedGenerationCosts(
   costs: readonly EstimatedGenerationCost[],
 ): EstimatedGenerationCost | null {
   if (costs.length === 0) return null;
+  const costSource = costs[0].costSource;
+  if (costs.some((cost) => cost.costSource !== costSource)) return null;
 
   const total = costs.reduce<EstimatedGenerationCost>(
     (sum, cost) => ({
-      costSource: MODEL_CATALOG_COST_SOURCE,
+      costSource,
       inputCostNanoUsd: sum.inputCostNanoUsd + cost.inputCostNanoUsd,
       outputCostNanoUsd: sum.outputCostNanoUsd + cost.outputCostNanoUsd,
       cacheReadCostNanoUsd:
@@ -118,7 +138,7 @@ export function sumEstimatedGenerationCosts(
       totalCostNanoUsd: sum.totalCostNanoUsd + cost.totalCostNanoUsd,
     }),
     {
-      costSource: MODEL_CATALOG_COST_SOURCE,
+      costSource,
       inputCostNanoUsd: 0,
       outputCostNanoUsd: 0,
       cacheReadCostNanoUsd: 0,
@@ -127,9 +147,13 @@ export function sumEstimatedGenerationCosts(
     },
   );
 
-  return Object.values(total).every(
-    (value) => typeof value === "string" || Number.isSafeInteger(value),
-  )
+  return [
+    total.inputCostNanoUsd,
+    total.outputCostNanoUsd,
+    total.cacheReadCostNanoUsd,
+    total.cacheWriteCostNanoUsd,
+    total.totalCostNanoUsd,
+  ].every(Number.isSafeInteger)
     ? total
     : null;
 }
@@ -166,7 +190,31 @@ function tokenBuckets(usage: LanguageModelUsage): TokenBuckets | null {
   };
 }
 
-function pricingRates(
+function catalogRatesFor(
+  providerId: ProviderId,
+  model: string,
+  tokens: TokenBuckets,
+): PricingRates | null {
+  const catalogCost = catalogEntryFor(providerId, model)?.cost;
+  return catalogCost
+    ? catalogPricingRates(catalogCost, totalInputTokens(tokens))
+    : null;
+}
+
+function configuredPricingRates(pricing: ModelPricing): PricingRates | null {
+  const input = rate(pricing.input);
+  const output = rate(pricing.output);
+  const cacheRead = rate(pricing.cacheRead);
+  const cacheWrite = rate(pricing.cacheWrite);
+  return input === null ||
+    output === null ||
+    cacheRead === null ||
+    cacheWrite === null
+    ? null
+    : { input, output, cacheRead, cacheWrite };
+}
+
+function catalogPricingRates(
   rawCost: Readonly<Record<string, unknown>>,
   inputTokens: number,
 ): PricingRates | null {

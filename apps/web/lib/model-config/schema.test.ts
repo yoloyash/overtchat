@@ -87,6 +87,7 @@ describe("provider configuration", () => {
       label: "Local model",
       baseUrl: "http://localhost:8000/v1",
       model: "qwen",
+      pricing: null,
       contextWindow: null,
       discoveredContextWindow: null,
       discoveredCapabilities: null,
@@ -96,6 +97,45 @@ describe("provider configuration", () => {
       enabled: true,
       sortOrder: 0,
     });
+  });
+
+  it("accepts complete nonnegative pricing overrides", () => {
+    const base = {
+      label: "Local model",
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "",
+      model: "local-model",
+    };
+    const pricing = {
+      input: 2,
+      output: 8,
+      cacheRead: 0,
+      cacheWrite: 2.5,
+    };
+
+    expect(ModelConfigSchema.parse({ ...base, pricing }).pricing).toEqual(
+      pricing,
+    );
+    expect(
+      ModelConfigSchema.safeParse({
+        ...base,
+        pricing: { ...pricing, output: -1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ModelConfigSchema.safeParse({
+        ...base,
+        pricing: { input: 2, output: 8 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ModelConfigSchema.safeParse({
+        ...base,
+        pricing: { ...pricing, cacheRead: Number.POSITIVE_INFINITY },
+      }).success,
+    ).toBe(false);
   });
 
   it("validates reported model capabilities without treating omissions as false", () => {

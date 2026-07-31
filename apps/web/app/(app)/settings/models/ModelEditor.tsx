@@ -54,6 +54,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         baseUrl: existing.baseUrl,
         apiKey: existing.apiKey ?? "",
         model: existing.model,
+        pricing: existing.pricing,
         contextWindow: existing.contextWindow,
         discoveredContextWindow: existing.discoveredContextWindow,
         discoveredCapabilities: existing.discoveredCapabilities,
@@ -71,6 +72,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       baseUrl: PROVIDERS.openai.defaultBaseUrl,
       apiKey: "",
       model: "",
+      pricing: null,
       contextWindow: null,
       discoveredContextWindow: null,
       discoveredCapabilities: null,
@@ -119,6 +121,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         (existing?.systemPrompt &&
           existing.systemPrompt !== DEFAULT_MODEL_SYSTEM_PROMPT) ||
           existing?.providerOptions ||
+          existing?.pricing ||
           existing?.contextWindow,
       )
     : true;
@@ -287,6 +290,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                         contextWindow: null,
                         discoveredContextWindow: null,
                         discoveredCapabilities: null,
+                        pricing: null,
                       }
                     : {}),
                 };
@@ -403,6 +407,10 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             detectedContextWindow === undefined
               ? existing.resolvedContextWindow
               : undefined
+          }
+          pricing={draft.pricing}
+          onPricingChange={(next) =>
+            setDraft((d) => ({ ...d, pricing: next }))
           }
           systemPrompt={draft.systemPrompt ?? ""}
           onSystemPromptChange={(next) =>

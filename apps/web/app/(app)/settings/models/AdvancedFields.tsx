@@ -5,7 +5,9 @@ import Editor from "react-simple-code-editor";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import type { ModelPricing } from "@/lib/model-config/schema";
 import { cn } from "@/lib/utils";
 import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
 
@@ -27,6 +29,8 @@ export interface AdvancedFieldsProps {
   onContextWindowChange: (next: number | null) => void;
   contextWindowPlaceholder?: number;
   resolvedContextWindow?: number;
+  pricing: ModelPricing | null;
+  onPricingChange: (next: ModelPricing | null) => void;
   systemPrompt: string;
   onSystemPromptChange: (next: string) => void;
   providerOptionsText: string;
@@ -43,6 +47,8 @@ export function AdvancedFields({
   onContextWindowChange,
   contextWindowPlaceholder,
   resolvedContextWindow,
+  pricing,
+  onPricingChange,
   systemPrompt,
   onSystemPromptChange,
   providerOptionsText,
@@ -134,6 +140,70 @@ export function AdvancedFields({
           </SettingsRow>
 
           <SettingsRow
+            title="Pricing override"
+            description="Custom USD rates per 1M tokens. These replace catalog pricing for future usage."
+            align={pricing ? "start" : "center"}
+            controlAlign="end"
+          >
+            <div className="w-full @2xl:max-w-xl">
+              <div className="flex min-h-8 items-center justify-end">
+                <Switch
+                  checked={pricing !== null}
+                  onCheckedChange={(enabled) =>
+                    onPricingChange(
+                      enabled
+                        ? {
+                            input: 0,
+                            output: 0,
+                            cacheRead: 0,
+                            cacheWrite: 0,
+                          }
+                        : null,
+                    )
+                  }
+                  aria-label="Pricing override"
+                />
+              </div>
+              {pricing ? (
+                <div className="mt-3 grid grid-cols-2 gap-3 @xl:grid-cols-4">
+                  <PricingInput
+                    id="p-price-input"
+                    label="Input"
+                    value={pricing.input}
+                    onChange={(input) =>
+                      onPricingChange({ ...pricing, input })
+                    }
+                  />
+                  <PricingInput
+                    id="p-price-output"
+                    label="Output"
+                    value={pricing.output}
+                    onChange={(output) =>
+                      onPricingChange({ ...pricing, output })
+                    }
+                  />
+                  <PricingInput
+                    id="p-price-cache-read"
+                    label="Cache read"
+                    value={pricing.cacheRead}
+                    onChange={(cacheRead) =>
+                      onPricingChange({ ...pricing, cacheRead })
+                    }
+                  />
+                  <PricingInput
+                    id="p-price-cache-write"
+                    label="Cache write"
+                    value={pricing.cacheWrite}
+                    onChange={(cacheWrite) =>
+                      onPricingChange({ ...pricing, cacheWrite })
+                    }
+                  />
+                </div>
+              ) : null}
+            </div>
+          </SettingsRow>
+
+          <SettingsRow
             title="Provider options"
             description="Optional AI SDK options for the selected provider."
             htmlFor="p-provider-options"
@@ -192,5 +262,33 @@ export function AdvancedFields({
         </>
       ) : undefined}
     </SettingsSection>
+  );
+}
+
+function PricingInput({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  return (
+    <label htmlFor={id} className="min-w-0 space-y-1.5">
+      <span className="block text-xs text-muted-foreground">{label}</span>
+      <Input
+        id={id}
+        type="number"
+        min={0}
+        step="any"
+        inputMode="decimal"
+        className="font-mono"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </label>
   );
 }

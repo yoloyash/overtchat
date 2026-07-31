@@ -69,6 +69,7 @@ export function ModelsPanel() {
           baseUrl: m.baseUrl,
           apiKey: m.apiKey,
           model: m.model,
+          pricing: m.pricing,
           contextWindow: m.contextWindow,
           discoveredContextWindow: m.discoveredContextWindow,
           discoveredCapabilities: m.discoveredCapabilities,

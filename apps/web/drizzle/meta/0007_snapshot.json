@@ -603,6 +603,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "pricing": {
+          "name": "pricing",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "context_window": {
           "name": "context_window",
           "type": "integer",

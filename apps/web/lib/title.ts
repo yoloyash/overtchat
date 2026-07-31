@@ -17,6 +17,7 @@ type TitleModelConfig = Pick<
   | "baseUrl"
   | "apiKey"
   | "model"
+  | "pricing"
   | "providerOptions"
 >;
 
@@ -72,6 +73,7 @@ export async function generateChatTitle({
         providerId: modelConfig.providerId,
         model: modelConfig.model,
         usage: result.usage,
+        pricing: modelConfig.pricing,
       });
       tryRecordGenerationUsage({
         id: crypto.randomUUID(),

@@ -29,4 +29,5 @@ CREATE INDEX `generation_usage_userId_occurredAt_idx` ON `generation_usage` (`us
 CREATE INDEX `generation_usage_userId_providerId_model_occurredAt_idx` ON `generation_usage` (`user_id`,`provider_id`,`model`,`occurred_at`);--> statement-breakpoint
 CREATE INDEX `generation_usage_context_occurredAt_idx` ON `generation_usage` (`context`,`occurred_at`);--> statement-breakpoint
 CREATE INDEX `generation_usage_chatId_idx` ON `generation_usage` (`chat_id`);--> statement-breakpoint
-CREATE INDEX `generation_usage_messageId_idx` ON `generation_usage` (`message_id`);
+CREATE INDEX `generation_usage_messageId_idx` ON `generation_usage` (`message_id`);--> statement-breakpoint
+ALTER TABLE `model_configs` ADD `pricing` text;

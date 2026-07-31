@@ -133,6 +133,79 @@ describe("model cost estimation", () => {
     ).toBeNull();
   });
 
+  it("prices custom models with configured USD-per-million rates", () => {
+    expect(
+      estimateGenerationCost({
+        providerId: "custom",
+        model: "private-model",
+        pricing: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.2,
+          cacheWrite: 2.5,
+        },
+        usage: usage({
+          input: 1_100,
+          output: 50,
+          noCache: 100,
+          cacheRead: 900,
+          cacheWrite: 100,
+        }),
+      }),
+    ).toEqual({
+      costSource: "model_config",
+      inputCostNanoUsd: 200_000,
+      outputCostNanoUsd: 400_000,
+      cacheReadCostNanoUsd: 180_000,
+      cacheWriteCostNanoUsd: 250_000,
+      totalCostNanoUsd: 1_030_000,
+    });
+  });
+
+  it("prefers configured pricing over catalog rates", () => {
+    expect(
+      estimateGenerationCost({
+        providerId: "openai",
+        model: "gpt-4",
+        pricing: {
+          input: 1,
+          output: 2,
+          cacheRead: 0.1,
+          cacheWrite: 0.5,
+        },
+        usage: usage({ input: 100, output: 10 }),
+      }),
+    ).toMatchObject({
+      costSource: "model_config",
+      inputCostNanoUsd: 100_000,
+      outputCostNanoUsd: 20_000,
+      totalCostNanoUsd: 120_000,
+    });
+  });
+
+  it("treats explicit zero rates as a priced generation", () => {
+    expect(
+      estimateGenerationCost({
+        providerId: "custom",
+        model: "local-model",
+        pricing: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+        },
+        usage: usage({ input: 100, output: 10 }),
+      }),
+    ).toEqual({
+      costSource: "model_config",
+      inputCostNanoUsd: 0,
+      outputCostNanoUsd: 0,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 0,
+    });
+  });
+
   it("fails open when pricing lookup throws", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const catalogSpy = vi
@@ -181,6 +254,65 @@ describe("model cost estimation", () => {
       cacheWriteCostNanoUsd: 0,
       totalCostNanoUsd: 10_800_000,
     });
+  });
+
+  it("preserves configured pricing when summing calls", () => {
+    const pricing = {
+      input: 1,
+      output: 2,
+      cacheRead: 0,
+      cacheWrite: 0,
+    };
+    const first = estimateGenerationCost({
+      providerId: "custom",
+      model: "local-model",
+      pricing,
+      usage: usage({ input: 100, output: 10 }),
+    });
+    const second = estimateGenerationCost({
+      providerId: "custom",
+      model: "local-model",
+      pricing,
+      usage: usage({ input: 200, output: 20 }),
+    });
+
+    expect(
+      sumEstimatedGenerationCosts(
+        [first, second].filter((cost) => cost !== null),
+      ),
+    ).toEqual({
+      costSource: "model_config",
+      inputCostNanoUsd: 300_000,
+      outputCostNanoUsd: 60_000,
+      cacheReadCostNanoUsd: 0,
+      cacheWriteCostNanoUsd: 0,
+      totalCostNanoUsd: 360_000,
+    });
+  });
+
+  it("does not combine estimates from different pricing sources", () => {
+    const catalogCost = estimateGenerationCost({
+      providerId: "openai",
+      model: "gpt-4",
+      usage: usage({ input: 100, output: 10 }),
+    });
+    const configuredCost = estimateGenerationCost({
+      providerId: "openai",
+      model: "gpt-4",
+      pricing: {
+        input: 1,
+        output: 2,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+      usage: usage({ input: 100, output: 10 }),
+    });
+
+    expect(
+      sumEstimatedGenerationCosts(
+        [catalogCost, configuredCost].filter((cost) => cost !== null),
+      ),
+    ).toBeNull();
   });
 
   it("supports every priced text model in the vendored catalog", () => {
