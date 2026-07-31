@@ -57,13 +57,6 @@
       "when": 1785446327401,
       "tag": "0007_eminent_nova",
       "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "6",
-      "when": 1785456262873,
-      "tag": "0008_loose_azazel",
-      "breakpoints": true
     }
   ]
 }

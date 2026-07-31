@@ -265,6 +265,14 @@
           "notNull": false,
           "autoincrement": false
         },
+        "context": {
+          "name": "context",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'chat'"
+        },
         "occurred_at": {
           "name": "occurred_at",
           "type": "integer",

@@ -3,6 +3,7 @@ CREATE TABLE `generation_usage` (
 	`user_id` text NOT NULL,
 	`chat_id` text,
 	`message_id` text,
+	`context` text DEFAULT 'chat' NOT NULL,
 	`occurred_at` integer NOT NULL,
 	`provider_id` text NOT NULL,
 	`model` text NOT NULL,
