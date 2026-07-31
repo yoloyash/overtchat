@@ -9,9 +9,11 @@ import {
   SidebarProjects,
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
+import { SidebarConnections } from "@/components/SidebarConnections";
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
+import { useAgentConnections } from "@/lib/queries/agentConnections";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 
@@ -23,6 +25,7 @@ export function SidebarClient() {
 
   const { data: chats = [] } = useChats();
   const { data: projects = [] } = useProjects();
+  const { data: connections = [] } = useAgentConnections();
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),
@@ -123,6 +126,13 @@ export function SidebarClient() {
           <FolderPlus className="size-4 shrink-0" />
           <span>New project</span>
         </button>
+
+        {connections.length > 0 && (
+          <>
+            <SectionLabel>Connections</SectionLabel>
+            <SidebarConnections connections={connections} />
+          </>
+        )}
 
         <SidebarChatList chats={unprojected} projects={projectOptions} />
       </div>

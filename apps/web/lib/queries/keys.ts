@@ -11,6 +11,19 @@ export const projectKeys = {
   detail: (id: string) => [...projectKeys.all(), "detail", id] as const,
 };
 
+export const agentConnectionKeys = {
+  all: () => ["agentConnections"] as const,
+  list: () => [...agentConnectionKeys.all(), "list"] as const,
+  directories: (id: string, path: string) =>
+    [...agentConnectionKeys.all(), "directories", id, path] as const,
+};
+
+export const agentSessionKeys = {
+  all: () => ["agentSessions"] as const,
+  detail: (id: string) =>
+    [...agentSessionKeys.all(), "detail", id] as const,
+};
+
 export const modelConfigKeys = {
   all: () => ["modelConfigs"] as const,
   publicList: () => [...modelConfigKeys.all(), "list", "public"] as const,

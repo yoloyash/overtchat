@@ -12,8 +12,9 @@ const extraTrustedOrigins =
   process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
 
 export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:5000",
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
-  trustedOrigins: ["overtchat://", ...extraTrustedOrigins],
+  trustedOrigins: ["http://localhost:5000", "http://10.0.0.200:5000", "overtchat://", ...extraTrustedOrigins],
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,

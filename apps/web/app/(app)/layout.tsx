@@ -4,10 +4,16 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
 import { listChats } from "@/lib/db/chats";
 import { listProjects } from "@/lib/db/projects";
+import { listAgentConnections } from "@/lib/db/agentConnections";
 import { AppShell } from "@/components/AppShell";
 import { Sidebar } from "@/components/Sidebar";
 import { getQueryClient } from "@/lib/queryClient";
-import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import {
+  agentConnectionKeys,
+  chatKeys,
+  projectKeys,
+} from "@/lib/queries/keys";
+import type { AgentConnectionListItem } from "@/lib/agents/types";
 import type { ChatListItem } from "@/lib/queries/chats";
 import type { ProjectListItem } from "@/lib/queries/projects";
 
@@ -44,6 +50,11 @@ export default async function AppLayout({
           updatedAt: p.updatedAt.getTime(),
         }));
       },
+    }),
+    qc.prefetchQuery({
+      queryKey: agentConnectionKeys.list(),
+      queryFn: async (): Promise<AgentConnectionListItem[]> =>
+        listAgentConnections(session.user.id),
     }),
   ]);
 

@@ -1,5 +1,11 @@
 import { relations, sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import {
+  sqliteTable,
+  text,
+  integer,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 import type { ModelCapabilities } from "@overtchat/shared";
 import {
@@ -121,6 +127,130 @@ export const projects = sqliteTable(
   ],
 );
 
+export const agentHosts = sqliteTable(
+  "agent_hosts",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    transport: text("transport", { enum: ["local", "ssh"] }).notNull(),
+    hostname: text("hostname"),
+    port: integer("port"),
+    username: text("username"),
+    sshAuth: text("ssh_auth", { enum: ["agent", "private_key"] }),
+    encryptedCredential: text("encrypted_credential"),
+    hostKey: text("host_key"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    index("agent_hosts_userId_updatedAt_idx").on(
+      table.userId,
+      table.updatedAt,
+    ),
+  ],
+);
+
+export const agentConnections = sqliteTable(
+  "agent_connections",
+  {
+    id: text("id").primaryKey(),
+    hostId: text("host_id")
+      .notNull()
+      .references(() => agentHosts.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    executable: text("executable").notNull(),
+    detectedVersion: text("detected_version"),
+    lastValidatedAt: integer("last_validated_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_connections_hostId_provider_idx").on(
+      table.hostId,
+      table.provider,
+    ),
+  ],
+);
+
+export const agentWorkspaces = sqliteTable(
+  "agent_workspaces",
+  {
+    id: text("id").primaryKey(),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => agentConnections.id, { onDelete: "cascade" }),
+    path: text("path").notNull(),
+    name: text("name").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_workspaces_connectionId_path_idx").on(
+      table.connectionId,
+      table.path,
+    ),
+  ],
+);
+
+export const agentSessions = sqliteTable(
+  "agent_sessions",
+  {
+    id: text("id").primaryKey(),
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => agentWorkspaces.id, { onDelete: "cascade" }),
+    providerSessionId: text("provider_session_id").notNull(),
+    providerSessionPath: text("provider_session_path").notNull(),
+    name: text("name"),
+    firstMessage: text("first_message"),
+    messageCount: integer("message_count").default(0).notNull(),
+    providerCreatedAt: integer("provider_created_at", {
+      mode: "timestamp_ms",
+    }),
+    providerModifiedAt: integer("provider_modified_at", {
+      mode: "timestamp_ms",
+    }),
+    lastSyncedAt: integer("last_synced_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_sessions_workspaceId_providerSessionPath_idx").on(
+      table.workspaceId,
+      table.providerSessionPath,
+    ),
+    index("agent_sessions_workspaceId_providerModifiedAt_idx").on(
+      table.workspaceId,
+      table.providerModifiedAt,
+    ),
+  ],
+);
+
 export const chats = sqliteTable(
   "chats",
   {
@@ -234,6 +364,7 @@ export const userRelations = relations(user, ({ many }) => ({
   accounts: many(account),
   chats: many(chats),
   projects: many(projects),
+  agentHosts: many(agentHosts),
   generationUsage: many(generationUsage),
 }));
 
@@ -270,6 +401,43 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
     references: [user.id],
   }),
   chats: many(chats),
+}));
+
+export const agentHostsRelations = relations(agentHosts, ({ one, many }) => ({
+  user: one(user, {
+    fields: [agentHosts.userId],
+    references: [user.id],
+  }),
+  connections: many(agentConnections),
+}));
+
+export const agentConnectionsRelations = relations(
+  agentConnections,
+  ({ one, many }) => ({
+    host: one(agentHosts, {
+      fields: [agentConnections.hostId],
+      references: [agentHosts.id],
+    }),
+    workspaces: many(agentWorkspaces),
+  }),
+);
+
+export const agentWorkspacesRelations = relations(
+  agentWorkspaces,
+  ({ one, many }) => ({
+    connection: one(agentConnections, {
+      fields: [agentWorkspaces.connectionId],
+      references: [agentConnections.id],
+    }),
+    sessions: many(agentSessions),
+  }),
+);
+
+export const agentSessionsRelations = relations(agentSessions, ({ one }) => ({
+  workspace: one(agentWorkspaces, {
+    fields: [agentSessions.workspaceId],
+    references: [agentWorkspaces.id],
+  }),
 }));
 
 export const messagesRelations = relations(messages, ({ one, many }) => ({
