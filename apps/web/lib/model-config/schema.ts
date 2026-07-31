@@ -17,6 +17,10 @@ export interface ModelPricing {
   cacheWrite: number;
 }
 
+export interface CatalogModelPricing extends ModelPricing {
+  tiered: boolean;
+}
+
 /** Admin-facing model config DTO. Includes secrets and provider options for editing. */
 export interface AdminModelConfig {
   id: string;
@@ -27,6 +31,8 @@ export interface AdminModelConfig {
   apiKey: string | null;
   model: string;
   pricing: ModelPricing | null;
+  /** Exact models.dev base rates for admin UI guidance. */
+  catalogPricing: CatalogModelPricing | null;
   /** Explicit administrator override. */
   contextWindow: number | null;
   /** Last limit reported by model discovery. */

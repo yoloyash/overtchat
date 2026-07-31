@@ -23,6 +23,7 @@ import {
   fetchModelsForProvider,
   type AvailableModel,
 } from "@/lib/model-config/client";
+import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import { motionClasses } from "@/lib/motion";
 import {
   API_FORMATS,
@@ -52,6 +53,7 @@ export interface ConnectionFieldsProps {
   onCatalogContextWindow?: (next: number | undefined) => void;
   onDiscoveredCapabilities?: (next: ModelCapabilities | undefined) => void;
   onCatalogCapabilities?: (next: ModelCapabilities | undefined) => void;
+  onCatalogPricing?: (next: CatalogModelPricing | undefined) => void;
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
 }
@@ -63,6 +65,7 @@ export function ConnectionFields({
   onCatalogContextWindow,
   onDiscoveredCapabilities,
   onCatalogCapabilities,
+  onCatalogPricing,
   onCapabilitySuggestion,
   autoFetchModels = false,
 }: ConnectionFieldsProps) {
@@ -91,6 +94,7 @@ export function ConnectionFields({
     onCatalogContextWindow?.(undefined);
     onDiscoveredCapabilities?.(undefined);
     onCatalogCapabilities?.(undefined);
+    onCatalogPricing?.(undefined);
     onCapabilitySuggestion?.(undefined);
   }
 
@@ -101,6 +105,7 @@ export function ConnectionFields({
       onCatalogContextWindow?.(model.catalogContextWindow);
       onDiscoveredCapabilities?.(model.capabilities);
       onCatalogCapabilities?.(model.catalogCapabilities);
+      onCatalogPricing?.(model.catalogPricing);
       onCapabilitySuggestion?.({
         ...model.catalogCapabilities,
         ...model.capabilities,
@@ -110,6 +115,7 @@ export function ConnectionFields({
       onCapabilitySuggestion,
       onCatalogCapabilities,
       onCatalogContextWindow,
+      onCatalogPricing,
       onChange,
       onDiscoveredCapabilities,
       onDiscoveredContextWindow,
@@ -135,6 +141,7 @@ export function ConnectionFields({
           onCatalogContextWindow?.(undefined);
           onDiscoveredCapabilities?.(undefined);
           onCatalogCapabilities?.(undefined);
+          onCatalogPricing?.(undefined);
           onCapabilitySuggestion?.(undefined);
           setModelMode("manual");
         } else if (!draft.model) {
@@ -145,6 +152,7 @@ export function ConnectionFields({
           onCatalogContextWindow?.(current.catalogContextWindow);
           onDiscoveredCapabilities?.(current.capabilities);
           onCatalogCapabilities?.(current.catalogCapabilities);
+          onCatalogPricing?.(current.catalogPricing);
           onCapabilitySuggestion?.({
             ...current.catalogCapabilities,
             ...current.capabilities,
@@ -155,6 +163,7 @@ export function ConnectionFields({
           onCatalogContextWindow?.(undefined);
           onDiscoveredCapabilities?.(undefined);
           onCatalogCapabilities?.(undefined);
+          onCatalogPricing?.(undefined);
           onCapabilitySuggestion?.(undefined);
           setModelMode("manual");
         }
@@ -173,6 +182,7 @@ export function ConnectionFields({
       onCapabilitySuggestion,
       onCatalogCapabilities,
       onCatalogContextWindow,
+      onCatalogPricing,
       onDiscoveredCapabilities,
       onDiscoveredContextWindow,
       selectDiscoveredModel,
@@ -370,6 +380,7 @@ export function ConnectionFields({
                   onCatalogContextWindow?.(undefined);
                   onDiscoveredCapabilities?.(undefined);
                   onCatalogCapabilities?.(undefined);
+                  onCatalogPricing?.(undefined);
                   onCapabilitySuggestion?.(undefined);
                   onChange({ model: e.target.value });
                 }}

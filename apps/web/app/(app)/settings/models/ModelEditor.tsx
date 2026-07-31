@@ -13,7 +13,9 @@ import { DEFAULT_MODEL_SYSTEM_PROMPT } from "@/lib/model-config/defaults";
 import {
   ModelConfigSchema,
   type AdminModelConfig,
+  type CatalogModelPricing,
   type ModelConfigInput,
+  type ModelPricing,
 } from "@/lib/model-config/schema";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -22,7 +24,10 @@ import {
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
-import { AdvancedFields } from "./AdvancedFields";
+import {
+  AdvancedFields,
+  type ModelPricingDraft,
+} from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
 import {
@@ -37,6 +42,10 @@ export interface ModelEditorProps {
   modelId?: string;
 }
 
+type ModelEditorDraft = Omit<ModelConfigInput, "pricing"> & {
+  pricing: ModelPricingDraft | null;
+};
+
 export function ModelEditor({ modelId }: ModelEditorProps) {
   const router = useRouter();
   const { data: list = [] } = useAdminModelConfigs();
@@ -45,7 +54,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     : undefined;
   const isEditing = Boolean(modelId);
 
-  const [draft, setDraft] = useState<ModelConfigInput>(() => {
+  const [draft, setDraft] = useState<ModelEditorDraft>(() => {
     if (existing) {
       return {
         label: existing.label,
@@ -54,7 +63,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         baseUrl: existing.baseUrl,
         apiKey: existing.apiKey ?? "",
         model: existing.model,
-        pricing: existing.pricing,
+        pricing: existing.pricing
+          ? pricingDraftFrom(existing.pricing)
+          : null,
         contextWindow: existing.contextWindow,
         discoveredContextWindow: existing.discoveredContextWindow,
         discoveredCapabilities: existing.discoveredCapabilities,
@@ -107,12 +118,19 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const [catalogCapabilities, setCatalogCapabilities] = useState<
     ModelCapabilities | undefined
   >();
+  const [catalogPricing, setCatalogPricing] = useState<
+    CatalogModelPricing | null | undefined
+  >();
 
   const createMut = useCreateModelConfig();
   const updateMut = useUpdateModelConfig();
   const saving = createMut.isPending || updateMut.isPending;
 
   const requiresKey = getProvider(draft.providerId).requiresApiKey;
+  const parsedPricing =
+    draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+  const pricingIsValid =
+    draft.pricing === null || parsedPricing !== null;
 
   // A new model's prefilled prompt has to be visible to be worth prefilling.
   // When editing, stay collapsed unless the section holds more than the default.
@@ -130,6 +148,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !saving &&
     !!draft.baseUrl &&
     !!draft.model &&
+    pricingIsValid &&
     !providerOptionsError &&
     !(requiresKey && !draft.apiKey);
   const stillEditingOriginalConnection =
@@ -150,6 +169,12 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           ? existing?.resolvedCapabilities
           : undefined))
       : (detectedCapabilities ?? catalogCapabilities);
+  const catalogPricingHint =
+    catalogPricing === undefined
+      ? stillEditingOriginalConnection
+        ? (existing?.catalogPricing ?? undefined)
+        : undefined
+      : (catalogPricing ?? undefined);
 
   const pingArgs = useMemo(() => {
     let parsedOptions: Record<string, unknown> | null = null;
@@ -202,8 +227,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       }
     }
 
+    const pricing =
+      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+    if (draft.pricing !== null && pricing === null) {
+      setSaveError("Enter all four pricing rates as nonnegative numbers.");
+      return;
+    }
+
     const parsed = ModelConfigSchema.safeParse({
       ...draft,
+      pricing,
       label: draft.label.trim() || defaultLabelFor(draft.model),
       discoveredContextWindow:
         detectedContextWindow === undefined
@@ -304,6 +337,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               setDetectedCapabilities(next ?? null)
             }
             onCatalogCapabilities={setCatalogCapabilities}
+            onCatalogPricing={(next) =>
+              setCatalogPricing(next ?? null)
+            }
             onCapabilitySuggestion={(next) => {
               if (
                 !isEditing &&
@@ -409,6 +445,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               : undefined
           }
           pricing={draft.pricing}
+          catalogPricing={catalogPricingHint}
           onPricingChange={(next) =>
             setDraft((d) => ({ ...d, pricing: next }))
           }
@@ -452,6 +489,38 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 function defaultLabelFor(model: string): string {
   if (!model) return "";
   return model.split("/").pop() ?? model;
+}
+
+function pricingDraftFrom(pricing: ModelPricing): ModelPricingDraft {
+  return {
+    input: String(pricing.input),
+    output: String(pricing.output),
+    cacheRead: String(pricing.cacheRead),
+    cacheWrite: String(pricing.cacheWrite),
+  };
+}
+
+function parsePricingDraft(
+  pricing: ModelPricingDraft,
+): ModelPricing | null {
+  const values = [
+    pricing.input,
+    pricing.output,
+    pricing.cacheRead,
+    pricing.cacheWrite,
+  ].map((value) => {
+    if (!value.trim()) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  });
+  if (values.some((value) => value === null)) return null;
+  const [input, output, cacheRead, cacheWrite] = values as [
+    number,
+    number,
+    number,
+    number,
+  ];
+  return { input, output, cacheRead, cacheWrite };
 }
 
 function toolCallingDescription(

@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import Editor from "react-simple-code-editor";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type { ModelPricing } from "@/lib/model-config/schema";
+import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import { cn } from "@/lib/utils";
 import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
 
@@ -24,13 +24,21 @@ function parseProviderOptions(text: string): string | null {
   }
 }
 
+export interface ModelPricingDraft {
+  input: string;
+  output: string;
+  cacheRead: string;
+  cacheWrite: string;
+}
+
 export interface AdvancedFieldsProps {
   contextWindow: number | null;
   onContextWindowChange: (next: number | null) => void;
   contextWindowPlaceholder?: number;
   resolvedContextWindow?: number;
-  pricing: ModelPricing | null;
-  onPricingChange: (next: ModelPricing | null) => void;
+  pricing: ModelPricingDraft | null;
+  catalogPricing?: CatalogModelPricing;
+  onPricingChange: (next: ModelPricingDraft | null) => void;
   systemPrompt: string;
   onSystemPromptChange: (next: string) => void;
   providerOptionsText: string;
@@ -48,6 +56,7 @@ export function AdvancedFields({
   contextWindowPlaceholder,
   resolvedContextWindow,
   pricing,
+  catalogPricing,
   onPricingChange,
   systemPrompt,
   onSystemPromptChange,
@@ -140,66 +149,120 @@ export function AdvancedFields({
           </SettingsRow>
 
           <SettingsRow
-            title="Pricing override"
-            description="Custom USD rates per 1M tokens. These replace catalog pricing for future usage."
-            align={pricing ? "start" : "center"}
+            title="Pricing"
+            description="USD per 1M tokens. Catalog rates apply automatically unless custom rates are enabled."
+            align={pricing || catalogPricing ? "start" : "center"}
             controlAlign="end"
           >
             <div className="w-full @2xl:max-w-xl">
-              <div className="flex min-h-8 items-center justify-end">
-                <Switch
-                  checked={pricing !== null}
-                  onCheckedChange={(enabled) =>
-                    onPricingChange(
-                      enabled
-                        ? {
-                            input: 0,
-                            output: 0,
-                            cacheRead: 0,
-                            cacheWrite: 0,
-                          }
-                        : null,
-                    )
-                  }
-                  aria-label="Pricing override"
-                />
+              <div className="flex min-h-8 items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">
+                  {pricing
+                    ? "Custom rates"
+                    : catalogPricing
+                      ? "models.dev"
+                      : "No catalog pricing"}
+                </span>
+                <div className="flex items-center gap-2">
+                  <label
+                    htmlFor="p-custom-pricing"
+                    className="text-xs text-muted-foreground"
+                  >
+                    Custom
+                  </label>
+                  <Switch
+                    id="p-custom-pricing"
+                    checked={pricing !== null}
+                    onCheckedChange={(enabled) =>
+                      onPricingChange(
+                        enabled
+                          ? catalogPricing
+                            ? pricingDraftFrom(catalogPricing)
+                            : emptyPricingDraft()
+                          : null,
+                      )
+                    }
+                    aria-label="Custom pricing"
+                  />
+                </div>
               </div>
-              {pricing ? (
+              {pricing || catalogPricing ? (
                 <div className="mt-3 grid grid-cols-2 gap-3 @xl:grid-cols-4">
                   <PricingInput
                     id="p-price-input"
                     label="Input"
-                    value={pricing.input}
+                    value={
+                      pricing?.input ?? String(catalogPricing?.input ?? "")
+                    }
+                    readOnly={!pricing}
                     onChange={(input) =>
-                      onPricingChange({ ...pricing, input })
+                      pricing && onPricingChange({ ...pricing, input })
                     }
                   />
                   <PricingInput
                     id="p-price-output"
                     label="Output"
-                    value={pricing.output}
+                    value={
+                      pricing?.output ?? String(catalogPricing?.output ?? "")
+                    }
+                    readOnly={!pricing}
                     onChange={(output) =>
-                      onPricingChange({ ...pricing, output })
+                      pricing && onPricingChange({ ...pricing, output })
                     }
                   />
                   <PricingInput
                     id="p-price-cache-read"
                     label="Cache read"
-                    value={pricing.cacheRead}
+                    value={
+                      pricing?.cacheRead ??
+                      String(catalogPricing?.cacheRead ?? "")
+                    }
+                    readOnly={!pricing}
                     onChange={(cacheRead) =>
-                      onPricingChange({ ...pricing, cacheRead })
+                      pricing && onPricingChange({ ...pricing, cacheRead })
                     }
                   />
                   <PricingInput
                     id="p-price-cache-write"
                     label="Cache write"
-                    value={pricing.cacheWrite}
+                    value={
+                      pricing?.cacheWrite ??
+                      String(catalogPricing?.cacheWrite ?? "")
+                    }
+                    readOnly={!pricing}
                     onChange={(cacheWrite) =>
+                      pricing &&
                       onPricingChange({ ...pricing, cacheWrite })
                     }
                   />
                 </div>
               ) : null}
+              <div className="mt-2 flex min-h-6 flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  {catalogPricing?.tiered
+                    ? pricing
+                      ? "Flat custom rates replace catalog context tiers."
+                      : "Context tiers apply automatically."
+                    : pricing
+                      ? "These rates apply to future generations."
+                      : !catalogPricing
+                        ? "Enable custom pricing to enter rates for this model."
+                        : null}
+                </p>
+                {pricing ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => onPricingChange(null)}
+                  >
+                    <RotateCcw />
+                    {catalogPricing
+                      ? "Use catalog pricing"
+                      : "Remove custom pricing"}
+                  </Button>
+                ) : null}
+              </div>
             </div>
           </SettingsRow>
 
@@ -269,12 +332,14 @@ function PricingInput({
   id,
   label,
   value,
+  readOnly,
   onChange,
 }: {
   id: string;
   label: string;
-  value: number;
-  onChange: (next: number) => void;
+  value: string;
+  readOnly?: boolean;
+  onChange: (next: string) => void;
 }) {
   return (
     <label htmlFor={id} className="min-w-0 space-y-1.5">
@@ -285,10 +350,35 @@ function PricingInput({
         min={0}
         step="any"
         inputMode="decimal"
-        className="font-mono"
+        className={cn(
+          "font-mono",
+          readOnly && "bg-muted/30 text-muted-foreground",
+        )}
         value={value}
-        onChange={(event) => onChange(Number(event.target.value))}
+        readOnly={readOnly}
+        tabIndex={readOnly ? -1 : undefined}
+        onChange={(event) => onChange(event.target.value)}
       />
     </label>
   );
+}
+
+function pricingDraftFrom(
+  pricing: CatalogModelPricing,
+): ModelPricingDraft {
+  return {
+    input: String(pricing.input),
+    output: String(pricing.output),
+    cacheRead: String(pricing.cacheRead),
+    cacheWrite: String(pricing.cacheWrite),
+  };
+}
+
+function emptyPricingDraft(): ModelPricingDraft {
+  return {
+    input: "",
+    output: "",
+    cacheRead: "",
+    cacheWrite: "",
+  };
 }

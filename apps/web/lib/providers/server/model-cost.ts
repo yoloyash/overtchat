@@ -2,7 +2,10 @@ import "server-only";
 import type { LanguageModelUsage } from "ai";
 import type { ModelPricing } from "@/lib/model-config/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
-import { catalogEntryFor } from "@/lib/providers/server/model-catalog";
+import {
+  catalogEntryFor,
+  catalogPricingFor,
+} from "@/lib/providers/server/model-catalog";
 
 export const MODEL_CATALOG_COST_SOURCE = "models.dev" as const;
 export const MODEL_CONFIG_COST_SOURCE = "model_config" as const;
@@ -196,8 +199,13 @@ function catalogRatesFor(
   tokens: TokenBuckets,
 ): PricingRates | null {
   const catalogCost = catalogEntryFor(providerId, model)?.cost;
-  return catalogCost
-    ? catalogPricingRates(catalogCost, totalInputTokens(tokens))
+  const basePricing = catalogPricingFor(providerId, model);
+  return catalogCost && basePricing
+    ? catalogPricingRates(
+        catalogCost,
+        basePricing,
+        totalInputTokens(tokens),
+      )
     : null;
 }
 
@@ -216,17 +224,14 @@ function configuredPricingRates(pricing: ModelPricing): PricingRates | null {
 
 function catalogPricingRates(
   rawCost: Readonly<Record<string, unknown>>,
+  basePricing: ModelPricing,
   inputTokens: number,
 ): PricingRates | null {
-  const input = rate(rawCost.input);
-  const output = rate(rawCost.output);
-  if (input === null || output === null) return null;
-
   let applied: PricingRates = {
-    input,
-    output,
-    cacheRead: rate(rawCost.cache_read) ?? input,
-    cacheWrite: rate(rawCost.cache_write) ?? input,
+    input: basePricing.input,
+    output: basePricing.output,
+    cacheRead: basePricing.cacheRead,
+    cacheWrite: basePricing.cacheWrite,
   };
 
   const contextTiers = Array.isArray(rawCost.tiers)
