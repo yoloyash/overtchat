@@ -919,7 +919,7 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("uses the latest step usage for context instead of summing tool-loop steps", async () => {
+  it("uses latest-step context and prices each tool-loop request tier", async () => {
     mocks.getModelConfig.mockResolvedValue({
       ...modelConfig,
       providerId: "openai",
@@ -964,9 +964,9 @@ describe("chat route setup boundary", () => {
           controller.enqueue({
             type: "finish-step",
             usage: {
-              inputTokens: 140,
+              inputTokens: 160,
               inputTokenDetails: {
-                noCacheTokens: 140,
+                noCacheTokens: 160,
                 cacheReadTokens: 0,
                 cacheWriteTokens: 0,
               },
@@ -995,22 +995,22 @@ describe("chat route setup boundary", () => {
         type: "finish",
         finishReason: "stop",
         totalUsage: {
-          inputTokens: 240,
+          inputTokens: 260,
           inputTokenDetails: {
-            cacheReadTokens: 40,
+            cacheReadTokens: 0,
             cacheWriteTokens: 0,
-            noCacheTokens: 200,
+            noCacheTokens: 260,
           },
           outputTokens: 50,
-          totalTokens: 290,
+          totalTokens: 310,
         },
       },
     });
 
     expect(metadata.stats).toMatchObject({
-      contextTokens: 170,
+      contextTokens: 190,
       responseTokens: 50,
-      totalTokens: 290,
+      totalTokens: 310,
     });
 
     const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
@@ -1030,9 +1030,9 @@ describe("chat route setup boundary", () => {
       expect.objectContaining({
         usage: expect.objectContaining({
           costSource: "models.dev",
-          inputCostNanoUsd: 240_000,
-          outputCostNanoUsd: 100_000,
-          totalCostNanoUsd: 340_000,
+          inputCostNanoUsd: 1_700_000,
+          outputCostNanoUsd: 640_000,
+          totalCostNanoUsd: 2_340_000,
         }),
       }),
     );

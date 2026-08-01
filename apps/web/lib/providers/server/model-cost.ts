@@ -79,12 +79,6 @@ function estimateGenerationCostUnchecked({
       ? catalogRatesFor(providerId, model, tokens)
       : configuredPricingRates(pricing);
   if (!rates) return null;
-  if (
-    costSource === MODEL_CATALOG_COST_SOURCE &&
-    cacheWriteTtl === "1h"
-  ) {
-    rates.cacheWrite = rates.input * 2;
-  }
 
   const inputCostNanoUsd = costNanoUsd(tokens.input, rates.input);
   const outputCostNanoUsd = costNanoUsd(tokens.output, rates.output);
@@ -92,10 +86,13 @@ function estimateGenerationCostUnchecked({
     tokens.cacheRead,
     rates.cacheRead,
   );
-  const cacheWriteCostNanoUsd = costNanoUsd(
-    tokens.cacheWrite,
-    rates.cacheWrite,
-  );
+  const cacheWriteCostNanoUsd = estimateCacheWriteCost({
+    usage,
+    tokens: tokens.cacheWrite,
+    rates,
+    costSource,
+    cacheWriteTtl,
+  });
   if (
     inputCostNanoUsd === null ||
     outputCostNanoUsd === null ||
@@ -283,6 +280,66 @@ function totalInputTokens(tokens: TokenBuckets): number {
   return tokens.input + tokens.cacheRead + tokens.cacheWrite;
 }
 
+function estimateCacheWriteCost({
+  usage,
+  tokens,
+  rates,
+  costSource,
+  cacheWriteTtl,
+}: {
+  usage: LanguageModelUsage;
+  tokens: number;
+  rates: PricingRates;
+  costSource: GenerationCostSource;
+  cacheWriteTtl?: "5m" | "1h";
+}): number | null {
+  if (costSource === MODEL_CONFIG_COST_SOURCE) {
+    return costNanoUsd(tokens, rates.cacheWrite);
+  }
+
+  const breakdown = anthropicCacheWriteBreakdown(usage.raw);
+  if (breakdown) {
+    const residual = Math.max(
+      tokens - breakdown.fiveMinute - breakdown.oneHour,
+      0,
+    );
+    const fiveMinuteCost = costNanoUsd(
+      breakdown.fiveMinute + residual,
+      rates.cacheWrite,
+    );
+    const oneHourCost = costNanoUsd(
+      breakdown.oneHour,
+      rates.input * 2,
+    );
+    if (fiveMinuteCost === null || oneHourCost === null) return null;
+    const total = fiveMinuteCost + oneHourCost;
+    return Number.isSafeInteger(total) ? total : null;
+  }
+
+  return costNanoUsd(
+    tokens,
+    cacheWriteTtl === "1h" ? rates.input * 2 : rates.cacheWrite,
+  );
+}
+
+function anthropicCacheWriteBreakdown(
+  rawUsage: unknown,
+): { fiveMinute: number; oneHour: number } | null {
+  if (!isRecord(rawUsage) || !isRecord(rawUsage.cache_creation)) {
+    return null;
+  }
+
+  const fiveMinute = rawTokenCount(
+    rawUsage.cache_creation.ephemeral_5m_input_tokens,
+  );
+  const oneHour = rawTokenCount(
+    rawUsage.cache_creation.ephemeral_1h_input_tokens,
+  );
+  if (fiveMinute === null || oneHour === null) return null;
+  if (fiveMinute === 0 && oneHour === 0) return null;
+  return { fiveMinute, oneHour };
+}
+
 function costNanoUsd(tokens: number, usdPerMillion: number): number | null {
   const value = Math.round(tokens * usdPerMillion * 1_000);
   return Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -296,6 +353,10 @@ function tokenCount(value: unknown): number | null {
 
 function optionalTokenCount(value: unknown): number | null | undefined {
   return value === undefined ? undefined : tokenCount(value);
+}
+
+function rawTokenCount(value: unknown): number | null {
+  return value === null || value === undefined ? 0 : tokenCount(value);
 }
 
 function rate(value: unknown): number | null {

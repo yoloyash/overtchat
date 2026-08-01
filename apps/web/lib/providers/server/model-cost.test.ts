@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { LanguageModelUsage } from "ai";
 import type { ProviderId } from "@/lib/providers/catalog";
 import catalogJson from "./model-catalog.json";
 import * as modelCatalog from "./model-catalog";
@@ -16,13 +17,15 @@ function usage({
   noCache,
   cacheRead,
   cacheWrite,
+  raw,
 }: {
   input?: number;
   output?: number;
   noCache?: number;
   cacheRead?: number;
   cacheWrite?: number;
-}) {
+  raw?: LanguageModelUsage["raw"];
+}): LanguageModelUsage {
   return {
     inputTokens: input,
     inputTokenDetails: {
@@ -37,6 +40,7 @@ function usage({
     },
     totalTokens:
       input === undefined || output === undefined ? undefined : input + output,
+    raw,
   };
 }
 
@@ -84,6 +88,31 @@ describe("model cost estimation", () => {
     });
   });
 
+  it("prefers Anthropic's reported cache-write TTL breakdown", () => {
+    expect(
+      estimateGenerationCost({
+        providerId: "anthropic",
+        model: "claude-sonnet-4-6",
+        cacheWriteTtl: "1h",
+        usage: usage({
+          input: 150,
+          output: 0,
+          noCache: 0,
+          cacheWrite: 150,
+          raw: {
+            cache_creation: {
+              ephemeral_5m_input_tokens: 20,
+              ephemeral_1h_input_tokens: 100,
+            },
+          },
+        }),
+      }),
+    ).toMatchObject({
+      cacheWriteCostNanoUsd: 787_500,
+      totalCostNanoUsd: 787_500,
+    });
+  });
+
   it("applies context tiers using each provider call's input size", () => {
     expect(
       estimateGenerationCost({
@@ -113,6 +142,26 @@ describe("model cost estimation", () => {
       inputCostNanoUsd: 30_000_000,
       outputCostNanoUsd: 6_000_000,
       totalCostNanoUsd: 36_000_000,
+    });
+  });
+
+  it("subtracts cache reads and writes when deriving uncached input", () => {
+    expect(
+      estimateGenerationCost({
+        providerId: "anthropic",
+        model: "claude-sonnet-4-6",
+        usage: usage({
+          input: 1_100,
+          output: 50,
+          cacheRead: 900,
+          cacheWrite: 100,
+        }),
+      }),
+    ).toMatchObject({
+      inputCostNanoUsd: 300_000,
+      cacheReadCostNanoUsd: 270_000,
+      cacheWriteCostNanoUsd: 375_000,
+      totalCostNanoUsd: 1_695_000,
     });
   });
 
@@ -150,6 +199,12 @@ describe("model cost estimation", () => {
           noCache: 100,
           cacheRead: 900,
           cacheWrite: 100,
+          raw: {
+            cache_creation: {
+              ephemeral_5m_input_tokens: 20,
+              ephemeral_1h_input_tokens: 80,
+            },
+          },
         }),
       }),
     ).toEqual({
