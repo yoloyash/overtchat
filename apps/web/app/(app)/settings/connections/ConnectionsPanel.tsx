@@ -19,6 +19,7 @@ import type {
   AgentConnectionListItem,
   AgentWorkspaceListItem,
 } from "@/lib/agents/types";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   useAgentConnections,
   useDeleteAgentConnection,
@@ -58,12 +59,13 @@ export function ConnectionsPanel({ isAdmin }: { isAdmin: boolean }) {
   const [detachError, setDetachError] = useState("");
 
   async function testConnection(connection: AgentConnectionListItem) {
+    const provider = agentProviderMetadata(connection.provider);
     setActionId(connection.id);
     try {
       const probe = await testMutation.mutateAsync(connection.id);
       toast.success({
         title: "Connection healthy",
-        description: `Pi ${probe.version} · ${probe.models.length} model${
+        description: `${provider.label} ${probe.version} · ${probe.models.length} model${
           probe.models.length === 1 ? "" : "s"
         }`,
       });
@@ -231,8 +233,13 @@ export function ConnectionsPanel({ isAdmin }: { isAdmin: boolean }) {
                   ? pendingDetach.workspace.name
                   : pendingDetach?.connection.host.name}
               </span>{" "}
-              will be removed from OvertChat. Files and native Pi sessions remain
-              on the host.
+              will be removed from OvertChat. Files and native{" "}
+              {pendingDetach
+                ? agentProviderMetadata(
+                    pendingDetach.connection.provider,
+                  ).label
+                : "agent"}{" "}
+              sessions remain on the host.
             </AlertDialog.Description>
             {detachError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">
@@ -286,6 +293,7 @@ function ConnectionRow({
   onDetach: () => void;
 }) {
   const HostIcon = connection.host.transport === "local" ? Server : Wifi;
+  const provider = agentProviderMetadata(connection.provider);
   const inaccessible =
     !isAdmin &&
     (connection.host.transport === "local" ||
@@ -307,7 +315,9 @@ function ConnectionRow({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-sm font-medium">{connection.host.name}</span>
-              <span className="text-xs text-muted-foreground">Pi</span>
+              <span className="text-xs text-muted-foreground">
+                {provider.label}
+              </span>
             </div>
             <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
               {hostDetail}
@@ -316,7 +326,7 @@ function ConnectionRow({
               {inaccessible
                 ? "Administrator access required"
                 : connection.detectedVersion
-                  ? `Pi ${connection.detectedVersion}`
+                  ? `${provider.label} ${connection.detectedVersion}`
                   : "Not tested"}
             </p>
           </div>

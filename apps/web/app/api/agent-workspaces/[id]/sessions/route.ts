@@ -5,6 +5,7 @@ import {
 } from "@/lib/agents/access";
 import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
 import { getOwnedAgentWorkspace } from "@/lib/db/agentConnections";
+import { isAgentProviderId } from "@/lib/agents/catalog";
 
 export const maxDuration = 150;
 
@@ -38,7 +39,14 @@ export async function POST(
     );
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      {
+        error: connectionErrorMessage(
+          error,
+          isAgentProviderId(owned.connection.provider)
+            ? owned.connection.provider
+            : "pi",
+        ),
+      },
       { status: 400 },
     );
   }

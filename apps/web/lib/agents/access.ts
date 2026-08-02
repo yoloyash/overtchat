@@ -1,4 +1,8 @@
-import type { AgentConnectionDraft } from "@/lib/agents/types";
+import type {
+  AgentConnectionDraft,
+  AgentProviderId,
+} from "@/lib/agents/types";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 import type { AgentHostRow } from "@/lib/db/agentConnections";
 
 export function connectionAccessError(
@@ -29,13 +33,16 @@ export function storedConnectionAccessError(
   return null;
 }
 
-export function connectionErrorMessage(error: unknown): string {
+export function connectionErrorMessage(
+  error: unknown,
+  provider: AgentProviderId = "pi",
+): string {
   const message = error instanceof Error ? error.message : String(error);
   if (
     /\bENOENT\b/u.test(message) ||
     /not found|command not found|no such file/i.test(message)
   ) {
-    return "Pi installation not found. Check the executable path and try again.";
+    return `${agentProviderMetadata(provider).label} installation not found. Check the executable path and try again.`;
   }
   if (/host key verification failed|remote host identification has changed/i.test(message)) {
     return "The remote machine's SSH host key changed. Verify the machine before reconnecting.";

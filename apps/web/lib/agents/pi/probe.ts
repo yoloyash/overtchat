@@ -3,8 +3,10 @@ import path from "node:path";
 import type {
   AgentConnectionDraft,
   AgentConnectionProbe,
+  AgentProviderId,
   AgentReadyConnectionProbe,
 } from "@/lib/agents/types";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   type HostTarget,
   executeOnHost,
@@ -86,7 +88,7 @@ export async function targetForConnectionDraft(
   };
 }
 
-export async function probePiConnection(
+export async function probeAgentConnection(
   draft: AgentConnectionDraft,
 ): Promise<AgentConnectionProbe> {
   if (draft.transport === "ssh" && !draft.hostKey?.trim()) {
@@ -102,31 +104,39 @@ export async function probePiConnection(
       hostKeyFingerprint: scanned.fingerprint,
     };
   }
-  return probePiTarget(
+  return probeAgentTarget(
     await targetForConnectionDraft(draft),
+    draft.provider,
     draft.executable,
   );
 }
 
-export async function probePiTarget(
+export async function probeAgentTarget(
   target: HostTarget,
+  provider: AgentProviderId,
   executable: string,
 ): Promise<AgentReadyConnectionProbe> {
+  const metadata = agentProviderMetadata(provider);
   const versionResult = await executeOnHost(target, {
     command: executable,
     args: ["--version"],
   });
-  const version = versionResult.stdout.trim().split(/\s+/u).at(-1);
-  if (!version) throw new Error("Pi returned an empty version.");
+  const version =
+    versionResult.stdout.match(/\d+\.\d+\.\d+(?:[-+][^\s]+)?/u)?.[0];
+  if (!version) {
+    throw new Error(`${metadata.label} returned an invalid version.`);
+  }
 
   const client = startPiRpc(target, {
+    provider,
     executable,
     noSession: true,
     extraArgs: [
       "--no-extensions",
       "--no-skills",
-      "--no-prompt-templates",
-      "--no-context-files",
+      ...(provider === "pi"
+        ? ["--no-prompt-templates", "--no-context-files"]
+        : ["--no-rules"]),
     ],
   });
   try {
@@ -134,7 +144,7 @@ export async function probePiTarget(
     const models = await client.getAvailableModels(MODEL_PROBE_TIMEOUT_MS);
     if (models.length === 0) {
       throw new Error(
-        "Pi is installed, but it did not report any usable models.",
+        `${metadata.label} is installed, but it did not report any usable models.`,
       );
     }
     return {
@@ -145,6 +155,19 @@ export async function probePiTarget(
   } finally {
     await client.stop();
   }
+}
+
+export function probePiConnection(
+  draft: AgentConnectionDraft,
+): Promise<AgentConnectionProbe> {
+  return probeAgentConnection(draft);
+}
+
+export function probePiTarget(
+  target: HostTarget,
+  executable: string,
+): Promise<AgentReadyConnectionProbe> {
+  return probeAgentTarget(target, "pi", executable);
 }
 
 export async function probeAgentWorkspace(

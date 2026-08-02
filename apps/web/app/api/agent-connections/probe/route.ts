@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     return Response.json({ probe });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      { error: connectionErrorMessage(error, parsed.data.provider) },
       { status: 400 },
     );
   }

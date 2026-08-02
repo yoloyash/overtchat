@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import type { AgentProviderId } from "@/lib/agents/types";
 import type { ProviderSessionMetadata } from "@/lib/db/agentConnections";
 import {
   executeOnHost,
@@ -20,8 +21,8 @@ const sessionMetadataSchema = z.array(
   }),
 );
 
-// Kept self-contained because the same script is sent over SSH. Pi exposes
-// session resume over RPC, but not recent-session discovery.
+// Kept self-contained because the same script is sent over SSH. The agents
+// expose session resume over RPC, but not recent-session discovery.
 const SESSION_SCAN_SCRIPT = String.raw`
 const fs = require("node:fs");
 const fsp = require("node:fs/promises");
@@ -30,6 +31,7 @@ const path = require("node:path");
 const readline = require("node:readline");
 
 const requestedCwd = fs.realpathSync(process.argv[1]);
+const provider = process.argv[2] || "pi";
 const home = os.homedir();
 const expand = (value, base) => {
   if (value === "~") return home;
@@ -44,11 +46,14 @@ const readSettingsDir = (file) => {
     return null;
   }
 };
-const agentDir = expand(process.env.PI_CODING_AGENT_DIR || "~/.pi/agent", process.cwd());
+const defaultAgentDir = provider === "omp" ? "~/.omp/agent" : "~/.pi/agent";
+const agentDir = expand(process.env.PI_CODING_AGENT_DIR || defaultAgentDir, process.cwd());
 const configured =
   process.env.PI_CODING_AGENT_SESSION_DIR ||
-  readSettingsDir(path.join(requestedCwd, ".pi", "settings.json")) ||
-  readSettingsDir(path.join(agentDir, "settings.json"));
+  (provider === "pi"
+    ? readSettingsDir(path.join(requestedCwd, ".pi", "settings.json")) ||
+      readSettingsDir(path.join(agentDir, "settings.json"))
+    : null);
 const root = configured
   ? expand(configured, requestedCwd)
   : path.join(agentDir, "sessions");
@@ -94,9 +99,13 @@ async function readSession(file) {
     for await (const line of lines) {
       let entry;
       try { entry = JSON.parse(line); } catch { continue; }
+      if (entry.type === "title") {
+        name = typeof entry.title === "string" && entry.title.trim() ? entry.title.trim() : name;
+        continue;
+      }
       if (!header) {
         if (entry.type !== "session" || typeof entry.id !== "string" || typeof entry.cwd !== "string") {
-          return null;
+          continue;
         }
         let entryCwd;
         try { entryCwd = fs.realpathSync(entry.cwd); } catch { entryCwd = path.resolve(entry.cwd); }
@@ -159,7 +168,8 @@ async function readSession(file) {
 });
 `.trim();
 
-export async function listPiWorkspaceSessions(
+export async function listAgentWorkspaceSessions(
+  provider: AgentProviderId,
   target: HostTarget,
   workspacePath: string,
 ): Promise<ProviderSessionMetadata[]> {
@@ -167,7 +177,7 @@ export async function listPiWorkspaceSessions(
     target,
     {
       command: "node",
-      args: ["-e", SESSION_SCAN_SCRIPT, workspacePath],
+      args: ["-e", SESSION_SCAN_SCRIPT, workspacePath, provider],
     },
     { timeoutMs: SESSION_SCAN_TIMEOUT_MS },
   );
@@ -179,4 +189,11 @@ export async function listPiWorkspaceSessions(
     modifiedAt:
       session.modifiedAt === null ? null : new Date(session.modifiedAt),
   }));
+}
+
+export function listPiWorkspaceSessions(
+  target: HostTarget,
+  workspacePath: string,
+): Promise<ProviderSessionMetadata[]> {
+  return listAgentWorkspaceSessions("pi", target, workspacePath);
 }

@@ -294,3 +294,94 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
 
   expect(browserErrors).toEqual([]);
 });
+
+test("connect local Oh My Pi and use its native commands", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    process.env.RUN_OMP_E2E !== "1",
+    "Set RUN_OMP_E2E=1 on a machine with Oh My Pi installed.",
+  );
+
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+
+  await page.goto("/signup");
+  await page.locator("#name").fill("OMP E2E Admin");
+  await page.locator("#email").fill("omp-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+
+  await page.goto("/settings/connections");
+  await page.getByRole("button", { name: "Add connection" }).click();
+  await expect(
+    page.getByRole("button", { name: "Oh My Pi", exact: true }),
+  ).toBeEnabled();
+  await page.screenshot({
+    path: testInfo.outputPath("omp-provider-card.png"),
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Oh My Pi", exact: true }).click();
+  await expect(page.getByLabel("Oh My Pi executable")).toHaveValue("omp");
+  await page.getByRole("button", { name: "Test connection" }).click();
+  await expect(
+    page.getByText(/Oh My Pi \d+\.\d+\.\d+.*model/),
+  ).toBeVisible({ timeout: 150_000 });
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByText("Oh My Pi connected")).toBeVisible({
+    timeout: 150_000,
+  });
+
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add workspace" });
+  const relativeWorkspacePath = path.relative(os.homedir(), workspacePath);
+  expect(relativeWorkspacePath.startsWith("..")).toBe(false);
+  for (const segment of relativeWorkspacePath.split(path.sep)) {
+    await dialog
+      .getByRole("button", { name: segment, exact: true })
+      .click();
+  }
+  await dialog.getByRole("button", { name: "Select" }).click();
+  await dialog.getByRole("button", { name: "Attach" }).click();
+  await expect(page.getByText("Workspace attached")).toBeVisible({
+    timeout: 90_000,
+  });
+
+  await page
+    .getByRole("button", { name: "This server Oh My Pi", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: workspaceName, exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "New session", exact: true })
+    .click();
+  await page.waitForURL("**/agents/**", { timeout: 150_000 });
+  await expect(page.getByText("New Oh My Pi session")).toBeVisible({
+    timeout: 150_000,
+  });
+
+  const composer = page.getByPlaceholder(
+    "Message Oh My Pi or type / for commands",
+  );
+  await composer.fill("/model");
+  await composer.press("Enter");
+  await expect(page.getByText(/Current model:/)).toBeVisible({
+    timeout: 30_000,
+  });
+
+  const previousUrl = page.url();
+  await composer.fill("/new");
+  await composer.press("Enter");
+  await page.waitForURL(
+    (url) =>
+      url.pathname.startsWith("/agents/") && url.href !== previousUrl,
+    { timeout: 30_000 },
+  );
+  await expect(page.getByText("New Oh My Pi session")).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});

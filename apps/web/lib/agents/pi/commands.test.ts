@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  mergeAgentSlashCommands,
   mergePiSlashCommands,
+  normalizeAgentSessionCommand,
   normalizePiSessionCommand,
   piSlashCommandQuery,
 } from "./commands";
@@ -93,6 +95,50 @@ describe("Pi slash commands", () => {
       message: "/skill:docs explain caching",
     };
     expect(normalizePiSessionCommand(command, {})).toBe(command);
+  });
+
+  it("keeps OMP compact native while retaining OvertChat session controls", () => {
+    const commands = mergeAgentSlashCommands("omp", [
+      {
+        name: "compact",
+        description: "Run OMP compaction",
+        source: "builtin",
+      },
+      {
+        name: "model",
+        description: "Show the active model",
+        source: "builtin",
+      },
+    ]);
+
+    expect(commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "new" }),
+        expect.objectContaining({ name: "autocompact" }),
+        expect.objectContaining({
+          name: "compact",
+          description: "Run OMP compaction",
+        }),
+        expect.objectContaining({ name: "model" }),
+      ]),
+    );
+    expect(
+      normalizeAgentSessionCommand(
+        "omp",
+        { type: "prompt", message: "/compact focus on tests" },
+        {},
+      ),
+    ).toEqual({
+      type: "prompt",
+      message: "/compact focus on tests",
+    });
+    expect(
+      normalizeAgentSessionCommand(
+        "omp",
+        { type: "prompt", message: "/new" },
+        {},
+      ),
+    ).toEqual({ type: "new_session" });
   });
 
   it("rejects malformed built-in invocations instead of prompting a model", () => {

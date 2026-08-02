@@ -53,6 +53,58 @@ describe("Pi RPC response parsing", () => {
     ]);
   });
 
+  it("filters incomplete OMP models and falls back to their context limit", () => {
+    expect(
+      parsePiModels(
+        {
+          models: [
+            {
+              id: "usable",
+              name: "Usable",
+              provider: "openai",
+              api: "openai-responses",
+              baseUrl: "https://api.openai.com/v1",
+              reasoning: true,
+              input: ["text"],
+              contextWindow: 128_000,
+              maxTokens: null,
+              cost: {
+                input: 1,
+                output: 2,
+                cacheRead: 0.1,
+                cacheWrite: 0,
+              },
+            },
+            {
+              id: "incomplete",
+              name: "Incomplete",
+              provider: "openai",
+              api: "openai-responses",
+              baseUrl: "https://api.openai.com/v1",
+              reasoning: false,
+              input: ["text"],
+              contextWindow: null,
+              maxTokens: null,
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
+            },
+          ],
+        },
+        "omp",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: "usable",
+        contextWindow: 128_000,
+        maxTokens: 128_000,
+      }),
+    ]);
+  });
+
   it("parses Pi's dynamic thinking levels and discovered commands", () => {
     expect(
       parsePiThinkingLevels({ levels: ["off", "medium", "xhigh", "max"] }),
@@ -76,6 +128,27 @@ describe("Pi RPC response parsing", () => {
         source: "prompt",
       },
       { name: "deploy", source: "extension" },
+    ]);
+    expect(
+      parsePiCommands({
+        commands: [
+          {
+            name: "security",
+            description: "Run a security scan",
+            input: { hint: "<plan|scan|status>" },
+            source: "builtin",
+          },
+          { name: "release", source: "custom" },
+        ],
+      }),
+    ).toEqual([
+      {
+        name: "security",
+        description: "Run a security scan",
+        argumentHint: "<plan|scan|status>",
+        source: "builtin",
+      },
+      { name: "release", source: "custom" },
     ]);
   });
 

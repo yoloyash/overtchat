@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type {
   AgentModel,
+  AgentProviderId,
   AgentSlashCommand,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -16,7 +17,7 @@ const modelCostSchema = z
   })
   .passthrough();
 
-export const piModelSchema = z
+const rpcModelSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
@@ -25,14 +26,23 @@ export const piModelSchema = z
     baseUrl: z.string(),
     reasoning: z.boolean(),
     input: z.array(z.enum(["text", "image"])),
-    contextWindow: z.number().int().positive(),
-    maxTokens: z.number().int().positive(),
+    contextWindow: z.number().int().positive().nullable().optional(),
+    maxTokens: z.number().int().positive().nullable().optional(),
     cost: modelCostSchema,
   })
   .passthrough();
 
+export const piModelSchema = rpcModelSchema.extend({
+  contextWindow: z.number().int().positive(),
+  maxTokens: z.number().int().positive(),
+});
+
 export const piModelsResponseSchema = z
   .object({ models: z.array(piModelSchema) })
+  .passthrough();
+
+const ompModelsResponseSchema = z
+  .object({ models: z.array(rpcModelSchema) })
   .passthrough();
 
 const thinkingLevelsResponseSchema = z
@@ -48,7 +58,20 @@ const slashCommandsResponseSchema = z
         .object({
           name: z.string().min(1),
           description: z.string().optional(),
-          source: z.enum(["extension", "prompt", "skill"]),
+          source: z.enum([
+            "builtin",
+            "extension",
+            "prompt",
+            "skill",
+            "custom",
+            "mcp_prompt",
+            "file",
+          ]),
+          input: z
+            .object({
+              hint: z.string().optional(),
+            })
+            .optional(),
         })
         .passthrough(),
     ),
@@ -94,8 +117,21 @@ export type PiRpcEvent = {
   [key: string]: unknown;
 };
 
-export function parsePiModels(value: unknown): AgentModel[] {
-  return piModelsResponseSchema.parse(value).models.map((model) => ({
+export function parsePiModels(
+  value: unknown,
+  provider: AgentProviderId = "pi",
+): AgentModel[] {
+  const models =
+    provider === "omp"
+      ? ompModelsResponseSchema
+          .parse(value)
+          .models.filter(
+            (model) =>
+              typeof model.contextWindow === "number" &&
+              model.contextWindow > 0,
+          )
+      : piModelsResponseSchema.parse(value).models;
+  return models.map((model) => ({
     id: model.id,
     name: model.name,
     api: model.api,
@@ -103,8 +139,8 @@ export function parsePiModels(value: unknown): AgentModel[] {
     baseUrl: model.baseUrl,
     reasoning: model.reasoning,
     input: model.input,
-    contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
+    contextWindow: model.contextWindow!,
+    maxTokens: model.maxTokens ?? model.contextWindow!,
     cost: {
       input: model.cost.input,
       output: model.cost.output,
@@ -123,6 +159,7 @@ export function parsePiCommands(value: unknown): AgentSlashCommand[] {
     name: command.name,
     ...(command.description ? { description: command.description } : {}),
     source: command.source,
+    ...(command.input?.hint ? { argumentHint: command.input.hint } : {}),
   }));
 }
 

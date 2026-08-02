@@ -21,7 +21,7 @@ vi.mock("@/lib/agents/pi/client", () => ({
   startPiRpc: mocks.startPiRpc,
 }));
 
-import { probePiConnection } from "./probe";
+import { probeAgentConnection, probePiConnection } from "./probe";
 
 describe("Pi connection probing", () => {
   beforeEach(() => {
@@ -81,4 +81,59 @@ describe("Pi connection probing", () => {
     );
   });
 
+  it("uses OMP's version format and supported discovery flags", async () => {
+    mocks.executeOnHost.mockResolvedValue({
+      stdout: "omp/17.2.1\n",
+      stderr: "",
+      code: 0,
+      signal: null,
+    });
+    mocks.startPiRpc.mockReturnValue({
+      getState: vi.fn(async () => ({ isStreaming: false })),
+      getAvailableModels: vi.fn(async () => [
+        {
+          id: "model",
+          name: "Model",
+          provider: "openai",
+          api: "openai-responses",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: 128_000,
+          maxTokens: 128_000,
+          cost: {
+            input: 0,
+            output: 0,
+            cacheRead: 0,
+            cacheWrite: 0,
+          },
+        },
+      ]),
+      stop: vi.fn(async () => {}),
+    });
+
+    await expect(
+      probeAgentConnection({
+        provider: "omp",
+        transport: "local",
+        name: "Local OMP",
+        executable: "omp",
+      }),
+    ).resolves.toMatchObject({
+      status: "ready",
+      version: "17.2.1",
+    });
+    expect(mocks.startPiRpc).toHaveBeenCalledWith(
+      { transport: "local" },
+      expect.objectContaining({
+        provider: "omp",
+        executable: "omp",
+        extraArgs: [
+          "--no-extensions",
+          "--no-skills",
+          "--no-rules",
+        ],
+      }),
+    );
+  });
 });

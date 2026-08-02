@@ -5,8 +5,9 @@ import {
 } from "@/lib/agents/access";
 import { addAgentWorkspaceSchema } from "@/lib/agents/types";
 import { probeAgentWorkspace } from "@/lib/agents/pi/probe";
-import { listPiWorkspaceSessions } from "@/lib/agents/pi/sessions";
+import { listAgentWorkspaceSessions } from "@/lib/agents/pi/sessions";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
+import { isAgentProviderId } from "@/lib/agents/catalog";
 import {
   createAgentWorkspace,
   getOwnedAgentConnection,
@@ -42,9 +43,13 @@ export async function POST(
   }
 
   try {
+    if (!isAgentProviderId(owned.connection.provider)) {
+      throw new Error("This coding-agent provider is not supported.");
+    }
     const target = targetForStoredHost(owned.host);
     const workspace = await probeAgentWorkspace(target, parsed.data.path);
-    const providerSessions = await listPiWorkspaceSessions(
+    const providerSessions = await listAgentWorkspaceSessions(
+      owned.connection.provider,
       target,
       workspace.path,
     );
@@ -74,7 +79,12 @@ export async function POST(
       { status: 201 },
     );
   } catch (error) {
-    const message = connectionErrorMessage(error);
+    const message = connectionErrorMessage(
+      error,
+      isAgentProviderId(owned.connection.provider)
+        ? owned.connection.provider
+        : "pi",
+    );
     return Response.json(
       {
         error: /UNIQUE constraint failed/u.test(message)

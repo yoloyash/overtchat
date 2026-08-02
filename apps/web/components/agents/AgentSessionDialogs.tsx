@@ -26,6 +26,7 @@ const dialogPopup = cn(
 );
 
 export function RenameAgentSessionDialog({
+  providerLabel,
   open,
   initialName,
   pending,
@@ -33,6 +34,7 @@ export function RenameAgentSessionDialog({
   onOpenChange,
   onSubmit,
 }: {
+  providerLabel: string;
   open: boolean;
   initialName: string;
   pending: boolean;
@@ -43,6 +45,7 @@ export function RenameAgentSessionDialog({
   return open ? (
     <RenameAgentSessionDialogContent
       initialName={initialName}
+      providerLabel={providerLabel}
       pending={pending}
       error={error}
       onOpenChange={onOpenChange}
@@ -52,12 +55,14 @@ export function RenameAgentSessionDialog({
 }
 
 function RenameAgentSessionDialogContent({
+  providerLabel,
   initialName,
   pending,
   error,
   onOpenChange,
   onSubmit,
 }: {
+  providerLabel: string;
   initialName: string;
   pending: boolean;
   error?: string;
@@ -80,7 +85,7 @@ function RenameAgentSessionDialogContent({
             Rename session
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            This updates the native Pi session name.
+            This updates the native {providerLabel} session name.
           </Dialog.Description>
           <form
             className="mt-5 space-y-4"
@@ -128,12 +133,14 @@ function RenameAgentSessionDialogContent({
 }
 
 export function CompactAgentSessionDialog({
+  providerLabel,
   open,
   pending,
   error,
   onOpenChange,
   onSubmit,
 }: {
+  providerLabel: string;
   open: boolean;
   pending: boolean;
   error?: string;
@@ -143,6 +150,7 @@ export function CompactAgentSessionDialog({
   return open ? (
     <CompactAgentSessionDialogContent
       pending={pending}
+      providerLabel={providerLabel}
       error={error}
       onOpenChange={onOpenChange}
       onSubmit={onSubmit}
@@ -151,11 +159,13 @@ export function CompactAgentSessionDialog({
 }
 
 function CompactAgentSessionDialogContent({
+  providerLabel,
   pending,
   error,
   onOpenChange,
   onSubmit,
 }: {
+  providerLabel: string;
   pending: boolean;
   error?: string;
   onOpenChange: (open: boolean) => void;
@@ -177,7 +187,8 @@ function CompactAgentSessionDialogContent({
             Compact context?
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Pi will summarize older context in this native session.
+            {providerLabel} will summarize older context in this native
+            session.
           </Dialog.Description>
           <form
             className="mt-5 space-y-4"
@@ -225,11 +236,13 @@ function CompactAgentSessionDialogContent({
 }
 
 export function AgentExtensionDialog({
+  providerLabel,
   request,
   pending,
   error,
   onRespond,
 }: {
+  providerLabel: string;
   request?: ExtensionRequest;
   pending: boolean;
   error?: string;
@@ -242,6 +255,7 @@ export function AgentExtensionDialog({
   return request ? (
     <ExtensionDialogContent
       key={request.id}
+      providerLabel={providerLabel}
       request={request}
       pending={pending}
       error={error}
@@ -251,11 +265,13 @@ export function AgentExtensionDialog({
 }
 
 function ExtensionDialogContent({
+  providerLabel,
   request,
   pending,
   error,
   onRespond,
 }: {
+  providerLabel: string;
   request: ExtensionRequest;
   pending: boolean;
   error?: string;
@@ -278,7 +294,7 @@ function ExtensionDialogContent({
   const title =
     typeof request.title === "string" && request.title.trim()
       ? request.title
-      : "Pi needs your input";
+      : `${providerLabel} needs your input`;
 
   function submit(event: React.FormEvent) {
     event.preventDefault();

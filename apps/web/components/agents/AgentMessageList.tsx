@@ -61,11 +61,13 @@ function messageKey(message: unknown, index: number): string {
 }
 
 export function AgentMessageList({
+  providerLabel,
   messages,
   streaming,
   error,
   workspaceName,
 }: {
+  providerLabel: string;
   messages: unknown[];
   streaming: boolean;
   error?: string;
@@ -92,7 +94,7 @@ export function AgentMessageList({
               <Terminal className="size-6 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium">{workspaceName}</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                New Pi session
+                New {providerLabel} session
               </p>
             </div>
           ) : (
@@ -108,7 +110,7 @@ export function AgentMessageList({
                 <div
                   className="flex items-center gap-1.5 py-2"
                   role="status"
-                  aria-label="Pi is responding"
+                  aria-label={`${providerLabel} is responding`}
                 >
                   <span
                     className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.3s] ${motionClasses.pendingDot}`}

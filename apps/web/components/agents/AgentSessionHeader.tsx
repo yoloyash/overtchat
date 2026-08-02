@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/select";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { SidebarToggle } from "@/components/SidebarToggle";
-import { ContextMeter } from "@/components/chat/ContextMeter";
+import { UsageIndicator } from "@/components/chat/UsageIndicator";
 import type {
   AgentModel,
   AgentSessionStats,
@@ -34,6 +34,7 @@ import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export function AgentSessionHeader({
+  providerLabel,
   workspaceName,
   models,
   currentModel,
@@ -47,6 +48,7 @@ export function AgentSessionHeader({
   onRename,
   onCompact,
 }: {
+  providerLabel: string;
   workspaceName: string;
   models: AgentModel[];
   currentModel: { provider: string; id: string } | null;
@@ -70,6 +72,7 @@ export function AgentSessionHeader({
         {workspaceName}
       </span>
       <AgentModelPicker
+        providerLabel={providerLabel}
         models={models}
         currentModel={currentModel}
         disabled={running || commandPending}
@@ -103,9 +106,11 @@ export function AgentSessionHeader({
       )}
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {stats.contextUsage && stats.contextUsage.tokens !== null && (
-          <ContextMeter
-            usedTokens={stats.contextUsage.tokens}
-            contextWindow={stats.contextUsage.contextWindow}
+          <UsageIndicator
+            contextUsage={{
+              usedTokens: stats.contextUsage.tokens,
+              contextWindow: stats.contextUsage.contextWindow,
+            }}
           />
         )}
         <SessionStats stats={stats} />
@@ -155,11 +160,13 @@ export function AgentSessionHeader({
 }
 
 function AgentModelPicker({
+  providerLabel,
   models,
   currentModel,
   disabled,
   onSelect,
 }: {
+  providerLabel: string;
   models: AgentModel[];
   currentModel: { provider: string; id: string } | null;
   disabled: boolean;
@@ -217,8 +224,8 @@ function AgentModelPicker({
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   onKeyDown={(event) => event.stopPropagation()}
-                  placeholder="Search Pi models"
-                  aria-label="Search Pi models"
+                  placeholder={`Search ${providerLabel} models`}
+                  aria-label={`Search ${providerLabel} models`}
                   className="h-7 pl-7 text-xs md:text-xs"
                 />
               </div>

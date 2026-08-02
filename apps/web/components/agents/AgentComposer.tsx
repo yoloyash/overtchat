@@ -16,16 +16,20 @@ import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 function commandSource(source: AgentSlashCommand["source"]): string {
-  return source === "builtin"
-    ? "Built-in"
-    : source === "extension"
-    ? "Extension"
-    : source === "prompt"
-      ? "Prompt"
-      : "Skill";
+  const labels: Record<AgentSlashCommand["source"], string> = {
+    builtin: "Built-in",
+    extension: "Extension",
+    prompt: "Prompt",
+    skill: "Skill",
+    custom: "Custom",
+    mcp_prompt: "MCP prompt",
+    file: "File",
+  };
+  return labels[source];
 }
 
 export function AgentComposer({
+  providerLabel,
   commands,
   running,
   pending,
@@ -33,6 +37,7 @@ export function AgentComposer({
   onSubmit,
   onStop,
 }: {
+  providerLabel: string;
   commands: AgentSlashCommand[];
   running: boolean;
   pending: boolean;
@@ -156,7 +161,7 @@ export function AgentComposer({
           <div
             id={listboxId}
             role="listbox"
-            aria-label="Pi commands"
+            aria-label={`${providerLabel} commands`}
             className="max-h-72 overflow-y-auto p-1.5"
           >
             {filteredCommands.map((command, index) => (
@@ -205,7 +210,7 @@ export function AgentComposer({
           rows={1}
           value={input}
           disabled={disabled}
-          placeholder="Message Pi or type / for commands"
+          placeholder={`Message ${providerLabel} or type / for commands`}
           className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
           onChange={(event) => {
             setInput(event.target.value);
@@ -230,8 +235,8 @@ export function AgentComposer({
               className="rounded-full"
               disabled={pending}
               onClick={onStop}
-              aria-label="Stop Pi"
-              title="Stop Pi"
+              aria-label={`Stop ${providerLabel}`}
+              title={`Stop ${providerLabel}`}
             >
               <Square className="size-3 fill-current" />
             </Button>
@@ -242,8 +247,10 @@ export function AgentComposer({
             className="rounded-full"
             disabled={!input.trim() || pending || disabled}
             onClick={submit}
-            aria-label={running ? "Steer Pi" : "Send message"}
-            title={running ? "Steer Pi" : "Send message"}
+            aria-label={
+              running ? `Steer ${providerLabel}` : "Send message"
+            }
+            title={running ? `Steer ${providerLabel}` : "Send message"}
           >
             <ArrowUp />
           </Button>

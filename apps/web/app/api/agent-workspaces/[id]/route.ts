@@ -4,8 +4,9 @@ import {
   storedConnectionAccessError,
 } from "@/lib/agents/access";
 import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
-import { listPiWorkspaceSessions } from "@/lib/agents/pi/sessions";
+import { listAgentWorkspaceSessions } from "@/lib/agents/pi/sessions";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
+import { isAgentProviderId } from "@/lib/agents/catalog";
 import {
   deleteAgentWorkspace,
   getOwnedAgentWorkspace,
@@ -31,7 +32,11 @@ export async function POST(
     return Response.json({ error: accessError }, { status: 403 });
   }
   try {
-    const sessions = await listPiWorkspaceSessions(
+    if (!isAgentProviderId(owned.connection.provider)) {
+      throw new Error("This coding-agent provider is not supported.");
+    }
+    const sessions = await listAgentWorkspaceSessions(
+      owned.connection.provider,
       targetForStoredHost(owned.host),
       owned.workspace.path,
     );
@@ -49,7 +54,14 @@ export async function POST(
     });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      {
+        error: connectionErrorMessage(
+          error,
+          isAgentProviderId(owned.connection.provider)
+            ? owned.connection.provider
+            : "pi",
+        ),
+      },
       { status: 400 },
     );
   }

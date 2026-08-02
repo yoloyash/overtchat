@@ -1,19 +1,14 @@
 import type {
+  AgentProviderId,
   AgentSessionCommand,
   AgentSlashCommand,
 } from "@/lib/agents/types";
 
-export const PI_BUILTIN_COMMANDS: readonly AgentSlashCommand[] = [
+const OVERTCHAT_SESSION_COMMANDS: readonly AgentSlashCommand[] = [
   {
     name: "new",
     description: "Start a new session",
     source: "builtin",
-  },
-  {
-    name: "compact",
-    description: "Compact conversation context",
-    source: "builtin",
-    argumentHint: "[instructions]",
   },
   {
     name: "autocompact",
@@ -29,10 +24,32 @@ export const PI_BUILTIN_COMMANDS: readonly AgentSlashCommand[] = [
   },
 ];
 
-export function mergePiSlashCommands(
+export const PI_BUILTIN_COMMANDS: readonly AgentSlashCommand[] = [
+  OVERTCHAT_SESSION_COMMANDS[0],
+  {
+    name: "compact",
+    description: "Compact conversation context",
+    source: "builtin",
+    argumentHint: "[instructions]",
+  },
+  ...OVERTCHAT_SESSION_COMMANDS.slice(1),
+];
+
+export function agentBuiltinCommands(
+  provider: AgentProviderId,
+): readonly AgentSlashCommand[] {
+  return provider === "pi"
+    ? PI_BUILTIN_COMMANDS
+    : OVERTCHAT_SESSION_COMMANDS;
+}
+
+export function mergeAgentSlashCommands(
+  provider: AgentProviderId,
   discovered: readonly AgentSlashCommand[],
 ): AgentSlashCommand[] {
-  const commands = PI_BUILTIN_COMMANDS.map((command) => ({ ...command }));
+  const commands = agentBuiltinCommands(provider).map((command) => ({
+    ...command,
+  }));
   const names = new Set(commands.map((command) => command.name.toLowerCase()));
   for (const command of discovered) {
     const name = command.name.toLowerCase();
@@ -41,6 +58,12 @@ export function mergePiSlashCommands(
     commands.push({ ...command });
   }
   return commands;
+}
+
+export function mergePiSlashCommands(
+  discovered: readonly AgentSlashCommand[],
+): AgentSlashCommand[] {
+  return mergeAgentSlashCommands("pi", discovered);
 }
 
 export function piSlashCommandQuery(value: string): string | null {
@@ -105,7 +128,8 @@ function autoCompactCommand(
   };
 }
 
-export function normalizePiSessionCommand(
+export function normalizeAgentSessionCommand(
+  provider: AgentProviderId,
   command: AgentSessionCommand,
   state: Record<string, unknown>,
 ): AgentSessionCommand {
@@ -115,7 +139,9 @@ export function normalizePiSessionCommand(
 
   switch (invocation.name) {
     case "compact":
-      return compactCommand(invocation.arguments);
+      return provider === "pi"
+        ? compactCommand(invocation.arguments)
+        : command;
     case "autocompact":
       return autoCompactCommand(invocation.arguments, state);
     case "name":
@@ -126,4 +152,11 @@ export function normalizePiSessionCommand(
     default:
       return command;
   }
+}
+
+export function normalizePiSessionCommand(
+  command: AgentSessionCommand,
+  state: Record<string, unknown>,
+): AgentSessionCommand {
+  return normalizeAgentSessionCommand("pi", command, state);
 }

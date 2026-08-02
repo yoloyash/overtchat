@@ -1,6 +1,7 @@
 import "server-only";
 import type {
   AgentModel,
+  AgentProviderId,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentSlashCommand,
@@ -10,10 +11,18 @@ import type {
 } from "@/lib/agents/types";
 import { startPiRpc, type PiRpcClient } from "@/lib/agents/pi/client";
 import {
-  normalizePiSessionCommand,
-  PI_BUILTIN_COMMANDS,
+  agentBuiltinCommands,
+  mergeAgentSlashCommands,
+  normalizeAgentSessionCommand,
 } from "@/lib/agents/pi/commands";
-import type { PiRpcEvent } from "@/lib/agents/pi/protocol";
+import {
+  parsePiCommands,
+  type PiRpcEvent,
+} from "@/lib/agents/pi/protocol";
+import {
+  agentProviderMetadata,
+  isAgentProviderId,
+} from "@/lib/agents/catalog";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import {
   getOwnedAgentSession,
@@ -59,18 +68,22 @@ function emptyStats(): AgentSessionStats {
   };
 }
 
-function sessionIdentity(state: Record<string, unknown>): {
+function sessionIdentity(
+  provider: AgentProviderId,
+  state: Record<string, unknown>,
+): {
   sessionFile: string;
   sessionId: string;
   sessionName: string | null;
 } {
+  const label = agentProviderMetadata(provider).label;
   const sessionFile = state.sessionFile;
   const sessionId = state.sessionId;
   if (typeof sessionFile !== "string" || !sessionFile) {
-    throw new Error("Pi did not create a persistent session file.");
+    throw new Error(`${label} did not create a persistent session file.`);
   }
   if (typeof sessionId !== "string" || !sessionId) {
-    throw new Error("Pi did not return a session ID.");
+    throw new Error(`${label} did not return a session ID.`);
   }
   return {
     sessionFile,
@@ -138,6 +151,7 @@ export class PiSessionRuntime {
     readonly userId: string,
     readonly connectionId: string,
     readonly workspaceId: string,
+    readonly provider: AgentProviderId,
     private readonly client: PiRpcClient,
     initial: {
       state: Record<string, unknown>;
@@ -164,7 +178,9 @@ export class PiSessionRuntime {
         this.clearPendingExtensionRequest();
         this.status = "exited";
         this.error =
-          typeof event.error === "string" ? event.error : "Pi exited.";
+          typeof event.error === "string"
+            ? event.error
+            : `${agentProviderMetadata(this.provider).label} exited.`;
         this.publishSnapshot();
         this.onExit();
         return;
@@ -197,10 +213,56 @@ export class PiSessionRuntime {
         }
       }
       this.publish({ type: "pi_event", data: event });
-      if (event.type === "agent_settled") {
+      if (
+        event.type === "available_commands_update" &&
+        Array.isArray(event.commands)
+      ) {
+        try {
+          this.commands = mergeAgentSlashCommands(
+            this.provider,
+            parsePiCommands({ commands: event.commands }),
+          );
+          this.publishSnapshot();
+        } catch {
+          // A later refresh can recover if a newer provider adds metadata.
+        }
+      }
+      if (
+        event.type === "config_update" &&
+        event.model &&
+        typeof event.model === "object"
+      ) {
+        this.state = {
+          ...this.state,
+          model: event.model,
+          ...(typeof event.thinkingLevel === "string"
+            ? { thinkingLevel: event.thinkingLevel }
+            : {}),
+        };
+        this.publishSnapshot();
+      }
+      if (
+        event.type === "session_info_update" &&
+        typeof event.title === "string"
+      ) {
+        this.state = { ...this.state, sessionName: event.title };
+        void updateAgentSessionMetadata(this.dbSessionId, {
+          name: event.title.trim() || null,
+        });
+        this.publishSnapshot();
+      }
+      if (
+        event.type === "agent_settled" ||
+        event.type === "agent_end"
+      ) {
         this.clearPendingExtensionRequest();
         this.status = "idle";
         void this.refresh();
+      } else if (
+        event.type === "prompt_result" &&
+        event.agentInvoked === false
+      ) {
+        this.status = "idle";
       }
     });
   }
@@ -208,6 +270,7 @@ export class PiSessionRuntime {
   snapshot(): AgentRuntimeSnapshot {
     return {
       sessionId: this.dbSessionId,
+      provider: this.provider,
       status: this.status,
       state: this.state,
       messages: this.messages,
@@ -243,7 +306,11 @@ export class PiSessionRuntime {
   }
 
   normalizeCommand(command: AgentSessionCommand): AgentSessionCommand {
-    return normalizePiSessionCommand(command, this.state);
+    return normalizeAgentSessionCommand(
+      this.provider,
+      command,
+      this.state,
+    );
   }
 
   command(input: AgentSessionCommand): Promise<unknown> {
@@ -436,13 +503,15 @@ export class AgentRuntimeRegistry {
   async create(
     owned: OwnedAgentWorkspace,
   ): Promise<{ runtime: PiSessionRuntime; sessionId: string }> {
+    const provider = this.providerFor(owned.connection.provider);
     const client = startPiRpc(targetForStoredHost(owned.host), {
+      provider,
       executable: owned.connection.executable,
       cwd: owned.workspace.path,
     });
     try {
       const initial = await this.loadInitial(client);
-      const identity = sessionIdentity(initial.state);
+      const identity = sessionIdentity(provider, initial.state);
       const row = await upsertAgentSession(owned.workspace.id, {
         providerSessionId: identity.sessionId,
         providerSessionPath: identity.sessionFile,
@@ -485,16 +554,20 @@ export class AgentRuntimeRegistry {
   private async startExisting(
     owned: OwnedAgentSession,
   ): Promise<PiSessionRuntime> {
+    const provider = this.providerFor(owned.connection.provider);
     const client = startPiRpc(targetForStoredHost(owned.host), {
+      provider,
       executable: owned.connection.executable,
       cwd: owned.workspace.path,
       sessionPath: owned.agentSession.providerSessionPath,
     });
     try {
       const initial = await this.loadInitial(client);
-      const identity = sessionIdentity(initial.state);
+      const identity = sessionIdentity(provider, initial.state);
       if (identity.sessionId !== owned.agentSession.providerSessionId) {
-        throw new Error("Pi opened a different session than requested.");
+        throw new Error(
+          `${agentProviderMetadata(provider).label} opened a different session than requested.`,
+        );
       }
       return this.register(
         owned.agentSession.id,
@@ -526,6 +599,7 @@ export class AgentRuntimeRegistry {
       owned.host.userId,
       owned.connection.id,
       owned.workspace.id,
+      this.providerFor(owned.connection.provider),
       client,
       initial,
       () => {
@@ -548,7 +622,11 @@ export class AgentRuntimeRegistry {
         client.getAvailableThinkingLevels().catch(() => []),
         client
           .getCommands()
-          .catch(() => PI_BUILTIN_COMMANDS.map((command) => ({ ...command }))),
+          .catch(() =>
+            agentBuiltinCommands(client.provider).map((command) => ({
+              ...command,
+            })),
+          ),
       ]);
     return {
       state,
@@ -558,6 +636,13 @@ export class AgentRuntimeRegistry {
       thinkingLevels,
       commands,
     };
+  }
+
+  private providerFor(value: string): AgentProviderId {
+    if (!isAgentProviderId(value)) {
+      throw new Error(`Unsupported coding-agent provider "${value}".`);
+    }
+    return value;
   }
 
   private async stopMatching(

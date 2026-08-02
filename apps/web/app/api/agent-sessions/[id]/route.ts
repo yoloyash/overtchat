@@ -10,6 +10,7 @@ import {
   type OwnedAgentSession,
   updateAgentSessionMetadata,
 } from "@/lib/db/agentConnections";
+import { isAgentProviderId } from "@/lib/agents/catalog";
 
 export const maxDuration = 300;
 
@@ -51,7 +52,14 @@ export async function GET(
     return Response.json({ snapshot: runtime.snapshot() });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      {
+        error: connectionErrorMessage(
+          error,
+          isAgentProviderId(authorized.owned.connection.provider)
+            ? authorized.owned.connection.provider
+            : "pi",
+        ),
+      },
       { status: 400 },
     );
   }
@@ -98,7 +106,14 @@ export async function POST(
     return Response.json({ accepted: true });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      {
+        error: connectionErrorMessage(
+          error,
+          isAgentProviderId(authorized.owned.connection.provider)
+            ? authorized.owned.connection.provider
+            : "pi",
+        ),
+      },
       { status: 400 },
     );
   }

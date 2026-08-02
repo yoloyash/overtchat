@@ -18,6 +18,7 @@ import type {
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@/lib/agents/types";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   AGENT_SESSION_PREVIEW_COUNT,
   visibleAgentSessions,
@@ -47,6 +48,7 @@ function ConnectionNode({
 }: {
   connection: AgentConnectionListItem;
 }) {
+  const provider = agentProviderMetadata(connection.provider);
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
   const hasActiveSession = connection.workspaces.some((workspace) =>
@@ -73,17 +75,23 @@ function ConnectionNode({
           type="button"
           onClick={() => setOpen((current) => !current)}
           className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm motion-colors hover:bg-sidebar-accent"
-          title={`${connection.host.name} · Pi`}
+          title={`${connection.host.name} · ${provider.label}`}
         >
           <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="truncate">{connection.host.name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">Pi</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {provider.label}
+          </span>
         </button>
       </div>
       {open && (
         <div className="ml-5 border-l pl-1">
           {connection.workspaces.map((workspace) => (
-            <WorkspaceNode key={workspace.id} workspace={workspace} />
+            <WorkspaceNode
+              key={workspace.id}
+              workspace={workspace}
+              providerLabel={provider.label}
+            />
           ))}
           <Link
             href="/settings/connections"
@@ -101,8 +109,10 @@ function ConnectionNode({
 
 function WorkspaceNode({
   workspace,
+  providerLabel,
 }: {
   workspace: AgentWorkspaceListItem;
+  providerLabel: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -133,7 +143,7 @@ function WorkspaceNode({
       router.push(`/agents/${id}`);
     } catch (cause) {
       toast.error({
-        title: "Failed to start Pi",
+        title: `Failed to start ${providerLabel}`,
         description:
           cause instanceof Error ? cause.message : "A new session could not be started.",
       });

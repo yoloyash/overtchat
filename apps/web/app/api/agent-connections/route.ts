@@ -92,7 +92,7 @@ export async function POST(req: Request) {
     return Response.json({ connection }, { status: 201 });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      { error: connectionErrorMessage(error, draft.provider) },
       { status: 400 },
     );
   }

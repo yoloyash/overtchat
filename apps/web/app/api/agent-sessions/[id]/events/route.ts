@@ -8,6 +8,7 @@ import {
 } from "@/lib/agents/runtime/registry";
 import type { AgentRuntimeEnvelope } from "@/lib/agents/types";
 import { getOwnedAgentSession } from "@/lib/db/agentConnections";
+import { isAgentProviderId } from "@/lib/agents/catalog";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -88,7 +89,14 @@ export async function GET(
     });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      {
+        error: connectionErrorMessage(
+          error,
+          isAgentProviderId(owned.connection.provider)
+            ? owned.connection.provider
+            : "pi",
+        ),
+      },
       { status: 400 },
     );
   }

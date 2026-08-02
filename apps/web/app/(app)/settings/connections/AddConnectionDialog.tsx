@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import claudeCodeIcon from "@/assets/agent-providers/claude-code.png";
 import codexIcon from "@/assets/agent-providers/codex.png";
+import ompIcon from "@/assets/agent-providers/omp.svg";
 import piIcon from "@/assets/agent-providers/pi.svg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,9 +25,11 @@ import { toast } from "@/components/ui/toast";
 import type {
   AgentConnectionDraft,
   AgentHostKeyProbe,
+  AgentProviderId,
   AgentReadyConnectionProbe,
   AgentSshHostCandidate,
 } from "@/lib/agents/types";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   useCreateAgentConnection,
   useAgentSshHosts,
@@ -62,7 +65,8 @@ export function AddConnectionDialog({
   const initialAuth: SshAuth = isAdmin ? "agent" : "private_key";
   const probeMutation = useProbeAgentConnection();
   const createMutation = useCreateAgentConnection();
-  const [providerSelected, setProviderSelected] = useState(false);
+  const [selectedProvider, setSelectedProvider] =
+    useState<AgentProviderId | null>(null);
   const [transport, setTransport] = useState<Transport>(initialTransport);
   const [remoteMode, setRemoteMode] = useState<RemoteMode>(
     isAdmin ? "detected" : "manual",
@@ -71,9 +75,9 @@ export function AddConnectionDialog({
     null,
   );
   const [name, setName] = useState(
-    initialTransport === "local" ? "This server" : "Remote Pi",
+    initialTransport === "local" ? "This server" : "Remote agent",
   );
-  const [executable, setExecutable] = useState("pi");
+  const [executable, setExecutable] = useState("");
   const [hostname, setHostname] = useState("");
   const [port, setPort] = useState("22");
   const [username, setUsername] = useState("");
@@ -86,19 +90,19 @@ export function AddConnectionDialog({
   const [error, setError] = useState("");
   const sshHosts = useAgentSshHosts(
     open &&
-      providerSelected &&
+      selectedProvider !== null &&
       transport === "ssh" &&
       remoteMode === "detected" &&
       isAdmin,
   );
 
   function reset() {
-    setProviderSelected(false);
+    setSelectedProvider(null);
     setTransport(initialTransport);
     setRemoteMode(isAdmin ? "detected" : "manual");
     setSelectedSshAlias(null);
-    setName(initialTransport === "local" ? "This server" : "Remote Pi");
-    setExecutable("pi");
+    setName(initialTransport === "local" ? "This server" : "Remote agent");
+    setExecutable("");
     setHostname("");
     setPort("22");
     setUsername("");
@@ -119,7 +123,18 @@ export function AddConnectionDialog({
     setError("");
   }
 
+  function selectProvider(provider: AgentProviderId) {
+    const metadata = agentProviderMetadata(provider);
+    invalidateTest();
+    setSelectedProvider(provider);
+    setName(
+      transport === "local" ? "This server" : `Remote ${metadata.label}`,
+    );
+    setExecutable(metadata.executable);
+  }
+
   function selectSshHost(host: AgentSshHostCandidate) {
+    if (!selectedProvider) return;
     invalidateTest();
     setSelectedSshAlias(host.alias);
     setName(host.alias);
@@ -128,33 +143,37 @@ export function AddConnectionDialog({
     setUsername(host.username);
     setSshAuth("agent");
     setPrivateKey("");
-    setExecutable("pi");
+    setExecutable(agentProviderMetadata(selectedProvider).executable);
   }
 
   function showManualConnection() {
+    if (!selectedProvider) return;
+    const metadata = agentProviderMetadata(selectedProvider);
     invalidateTest();
     setRemoteMode("manual");
     setSelectedSshAlias(null);
-    setName("Remote Pi");
+    setName(`Remote ${metadata.label}`);
     setHostname("");
     setPort("22");
     setUsername("");
     setSshAuth(initialAuth);
     setPrivateKey("");
-    setExecutable("pi");
+    setExecutable(metadata.executable);
   }
 
   function showDetectedConnections() {
+    if (!selectedProvider) return;
+    const metadata = agentProviderMetadata(selectedProvider);
     invalidateTest();
     setRemoteMode("detected");
     setSelectedSshAlias(null);
-    setName("Remote Pi");
+    setName(`Remote ${metadata.label}`);
     setHostname("");
     setPort("22");
     setUsername("");
     setSshAuth("agent");
     setPrivateKey("");
-    setExecutable("pi");
+    setExecutable(metadata.executable);
   }
 
   function buildDraft(hostKey = confirmedHostKey):
@@ -162,12 +181,16 @@ export function AddConnectionDialog({
     | { error: string } {
     const trimmedName = name.trim();
     const trimmedExecutable = executable.trim();
+    if (!selectedProvider) return { error: "Choose a coding agent." };
+    const metadata = agentProviderMetadata(selectedProvider);
     if (!trimmedName) return { error: "Enter a connection name." };
-    if (!trimmedExecutable) return { error: "Enter the Pi executable path." };
+    if (!trimmedExecutable) {
+      return { error: `Enter the ${metadata.label} executable path.` };
+    }
     if (transport === "local") {
       return {
         draft: {
-          provider: "pi",
+          provider: selectedProvider,
           transport: "local",
           name: trimmedName,
           executable: trimmedExecutable,
@@ -190,7 +213,7 @@ export function AddConnectionDialog({
     }
     return {
       draft: {
-        provider: "pi",
+        provider: selectedProvider,
         transport: "ssh",
         name: trimmedName,
         executable: trimmedExecutable,
@@ -219,6 +242,7 @@ export function AddConnectionDialog({
     name,
     port,
     privateKey,
+    selectedProvider,
     sshAuth,
     transport,
   ]);
@@ -293,7 +317,7 @@ export function AddConnectionDialog({
     try {
       const connection = await createMutation.mutateAsync(result.draft);
       toast.success({
-        title: "Pi connected",
+        title: `${agentProviderMetadata(result.draft.provider).label} connected`,
         description: connection.host.name,
       });
       reset();
@@ -305,16 +329,19 @@ export function AddConnectionDialog({
     }
   }
 
-  const dialogTitle = !providerSelected
+  const providerMetadata = selectedProvider
+    ? agentProviderMetadata(selectedProvider)
+    : null;
+  const dialogTitle = !providerMetadata
     ? "Add connection"
     : transport === "ssh"
       ? "Add SSH connection"
-      : "Add Pi connection";
-  const dialogDescription = !providerSelected
+      : `Add ${providerMetadata.label} connection`;
+  const dialogDescription = !providerMetadata
     ? "Choose a coding agent."
     : choosingSshHost
       ? "Choose a host from this server's SSH config."
-      : "Connect OvertChat to an existing Pi installation.";
+      : `Connect OvertChat to an existing ${providerMetadata.label} installation.`;
 
   return (
     <Dialog.Root
@@ -341,12 +368,18 @@ export function AddConnectionDialog({
             {dialogDescription}
           </Dialog.Description>
 
-          {!providerSelected ? (
-            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+          {!providerMetadata ? (
+            <div className="mt-5 grid grid-cols-2 gap-2">
               <ProviderChoice
                 icon={piIcon}
                 label="Pi"
-                onClick={() => setProviderSelected(true)}
+                onClick={() => selectProvider("pi")}
+              />
+              <ProviderChoice
+                icon={ompIcon}
+                label="Oh My Pi"
+                darkIconSurface
+                onClick={() => selectProvider("omp")}
               />
               <ProviderChoice
                 icon={claudeCodeIcon}
@@ -391,7 +424,7 @@ export function AddConnectionDialog({
                     if (value === "local") {
                       setName("This server");
                     } else {
-                      setName("Remote Pi");
+                      setName(`Remote ${providerMetadata.label}`);
                       setRemoteMode(isAdmin ? "detected" : "manual");
                       setHostname("");
                       setPort("22");
@@ -544,7 +577,9 @@ export function AddConnectionDialog({
 
               {!choosingSshHost && (
                 <div className="space-y-1.5">
-                  <Label htmlFor="agent-executable">Pi executable</Label>
+                  <Label htmlFor="agent-executable">
+                    {providerMetadata.label} executable
+                  </Label>
                   <Input
                     id="agent-executable"
                     value={executable}
@@ -586,7 +621,8 @@ export function AddConnectionDialog({
                 <div className="flex items-start gap-2 text-sm text-ring">
                   <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
                   <span>
-                    Pi {tested.probe.version} · {tested.probe.models.length}{" "}
+                    {providerMetadata.label} {tested.probe.version} ·{" "}
+                    {tested.probe.models.length}{" "}
                     model{tested.probe.models.length === 1 ? "" : "s"}
                   </span>
                 </div>
@@ -641,7 +677,7 @@ export function AddConnectionDialog({
             </form>
           )}
 
-          {!providerSelected && (
+          {!providerMetadata && (
             <SettingsActions bordered={false} className="mt-5">
               <Button
                 type="button"
@@ -662,11 +698,13 @@ export function AddConnectionDialog({
 function ProviderChoice({
   icon,
   label,
+  darkIconSurface = false,
   disabled = false,
   onClick,
 }: {
   icon: StaticImageData;
   label: string;
+  darkIconSurface?: boolean;
   disabled?: boolean;
   onClick?: () => void;
 }) {
@@ -677,7 +715,14 @@ function ProviderChoice({
       onClick={onClick}
       className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border bg-background px-3 py-4 text-sm font-medium outline-none motion-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-55"
     >
-      <Image src={icon} alt="" className="size-6 object-contain" />
+      <span
+        className={cn(
+          "flex size-8 items-center justify-center rounded-md",
+          darkIconSurface && "bg-zinc-950",
+        )}
+      >
+        <Image src={icon} alt="" className="size-6 object-contain" />
+      </span>
       <span>{label}</span>
       {disabled && (
         <span className="text-[10px] font-normal text-muted-foreground">

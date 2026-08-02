@@ -175,6 +175,7 @@ describe("Pi session runtime", () => {
       "user",
       "connection",
       "workspace",
+      "pi",
       client as unknown as PiRpcClient,
       {
         ...initial(),
@@ -214,6 +215,7 @@ describe("Pi session runtime", () => {
       "user",
       "connection",
       "workspace",
+      "pi",
       client as unknown as PiRpcClient,
       {
         ...initial(),
@@ -235,6 +237,41 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
+  it("forwards OMP native compact commands and settles on agent_end", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({
+      type: "prompt",
+      message: "/compact focus on tests",
+    });
+    client.emit({ type: "agent_start" });
+    expect(runtime.snapshot().status).toBe("running");
+    client.emit({ type: "agent_end", messages: [] });
+
+    expect(client.prompt).toHaveBeenCalledWith(
+      "/compact focus on tests",
+      undefined,
+    );
+    expect(client.compact).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().status).toBe("idle");
+    });
+    await runtime.stop();
+  });
+
   it("replays sequenced events and clears answered extension requests", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
@@ -242,6 +279,7 @@ describe("Pi session runtime", () => {
       "user",
       "connection",
       "workspace",
+      "pi",
       client as unknown as PiRpcClient,
       {
         ...initial(),

@@ -2,6 +2,7 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
 } from "@/lib/agents/types";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 
 function roleOf(message: unknown): string | null {
   return message && typeof message === "object"
@@ -103,7 +104,7 @@ export function applyAgentRuntimeEnvelope(
       state: { ...current.state, isStreaming: true },
     };
   }
-  if (event.type === "agent_settled") {
+  if (event.type === "agent_settled" || event.type === "agent_end") {
     return {
       ...current,
       status: "idle",
@@ -117,7 +118,7 @@ export function applyAgentRuntimeEnvelope(
       error:
         typeof event.error === "string"
           ? event.error
-          : "The Pi process exited.",
+          : `The ${agentProviderMetadata(current.provider).label} process exited.`,
     };
   }
   if (
@@ -140,6 +141,20 @@ export function applyAgentRuntimeEnvelope(
           messages: upsertMessage(current.messages, message),
         }
       : current;
+  }
+  if (event.type === "command_output" && typeof event.text === "string") {
+    return {
+      ...current,
+      messages: [
+        ...current.messages,
+        {
+          role: "custom",
+          content: event.text,
+          display: true,
+          timestamp: Date.now(),
+        },
+      ],
+    };
   }
   if (
     event.type === "extension_ui_request" &&

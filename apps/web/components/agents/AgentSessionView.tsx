@@ -7,11 +7,13 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import type {
   AgentModel,
+  AgentProviderId,
   AgentRuntimeSnapshot,
   AgentSessionCommand,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
-import { normalizePiSessionCommand } from "@/lib/agents/pi/commands";
+import { normalizeAgentSessionCommand } from "@/lib/agents/pi/commands";
+import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   useAgentSession,
   useAgentSessionCommand,
@@ -61,13 +63,16 @@ function sessionName(snapshot: AgentRuntimeSnapshot): string {
 
 export function AgentSessionView({
   sessionId,
+  provider,
   workspaceName,
   initialSessionName,
 }: {
   sessionId: string;
+  provider: AgentProviderId;
   workspaceName: string;
   initialSessionName: string;
 }) {
+  const providerLabel = agentProviderMetadata(provider).label;
   const router = useRouter();
   const session = useAgentSession(sessionId);
   const command = useAgentSessionCommand(sessionId);
@@ -78,8 +83,8 @@ export function AgentSessionView({
 
   useEffect(() => {
     const title = snapshot ? sessionName(snapshot) : initialSessionName;
-    document.title = `${title.trim() || workspaceName} · Pi`;
-  }, [initialSessionName, snapshot, workspaceName]);
+    document.title = `${title.trim() || workspaceName} · ${providerLabel}`;
+  }, [initialSessionName, providerLabel, snapshot, workspaceName]);
 
   async function run(
     input: AgentSessionCommand,
@@ -94,7 +99,7 @@ export function AgentSessionView({
       const result = await command.mutateAsync(input);
       if (input.type === "new_session") {
         if (!result.sessionId) {
-          throw new Error("Pi did not return the new session.");
+          throw new Error(`${providerLabel} did not return the new session.`);
         }
         router.push(`/agents/${result.sessionId}`);
         return;
@@ -104,11 +109,16 @@ export function AgentSessionView({
       if (options.toastTitle) toast.success({ title: options.toastTitle });
     } catch (cause) {
       const message =
-        cause instanceof Error ? cause.message : "Pi command failed.";
+        cause instanceof Error
+          ? cause.message
+          : `${providerLabel} command failed.`;
       if (renameOpen || compactOpen || snapshot?.pendingExtensionRequest) {
         setDialogError(message);
       } else {
-        toast.error({ title: "Pi command failed", description: message });
+        toast.error({
+          title: `${providerLabel} command failed`,
+          description: message,
+        });
       }
     }
   }
@@ -116,7 +126,8 @@ export function AgentSessionView({
   function submit(message: string) {
     let input: AgentSessionCommand;
     try {
-      input = normalizePiSessionCommand(
+      input = normalizeAgentSessionCommand(
+        provider,
         {
           type: "prompt",
           message,
@@ -128,9 +139,11 @@ export function AgentSessionView({
       );
     } catch (cause) {
       toast.error({
-        title: "Pi command failed",
+        title: `${providerLabel} command failed`,
         description:
-          cause instanceof Error ? cause.message : "Invalid Pi command.",
+          cause instanceof Error
+            ? cause.message
+            : `Invalid ${providerLabel} command.`,
       });
       return;
     }
@@ -146,7 +159,9 @@ export function AgentSessionView({
     void run(input, { toastTitle });
   }
 
-  if (session.isPending) return <AgentSessionLoading />;
+  if (session.isPending) {
+    return <AgentSessionLoading providerLabel={providerLabel} />;
+  }
   if (!snapshot) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -157,7 +172,7 @@ export function AgentSessionView({
           <div className="max-w-md text-center">
             <AlertTriangle className="mx-auto size-5 text-destructive" />
             <p className="mt-3 text-sm font-medium">
-              Pi session could not be opened
+              {providerLabel} session could not be opened
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               {session.error instanceof Error
@@ -182,6 +197,7 @@ export function AgentSessionView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <AgentSessionHeader
+        providerLabel={providerLabel}
         workspaceName={workspaceName}
         models={snapshot.models}
         currentModel={model}
@@ -211,6 +227,7 @@ export function AgentSessionView({
       />
 
       <AgentMessageList
+        providerLabel={providerLabel}
         messages={snapshot.messages}
         streaming={running}
         error={runtimeError}
@@ -220,6 +237,7 @@ export function AgentSessionView({
       <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-3xl">
           <AgentComposer
+            providerLabel={providerLabel}
             commands={snapshot.commands}
             running={running}
             pending={command.isPending}
@@ -231,6 +249,7 @@ export function AgentSessionView({
       </div>
 
       <RenameAgentSessionDialog
+        providerLabel={providerLabel}
         open={renameOpen}
         initialName={currentName}
         pending={command.isPending}
@@ -247,6 +266,7 @@ export function AgentSessionView({
         }
       />
       <CompactAgentSessionDialog
+        providerLabel={providerLabel}
         open={compactOpen}
         pending={command.isPending}
         error={dialogError}
@@ -265,6 +285,7 @@ export function AgentSessionView({
         }
       />
       <AgentExtensionDialog
+        providerLabel={providerLabel}
         request={snapshot.pendingExtensionRequest}
         pending={command.isPending}
         error={dialogError}
@@ -280,7 +301,7 @@ export function AgentSessionView({
   );
 }
 
-function AgentSessionLoading() {
+function AgentSessionLoading({ providerLabel }: { providerLabel: string }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
@@ -290,7 +311,7 @@ function AgentSessionLoading() {
       <div className="flex flex-1 items-center justify-center">
         <Loader2
           className={`size-5 text-muted-foreground ${motionClasses.spinner}`}
-          aria-label="Opening Pi session"
+          aria-label={`Opening ${providerLabel} session`}
         />
       </div>
       <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">

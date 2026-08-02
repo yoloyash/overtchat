@@ -5,10 +5,11 @@ import {
   touchAgentConnectionValidation,
 } from "@/lib/db/agentConnections";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
-import { probePiTarget } from "@/lib/agents/pi/probe";
+import { probeAgentTarget } from "@/lib/agents/pi/probe";
 import { connectionErrorMessage } from "@/lib/agents/access";
 import { storedConnectionAccessError } from "@/lib/agents/access";
 import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
+import { isAgentProviderId } from "@/lib/agents/catalog";
 
 export const maxDuration = 150;
 
@@ -30,8 +31,12 @@ export async function POST(
   }
 
   try {
-    const probe = await probePiTarget(
+    if (!isAgentProviderId(owned.connection.provider)) {
+      throw new Error("This coding-agent provider is not supported.");
+    }
+    const probe = await probeAgentTarget(
       targetForStoredHost(owned.host),
+      owned.connection.provider,
       owned.connection.executable,
     );
     await touchAgentConnectionValidation(
@@ -42,7 +47,14 @@ export async function POST(
     return Response.json({ probe });
   } catch (error) {
     return Response.json(
-      { error: connectionErrorMessage(error) },
+      {
+        error: connectionErrorMessage(
+          error,
+          isAgentProviderId(owned.connection.provider)
+            ? owned.connection.provider
+            : "pi",
+        ),
+      },
       { status: 400 },
     );
   }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const AGENT_PROVIDER_IDS = ["pi"] as const;
+export const AGENT_PROVIDER_IDS = ["pi", "omp"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 
 export const AGENT_THINKING_LEVELS = [
@@ -18,9 +18,9 @@ export const AGENT_TRANSPORT_IDS = ["local", "ssh"] as const;
 export type AgentTransportId = (typeof AGENT_TRANSPORT_IDS)[number];
 
 const connectionBaseSchema = z.object({
-  provider: z.literal("pi"),
+  provider: z.enum(AGENT_PROVIDER_IDS),
   name: z.string().trim().min(1).max(80),
-  executable: z.string().trim().min(1).max(500).default("pi"),
+  executable: z.string().trim().min(1).max(500),
 });
 
 export const localConnectionDraftSchema = connectionBaseSchema.extend({
@@ -162,7 +162,14 @@ export type AgentDirectoryListing = {
 export type AgentSlashCommand = {
   name: string;
   description?: string;
-  source: "builtin" | "extension" | "prompt" | "skill";
+  source:
+    | "builtin"
+    | "extension"
+    | "prompt"
+    | "skill"
+    | "custom"
+    | "mcp_prompt"
+    | "file";
   argumentHint?: string;
 };
 
@@ -231,6 +238,7 @@ export type AgentSessionStats = {
 
 export type AgentRuntimeSnapshot = {
   sessionId: string;
+  provider: AgentProviderId;
   status: "idle" | "running" | "exited";
   state: Record<string, unknown>;
   messages: unknown[];

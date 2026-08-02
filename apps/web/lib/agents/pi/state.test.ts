@@ -8,6 +8,7 @@ import { applyAgentRuntimeEnvelope } from "./state";
 function snapshot(): AgentRuntimeSnapshot {
   return {
     sessionId: "session",
+    provider: "pi",
     status: "idle",
     state: { isStreaming: false },
     messages: [{ role: "user", content: "Hello" }],
@@ -170,6 +171,33 @@ describe("agent runtime event reducer", () => {
       role: "toolResult",
       content: [{ type: "text", text: "complete" }],
       isError: false,
+    });
+  });
+
+  it("renders OMP command output and settles on agent_end", () => {
+    const running = {
+      ...snapshot(),
+      provider: "omp" as const,
+      status: "running" as const,
+      state: { isStreaming: true },
+    };
+    const withOutput = applyAgentRuntimeEnvelope(
+      running,
+      event({ type: "command_output", text: "Current model: GPT-5.6" }),
+    )!;
+    const settled = applyAgentRuntimeEnvelope(
+      withOutput,
+      event({ type: "agent_end", messages: [] }),
+    )!;
+
+    expect(withOutput.messages.at(-1)).toMatchObject({
+      role: "custom",
+      content: "Current model: GPT-5.6",
+      display: true,
+    });
+    expect(settled).toMatchObject({
+      status: "idle",
+      state: { isStreaming: false },
     });
   });
 
