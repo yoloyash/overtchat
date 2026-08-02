@@ -1,15 +1,25 @@
 /**
- * Generates the small server-side model catalog used as a fallback when a
- * provider's model-discovery endpoint does not report context limits.
+ * Generates the server-side model metadata and pricing catalog. Runtime
+ * discovery can override capabilities, while exact catalog pricing remains
+ * the default for cost estimates without a model-config override.
  *
  * The output is committed so self-hosted and air-gapped deployments never
- * depend on models.dev at runtime.
+ * depend on models.dev at runtime. A sidecar manifest binds the generated
+ * output to the exact upstream payload used to create it.
  */
 
-import { writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { resolve } from "node:path";
+import {
+  createModelCatalogManifest,
+  MODEL_CATALOG_SOURCE_URL,
+  validateModelCatalogArtifacts,
+} from "./model-catalog-artifacts";
 
-const SOURCE_URL = "https://models.dev/api.json";
 const PROVIDERS = [
   ["openai", "openai"],
   ["anthropic", "anthropic"],
@@ -44,17 +54,24 @@ async function main() {
     process.cwd(),
     "lib/providers/server/model-catalog.json",
   );
+  const manifestPath = resolve(
+    process.cwd(),
+    "lib/providers/server/model-catalog.manifest.json",
+  );
 
-  const response = await fetch(SOURCE_URL);
+  const response = await fetch(MODEL_CATALOG_SOURCE_URL);
   if (!response.ok) {
     throw new Error(
-      `Could not fetch ${SOURCE_URL}: ${response.status} ${response.statusText}`,
+      `Could not fetch ${MODEL_CATALOG_SOURCE_URL}: ${response.status} ${response.statusText}`,
     );
   }
 
-  const upstream = await response.json();
+  const sourceText = await response.text();
+  const upstream: unknown = JSON.parse(sourceText);
   if (!isRecord(upstream)) {
-    throw new Error(`${SOURCE_URL} did not return a provider object`);
+    throw new Error(
+      `${MODEL_CATALOG_SOURCE_URL} did not return a provider object`,
+    );
   }
 
   const output: Record<string, Record<string, CatalogEntry>> = {};
@@ -126,13 +143,39 @@ async function main() {
     output[providerId] = models;
   }
 
-  writeFileSync(outputPath, `${JSON.stringify(output, null, 2)}\n`);
-  console.log(
-    `wrote ${outputPath} (${Object.values(output).reduce(
-      (count, models) => count + Object.keys(models).length,
-      0,
-    )} models)`,
+  const catalogText = `${JSON.stringify(output, null, 2)}\n`;
+  const modelCount = Object.values(output).reduce(
+    (count, models) => count + Object.keys(models).length,
+    0,
   );
+  if (
+    existsSync(outputPath) &&
+    existsSync(manifestPath) &&
+    readFileSync(outputPath, "utf8") === catalogText
+  ) {
+    try {
+      const manifestText = readFileSync(manifestPath, "utf8");
+      validateModelCatalogArtifacts(catalogText, manifestText);
+      console.log(`model catalog is current (${modelCount} models)`);
+      return;
+    } catch {
+      // Regenerate missing or invalid provenance for an unchanged catalog.
+    }
+  }
+
+  const manifest = createModelCatalogManifest({
+    catalogText,
+    sourceText,
+    generatedAt: new Date().toISOString(),
+    modelCount,
+  });
+  const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
+  validateModelCatalogArtifacts(catalogText, manifestText);
+
+  writeFileSync(outputPath, catalogText);
+  writeFileSync(manifestPath, manifestText);
+  console.log(`wrote ${outputPath} (${modelCount} models)`);
+  console.log(`wrote ${manifestPath}`);
 }
 
 function copyBoolean(

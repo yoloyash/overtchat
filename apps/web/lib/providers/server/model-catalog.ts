@@ -1,5 +1,6 @@
 import "server-only";
 import type { ModelCapabilities } from "@overtchat/shared";
+import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import catalogJson from "@/lib/providers/server/model-catalog.json";
 
@@ -39,6 +40,28 @@ export function catalogContextWindowFor(
   model: string,
 ): number | undefined {
   return catalogEntryFor(providerId, model)?.context;
+}
+
+export function catalogPricingFor(
+  providerId: ProviderId,
+  model: string,
+): CatalogModelPricing | undefined {
+  const cost = catalogEntryFor(providerId, model)?.cost;
+  if (!cost) return undefined;
+
+  const input = catalogRate(cost.input);
+  const output = catalogRate(cost.output);
+  if (input === undefined || output === undefined) return undefined;
+
+  return {
+    input,
+    output,
+    cacheRead: catalogRate(cost.cache_read) ?? input,
+    cacheWrite: catalogRate(cost.cache_write) ?? input,
+    tiered:
+      (Array.isArray(cost.tiers) && cost.tiers.length > 0) ||
+      isRecord(cost.context_over_200k),
+  };
 }
 
 export function catalogCapabilitiesFor(
@@ -98,6 +121,16 @@ export function resolveModelContextWindow(
     }
   }
   return catalogContextWindowFor(providerId, model);
+}
+
+function catalogRate(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
 function compactCapabilities(

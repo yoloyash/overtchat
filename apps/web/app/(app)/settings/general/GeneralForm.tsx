@@ -29,6 +29,10 @@ import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
 } from "@/lib/chat/context-meter";
+import {
+  DEFAULT_SESSION_COST_ENABLED,
+  SESSION_COST_STORAGE_KEY,
+} from "@/lib/chat/session-cost";
 
 type ThemeValue = "light" | "dark" | "system";
 
@@ -56,6 +60,11 @@ export function GeneralForm() {
     useLocalStorage<boolean>(
       CONTEXT_METER_STORAGE_KEY,
       DEFAULT_CONTEXT_METER_ENABLED,
+    );
+  const [sessionCostEnabled, setSessionCostEnabled] =
+    useLocalStorage<boolean>(
+      SESSION_COST_STORAGE_KEY,
+      DEFAULT_SESSION_COST_ENABLED,
     );
   const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
   const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
@@ -161,6 +170,21 @@ export function GeneralForm() {
             checked={contextMeterEnabled}
             onCheckedChange={(next) => setContextMeterEnabled(next)}
             aria-label="Show context meter"
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Session cost"
+          description="Show session cost in the chat header."
+          htmlFor="session-cost"
+          align="center"
+          controlAlign="end"
+        >
+          <Switch
+            id="session-cost"
+            checked={sessionCostEnabled}
+            onCheckedChange={(next) => setSessionCostEnabled(next)}
+            aria-label="Show session cost"
           />
         </SettingsRow>
       </SettingsSection>

@@ -5,6 +5,7 @@ import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   catalogCapabilitiesFor,
   catalogContextWindowFor,
+  catalogPricingFor,
 } from "@/lib/providers/server/model-catalog";
 import { listProviderModels } from "@/lib/providers/server/registry";
 
@@ -51,6 +52,10 @@ export async function POST(req: Request) {
         parsed.data.providerId,
         model.id,
       );
+      const catalogPricing = catalogPricingFor(
+        parsed.data.providerId,
+        model.id,
+      );
       return {
         ...model,
         ...(catalogContextWindow === undefined
@@ -59,6 +64,7 @@ export async function POST(req: Request) {
         ...(catalogCapabilities === undefined
           ? {}
           : { catalogCapabilities }),
+        ...(catalogPricing === undefined ? {} : { catalogPricing }),
       };
     });
     return withCors(req, Response.json({ models }));

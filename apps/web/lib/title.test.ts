@@ -5,12 +5,16 @@ const mocks = vi.hoisted(() => ({
   createConfiguredLanguageModel: vi.fn(),
   generateText: vi.fn(),
   setTitleIfNull: vi.fn(),
+  tryRecordGenerationUsage: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({ generateText: mocks.generateText }));
 vi.mock("@/lib/db/chats", () => ({
   setTitleIfNull: mocks.setTitleIfNull,
+}));
+vi.mock("@/lib/db/generationUsage", () => ({
+  tryRecordGenerationUsage: mocks.tryRecordGenerationUsage,
 }));
 vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
@@ -31,6 +35,7 @@ const modelConfig = {
   baseUrl: "http://example.test/v1",
   apiKey: "key",
   model: "title-model",
+  pricing: null,
   providerOptions: null,
 };
 
@@ -58,6 +63,23 @@ function search(): Part {
 
 const firstUserParts = [text("How should we simplify title generation?")];
 
+function generationResult(text: string) {
+  return {
+    text,
+    finishReason: "stop",
+    usage: {
+      inputTokens: 10,
+      inputTokenDetails: {
+        noCacheTokens: 4,
+        cacheReadTokens: 6,
+        cacheWriteTokens: 1,
+      },
+      outputTokens: 2,
+      totalTokens: 12,
+    },
+  };
+}
+
 describe("title helpers", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -66,7 +88,10 @@ describe("title helpers", () => {
       providerOptions: undefined,
       providerOptionsKey: "custom",
     });
-    mocks.generateText.mockResolvedValue({ text: "Server Owned Titles" });
+    mocks.generateText.mockResolvedValue(
+      generationResult("Server Owned Titles"),
+    );
+    mocks.tryRecordGenerationUsage.mockReturnValue(true);
     mocks.setTitleIfNull.mockImplementation(async (_chatId, title) => title);
   });
 
@@ -116,6 +141,7 @@ describe("title helpers", () => {
   it("returns null without calling the model when first-user text is empty", async () => {
     const title = await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: [reasoning("private thought"), search(), file(), text(" ")],
     });
@@ -126,10 +152,13 @@ describe("title helpers", () => {
   });
 
   it("persists a successful generated title", async () => {
-    mocks.generateText.mockResolvedValue({ text: '"Dependency Cleanup!"' });
+    mocks.generateText.mockResolvedValue(
+      generationResult('"Dependency Cleanup!"'),
+    );
 
     const title = await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: firstUserParts,
     });
@@ -148,7 +177,86 @@ describe("title helpers", () => {
       "chat",
       "Dependency Cleanup",
     );
+    expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith({
+      id: expect.any(String),
+      userId: "user",
+      chatId: "chat",
+      context: "title",
+      occurredAt: expect.any(Date),
+      providerId: "custom",
+      model: "title-model",
+      inputTokens: 10,
+      uncachedInputTokens: 4,
+      outputTokens: 2,
+      cacheReadTokens: 6,
+      cacheWriteTokens: 1,
+      totalTokens: 12,
+      finishReason: "stop",
+    });
     expect(title).toBe("Dependency Cleanup");
+  });
+
+  it("persists the historical cost estimate with title usage", async () => {
+    mocks.generateText.mockResolvedValue(
+      generationResult("Priced Title"),
+    );
+
+    await generateChatTitle({
+      chatId: "chat",
+      userId: "user",
+      modelConfig: {
+        ...modelConfig,
+        providerId: "anthropic",
+        apiFormat: "auto",
+        model: "claude-sonnet-4-6",
+      },
+      userParts: firstUserParts,
+    });
+
+    expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "anthropic",
+        model: "claude-sonnet-4-6",
+        costSource: "models.dev",
+        inputCostNanoUsd: 12_000,
+        outputCostNanoUsd: 30_000,
+        cacheReadCostNanoUsd: 1_800,
+        cacheWriteCostNanoUsd: 3_750,
+        totalCostNanoUsd: 47_550,
+      }),
+    );
+  });
+
+  it("uses configured pricing for title usage", async () => {
+    mocks.generateText.mockResolvedValue(
+      generationResult("Configured Price"),
+    );
+
+    await generateChatTitle({
+      chatId: "chat",
+      userId: "user",
+      modelConfig: {
+        ...modelConfig,
+        pricing: {
+          input: 2,
+          output: 8,
+          cacheRead: 0.2,
+          cacheWrite: 2.5,
+        },
+      },
+      userParts: firstUserParts,
+    });
+
+    expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        costSource: "model_config",
+        inputCostNanoUsd: 8_000,
+        outputCostNanoUsd: 16_000,
+        cacheReadCostNanoUsd: 1_200,
+        cacheWriteCostNanoUsd: 2_500,
+        totalCostNanoUsd: 27_700,
+      }),
+    );
   });
 
   it("preserves saved provider options while disabling reasoning", async () => {
@@ -160,6 +268,7 @@ describe("title helpers", () => {
 
     await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: firstUserParts,
     });
@@ -180,12 +289,14 @@ describe("title helpers", () => {
 
     const title = await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: firstUserParts,
     });
 
     expect(title).toBeNull();
     expect(mocks.setTitleIfNull).not.toHaveBeenCalled();
+    expect(mocks.tryRecordGenerationUsage).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith("[title-generation]", err);
     consoleSpy.mockRestore();
   });
@@ -199,6 +310,7 @@ describe("title helpers", () => {
 
     const title = await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: firstUserParts,
     });
@@ -206,29 +318,35 @@ describe("title helpers", () => {
     expect(title).toBeNull();
     expect(mocks.generateText).not.toHaveBeenCalled();
     expect(mocks.setTitleIfNull).not.toHaveBeenCalled();
+    expect(mocks.tryRecordGenerationUsage).not.toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalledWith("[title-generation]", err);
     consoleSpy.mockRestore();
   });
 
-  it("does not persist empty generated output", async () => {
-    mocks.generateText.mockResolvedValue({ text: "..." });
+  it("records usage without persisting an empty generated title", async () => {
+    mocks.generateText.mockResolvedValue(generationResult("..."));
 
     const title = await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: firstUserParts,
     });
 
     expect(title).toBeNull();
     expect(mocks.setTitleIfNull).not.toHaveBeenCalled();
+    expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledOnce();
   });
 
   it("does not return a title when the conditional DB write loses a race", async () => {
-    mocks.generateText.mockResolvedValue({ text: "Generated title" });
+    mocks.generateText.mockResolvedValue(
+      generationResult("Generated title"),
+    );
     mocks.setTitleIfNull.mockResolvedValue(null);
 
     const title = await generateChatTitle({
       chatId: "chat",
+      userId: "user",
       modelConfig,
       userParts: firstUserParts,
     });

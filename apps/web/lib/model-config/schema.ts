@@ -10,6 +10,17 @@ import {
 
 export type { PublicModelConfig } from "@overtchat/shared";
 
+export interface ModelPricing {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+export interface CatalogModelPricing extends ModelPricing {
+  tiered: boolean;
+}
+
 /** Admin-facing model config DTO. Includes secrets and provider options for editing. */
 export interface AdminModelConfig {
   id: string;
@@ -19,6 +30,9 @@ export interface AdminModelConfig {
   baseUrl: string;
   apiKey: string | null;
   model: string;
+  pricing: ModelPricing | null;
+  /** Exact models.dev base rates for admin UI guidance. */
+  catalogPricing: CatalogModelPricing | null;
   /** Explicit administrator override. */
   contextWindow: number | null;
   /** Last limit reported by model discovery. */
@@ -87,6 +101,13 @@ const ModelCapabilitiesSchema = z
   })
   .transform((value) => (Object.keys(value).length > 0 ? value : null));
 
+export const ModelPricingSchema = z.object({
+  input: z.number().finite().nonnegative(),
+  output: z.number().finite().nonnegative(),
+  cacheRead: z.number().finite().nonnegative(),
+  cacheWrite: z.number().finite().nonnegative(),
+});
+
 export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(
   RuntimeModelFields,
 ).superRefine(validateProviderConnection);
@@ -94,6 +115,7 @@ export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(
 export const ModelConfigSchema = ProviderConnectionObject.extend({
   label: z.string().trim().min(1, "Display name is required"),
   ...RuntimeModelFields,
+  pricing: ModelPricingSchema.nullish().transform((value) => value ?? null),
   contextWindow: z
     .number()
     .int()

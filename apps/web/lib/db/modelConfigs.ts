@@ -3,6 +3,7 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
 import {
+  catalogPricingFor,
   resolveModelCapabilities,
   resolveModelContextWindow,
 } from "@/lib/providers/server/model-catalog";
@@ -23,6 +24,8 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
     model: row.model,
+    pricing: row.pricing,
+    catalogPricing: catalogPricingFor(row.providerId, row.model) ?? null,
     contextWindow: row.contextWindow,
     discoveredContextWindow: row.discoveredContextWindow,
     discoveredCapabilities: row.discoveredCapabilities,

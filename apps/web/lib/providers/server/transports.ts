@@ -4,7 +4,11 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenResponses } from "@ai-sdk/open-responses";
 import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import type { LanguageModelV4 } from "@ai-sdk/provider";
+import {
+  isJSONObject,
+  type LanguageModelV4,
+  type LanguageModelV4Usage,
+} from "@ai-sdk/provider";
 
 interface TransportConfig {
   providerName: string;
@@ -35,7 +39,59 @@ export function createOpenAICompatibleChatModel(
     // stream option, and the final usage chunk supplies the context meter's
     // numerator.
     includeUsage: true,
+    convertUsage: convertOpenAICompatibleUsage,
   }).chatModel(config.model);
+}
+
+export function convertOpenAICompatibleUsage(
+  usage: unknown,
+): LanguageModelV4Usage {
+  if (!isJSONObject(usage)) {
+    return {
+      inputTokens: {
+        total: undefined,
+        noCache: undefined,
+        cacheRead: undefined,
+        cacheWrite: undefined,
+      },
+      outputTokens: {
+        total: undefined,
+        text: undefined,
+        reasoning: undefined,
+      },
+      raw: undefined,
+    };
+  }
+
+  const promptTokens = usageNumber(usage.prompt_tokens) ?? 0;
+  const completionTokens = usageNumber(usage.completion_tokens) ?? 0;
+  const promptDetails = isJSONObject(usage.prompt_tokens_details)
+    ? usage.prompt_tokens_details
+    : undefined;
+  const completionDetails = isJSONObject(usage.completion_tokens_details)
+    ? usage.completion_tokens_details
+    : undefined;
+  const cacheReadTokens =
+    usageNumber(usage.prompt_cache_hit_tokens) ??
+    usageNumber(promptDetails?.cached_tokens) ??
+    0;
+  const reasoningTokens =
+    usageNumber(completionDetails?.reasoning_tokens) ?? 0;
+
+  return {
+    inputTokens: {
+      total: promptTokens,
+      noCache: Math.max(promptTokens - cacheReadTokens, 0),
+      cacheRead: cacheReadTokens,
+      cacheWrite: undefined,
+    },
+    outputTokens: {
+      total: completionTokens,
+      text: completionTokens - reasoningTokens,
+      reasoning: reasoningTokens,
+    },
+    raw: usage,
+  };
 }
 
 export function createOpenResponsesModel(
@@ -75,4 +131,8 @@ function credential(apiKey: string | null | undefined): string {
   // Always pass a value so a saved connection never silently falls back to a
   // process-wide SDK environment variable.
   return apiKey || "none";
+}
+
+function usageNumber(value: unknown): number | undefined {
+  return typeof value === "number" ? value : undefined;
 }

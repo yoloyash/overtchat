@@ -9,8 +9,12 @@ import { modelSupportsToolCalling } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
-import { chatKeys } from "@/lib/queries/keys";
-import { useChats, type ChatListItem } from "@/lib/queries/chats";
+import { activityKeys, chatKeys } from "@/lib/queries/keys";
+import {
+  useChats,
+  useChatUsage,
+  type ChatListItem,
+} from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { useSpeech } from "@/lib/useSpeech";
 import { motionClasses } from "@/lib/motion";
@@ -29,6 +33,10 @@ import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
 } from "@/lib/chat/context-meter";
+import {
+  DEFAULT_SESSION_COST_ENABLED,
+  SESSION_COST_STORAGE_KEY,
+} from "@/lib/chat/session-cost";
 import {
   getDataTransferFiles,
   hasDataTransferFiles,
@@ -54,7 +62,13 @@ interface Props {
   initialQuery?: string;
 }
 
-export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQuery }: Props) {
+export function ChatArea({
+  chatId,
+  initialMessages,
+  isNew,
+  projectId,
+  initialQuery,
+}: Props) {
   const qc = useQueryClient();
   const router = useRouter();
   const { openPalette } = useSidebar();
@@ -93,8 +107,17 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
     CONTEXT_METER_STORAGE_KEY,
     DEFAULT_CONTEXT_METER_ENABLED,
   );
+  const [sessionCostEnabled] = useLocalStorage<boolean>(
+    SESSION_COST_STORAGE_KEY,
+    DEFAULT_SESSION_COST_ENABLED,
+  );
 
   const [temporary, setTemporary] = useState(false);
+  const [chatPersisted, setChatPersisted] = useState(!isNew);
+  const { data: sessionUsage } = useChatUsage(
+    chatId,
+    sessionCostEnabled && chatPersisted && !temporary,
+  );
   useEffect(() => {
     if (temporary) {
       document.title = "overtchat";
@@ -145,7 +168,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
     resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
-    onFinish: ({ message, isAbort, isError }) => {
+    onFinish: ({ message, isError }) => {
       const stats = readMessageStats(message);
       if (stats && !temporaryRef.current) {
         setStoredStats((current) => {
@@ -155,8 +178,13 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
         });
       }
       if (temporaryRef.current) return;
-      if (isAbort || isError) return;
-      qc.invalidateQueries({ queryKey: chatKeys.list() });
+      if (isError) return;
+      setChatPersisted(true);
+      void Promise.all([
+        qc.invalidateQueries({ queryKey: chatKeys.list() }),
+        qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
+        qc.invalidateQueries({ queryKey: activityKeys.all() }),
+      ]);
     },
   });
 
@@ -348,6 +376,7 @@ export function ChatArea({ chatId, initialMessages, isNew, projectId, initialQue
         selectedId={selectedId}
         onSelectModel={handleSelectModel}
         contextUsage={contextUsage}
+        sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
         temporary={temporary}
         onToggleTemporary={() => setTemporary((t) => !t)}

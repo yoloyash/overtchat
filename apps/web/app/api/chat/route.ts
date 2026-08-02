@@ -30,6 +30,7 @@ import {
   commitChatTurn,
   completeChatStream,
   getChatMessage,
+  type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
 import { getModelConfig } from "@/lib/db/modelConfigs";
@@ -37,6 +38,11 @@ import { getProject } from "@/lib/db/projects";
 import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
+import {
+  estimateGenerationCost,
+  sumEstimatedGenerationCosts,
+  type EstimatedGenerationCost,
+} from "@/lib/providers/server/model-cost";
 import { resolveModelContextWindow } from "@/lib/providers/server/model-catalog";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
@@ -249,6 +255,9 @@ async function handlePost(req: Request): Promise<Response> {
   const startedAt = Date.now();
   let firstTokenAt: number | null = null;
   let lastStepUsage: LanguageModelUsage | null = null;
+  const stepCosts: EstimatedGenerationCost[] = [];
+  let hasUnpricedStep = false;
+  let completedGenerationUsage: CompletedGenerationUsage | undefined;
   let streamError: unknown = null;
 
   try {
@@ -286,6 +295,7 @@ async function handlePost(req: Request): Promise<Response> {
     ) {
       titlePromise = generateChatTitle({
         chatId,
+        userId,
         modelConfig,
         userParts: last.parts,
       });
@@ -302,6 +312,21 @@ async function handlePost(req: Request): Promise<Response> {
         },
         onFinishStep(usage) {
           lastStepUsage = usage;
+          const cost = estimateGenerationCost({
+            providerId: modelConfig.providerId,
+            model: modelConfig.model,
+            usage,
+            pricing: modelConfig.pricing,
+            cacheWriteTtl:
+              promptCacheStrategy?.kind === "anthropic"
+                ? (promptCacheStrategy.cacheControl.ttl ?? "5m")
+                : undefined,
+          });
+          if (cost) {
+            stepCosts.push(cost);
+          } else {
+            hasUnpricedStep = true;
+          }
         },
         onError(error) {
           if (streamError === null) {
@@ -357,6 +382,50 @@ async function handlePost(req: Request): Promise<Response> {
           modelIconId,
         };
 
+        const tokenUsage = [
+          part.totalUsage.inputTokens,
+          part.totalUsage.inputTokenDetails.noCacheTokens,
+          part.totalUsage.outputTokens,
+          part.totalUsage.inputTokenDetails.cacheReadTokens,
+          part.totalUsage.inputTokenDetails.cacheWriteTokens,
+          part.totalUsage.totalTokens,
+        ];
+        if (tokenUsage.some((value) => value !== undefined)) {
+          const estimatedCost =
+            stepCosts.length > 0 || hasUnpricedStep
+              ? hasUnpricedStep
+                ? null
+                : sumEstimatedGenerationCosts(stepCosts)
+              : estimateGenerationCost({
+                  providerId: modelConfig.providerId,
+                  model: modelConfig.model,
+                  usage: part.totalUsage,
+                  pricing: modelConfig.pricing,
+                  cacheWriteTtl:
+                    promptCacheStrategy?.kind === "anthropic"
+                      ? (promptCacheStrategy.cacheControl.ttl ?? "5m")
+                      : undefined,
+                });
+          completedGenerationUsage = {
+            occurredAt: new Date(finishedAt),
+            providerId: modelConfig.providerId,
+            model: modelConfig.model,
+            inputTokens: part.totalUsage.inputTokens,
+            uncachedInputTokens:
+              part.totalUsage.inputTokenDetails.noCacheTokens,
+            outputTokens: part.totalUsage.outputTokens,
+            cacheReadTokens:
+              part.totalUsage.inputTokenDetails.cacheReadTokens,
+            cacheWriteTokens:
+              part.totalUsage.inputTokenDetails.cacheWriteTokens,
+            totalTokens: part.totalUsage.totalTokens,
+            finishReason: part.finishReason,
+            ...(estimatedCost ?? {}),
+          };
+        } else {
+          completedGenerationUsage = undefined;
+        }
+
         return { stats };
       },
       onEnd: async ({ responseMessage }) => {
@@ -378,7 +447,14 @@ async function handlePost(req: Request): Promise<Response> {
             : undefined;
 
         try {
-          completeChatStream({ chatId, streamId, assistantMessage });
+          completeChatStream({
+            chatId,
+            streamId,
+            assistantMessage,
+            ...(assistantMessage && completedGenerationUsage
+              ? { usage: completedGenerationUsage }
+              : {}),
+          });
         } catch (error) {
           console.error("[persist-assistant]", error);
           try {

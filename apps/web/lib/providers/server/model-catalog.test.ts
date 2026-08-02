@@ -6,6 +6,7 @@ import {
   catalogCapabilitiesFor,
   catalogContextWindowFor,
   catalogEntryFor,
+  catalogPricingFor,
   resolveModelCapabilities,
   resolveModelContextWindow,
 } from "./model-catalog";
@@ -63,6 +64,26 @@ describe("vendored model catalog", () => {
       structuredOutput: true,
       temperature: true,
     });
+  });
+
+  it("normalizes base pricing and identifies context tiers", () => {
+    expect(catalogPricingFor("openai", "gpt-4")).toEqual({
+      input: 30,
+      output: 60,
+      cacheRead: 30,
+      cacheWrite: 30,
+      tiered: false,
+    });
+    expect(catalogPricingFor("openai", "gpt-5.4")).toEqual({
+      input: 2.5,
+      output: 15,
+      cacheRead: 0.25,
+      cacheWrite: 2.5,
+      tiered: true,
+    });
+    expect(
+      catalogPricingFor("custom", "private-model"),
+    ).toBeUndefined();
   });
 
   it("merges runtime self-reports over catalog fields", () => {

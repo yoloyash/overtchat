@@ -2,7 +2,10 @@
 
 import type { ModelCapabilities } from "@overtchat/shared";
 import { useLocalStorage } from "@/lib/useLocalStorage";
-import type { ModelDiscoveryInput } from "@/lib/model-config/schema";
+import type {
+  CatalogModelPricing,
+  ModelDiscoveryInput,
+} from "@/lib/model-config/schema";
 
 const SELECTED_MODEL_KEY = "overtchat_selected_model";
 
@@ -16,6 +19,8 @@ export interface AvailableModel {
   capabilities?: ModelCapabilities;
   /** Exact vendored-catalog fallback for UI guidance. */
   catalogCapabilities?: ModelCapabilities;
+  /** Exact vendored-catalog base rates for UI guidance. */
+  catalogPricing?: CatalogModelPricing;
 }
 
 export function useSelectedModel(): [string, (id: string) => void] {
@@ -51,6 +56,7 @@ export async function fetchModelsForProvider(
         : undefined;
     const capabilities = readCapabilities(record.capabilities);
     const catalogCapabilities = readCapabilities(record.catalogCapabilities);
+    const catalogPricing = readCatalogPricing(record.catalogPricing);
     return [
       {
         id: record.id,
@@ -62,9 +68,41 @@ export async function fetchModelsForProvider(
         ...(catalogCapabilities === undefined
           ? {}
           : { catalogCapabilities }),
+        ...(catalogPricing === undefined ? {} : { catalogPricing }),
       },
     ];
   });
+}
+
+function readCatalogPricing(value: unknown): CatalogModelPricing | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const pricingKeys = [
+    "input",
+    "output",
+    "cacheRead",
+    "cacheWrite",
+  ] as const;
+  if (
+    typeof record.tiered !== "boolean" ||
+    pricingKeys.some(
+      (key) =>
+        typeof record[key] !== "number" ||
+        !Number.isFinite(record[key]) ||
+        (record[key] as number) < 0,
+    )
+  ) {
+    return undefined;
+  }
+  return {
+    input: record.input as number,
+    output: record.output as number,
+    cacheRead: record.cacheRead as number,
+    cacheWrite: record.cacheWrite as number,
+    tiered: record.tiered,
+  };
 }
 
 function readCapabilities(value: unknown): ModelCapabilities | undefined {

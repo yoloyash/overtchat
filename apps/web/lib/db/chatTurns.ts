@@ -2,10 +2,26 @@ import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
+import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
 import { chats, messages } from "@/lib/db/schema";
+import type { ProviderId } from "@/lib/providers/catalog";
+import type { EstimatedGenerationCost } from "@/lib/providers/server/model-cost";
 import { extractSearchText } from "@/lib/search/extract";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
+
+export type CompletedGenerationUsage = {
+  occurredAt: Date;
+  providerId: ProviderId;
+  model: string;
+  inputTokens?: number;
+  uncachedInputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  totalTokens?: number;
+  finishReason?: string;
+} & Partial<EstimatedGenerationCost>;
 
 export type CommitChatTurnResult =
   | "committed"
@@ -122,6 +138,7 @@ export function completeChatStream({
   chatId,
   streamId,
   assistantMessage,
+  usage,
 }: {
   chatId: string;
   streamId: string;
@@ -130,8 +147,9 @@ export function completeChatStream({
     parts: AnyPart[];
     metadata?: Record<string, unknown>;
   };
+  usage?: CompletedGenerationUsage;
 }): boolean {
-  return db.transaction((tx) => {
+  const completed = db.transaction((tx) => {
     const chat = tx
       .select({
         userId: chats.userId,
@@ -141,7 +159,7 @@ export function completeChatStream({
       .where(eq(chats.id, chatId))
       .limit(1)
       .get();
-    if (!chat || chat.activeStreamId !== streamId) return false;
+    if (!chat || chat.activeStreamId !== streamId) return null;
 
     if (assistantMessage) {
       tx.insert(messages)
@@ -169,8 +187,23 @@ export function completeChatStream({
       })
       .where(and(eq(chats.id, chatId), eq(chats.activeStreamId, streamId)))
       .run();
-    return true;
+    return { userId: chat.userId };
   });
+
+  if (!completed) return false;
+
+  if (assistantMessage && usage) {
+    tryRecordGenerationUsage({
+      id: streamId,
+      userId: completed.userId,
+      chatId,
+      messageId: assistantMessage.id,
+      context: "chat",
+      ...usage,
+    });
+  }
+
+  return true;
 }
 
 export async function clearActiveStreamId(

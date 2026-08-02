@@ -36,6 +36,7 @@ function request(input: Record<string, unknown>): Request {
       baseUrl: "https://bedrock-mantle.us-east-1.api.aws/v1",
       apiKey: "key",
       model: "openai.gpt-5.6-terra",
+      pricing: null,
       providerOptions: null,
       systemPrompt: null,
       enabled: true,
@@ -77,6 +78,28 @@ describe("model config save validation", () => {
     });
     expect(mocks.createModelConfig).not.toHaveBeenCalled();
   });
+
+  it("persists administrator pricing overrides", async () => {
+    const pricing = {
+      input: 2,
+      output: 8,
+      cacheRead: 0.2,
+      cacheWrite: 2.5,
+    };
+    mocks.createModelConfig.mockImplementation(async (input) => ({
+      id: "configured-model",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...input,
+    }));
+
+    const response = await POST(request({ pricing }));
+
+    expect(response.status).toBe(201);
+    expect(mocks.createModelConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ pricing }),
+    );
+  });
 });
 
 describe("public model configs", () => {
@@ -101,6 +124,12 @@ describe("public model configs", () => {
         baseUrl: "http://localhost:8000/v1",
         apiKey: null,
         model: "text-only",
+        pricing: {
+          input: 2,
+          output: 8,
+          cacheRead: 0,
+          cacheWrite: 0,
+        },
         contextWindow: null,
         discoveredContextWindow: null,
         discoveredCapabilities: null,
@@ -130,7 +159,8 @@ describe("public model configs", () => {
       "custom",
       "text-only",
     );
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       modelConfigs: [
         {
           id: "text-only",
@@ -140,5 +170,6 @@ describe("public model configs", () => {
         },
       ],
     });
+    expect(body.modelConfigs[0]).not.toHaveProperty("pricing");
   });
 });

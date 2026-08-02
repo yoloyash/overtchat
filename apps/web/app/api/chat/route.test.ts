@@ -22,6 +22,8 @@ const mocks = vi.hoisted(() => {
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
+    catalogEntryFor: vi.fn(),
+    catalogPricingFor: vi.fn(),
     resolveModelContextWindow: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
     cancelRegister: vi.fn(),
@@ -114,6 +116,8 @@ vi.mock("@/lib/providers/server/registry", () => ({
   createConfiguredLanguageModel: mocks.createConfiguredLanguageModel,
 }));
 vi.mock("@/lib/providers/server/model-catalog", () => ({
+  catalogEntryFor: mocks.catalogEntryFor,
+  catalogPricingFor: mocks.catalogPricingFor,
   resolveModelContextWindow: mocks.resolveModelContextWindow,
 }));
 vi.mock("@/lib/streams/cancel-registry", () => ({
@@ -158,6 +162,7 @@ const modelConfig = {
   baseUrl: "https://example.test/v1",
   apiKey: "key",
   model: "test-model",
+  pricing: null,
   contextWindow: null,
   discoveredContextWindow: null,
   discoveredCapabilities: null,
@@ -752,7 +757,10 @@ describe("chat route setup boundary", () => {
       }),
     );
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
-      expect.objectContaining({ userParts: messages[0].parts }),
+      expect.objectContaining({
+        userId: "user",
+        userParts: messages[0].parts,
+      }),
     );
     expect(messages).toEqual(originalMessages);
     expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
@@ -795,7 +803,149 @@ describe("chat route setup boundary", () => {
     });
   });
 
-  it("uses the latest step usage for context instead of summing tool-loop steps", async () => {
+  it("records reported generation usage with the saved assistant", async () => {
+    await POST(request());
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+
+    messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 80,
+            cacheWriteTokens: 5,
+            noCacheTokens: 15,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: expect.any(String),
+      assistantMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+      },
+      usage: {
+        occurredAt: expect.any(Date),
+        providerId: "custom",
+        model: "test-model",
+        inputTokens: 100,
+        uncachedInputTokens: 15,
+        outputTokens: 10,
+        cacheReadTokens: 80,
+        cacheWriteTokens: 5,
+        totalTokens: 110,
+        finishReason: "stop",
+      },
+    });
+  });
+
+  it("records configured model pricing with chat usage", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      pricing: {
+        input: 2,
+        output: 8,
+        cacheRead: 0.2,
+        cacheWrite: 2.5,
+      },
+    });
+
+    await POST(request());
+    const messageMetadata = mocks.uiStreamOptions?.messageMetadata as (event: {
+      part: Record<string, unknown>;
+    }) => unknown;
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+
+    messageMetadata({
+      part: {
+        type: "finish",
+        finishReason: "stop",
+        totalUsage: {
+          inputTokens: 100,
+          inputTokenDetails: {
+            cacheReadTokens: 80,
+            cacheWriteTokens: 5,
+            noCacheTokens: 15,
+          },
+          outputTokens: 10,
+          totalTokens: 110,
+        },
+      },
+    });
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Hello" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: expect.objectContaining({
+          costSource: "model_config",
+          inputCostNanoUsd: 30_000,
+          outputCostNanoUsd: 80_000,
+          cacheReadCostNanoUsd: 16_000,
+          cacheWriteCostNanoUsd: 12_500,
+          totalCostNanoUsd: 138_500,
+        }),
+      }),
+    );
+  });
+
+  it("uses latest-step context and prices each tool-loop request tier", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "openai",
+      apiFormat: "auto",
+      model: "tiered-model",
+    });
+    mocks.catalogEntryFor.mockReturnValue({
+      cost: {
+        input: 1,
+        output: 2,
+        tiers: [
+          {
+            input: 10,
+            output: 20,
+            tier: { type: "context", size: 150 },
+          },
+        ],
+      },
+    });
+    mocks.catalogPricingFor.mockReturnValue({
+      input: 1,
+      output: 2,
+      cacheRead: 1,
+      cacheWrite: 1,
+      tiered: true,
+    });
     mocks.agentStream.mockResolvedValue({
       stream: new ReadableStream({
         start(controller) {
@@ -803,13 +953,23 @@ describe("chat route setup boundary", () => {
             type: "finish-step",
             usage: {
               inputTokens: 100,
+              inputTokenDetails: {
+                noCacheTokens: 100,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+              },
               outputTokens: 20,
             },
           });
           controller.enqueue({
             type: "finish-step",
             usage: {
-              inputTokens: 140,
+              inputTokens: 160,
+              inputTokenDetails: {
+                noCacheTokens: 160,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+              },
               outputTokens: 30,
             },
           });
@@ -835,23 +995,47 @@ describe("chat route setup boundary", () => {
         type: "finish",
         finishReason: "stop",
         totalUsage: {
-          inputTokens: 240,
+          inputTokens: 260,
           inputTokenDetails: {
-            cacheReadTokens: 40,
+            cacheReadTokens: 0,
             cacheWriteTokens: 0,
-            noCacheTokens: 200,
+            noCacheTokens: 260,
           },
           outputTokens: 50,
-          totalTokens: 290,
+          totalTokens: 310,
         },
       },
     });
 
     expect(metadata.stats).toMatchObject({
-      contextTokens: 170,
+      contextTokens: 190,
       responseTokens: 50,
-      totalTokens: 290,
+      totalTokens: 310,
     });
+
+    const onEnd = mocks.uiStreamOptions?.onEnd as (event: {
+      responseMessage: {
+        id: string;
+        parts: Array<{ type: string; text: string }>;
+      };
+    }) => Promise<void>;
+    await onEnd({
+      responseMessage: {
+        id: "assistant-message",
+        parts: [{ type: "text", text: "Done" }],
+      },
+    });
+
+    expect(mocks.completeChatStream).toHaveBeenCalledWith(
+      expect.objectContaining({
+        usage: expect.objectContaining({
+          costSource: "models.dev",
+          inputCostNanoUsd: 1_700_000,
+          outputCostNanoUsd: 640_000,
+          totalCostNanoUsd: 2_340_000,
+        }),
+      }),
+    );
   });
 
   it("persists assistant message metadata at stream completion", async () => {

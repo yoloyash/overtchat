@@ -2,7 +2,9 @@ import "server-only";
 import { generateText, type UIMessage } from "ai";
 import { stripCitationMarkers } from "@/lib/citations";
 import { setTitleIfNull } from "@/lib/db/chats";
+import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
 import type { ModelConfigRow } from "@/lib/db/modelConfigs";
+import { estimateGenerationCost } from "@/lib/providers/server/model-cost";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
 const TITLE_CONTEXT_CHAR_LIMIT = 2000;
@@ -15,15 +17,18 @@ type TitleModelConfig = Pick<
   | "baseUrl"
   | "apiKey"
   | "model"
+  | "pricing"
   | "providerOptions"
 >;
 
 export async function generateChatTitle({
   chatId,
+  userId,
   modelConfig,
   userParts,
 }: {
   chatId: string;
+  userId: string;
   modelConfig: TitleModelConfig;
   userParts: UIMessage["parts"];
 }): Promise<string | null> {
@@ -40,7 +45,7 @@ export async function generateChatTitle({
         model: modelConfig.model,
         providerOptions: modelConfig.providerOptions,
       });
-    const { text } = await generateText({
+    const result = await generateText({
       model,
       prompt,
       providerOptions: {
@@ -55,7 +60,41 @@ export async function generateChatTitle({
       maxRetries: 0,
       abortSignal: AbortSignal.timeout(15_000),
     });
-    const title = cleanGeneratedTitle(text);
+    const tokenUsage = [
+      result.usage.inputTokens,
+      result.usage.inputTokenDetails.noCacheTokens,
+      result.usage.outputTokens,
+      result.usage.inputTokenDetails.cacheReadTokens,
+      result.usage.inputTokenDetails.cacheWriteTokens,
+      result.usage.totalTokens,
+    ];
+    if (tokenUsage.some((value) => value !== undefined)) {
+      const estimatedCost = estimateGenerationCost({
+        providerId: modelConfig.providerId,
+        model: modelConfig.model,
+        usage: result.usage,
+        pricing: modelConfig.pricing,
+      });
+      tryRecordGenerationUsage({
+        id: crypto.randomUUID(),
+        userId,
+        chatId,
+        context: "title",
+        occurredAt: new Date(),
+        providerId: modelConfig.providerId,
+        model: modelConfig.model,
+        inputTokens: result.usage.inputTokens,
+        uncachedInputTokens: result.usage.inputTokenDetails.noCacheTokens,
+        outputTokens: result.usage.outputTokens,
+        cacheReadTokens: result.usage.inputTokenDetails.cacheReadTokens,
+        cacheWriteTokens: result.usage.inputTokenDetails.cacheWriteTokens,
+        totalTokens: result.usage.totalTokens,
+        finishReason: result.finishReason,
+        ...(estimatedCost ?? {}),
+      });
+    }
+
+    const title = cleanGeneratedTitle(result.text);
     return title ? await setTitleIfNull(chatId, title) : null;
   } catch (err) {
     console.error("[title-generation]", err);

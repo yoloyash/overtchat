@@ -31,6 +31,19 @@ raw.exec(`
     metadata TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
   );
+  CREATE TABLE generation_usage (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    chat_id TEXT,
+    message_id TEXT,
+    context TEXT NOT NULL DEFAULT 'chat',
+    occurred_at INTEGER NOT NULL,
+    provider_id TEXT NOT NULL,
+    model TEXT NOT NULL,
+    total_tokens INTEGER,
+    cost_source TEXT,
+    total_cost_nano_usd INTEGER
+  );
   CREATE VIRTUAL TABLE messages_fts USING fts5(
     content,
     message_id UNINDEXED,
@@ -89,6 +102,25 @@ function seedExportSource() {
     }),
     2_000,
   );
+  raw
+    .prepare(
+      `INSERT INTO generation_usage (
+        id, user_id, chat_id, message_id, occurred_at, provider_id, model,
+        total_tokens, cost_source, total_cost_nano_usd
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      "source-stream",
+      "user",
+      "source-chat",
+      "source-assistant",
+      2_000,
+      "custom",
+      "test-model",
+      8_448,
+      "models.dev",
+      12_345,
+    );
 }
 
 describe("native export/import compatibility", () => {
@@ -155,6 +187,24 @@ describe("native export/import compatibility", () => {
             responseTokens: 256,
           },
         }),
+      },
+    ]);
+    expect(
+      raw
+        .prepare(
+          `SELECT
+             id,
+             cost_source AS costSource,
+             total_cost_nano_usd AS totalCostNanoUsd
+           FROM generation_usage
+           ORDER BY id`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        id: "source-stream",
+        costSource: "models.dev",
+        totalCostNanoUsd: 12_345,
       },
     ]);
   });

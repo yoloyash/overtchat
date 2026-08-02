@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
+import { Activity, FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
 import { SidebarChatList } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
@@ -13,6 +13,7 @@ import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
+import { cn } from "@/lib/utils";
 
 export function SidebarClient() {
   const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
@@ -98,6 +99,18 @@ export function SidebarClient() {
             <span className="flex-1 text-left">Search chats</span>
             <Shortcut keys={["Ctrl", "K"]} />
           </button>
+          <Link
+            href="/activity"
+            onClick={() => setOpenMobile(false)}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+              pathname.startsWith("/activity") && "bg-sidebar-accent",
+            )}
+          >
+            <Activity className="size-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1">Activity</span>
+            <LinkPendingIndicator />
+          </Link>
         </nav>
 
         <SectionLabel>Projects</SectionLabel>

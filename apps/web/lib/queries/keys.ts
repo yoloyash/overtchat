@@ -2,6 +2,7 @@ export const chatKeys = {
   all: () => ["chats"] as const,
   list: () => [...chatKeys.all(), "list"] as const,
   detail: (id: string) => [...chatKeys.all(), "detail", id] as const,
+  usage: (id: string) => [...chatKeys.detail(id), "usage"] as const,
 };
 
 export const projectKeys = {
@@ -20,6 +21,14 @@ export const modelConfigKeys = {
 export const userKeys = {
   all: () => ["users"] as const,
   list: () => [...userKeys.all(), "list"] as const,
+};
+
+export const activityKeys = {
+  all: () => ["activity"] as const,
+  leaderboard: (period: string) =>
+    [...activityKeys.all(), "leaderboard", period] as const,
+  profile: (userId: string, timeZone: string) =>
+    [...activityKeys.all(), "profile", userId, timeZone] as const,
 };
 
 export const searchKeys = {
