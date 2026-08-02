@@ -1,36 +1,17 @@
-import type {
-  AgentConnectionDraft,
-  AgentProviderId,
-} from "@/lib/agents/types";
+import type { AgentProviderId } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
-import type { AgentHostRow } from "@/lib/db/agentConnections";
 
 export function connectionAccessError(
   role: string | null | undefined,
-  draft: AgentConnectionDraft,
 ): string | null {
   if (role === "admin") return null;
-  if (draft.transport === "local") {
-    return "Only an administrator can run coding agents on the OvertChat server.";
-  }
-  if (draft.sshAuth === "agent") {
-    return "Only an administrator can use the OvertChat server's SSH agent. Choose a private key instead.";
-  }
-  return null;
+  return "Only administrators can use Agent Connections.";
 }
 
 export function storedConnectionAccessError(
   role: string | null | undefined,
-  host: AgentHostRow,
 ): string | null {
-  if (role === "admin") return null;
-  if (host.transport === "local") {
-    return "Only an administrator can run coding agents on the OvertChat server.";
-  }
-  if (host.sshAuth === "agent") {
-    return "Only an administrator can use the OvertChat server's SSH agent.";
-  }
-  return null;
+  return connectionAccessError(role);
 }
 
 export function connectionErrorMessage(

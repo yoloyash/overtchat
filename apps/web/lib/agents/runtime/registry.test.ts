@@ -347,7 +347,7 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("deduplicates concurrent starts and stops matching workspaces", async () => {
+  it("deduplicates concurrent starts and stops matching owners", async () => {
     vi.clearAllMocks();
     const client = new FakePiClient();
     mocks.startPiRpc.mockReturnValue(client);
@@ -363,5 +363,11 @@ describe("Pi session runtime", () => {
     expect(mocks.startPiRpc).toHaveBeenCalledTimes(1);
     await registry.stopWorkspace("workspace", "user");
     expect(client.stop).toHaveBeenCalledTimes(1);
+
+    const secondClient = new FakePiClient();
+    mocks.startPiRpc.mockReturnValue(secondClient);
+    await registry.getOrStart(record);
+    await registry.stopUser("user");
+    expect(secondClient.stop).toHaveBeenCalledTimes(1);
   });
 });

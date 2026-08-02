@@ -561,6 +561,10 @@ export class AgentRuntimeRegistry {
     );
   }
 
+  async stopUser(userId: string): Promise<void> {
+    await this.stopMatching((runtime) => runtime.userId === userId);
+  }
+
   private async startExisting(
     owned: OwnedAgentSession,
   ): Promise<PiSessionRuntime> {

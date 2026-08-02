@@ -24,18 +24,15 @@ async function authorize(
   if (!session) {
     return { error: new Response("Unauthorized", { status: 401 }) } as const;
   }
-  const owned = await getOwnedAgentSession(id, session.user.id);
-  if (!owned) {
-    return { error: new Response("Not found", { status: 404 }) } as const;
-  }
-  const accessError = storedConnectionAccessError(
-    session.user.role,
-    owned.host,
-  );
+  const accessError = storedConnectionAccessError(session.user.role);
   if (accessError) {
     return {
       error: Response.json({ error: accessError }, { status: 403 }),
     } as const;
+  }
+  const owned = await getOwnedAgentSession(id, session.user.id);
+  if (!owned) {
+    return { error: new Response("Not found", { status: 404 }) } as const;
   }
   return { owned };
 }

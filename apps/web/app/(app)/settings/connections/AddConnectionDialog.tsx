@@ -55,22 +55,18 @@ type TestedConnection = {
 export function AddConnectionDialog({
   open,
   onOpenChange,
-  isAdmin,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  isAdmin: boolean;
 }) {
-  const initialTransport: Transport = isAdmin ? "local" : "ssh";
-  const initialAuth: SshAuth = isAdmin ? "agent" : "private_key";
+  const initialTransport: Transport = "local";
+  const initialAuth: SshAuth = "agent";
   const probeMutation = useProbeAgentConnection();
   const createMutation = useCreateAgentConnection();
   const [selectedProvider, setSelectedProvider] =
     useState<AgentProviderId | null>(null);
   const [transport, setTransport] = useState<Transport>(initialTransport);
-  const [remoteMode, setRemoteMode] = useState<RemoteMode>(
-    isAdmin ? "detected" : "manual",
-  );
+  const [remoteMode, setRemoteMode] = useState<RemoteMode>("detected");
   const [selectedSshAlias, setSelectedSshAlias] = useState<string | null>(
     null,
   );
@@ -92,14 +88,13 @@ export function AddConnectionDialog({
     open &&
       selectedProvider !== null &&
       transport === "ssh" &&
-      remoteMode === "detected" &&
-      isAdmin,
+      remoteMode === "detected",
   );
 
   function reset() {
     setSelectedProvider(null);
     setTransport(initialTransport);
-    setRemoteMode(isAdmin ? "detected" : "manual");
+    setRemoteMode("detected");
     setSelectedSshAlias(null);
     setName(initialTransport === "local" ? "This server" : "Remote agent");
     setExecutable("");
@@ -250,7 +245,7 @@ export function AddConnectionDialog({
     currentSignature !== null && tested?.signature === currentSignature;
   const pending = probeMutation.isPending || createMutation.isPending;
   const choosingSshHost =
-    transport === "ssh" && remoteMode === "detected" && isAdmin;
+    transport === "ssh" && remoteMode === "detected";
 
   async function testConnection() {
     const result = buildDraft();
@@ -425,7 +420,7 @@ export function AddConnectionDialog({
                       setName("This server");
                     } else {
                       setName(`Remote ${providerMetadata.label}`);
-                      setRemoteMode(isAdmin ? "detected" : "manual");
+                      setRemoteMode("detected");
                       setHostname("");
                       setPort("22");
                       setUsername("");
@@ -439,7 +434,6 @@ export function AddConnectionDialog({
                     value="local"
                     label="This server"
                     icon={Server}
-                    disabled={!isAdmin}
                   />
                   <TransportChoice
                     value="ssh"
@@ -447,11 +441,6 @@ export function AddConnectionDialog({
                     icon={Wifi}
                   />
                 </RadioGroup>
-                {!isAdmin && (
-                  <p className="text-xs text-muted-foreground">
-                    Local agent execution is available to administrators.
-                  </p>
-                )}
               </div>
 
               {choosingSshHost && (
@@ -474,19 +463,17 @@ export function AddConnectionDialog({
 
               {transport === "ssh" && remoteMode === "manual" && (
                 <>
-                  {isAdmin && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="-ml-2"
-                      disabled={pending}
-                      onClick={showDetectedConnections}
-                    >
-                      <ChevronLeft />
-                      SSH config
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2"
+                    disabled={pending}
+                    onClick={showDetectedConnections}
+                  >
+                    <ChevronLeft />
+                    SSH config
+                  </Button>
                   <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6rem]">
                     <div className="space-y-1.5">
                       <Label htmlFor="agent-hostname">Hostname</Label>
@@ -541,9 +528,8 @@ export function AddConnectionDialog({
                     >
                       <TransportChoice
                         value="agent"
-                        label="SSH agent"
+                        label="OpenSSH"
                         icon={Monitor}
-                        disabled={!isAdmin}
                       />
                       <TransportChoice
                         value="private_key"
@@ -551,6 +537,12 @@ export function AddConnectionDialog({
                         icon={KeyRound}
                       />
                     </RadioGroup>
+                    {sshAuth === "agent" && (
+                      <p className="text-xs text-muted-foreground">
+                        Uses this server&apos;s SSH config, default identities,
+                        and SSH agent.
+                      </p>
+                    )}
                   </div>
                   {sshAuth === "private_key" && (
                     <div className="space-y-1.5">

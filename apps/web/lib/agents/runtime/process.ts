@@ -118,21 +118,11 @@ function wrapProcess(
   };
 }
 
-export function spawnOnHost(
-  target: HostTarget,
+export function buildSshArgs(
+  target: Extract<HostTarget, { transport: "ssh" }>,
   launch: AgentProcessLaunch,
-): AgentProcess {
-  if (target.transport === "local") {
-    return wrapProcess(
-      spawn(launch.command, launch.args ?? [], {
-        cwd: launch.cwd,
-        env: { ...process.env, ...launch.env },
-        stdio: ["pipe", "pipe", "pipe"],
-      }),
-    );
-  }
-
-  const files = sshHostFiles(target);
+  files: { knownHostsPath: string; identityPath?: string },
+): string[] {
   const args = [
     "-T",
     "-o",
@@ -153,6 +143,25 @@ export function spawnOnHost(
     `${target.username}@${target.hostname}`,
     buildSshRemoteCommand(launch),
   );
+  return args;
+}
+
+export function spawnOnHost(
+  target: HostTarget,
+  launch: AgentProcessLaunch,
+): AgentProcess {
+  if (target.transport === "local") {
+    return wrapProcess(
+      spawn(launch.command, launch.args ?? [], {
+        cwd: launch.cwd,
+        env: { ...process.env, ...launch.env },
+        stdio: ["pipe", "pipe", "pipe"],
+      }),
+    );
+  }
+
+  const files = sshHostFiles(target);
+  const args = buildSshArgs(target, launch, files);
   return wrapProcess(
     spawn("ssh", args, { stdio: ["pipe", "pipe", "pipe"] }),
     () => rmSync(files.directory, { recursive: true, force: true }),

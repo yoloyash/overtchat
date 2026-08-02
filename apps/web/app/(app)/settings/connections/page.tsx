@@ -10,6 +10,7 @@ import { ConnectionsPanel } from "./ConnectionsPanel";
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
+  if (session.user.role !== "admin") redirect("/settings/general");
 
   const queryClient = getQueryClient();
   await queryClient.prefetchQuery({
@@ -19,7 +20,7 @@ export default async function Page() {
 
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
-      <ConnectionsPanel isAdmin={session.user.role === "admin"} />
+      <ConnectionsPanel />
     </HydrationBoundary>
   );
 }

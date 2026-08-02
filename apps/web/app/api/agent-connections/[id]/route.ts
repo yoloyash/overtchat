@@ -19,16 +19,13 @@ export async function POST(
 ) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
-  const { id } = await params;
-  const owned = await getOwnedAgentConnection(id, session.user.id);
-  if (!owned) return new Response("Not found", { status: 404 });
-  const accessError = storedConnectionAccessError(
-    session.user.role,
-    owned.host,
-  );
+  const accessError = storedConnectionAccessError(session.user.role);
   if (accessError) {
     return Response.json({ error: accessError }, { status: 403 });
   }
+  const { id } = await params;
+  const owned = await getOwnedAgentConnection(id, session.user.id);
+  if (!owned) return new Response("Not found", { status: 404 });
 
   try {
     if (!isAgentProviderId(owned.connection.provider)) {
@@ -66,6 +63,10 @@ export async function DELETE(
 ) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
+  const accessError = storedConnectionAccessError(session.user.role);
+  if (accessError) {
+    return Response.json({ error: accessError }, { status: 403 });
+  }
   const { id } = await params;
   await agentRuntimeRegistry.stopConnection(id, session.user.id);
   const deleted = await deleteAgentConnection(id, session.user.id);

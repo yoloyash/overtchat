@@ -19,6 +19,10 @@ export const maxDuration = 150;
 export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
+  const accessError = connectionAccessError(session.user.role);
+  if (accessError) {
+    return Response.json({ error: accessError }, { status: 403 });
+  }
   return Response.json({
     connections: await listAgentConnections(session.user.id),
   });
@@ -27,6 +31,10 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
+  const accessError = connectionAccessError(session.user.role);
+  if (accessError) {
+    return Response.json({ error: accessError }, { status: 403 });
+  }
 
   const parsed = agentConnectionDraftSchema.safeParse(
     await req.json().catch(() => null),
@@ -38,10 +46,6 @@ export async function POST(req: Request) {
     );
   }
   const draft = parsed.data;
-  const accessError = connectionAccessError(session.user.role, draft);
-  if (accessError) {
-    return Response.json({ error: accessError }, { status: 403 });
-  }
   if (draft.transport === "ssh" && !draft.hostKey?.trim()) {
     return Response.json(
       { error: "Test and confirm the SSH host key before connecting." },

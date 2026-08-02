@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { buildSshRemoteCommand } from "./process";
+import { buildSshArgs, buildSshRemoteCommand } from "./process";
 
 describe("SSH process launching", () => {
   it("loads the remote interactive login environment without polluting stdout", () => {
@@ -33,5 +33,44 @@ describe("SSH process launching", () => {
 
     expect(command).toContain("\\''");
     expect(command).toContain("argument with spaces");
+  });
+
+  it("passes configured aliases to OpenSSH without overriding their identities", () => {
+    const args = buildSshArgs(
+      {
+        transport: "ssh",
+        hostname: "workstation",
+        port: 2222,
+        username: "developer",
+        hostKey: "workstation ssh-ed25519 AAAATEST",
+      },
+      { command: "pi", args: ["--mode", "rpc"] },
+      { knownHostsPath: "/tmp/overtchat-known-hosts" },
+    );
+
+    expect(args).toContain("developer@workstation");
+    expect(args).not.toContain("IdentitiesOnly=yes");
+    expect(args).not.toContain("-i");
+  });
+
+  it("isolates explicitly supplied private keys from other identities", () => {
+    const args = buildSshArgs(
+      {
+        transport: "ssh",
+        hostname: "workstation.local",
+        port: 22,
+        username: "developer",
+        hostKey: "workstation.local ssh-ed25519 AAAATEST",
+        privateKey: "PRIVATE KEY",
+      },
+      { command: "pi", args: ["--mode", "rpc"] },
+      {
+        knownHostsPath: "/tmp/overtchat-known-hosts",
+        identityPath: "/tmp/overtchat-identity",
+      },
+    );
+
+    expect(args).toContain("IdentitiesOnly=yes");
+    expect(args).toContain("/tmp/overtchat-identity");
   });
 });

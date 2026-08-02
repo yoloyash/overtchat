@@ -24,7 +24,6 @@ type Item = {
 
 const USER_ITEMS: Item[] = [
   { href: "/settings/general", label: "General", icon: Settings2 },
-  { href: "/settings/connections", label: "Connections", icon: Cable },
   { href: "/settings/tools", label: "Tools", icon: Wrench },
   { href: "/settings/profile", label: "Profile", icon: UserRound },
   { href: "/settings/account", label: "Account", icon: KeyRound },
@@ -32,6 +31,7 @@ const USER_ITEMS: Item[] = [
 ];
 
 const ADMIN_ITEMS: Item[] = [
+  { href: "/settings/connections", label: "Connections", icon: Cable },
   { href: "/settings/models", label: "Models", icon: Cpu },
   { href: "/settings/users", label: "Users", icon: Users },
 ];

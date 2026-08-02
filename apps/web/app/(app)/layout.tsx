@@ -24,6 +24,7 @@ export default async function AppLayout({
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
+  const isAdmin = session.user.role === "admin";
 
   const qc = getQueryClient();
   await Promise.all([
@@ -51,16 +52,18 @@ export default async function AppLayout({
         }));
       },
     }),
-    qc.prefetchQuery({
-      queryKey: agentConnectionKeys.list(),
-      queryFn: async (): Promise<AgentConnectionListItem[]> =>
-        listAgentConnections(session.user.id),
-    }),
+    isAdmin
+      ? qc.prefetchQuery({
+          queryKey: agentConnectionKeys.list(),
+          queryFn: async (): Promise<AgentConnectionListItem[]> =>
+            listAgentConnections(session.user.id),
+        })
+      : Promise.resolve(),
   ]);
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>
-      <AppShell sidebar={<Sidebar />}>{children}</AppShell>
+      <AppShell sidebar={<Sidebar isAdmin={isAdmin} />}>{children}</AppShell>
     </HydrationBoundary>
   );
 }

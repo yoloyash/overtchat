@@ -11,6 +11,10 @@ export const maxDuration = 150;
 export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
+  const accessError = connectionAccessError(session.user.role);
+  if (accessError) {
+    return Response.json({ error: accessError }, { status: 403 });
+  }
 
   const parsed = agentConnectionDraftSchema.safeParse(
     await req.json().catch(() => null),
@@ -20,10 +24,6 @@ export async function POST(req: Request) {
       { error: parsed.error.issues[0]?.message ?? "Invalid connection." },
       { status: 400 },
     );
-  }
-  const accessError = connectionAccessError(session.user.role, parsed.data);
-  if (accessError) {
-    return Response.json({ error: accessError }, { status: 403 });
   }
 
   try {

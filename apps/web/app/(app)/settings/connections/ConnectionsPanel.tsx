@@ -45,7 +45,7 @@ type PendingDetach =
       workspace: AgentWorkspaceListItem;
     };
 
-export function ConnectionsPanel({ isAdmin }: { isAdmin: boolean }) {
+export function ConnectionsPanel() {
   const { data: connections = [], error: listError } = useAgentConnections();
   const testMutation = useTestAgentConnection();
   const refreshMutation = useRefreshAgentWorkspace();
@@ -167,7 +167,6 @@ export function ConnectionsPanel({ isAdmin }: { isAdmin: boolean }) {
             <ConnectionRow
               key={connection.id}
               connection={connection}
-              isAdmin={isAdmin}
               actionId={actionId}
               onTest={() => void testConnection(connection)}
               onAddWorkspace={() => setWorkspaceConnection(connection)}
@@ -194,7 +193,6 @@ export function ConnectionsPanel({ isAdmin }: { isAdmin: boolean }) {
       <AddConnectionDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        isAdmin={isAdmin}
       />
       <AddWorkspaceDialog
         connection={workspaceConnection}
@@ -275,7 +273,6 @@ export function ConnectionsPanel({ isAdmin }: { isAdmin: boolean }) {
 
 function ConnectionRow({
   connection,
-  isAdmin,
   actionId,
   onTest,
   onAddWorkspace,
@@ -284,7 +281,6 @@ function ConnectionRow({
   onDetach,
 }: {
   connection: AgentConnectionListItem;
-  isAdmin: boolean;
   actionId: string | null;
   onTest: () => void;
   onAddWorkspace: () => void;
@@ -294,10 +290,6 @@ function ConnectionRow({
 }) {
   const HostIcon = connection.host.transport === "local" ? Server : Wifi;
   const provider = agentProviderMetadata(connection.provider);
-  const inaccessible =
-    !isAdmin &&
-    (connection.host.transport === "local" ||
-      connection.host.sshAuth === "agent");
   const hostDetail =
     connection.host.transport === "local"
       ? "This server"
@@ -323,11 +315,9 @@ function ConnectionRow({
               {hostDetail}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {inaccessible
-                ? "Administrator access required"
-                : connection.detectedVersion
-                  ? `${provider.label} ${connection.detectedVersion}`
-                  : "Not tested"}
+              {connection.detectedVersion
+                ? `${provider.label} ${connection.detectedVersion}`
+                : "Not tested"}
             </p>
           </div>
         </div>
@@ -336,7 +326,7 @@ function ConnectionRow({
             type="button"
             variant="outline"
             size="sm"
-            disabled={inaccessible || actionId !== null}
+            disabled={actionId !== null}
             onClick={onTest}
           >
             <RefreshCw
@@ -351,7 +341,6 @@ function ConnectionRow({
             type="button"
             variant="outline"
             size="sm"
-            disabled={inaccessible}
             onClick={onAddWorkspace}
           >
             <FolderPlus /> Add workspace

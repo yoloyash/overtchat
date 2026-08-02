@@ -29,6 +29,7 @@ describe("SSH config discovery", () => {
           "hostname 10.0.0.91",
           "port 2222",
           "proxycommand none",
+          "identityfile ~/.ssh/id_ed25519",
         ].join("\n"),
       ),
     ).toEqual({

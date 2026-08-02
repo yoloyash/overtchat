@@ -13,6 +13,7 @@ export default async function AgentSessionPage({
   const { id } = await params;
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
+  if (session.user.role !== "admin") redirect("/");
   const owned = await getOwnedAgentSession(id, session.user.id);
   if (!owned) redirect("/");
   if (!isAgentProviderId(owned.connection.provider)) redirect("/");

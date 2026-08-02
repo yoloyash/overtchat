@@ -84,7 +84,7 @@ describe("agent session route", () => {
     expect(mocks.getOrStart).not.toHaveBeenCalled();
   });
 
-  it("blocks non-admin users from local server execution", async () => {
+  it("blocks non-admin users from Agent Connections", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "owner", role: "user" },
     });
