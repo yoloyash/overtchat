@@ -2,6 +2,7 @@ import "server-only";
 import type {
   AgentModel,
   AgentProviderId,
+  AgentQueuedMessages,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentSlashCommand,
@@ -181,6 +182,7 @@ export class PiSessionRuntime {
       if (event.type === "process_exit") {
         this.clearIdleStop();
         this.clearPendingExtensionRequest();
+        this.queuedMessages = { steering: [], followUp: [] };
         this.status = "exited";
         this.error =
           typeof event.error === "string"
@@ -220,6 +222,12 @@ export class PiSessionRuntime {
       if (event.type === "queue_update") {
         const queuedMessages = parsePiQueueUpdate(event);
         if (queuedMessages) this.queuedMessages = queuedMessages;
+      }
+      if (
+        event.type === "message_start" &&
+        this.consumeMirroredOmpMessage(event.message)
+      ) {
+        this.publishSnapshot();
       }
       this.publish({ type: "pi_event", data: event });
       if (
@@ -331,10 +339,7 @@ export class PiSessionRuntime {
           new Error("New sessions must be created by the runtime registry."),
         );
       case "prompt":
-        return this.client.prompt(
-          command.message,
-          command.streamingBehavior,
-        );
+        return this.prompt(command);
       case "abort":
         return this.client.abort();
       case "set_model":
@@ -405,6 +410,12 @@ export class PiSessionRuntime {
       this.thinkingLevels = thinkingLevels;
       this.commands = commands;
       this.status = state.isStreaming === true ? "running" : "idle";
+      if (
+        this.provider === "omp" &&
+        state.queuedMessageCount === 0
+      ) {
+        this.queuedMessages = { steering: [], followUp: [] };
+      }
       this.error = undefined;
       await updateAgentSessionMetadata(this.dbSessionId, {
         name:
@@ -453,6 +464,88 @@ export class PiSessionRuntime {
       this.pendingExtensionTimer = undefined;
     }
     this.pendingExtensionRequest = undefined;
+  }
+
+  private prompt(
+    command: Extract<AgentSessionCommand, { type: "prompt" }>,
+  ): Promise<unknown> {
+    const behavior = command.streamingBehavior;
+    if (
+      this.provider !== "omp" ||
+      !behavior ||
+      !this.shouldMirrorOmpPrompt(command.message)
+    ) {
+      return this.client.prompt(command.message, behavior);
+    }
+
+    const queue: keyof AgentQueuedMessages =
+      behavior === "steer" ? "steering" : "followUp";
+    this.queuedMessages = {
+      ...this.queuedMessages,
+      [queue]: [...this.queuedMessages[queue], command.message],
+    };
+    this.publishSnapshot();
+
+    return this.client.prompt(command.message, behavior).catch((error) => {
+      const messages = [...this.queuedMessages[queue]];
+      const index = messages.lastIndexOf(command.message);
+      if (index >= 0) {
+        messages.splice(index, 1);
+        this.queuedMessages = {
+          ...this.queuedMessages,
+          [queue]: messages,
+        };
+        this.publishSnapshot();
+      }
+      throw error;
+    });
+  }
+
+  private shouldMirrorOmpPrompt(message: string): boolean {
+    const match = /^\/([a-z0-9:-]+)/iu.exec(message.trim());
+    if (!match) return true;
+    const command = this.commands.find(
+      (candidate) =>
+        candidate.name.toLowerCase() === match[1].toLowerCase(),
+    );
+    return (
+      !command ||
+      ["file", "mcp_prompt", "prompt", "skill"].includes(command.source)
+    );
+  }
+
+  private consumeMirroredOmpMessage(message: unknown): boolean {
+    if (
+      this.provider !== "omp" ||
+      !message ||
+      typeof message !== "object"
+    ) {
+      return false;
+    }
+    const role = Reflect.get(message, "role");
+    const userMessage = role === "user";
+    const userCustomMessage =
+      role === "custom" && Reflect.get(message, "attribution") === "user";
+    if (!userMessage && !userCustomMessage) return false;
+
+    let queue: keyof AgentQueuedMessages;
+    if (userMessage) {
+      queue =
+        Reflect.get(message, "steering") === true
+          ? "steering"
+          : "followUp";
+    } else {
+      queue =
+        this.queuedMessages.steering.length > 0
+          ? "steering"
+          : "followUp";
+    }
+    if (this.queuedMessages[queue].length === 0) return false;
+    this.queuedMessages = {
+      ...this.queuedMessages,
+      [queue]: this.queuedMessages[queue].slice(1),
+    };
+    return true;
   }
 
   private publishSnapshot(): void {

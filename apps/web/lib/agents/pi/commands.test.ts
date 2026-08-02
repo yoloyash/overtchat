@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAgentPromptCommand,
   mergeAgentSlashCommands,
   mergePiSlashCommands,
   normalizeAgentSessionCommand,
@@ -42,6 +43,25 @@ describe("Pi slash commands", () => {
     expect(piSlashCommandQuery("/review:2")).toBe("review:2");
     expect(piSlashCommandQuery("/skill:docs extra")).toBeNull();
     expect(piSlashCommandQuery("/etc/hosts")).toBeNull();
+  });
+
+  it("queues ordinary prompts while preserving explicit steering", () => {
+    expect(buildAgentPromptCommand("Next task", false)).toEqual({
+      type: "prompt",
+      message: "Next task",
+    });
+    expect(buildAgentPromptCommand("Next task", true)).toEqual({
+      type: "prompt",
+      message: "Next task",
+      streamingBehavior: "followUp",
+    });
+    expect(
+      buildAgentPromptCommand("Change direction", true, "steer"),
+    ).toEqual({
+      type: "prompt",
+      message: "Change direction",
+      streamingBehavior: "steer",
+    });
   });
 
   it("routes Overtchat built-ins to native RPC commands", () => {

@@ -12,7 +12,10 @@ import type {
   AgentSessionCommand,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
-import { normalizeAgentSessionCommand } from "@/lib/agents/pi/commands";
+import {
+  buildAgentPromptCommand,
+  normalizeAgentSessionCommand,
+} from "@/lib/agents/pi/commands";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   useAgentSession,
@@ -131,13 +134,11 @@ export function AgentSessionView({
     try {
       input = normalizeAgentSessionCommand(
         provider,
-        {
-          type: "prompt",
+        buildAgentPromptCommand(
           message,
-          ...(snapshot?.status === "running"
-            ? { streamingBehavior: streamingBehavior ?? "steer" }
-            : {}),
-        },
+          snapshot?.status === "running",
+          streamingBehavior,
+        ),
         snapshot?.state ?? {},
       );
     } catch (cause) {

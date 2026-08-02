@@ -71,6 +71,20 @@ export function piSlashCommandQuery(value: string): string | null {
   return match ? match[1].toLowerCase() : null;
 }
 
+export function buildAgentPromptCommand(
+  message: string,
+  running: boolean,
+  streamingBehavior?: "steer" | "followUp",
+): Extract<AgentSessionCommand, { type: "prompt" }> {
+  return {
+    type: "prompt",
+    message,
+    ...(running
+      ? { streamingBehavior: streamingBehavior ?? "followUp" }
+      : {}),
+  };
+}
+
 type PiSlashInvocation = {
   name: string;
   arguments: string;

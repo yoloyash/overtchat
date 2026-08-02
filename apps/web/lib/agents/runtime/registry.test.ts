@@ -242,11 +242,15 @@ describe("Pi session runtime", () => {
       "Summarize after the current run",
       "followUp",
     );
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: [],
+      followUp: [],
+    });
     expect(client.compact).not.toHaveBeenCalled();
     await runtime.stop();
   });
 
-  it("forwards OMP native compact commands and settles on agent_end", async () => {
+  it("mirrors OMP pending messages until their user turns begin", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -264,6 +268,105 @@ describe("Pi session runtime", () => {
 
     await runtime.command({
       type: "prompt",
+      message: "Summarize after the current run",
+      streamingBehavior: "followUp",
+    });
+    await runtime.command({
+      type: "prompt",
+      message: "Focus on the failing test",
+      streamingBehavior: "steer",
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: ["Focus on the failing test"],
+      followUp: ["Summarize after the current run"],
+    });
+
+    client.emit({
+      type: "message_start",
+      message: {
+        role: "user",
+        content: [{ type: "text", text: "Focus on the failing test" }],
+        steering: true,
+        timestamp: 1,
+      },
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: [],
+      followUp: ["Summarize after the current run"],
+    });
+
+    client.emit({
+      type: "message_start",
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "Summarize after the current run" },
+        ],
+        timestamp: 2,
+      },
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: [],
+      followUp: [],
+    });
+    await runtime.stop();
+  });
+
+  it("rolls back an OMP pending message when submission fails", async () => {
+    const client = new FakePiClient();
+    client.prompt.mockRejectedValueOnce(new Error("Queue rejected"));
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      runtime.command({
+        type: "prompt",
+        message: "Try this later",
+        streamingBehavior: "followUp",
+      }),
+    ).rejects.toThrow("Queue rejected");
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: [],
+      followUp: [],
+    });
+    await runtime.stop();
+  });
+
+  it("forwards OMP native compact commands and settles on agent_end", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        commands: [
+          {
+            name: "compact",
+            source: "builtin",
+          },
+        ],
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({
+      type: "prompt",
       message: "/compact focus on tests",
     });
     client.emit({ type: "agent_start" });
@@ -274,6 +377,10 @@ describe("Pi session runtime", () => {
       "/compact focus on tests",
       undefined,
     );
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: [],
+      followUp: [],
+    });
     expect(client.compact).not.toHaveBeenCalled();
     await vi.waitFor(() => {
       expect(runtime.snapshot().status).toBe("idle");

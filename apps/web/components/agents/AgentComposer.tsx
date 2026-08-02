@@ -7,7 +7,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { ArrowUp, Command, Square } from "lucide-react";
+import {
+  ArrowUp,
+  Command,
+  CornerDownRight,
+  CornerUpRight,
+  ListEnd,
+  Square,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { piSlashCommandQuery } from "@/lib/agents/pi/commands";
@@ -153,20 +160,28 @@ export function AgentComposer({
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      submit(running && event.altKey ? "followUp" : undefined);
+      submit(
+        running
+          ? event.altKey
+            ? "steer"
+            : "followUp"
+          : undefined,
+      );
     }
   }
 
   const queueRows = [
     ...queuedMessages.steering.map((message, index) => ({
       key: `steer-${index}`,
-      label: "Steer",
+      label: "Steering",
       message,
+      icon: CornerUpRight,
     })),
     ...queuedMessages.followUp.map((message, index) => ({
       key: `follow-up-${index}`,
-      label: "Follow-up",
+      label: "Queued",
       message,
+      icon: CornerDownRight,
     })),
   ];
 
@@ -225,30 +240,37 @@ export function AgentComposer({
         </div>
       )}
 
-      <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
-        {queueRows.length > 0 && (
-          <section
-            aria-label="Queued messages"
-            className="max-h-24 overflow-y-auto border-b pb-2"
-          >
-            {queueRows.map((row) => (
-              <div
-                key={row.key}
-                className="flex min-w-0 items-center gap-2 py-0.5 text-xs"
-              >
-                <span className="w-16 shrink-0 font-medium text-foreground">
-                  {row.label}
-                </span>
-                <span
-                  className="min-w-0 flex-1 truncate text-muted-foreground"
-                  title={row.message}
+      {queueRows.length > 0 && (
+        <section
+          aria-label="Pending messages"
+          className="mx-3 max-h-32 overflow-y-auto rounded-t-xl border border-b-0 bg-muted/50 px-3"
+        >
+          <div className="divide-y">
+            {queueRows.map((row) => {
+              const Icon = row.icon;
+              return (
+                <div
+                  key={row.key}
+                  className="flex min-h-10 min-w-0 items-center gap-2.5 text-xs"
                 >
-                  {row.message.replace(/\s+/g, " ")}
-                </span>
-              </div>
-            ))}
-          </section>
-        )}
+                  <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span
+                    className="min-w-0 flex-1 truncate text-foreground"
+                    title={row.message}
+                  >
+                    {row.message.replace(/\s+/g, " ")}
+                  </span>
+                  <span className="shrink-0 font-medium text-muted-foreground">
+                    {row.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <div className="relative flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
         <Textarea
           ref={textareaRef}
           rows={1}
@@ -272,31 +294,53 @@ export function AgentComposer({
         />
         <div className="flex h-8 items-center justify-end gap-1">
           {running && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon-sm"
-              className="rounded-full"
-              disabled={pending}
-              onClick={onStop}
-              aria-label={`Stop ${providerLabel}`}
-              title={`Stop ${providerLabel}`}
-            >
-              <Square className="size-3 fill-current" />
-            </Button>
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-sm"
+                className="rounded-full"
+                disabled={pending}
+                onClick={onStop}
+                aria-label={`Stop ${providerLabel}`}
+                title={`Stop ${providerLabel}`}
+              >
+                <Square className="size-3 fill-current" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="rounded-full"
+                disabled={!input.trim() || pending || disabled}
+                onClick={() => submit("steer")}
+                aria-label={`Steer ${providerLabel}`}
+                title={`Steer ${providerLabel}`}
+              >
+                <CornerUpRight />
+                Steer
+              </Button>
+            </>
           )}
           <Button
             type="button"
-            size="icon-sm"
+            size={running ? "sm" : "icon-sm"}
             className="rounded-full"
             disabled={!input.trim() || pending || disabled}
-            onClick={() => submit()}
+            onClick={() => submit(running ? "followUp" : undefined)}
             aria-label={
-              running ? `Steer ${providerLabel}` : "Send message"
+              running
+                ? `Queue message for ${providerLabel}`
+                : "Send message"
             }
-            title={running ? `Steer ${providerLabel}` : "Send message"}
+            title={
+              running
+                ? `Queue message for ${providerLabel}`
+                : "Send message"
+            }
           >
-            <ArrowUp />
+            {running ? <ListEnd /> : <ArrowUp />}
+            {running && "Queue"}
           </Button>
         </div>
       </div>
