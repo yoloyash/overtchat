@@ -542,7 +542,7 @@ function SummaryMessage({
           </span>
           {tokens !== null && (
             <span className="block text-[11px] text-muted-foreground">
-              {tokens.toLocaleString()} tokens summarized
+              Compacted from {tokens.toLocaleString()} tokens
             </span>
           )}
         </span>
