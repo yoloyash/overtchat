@@ -1,18 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
   Brain,
   ChevronDown,
+  CircleAlert,
   CircleCheck,
   CircleX,
-  GitBranch,
+  FilePenLine,
+  FileText,
+  Globe,
+  Loader2,
   Minimize2,
+  Search,
   Terminal,
   Wrench,
+  GitBranch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +26,18 @@ import {
   STREAMDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
 import { ThinkingContent } from "@/components/chat/ThinkingContent";
+import {
+  agentToolStatus,
+  describeAgentActivity,
+  describeAgentTool,
+  formatAgentToolDetail,
+  projectAgentTranscript,
+  type AgentActivityEntry,
+  type AgentToolActivity,
+  type AgentToolCategory,
+  type AgentToolStatus,
+  type AgentTranscriptItem,
+} from "@/lib/agents/presentation";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -52,14 +70,6 @@ function textOfContent(content: unknown): string {
     .join("\n");
 }
 
-function messageKey(message: unknown, index: number): string {
-  const record = recordOf(message);
-  const role = String(record?.role ?? "message");
-  const identity =
-    record?.id ?? record?.toolCallId ?? record?.timestamp ?? index;
-  return `${role}:${String(identity)}:${index}`;
-}
-
 export function AgentMessageList({
   providerLabel,
   messages,
@@ -78,6 +88,10 @@ export function AgentMessageList({
       initial: "instant",
       resize: "instant",
     });
+  const transcript = useMemo(
+    () => projectAgentTranscript(messages),
+    [messages],
+  );
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -99,11 +113,11 @@ export function AgentMessageList({
             </div>
           ) : (
             <div className="space-y-6">
-              {messages.map((message, index) => (
-                <AgentMessage
-                  key={messageKey(message, index)}
-                  message={message}
-                  streaming={streaming && index === messages.length - 1}
+              {transcript.map((item, index) => (
+                <AgentTranscriptRow
+                  key={item.key}
+                  item={item}
+                  active={streaming && index === transcript.length - 1}
                 />
               ))}
               {streaming && roleOf(messages.at(-1)) === "user" && (
@@ -155,27 +169,35 @@ export function AgentMessageList({
   );
 }
 
-function AgentMessage({
-  message,
-  streaming,
+function AgentTranscriptRow({
+  item,
+  active,
 }: {
-  message: unknown;
-  streaming: boolean;
+  item: AgentTranscriptItem;
+  active: boolean;
 }) {
+  if (item.type === "message") {
+    return <AgentMessage message={item.message} />;
+  }
+  if (item.type === "assistant_text") {
+    return (
+      <div className="text-sm leading-relaxed">
+        <Markdown streaming={active}>{item.text}</Markdown>
+      </div>
+    );
+  }
+  if (item.type === "assistant_error") {
+    return <p className="text-sm text-destructive">{item.text}</p>;
+  }
+  return <AgentActivityGroup entries={item.entries} active={active} />;
+}
+
+function AgentMessage({ message }: { message: unknown }) {
   const record = recordOf(message);
   if (!record) return null;
   const role = roleOf(message);
   if (role === "user") {
     return <UserMessage content={contentOf(message)} />;
-  }
-  if (role === "assistant") {
-    return <AssistantMessage message={record} streaming={streaming} />;
-  }
-  if (role === "toolResult") {
-    return <ToolResultMessage message={record} />;
-  }
-  if (role === "bashExecution") {
-    return <BashExecutionMessage message={record} />;
   }
   if (role === "compactionSummary" || role === "branchSummary") {
     return <SummaryMessage message={record} role={role} />;
@@ -232,61 +254,241 @@ function UserMessage({ content }: { content: unknown }) {
   );
 }
 
-function AssistantMessage({
-  message,
-  streaming,
+function AgentActivityGroup({
+  entries,
+  active,
 }: {
-  message: UnknownRecord;
-  streaming: boolean;
+  entries: AgentActivityEntry[];
+  active: boolean;
 }) {
-  const content = Array.isArray(message.content) ? message.content : [];
-  const usage = recordOf(message.usage);
-  const cost = recordOf(usage?.cost);
+  const presentation = describeAgentActivity(entries, active);
+  const hasError = presentation.status === "failed";
+  const [open, setOpen] = useState(hasError);
+  const toolCount = entries.filter((entry) => entry.type === "tool").length;
+
   return (
-    <div className="space-y-3 text-sm leading-relaxed">
-      {content.map((part, index) => {
-        const record = recordOf(part);
-        if (!record) return null;
-        if (record.type === "text" && typeof record.text === "string") {
-          return (
-            <Markdown
-              key={index}
-              streaming={streaming && index === content.length - 1}
-            >
-              {record.text}
-            </Markdown>
-          );
-        }
-        if (
-          record.type === "thinking" &&
-          typeof record.thinking === "string"
-        ) {
-          return <ThinkingBlock key={index} content={record.thinking} />;
-        }
-        if (
-          record.type === "toolCall" &&
-          typeof record.name === "string"
-        ) {
-          return (
-            <ToolCallBlock
-              key={typeof record.id === "string" ? record.id : index}
-              name={record.name}
-              args={record.arguments}
-            />
-          );
-        }
-        return null;
-      })}
-      {typeof message.errorMessage === "string" && message.errorMessage && (
-        <p className="text-sm text-destructive">{message.errorMessage}</p>
+    <div
+      className={cn(
+        "overflow-hidden rounded-lg border bg-muted/10 text-xs",
+        hasError && "border-destructive/30",
       )}
-      {!streaming && usage && (
-        <p className="font-mono text-[11px] text-muted-foreground">
-          {formatUsage(usage, cost)}
-        </p>
+      data-testid="agent-activity-group"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left motion-colors hover:bg-muted/30"
+      >
+        <ActivityIcon
+          entries={entries}
+          status={presentation.status}
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">
+            {presentation.label}
+          </span>
+          {presentation.secondary && (
+            <span className="block truncate font-mono text-[11px] text-muted-foreground">
+              {presentation.secondary}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground motion-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="divide-y border-t" data-testid="agent-activity-details">
+          {entries.map((entry) =>
+            entry.type === "thinking" ? (
+              <ThinkingActivityRow key={entry.id} content={entry.content} />
+            ) : (
+              <ToolActivityRow
+                key={entry.id}
+                tool={entry.tool}
+                active={active}
+                defaultOpen={toolCount === 1}
+              />
+            ),
+          )}
+        </div>
       )}
     </div>
   );
+}
+
+function ThinkingActivityRow({ content }: { content: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-muted-foreground motion-colors hover:bg-muted/30 hover:text-foreground"
+      >
+        <Brain className="size-3.5 shrink-0" />
+        <span className="min-w-0 flex-1 font-medium">Thinking</span>
+        <ChevronDown
+          className={cn(
+            "size-3 shrink-0 motion-transform",
+            open && "rotate-180",
+          )}
+        />
+      </button>
+      {open && (
+        <div className="border-t px-3 py-3">
+          <ThinkingContent content={content} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ToolActivityRow({
+  tool,
+  active,
+  defaultOpen,
+}: {
+  tool: AgentToolActivity;
+  active: boolean;
+  defaultOpen: boolean;
+}) {
+  const presentation = describeAgentTool(tool);
+  const status = agentToolStatus(tool, active);
+  const detail = formatAgentToolDetail(tool);
+  const [open, setOpen] = useState(defaultOpen && Boolean(detail));
+  const canOpen = Boolean(detail);
+
+  return (
+    <div data-testid="agent-tool-activity">
+      <button
+        type="button"
+        onClick={() => canOpen && setOpen((current) => !current)}
+        disabled={!canOpen}
+        aria-expanded={canOpen ? open : undefined}
+        aria-label={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}
+        className={cn(
+          "flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left",
+          canOpen && "motion-colors hover:bg-muted/30",
+        )}
+      >
+        <ToolIcon category={presentation.category} />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">
+            {presentation.label}
+          </span>
+          {presentation.summary && (
+            <span className="block truncate font-mono text-[11px] text-muted-foreground">
+              {presentation.summary}
+            </span>
+          )}
+        </span>
+        <ToolStatusIcon status={status} />
+        {canOpen && (
+          <ChevronDown
+            className={cn(
+              "size-3 shrink-0 text-muted-foreground motion-transform",
+              open && "rotate-180",
+            )}
+          />
+        )}
+      </button>
+      {open && detail && (
+        <pre className="max-h-80 overflow-auto border-t bg-background/40 px-3 py-3 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+          {detail}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function ActivityIcon({
+  entries,
+  status,
+}: {
+  entries: AgentActivityEntry[];
+  status: AgentToolStatus;
+}) {
+  if (status === "running") {
+    return (
+      <Loader2
+        className={cn(
+          "size-4 shrink-0 text-muted-foreground",
+          motionClasses.spinner,
+        )}
+      />
+    );
+  }
+  if (status === "failed" || status === "stopped") {
+    return (
+      <CircleAlert
+        className={cn(
+          "size-4 shrink-0",
+          status === "failed" ? "text-destructive" : "text-muted-foreground",
+        )}
+      />
+    );
+  }
+  const categories = new Set(
+    entries.flatMap((entry) =>
+      entry.type === "tool" ? [describeAgentTool(entry.tool).category] : [],
+    ),
+  );
+  if (categories.size === 0) {
+    return <Brain className="size-4 shrink-0 text-muted-foreground" />;
+  }
+  if (categories.size !== 1) {
+    return <Wrench className="size-4 shrink-0 text-muted-foreground" />;
+  }
+  return <ToolIcon category={[...categories][0]} className="size-4" />;
+}
+
+function ToolIcon({
+  category,
+  className = "size-3.5",
+}: {
+  category: AgentToolCategory;
+  className?: string;
+}) {
+  const iconClassName = cn(className, "shrink-0 text-muted-foreground");
+  switch (category) {
+    case "shell":
+      return <Terminal className={iconClassName} />;
+    case "read":
+      return <FileText className={iconClassName} />;
+    case "edit":
+    case "write":
+      return <FilePenLine className={iconClassName} />;
+    case "search":
+      return <Search className={iconClassName} />;
+    case "fetch":
+      return <Globe className={iconClassName} />;
+    case "other":
+      return <Wrench className={iconClassName} />;
+  }
+}
+
+function ToolStatusIcon({ status }: { status: AgentToolStatus }) {
+  const className = cn(
+    "size-3.5 shrink-0 text-muted-foreground",
+    status === "running" && motionClasses.spinner,
+    status === "failed" && "text-destructive",
+  );
+  switch (status) {
+    case "running":
+      return <Loader2 className={className} />;
+    case "completed":
+      return <CircleCheck className={className} />;
+    case "failed":
+      return <CircleAlert className={className} />;
+    case "stopped":
+      return <CircleX className={className} />;
+  }
 }
 
 function Markdown({
@@ -306,124 +508,6 @@ function Markdown({
     >
       {children}
     </Streamdown>
-  );
-}
-
-function ThinkingBlock({ content }: { content: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        className="flex items-center gap-2 py-1 text-xs font-medium text-muted-foreground motion-colors hover:text-foreground"
-      >
-        <Brain className="size-3.5" />
-        <span>Thinking</span>
-        <ChevronDown
-          className={cn("size-3 motion-transform", open && "rotate-180")}
-        />
-      </button>
-      {open && (
-        <div className="mt-1 border-l pl-3">
-          <ThinkingContent content={content} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ToolCallBlock({ name, args }: { name: string; args: unknown }) {
-  const command =
-    recordOf(args) && typeof recordOf(args)?.command === "string"
-      ? String(recordOf(args)?.command)
-      : null;
-  const detail = command ?? formatUnknown(args);
-  return (
-    <div className="overflow-hidden rounded-lg border bg-muted/20">
-      <div className="flex items-center gap-2 border-b px-3 py-2 text-xs font-medium">
-        <Wrench className="size-3.5 text-muted-foreground" />
-        <span>{name}</span>
-      </div>
-      {detail && (
-        <pre className="max-h-72 overflow-auto p-3 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
-          {detail}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function ToolResultMessage({ message }: { message: UnknownRecord }) {
-  const [open, setOpen] = useState(message.isError === true);
-  const text = textOfContent(message.content);
-  const partial = message.overtchatPartial === true;
-  const Icon = message.isError === true ? CircleX : CircleCheck;
-  const usage = recordOf(message.usage);
-  const cost = recordOf(usage?.cost);
-  return (
-    <div className="rounded-lg border bg-muted/10 text-xs">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left motion-colors hover:bg-muted/30"
-      >
-        <Icon
-          className={cn(
-            "size-3.5 shrink-0",
-            message.isError === true
-              ? "text-destructive"
-              : "text-muted-foreground",
-          )}
-        />
-        <span className="min-w-0 flex-1 truncate font-medium">
-          {String(message.toolName ?? "Tool")}{" "}
-          {partial ? "running" : message.isError === true ? "failed" : "completed"}
-        </span>
-        <ChevronDown
-          className={cn("size-3 motion-transform", open && "rotate-180")}
-        />
-      </button>
-      {open && text && (
-        <pre className="max-h-80 overflow-auto border-t p-3 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
-          {text}
-        </pre>
-      )}
-      {!partial && usage && (
-        <p className="border-t px-3 py-2 font-mono text-[11px] text-muted-foreground">
-          {formatUsage(usage, cost)}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function BashExecutionMessage({ message }: { message: UnknownRecord }) {
-  const [open, setOpen] = useState(true);
-  const command = String(message.command ?? "");
-  const output = typeof message.output === "string" ? message.output : "";
-  return (
-    <div className="overflow-hidden rounded-lg border bg-muted/15 text-xs">
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left motion-colors hover:bg-muted/30"
-      >
-        <Terminal className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono">{command}</span>
-        <ChevronDown
-          className={cn("size-3 motion-transform", open && "rotate-180")}
-        />
-      </button>
-      {open && output && (
-        <pre className="max-h-80 overflow-auto border-t p-3 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
-          {output}
-        </pre>
-      )}
-    </div>
   );
 }
 
@@ -473,46 +557,4 @@ function SummaryMessage({
       )}
     </div>
   );
-}
-
-function formatUnknown(value: unknown): string {
-  if (value === undefined) return "";
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function formatUsage(
-  usage: UnknownRecord,
-  cost: UnknownRecord | null,
-): string {
-  const input = numberOf(usage.input);
-  const output = numberOf(usage.output);
-  const cacheRead = numberOf(usage.cacheRead);
-  const parts = [
-    input !== null ? `${input.toLocaleString()} in` : null,
-    output !== null ? `${output.toLocaleString()} out` : null,
-    cacheRead ? `${cacheRead.toLocaleString()} cached` : null,
-    cost && numberOf(cost.total) !== null
-      ? formatCost(numberOf(cost.total)!)
-      : null,
-  ].filter((value): value is string => value !== null);
-  return parts.join(" · ");
-}
-
-function numberOf(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function formatCost(value: number): string {
-  if (value === 0) return "$0.00";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: value < 0.01 ? 4 : 2,
-    maximumFractionDigits: value < 0.01 ? 4 : 2,
-  }).format(value);
 }
