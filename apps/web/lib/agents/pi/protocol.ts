@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   AgentModel,
   AgentProviderId,
+  AgentQueuedMessages,
   AgentSlashCommand,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -107,6 +108,14 @@ const sessionStatsSchema = z
   })
   .passthrough();
 
+const queueUpdateSchema = z
+  .object({
+    type: z.literal("queue_update"),
+    steering: z.array(z.string()),
+    followUp: z.array(z.string()),
+  })
+  .passthrough();
+
 export type PiRpcCommand = {
   type: string;
   [key: string]: unknown;
@@ -161,6 +170,18 @@ export function parsePiCommands(value: unknown): AgentSlashCommand[] {
     source: command.source,
     ...(command.input?.hint ? { argumentHint: command.input.hint } : {}),
   }));
+}
+
+export function parsePiQueueUpdate(
+  value: unknown,
+): AgentQueuedMessages | null {
+  const parsed = queueUpdateSchema.safeParse(value);
+  return parsed.success
+    ? {
+        steering: parsed.data.steering,
+        followUp: parsed.data.followUp,
+      }
+    : null;
 }
 
 export function parsePiSessionStats(value: unknown): AgentSessionStats {

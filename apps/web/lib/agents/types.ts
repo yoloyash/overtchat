@@ -173,6 +173,11 @@ export type AgentSlashCommand = {
   argumentHint?: string;
 };
 
+export type AgentQueuedMessages = {
+  steering: string[];
+  followUp: string[];
+};
+
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("prompt"),
@@ -246,6 +251,7 @@ export type AgentRuntimeSnapshot = {
   thinkingLevels: AgentThinkingLevel[];
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
+  queuedMessages: AgentQueuedMessages;
   pendingExtensionRequest?: {
     type: "extension_ui_request";
     id: string;

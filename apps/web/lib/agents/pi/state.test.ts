@@ -15,6 +15,7 @@ function snapshot(): AgentRuntimeSnapshot {
     models: [],
     thinkingLevels: ["off"],
     commands: [],
+    queuedMessages: { steering: [], followUp: [] },
     stats: {
       sessionFile: null,
       sessionId: null,
@@ -198,6 +199,34 @@ describe("agent runtime event reducer", () => {
     expect(settled).toMatchObject({
       status: "idle",
       state: { isStreaming: false },
+    });
+  });
+
+  it("tracks authoritative steering and follow-up queues", () => {
+    const queued = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "queue_update",
+        steering: ["Check the database path"],
+        followUp: ["Then summarize"],
+      }),
+    )!;
+    const drained = applyAgentRuntimeEnvelope(
+      queued,
+      event({
+        type: "queue_update",
+        steering: [],
+        followUp: [],
+      }),
+    )!;
+
+    expect(queued.queuedMessages).toEqual({
+      steering: ["Check the database path"],
+      followUp: ["Then summarize"],
+    });
+    expect(drained.queuedMessages).toEqual({
+      steering: [],
+      followUp: [],
     });
   });
 

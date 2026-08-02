@@ -11,7 +11,10 @@ import { ArrowUp, Command, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { piSlashCommandQuery } from "@/lib/agents/pi/commands";
-import type { AgentSlashCommand } from "@/lib/agents/types";
+import type {
+  AgentQueuedMessages,
+  AgentSlashCommand,
+} from "@/lib/agents/types";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +34,7 @@ function commandSource(source: AgentSlashCommand["source"]): string {
 export function AgentComposer({
   providerLabel,
   commands,
+  queuedMessages,
   running,
   pending,
   disabled,
@@ -39,10 +43,14 @@ export function AgentComposer({
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
+  queuedMessages: AgentQueuedMessages;
   running: boolean;
   pending: boolean;
   disabled: boolean;
-  onSubmit: (message: string) => void;
+  onSubmit: (
+    message: string,
+    streamingBehavior?: "steer" | "followUp",
+  ) => void;
   onStop: () => void;
 }) {
   const [input, setInput] = useState("");
@@ -103,10 +111,10 @@ export function AgentComposer({
     });
   }
 
-  function submit() {
+  function submit(streamingBehavior?: "steer" | "followUp") {
     const message = input.trim();
     if (!message || pending || disabled) return;
-    onSubmit(message);
+    onSubmit(message, streamingBehavior);
     setInput("");
     setDismissedDraft(null);
     setActiveIndex(0);
@@ -145,9 +153,22 @@ export function AgentComposer({
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      submit();
+      submit(running && event.altKey ? "followUp" : undefined);
     }
   }
+
+  const queueRows = [
+    ...queuedMessages.steering.map((message, index) => ({
+      key: `steer-${index}`,
+      label: "Steer",
+      message,
+    })),
+    ...queuedMessages.followUp.map((message, index) => ({
+      key: `follow-up-${index}`,
+      label: "Follow-up",
+      message,
+    })),
+  ];
 
   return (
     <div className="relative">
@@ -205,6 +226,29 @@ export function AgentComposer({
       )}
 
       <div className="flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+        {queueRows.length > 0 && (
+          <section
+            aria-label="Queued messages"
+            className="max-h-24 overflow-y-auto border-b pb-2"
+          >
+            {queueRows.map((row) => (
+              <div
+                key={row.key}
+                className="flex min-w-0 items-center gap-2 py-0.5 text-xs"
+              >
+                <span className="w-16 shrink-0 font-medium text-foreground">
+                  {row.label}
+                </span>
+                <span
+                  className="min-w-0 flex-1 truncate text-muted-foreground"
+                  title={row.message}
+                >
+                  {row.message.replace(/\s+/g, " ")}
+                </span>
+              </div>
+            ))}
+          </section>
+        )}
         <Textarea
           ref={textareaRef}
           rows={1}
@@ -246,7 +290,7 @@ export function AgentComposer({
             size="icon-sm"
             className="rounded-full"
             disabled={!input.trim() || pending || disabled}
-            onClick={submit}
+            onClick={() => submit()}
             aria-label={
               running ? `Steer ${providerLabel}` : "Send message"
             }

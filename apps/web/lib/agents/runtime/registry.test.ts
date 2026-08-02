@@ -233,6 +233,15 @@ describe("Pi session runtime", () => {
       "/skill:docs explain caching",
       undefined,
     );
+    await runtime.command({
+      type: "prompt",
+      message: "Summarize after the current run",
+      streamingBehavior: "followUp",
+    });
+    expect(client.prompt).toHaveBeenCalledWith(
+      "Summarize after the current run",
+      "followUp",
+    );
     expect(client.compact).not.toHaveBeenCalled();
     await runtime.stop();
   });
@@ -290,6 +299,15 @@ describe("Pi session runtime", () => {
     const first: unknown[] = [];
     const unsubscribeFirst = runtime.subscribe((event) => first.push(event));
     client.emit({ type: "turn_start" });
+    client.emit({
+      type: "queue_update",
+      steering: ["Focus on the failing test"],
+      followUp: ["Summarize the result"],
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual({
+      steering: ["Focus on the failing test"],
+      followUp: ["Summarize the result"],
+    });
 
     const replayed: unknown[] = [];
     const unsubscribeReplay = runtime.subscribe(
@@ -298,6 +316,11 @@ describe("Pi session runtime", () => {
     );
     expect(replayed).toEqual([
       expect.objectContaining({ sequence: 2, type: "pi_event" }),
+      expect.objectContaining({
+        sequence: 3,
+        type: "pi_event",
+        data: expect.objectContaining({ type: "queue_update" }),
+      }),
     ]);
 
     client.emit({

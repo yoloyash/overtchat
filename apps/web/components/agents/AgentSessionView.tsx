@@ -123,7 +123,10 @@ export function AgentSessionView({
     }
   }
 
-  function submit(message: string) {
+  function submit(
+    message: string,
+    streamingBehavior?: "steer" | "followUp",
+  ) {
     let input: AgentSessionCommand;
     try {
       input = normalizeAgentSessionCommand(
@@ -132,7 +135,7 @@ export function AgentSessionView({
           type: "prompt",
           message,
           ...(snapshot?.status === "running"
-            ? { streamingBehavior: "steer" as const }
+            ? { streamingBehavior: streamingBehavior ?? "steer" }
             : {}),
         },
         snapshot?.state ?? {},
@@ -239,6 +242,7 @@ export function AgentSessionView({
           <AgentComposer
             providerLabel={providerLabel}
             commands={snapshot.commands}
+            queuedMessages={snapshot.queuedMessages}
             running={running}
             pending={command.isPending}
             disabled={exited || Boolean(snapshot.pendingExtensionRequest)}

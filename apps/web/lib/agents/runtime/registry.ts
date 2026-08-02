@@ -17,6 +17,7 @@ import {
 } from "@/lib/agents/pi/commands";
 import {
   parsePiCommands,
+  parsePiQueueUpdate,
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
 import {
@@ -138,6 +139,10 @@ export class PiSessionRuntime {
   private thinkingLevels: AgentThinkingLevel[];
   private commands: AgentSlashCommand[];
   private stats: AgentSessionStats;
+  private queuedMessages = {
+    steering: [] as string[],
+    followUp: [] as string[],
+  };
   private pendingExtensionRequest:
     | NonNullable<AgentRuntimeSnapshot["pendingExtensionRequest"]>
     | undefined;
@@ -212,6 +217,10 @@ export class PiSessionRuntime {
           }, event.timeout + 100);
         }
       }
+      if (event.type === "queue_update") {
+        const queuedMessages = parsePiQueueUpdate(event);
+        if (queuedMessages) this.queuedMessages = queuedMessages;
+      }
       this.publish({ type: "pi_event", data: event });
       if (
         event.type === "available_commands_update" &&
@@ -278,6 +287,7 @@ export class PiSessionRuntime {
       thinkingLevels: this.thinkingLevels,
       commands: this.commands,
       stats: this.stats,
+      queuedMessages: this.queuedMessages,
       ...(this.pendingExtensionRequest
         ? { pendingExtensionRequest: this.pendingExtensionRequest }
         : {}),

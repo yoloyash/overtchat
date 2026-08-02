@@ -3,6 +3,7 @@ import type {
   AgentRuntimeSnapshot,
 } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
+import { parsePiQueueUpdate } from "@/lib/agents/pi/protocol";
 
 function roleOf(message: unknown): string | null {
   return message && typeof message === "object"
@@ -120,6 +121,12 @@ export function applyAgentRuntimeEnvelope(
           ? event.error
           : `The ${agentProviderMetadata(current.provider).label} process exited.`,
     };
+  }
+  if (event.type === "queue_update") {
+    const queuedMessages = parsePiQueueUpdate(event);
+    if (queuedMessages) {
+      return { ...current, queuedMessages };
+    }
   }
   if (
     ["message_start", "message_update", "message_end"].includes(event.type) &&
