@@ -1,9 +1,9 @@
 import type {
+  AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
 } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
-import { parsePiQueueUpdate } from "@/lib/agents/pi/protocol";
 
 function roleOf(message: unknown): string | null {
   return message && typeof message === "object"
@@ -103,13 +103,35 @@ export function applyAgentRuntimeEnvelope(
       ...current,
       status: "running",
       state: { ...current.state, isStreaming: true },
+      error: undefined,
     };
   }
-  if (event.type === "agent_settled" || event.type === "agent_end") {
+  if (
+    event.type === "overtchat_status" &&
+    (event.status === "idle" || event.status === "running")
+  ) {
     return {
       ...current,
-      status: "idle",
-      state: { ...current.state, isStreaming: false },
+      status: event.status,
+      state: {
+        ...current.state,
+        isStreaming: event.status === "running",
+      },
+      ...(event.status === "running" ? { error: undefined } : {}),
+    };
+  }
+  if (
+    event.type === "rpc_error" &&
+    typeof event.error === "string"
+  ) {
+    return { ...current, error: event.error };
+  }
+  if (event.type === "overtchat_queue_update") {
+    const queuedMessages = parseQueuedMessages(event.queuedMessages);
+    if (!queuedMessages) return current;
+    return {
+      ...current,
+      queuedMessages,
     };
   }
   if (event.type === "process_exit") {
@@ -121,12 +143,6 @@ export function applyAgentRuntimeEnvelope(
           ? event.error
           : `The ${agentProviderMetadata(current.provider).label} process exited.`,
     };
-  }
-  if (event.type === "queue_update") {
-    const queuedMessages = parsePiQueueUpdate(event);
-    if (queuedMessages) {
-      return { ...current, queuedMessages };
-    }
   }
   if (
     ["message_start", "message_update", "message_end"].includes(event.type) &&
@@ -176,4 +192,24 @@ export function applyAgentRuntimeEnvelope(
     };
   }
   return current;
+}
+
+function parseQueuedMessages(value: unknown): AgentQueuedMessage[] | null {
+  if (!Array.isArray(value)) return null;
+  const messages: AgentQueuedMessage[] = [];
+  for (const item of value) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      typeof Reflect.get(item, "id") !== "string" ||
+      typeof Reflect.get(item, "message") !== "string"
+    ) {
+      return null;
+    }
+    messages.push({
+      id: Reflect.get(item, "id") as string,
+      message: Reflect.get(item, "message") as string,
+    });
+  }
+  return messages;
 }

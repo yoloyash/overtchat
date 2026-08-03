@@ -2,7 +2,6 @@ import { z } from "zod";
 import type {
   AgentModel,
   AgentProviderId,
-  AgentQueuedMessages,
   AgentSlashCommand,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -174,7 +173,7 @@ export function parsePiCommands(value: unknown): AgentSlashCommand[] {
 
 export function parsePiQueueUpdate(
   value: unknown,
-): AgentQueuedMessages | null {
+): { steering: string[]; followUp: string[] } | null {
   const parsed = queueUpdateSchema.safeParse(value);
   return parsed.success
     ? {

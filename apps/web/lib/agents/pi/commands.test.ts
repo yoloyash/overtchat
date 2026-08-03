@@ -45,22 +45,10 @@ describe("Pi slash commands", () => {
     expect(piSlashCommandQuery("/etc/hosts")).toBeNull();
   });
 
-  it("queues ordinary prompts while preserving explicit steering", () => {
-    expect(buildAgentPromptCommand("Next task", false)).toEqual({
+  it("builds ordinary prompts without provider queue behavior", () => {
+    expect(buildAgentPromptCommand("Next task")).toEqual({
       type: "prompt",
       message: "Next task",
-    });
-    expect(buildAgentPromptCommand("Next task", true)).toEqual({
-      type: "prompt",
-      message: "Next task",
-      streamingBehavior: "followUp",
-    });
-    expect(
-      buildAgentPromptCommand("Change direction", true, "steer"),
-    ).toEqual({
-      type: "prompt",
-      message: "Change direction",
-      streamingBehavior: "steer",
     });
   });
 

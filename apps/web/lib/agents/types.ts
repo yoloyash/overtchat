@@ -173,18 +173,25 @@ export type AgentSlashCommand = {
   argumentHint?: string;
 };
 
-export type AgentQueuedMessages = {
-  steering: string[];
-  followUp: string[];
+export type AgentQueuedMessage = {
+  id: string;
+  message: string;
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("prompt"),
     message: z.string().trim().min(1).max(200_000),
-    streamingBehavior: z.enum(["steer", "followUp"]).optional(),
   }),
   z.object({ type: z.literal("abort") }),
+  z.object({
+    type: z.literal("steer_queued_message"),
+    id: z.string().min(1).max(500),
+  }),
+  z.object({
+    type: z.literal("remove_queued_message"),
+    id: z.string().min(1).max(500),
+  }),
   z.object({
     type: z.literal("set_model"),
     provider: z.string().trim().min(1).max(120),
@@ -251,7 +258,7 @@ export type AgentRuntimeSnapshot = {
   thinkingLevels: AgentThinkingLevel[];
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
-  queuedMessages: AgentQueuedMessages;
+  queuedMessages: AgentQueuedMessage[];
   pendingExtensionRequest?: {
     type: "extension_ui_request";
     id: string;

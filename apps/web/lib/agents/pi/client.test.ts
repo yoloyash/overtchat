@@ -244,6 +244,52 @@ describe("PiRpcClient", () => {
     await client.stop();
   });
 
+  it("surfaces OMP prompt failures emitted after acceptance", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "negotiate_protocol") {
+        fake.reply(command, { protocolVersion: 2 });
+        return;
+      }
+      fake.reply(command);
+      if (command.type === "prompt") {
+        queueMicrotask(() => {
+          fake.stdout.write(
+            `${JSON.stringify({
+              type: "response",
+              id: command.id,
+              command: "prompt",
+              success: false,
+              error: "Agent is already processing",
+            })}\n`,
+          );
+        });
+      }
+    });
+    const client = new PiRpcClient(process, "omp");
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+    process.stdout.write(
+      `${JSON.stringify({
+        type: "ready",
+        protocolVersion: 1,
+        supportedProtocolVersions: [1, 2],
+        maxFrameBytes: 1024 * 1024,
+        maxReassembledFrameBytes: 64 * 1024 * 1024,
+      })}\n`,
+    );
+
+    await expect(client.prompt("Do this next")).resolves.toBeUndefined();
+    await vi.waitFor(() => {
+      expect(events).toContainEqual({
+        type: "rpc_error",
+        command: "prompt",
+        id: expect.any(String),
+        error: "Agent is already processing",
+      });
+    });
+    await client.stop();
+  });
+
   it("rejects a failed command with Pi's error", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       fake.stdout.write(

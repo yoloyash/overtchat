@@ -126,19 +126,12 @@ export function AgentSessionView({
     }
   }
 
-  function submit(
-    message: string,
-    streamingBehavior?: "steer" | "followUp",
-  ) {
+  function submit(message: string) {
     let input: AgentSessionCommand;
     try {
       input = normalizeAgentSessionCommand(
         provider,
-        buildAgentPromptCommand(
-          message,
-          snapshot?.status === "running",
-          streamingBehavior,
-        ),
+        buildAgentPromptCommand(message),
         snapshot?.state ?? {},
       );
     } catch (cause) {
@@ -249,6 +242,12 @@ export function AgentSessionView({
             disabled={exited || Boolean(snapshot.pendingExtensionRequest)}
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
+            onSteerQueued={(id) =>
+              void run({ type: "steer_queued_message", id })
+            }
+            onRemoveQueued={(id) =>
+              void run({ type: "remove_queued_message", id })
+            }
           />
         </div>
       </div>

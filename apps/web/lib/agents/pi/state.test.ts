@@ -15,7 +15,7 @@ function snapshot(): AgentRuntimeSnapshot {
     models: [],
     thinkingLevels: ["off"],
     commands: [],
-    queuedMessages: { steering: [], followUp: [] },
+    queuedMessages: [],
     stats: {
       sessionFile: null,
       sessionId: null,
@@ -175,7 +175,7 @@ describe("agent runtime event reducer", () => {
     });
   });
 
-  it("renders OMP command output and settles on agent_end", () => {
+  it("renders OMP command output and waits for runtime-settled status", () => {
     const running = {
       ...snapshot(),
       provider: "omp" as const,
@@ -186,9 +186,13 @@ describe("agent runtime event reducer", () => {
       running,
       event({ type: "command_output", text: "Current model: GPT-5.6" }),
     )!;
-    const settled = applyAgentRuntimeEnvelope(
+    const terminal = applyAgentRuntimeEnvelope(
       withOutput,
       event({ type: "agent_end", messages: [] }),
+    )!;
+    const settled = applyAgentRuntimeEnvelope(
+      terminal,
+      event({ type: "overtchat_status", status: "idle" }),
     )!;
 
     expect(withOutput.messages.at(-1)).toMatchObject({
@@ -196,38 +200,90 @@ describe("agent runtime event reducer", () => {
       content: "Current model: GPT-5.6",
       display: true,
     });
+    expect(terminal).toMatchObject({
+      status: "running",
+      state: { isStreaming: true },
+    });
     expect(settled).toMatchObject({
       status: "idle",
       state: { isStreaming: false },
     });
   });
 
-  it("tracks authoritative steering and follow-up queues", () => {
+  it("keeps Pi running until the runtime confirms provider idle", () => {
+    const running = {
+      ...snapshot(),
+      status: "running" as const,
+      state: { isStreaming: true },
+    };
+    const ended = applyAgentRuntimeEnvelope(
+      running,
+      event({ type: "agent_end", messages: [] }),
+    )!;
+    const providerSettled = applyAgentRuntimeEnvelope(
+      ended,
+      event({ type: "agent_settled" }),
+    )!;
+    const settled = applyAgentRuntimeEnvelope(
+      providerSettled,
+      event({ type: "overtchat_status", status: "idle" }),
+    )!;
+
+    expect(ended).toMatchObject({
+      status: "running",
+      state: { isStreaming: true },
+    });
+    expect(providerSettled).toMatchObject({
+      status: "running",
+      state: { isStreaming: true },
+    });
+    expect(settled).toMatchObject({
+      status: "idle",
+      state: { isStreaming: false },
+    });
+  });
+
+  it("tracks OvertChat-owned queue updates and late prompt errors", () => {
     const queued = applyAgentRuntimeEnvelope(
       snapshot(),
       event({
-        type: "queue_update",
-        steering: ["Check the database path"],
-        followUp: ["Then summarize"],
+        type: "overtchat_queue_update",
+        queuedMessages: [
+          { id: "one", message: "Check the database path" },
+          { id: "two", message: "Then summarize" },
+        ],
       }),
     )!;
-    const drained = applyAgentRuntimeEnvelope(
+    const failed = applyAgentRuntimeEnvelope(
       queued,
       event({
-        type: "queue_update",
-        steering: [],
-        followUp: [],
+        type: "rpc_error",
+        command: "prompt",
+        error: "Queue rejected",
       }),
     )!;
 
-    expect(queued.queuedMessages).toEqual({
-      steering: ["Check the database path"],
-      followUp: ["Then summarize"],
-    });
-    expect(drained.queuedMessages).toEqual({
-      steering: [],
-      followUp: [],
-    });
+    expect(queued.queuedMessages).toEqual([
+      { id: "one", message: "Check the database path" },
+      { id: "two", message: "Then summarize" },
+    ]);
+    expect(queued.messages).toEqual(snapshot().messages);
+    expect(failed.error).toBe("Queue rejected");
+    expect(failed.queuedMessages).toEqual(queued.queuedMessages);
+  });
+
+  it("ignores native provider queue updates", () => {
+    const current = snapshot();
+    expect(
+      applyAgentRuntimeEnvelope(
+        current,
+        event({
+          type: "queue_update",
+          steering: ["Check the database path"],
+          followUp: ["Then summarize"],
+        }),
+      ),
+    ).toBe(current);
   });
 
   it("uses authoritative snapshots after live deltas", () => {

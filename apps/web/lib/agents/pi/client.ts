@@ -290,14 +290,10 @@ export class PiRpcClient {
     return this.request({ type: "get_messages" });
   }
 
-  prompt(
-    message: string,
-    streamingBehavior?: "steer" | "followUp",
-  ): Promise<unknown> {
+  prompt(message: string): Promise<unknown> {
     return this.request({
       type: "prompt",
       message,
-      ...(streamingBehavior ? { streamingBehavior } : {}),
     });
   }
 
@@ -422,6 +418,24 @@ export class PiRpcClient {
           ),
         );
       }
+      return;
+    }
+    if (
+      this.provider === "omp" &&
+      record.type === "response" &&
+      record.command === "prompt" &&
+      record.success === false
+    ) {
+      this.emit({
+        type: "rpc_error",
+        command: "prompt",
+        ...(typeof record.id === "string" ? { id: record.id } : {}),
+        error:
+          typeof record.error === "string"
+            ? record.error
+            : "Oh My Pi prompt failed.",
+        ...(typeof record.code === "string" ? { code: record.code } : {}),
+      });
       return;
     }
     if (typeof record.type !== "string") {

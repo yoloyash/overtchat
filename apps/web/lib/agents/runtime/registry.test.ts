@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   AgentModel,
+  AgentRuntimeEnvelope,
   AgentSessionStats,
 } from "@/lib/agents/types";
 
@@ -60,6 +61,17 @@ const model: AgentModel = {
   cost: { input: 1, output: 2, cacheRead: 0, cacheWrite: 0 },
 };
 
+const idleProviderState = {
+  sessionFile: "/sessions/native.jsonl",
+  sessionId: "native",
+  sessionName: null,
+  model,
+  thinkingLevel: "medium",
+  autoCompactionEnabled: false,
+  isStreaming: false,
+  isCompacting: false,
+};
+
 class FakePiClient {
   private listeners = new Set<(event: PiRpcEvent) => void>();
   readonly stop = vi.fn(async () => {});
@@ -71,15 +83,7 @@ class FakePiClient {
   readonly setAutoCompaction = vi.fn(async () => ({}));
   readonly setSessionName = vi.fn(async () => ({}));
   readonly respondToExtensionUi = vi.fn();
-  readonly getState = vi.fn(async () => ({
-    sessionFile: "/sessions/native.jsonl",
-    sessionId: "native",
-    sessionName: null,
-    model,
-    thinkingLevel: "medium",
-    autoCompactionEnabled: false,
-    isStreaming: false,
-  }));
+  readonly getState = vi.fn(async () => ({ ...idleProviderState }));
   readonly getMessages = vi.fn(async () => ({ messages: [] }));
   readonly getAvailableModels = vi.fn(async () => [model]);
   readonly getSessionStats = vi.fn(async () => stats);
@@ -208,7 +212,7 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("forwards Pi-discovered slash commands through prompt", async () => {
+  it("queues prompts in OvertChat and drains them after Pi settles", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -228,167 +232,536 @@ describe("Pi session runtime", () => {
       type: "prompt",
       message: "/skill:docs explain caching",
     });
-
-    expect(client.prompt).toHaveBeenCalledWith(
-      "/skill:docs explain caching",
-      undefined,
-    );
+    expect(client.prompt).toHaveBeenCalledWith("/skill:docs explain caching");
     await runtime.command({
       type: "prompt",
       message: "Summarize after the current run",
-      streamingBehavior: "followUp",
     });
-    expect(client.prompt).toHaveBeenCalledWith(
-      "Summarize after the current run",
-      "followUp",
-    );
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: [],
-      followUp: [],
-    });
-    expect(client.compact).not.toHaveBeenCalled();
-    await runtime.stop();
-  });
-
-  it("mirrors OMP pending messages until their user turns begin", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
-      "session",
-      "user",
-      "connection",
-      "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().queuedMessages).toEqual([
       {
-        ...initial(),
-        thinkingLevels: [...initial().thinkingLevels],
+        id: "session:1",
+        message: "Summarize after the current run",
       },
-      vi.fn(),
-    );
+    ]);
 
-    await runtime.command({
-      type: "prompt",
-      message: "Summarize after the current run",
-      streamingBehavior: "followUp",
-    });
-    await runtime.command({
-      type: "prompt",
-      message: "Focus on the failing test",
-      streamingBehavior: "steer",
-    });
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: ["Focus on the failing test"],
-      followUp: ["Summarize after the current run"],
-    });
-
-    client.emit({
-      type: "message_start",
-      message: {
-        role: "user",
-        content: [{ type: "text", text: "Focus on the failing test" }],
-        steering: true,
-        timestamp: 1,
-      },
-    });
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: [],
-      followUp: ["Summarize after the current run"],
-    });
-
-    client.emit({
-      type: "message_start",
-      message: {
-        role: "user",
-        content: [
-          { type: "text", text: "Summarize after the current run" },
-        ],
-        timestamp: 2,
-      },
-    });
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: [],
-      followUp: [],
-    });
-    await runtime.stop();
-  });
-
-  it("rolls back an OMP pending message when submission fails", async () => {
-    const client = new FakePiClient();
-    client.prompt.mockRejectedValueOnce(new Error("Queue rejected"));
-    const runtime = new PiSessionRuntime(
-      "session",
-      "user",
-      "connection",
-      "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
-      {
-        ...initial(),
-        thinkingLevels: [...initial().thinkingLevels],
-      },
-      vi.fn(),
-    );
-
-    await expect(
-      runtime.command({
-        type: "prompt",
-        message: "Try this later",
-        streamingBehavior: "followUp",
-      }),
-    ).rejects.toThrow("Queue rejected");
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: [],
-      followUp: [],
-    });
-    await runtime.stop();
-  });
-
-  it("forwards OMP native compact commands and settles on agent_end", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
-      "session",
-      "user",
-      "connection",
-      "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
-      {
-        ...initial(),
-        commands: [
-          {
-            name: "compact",
-            source: "builtin",
-          },
-        ],
-        thinkingLevels: [...initial().thinkingLevels],
-      },
-      vi.fn(),
-    );
-
-    await runtime.command({
-      type: "prompt",
-      message: "/compact focus on tests",
-    });
-    client.emit({ type: "agent_start" });
-    expect(runtime.snapshot().status).toBe("running");
-    client.emit({ type: "agent_end", messages: [] });
-
-    expect(client.prompt).toHaveBeenCalledWith(
-      "/compact focus on tests",
-      undefined,
-    );
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: [],
-      followUp: [],
-    });
-    expect(client.compact).not.toHaveBeenCalled();
+    client.emit({ type: "agent_settled" });
     await vi.waitFor(() => {
-      expect(runtime.snapshot().status).toBe("idle");
+      expect(client.prompt).toHaveBeenCalledWith(
+        "Summarize after the current run",
+      );
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    expect(client.compact).not.toHaveBeenCalled();
+    await runtime.stop();
+  });
+
+  it("drains exactly one FIFO item for each settled run", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    await runtime.command({ type: "prompt", message: "Third" });
+    client.emit({ type: "agent_settled" });
+    client.emit({ type: "agent_settled" });
+
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledTimes(2);
+    });
+    expect(client.prompt).toHaveBeenLastCalledWith("Second");
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      { id: "session:2", message: "Third" },
+    ]);
+
+    client.emit({ type: "agent_settled" });
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledTimes(3);
+    });
+    expect(client.prompt).toHaveBeenLastCalledWith("Third");
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    await runtime.stop();
+  });
+
+  it("publishes narrow app-queue events without stale snapshots", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+    const events: AgentRuntimeEnvelope[] = [];
+    const unsubscribe = runtime.subscribe((event) => events.push(event));
+
+    await runtime.command({
+      type: "prompt",
+      message: "First",
+    });
+    await runtime.command({
+      type: "prompt",
+      message: "Second",
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      { id: "session:1", message: "Second" },
+    ]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "pi_event",
+        data: {
+          type: "overtchat_queue_update",
+          queuedMessages: [{ id: "session:1", message: "Second" }],
+        },
+      }),
+    );
+    expect(events.slice(2)).not.toContainEqual(
+      expect.objectContaining({ type: "snapshot" }),
+    );
+    unsubscribe();
+    await runtime.stop();
+  });
+
+  it("waits for abort acknowledgement before draining a queued prompt", async () => {
+    const client = new FakePiClient();
+    let resolveAbort = () => {};
+    client.abort.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveAbort = () => resolve({});
+        }),
+    );
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    const stopping = runtime.command({ type: "abort" });
+    await Promise.resolve();
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+
+    resolveAbort();
+    await stopping;
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
     });
     await runtime.stop();
   });
 
-  it("replays sequenced events and clears answered extension requests", async () => {
+  it("waits for confirmed provider idle after abort acknowledgement", async () => {
+    const client = new FakePiClient();
+    let resolveState: (state: typeof idleProviderState) => void = vi.fn();
+    client.getState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve;
+        }),
+    );
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    const stopping = runtime.command({ type: "abort" });
+    await vi.waitFor(() => {
+      expect(client.getState).toHaveBeenCalledTimes(1);
+    });
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    resolveState(idleProviderState);
+    await stopping;
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    await runtime.stop();
+  });
+
+  it("restores a queued message when normal prompt submission fails", async () => {
+    const client = new FakePiClient();
+    client.prompt
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error("Prompt rejected"));
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({ type: "agent_settled" });
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledTimes(2);
+      expect(runtime.snapshot().queuedMessages).toEqual([
+        { id: "session:1", message: "Second" },
+      ]);
+      expect(runtime.snapshot().error).toBe("Prompt rejected");
+    });
+    expect(runtime.snapshot().status).toBe("idle");
+    await runtime.stop();
+  });
+
+  it("drains after confirmed idle even when transcript refresh fails", async () => {
+    const client = new FakePiClient();
+    client.getMessages.mockRejectedValueOnce(new Error("History unavailable"));
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({ type: "agent_settled" });
+
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    await runtime.stop();
+  });
+
+  it("steers with a selected app-queued message after settled cancellation", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Queued first" });
+    await runtime.command({ type: "prompt", message: "Steer with this" });
+    const steering = runtime.command({
+      type: "steer_queued_message",
+      id: "session:2",
+    });
+    await steering;
+
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Steer with this");
+    });
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      { id: "session:1", message: "Queued first" },
+    ]);
+    await runtime.stop();
+  });
+
+  it("removes an app-queued message without touching the provider", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Remove me" });
+    await runtime.command({
+      type: "remove_queued_message",
+      id: "session:1",
+    });
+
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(client.abort).not.toHaveBeenCalled();
+    await runtime.stop();
+  });
+
+  it("ignores OMP extension cycles without assistant output", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "omp-session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({
+      type: "agent_end",
+      messages: [],
+      willContinue: true,
+    });
+    await Promise.resolve();
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(client.getState).not.toHaveBeenCalled();
+
+    client.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [] }],
+    });
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    await runtime.stop();
+  });
+
+  it("waits through OMP auto-compaction after assistant output", async () => {
+    const client = new FakePiClient();
+    let resolveState: (state: typeof idleProviderState) => void = vi.fn();
+    client.getState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve;
+        }),
+    );
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [] }],
+      isTerminal: false,
+      willContinue: true,
+    });
+
+    await vi.waitFor(() => {
+      expect(client.getState).toHaveBeenCalledTimes(1);
+    });
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+
+    resolveState(idleProviderState);
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    await runtime.stop();
+  });
+
+  it("stops a stale OMP run and drains without another agent_end", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    await runtime.command({ type: "abort" });
+
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(client.getState).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    await runtime.stop();
+  });
+
+  it("sends Stop while OMP is naturally settling after compaction", async () => {
+    const client = new FakePiClient();
+    client.getState
+      .mockResolvedValueOnce({
+        ...idleProviderState,
+        isCompacting: true,
+      })
+      .mockResolvedValue({ ...idleProviderState });
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [] }],
+      willContinue: true,
+    });
+    await vi.waitFor(() => {
+      expect(client.getState).toHaveBeenCalledTimes(1);
+    });
+
+    await runtime.command({ type: "abort" });
+
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    await runtime.stop();
+  });
+
+  it("restores a draining OMP message after a late prompt error", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [] }],
+    });
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    client.emit({
+      type: "rpc_error",
+      command: "prompt",
+      error: "Agent is already processing",
+    });
+
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      { id: "session:1", message: "Second" },
+    ]);
+    expect(runtime.snapshot().status).toBe("idle");
+    expect(runtime.snapshot().error).toBe("Agent is already processing");
+    await runtime.stop();
+  });
+
+  it("continues queued work after a direct OMP prompt is rejected late", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "prompt", message: "Second" });
+    client.emit({
+      type: "rpc_error",
+      command: "prompt",
+      error: "Agent is already processing",
+    });
+
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenCalledWith("Second");
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    await runtime.stop();
+  });
+
+  it("replays sequenced events and ignores native provider queues", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -411,10 +784,7 @@ describe("Pi session runtime", () => {
       steering: ["Focus on the failing test"],
       followUp: ["Summarize the result"],
     });
-    expect(runtime.snapshot().queuedMessages).toEqual({
-      steering: ["Focus on the failing test"],
-      followUp: ["Summarize the result"],
-    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
 
     const replayed: unknown[] = [];
     const unsubscribeReplay = runtime.subscribe(

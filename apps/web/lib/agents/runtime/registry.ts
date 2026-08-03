@@ -2,7 +2,7 @@ import "server-only";
 import type {
   AgentModel,
   AgentProviderId,
-  AgentQueuedMessages,
+  AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentSlashCommand,
@@ -18,7 +18,6 @@ import {
 } from "@/lib/agents/pi/commands";
 import {
   parsePiCommands,
-  parsePiQueueUpdate,
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
 import {
@@ -37,6 +36,8 @@ import {
 const MAX_REPLAY_EVENTS = 500;
 const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
 const IDLE_RUNTIME_TTL_MS = 5 * 60_000;
+const PROVIDER_IDLE_POLL_MS = 100;
+const PROVIDER_IDLE_TIMEOUT_MS = 30_000;
 
 type Subscriber = (envelope: AgentRuntimeEnvelope) => void;
 
@@ -129,6 +130,21 @@ function firstUserMessage(messages: unknown[]): string | null {
   return null;
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function messageRole(message: unknown): string | null {
+  return message && typeof message === "object" &&
+    typeof Reflect.get(message, "role") === "string"
+    ? (Reflect.get(message, "role") as string)
+    : null;
+}
+
 export class PiSessionRuntime {
   private readonly subscribers = new Set<Subscriber>();
   private readonly replay: AgentRuntimeEnvelope[] = [];
@@ -140,10 +156,14 @@ export class PiSessionRuntime {
   private thinkingLevels: AgentThinkingLevel[];
   private commands: AgentSlashCommand[];
   private stats: AgentSessionStats;
-  private queuedMessages = {
-    steering: [] as string[],
-    followUp: [] as string[],
-  };
+  private queuedMessages: AgentQueuedMessage[] = [];
+  private nextQueuedMessageId = 0;
+  private promptAwaitingStart = false;
+  private startingQueuedMessage: AgentQueuedMessage | undefined;
+  private drainPromise: Promise<unknown> | null = null;
+  private settlePromise: Promise<void> | null = null;
+  private abortPromise: Promise<unknown> | null = null;
+  private ompRunSawAssistant = false;
   private pendingExtensionRequest:
     | NonNullable<AgentRuntimeSnapshot["pendingExtensionRequest"]>
     | undefined;
@@ -179,10 +199,11 @@ export class PiSessionRuntime {
     this.scheduleIdleStop();
 
     client.onEvent((event) => {
+      let restoredQueuedPrompt = false;
+      let settleRejectedPrompt = false;
       if (event.type === "process_exit") {
         this.clearIdleStop();
         this.clearPendingExtensionRequest();
-        this.queuedMessages = { steering: [], followUp: [] };
         this.status = "exited";
         this.error =
           typeof event.error === "string"
@@ -193,7 +214,23 @@ export class PiSessionRuntime {
         return;
       }
       if (event.type === "agent_start" || event.type === "turn_start") {
+        if (this.provider === "omp" && event.type === "agent_start") {
+          this.ompRunSawAssistant = false;
+        }
+        this.promptAwaitingStart = false;
+        this.startingQueuedMessage = undefined;
         this.status = "running";
+        this.state = { ...this.state, isStreaming: true };
+        this.error = undefined;
+      }
+      if (
+        this.provider === "omp" &&
+        ["message_start", "message_update", "message_end"].includes(
+          event.type,
+        ) &&
+        messageRole(event.message) === "assistant"
+      ) {
+        this.ompRunSawAssistant = true;
       }
       if (
         event.type === "extension_ui_request" &&
@@ -219,17 +256,31 @@ export class PiSessionRuntime {
           }, event.timeout + 100);
         }
       }
-      if (event.type === "queue_update") {
-        const queuedMessages = parsePiQueueUpdate(event);
-        if (queuedMessages) this.queuedMessages = queuedMessages;
-      }
       if (
-        event.type === "message_start" &&
-        this.consumeMirroredOmpMessage(event.message)
+        event.type === "rpc_error" &&
+        typeof event.error === "string"
       ) {
-        this.publishSnapshot();
+        this.error = event.error;
+        if (event.command === "prompt" && this.promptAwaitingStart) {
+          this.promptAwaitingStart = false;
+          if (this.startingQueuedMessage) {
+            this.restoreQueuedMessage(this.startingQueuedMessage);
+            this.startingQueuedMessage = undefined;
+            restoredQueuedPrompt = true;
+            this.status = "idle";
+            this.state = { ...this.state, isStreaming: false };
+          } else {
+            settleRejectedPrompt = true;
+          }
+        }
       }
       this.publish({ type: "pi_event", data: event });
+      if (restoredQueuedPrompt) {
+        this.publishQueueUpdate();
+        this.publishStatus();
+      } else if (settleRejectedPrompt) {
+        void this.settleAfterProviderTerminal();
+      }
       if (
         event.type === "available_commands_update" &&
         Array.isArray(event.commands)
@@ -268,18 +319,25 @@ export class PiSessionRuntime {
         });
         this.publishSnapshot();
       }
-      if (
-        event.type === "agent_settled" ||
-        event.type === "agent_end"
-      ) {
+      const ompAssistantEnd =
+        this.provider === "omp" &&
+        event.type === "agent_end" &&
+        (this.ompRunSawAssistant ||
+          (Array.isArray(event.messages) &&
+            event.messages.some(
+              (message) => messageRole(message) === "assistant",
+            )));
+      const terminal =
+        (this.provider === "pi" && event.type === "agent_settled") ||
+        ompAssistantEnd;
+      const promptHandledWithoutRun =
+        event.type === "prompt_result" && event.agentInvoked === false;
+      if (terminal || promptHandledWithoutRun) {
+        if (ompAssistantEnd) this.ompRunSawAssistant = false;
+        this.promptAwaitingStart = false;
+        this.startingQueuedMessage = undefined;
         this.clearPendingExtensionRequest();
-        this.status = "idle";
-        void this.refresh();
-      } else if (
-        event.type === "prompt_result" &&
-        event.agentInvoked === false
-      ) {
-        this.status = "idle";
+        void this.settleAfterProviderTerminal();
       }
     });
   }
@@ -339,9 +397,13 @@ export class PiSessionRuntime {
           new Error("New sessions must be created by the runtime registry."),
         );
       case "prompt":
-        return this.prompt(command);
+        return this.submitPrompt(command.message);
       case "abort":
-        return this.client.abort();
+        return this.abortActiveRun();
+      case "steer_queued_message":
+        return this.steerQueuedMessage(command.id);
+      case "remove_queued_message":
+        return this.removeQueuedMessage(command.id);
       case "set_model":
         return this.client
           .setModel(command.provider, command.modelId)
@@ -410,12 +472,6 @@ export class PiSessionRuntime {
       this.thinkingLevels = thinkingLevels;
       this.commands = commands;
       this.status = state.isStreaming === true ? "running" : "idle";
-      if (
-        this.provider === "omp" &&
-        state.queuedMessageCount === 0
-      ) {
-        this.queuedMessages = { steering: [], followUp: [] };
-      }
       this.error = undefined;
       await updateAgentSessionMetadata(this.dbSessionId, {
         name:
@@ -466,86 +522,257 @@ export class PiSessionRuntime {
     this.pendingExtensionRequest = undefined;
   }
 
-  private prompt(
-    command: Extract<AgentSessionCommand, { type: "prompt" }>,
-  ): Promise<unknown> {
-    const behavior = command.streamingBehavior;
-    if (
-      this.provider !== "omp" ||
-      !behavior ||
-      !this.shouldMirrorOmpPrompt(command.message)
-    ) {
-      return this.client.prompt(command.message, behavior);
+  private submitPrompt(message: string): Promise<unknown> {
+    if (this.status === "exited") {
+      return Promise.reject(
+        new Error(`${agentProviderMetadata(this.provider).label} exited.`),
+      );
     }
+    if (
+      this.status !== "idle" ||
+      this.abortPromise ||
+      this.settlePromise ||
+      this.drainPromise
+    ) {
+      this.enqueueMessage(message);
+      return Promise.resolve({ queued: true });
+    }
+    return this.startPrompt(message);
+  }
 
-    const queue: keyof AgentQueuedMessages =
-      behavior === "steer" ? "steering" : "followUp";
-    this.queuedMessages = {
-      ...this.queuedMessages,
-      [queue]: [...this.queuedMessages[queue], command.message],
-    };
-    this.publishSnapshot();
-
-    return this.client.prompt(command.message, behavior).catch((error) => {
-      const messages = [...this.queuedMessages[queue]];
-      const index = messages.lastIndexOf(command.message);
-      if (index >= 0) {
-        messages.splice(index, 1);
-        this.queuedMessages = {
-          ...this.queuedMessages,
-          [queue]: messages,
-        };
-        this.publishSnapshot();
+  private async startPrompt(
+    message: string,
+    queuedMessage?: AgentQueuedMessage,
+  ): Promise<unknown> {
+    if (this.provider === "omp") this.ompRunSawAssistant = false;
+    this.status = "running";
+    this.state = { ...this.state, isStreaming: true };
+    this.error = undefined;
+    this.promptAwaitingStart = true;
+    this.startingQueuedMessage = queuedMessage;
+    this.publishStatus();
+    try {
+      return await this.client.prompt(message);
+    } catch (error) {
+      const startingQueuedMessage = this.startingQueuedMessage;
+      const advanceWaitingQueue =
+        !startingQueuedMessage && this.queuedMessages.length > 0;
+      if (
+        startingQueuedMessage &&
+        startingQueuedMessage.id === queuedMessage?.id
+      ) {
+        this.restoreQueuedMessage(startingQueuedMessage);
+      }
+      this.startingQueuedMessage = undefined;
+      this.promptAwaitingStart = false;
+      this.status = "idle";
+      this.state = { ...this.state, isStreaming: false };
+      this.error = errorMessage(error);
+      this.publish({
+        type: "pi_event",
+        data: {
+          type: "rpc_error",
+          command: "prompt",
+          error: this.error,
+        },
+      });
+      this.publishQueueUpdate();
+      this.publishStatus();
+      if (advanceWaitingQueue) {
+        void this.settleAfterProviderTerminal();
       }
       throw error;
+    }
+  }
+
+  private enqueueMessage(message: string): AgentQueuedMessage {
+    const queuedMessage = {
+      id: `${this.dbSessionId}:${++this.nextQueuedMessageId}`,
+      message,
+    };
+    this.queuedMessages = [...this.queuedMessages, queuedMessage];
+    this.publishQueueUpdate();
+    return queuedMessage;
+  }
+
+  private restoreQueuedMessage(message: AgentQueuedMessage): void {
+    if (this.queuedMessages.some((queued) => queued.id === message.id)) return;
+    this.queuedMessages = [message, ...this.queuedMessages];
+  }
+
+  private removeQueuedMessage(id: string): Promise<void> {
+    const index = this.queuedMessages.findIndex((message) => message.id === id);
+    if (index < 0) {
+      return Promise.reject(new Error("That queued message is no longer pending."));
+    }
+    this.queuedMessages = this.queuedMessages.filter(
+      (message) => message.id !== id,
+    );
+    this.publishQueueUpdate();
+    return Promise.resolve();
+  }
+
+  private async steerQueuedMessage(id: string): Promise<unknown> {
+    const index = this.queuedMessages.findIndex((message) => message.id === id);
+    if (index < 0) {
+      throw new Error("That queued message is no longer pending.");
+    }
+    if (index > 0) {
+      const selected = this.queuedMessages[index];
+      if (!selected) throw new Error("That queued message is no longer pending.");
+      this.queuedMessages = [
+        selected,
+        ...this.queuedMessages.slice(0, index),
+        ...this.queuedMessages.slice(index + 1),
+      ];
+      this.publishQueueUpdate();
+    }
+    if (this.status === "idle" && !this.abortPromise && !this.settlePromise) {
+      return this.drainQueuedMessage();
+    }
+    return this.abortActiveRun();
+  }
+
+  private abortActiveRun(): Promise<unknown> {
+    if (this.abortPromise) return this.abortPromise;
+    if (this.status !== "running") {
+      return this.drainQueuedMessage();
+    }
+    const operation = (async () => {
+      await this.client.abort();
+      await this.reconcileProviderIdle(PROVIDER_IDLE_TIMEOUT_MS);
+    })();
+    const settled = operation
+      .catch((error) => {
+        this.error = errorMessage(error);
+        this.publish({
+          type: "pi_event",
+          data: {
+            type: "rpc_error",
+            command: "abort",
+            error: this.error,
+          },
+        });
+        throw error;
+      })
+      .finally(() => {
+        if (this.abortPromise !== settled) return;
+        this.abortPromise = null;
+        if (this.status === "idle") {
+          void this.drainQueuedMessage().catch(() => {});
+        }
+      });
+    this.abortPromise = settled;
+    return settled;
+  }
+
+  private settleAfterProviderTerminal(): Promise<void> {
+    if (this.abortPromise) return Promise.resolve();
+    if (this.settlePromise) return this.settlePromise;
+    const operation = this.reconcileProviderIdle();
+    const settled = operation
+      .catch((error) => {
+        this.error = errorMessage(error);
+        this.publish({
+          type: "pi_event",
+          data: {
+            type: "rpc_error",
+            command: "get_state",
+            error: this.error,
+          },
+        });
+      })
+      .finally(() => {
+        if (this.settlePromise !== settled) return;
+        this.settlePromise = null;
+        if (this.status === "idle") {
+          void this.drainQueuedMessage().catch(() => {});
+        }
+      });
+    this.settlePromise = settled;
+    return settled;
+  }
+
+  private async reconcileProviderIdle(timeoutMs?: number): Promise<void> {
+    await this.waitForProviderIdle(timeoutMs);
+    this.status = "idle";
+    this.state = { ...this.state, isStreaming: false };
+    try {
+      await this.refresh();
+    } catch (error) {
+      this.error = errorMessage(error);
+      this.publish({
+        type: "pi_event",
+        data: {
+          type: "rpc_error",
+          command: "refresh",
+          error: this.error,
+        },
+      });
+      this.publishStatus();
+    }
+  }
+
+  private async waitForProviderIdle(timeoutMs?: number): Promise<void> {
+    const deadline =
+      timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+    let lastError: unknown;
+    while (this.status !== "exited") {
+      try {
+        const state = await this.client.getState();
+        this.state = state;
+        if (state.isStreaming !== true && state.isCompacting !== true) return;
+      } catch (error) {
+        lastError = error;
+      }
+      if (deadline !== undefined && Date.now() >= deadline) break;
+      await wait(PROVIDER_IDLE_POLL_MS);
+    }
+    const detail = lastError ? ` ${errorMessage(lastError)}` : "";
+    throw new Error(
+      `${agentProviderMetadata(this.provider).label} did not become idle after stopping.${detail}`,
+    );
+  }
+
+  private drainQueuedMessage(): Promise<unknown> {
+    if (this.drainPromise) return this.drainPromise;
+    if (
+      this.status !== "idle" ||
+      this.abortPromise ||
+      this.settlePromise ||
+      this.queuedMessages.length === 0
+    ) {
+      return Promise.resolve();
+    }
+    const next = this.queuedMessages[0];
+    if (!next) return Promise.resolve();
+    this.queuedMessages = this.queuedMessages.slice(1);
+    this.publishQueueUpdate();
+    const drained = this.startPrompt(next.message, next).finally(() => {
+      if (this.drainPromise === drained) this.drainPromise = null;
+    });
+    this.drainPromise = drained;
+    return drained;
+  }
+
+  private publishQueueUpdate(): void {
+    this.publish({
+      type: "pi_event",
+      data: {
+        type: "overtchat_queue_update",
+        queuedMessages: this.queuedMessages,
+      },
     });
   }
 
-  private shouldMirrorOmpPrompt(message: string): boolean {
-    const match = /^\/([a-z0-9:-]+)/iu.exec(message.trim());
-    if (!match) return true;
-    const command = this.commands.find(
-      (candidate) =>
-        candidate.name.toLowerCase() === match[1].toLowerCase(),
-    );
-    return (
-      !command ||
-      ["file", "mcp_prompt", "prompt", "skill"].includes(command.source)
-    );
-  }
-
-  private consumeMirroredOmpMessage(message: unknown): boolean {
-    if (
-      this.provider !== "omp" ||
-      !message ||
-      typeof message !== "object"
-    ) {
-      return false;
-    }
-    const role = Reflect.get(message, "role");
-    const userMessage = role === "user";
-    const userCustomMessage =
-      role === "custom" && Reflect.get(message, "attribution") === "user";
-    if (!userMessage && !userCustomMessage) return false;
-
-    let queue: keyof AgentQueuedMessages;
-    if (userMessage) {
-      queue =
-        Reflect.get(message, "steering") === true
-          ? "steering"
-          : "followUp";
-    } else {
-      queue =
-        this.queuedMessages.steering.length > 0
-          ? "steering"
-          : "followUp";
-    }
-    if (this.queuedMessages[queue].length === 0) return false;
-    this.queuedMessages = {
-      ...this.queuedMessages,
-      [queue]: this.queuedMessages[queue].slice(1),
-    };
-    return true;
+  private publishStatus(): void {
+    this.publish({
+      type: "pi_event",
+      data: {
+        type: "overtchat_status",
+        status: this.status,
+      },
+    });
   }
 
   private publishSnapshot(): void {

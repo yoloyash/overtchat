@@ -143,6 +143,35 @@ describe("agent session route", () => {
     );
   });
 
+  it("forwards app-owned queue actions without prompt metadata", async () => {
+    const steer = await POST(
+      request("POST", {
+        type: "steer_queued_message",
+        id: "session:2",
+      }),
+      context,
+    );
+    const remove = await POST(
+      request("POST", {
+        type: "remove_queued_message",
+        id: "session:1",
+      }),
+      context,
+    );
+
+    expect(steer.status).toBe(200);
+    expect(remove.status).toBe(200);
+    expect(mocks.command).toHaveBeenNthCalledWith(1, {
+      type: "steer_queued_message",
+      id: "session:2",
+    });
+    expect(mocks.command).toHaveBeenNthCalledWith(2, {
+      type: "remove_queued_message",
+      id: "session:1",
+    });
+    expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
+  });
+
   it("creates a new workspace session for /new without prompting Pi", async () => {
     mocks.normalizeCommand.mockReturnValue({ type: "new_session" });
 
