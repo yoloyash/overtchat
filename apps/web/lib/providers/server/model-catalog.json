@@ -1180,52 +1180,6 @@
       "structured_output": true,
       "temperature": true
     },
-    "claude-opus-4-1": {
-      "context": 200000,
-      "output": 32000,
-      "cost": {
-        "cache_read": 1.5,
-        "cache_write": 18.75,
-        "input": 15,
-        "output": 75
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": true
-    },
-    "claude-opus-4-1-20250805": {
-      "context": 200000,
-      "output": 32000,
-      "cost": {
-        "cache_read": 1.5,
-        "cache_write": 18.75,
-        "input": 15,
-        "output": 75
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": true
-    },
     "claude-opus-4-5": {
       "context": 200000,
       "output": 64000,
