@@ -40,7 +40,7 @@ describe("SSH process launching", () => {
     expect(args).not.toContain("-i");
   });
 
-  it("loads the remote login environment without polluting stdout", () => {
+  it("loads the remote login environment without an interactive shell", () => {
     const command = buildSshRemoteCommand({
       command: "/Users/yash/.bun/bin/omp",
       args: ["--mode", "rpc", "argument with spaces"],
@@ -48,7 +48,8 @@ describe("SSH process launching", () => {
       env: { OVERTCHAT_TEST: "it's safe" },
     });
 
-    expect(command).toContain('exec "${SHELL:-/bin/sh}" -lic');
+    expect(command).toContain('exec "${SHELL:-/bin/sh}" -lc');
+    expect(command).not.toContain("-lic");
     expect(command).toContain("exec 1>&3 3>&-");
     expect(command).toContain("3>&1 1>&2");
     expect(command).toContain("cd --");

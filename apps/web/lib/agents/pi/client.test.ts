@@ -88,6 +88,21 @@ describe("PiRpcClient", () => {
     await client.stop();
   });
 
+  it("keeps historical process stderr out of later request timeouts", async () => {
+    const process = new FakeAgentProcess(() => {});
+    const client = new PiRpcClient(process);
+    process.stderr.write("shell startup warning\n");
+
+    const request = client.request({ type: "get_state" }, 10);
+    process.stderr.write("current request detail\n");
+
+    await expect(request).rejects.toThrow(
+      "Timed out waiting for Pi get_state. current request detail",
+    );
+    await expect(request).rejects.not.toThrow("shell startup warning");
+    await client.stop();
+  });
+
   it("merges built-ins with discovered commands and toggles auto-compaction", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "get_commands") {

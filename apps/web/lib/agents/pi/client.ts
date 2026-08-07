@@ -64,6 +64,8 @@ export class PiRpcClient {
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
   private requestNumber = 0;
   private stderr = "";
+  private stderrPosition = 0;
+  private stderrBufferStart = 0;
   private closed = false;
   private protocolVersion = 1;
   private readonly ready: Promise<void>;
@@ -105,9 +107,10 @@ export class PiRpcClient {
       for (const line of this.decoder.end()) this.handleLine(line);
     });
     process.stderr.on("data", (chunk) => {
-      this.stderr = `${this.stderr}${chunk.toString()}`.slice(
-        -MAX_STDERR_CHARS,
-      );
+      const text = chunk.toString();
+      this.stderrPosition += text.length;
+      this.stderr = `${this.stderr}${text}`.slice(-MAX_STDERR_CHARS);
+      this.stderrBufferStart = this.stderrPosition - this.stderr.length;
     });
     void process.exit.then((exit) => {
       this.closed = true;
@@ -159,12 +162,14 @@ export class PiRpcClient {
       );
     }
     const id = `req_${++this.requestNumber}`;
+    const stderrStart = this.stderrPosition;
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(id);
+        const stderr = this.stderrSince(stderrStart).trim();
         reject(
           new Error(
-            `Timed out waiting for ${this.label} ${command.type}.${this.stderr ? ` ${this.stderr.trim()}` : ""}`,
+            `Timed out waiting for ${this.label} ${command.type}.${stderr ? ` ${stderr}` : ""}`,
           ),
         );
       }, timeoutMs);
@@ -186,6 +191,10 @@ export class PiRpcClient {
         },
       );
     });
+  }
+
+  private stderrSince(position: number): string {
+    return this.stderr.slice(Math.max(0, position - this.stderrBufferStart));
   }
 
   send(frame: PiRpcCommand): void {

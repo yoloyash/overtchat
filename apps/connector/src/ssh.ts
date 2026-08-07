@@ -31,7 +31,7 @@ export function buildSshRemoteCommand(
     ? `cd -- ${shellQuote(launch.cwd)} && ${invocation}`
     : invocation;
   const loginCommand = `exec 1>&3 3>&-; ${agentCommand}`;
-  return `exec "\${SHELL:-/bin/sh}" -lic ${shellQuote(loginCommand)} 3>&1 1>&2`;
+  return `exec "\${SHELL:-/bin/sh}" -lc ${shellQuote(loginCommand)} 3>&1 1>&2`;
 }
 
 export function sshSpawnArgs(

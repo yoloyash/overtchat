@@ -84,6 +84,15 @@ describe("connector process runtime", () => {
         )
         .join(""),
     ).toBe("login path works");
+    expect(
+      events
+        .map((event) =>
+          event.type === "stderr" && event.processId === processId
+            ? Buffer.from(event.data, "base64").toString()
+            : "",
+        )
+        .join(""),
+    ).not.toMatch(/job control|terminal process group/iu);
   });
 
   it("fails stale server process IDs after a connector restart", async () => {
