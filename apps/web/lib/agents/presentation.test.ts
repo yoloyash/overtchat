@@ -4,6 +4,7 @@ import {
   describeAgentActivity,
   describeAgentTool,
   formatAgentToolDetail,
+  presentAgentError,
   projectAgentTranscript,
   type AgentToolActivity,
 } from "./presentation";
@@ -197,6 +198,35 @@ describe("projectAgentTranscript", () => {
       "activity",
       "assistant_error",
     ]);
+    expect(projected[1]).toMatchObject({
+      error: {
+        summary: "Provider failed",
+        details: null,
+      },
+    });
+  });
+});
+
+describe("agent error presentation", () => {
+  it("summarizes context failures while retaining raw provider details", () => {
+    const raw =
+      "400 This model's maximum context length is 131072 tokens. However, you requested 32768 output tokens and your prompt contains 98305 input tokens.\n" +
+      "raw-http-request=/home/user/.omp/logs/request.json";
+
+    expect(presentAgentError(raw)).toEqual({
+      summary:
+        "Context limit exceeded. Compact the conversation or reduce the maximum output tokens.",
+      details: raw,
+    });
+  });
+
+  it("bounds unknown errors to their first line", () => {
+    const firstLine = `Provider failure ${"x".repeat(300)}`;
+    const error = presentAgentError(`${firstLine}\ninternal detail`);
+
+    expect(error.summary).toHaveLength(240);
+    expect(error.summary).toMatch(/\.\.\.$/u);
+    expect(error.details).toBe(`${firstLine}\ninternal detail`);
   });
 });
 

@@ -31,8 +31,10 @@ import {
   describeAgentActivity,
   describeAgentTool,
   formatAgentToolDetail,
+  presentAgentError,
   projectAgentTranscript,
   type AgentActivityEntry,
+  type AgentErrorPresentation,
   type AgentToolActivity,
   type AgentToolCategory,
   type AgentToolStatus,
@@ -138,13 +140,7 @@ export function AgentMessageList({
                 />
               )}
               {error && (
-                <div
-                  role="alert"
-                  className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
-                >
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-                  <p className="min-w-0 break-words">{error}</p>
-                </div>
+                <AgentErrorNotice error={presentAgentError(error)} />
               )}
             </div>
           )}
@@ -238,9 +234,42 @@ function AgentTranscriptRow({
     );
   }
   if (item.type === "assistant_error") {
-    return <p className="text-sm text-destructive">{item.text}</p>;
+    return <AgentErrorNotice error={item.error} />;
   }
   return <AgentActivityGroup entries={item.entries} active={active} />;
+}
+
+function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="overflow-hidden rounded-lg border border-destructive/30 bg-destructive/5 text-sm">
+      <div className="flex items-start gap-2.5 px-3 py-2.5" role="alert">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
+        <p className="min-w-0 flex-1 break-words">{error.summary}</p>
+        {error.details && (
+          <button
+            type="button"
+            onClick={() => setOpen((current) => !current)}
+            aria-expanded={open}
+            className="flex shrink-0 items-center gap-1 text-xs font-medium text-muted-foreground motion-colors hover:text-foreground"
+          >
+            Details
+            <ChevronDown
+              className={cn(
+                "size-3 motion-transform",
+                open && "rotate-180",
+              )}
+            />
+          </button>
+        )}
+      </div>
+      {open && error.details && (
+        <pre className="max-h-64 overflow-auto border-t bg-background/40 px-3 py-2.5 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+          {error.details}
+        </pre>
+      )}
+    </div>
+  );
 }
 
 function AgentMessage({ message }: { message: unknown }) {

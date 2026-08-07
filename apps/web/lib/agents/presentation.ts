@@ -36,6 +36,11 @@ export type AgentActivityEntry =
       tool: AgentToolActivity;
     };
 
+export type AgentErrorPresentation = {
+  summary: string;
+  details: string | null;
+};
+
 export type AgentTranscriptItem =
   | {
       type: "message";
@@ -50,7 +55,7 @@ export type AgentTranscriptItem =
   | {
       type: "assistant_error";
       key: string;
-      text: string;
+      error: AgentErrorPresentation;
     }
   | {
       type: "activity";
@@ -97,6 +102,27 @@ function textOfContent(content: unknown): string {
         : [];
     })
     .join("\n");
+}
+
+const MAX_ERROR_SUMMARY_LENGTH = 240;
+
+export function presentAgentError(value: string): AgentErrorPresentation {
+  const details = value.trim();
+  const contextLimit =
+    /maximum context length|context length.{0,80}(?:exceed|requested)|input_tokens/iu.test(
+      details,
+    );
+  let summary = contextLimit
+    ? "Context limit exceeded. Compact the conversation or reduce the maximum output tokens."
+    : (details.split(/\r?\n/u).find((line) => line.trim())?.trim() ??
+      "The agent command failed.");
+  if (summary.length > MAX_ERROR_SUMMARY_LENGTH) {
+    summary = `${summary.slice(0, MAX_ERROR_SUMMARY_LENGTH - 3).trimEnd()}...`;
+  }
+  return {
+    summary,
+    details: summary === details ? null : details,
+  };
 }
 
 function messageIdentity(message: unknown, index: number): string {
@@ -296,7 +322,7 @@ export function projectAgentTranscript(
         items.push({
           type: "assistant_error",
           key: `assistant-error:${identity}`,
-          text: record.errorMessage,
+          error: presentAgentError(record.errorMessage),
         });
       }
       return;
