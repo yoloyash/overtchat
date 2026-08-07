@@ -8,6 +8,7 @@ import {
   type AgentConnectionListItem,
 } from "@/lib/agents/types";
 import { probePiConnection } from "@/lib/agents/pi/probe";
+import { withAgentRuntimeStatuses } from "@/lib/agents/runtime/status";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 import {
   createAgentConnection,
@@ -24,7 +25,10 @@ export async function GET(req: Request) {
     return Response.json({ error: accessError }, { status: 403 });
   }
   return Response.json({
-    connections: await listAgentConnections(session.user.id),
+    connections: withAgentRuntimeStatuses(
+      await listAgentConnections(session.user.id),
+      session.user.id,
+    ),
   });
 }
 
@@ -73,7 +77,10 @@ export async function POST(req: Request) {
         detectedVersion: probe.version,
       },
     });
-    const connections = await listAgentConnections(session.user.id);
+    const connections = withAgentRuntimeStatuses(
+      await listAgentConnections(session.user.id),
+      session.user.id,
+    );
     const connection = connections.find(
       (candidate) => candidate.id === owned.connection.id,
     ) as AgentConnectionListItem | undefined;

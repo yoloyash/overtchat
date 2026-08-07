@@ -47,6 +47,10 @@ export async function POST(
         messageCount: row.messageCount,
         createdAt: row.providerCreatedAt?.getTime() ?? null,
         modifiedAt: row.providerModifiedAt?.getTime() ?? null,
+        runtimeStatus: agentRuntimeRegistry.runtimeStatusForSession(
+          row.id,
+          session.user.id,
+        ),
       })),
     });
   } catch (error) {

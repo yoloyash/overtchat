@@ -5,6 +5,7 @@ import type {
   AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
+  AgentRuntimeStatus,
   AgentSlashCommand,
   AgentSessionCommand,
   AgentSessionStats,
@@ -898,6 +899,14 @@ export class AgentRuntimeRegistry {
   ): Promise<PiSessionRuntime | null> {
     const owned = await getOwnedAgentSession(sessionId, userId);
     return owned ? this.getOrStart(owned) : null;
+  }
+
+  runtimeStatusForSession(
+    sessionId: string,
+    userId: string,
+  ): AgentRuntimeStatus {
+    const runtime = this.runtimes.get(sessionId);
+    return runtime?.userId === userId ? runtime.snapshot().status : "idle";
   }
 
   async stopWorkspace(workspaceId: string, userId: string): Promise<void> {

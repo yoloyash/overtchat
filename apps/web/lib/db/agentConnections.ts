@@ -66,6 +66,7 @@ function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
     messageCount: row.messageCount,
     createdAt: row.providerCreatedAt?.getTime() ?? null,
     modifiedAt: row.providerModifiedAt?.getTime() ?? null,
+    runtimeStatus: "idle",
   };
 }
 

@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   createAgentConnection: vi.fn(),
   probePiConnection: vi.fn(),
   getOwnedHostConnector: vi.fn(),
+  withAgentRuntimeStatuses: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -21,6 +22,9 @@ vi.mock("@/lib/agents/pi/probe", () => ({
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
   getOwnedHostConnector: mocks.getOwnedHostConnector,
+}));
+vi.mock("@/lib/agents/runtime/status", () => ({
+  withAgentRuntimeStatuses: mocks.withAgentRuntimeStatuses,
 }));
 
 import { GET, POST } from "./route";
@@ -45,6 +49,9 @@ describe("Agent Connections route", () => {
     });
     mocks.listAgentConnections.mockResolvedValue([]);
     mocks.getOwnedHostConnector.mockReturnValue({ id: "connector" });
+    mocks.withAgentRuntimeStatuses.mockImplementation(
+      (connections) => connections,
+    );
   });
 
   it("lists connections for administrators", async () => {
@@ -53,6 +60,7 @@ describe("Agent Connections route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ connections: [] });
     expect(mocks.listAgentConnections).toHaveBeenCalledWith("admin");
+    expect(mocks.withAgentRuntimeStatuses).toHaveBeenCalledWith([], "admin");
   });
 
   it("does not expose connections to non-admin users", async () => {

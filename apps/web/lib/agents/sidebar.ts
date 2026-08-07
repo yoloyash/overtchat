@@ -1,6 +1,28 @@
-import type { AgentSessionListItem } from "@/lib/agents/types";
+import type {
+  AgentConnectionListItem,
+  AgentSessionListItem,
+  AgentWorkspaceListItem,
+} from "@/lib/agents/types";
 
 export const AGENT_SESSION_PREVIEW_COUNT = 8;
+
+export function agentSessionIsRunning(
+  session: AgentSessionListItem,
+): boolean {
+  return session.runtimeStatus === "running";
+}
+
+export function agentWorkspaceHasRunningSession(
+  workspace: AgentWorkspaceListItem,
+): boolean {
+  return workspace.sessions.some(agentSessionIsRunning);
+}
+
+export function agentConnectionHasRunningSession(
+  connection: AgentConnectionListItem,
+): boolean {
+  return connection.workspaces.some(agentWorkspaceHasRunningSession);
+}
 
 export function visibleAgentSessions(
   sessions: readonly AgentSessionListItem[],
@@ -11,10 +33,10 @@ export function visibleAgentSessions(
     return [...sessions];
   }
   const visible = sessions.slice(0, AGENT_SESSION_PREVIEW_COUNT);
-  const active = activeSessionId
-    ? sessions.find((session) => session.id === activeSessionId)
-    : undefined;
-  return active && !visible.some((session) => session.id === active.id)
-    ? [...visible, active]
-    : visible;
+  const additionallyVisible = sessions.filter(
+    (session) =>
+      (session.id === activeSessionId || agentSessionIsRunning(session)) &&
+      !visible.some((candidate) => candidate.id === session.id),
+  );
+  return [...visible, ...additionallyVisible];
 }

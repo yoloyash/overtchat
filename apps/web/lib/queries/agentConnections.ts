@@ -16,6 +16,7 @@ import type {
   HostConnectorPairing,
 } from "@/lib/agents/types";
 import { agentConnectionKeys } from "@/lib/queries/keys";
+import { agentConnectionHasRunningSession } from "@/lib/agents/sidebar";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -37,6 +38,10 @@ export function useAgentConnections() {
   return useQuery({
     queryKey: agentConnectionKeys.list(),
     queryFn: fetchAgentConnections,
+    refetchInterval: (query) =>
+      query.state.data?.some(agentConnectionHasRunningSession)
+        ? 2_000
+        : false,
   });
 }
 

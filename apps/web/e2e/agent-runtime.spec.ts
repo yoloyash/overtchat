@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { AgentConnectionListItem } from "@/lib/agents/types";
 import {
   openE2eDatabase,
   resetE2eDatabase,
@@ -157,16 +158,31 @@ test("shows durable turn activity without changing completed tool status", async
       });
     },
   );
+  await page.route("**/api/agent-connections", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      connections: AgentConnectionListItem[];
+    };
+    for (const connection of body.connections) {
+      for (const workspace of connection.workspaces) {
+        for (const session of workspace.sessions) {
+          if (session.id === SESSION_ID) session.runtimeStatus = "running";
+        }
+      }
+    }
+    await route.fulfill({ response, json: body });
+  });
   await page.addInitScript(() => {
     type RuntimeEnvelope = {
       sequence: number;
-      type: "pi_event";
+      type: "pi_event" | "snapshot";
       data: Record<string, unknown>;
     };
     type RuntimeControls = {
       emit: (envelope: RuntimeEnvelope) => void;
       disconnect: () => void;
       reconnect: () => void;
+      connected: () => boolean;
     };
 
     const sources: FakeEventSource[] = [];
@@ -202,6 +218,9 @@ test("shows durable turn activity without changing completed tool status", async
       reconnect() {
         for (const source of sources) source.onopen?.(new Event("open"));
       },
+      connected() {
+        return sources.length > 0;
+      },
     };
     Object.assign(window, {
       EventSource: FakeEventSource,
@@ -210,6 +229,58 @@ test("shows durable turn activity without changing completed tool status", async
   });
 
   await page.goto(`/agents/${SESSION_ID}`);
+  await page.waitForFunction(
+    () =>
+      (
+        window as unknown as {
+          __agentRuntimeControls: { connected: () => boolean };
+        }
+      ).__agentRuntimeControls.connected(),
+  );
+  await page.evaluate((initialSnapshot) => {
+    const controls = (
+      window as unknown as {
+        __agentRuntimeControls: {
+          emit: (envelope: unknown) => void;
+        };
+      }
+    ).__agentRuntimeControls;
+    controls.emit({
+      sequence: 0,
+      type: "snapshot",
+      data: initialSnapshot,
+    });
+  }, snapshot);
+
+  const sessionActivity = page.getByRole("status", {
+    name: "Runtime activity is working",
+  });
+  await expect(sessionActivity).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "New session in Runtime test" }),
+  ).toBeVisible();
+  await expect(page.getByText("New session", { exact: true })).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Collapse Runtime test" }).click();
+  await expect(
+    page.getByRole("status", {
+      name: "Runtime test has running sessions",
+    }),
+  ).toBeVisible();
+  await expect(sessionActivity).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Expand Runtime test" }).click();
+  await expect(sessionActivity).toBeVisible();
+  await page.getByRole("button", { name: "Collapse This machine" }).click();
+  await expect(
+    page.getByRole("status", {
+      name: "This machine has running sessions",
+    }),
+  ).toBeVisible();
+  await expect(sessionActivity).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Expand This machine" }).click();
+  await expect(sessionActivity).toBeVisible();
 
   const activity = page.getByTestId("agent-run-activity");
   await expect(activity).toContainText("Working");
@@ -271,6 +342,8 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(activity).toContainText("Reconnecting");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(activity).toBeVisible();
+  await page.getByRole("button", { name: "Open sidebar" }).click();
+  await expect(sessionActivity).toBeVisible();
   expect(
     await page.evaluate(
       () =>

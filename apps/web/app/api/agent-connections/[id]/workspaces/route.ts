@@ -70,6 +70,7 @@ export async function POST(
             messageCount: agentSession.messageCount,
             createdAt: agentSession.providerCreatedAt?.getTime() ?? null,
             modifiedAt: agentSession.providerModifiedAt?.getTime() ?? null,
+            runtimeStatus: "idle",
           })),
         },
       },

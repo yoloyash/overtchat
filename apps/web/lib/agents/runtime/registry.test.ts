@@ -894,6 +894,14 @@ describe("Pi session runtime", () => {
 
     expect(first).toBe(second);
     expect(mocks.startPiRpc).toHaveBeenCalledTimes(1);
+    expect(registry.runtimeStatusForSession("session", "user")).toBe("idle");
+    expect(registry.runtimeStatusForSession("session", "another-user")).toBe(
+      "idle",
+    );
+    client.emit({ type: "turn_start" });
+    expect(registry.runtimeStatusForSession("session", "user")).toBe(
+      "running",
+    );
     await registry.stopWorkspace("workspace", "user");
     expect(client.stop).toHaveBeenCalledTimes(1);
 

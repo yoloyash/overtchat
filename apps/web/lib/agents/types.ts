@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const AGENT_PROVIDER_IDS = ["pi", "omp"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
+export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
 export const AGENT_THINKING_LEVELS = [
   "off",
@@ -91,6 +92,7 @@ export type AgentSessionListItem = {
   messageCount: number;
   createdAt: number | null;
   modifiedAt: number | null;
+  runtimeStatus: AgentRuntimeStatus;
 };
 
 export type AgentWorkspaceListItem = {
@@ -270,7 +272,7 @@ export type AgentSessionStats = {
 export type AgentRuntimeSnapshot = {
   sessionId: string;
   provider: AgentProviderId;
-  status: "idle" | "running" | "exited";
+  status: AgentRuntimeStatus;
   activeTurn: {
     startedAt: number;
   } | null;

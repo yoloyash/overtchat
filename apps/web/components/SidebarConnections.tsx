@@ -8,7 +8,6 @@ import {
   ChevronRight,
   ChevronUp,
   Folder,
-  FolderPlus,
   Loader2,
   Plus,
   TerminalSquare,
@@ -21,10 +20,14 @@ import type {
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   AGENT_SESSION_PREVIEW_COUNT,
+  agentConnectionHasRunningSession,
+  agentSessionIsRunning,
+  agentWorkspaceHasRunningSession,
   visibleAgentSessions,
 } from "@/lib/agents/sidebar";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
+import { motionClasses } from "@/lib/motion";
 import { useCreateAgentSession } from "@/lib/queries/agentConnections";
 import { cn } from "@/lib/utils";
 
@@ -50,42 +53,45 @@ function ConnectionNode({
 }) {
   const provider = agentProviderMetadata(connection.provider);
   const pathname = usePathname();
-  const { setOpenMobile } = useSidebar();
   const hasActiveSession = connection.workspaces.some((workspace) =>
     workspace.sessions.some(
       (session) => pathname === `/agents/${session.id}`,
     ),
   );
   const [open, setOpen] = useState(hasActiveSession);
+  const hasRunningSession = agentConnectionHasRunningSession(connection);
 
   return (
     <li>
-      <div className="group flex min-w-0 items-center">
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          aria-label={open ? `Collapse ${connection.host.name}` : `Expand ${connection.host.name}`}
-          className="rounded p-1 text-muted-foreground motion-colors hover:bg-sidebar-accent max-md:p-2"
-        >
-          <ChevronRight
-            className={cn("size-3.5 motion-transform", open && "rotate-90")}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm motion-colors hover:bg-sidebar-accent"
-          title={`${connection.host.name} · ${provider.label}`}
-        >
-          <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{connection.host.name}</span>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {provider.label}
-          </span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-label={
+          open
+            ? `Collapse ${connection.host.name}`
+            : `Expand ${connection.host.name}`
+        }
+        className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-1.5 text-left text-sm motion-colors hover:bg-sidebar-accent"
+        title={`${connection.host.name} · ${provider.label}`}
+      >
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground motion-transform",
+            open && "rotate-90",
+          )}
+        />
+        <TerminalSquare className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate">{connection.host.name}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {provider.label}
+        </span>
+        <RuntimeActivityIndicator
+          active={!open && hasRunningSession}
+          label={`${connection.host.name} has running sessions`}
+        />
+      </button>
       {open && (
-        <div className="ml-5 border-l pl-1">
+        <ul className="flex flex-col gap-0.5 pl-3">
           {connection.workspaces.map((workspace) => (
             <WorkspaceNode
               key={workspace.id}
@@ -93,15 +99,7 @@ function ConnectionNode({
               providerLabel={provider.label}
             />
           ))}
-          <Link
-            href="/settings/connections"
-            onClick={() => setOpenMobile(false)}
-            className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-          >
-            <FolderPlus className="size-3.5" />
-            <span>Add workspace</span>
-          </Link>
-        </div>
+        </ul>
       )}
     </li>
   );
@@ -123,6 +121,7 @@ function WorkspaceNode({
   );
   const [open, setOpen] = useState(hasActiveSession);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const hasRunningSession = agentWorkspaceHasRunningSession(workspace);
   const activeSessionId =
     workspace.sessions.find(
       (session) => pathname === `/agents/${session.id}`,
@@ -151,26 +150,31 @@ function WorkspaceNode({
   }
 
   return (
-    <div>
+    <li>
       <div className="group flex min-w-0 items-center">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          aria-label={open ? `Collapse ${workspace.name}` : `Expand ${workspace.name}`}
-          className="rounded p-1 text-muted-foreground motion-colors hover:bg-sidebar-accent max-md:p-2"
-        >
-          <ChevronRight
-            className={cn("size-3.5 motion-transform", open && "rotate-90")}
-          />
-        </button>
-        <button
-          type="button"
-          onClick={() => setOpen((current) => !current)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left text-sm motion-colors hover:bg-sidebar-accent"
+          aria-label={
+            open
+              ? `Collapse ${workspace.name}`
+              : `Expand ${workspace.name}`
+          }
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1.5 text-left text-sm motion-colors hover:bg-sidebar-accent"
           title={workspace.path}
         >
+          <ChevronRight
+            className={cn(
+              "size-3.5 shrink-0 text-muted-foreground motion-transform",
+              open && "rotate-90",
+            )}
+          />
           <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{workspace.name}</span>
+          <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+          <RuntimeActivityIndicator
+            active={!open && hasRunningSession}
+            label={`${workspace.name} has running sessions`}
+          />
         </button>
         <button
           type="button"
@@ -181,33 +185,19 @@ function WorkspaceNode({
           className="mr-0.5 rounded p-1 text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50 max-md:p-2"
         >
           {createSession.isPending ? (
-            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+            <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
           ) : (
             <Plus className="size-3.5" />
           )}
         </button>
       </div>
       {open && (
-        <ul className="ml-5 flex flex-col gap-0.5 border-l pl-1">
-          <li>
-            <button
-              type="button"
-              onClick={() => void startSession()}
-              disabled={createSession.isPending}
-              className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-            >
-              {createSession.isPending ? (
-                <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
-              ) : (
-                <Plus className="size-3.5" />
-              )}
-              <span>New session</span>
-            </button>
-          </li>
+        <ul className="flex flex-col gap-0.5 pl-7">
           {visibleSessions.map((session) => (
             <SessionLink key={session.id} session={session} />
           ))}
-          {workspace.sessions.length > AGENT_SESSION_PREVIEW_COUNT && (
+          {workspace.sessions.length > AGENT_SESSION_PREVIEW_COUNT &&
+            (sessionsExpanded || hiddenSessionCount > 0) && (
             <li>
               <button
                 type="button"
@@ -229,7 +219,7 @@ function WorkspaceNode({
           )}
         </ul>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -244,13 +234,42 @@ function SessionLink({ session }: { session: AgentSessionListItem }) {
         onClick={() => setOpenMobile(false)}
         title={title}
         className={cn(
-          "flex min-w-0 items-center rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
+          "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
           pathname === `/agents/${session.id}` &&
             "bg-sidebar-accent text-foreground",
         )}
       >
-        <span className="truncate">{title}</span>
+        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <RuntimeActivityIndicator
+          active={agentSessionIsRunning(session)}
+          label={`${title} is working`}
+        />
       </Link>
     </li>
+  );
+}
+
+function RuntimeActivityIndicator({
+  active,
+  label,
+}: {
+  active: boolean;
+  label: string;
+}) {
+  return (
+    <span className="flex size-4 shrink-0 items-center justify-center">
+      {active && (
+        <span
+          role="status"
+          aria-label={label}
+          className="flex size-4 items-center justify-center text-muted-foreground"
+        >
+          <Loader2
+            aria-hidden="true"
+            className={cn("size-3.5", motionClasses.spinner)}
+          />
+        </span>
+      )}
+    </span>
   );
 }
