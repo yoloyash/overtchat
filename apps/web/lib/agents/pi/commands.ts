@@ -148,9 +148,7 @@ export function normalizeAgentSessionCommand(
 
   switch (invocation.name) {
     case "compact":
-      return provider === "pi"
-        ? compactCommand(invocation.arguments)
-        : command;
+      return compactCommand(invocation.arguments);
     case "autocompact":
       return autoCompactCommand(invocation.arguments, state);
     case "name":

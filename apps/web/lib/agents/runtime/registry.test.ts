@@ -268,6 +268,48 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
+  it("runs OMP compaction out of band and refreshes session usage", async () => {
+    const client = new FakePiClient();
+    const compactedStats = {
+      ...stats,
+      tokens: {
+        ...stats.tokens,
+        input: 27_603,
+        total: 27_603,
+      },
+      contextUsage: {
+        tokens: 27_603,
+        contextWindow: 131_072,
+        percent: 21.06,
+      },
+    };
+    client.getSessionStats.mockResolvedValueOnce(compactedStats);
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({
+      type: "prompt",
+      message: "/compact focus on tests",
+    });
+
+    expect(client.compact).toHaveBeenCalledWith("focus on tests");
+    expect(client.prompt).not.toHaveBeenCalled();
+    expect(client.getSessionStats).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().stats).toEqual(compactedStats);
+    await runtime.stop();
+  });
+
   it("queues prompts in OvertChat and drains them after Pi settles", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(

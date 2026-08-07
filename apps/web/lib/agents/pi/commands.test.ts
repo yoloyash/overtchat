@@ -105,7 +105,7 @@ describe("Pi slash commands", () => {
     expect(normalizePiSessionCommand(command, {})).toBe(command);
   });
 
-  it("keeps OMP compact native while retaining OvertChat session controls", () => {
+  it("routes OMP compact and OvertChat session controls to native RPC commands", () => {
     const commands = mergeAgentSlashCommands("omp", [
       {
         name: "compact",
@@ -137,8 +137,8 @@ describe("Pi slash commands", () => {
         {},
       ),
     ).toEqual({
-      type: "prompt",
-      message: "/compact focus on tests",
+      type: "compact",
+      customInstructions: "focus on tests",
     });
     expect(
       normalizeAgentSessionCommand(
