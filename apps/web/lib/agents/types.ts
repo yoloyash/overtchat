@@ -197,7 +197,7 @@ export type AgentSlashCommand = {
 export type AgentQueuedMessage = {
   id: string;
   message: string;
-  delivery: "steer" | "follow_up";
+  status: "pending" | "sending";
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
@@ -207,12 +207,16 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("abort") }),
   z.object({
-    type: z.literal("steer"),
+    type: z.literal("queue"),
     message: z.string().trim().min(1).max(200_000),
   }),
   z.object({
-    type: z.literal("follow_up"),
-    message: z.string().trim().min(1).max(200_000),
+    type: z.literal("remove_queued_message"),
+    id: z.string().min(1).max(500),
+  }),
+  z.object({
+    type: z.literal("send_queued_message_now"),
+    id: z.string().min(1).max(500),
   }),
   z.object({
     type: z.literal("set_model"),
@@ -301,7 +305,7 @@ export type AgentRuntimeEnvelope =
     }
   | {
       sequence: number;
-      type: "pi_event";
+      type: "runtime_event";
       data: {
         type: string;
         [key: string]: unknown;

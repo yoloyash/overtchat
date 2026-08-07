@@ -65,7 +65,11 @@ describe("agent session route", () => {
       snapshot: mocks.snapshot,
     });
     mocks.normalizeCommand.mockImplementation((command) => command);
-    mocks.snapshot.mockReturnValue({ sessionId: "session", status: "idle" });
+    mocks.snapshot.mockReturnValue({
+      sessionId: "session",
+      status: "idle",
+      queuedMessages: [],
+    });
     mocks.create.mockResolvedValue({
       sessionId: "new-session",
       runtime: { snapshot: vi.fn() },
@@ -143,42 +147,42 @@ describe("agent session route", () => {
     );
   });
 
-  it("forwards native steering and follow-up messages", async () => {
-    const steer = await POST(
+  it("forwards provider-neutral queue commands", async () => {
+    mocks.snapshot.mockReturnValue({
+      sessionId: "session",
+      status: "running",
+      queuedMessages: [
+        {
+          id: "session:1",
+          message: "Then summarize",
+          status: "pending",
+        },
+      ],
+    });
+    const queued = await POST(
       request("POST", {
-        type: "steer",
-        message: "Focus on the failing test",
-      }),
-      context,
-    );
-    const followUp = await POST(
-      request("POST", {
-        type: "follow_up",
+        type: "queue",
         message: "Then summarize",
       }),
       context,
     );
 
-    expect(steer.status).toBe(200);
-    expect(followUp.status).toBe(200);
-    expect(mocks.command).toHaveBeenNthCalledWith(1, {
-      type: "steer",
-      message: "Focus on the failing test",
+    expect(queued.status).toBe(200);
+    await expect(queued.json()).resolves.toEqual({
+      accepted: true,
+      queuedMessages: [
+        {
+          id: "session:1",
+          message: "Then summarize",
+          status: "pending",
+        },
+      ],
     });
-    expect(mocks.command).toHaveBeenNthCalledWith(2, {
-      type: "follow_up",
+    expect(mocks.command).toHaveBeenCalledWith({
+      type: "queue",
       message: "Then summarize",
     });
-    expect(mocks.updateAgentSessionMetadata).toHaveBeenNthCalledWith(
-      1,
-      "session",
-      { providerModifiedAt: expect.any(Date) },
-    );
-    expect(mocks.updateAgentSessionMetadata).toHaveBeenNthCalledWith(
-      2,
-      "session",
-      { providerModifiedAt: expect.any(Date) },
-    );
+    expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 
   it("creates a new workspace session for /new without prompting Pi", async () => {

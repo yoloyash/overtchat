@@ -97,7 +97,7 @@ export function AgentSessionView({
       closeCompact?: boolean;
       toastTitle?: string;
     } = {},
-  ) {
+  ): Promise<boolean> {
     setDialogError("");
     try {
       const result = await command.mutateAsync(input);
@@ -106,11 +106,12 @@ export function AgentSessionView({
           throw new Error(`${providerLabel} did not return the new session.`);
         }
         router.push(`/agents/${result.sessionId}`);
-        return;
+        return true;
       }
       if (options.closeRename) setRenameOpen(false);
       if (options.closeCompact) setCompactOpen(false);
       if (options.toastTitle) toast.success({ title: options.toastTitle });
+      return true;
     } catch (cause) {
       const message =
         cause instanceof Error
@@ -124,13 +125,14 @@ export function AgentSessionView({
           description: message,
         });
       }
+      return false;
     }
   }
 
-  function submit(
+  async function submit(
     message: string,
-    delivery: "prompt" | "steer" | "follow_up",
-  ) {
+    delivery: "prompt" | "queue",
+  ): Promise<boolean> {
     let input: AgentSessionCommand;
     try {
       const normalized = normalizeAgentSessionCommand(
@@ -150,7 +152,7 @@ export function AgentSessionView({
             ? cause.message
             : `Invalid ${providerLabel} command.`,
       });
-      return;
+      return false;
     }
 
     const toastTitle =
@@ -161,7 +163,7 @@ export function AgentSessionView({
           : input.type === "set_auto_compaction"
             ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
             : undefined;
-    void run(input, { toastTitle });
+    return run(input, { toastTitle });
   }
 
   if (session.isPending) {
@@ -271,6 +273,12 @@ export function AgentSessionView({
             disabled={exited || Boolean(snapshot.pendingExtensionRequest)}
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
+            onEditQueued={(id) =>
+              run({ type: "remove_queued_message", id })
+            }
+            onSendQueuedNow={(id) =>
+              run({ type: "send_queued_message_now", id })
+            }
           />
         </div>
       </div>

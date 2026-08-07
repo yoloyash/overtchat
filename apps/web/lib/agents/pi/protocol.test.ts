@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  parseAgentQueuedMessages,
   parsePiCommands,
   parsePiModels,
-  parsePiQueueUpdate,
   parsePiSessionStats,
   parsePiThinkingLevels,
 } from "./protocol";
@@ -207,37 +205,6 @@ describe("Pi RPC response parsing", () => {
       cost: 0,
       tokens: { total: 0 },
     });
-  });
-
-  it("parses authoritative queued steering and follow-up messages", () => {
-    const event = {
-      type: "queue_update",
-      steering: ["Focus on the failing test"],
-      followUp: ["Summarize the fix"],
-    };
-    expect(parsePiQueueUpdate(event)).toEqual({
-      steering: ["Focus on the failing test"],
-      followUp: ["Summarize the fix"],
-    });
-    expect(parseAgentQueuedMessages(event)).toEqual([
-      {
-        id: "steer:0",
-        message: "Focus on the failing test",
-        delivery: "steer",
-      },
-      {
-        id: "follow_up:0",
-        message: "Summarize the fix",
-        delivery: "follow_up",
-      },
-    ]);
-    expect(
-      parsePiQueueUpdate({
-        type: "queue_update",
-        steering: [42],
-        followUp: [],
-      }),
-    ).toBeNull();
   });
 
   it("rejects unknown thinking levels instead of guessing support", () => {

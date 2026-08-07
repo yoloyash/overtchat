@@ -1,13 +1,13 @@
 import type {
+  AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
 } from "@/lib/agents/types";
-import { parseAgentQueuedMessages } from "@/lib/agents/pi/protocol";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 
 type AgentRuntimeEvent = Extract<
   AgentRuntimeEnvelope,
-  { type: "pi_event" }
+  { type: "runtime_event" }
 >["data"];
 
 function roleOf(message: unknown): string | null {
@@ -28,10 +28,47 @@ function timestampOf(message: unknown): number | null {
   return typeof timestamp === "number" ? timestamp : null;
 }
 
+function textOf(message: unknown): string {
+  if (!message || typeof message !== "object") return "";
+  const content = Reflect.get(message, "content");
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .flatMap((part) =>
+      part &&
+      typeof part === "object" &&
+      Reflect.get(part, "type") === "text" &&
+      typeof Reflect.get(part, "text") === "string"
+        ? [Reflect.get(part, "text") as string]
+        : [],
+    )
+    .join("\n")
+    .trim();
+}
+
+function submissionIdOf(message: unknown): string | null {
+  if (!message || typeof message !== "object") return null;
+  const id = Reflect.get(message, "overtchatSubmissionId");
+  return typeof id === "string" ? id : null;
+}
+
 function upsertMessage(messages: unknown[], message: unknown): unknown[] {
   const role = roleOf(message);
   if (!role) return messages;
   const next = [...messages];
+  if (role === "user") {
+    const text = textOf(message);
+    const pendingIndex = next.findIndex(
+      (candidate) =>
+        roleOf(candidate) === "user" &&
+        submissionIdOf(candidate) !== null &&
+        textOf(candidate) === text,
+    );
+    if (pendingIndex >= 0) {
+      next[pendingIndex] = message;
+      return next;
+    }
+  }
   const timestamp = timestampOf(message);
   if (timestamp !== null) {
     const index = next.findIndex(
@@ -99,6 +136,20 @@ export function applyAgentRuntimeMessageEvent(
   messages: unknown[],
   event: AgentRuntimeEvent,
 ): unknown[] {
+  if (
+    event.type === "overtchat_submission" &&
+    event.message !== undefined
+  ) {
+    return upsertMessage(messages, event.message);
+  }
+  if (
+    event.type === "overtchat_submission_rejected" &&
+    typeof event.id === "string"
+  ) {
+    return messages.filter(
+      (message) => submissionIdOf(message) !== event.id,
+    );
+  }
   if (
     ["message_start", "message_update", "message_end"].includes(event.type) &&
     event.message !== undefined
@@ -186,12 +237,21 @@ export function applyAgentRuntimeEnvelope(
   ) {
     return { ...current, error: event.error };
   }
-  if (event.type === "queue_update") {
-    const queuedMessages = parseAgentQueuedMessages(event);
+  if (event.type === "overtchat_queue_update") {
+    const queuedMessages = parseQueuedMessages(event.queuedMessages);
     if (!queuedMessages) return current;
     return {
       ...current,
       queuedMessages,
+    };
+  }
+  if (
+    event.type === "overtchat_submission" ||
+    event.type === "overtchat_submission_rejected"
+  ) {
+    return {
+      ...current,
+      messages: applyAgentRuntimeMessageEvent(current.messages, event),
     };
   }
   if (event.type === "process_exit") {
@@ -251,4 +311,28 @@ export function applyAgentRuntimeEnvelope(
     };
   }
   return current;
+}
+
+function parseQueuedMessages(value: unknown): AgentQueuedMessage[] | null {
+  if (!Array.isArray(value)) return null;
+  const messages: AgentQueuedMessage[] = [];
+  for (const item of value) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      typeof Reflect.get(item, "id") !== "string" ||
+      typeof Reflect.get(item, "message") !== "string" ||
+      !["pending", "sending"].includes(
+        String(Reflect.get(item, "status")),
+      )
+    ) {
+      return null;
+    }
+    messages.push({
+      id: Reflect.get(item, "id") as string,
+      message: Reflect.get(item, "message") as string,
+      status: Reflect.get(item, "status") as "pending" | "sending",
+    });
+  }
+  return messages;
 }

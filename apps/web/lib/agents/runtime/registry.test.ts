@@ -230,6 +230,56 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
+  it("moves an accepted prompt into the transcript without duplicating an early provider echo", async () => {
+    const client = new FakePiClient();
+    let acceptPrompt: () => void = vi.fn();
+    client.prompt.mockImplementationOnce(
+      () =>
+        new Promise<object>((resolve) => {
+          acceptPrompt = () => resolve({});
+        }),
+    );
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    const submitting = runtime.command({
+      type: "prompt",
+      message: "Inspect the runtime",
+    });
+    expect(runtime.snapshot().messages).toEqual([]);
+
+    client.emit({
+      type: "message_start",
+      message: {
+        role: "user",
+        content: "Inspect the runtime",
+        timestamp: 10,
+      },
+    });
+    acceptPrompt();
+    await submitting;
+
+    expect(runtime.snapshot().messages).toEqual([
+      {
+        role: "user",
+        content: "Inspect the runtime",
+        timestamp: 10,
+      },
+    ]);
+    await runtime.stop();
+  });
+
   it("executes Overtchat slash commands through native Pi RPC methods", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
@@ -312,7 +362,7 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("uses native follow-up when a prompt arrives during a run", async () => {
+  it("owns queued messages independently of the provider queue", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -334,40 +384,55 @@ describe("Pi session runtime", () => {
       type: "prompt",
       message: "First",
     });
-    await runtime.command({
-      type: "prompt",
-      message: "Second",
-    });
+    await runtime.command({ type: "queue", message: "Second" });
     expect(client.prompt).toHaveBeenCalledTimes(1);
-    expect(client.followUp).toHaveBeenCalledWith("Second");
-
-    client.emit({
-      type: "queue_update",
-      steering: [],
-      followUp: ["Second"],
-    });
+    expect(client.followUp).not.toHaveBeenCalled();
     expect(runtime.snapshot().queuedMessages).toEqual([
       {
-        id: "follow_up:0",
+        id: "session:1",
         message: "Second",
-        delivery: "follow_up",
+        status: "pending",
       },
     ]);
     expect(events).toContainEqual(
       expect.objectContaining({
-        type: "pi_event",
+        type: "runtime_event",
         data: {
-          type: "queue_update",
-          steering: [],
-          followUp: ["Second"],
+          type: "overtchat_queue_update",
+          queuedMessages: [
+            {
+              id: "session:1",
+              message: "Second",
+              status: "pending",
+            },
+          ],
         },
       }),
     );
+
+    client.emit({
+      type: "queue_update",
+      steering: ["Provider-owned"],
+      followUp: ["Provider-owned"],
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      {
+        id: "session:1",
+        message: "Second",
+        status: "pending",
+      },
+    ]);
+
+    client.emit({ type: "agent_settled" });
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenNthCalledWith(2, "Second");
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
     unsubscribe();
     await runtime.stop();
   });
 
-  it("sends native steer and follow-up commands", async () => {
+  it("interrupts an active run before submitting an immediate message", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -385,22 +450,19 @@ describe("Pi session runtime", () => {
 
     await runtime.command({ type: "prompt", message: "First" });
     await runtime.command({
-      type: "steer",
-      message: "Focus on the failing test",
-    });
-    await runtime.command({
-      type: "follow_up",
-      message: "Then summarize",
+      type: "prompt",
+      message: "Send this now",
     });
 
-    expect(client.prompt).toHaveBeenCalledTimes(1);
-    expect(client.steer).toHaveBeenCalledWith("Focus on the failing test");
-    expect(client.followUp).toHaveBeenCalledWith("Then summarize");
-    expect(client.abort).not.toHaveBeenCalled();
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(client.prompt).toHaveBeenNthCalledWith(1, "First");
+    expect(client.prompt).toHaveBeenNthCalledWith(2, "Send this now");
+    expect(client.steer).not.toHaveBeenCalled();
+    expect(client.followUp).not.toHaveBeenCalled();
     await runtime.stop();
   });
 
-  it("starts a new prompt when a steer reaches an idle session", async () => {
+  it("sends a selected queued message now and preserves FIFO order", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -416,10 +478,67 @@ describe("Pi session runtime", () => {
       vi.fn(),
     );
 
-    await runtime.command({ type: "steer", message: "Continue" });
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "queue", message: "Second" });
+    await runtime.command({ type: "queue", message: "Third" });
+    await runtime.command({
+      type: "send_queued_message_now",
+      id: "session:2",
+    });
 
-    expect(client.prompt).toHaveBeenCalledWith("Continue");
-    expect(client.steer).not.toHaveBeenCalled();
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(client.prompt).toHaveBeenNthCalledWith(1, "First");
+    expect(client.prompt).toHaveBeenNthCalledWith(2, "Third");
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      {
+        id: "session:1",
+        message: "Second",
+        status: "pending",
+      },
+    ]);
+    await runtime.stop();
+  });
+
+  it("keeps a queued message pending when interruption fails", async () => {
+    const client = new FakePiClient();
+    client.abort.mockRejectedValueOnce(
+      new Error("Provider rejected the interrupt"),
+    );
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "queue", message: "Second" });
+    await expect(
+      runtime.command({
+        type: "send_queued_message_now",
+        id: "session:1",
+      }),
+    ).rejects.toThrow("Provider rejected the interrupt");
+
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot()).toMatchObject({
+      status: "running",
+      error: "Provider rejected the interrupt",
+      queuedMessages: [
+        {
+          id: "session:1",
+          message: "Second",
+          status: "pending",
+        },
+      ],
+    });
     await runtime.stop();
   });
 
@@ -480,6 +599,7 @@ describe("Pi session runtime", () => {
     ).rejects.toThrow("Prompt rejected");
     expect(runtime.snapshot().status).toBe("idle");
     expect(runtime.snapshot().queuedMessages).toEqual([]);
+    expect(runtime.snapshot().messages).toEqual([]);
     expect(runtime.snapshot().error).toBe("Prompt rejected");
     await runtime.stop();
   });
@@ -528,8 +648,8 @@ describe("Pi session runtime", () => {
     );
 
     await runtime.command({ type: "prompt", message: "First" });
-    await runtime.command({ type: "prompt", message: "Second" });
-    expect(client.followUp).toHaveBeenCalledWith("Second");
+    await runtime.command({ type: "queue", message: "Second" });
+    expect(client.followUp).not.toHaveBeenCalled();
     client.emit({
       type: "agent_end",
       messages: [],
@@ -544,9 +664,9 @@ describe("Pi session runtime", () => {
       messages: [{ role: "assistant", content: [] }],
     });
     await vi.waitFor(() => {
-      expect(runtime.snapshot().status).toBe("idle");
+      expect(client.prompt).toHaveBeenNthCalledWith(2, "Second");
     });
-    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().status).toBe("running");
     await runtime.stop();
   });
 
@@ -574,8 +694,8 @@ describe("Pi session runtime", () => {
     );
 
     await runtime.command({ type: "prompt", message: "First" });
-    await runtime.command({ type: "prompt", message: "Second" });
-    expect(client.followUp).toHaveBeenCalledWith("Second");
+    await runtime.command({ type: "queue", message: "Second" });
+    expect(client.followUp).not.toHaveBeenCalled();
     client.emit({
       type: "agent_end",
       messages: [{ role: "assistant", content: [] }],
@@ -590,9 +710,9 @@ describe("Pi session runtime", () => {
 
     resolveState(idleProviderState);
     await vi.waitFor(() => {
-      expect(runtime.snapshot().status).toBe("idle");
+      expect(client.prompt).toHaveBeenNthCalledWith(2, "Second");
     });
-    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().status).toBe("running");
     await runtime.stop();
   });
 
@@ -621,13 +741,8 @@ describe("Pi session runtime", () => {
     try {
       await runtime.command({ type: "prompt", message: "First" });
       await runtime.command({
-        type: "follow_up",
+        type: "queue",
         message: "Second",
-      });
-      client.emit({
-        type: "queue_update",
-        steering: [],
-        followUp: ["Second"],
       });
       client.emit({
         type: "agent_end",
@@ -644,9 +759,9 @@ describe("Pi session runtime", () => {
         ),
         queuedMessages: [
           {
-            id: "follow_up:0",
+            id: "session:1",
             message: "Second",
-            delivery: "follow_up",
+            status: "pending",
           },
         ],
       });
@@ -702,7 +817,7 @@ describe("Pi session runtime", () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it("stops a stale OMP run without replaying provider-owned queues", async () => {
+  it("drains the OvertChat queue after Stop confirms provider idle", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -719,13 +834,16 @@ describe("Pi session runtime", () => {
     );
 
     await runtime.command({ type: "prompt", message: "First" });
-    await runtime.command({ type: "follow_up", message: "Second" });
+    await runtime.command({ type: "queue", message: "Second" });
     await runtime.command({ type: "abort" });
 
     expect(client.abort).toHaveBeenCalledTimes(1);
     expect(client.getState).toHaveBeenCalled();
-    expect(client.followUp).toHaveBeenCalledWith("Second");
-    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(client.followUp).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenNthCalledWith(2, "Second");
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
     await runtime.stop();
   });
 
@@ -768,7 +886,7 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("replays sequenced events and mirrors native provider queues", async () => {
+  it("replays sequenced provider and OvertChat queue events", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -786,21 +904,15 @@ describe("Pi session runtime", () => {
     const first: unknown[] = [];
     const unsubscribeFirst = runtime.subscribe((event) => first.push(event));
     client.emit({ type: "turn_start" });
-    client.emit({
-      type: "queue_update",
-      steering: ["Focus on the failing test"],
-      followUp: ["Summarize the result"],
+    await runtime.command({
+      type: "queue",
+      message: "Summarize the result",
     });
     expect(runtime.snapshot().queuedMessages).toEqual([
       {
-        id: "steer:0",
-        message: "Focus on the failing test",
-        delivery: "steer",
-      },
-      {
-        id: "follow_up:0",
+        id: "session:1",
         message: "Summarize the result",
-        delivery: "follow_up",
+        status: "pending",
       },
     ]);
 
@@ -810,11 +922,13 @@ describe("Pi session runtime", () => {
       1,
     );
     expect(replayed).toEqual([
-      expect.objectContaining({ sequence: 2, type: "pi_event" }),
+      expect.objectContaining({ sequence: 2, type: "runtime_event" }),
       expect.objectContaining({
         sequence: 3,
-        type: "pi_event",
-        data: expect.objectContaining({ type: "queue_update" }),
+        type: "runtime_event",
+        data: expect.objectContaining({
+          type: "overtchat_queue_update",
+        }),
       }),
     ]);
 

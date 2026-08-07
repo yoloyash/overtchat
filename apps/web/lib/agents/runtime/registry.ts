@@ -18,7 +18,6 @@ import {
   normalizeAgentSessionCommand,
 } from "@/lib/agents/pi/commands";
 import {
-  parseAgentQueuedMessages,
   parsePiCommands,
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
@@ -164,7 +163,17 @@ export class PiSessionRuntime {
   private commands: AgentSlashCommand[];
   private stats: AgentSessionStats;
   private queuedMessages: AgentQueuedMessage[] = [];
+  private nextQueuedMessageId = 0;
   private promptAwaitingStart = false;
+  private promptSubmission:
+    | {
+        id: string;
+        message: string;
+        published: boolean;
+      }
+    | undefined;
+  private queueDrainPromise: Promise<void> | null = null;
+  private immediateSubmissionPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
   private ompRunSawAssistant = false;
@@ -211,13 +220,21 @@ export class PiSessionRuntime {
       let settleRejectedPrompt = false;
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
-      const queuedMessages = parseAgentQueuedMessages(event);
-      if (queuedMessages) this.queuedMessages = queuedMessages;
+      if (
+        ["message_start", "message_update", "message_end"].includes(
+          event.type,
+        ) &&
+        messageRole(event.message) === "user" &&
+        messageText(event.message) === this.promptSubmission?.message.trim()
+      ) {
+        this.promptSubmission = undefined;
+      }
       if (event.type === "process_exit") {
         this.stopped = true;
         this.turnGeneration += 1;
         this.clearIdleStop();
         this.clearPendingExtensionRequest();
+        this.promptSubmission = undefined;
         this.status = "exited";
         this.activeTurnStartedAt = null;
         this.state = {
@@ -283,10 +300,14 @@ export class PiSessionRuntime {
         this.error = event.error;
         if (event.command === "prompt" && this.promptAwaitingStart) {
           this.promptAwaitingStart = false;
+          if (this.promptSubmission?.published) {
+            this.rejectSubmission(this.promptSubmission.id);
+          }
+          this.promptSubmission = undefined;
           settleRejectedPrompt = true;
         }
       }
-      this.publish({ type: "pi_event", data: event });
+      this.publish({ type: "runtime_event", data: event });
       if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
       }
@@ -344,6 +365,7 @@ export class PiSessionRuntime {
       if (terminal || promptHandledWithoutRun) {
         if (ompAssistantEnd) this.ompRunSawAssistant = false;
         this.promptAwaitingStart = false;
+        this.promptSubmission = undefined;
         this.clearPendingExtensionRequest();
         void this.settleAfterProviderTerminal();
       }
@@ -412,10 +434,12 @@ export class PiSessionRuntime {
         return this.submitPrompt(command.message);
       case "abort":
         return this.abortActiveRun();
-      case "steer":
-        return this.submitDuringRun(command.message, "steer");
-      case "follow_up":
-        return this.submitDuringRun(command.message, "follow_up");
+      case "queue":
+        return this.enqueueMessage(command.message);
+      case "remove_queued_message":
+        return this.removeQueuedMessage(command.id);
+      case "send_queued_message_now":
+        return this.sendQueuedMessageNow(command.id);
       case "set_model":
         return this.client
           .setModel(command.provider, command.modelId)
@@ -567,38 +591,15 @@ export class PiSessionRuntime {
         new Error(`${agentProviderMetadata(this.provider).label} exited.`),
       );
     }
-    if (
-      this.status !== "idle" ||
-      this.abortPromise ||
-      this.settlePromise
-    ) {
-      return this.client.followUp(message);
-    }
-    return this.startPrompt(message);
+    return this.submitMessageNow(message).finally(() => {
+      if (this.status === "idle") void this.drainQueuedMessage();
+    });
   }
 
-  private submitDuringRun(
+  private async startPrompt(
     message: string,
-    delivery: "steer" | "follow_up",
+    submissionId = `prompt:${this.turnGeneration + 1}`,
   ): Promise<unknown> {
-    if (this.status === "exited") {
-      return Promise.reject(
-        new Error(`${agentProviderMetadata(this.provider).label} exited.`),
-      );
-    }
-    if (
-      this.status === "idle" &&
-      !this.abortPromise &&
-      !this.settlePromise
-    ) {
-      return this.startPrompt(message);
-    }
-    return delivery === "steer"
-      ? this.client.steer(message)
-      : this.client.followUp(message);
-  }
-
-  private async startPrompt(message: string): Promise<unknown> {
     this.turnGeneration += 1;
     if (this.provider === "omp") this.ompRunSawAssistant = false;
     this.status = "running";
@@ -606,17 +607,32 @@ export class PiSessionRuntime {
     this.state = { ...this.state, isStreaming: true };
     this.error = undefined;
     this.promptAwaitingStart = true;
+    const submission = {
+      id: submissionId,
+      message,
+      published: false,
+    };
+    this.promptSubmission = submission;
     this.publishStatus();
     try {
-      return await this.client.prompt(message);
+      const result = await this.client.prompt(message);
+      if (this.promptSubmission === submission) {
+        submission.published = true;
+        this.publishSubmission(submission.id, submission.message);
+      }
+      return result;
     } catch (error) {
       this.promptAwaitingStart = false;
+      if (this.promptSubmission === submission) {
+        if (submission.published) this.rejectSubmission(submission.id);
+        this.promptSubmission = undefined;
+      }
       this.status = "idle";
       this.activeTurnStartedAt = null;
       this.state = { ...this.state, isStreaming: false };
       this.error = errorMessage(error);
       this.publish({
-        type: "pi_event",
+        type: "runtime_event",
         data: {
           type: "rpc_error",
           command: "prompt",
@@ -645,7 +661,7 @@ export class PiSessionRuntime {
       .catch((error) => {
         this.error = errorMessage(error);
         this.publish({
-          type: "pi_event",
+          type: "runtime_event",
           data: {
             type: "rpc_error",
             command: "abort",
@@ -657,6 +673,7 @@ export class PiSessionRuntime {
       .finally(() => {
         if (this.abortPromise !== settled) return;
         this.abortPromise = null;
+        if (this.status === "idle") void this.drainQueuedMessage();
       });
     this.abortPromise = settled;
     return settled;
@@ -673,7 +690,7 @@ export class PiSessionRuntime {
       .catch((error) => {
         this.error = errorMessage(error);
         this.publish({
-          type: "pi_event",
+          type: "runtime_event",
           data: {
             type: "rpc_error",
             command: "get_state",
@@ -684,6 +701,7 @@ export class PiSessionRuntime {
       .finally(() => {
         if (this.settlePromise !== settled) return;
         this.settlePromise = null;
+        if (this.status === "idle") void this.drainQueuedMessage();
       });
     this.settlePromise = settled;
     return settled;
@@ -710,7 +728,7 @@ export class PiSessionRuntime {
     } catch (error) {
       this.error = errorMessage(error);
       this.publish({
-        type: "pi_event",
+        type: "runtime_event",
         data: {
           type: "rpc_error",
           command: "refresh",
@@ -764,11 +782,181 @@ export class PiSessionRuntime {
 
   private publishStatus(): void {
     this.publish({
-      type: "pi_event",
+      type: "runtime_event",
       data: {
         type: "overtchat_status",
         status: this.status,
         startedAt: this.activeTurnStartedAt,
+      },
+    });
+  }
+
+  private enqueueMessage(message: string): Promise<unknown> {
+    const queuedMessage = this.addQueuedMessage(message, "pending");
+    if (this.status === "idle") void this.drainQueuedMessage();
+    return Promise.resolve({ queued: true, id: queuedMessage.id });
+  }
+
+  private addQueuedMessage(
+    message: string,
+    status: AgentQueuedMessage["status"],
+  ): AgentQueuedMessage {
+    const queuedMessage: AgentQueuedMessage = {
+      id: `${this.dbSessionId}:${++this.nextQueuedMessageId}`,
+      message,
+      status,
+    };
+    this.queuedMessages = [...this.queuedMessages, queuedMessage];
+    this.publishQueueUpdate();
+    return queuedMessage;
+  }
+
+  private removeQueuedMessage(id: string): Promise<void> {
+    const message = this.queuedMessages.find((item) => item.id === id);
+    if (!message || message.status !== "pending") {
+      return Promise.reject(
+        new Error("That queued message is no longer editable."),
+      );
+    }
+    this.deleteQueuedMessage(id);
+    return Promise.resolve();
+  }
+
+  private sendQueuedMessageNow(id: string): Promise<unknown> {
+    const message = this.queuedMessages.find((item) => item.id === id);
+    if (!message || message.status !== "pending") {
+      return Promise.reject(
+        new Error("That queued message is no longer pending."),
+      );
+    }
+    this.updateQueuedMessageStatus(id, "sending");
+    return this.submitMessageNow(message.message, message.id)
+      .then((result) => {
+        this.deleteQueuedMessage(message.id);
+        return result;
+      })
+      .catch((error) => {
+        this.updateQueuedMessageStatus(message.id, "pending");
+        throw error;
+      })
+      .finally(() => {
+        if (this.status === "idle") void this.drainQueuedMessage();
+      });
+  }
+
+  private submitMessageNow(
+    message: string,
+    submissionId?: string,
+  ): Promise<unknown> {
+    if (this.immediateSubmissionPromise) {
+      return Promise.reject(
+        new Error("Another message is already being submitted."),
+      );
+    }
+    const operation = (async () => {
+      if (
+        this.status === "running" ||
+        this.abortPromise ||
+        this.settlePromise
+      ) {
+        await this.abortActiveRun();
+      }
+      if (this.status !== "idle") {
+        throw new Error(
+          `${agentProviderMetadata(this.provider).label} did not stop.`,
+        );
+      }
+      return this.startPrompt(message, submissionId);
+    })();
+    const settled = operation.finally(() => {
+      if (this.immediateSubmissionPromise === settled) {
+        this.immediateSubmissionPromise = null;
+      }
+    });
+    this.immediateSubmissionPromise = settled;
+    return settled;
+  }
+
+  private drainQueuedMessage(): Promise<void> {
+    if (this.queueDrainPromise) return this.queueDrainPromise;
+    if (
+      this.status !== "idle" ||
+      this.abortPromise ||
+      this.settlePromise ||
+      this.immediateSubmissionPromise
+    ) {
+      return Promise.resolve();
+    }
+    const message = this.queuedMessages.find(
+      (item) => item.status === "pending",
+    );
+    if (!message) return Promise.resolve();
+    this.updateQueuedMessageStatus(message.id, "sending");
+    const operation = this.startPrompt(message.message, message.id)
+      .then(() => {
+        this.deleteQueuedMessage(message.id);
+      })
+      .catch(() => {
+        this.updateQueuedMessageStatus(message.id, "pending");
+      });
+    const settled = operation.finally(() => {
+      if (this.queueDrainPromise === settled) {
+        this.queueDrainPromise = null;
+      }
+    });
+    this.queueDrainPromise = settled;
+    return settled;
+  }
+
+  private updateQueuedMessageStatus(
+    id: string,
+    status: AgentQueuedMessage["status"],
+  ): void {
+    let changed = false;
+    this.queuedMessages = this.queuedMessages.map((message) => {
+      if (message.id !== id || message.status === status) return message;
+      changed = true;
+      return { ...message, status };
+    });
+    if (changed) this.publishQueueUpdate();
+  }
+
+  private deleteQueuedMessage(id: string): void {
+    const next = this.queuedMessages.filter((message) => message.id !== id);
+    if (next.length === this.queuedMessages.length) return;
+    this.queuedMessages = next;
+    this.publishQueueUpdate();
+  }
+
+  private publishSubmission(id: string, message: string): void {
+    const event = {
+      type: "overtchat_submission",
+      message: {
+        role: "user",
+        content: message,
+        timestamp: Date.now(),
+        overtchatSubmissionId: id,
+      },
+    };
+    this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
+    this.publish({ type: "runtime_event", data: event });
+  }
+
+  private rejectSubmission(id: string): void {
+    const event = {
+      type: "overtchat_submission_rejected",
+      id,
+    };
+    this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
+    this.publish({ type: "runtime_event", data: event });
+  }
+
+  private publishQueueUpdate(): void {
+    this.publish({
+      type: "runtime_event",
+      data: {
+        type: "overtchat_queue_update",
+        queuedMessages: this.queuedMessages,
       },
     });
   }
@@ -780,12 +968,15 @@ export class PiSessionRuntime {
   private publish(
     envelope:
       | Omit<Extract<AgentRuntimeEnvelope, { type: "snapshot" }>, "sequence">
-      | Omit<Extract<AgentRuntimeEnvelope, { type: "pi_event" }>, "sequence">,
+      | Omit<
+          Extract<AgentRuntimeEnvelope, { type: "runtime_event" }>,
+          "sequence"
+        >,
   ): void {
     const sequenced =
       envelope.type === "snapshot"
         ? this.envelope("snapshot", envelope.data)
-        : this.envelope("pi_event", envelope.data);
+        : this.envelope("runtime_event", envelope.data);
     this.replay.push(sequenced);
     if (this.replay.length > MAX_REPLAY_EVENTS) this.replay.shift();
     for (const subscriber of this.subscribers) subscriber(sequenced);
@@ -795,7 +986,10 @@ export class PiSessionRuntime {
     type: "snapshot",
     data: AgentRuntimeSnapshot,
   ): AgentRuntimeEnvelope;
-  private envelope(type: "pi_event", data: PiRpcEvent): AgentRuntimeEnvelope;
+  private envelope(
+    type: "runtime_event",
+    data: PiRpcEvent,
+  ): AgentRuntimeEnvelope;
   private envelope(
     type: AgentRuntimeEnvelope["type"],
     data: AgentRuntimeSnapshot | PiRpcEvent,

@@ -2,7 +2,6 @@ import { z } from "zod";
 import type {
   AgentModel,
   AgentProviderId,
-  AgentQueuedMessage,
   AgentSlashCommand,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -108,14 +107,6 @@ const sessionStatsSchema = z
   })
   .passthrough();
 
-const queueUpdateSchema = z
-  .object({
-    type: z.literal("queue_update"),
-    steering: z.array(z.string()),
-    followUp: z.array(z.string()),
-  })
-  .passthrough();
-
 export type PiRpcCommand = {
   type: string;
   [key: string]: unknown;
@@ -170,37 +161,6 @@ export function parsePiCommands(value: unknown): AgentSlashCommand[] {
     source: command.source,
     ...(command.input?.hint ? { argumentHint: command.input.hint } : {}),
   }));
-}
-
-export function parsePiQueueUpdate(
-  value: unknown,
-): { steering: string[]; followUp: string[] } | null {
-  const parsed = queueUpdateSchema.safeParse(value);
-  return parsed.success
-    ? {
-        steering: parsed.data.steering,
-        followUp: parsed.data.followUp,
-      }
-    : null;
-}
-
-export function parseAgentQueuedMessages(
-  value: unknown,
-): AgentQueuedMessage[] | null {
-  const queue = parsePiQueueUpdate(value);
-  if (!queue) return null;
-  return [
-    ...queue.steering.map((message, index) => ({
-      id: `steer:${index}`,
-      message,
-      delivery: "steer" as const,
-    })),
-    ...queue.followUp.map((message, index) => ({
-      id: `follow_up:${index}`,
-      message,
-      delivery: "follow_up" as const,
-    })),
-  ];
 }
 
 export function parsePiSessionStats(value: unknown): AgentSessionStats {

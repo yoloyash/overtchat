@@ -92,8 +92,7 @@ export async function POST(
     await runtime.command(normalized);
     if (
       normalized.type === "prompt" ||
-      normalized.type === "steer" ||
-      normalized.type === "follow_up"
+      normalized.type === "send_queued_message_now"
     ) {
       await updateAgentSessionMetadata(id, {
         ...(
@@ -106,7 +105,10 @@ export async function POST(
     } else if (normalized.type === "set_session_name") {
       await updateAgentSessionMetadata(id, { name: normalized.name });
     }
-    return Response.json({ accepted: true });
+    return Response.json({
+      accepted: true,
+      queuedMessages: runtime.snapshot().queuedMessages,
+    });
   } catch (error) {
     return Response.json(
       {

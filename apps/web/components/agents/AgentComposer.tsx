@@ -10,9 +10,9 @@ import {
 import {
   ArrowUp,
   Command,
-  CornerUpRight,
   ListEnd,
   Loader2,
+  Pencil,
   Square,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,8 @@ export function AgentComposer({
   disabled,
   onSubmit,
   onStop,
+  onEditQueued,
+  onSendQueuedNow,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
@@ -58,11 +60,14 @@ export function AgentComposer({
   disabled: boolean;
   onSubmit: (
     message: string,
-    delivery: "prompt" | "steer" | "follow_up",
-  ) => void;
+    delivery: "prompt" | "queue",
+  ) => Promise<boolean>;
   onStop: () => void;
+  onEditQueued: (id: string) => Promise<boolean>;
+  onSendQueuedNow: (id: string) => Promise<boolean>;
 }) {
   const [input, setInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -103,10 +108,7 @@ export function AgentComposer({
       !pending &&
       !disabled
     ) {
-      onSubmit(`/${command.name}`, running ? "steer" : "prompt");
-      setInput("");
-      setDismissedDraft(null);
-      setActiveIndex(0);
+      void submitMessage(`/${command.name}`, "prompt");
       return;
     }
 
@@ -120,13 +122,48 @@ export function AgentComposer({
     });
   }
 
-  function submit(delivery?: "steer" | "follow_up") {
+  async function submitMessage(
+    message: string,
+    delivery: "prompt" | "queue",
+  ) {
+    if (!message || pending || submitting || disabled) return;
+    setSubmitting(true);
+    try {
+      const accepted = await onSubmit(message, delivery);
+      if (!accepted) return;
+      setInput("");
+      setDismissedDraft(null);
+      setActiveIndex(0);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function submit(delivery: "prompt" | "queue" = "prompt") {
     const message = input.trim();
-    if (!message || pending || disabled) return;
-    onSubmit(message, running ? (delivery ?? "steer") : "prompt");
-    setInput("");
-    setDismissedDraft(null);
-    setActiveIndex(0);
+    void submitMessage(message, delivery);
+  }
+
+  async function editQueuedMessage(message: AgentQueuedMessage) {
+    if (pending || submitting || disabled || input.trim()) return;
+    setInput(message.message);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    setSubmitting(true);
+    try {
+      await onEditQueued(message.id);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function sendQueuedMessageNow(id: string) {
+    if (pending || submitting || disabled) return;
+    setSubmitting(true);
+    try {
+      await onSendQueuedNow(id);
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -227,27 +264,65 @@ export function AgentComposer({
           className="mx-3 max-h-32 overflow-y-auto rounded-t-xl border border-b-0 bg-muted/50 px-3"
         >
           <div className="divide-y">
-            {queuedMessages.map((queuedMessage) => (
-              <div
-                key={queuedMessage.id}
-                className="flex min-h-10 min-w-0 items-center gap-2 text-xs"
-              >
-                {queuedMessage.delivery === "steer" ? (
-                  <CornerUpRight className="size-3.5 shrink-0 text-muted-foreground" />
-                ) : (
-                  <ListEnd className="size-3.5 shrink-0 text-muted-foreground" />
-                )}
-                <span
-                  className="min-w-0 flex-1 truncate text-foreground"
-                  title={queuedMessage.message}
+            {queuedMessages.map((queuedMessage) => {
+              const sending = queuedMessage.status === "sending";
+              return (
+                <div
+                  key={queuedMessage.id}
+                  className="flex min-h-10 min-w-0 items-center gap-2 text-xs"
                 >
-                  {queuedMessage.message.replace(/\s+/g, " ")}
-                </span>
-                <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
-                  {queuedMessage.delivery === "steer" ? "Steering" : "Queued"}
-                </span>
-              </div>
-            ))}
+                  <ListEnd className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span
+                    className="min-w-0 flex-1 truncate text-foreground"
+                    title={queuedMessage.message}
+                  >
+                    {queuedMessage.message.replace(/\s+/g, " ")}
+                  </span>
+                  {!sending && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-7 shrink-0 rounded-md"
+                        disabled={
+                          pending ||
+                          submitting ||
+                          disabled ||
+                          Boolean(input.trim())
+                        }
+                        onClick={() => void editQueuedMessage(queuedMessage)}
+                        aria-label="Edit queued message"
+                        title={
+                          input.trim()
+                            ? "Clear the current draft before editing"
+                            : "Edit queued message"
+                        }
+                      >
+                        <Pencil />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-7 shrink-0 rounded-md"
+                        disabled={pending || submitting || disabled}
+                        onClick={() =>
+                          void sendQueuedMessageNow(queuedMessage.id)
+                        }
+                        aria-label="Send queued message now"
+                        title="Interrupt and send now"
+                      >
+                        <ArrowUp />
+                      </Button>
+                    </>
+                  )}
+                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                    {sending ? "Sending" : "Queued"}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </section>
       )}
@@ -257,7 +332,7 @@ export function AgentComposer({
           ref={textareaRef}
           rows={1}
           value={input}
-          disabled={disabled}
+          disabled={disabled || pending || submitting}
           placeholder={`Message ${providerLabel} or type / for commands`}
           className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
           onChange={(event) => {
@@ -281,7 +356,7 @@ export function AgentComposer({
               variant="secondary"
               size="icon-sm"
               className="rounded-full"
-              disabled={pending}
+              disabled={pending || submitting}
               onClick={onStop}
               aria-label={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
               title={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
@@ -299,8 +374,8 @@ export function AgentComposer({
               variant="secondary"
               size="icon-sm"
               className="rounded-full"
-              disabled={!input.trim() || pending || disabled}
-              onClick={() => submit("follow_up")}
+              disabled={!input.trim() || pending || submitting || disabled}
+              onClick={() => submit("queue")}
               aria-label={`Queue message for ${providerLabel}`}
               title={`Queue after ${providerLabel} finishes`}
             >
@@ -311,17 +386,21 @@ export function AgentComposer({
             type="button"
             size={running ? "sm" : "icon-sm"}
             className="rounded-full"
-            disabled={!input.trim() || pending || disabled}
-            onClick={() => submit()}
+            disabled={!input.trim() || pending || submitting || disabled}
+            onClick={() => submit("prompt")}
             aria-label={
-              running ? `Steer ${providerLabel}` : "Send message"
+              running
+                ? `Interrupt ${providerLabel} and send now`
+                : "Send message"
             }
             title={
-              running ? `Steer ${providerLabel}` : "Send message"
+              running
+                ? `Interrupt ${providerLabel} and send now`
+                : "Send message"
             }
           >
-            {running ? <CornerUpRight /> : <ArrowUp />}
-            {running && "Steer"}
+            <ArrowUp />
+            {running && "Send now"}
           </Button>
         </div>
       </div>

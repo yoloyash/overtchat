@@ -38,9 +38,9 @@ function snapshot(): AgentRuntimeSnapshot {
 }
 
 function event(
-  data: Extract<AgentRuntimeEnvelope, { type: "pi_event" }>["data"],
+  data: Extract<AgentRuntimeEnvelope, { type: "runtime_event" }>["data"],
 ): AgentRuntimeEnvelope {
-  return { sequence: 1, type: "pi_event", data };
+  return { sequence: 1, type: "runtime_event", data };
 }
 
 describe("agent runtime event reducer", () => {
@@ -288,13 +288,18 @@ describe("agent runtime event reducer", () => {
     expect(settled.activeTurn).toBeNull();
   });
 
-  it("tracks native provider queues and late prompt errors", () => {
+  it("tracks OvertChat-owned queues and late prompt errors", () => {
     const queued = applyAgentRuntimeEnvelope(
       snapshot(),
       event({
-        type: "queue_update",
-        steering: ["Check the database path"],
-        followUp: ["Then summarize"],
+        type: "overtchat_queue_update",
+        queuedMessages: [
+          {
+            id: "queued:1",
+            message: "Then summarize",
+            status: "pending",
+          },
+        ],
       }),
     )!;
     const failed = applyAgentRuntimeEnvelope(
@@ -308,14 +313,9 @@ describe("agent runtime event reducer", () => {
 
     expect(queued.queuedMessages).toEqual([
       {
-        id: "steer:0",
-        message: "Check the database path",
-        delivery: "steer",
-      },
-      {
-        id: "follow_up:0",
+        id: "queued:1",
         message: "Then summarize",
-        delivery: "follow_up",
+        status: "pending",
       },
     ]);
     expect(queued.messages).toEqual(snapshot().messages);
@@ -323,18 +323,77 @@ describe("agent runtime event reducer", () => {
     expect(failed.queuedMessages).toEqual(queued.queuedMessages);
   });
 
-  it("ignores malformed native provider queue updates", () => {
+  it("ignores malformed OvertChat queue updates", () => {
     const current = snapshot();
     expect(
       applyAgentRuntimeEnvelope(
         current,
         event({
-          type: "queue_update",
-          steering: "Check the database path",
-          followUp: ["Then summarize"],
+          type: "overtchat_queue_update",
+          queuedMessages: [
+            {
+              id: "queued:1",
+              message: "Then summarize",
+              status: "unknown",
+            },
+          ],
         }),
       ),
     ).toBe(current);
+  });
+
+  it("reconciles an accepted submission with the provider user message", () => {
+    const submitted = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "Next prompt",
+          timestamp: 100,
+          overtchatSubmissionId: "submission:1",
+        },
+      }),
+    )!;
+    const acknowledged = applyAgentRuntimeEnvelope(
+      submitted,
+      event({
+        type: "message_start",
+        message: {
+          role: "user",
+          content: "Next prompt",
+          timestamp: 200,
+        },
+      }),
+    )!;
+
+    expect(acknowledged.messages).toEqual([
+      { role: "user", content: "Hello" },
+      { role: "user", content: "Next prompt", timestamp: 200 },
+    ]);
+  });
+
+  it("removes a submission rejected before the provider starts it", () => {
+    const submitted = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "Next prompt",
+          overtchatSubmissionId: "submission:1",
+        },
+      }),
+    )!;
+    const rejected = applyAgentRuntimeEnvelope(
+      submitted,
+      event({
+        type: "overtchat_submission_rejected",
+        id: "submission:1",
+      }),
+    )!;
+
+    expect(rejected.messages).toEqual(snapshot().messages);
   });
 
   it("uses authoritative snapshots after live deltas", () => {

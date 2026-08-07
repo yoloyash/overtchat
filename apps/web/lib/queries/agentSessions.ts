@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
+  AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentSessionCommand,
@@ -76,16 +77,31 @@ export function useAgentSessionCommand(id: string) {
   return useMutation({
     mutationFn: async (
       command: AgentSessionCommand,
-    ): Promise<{ sessionId?: string }> => {
+    ): Promise<{
+      sessionId?: string;
+      queuedMessages?: AgentQueuedMessage[];
+    }> => {
       const response = await fetch(`/api/agent-sessions/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(command),
       });
       if (!response.ok) throw await responseError(response);
-      return (await response.json()) as { sessionId?: string };
+      return (await response.json()) as {
+        sessionId?: string;
+        queuedMessages?: AgentQueuedMessage[];
+      };
     },
-    onSuccess: (_data, command) => {
+    onSuccess: (data, command) => {
+      if (data.queuedMessages) {
+        queryClient.setQueryData<AgentRuntimeSnapshot>(
+          agentSessionKeys.detail(id),
+          (current) =>
+            current
+              ? { ...current, queuedMessages: data.queuedMessages! }
+              : current,
+        );
+      }
       if (
         command.type === "set_model" ||
         command.type === "set_thinking_level" ||
@@ -100,6 +116,7 @@ export function useAgentSessionCommand(id: string) {
       }
       if (
         command.type === "prompt" ||
+        command.type === "send_queued_message_now" ||
         command.type === "set_session_name" ||
         command.type === "new_session"
       ) {

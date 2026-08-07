@@ -142,13 +142,33 @@ test("shows durable turn activity without changing completed tool status", async
       if (route.request().method() === "POST") {
         const command = route.request().postDataJSON() as {
           type?: string;
+          message?: string;
         };
-        if (command.type === "abort") {
+        if (
+          command.type === "abort" ||
+          command.type === "queue" ||
+          command.type === "remove_queued_message"
+        ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
         }
         await route.fulfill({
           contentType: "application/json",
-          body: JSON.stringify({}),
+          body: JSON.stringify({
+            accepted: true,
+            ...(command.type === "queue"
+              ? {
+                  queuedMessages: [
+                    {
+                      id: "queued-message",
+                      message: command.message,
+                      status: "pending",
+                    },
+                  ],
+                }
+              : command.type === "remove_queued_message"
+                ? { queuedMessages: [] }
+                : {}),
+          }),
         });
         return;
       }
@@ -175,7 +195,7 @@ test("shows durable turn activity without changing completed tool status", async
   await page.addInitScript(() => {
     type RuntimeEnvelope = {
       sequence: number;
-      type: "pi_event" | "snapshot";
+      type: "runtime_event" | "snapshot";
       data: Record<string, unknown>;
     };
     type RuntimeControls = {
@@ -297,6 +317,26 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("Running command", { exact: true }),
   ).not.toBeVisible();
+
+  const composer = page.getByPlaceholder(
+    "Message Pi or type / for commands",
+  );
+  await composer.fill("Run the tests");
+  await page.getByRole("button", { name: "Queue message for Pi" }).click();
+  await expect(composer).toHaveValue("Run the tests");
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveValue("");
+  await expect(page.getByText("Run the tests", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Edit queued message" }).click();
+  await expect(composer).toHaveValue("Run the tests");
+  await expect(composer).toBeDisabled();
+  await expect(composer).toBeEnabled();
+  await expect(
+    page.getByRole("button", { name: "Edit queued message" }),
+  ).toHaveCount(0);
+  await composer.fill("");
+
   await page.getByRole("button", { name: "Stop Pi" }).click();
   await expect(activity).toContainText("Stopping");
   await expect(page.getByRole("button", { name: "Stopping Pi" })).toBeVisible();
@@ -317,7 +357,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       sequence: 1,
-      type: "pi_event",
+      type: "runtime_event",
       data: { type: "compaction_start", reason: "auto" },
     });
   });
@@ -334,7 +374,7 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.emit({
       sequence: 2,
-      type: "pi_event",
+      type: "runtime_event",
       data: { type: "compaction_end", reason: "auto" },
     });
     controls.disconnect();
@@ -368,7 +408,7 @@ test("shows durable turn activity without changing completed tool status", async
     controls.reconnect();
     controls.emit({
       sequence: 3,
-      type: "pi_event",
+      type: "runtime_event",
       data: { type: "overtchat_status", status: "idle", startedAt: null },
     });
   });
