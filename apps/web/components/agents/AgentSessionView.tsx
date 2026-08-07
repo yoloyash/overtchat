@@ -29,6 +29,7 @@ import {
   RenameAgentSessionDialog,
 } from "./AgentSessionDialogs";
 import { AgentMessageList } from "./AgentMessageList";
+import type { AgentRunActivity } from "./AgentMessageList";
 import { AgentSessionHeader } from "./AgentSessionHeader";
 
 type UnknownRecord = Record<string, unknown>;
@@ -190,6 +191,24 @@ export function AgentSessionView({
   const runtimeError =
     snapshot.error ??
     (session.error instanceof Error ? session.error.message : undefined);
+  const pendingCommand = command.isPending ? command.variables?.type : null;
+  const activity: AgentRunActivity | null =
+    pendingCommand === "abort"
+      ? "stopping"
+      : pendingCommand === "compact" || snapshot.state.isCompacting === true
+        ? "compacting"
+        : session.streamStatus === "reconnecting"
+          ? "reconnecting"
+          : running
+            ? "working"
+            : null;
+  const activityStartedAt =
+    activity === "working"
+      ? snapshot.activeTurn?.startedAt ?? null
+      : (activity === "stopping" || pendingCommand === "compact") &&
+          command.submittedAt > 0
+        ? command.submittedAt
+        : null;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -227,6 +246,8 @@ export function AgentSessionView({
         providerLabel={providerLabel}
         messages={snapshot.messages}
         streaming={running}
+        activity={activity}
+        activityStartedAt={activityStartedAt}
         error={runtimeError}
         workspaceName={workspaceName}
       />
@@ -239,6 +260,7 @@ export function AgentSessionView({
             queuedMessages={snapshot.queuedMessages}
             running={running}
             pending={command.isPending}
+            stopping={pendingCommand === "abort"}
             disabled={exited || Boolean(snapshot.pendingExtensionRequest)}
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}

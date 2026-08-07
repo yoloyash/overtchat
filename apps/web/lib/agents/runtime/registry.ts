@@ -21,6 +21,10 @@ import {
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
 import {
+  applyAgentRuntimeMessageEvent,
+  applyAgentRuntimeStateEvent,
+} from "@/lib/agents/pi/state";
+import {
   agentProviderMetadata,
   isAgentProviderId,
 } from "@/lib/agents/catalog";
@@ -150,6 +154,7 @@ export class PiSessionRuntime {
   private readonly replay: AgentRuntimeEnvelope[] = [];
   private sequence = 0;
   private status: AgentRuntimeSnapshot["status"] = "idle";
+  private activeTurnStartedAt: number | null = null;
   private state: Record<string, unknown>;
   private messages: unknown[];
   private models: AgentModel[];
@@ -196,15 +201,25 @@ export class PiSessionRuntime {
     this.commands = initial.commands;
     this.stats = initial.stats;
     this.status = initial.state.isStreaming === true ? "running" : "idle";
+    this.activeTurnStartedAt =
+      this.status === "running" ? Date.now() : null;
     this.scheduleIdleStop();
 
     client.onEvent((event) => {
       let restoredQueuedPrompt = false;
       let settleRejectedPrompt = false;
+      this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
+      this.state = applyAgentRuntimeStateEvent(this.state, event);
       if (event.type === "process_exit") {
         this.clearIdleStop();
         this.clearPendingExtensionRequest();
         this.status = "exited";
+        this.activeTurnStartedAt = null;
+        this.state = {
+          ...this.state,
+          isStreaming: false,
+          isCompacting: false,
+        };
         this.error =
           typeof event.error === "string"
             ? event.error
@@ -220,6 +235,7 @@ export class PiSessionRuntime {
         this.promptAwaitingStart = false;
         this.startingQueuedMessage = undefined;
         this.status = "running";
+        this.activeTurnStartedAt ??= Date.now();
         this.state = { ...this.state, isStreaming: true };
         this.error = undefined;
       }
@@ -268,6 +284,7 @@ export class PiSessionRuntime {
             this.startingQueuedMessage = undefined;
             restoredQueuedPrompt = true;
             this.status = "idle";
+            this.activeTurnStartedAt = null;
             this.state = { ...this.state, isStreaming: false };
           } else {
             settleRejectedPrompt = true;
@@ -347,6 +364,10 @@ export class PiSessionRuntime {
       sessionId: this.dbSessionId,
       provider: this.provider,
       status: this.status,
+      activeTurn:
+        this.activeTurnStartedAt === null
+          ? null
+          : { startedAt: this.activeTurnStartedAt },
       state: this.state,
       messages: this.messages,
       models: this.models,
@@ -472,6 +493,10 @@ export class PiSessionRuntime {
       this.thinkingLevels = thinkingLevels;
       this.commands = commands;
       this.status = state.isStreaming === true ? "running" : "idle";
+      this.activeTurnStartedAt =
+        this.status === "running"
+          ? (this.activeTurnStartedAt ?? Date.now())
+          : null;
       this.error = undefined;
       await updateAgentSessionMetadata(this.dbSessionId, {
         name:
@@ -546,6 +571,7 @@ export class PiSessionRuntime {
   ): Promise<unknown> {
     if (this.provider === "omp") this.ompRunSawAssistant = false;
     this.status = "running";
+    this.activeTurnStartedAt = Date.now();
     this.state = { ...this.state, isStreaming: true };
     this.error = undefined;
     this.promptAwaitingStart = true;
@@ -566,6 +592,7 @@ export class PiSessionRuntime {
       this.startingQueuedMessage = undefined;
       this.promptAwaitingStart = false;
       this.status = "idle";
+      this.activeTurnStartedAt = null;
       this.state = { ...this.state, isStreaming: false };
       this.error = errorMessage(error);
       this.publish({
@@ -696,7 +723,12 @@ export class PiSessionRuntime {
   private async reconcileProviderIdle(timeoutMs?: number): Promise<void> {
     await this.waitForProviderIdle(timeoutMs);
     this.status = "idle";
-    this.state = { ...this.state, isStreaming: false };
+    this.activeTurnStartedAt = null;
+    this.state = {
+      ...this.state,
+      isStreaming: false,
+      isCompacting: false,
+    };
     try {
       await this.refresh();
     } catch (error) {
@@ -771,6 +803,7 @@ export class PiSessionRuntime {
       data: {
         type: "overtchat_status",
         status: this.status,
+        startedAt: this.activeTurnStartedAt,
       },
     });
   }

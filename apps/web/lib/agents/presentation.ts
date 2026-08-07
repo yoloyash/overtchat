@@ -542,7 +542,7 @@ export function describeAgentActivity(
   const statuses = tools.map((tool) => agentToolStatus(tool, active));
   const status: AgentToolStatus = statuses.includes("failed")
     ? "failed"
-    : active || statuses.includes("running")
+    : statuses.includes("running")
       ? "running"
       : statuses.includes("stopped")
         ? "stopped"
@@ -557,9 +557,12 @@ export function describeAgentActivity(
     };
   }
 
-  if (active) {
+  if (status === "running") {
+    const runningTools = statuses.filter(
+      (candidate) => candidate === "running",
+    ).length;
     return {
-      label: `Running ${plural(tools.length, "tool")}`,
+      label: `Running ${plural(runningTools, "tool")}`,
       secondary: null,
       status,
     };

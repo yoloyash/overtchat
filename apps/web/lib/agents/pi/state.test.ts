@@ -10,6 +10,7 @@ function snapshot(): AgentRuntimeSnapshot {
     sessionId: "session",
     provider: "pi",
     status: "idle",
+    activeTurn: null,
     state: { isStreaming: false },
     messages: [{ role: "user", content: "Hello" }],
     models: [],
@@ -239,8 +240,52 @@ describe("agent runtime event reducer", () => {
     });
     expect(settled).toMatchObject({
       status: "idle",
+      activeTurn: null,
       state: { isStreaming: false },
     });
+  });
+
+  it("tracks active-turn timing and compaction independently", () => {
+    const started = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_status",
+        status: "running",
+        startedAt: 123,
+      }),
+    )!;
+    const compacting = applyAgentRuntimeEnvelope(
+      started,
+      event({ type: "compaction_start", reason: "auto" }),
+    )!;
+    const exited = applyAgentRuntimeEnvelope(
+      compacting,
+      event({ type: "process_exit", error: "Provider stopped" }),
+    )!;
+    const compacted = applyAgentRuntimeEnvelope(
+      compacting,
+      event({ type: "compaction_end", reason: "auto" }),
+    )!;
+    const settled = applyAgentRuntimeEnvelope(
+      compacted,
+      event({ type: "overtchat_status", status: "idle" }),
+    )!;
+
+    expect(started.activeTurn?.startedAt).toBe(123);
+    expect(compacting).toMatchObject({
+      status: "running",
+      state: { isCompacting: true },
+    });
+    expect(exited).toMatchObject({
+      status: "exited",
+      activeTurn: null,
+      state: { isStreaming: false, isCompacting: false },
+    });
+    expect(compacted).toMatchObject({
+      status: "running",
+      state: { isCompacting: false },
+    });
+    expect(settled.activeTurn).toBeNull();
   });
 
   it("tracks OvertChat-owned queue updates and late prompt errors", () => {

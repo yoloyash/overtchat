@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AgentRuntimeEnvelope,
@@ -29,6 +29,9 @@ async function fetchAgentSession(id: string): Promise<AgentRuntimeSnapshot> {
 
 export function useAgentSession(id: string) {
   const queryClient = useQueryClient();
+  const [streamStatus, setStreamStatus] = useState<
+    "connecting" | "connected" | "reconnecting"
+  >("connecting");
   const query = useQuery({
     queryKey: agentSessionKeys.detail(id),
     queryFn: () => fetchAgentSession(id),
@@ -38,6 +41,8 @@ export function useAgentSession(id: string) {
   useEffect(() => {
     if (!query.isSuccess) return;
     const events = new EventSource(`/api/agent-sessions/${id}/events`);
+    events.onopen = () => setStreamStatus("connected");
+    events.onerror = () => setStreamStatus("reconnecting");
     events.addEventListener("runtime", (event) => {
       let envelope: AgentRuntimeEnvelope;
       try {
@@ -63,7 +68,7 @@ export function useAgentSession(id: string) {
     return () => events.close();
   }, [id, query.isSuccess, queryClient]);
 
-  return query;
+  return { ...query, streamStatus };
 }
 
 export function useAgentSessionCommand(id: string) {

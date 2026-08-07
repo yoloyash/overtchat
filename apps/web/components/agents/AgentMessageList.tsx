@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
@@ -43,6 +43,12 @@ import { cn } from "@/lib/utils";
 
 type UnknownRecord = Record<string, unknown>;
 
+export type AgentRunActivity =
+  | "working"
+  | "stopping"
+  | "compacting"
+  | "reconnecting";
+
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)
@@ -74,12 +80,16 @@ export function AgentMessageList({
   providerLabel,
   messages,
   streaming,
+  activity,
+  activityStartedAt,
   error,
   workspaceName,
 }: {
   providerLabel: string;
   messages: unknown[];
   streaming: boolean;
+  activity: AgentRunActivity | null;
+  activityStartedAt: number | null;
   error?: string;
   workspaceName: string;
 }) {
@@ -103,7 +113,7 @@ export function AgentMessageList({
           ref={contentRef}
           className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-8 pb-8"
         >
-          {messages.length === 0 && !error ? (
+          {messages.length === 0 && !error && !activity ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <Terminal className="size-6 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium">{workspaceName}</p>
@@ -120,22 +130,12 @@ export function AgentMessageList({
                   active={streaming && index === transcript.length - 1}
                 />
               ))}
-              {streaming && roleOf(messages.at(-1)) === "user" && (
-                <div
-                  className="flex items-center gap-1.5 py-2"
-                  role="status"
-                  aria-label={`${providerLabel} is responding`}
-                >
-                  <span
-                    className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.3s] ${motionClasses.pendingDot}`}
-                  />
-                  <span
-                    className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.15s] ${motionClasses.pendingDot}`}
-                  />
-                  <span
-                    className={`size-1.5 rounded-full bg-muted-foreground/70 ${motionClasses.pendingDot}`}
-                  />
-                </div>
+              {activity && (
+                <AgentRunIndicator
+                  activity={activity}
+                  startedAt={activityStartedAt}
+                  providerLabel={providerLabel}
+                />
               )}
               {error && (
                 <div
@@ -165,6 +165,57 @@ export function AgentMessageList({
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function formatElapsed(milliseconds: number): string {
+  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
+function AgentRunIndicator({
+  activity,
+  startedAt,
+  providerLabel,
+}: {
+  activity: AgentRunActivity;
+  startedAt: number | null;
+  providerLabel: string;
+}) {
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    if (startedAt === null) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+
+  const label =
+    activity === "stopping"
+      ? "Stopping"
+      : activity === "compacting"
+        ? "Compacting"
+        : activity === "reconnecting"
+          ? "Reconnecting"
+          : "Working";
+  const elapsed =
+    startedAt === null ? null : formatElapsed(Math.max(0, now - startedAt));
+
+  return (
+    <div
+      className="flex min-h-8 items-center gap-2 py-1 text-xs text-muted-foreground"
+      role="status"
+      aria-label={`${providerLabel}: ${label.toLowerCase()}${elapsed ? ` for ${elapsed}` : ""}`}
+      data-testid="agent-run-activity"
+    >
+      <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />
+      <span className="font-medium text-foreground">{label}</span>
+      {elapsed && <span className="tabular-nums">{elapsed}</span>}
     </div>
   );
 }
@@ -305,7 +356,11 @@ function AgentActivityGroup({
         <div className="divide-y border-t" data-testid="agent-activity-details">
           {entries.map((entry) =>
             entry.type === "thinking" ? (
-              <ThinkingActivityRow key={entry.id} content={entry.content} />
+              <ThinkingActivityDetail
+                key={entry.id}
+                content={entry.content}
+                showLabel={toolCount > 0}
+              />
             ) : (
               <ToolActivityRow
                 key={entry.id}
@@ -321,30 +376,22 @@ function AgentActivityGroup({
   );
 }
 
-function ThinkingActivityRow({ content }: { content: string }) {
-  const [open, setOpen] = useState(false);
+function ThinkingActivityDetail({
+  content,
+  showLabel,
+}: {
+  content: string;
+  showLabel: boolean;
+}) {
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        className="flex min-h-9 w-full items-center gap-2.5 px-3 py-2 text-left text-muted-foreground motion-colors hover:bg-muted/30 hover:text-foreground"
-      >
-        <Brain className="size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 font-medium">Thinking</span>
-        <ChevronDown
-          className={cn(
-            "size-3 shrink-0 motion-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="border-t px-3 py-3">
-          <ThinkingContent content={content} />
+    <div className="px-3 py-3">
+      {showLabel && (
+        <div className="mb-2 flex items-center gap-2 text-muted-foreground">
+          <Brain className="size-3.5 shrink-0" />
+          <span className="font-medium">Thinking</span>
         </div>
       )}
+      <ThinkingContent content={content} />
     </div>
   );
 }

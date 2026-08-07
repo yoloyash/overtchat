@@ -12,6 +12,7 @@ import {
   Command,
   CornerUpRight,
   ListEnd,
+  Loader2,
   Square,
   Trash2,
 } from "lucide-react";
@@ -44,6 +45,7 @@ export function AgentComposer({
   queuedMessages,
   running,
   pending,
+  stopping,
   disabled,
   onSubmit,
   onStop,
@@ -55,6 +57,7 @@ export function AgentComposer({
   queuedMessages: AgentQueuedMessage[];
   running: boolean;
   pending: boolean;
+  stopping: boolean;
   disabled: boolean;
   onSubmit: (message: string) => void;
   onStop: () => void;
@@ -300,10 +303,14 @@ export function AgentComposer({
               className="rounded-full"
               disabled={pending}
               onClick={onStop}
-              aria-label={`Stop ${providerLabel}`}
-              title={`Stop ${providerLabel}`}
+              aria-label={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
+              title={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
             >
-              <Square className="size-3 fill-current" />
+              {stopping ? (
+                <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+              ) : (
+                <Square className="size-3 fill-current" />
+              )}
             </Button>
           )}
           <Button

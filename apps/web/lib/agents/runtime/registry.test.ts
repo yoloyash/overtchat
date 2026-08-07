@@ -168,6 +168,66 @@ function owned(): OwnedAgentSession {
 }
 
 describe("Pi session runtime", () => {
+  it("keeps live provider messages in authoritative snapshots", async () => {
+    const client = new FakePiClient();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "Inspect the runtime" });
+    const startedAt = runtime.snapshot().activeTurn?.startedAt;
+    client.emit({
+      type: "message_end",
+      message: {
+        role: "user",
+        content: "Inspect the runtime",
+        timestamp: 10,
+      },
+    });
+    client.emit({
+      type: "message_update",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Still working" }],
+        timestamp: 20,
+      },
+    });
+
+    expect(startedAt).toEqual(expect.any(Number));
+    expect(runtime.snapshot()).toMatchObject({
+      status: "running",
+      activeTurn: { startedAt },
+      messages: [
+        {
+          role: "user",
+          content: "Inspect the runtime",
+          timestamp: 10,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Still working" }],
+          timestamp: 20,
+        },
+      ],
+    });
+
+    client.emit({ type: "agent_settled" });
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().activeTurn).toBeNull();
+    });
+    await runtime.stop();
+  });
+
   it("executes Overtchat slash commands through native Pi RPC methods", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(

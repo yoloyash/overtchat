@@ -271,6 +271,9 @@ export type AgentRuntimeSnapshot = {
   sessionId: string;
   provider: AgentProviderId;
   status: "idle" | "running" | "exited";
+  activeTurn: {
+    startedAt: number;
+  } | null;
   state: Record<string, unknown>;
   messages: unknown[];
   models: AgentModel[];

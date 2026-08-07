@@ -5,6 +5,11 @@ import type {
 } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 
+type AgentRuntimeEvent = Extract<
+  AgentRuntimeEnvelope,
+  { type: "pi_event" }
+>["data"];
+
 function roleOf(message: unknown): string | null {
   return message && typeof message === "object"
     ? ((Reflect.get(message, "role") as string | undefined) ?? null)
@@ -90,6 +95,50 @@ function partialToolResult(event: Record<string, unknown>): unknown | null {
   };
 }
 
+export function applyAgentRuntimeMessageEvent(
+  messages: unknown[],
+  event: AgentRuntimeEvent,
+): unknown[] {
+  if (
+    ["message_start", "message_update", "message_end"].includes(event.type) &&
+    event.message !== undefined
+  ) {
+    return upsertMessage(messages, event.message);
+  }
+  if (
+    event.type === "tool_execution_update" ||
+    event.type === "tool_execution_end"
+  ) {
+    const message = partialToolResult(event);
+    return message ? upsertMessage(messages, message) : messages;
+  }
+  if (event.type === "command_output" && typeof event.text === "string") {
+    return [
+      ...messages,
+      {
+        role: "custom",
+        content: event.text,
+        display: true,
+        timestamp: Date.now(),
+      },
+    ];
+  }
+  return messages;
+}
+
+export function applyAgentRuntimeStateEvent(
+  state: Record<string, unknown>,
+  event: AgentRuntimeEvent,
+): Record<string, unknown> {
+  if (event.type === "compaction_start") {
+    return { ...state, isCompacting: true };
+  }
+  if (event.type === "compaction_end") {
+    return { ...state, isCompacting: false };
+  }
+  return state;
+}
+
 export function applyAgentRuntimeEnvelope(
   current: AgentRuntimeSnapshot | undefined,
   envelope: AgentRuntimeEnvelope,
@@ -102,6 +151,7 @@ export function applyAgentRuntimeEnvelope(
     return {
       ...current,
       status: "running",
+      activeTurn: current.activeTurn ?? { startedAt: Date.now() },
       state: { ...current.state, isStreaming: true },
       error: undefined,
     };
@@ -113,9 +163,19 @@ export function applyAgentRuntimeEnvelope(
     return {
       ...current,
       status: event.status,
+      activeTurn:
+        event.status === "running"
+          ? (current.activeTurn ?? {
+              startedAt:
+                typeof event.startedAt === "number"
+                  ? event.startedAt
+                  : Date.now(),
+            })
+          : null,
       state: {
         ...current.state,
         isStreaming: event.status === "running",
+        ...(event.status === "idle" ? { isCompacting: false } : {}),
       },
       ...(event.status === "running" ? { error: undefined } : {}),
     };
@@ -138,6 +198,12 @@ export function applyAgentRuntimeEnvelope(
     return {
       ...current,
       status: "exited",
+      activeTurn: null,
+      state: {
+        ...current.state,
+        isStreaming: false,
+        isCompacting: false,
+      },
       error:
         typeof event.error === "string"
           ? event.error
@@ -150,33 +216,26 @@ export function applyAgentRuntimeEnvelope(
   ) {
     return {
       ...current,
-      messages: upsertMessage(current.messages, event.message),
+      messages: applyAgentRuntimeMessageEvent(current.messages, event),
     };
   }
   if (
     event.type === "tool_execution_update" ||
     event.type === "tool_execution_end"
   ) {
-    const message = partialToolResult(event);
-    return message
-      ? {
-          ...current,
-          messages: upsertMessage(current.messages, message),
-        }
-      : current;
+    const messages = applyAgentRuntimeMessageEvent(current.messages, event);
+    return messages === current.messages ? current : { ...current, messages };
   }
   if (event.type === "command_output" && typeof event.text === "string") {
     return {
       ...current,
-      messages: [
-        ...current.messages,
-        {
-          role: "custom",
-          content: event.text,
-          display: true,
-          timestamp: Date.now(),
-        },
-      ],
+      messages: applyAgentRuntimeMessageEvent(current.messages, event),
+    };
+  }
+  if (event.type === "compaction_start" || event.type === "compaction_end") {
+    return {
+      ...current,
+      state: applyAgentRuntimeStateEvent(current.state, event),
     };
   }
   if (

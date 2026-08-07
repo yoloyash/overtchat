@@ -263,6 +263,21 @@ describe("agent activity presentation", () => {
     });
   });
 
+  it("keeps a completed tool completed while the turn continues", () => {
+    const shell = tool("shell", "bash", { command: "npm test" });
+
+    expect(
+      describeAgentActivity(
+        [{ type: "tool", id: "shell", tool: shell }],
+        true,
+      ),
+    ).toEqual({
+      label: "Ran command",
+      secondary: "npm test",
+      status: "completed",
+    });
+  });
+
   it("surfaces failed counts without splitting their tool results", () => {
     const first = tool("first", "bash", { command: "npm test" });
     const second = {
