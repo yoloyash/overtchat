@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HostConnectorEvent } from "@overtchat/agent-bridge";
+import {
+  HOST_CONNECTOR_PROTOCOL_MIN_VERSION,
+  HOST_CONNECTOR_PROTOCOL_VERSION,
+  isHostConnectorCommand,
+  isHostConnectorProtocolVersion,
+  type HostConnectorEvent,
+} from "@overtchat/agent-bridge";
 import { ConnectorRuntime } from "./runtime.js";
 
 async function waitForExit(
@@ -118,5 +124,60 @@ describe("connector process runtime", () => {
         error: "Invalid SSH host alias.",
       }),
     ]);
+  });
+});
+
+describe("connector protocol validation", () => {
+  it("accepts supported commands and protocol versions", () => {
+    expect(
+      isHostConnectorCommand({
+        type: "spawn",
+        processId: "process",
+        target: { transport: "ssh", alias: "devbox" },
+        launch: {
+          command: "omp",
+          args: ["--mode", "rpc"],
+          env: { OVERTCHAT: "1" },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorProtocolVersion(HOST_CONNECTOR_PROTOCOL_MIN_VERSION),
+    ).toBe(true);
+    expect(
+      isHostConnectorProtocolVersion(HOST_CONNECTOR_PROTOCOL_VERSION),
+    ).toBe(true);
+  });
+
+  it("rejects malformed commands and unsupported protocols", () => {
+    expect(
+      isHostConnectorCommand({
+        type: "spawn",
+        processId: "process",
+        target: { transport: "ssh" },
+        launch: { command: "omp" },
+      }),
+    ).toBe(false);
+    expect(
+      isHostConnectorCommand({
+        type: "kill",
+        processId: "process",
+        signal: "NOT_A_SIGNAL",
+      }),
+    ).toBe(false);
+    expect(
+      isHostConnectorCommand({
+        type: "spawn",
+        processId: "process",
+        target: { transport: "local" },
+        launch: {
+          command: "omp",
+          env: { "INVALID-NAME": "value" },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      isHostConnectorProtocolVersion(HOST_CONNECTOR_PROTOCOL_VERSION + 1),
+    ).toBe(false);
   });
 });

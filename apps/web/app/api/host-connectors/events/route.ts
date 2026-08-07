@@ -1,5 +1,6 @@
 import {
   isHostConnectorEvent,
+  isHostConnectorProtocolVersion,
   type HostConnectorEventBatch,
 } from "@overtchat/agent-bridge";
 import { authenticateHostConnector } from "@/lib/agents/connector/auth";
@@ -16,7 +17,7 @@ export async function POST(request: Request) {
     | null;
   if (
     !batch ||
-    batch.protocolVersion !== hostConnectorBroker.protocolVersion() ||
+    !isHostConnectorProtocolVersion(batch.protocolVersion) ||
     !Array.isArray(batch.events) ||
     batch.events.length > MAX_EVENTS ||
     !batch.events.every(isHostConnectorEvent)

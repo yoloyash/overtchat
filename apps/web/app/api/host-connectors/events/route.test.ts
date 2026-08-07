@@ -4,7 +4,6 @@ import { HOST_CONNECTOR_PROTOCOL_VERSION } from "@overtchat/agent-bridge";
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
   accept: vi.fn(),
-  protocolVersion: vi.fn(),
   touch: vi.fn(),
 }));
 
@@ -15,7 +14,6 @@ vi.mock("@/lib/agents/connector/auth", () => ({
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
     accept: mocks.accept,
-    protocolVersion: mocks.protocolVersion,
   },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
@@ -36,7 +34,6 @@ describe("Host Connector event route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.authenticate.mockReturnValue({ id: "connector" });
-    mocks.protocolVersion.mockReturnValue(HOST_CONNECTOR_PROTOCOL_VERSION);
   });
 
   it("accepts validated connector events", async () => {
@@ -62,6 +59,18 @@ describe("Host Connector event route", () => {
       request({
         protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
         events: [null],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.accept).not.toHaveBeenCalled();
+  });
+
+  it("rejects unsupported connector protocol versions", async () => {
+    const response = await POST(
+      request({
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION + 1,
+        events: [],
       }),
     );
 

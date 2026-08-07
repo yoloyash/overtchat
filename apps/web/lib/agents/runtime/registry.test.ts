@@ -677,6 +677,98 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
+  it("stops polling and preserves the queue when OMP never becomes idle", async () => {
+    vi.useFakeTimers();
+    const client = new FakePiClient();
+    client.getState.mockResolvedValue({
+      ...idleProviderState,
+      isStreaming: false,
+      isCompacting: true,
+    });
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    try {
+      await runtime.command({ type: "prompt", message: "First" });
+      await runtime.command({ type: "prompt", message: "Second" });
+      client.emit({
+        type: "agent_end",
+        messages: [{ role: "assistant", content: [] }],
+      });
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      await Promise.resolve();
+
+      expect(runtime.snapshot()).toMatchObject({
+        status: "running",
+        error: expect.stringContaining(
+          "still reports that it is working after 30 seconds",
+        ),
+        queuedMessages: [{ id: "session:1", message: "Second" }],
+      });
+      expect(client.prompt).toHaveBeenCalledTimes(1);
+    } finally {
+      await runtime.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels provider-idle reconciliation when the runtime stops", async () => {
+    const client = new FakePiClient();
+    let resolveState: (state: typeof idleProviderState) => void = vi.fn();
+    client.getState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve;
+        }),
+    );
+    const onExit = vi.fn();
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      onExit,
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    client.emit({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: [] }],
+    });
+    await vi.waitFor(() => {
+      expect(client.getState).toHaveBeenCalledTimes(1);
+    });
+
+    await runtime.stop();
+    resolveState({
+      ...idleProviderState,
+      isStreaming: true,
+    });
+    await Promise.resolve();
+
+    expect(runtime.snapshot().status).toBe("exited");
+    expect(client.getState).toHaveBeenCalledTimes(1);
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
   it("stops a stale OMP run and drains without another agent_end", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(

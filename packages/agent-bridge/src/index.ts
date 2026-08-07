@@ -1,3 +1,4 @@
+export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 1;
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
 
 export type ConnectorTarget =
@@ -81,7 +82,127 @@ export type HostConnectorEventBatch = {
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    isRecord(value) &&
+    Object.entries(value).every(
+      ([key, item]) =>
+        /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) && typeof item === "string",
+    )
+  );
+}
+
+const CONNECTOR_SIGNALS = new Set<NodeJS.Signals>([
+  "SIGABRT",
+  "SIGALRM",
+  "SIGBUS",
+  "SIGCHLD",
+  "SIGCONT",
+  "SIGFPE",
+  "SIGHUP",
+  "SIGILL",
+  "SIGINT",
+  "SIGIO",
+  "SIGIOT",
+  "SIGKILL",
+  "SIGPIPE",
+  "SIGPOLL",
+  "SIGPROF",
+  "SIGPWR",
+  "SIGQUIT",
+  "SIGSEGV",
+  "SIGSTKFLT",
+  "SIGSTOP",
+  "SIGSYS",
+  "SIGTERM",
+  "SIGTRAP",
+  "SIGTSTP",
+  "SIGTTIN",
+  "SIGTTOU",
+  "SIGURG",
+  "SIGUSR1",
+  "SIGUSR2",
+  "SIGVTALRM",
+  "SIGWINCH",
+  "SIGXCPU",
+  "SIGXFSZ",
+]);
+
+function isConnectorTarget(value: unknown): value is ConnectorTarget {
+  if (!isRecord(value)) return false;
+  return (
+    value.transport === "local" ||
+    (value.transport === "ssh" && isNonEmptyString(value.alias))
+  );
+}
+
+function isConnectorProcessLaunch(
+  value: unknown,
+): value is ConnectorProcessLaunch {
+  if (!isRecord(value) || !isNonEmptyString(value.command)) return false;
+  return (
+    (value.args === undefined || isStringArray(value.args)) &&
+    (value.cwd === undefined || typeof value.cwd === "string") &&
+    (value.env === undefined || isStringRecord(value.env))
+  );
+}
+
+export function isHostConnectorProtocolVersion(
+  value: unknown,
+): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= HOST_CONNECTOR_PROTOCOL_MIN_VERSION &&
+    value <= HOST_CONNECTOR_PROTOCOL_VERSION
+  );
+}
+
+export function isHostConnectorCommand(
+  value: unknown,
+): value is HostConnectorCommand {
+  if (!isRecord(value)) return false;
+  switch (value.type) {
+    case "sync":
+      return isStringArray(value.processIds);
+    case "spawn":
+      return (
+        isNonEmptyString(value.processId) &&
+        isConnectorTarget(value.target) &&
+        isConnectorProcessLaunch(value.launch)
+      );
+    case "stdin":
+      return (
+        isNonEmptyString(value.processId) && typeof value.data === "string"
+      );
+    case "stdin_end":
+      return isNonEmptyString(value.processId);
+    case "kill":
+      return (
+        isNonEmptyString(value.processId) &&
+        typeof value.signal === "string" &&
+        CONNECTOR_SIGNALS.has(value.signal as NodeJS.Signals)
+      );
+    case "request":
+      return (
+        isNonEmptyString(value.requestId) &&
+        isRecord(value.request) &&
+        value.request.type === "list_ssh_hosts"
+      );
+    default:
+      return false;
+  }
 }
 
 export function isConnectorSshHost(value: unknown): value is ConnectorSshHost {

@@ -177,6 +177,9 @@ export class PiSessionRuntime {
   private error: string | undefined;
   private refreshPromise: Promise<void> | null = null;
   private idleStopTimer: NodeJS.Timeout | undefined;
+  private turnGeneration = 0;
+  private stopped = false;
+  private exitNotified = false;
 
   constructor(
     readonly dbSessionId: string,
@@ -212,6 +215,8 @@ export class PiSessionRuntime {
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
       if (event.type === "process_exit") {
+        this.stopped = true;
+        this.turnGeneration += 1;
         this.clearIdleStop();
         this.clearPendingExtensionRequest();
         this.status = "exited";
@@ -226,7 +231,7 @@ export class PiSessionRuntime {
             ? event.error
             : `${agentProviderMetadata(this.provider).label} exited.`;
         this.publishSnapshot();
-        this.onExit();
+        this.notifyExit();
         return;
       }
       if (event.type === "agent_start" || event.type === "turn_start") {
@@ -515,9 +520,26 @@ export class PiSessionRuntime {
   }
 
   async stop(): Promise<void> {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.turnGeneration += 1;
     this.clearIdleStop();
     this.clearPendingExtensionRequest();
-    await this.client.stop();
+    try {
+      await this.client.stop();
+    } finally {
+      if (this.status !== "exited") {
+        this.status = "exited";
+        this.activeTurnStartedAt = null;
+        this.state = {
+          ...this.state,
+          isStreaming: false,
+          isCompacting: false,
+        };
+        this.publishSnapshot();
+      }
+      this.notifyExit();
+    }
   }
 
   private scheduleIdleStop(): void {
@@ -548,6 +570,12 @@ export class PiSessionRuntime {
     this.pendingExtensionRequest = undefined;
   }
 
+  private notifyExit(): void {
+    if (this.exitNotified) return;
+    this.exitNotified = true;
+    this.onExit();
+  }
+
   private submitPrompt(message: string): Promise<unknown> {
     if (this.status === "exited") {
       return Promise.reject(
@@ -570,6 +598,7 @@ export class PiSessionRuntime {
     message: string,
     queuedMessage?: AgentQueuedMessage,
   ): Promise<unknown> {
+    this.turnGeneration += 1;
     if (this.provider === "omp") this.ompRunSawAssistant = false;
     this.status = "running";
     this.activeTurnStartedAt = Date.now();
@@ -666,9 +695,13 @@ export class PiSessionRuntime {
     if (this.status !== "running") {
       return this.drainQueuedMessage();
     }
+    const turnGeneration = this.turnGeneration;
     const operation = (async () => {
       await this.client.abort();
-      await this.reconcileProviderIdle(PROVIDER_IDLE_TIMEOUT_MS);
+      await this.reconcileProviderIdle(
+        PROVIDER_IDLE_TIMEOUT_MS,
+        turnGeneration,
+      );
     })();
     const settled = operation
       .catch((error) => {
@@ -697,7 +730,10 @@ export class PiSessionRuntime {
   private settleAfterProviderTerminal(): Promise<void> {
     if (this.abortPromise) return Promise.resolve();
     if (this.settlePromise) return this.settlePromise;
-    const operation = this.reconcileProviderIdle();
+    const operation = this.reconcileProviderIdle(
+      PROVIDER_IDLE_TIMEOUT_MS,
+      this.turnGeneration,
+    );
     const settled = operation
       .catch((error) => {
         this.error = errorMessage(error);
@@ -721,8 +757,15 @@ export class PiSessionRuntime {
     return settled;
   }
 
-  private async reconcileProviderIdle(timeoutMs?: number): Promise<void> {
-    await this.waitForProviderIdle(timeoutMs);
+  private async reconcileProviderIdle(
+    timeoutMs: number,
+    turnGeneration: number,
+  ): Promise<void> {
+    const providerIdle = await this.waitForProviderIdle(
+      timeoutMs,
+      turnGeneration,
+    );
+    if (!providerIdle) return;
     this.status = "idle";
     this.activeTurnStartedAt = null;
     this.state = {
@@ -746,24 +789,44 @@ export class PiSessionRuntime {
     }
   }
 
-  private async waitForProviderIdle(timeoutMs?: number): Promise<void> {
-    const deadline =
-      timeoutMs === undefined ? undefined : Date.now() + timeoutMs;
+  private async waitForProviderIdle(
+    timeoutMs: number,
+    turnGeneration: number,
+  ): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
-    while (this.status !== "exited") {
+    while (this.isProviderIdleWaitCurrent(turnGeneration)) {
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) break;
       try {
-        const state = await this.client.getState();
+        const state = await this.client.getState(remainingMs);
+        if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
+          return false;
+        }
         this.state = state;
-        if (state.isStreaming !== true && state.isCompacting !== true) return;
+        if (state.isStreaming !== true && state.isCompacting !== true) {
+          return true;
+        }
       } catch (error) {
         lastError = error;
       }
-      if (deadline !== undefined && Date.now() >= deadline) break;
+      if (Date.now() >= deadline) break;
       await wait(PROVIDER_IDLE_POLL_MS);
+    }
+    if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
+      return false;
     }
     const detail = lastError ? ` ${errorMessage(lastError)}` : "";
     throw new Error(
-      `${agentProviderMetadata(this.provider).label} did not become idle after stopping.${detail}`,
+      `${agentProviderMetadata(this.provider).label} still reports that it is working after ${Math.round(timeoutMs / 1_000)} seconds.${detail}`,
+    );
+  }
+
+  private isProviderIdleWaitCurrent(turnGeneration: number): boolean {
+    return (
+      !this.stopped &&
+      this.status !== "exited" &&
+      this.turnGeneration === turnGeneration
     );
   }
 

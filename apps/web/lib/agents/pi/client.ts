@@ -195,8 +195,8 @@ export class PiRpcClient {
     this.process.stdin.write(serializeJsonLine(frame));
   }
 
-  getState(): Promise<Record<string, unknown>> {
-    return this.request({ type: "get_state" });
+  getState(timeoutMs?: number): Promise<Record<string, unknown>> {
+    return this.request({ type: "get_state" }, timeoutMs);
   }
 
   async getAvailableModels(timeoutMs?: number): Promise<AgentModel[]> {

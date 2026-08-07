@@ -1,7 +1,6 @@
 import "server-only";
 import { PassThrough, Writable } from "node:stream";
 import {
-  HOST_CONNECTOR_PROTOCOL_VERSION,
   isConnectorSshHost,
   type ConnectorProcessLaunch,
   type ConnectorSshHost,
@@ -11,6 +10,8 @@ import {
 } from "@overtchat/agent-bridge";
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
+const PROCESS_EXIT_GRACE_MS = 5_000;
 
 export type ConnectorProcessExit = {
   code: number | null;
@@ -48,6 +49,11 @@ export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
   private readonly processes = new Map<string, ProcessEntry>();
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly disconnectTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(
+    private readonly disconnectGraceMs = CONNECTOR_DISCONNECT_GRACE_MS,
+  ) {}
 
   isOnline(connectorId: string): boolean {
     return this.channels.has(connectorId);
@@ -57,17 +63,25 @@ export class HostConnectorBroker {
     connectorId: string,
     send: (command: HostConnectorCommand) => void,
   ): () => void {
+    this.clearDisconnectTimer(connectorId);
     const channel = { send };
     this.channels.set(connectorId, channel);
-    send({
-      type: "sync",
-      processIds: [...this.processes]
-        .filter(([, process]) => process.connectorId === connectorId)
-        .map(([id]) => id),
-    });
+    try {
+      send({
+        type: "sync",
+        processIds: [...this.processes]
+          .filter(([, process]) => process.connectorId === connectorId)
+          .map(([id]) => id),
+      });
+    } catch (error) {
+      this.channels.delete(connectorId);
+      this.scheduleDisconnect(connectorId);
+      throw error;
+    }
     return () => {
       if (this.channels.get(connectorId) === channel) {
         this.channels.delete(connectorId);
+        this.scheduleDisconnect(connectorId);
       }
     };
   }
@@ -81,6 +95,7 @@ export class HostConnectorBroker {
     const stdout = new PassThrough();
     const stderr = new PassThrough();
     let settled = false;
+    let killTimer: NodeJS.Timeout | undefined;
     let settle: (exit: ConnectorProcessExit) => void = () => {};
     const exit = new Promise<ConnectorProcessExit>((resolve) => {
       settle = resolve;
@@ -88,6 +103,7 @@ export class HostConnectorBroker {
     const finish = (result: ConnectorProcessExit) => {
       if (settled) return;
       settled = true;
+      if (killTimer) clearTimeout(killTimer);
       this.processes.delete(processId);
       stdout.end();
       stderr.end();
@@ -143,10 +159,28 @@ export class HostConnectorBroker {
       stderr,
       exit,
       kill: (signal = "SIGTERM") => {
+        if (settled) return false;
         try {
           send({ type: "kill", processId, signal });
+          if (killTimer) clearTimeout(killTimer);
+          killTimer = setTimeout(() => {
+            finish({
+              code: null,
+              signal,
+              error: new Error(
+                `The Host Connector did not confirm process exit after ${signal}.`,
+              ),
+            });
+          }, PROCESS_EXIT_GRACE_MS);
+          killTimer.unref();
           return true;
-        } catch {
+        } catch (error) {
+          finish({
+            code: null,
+            signal: null,
+            error:
+              error instanceof Error ? error : new Error(String(error)),
+          });
           return false;
         }
       },
@@ -186,8 +220,39 @@ export class HostConnectorBroker {
     });
   }
 
-  protocolVersion(): number {
-    return HOST_CONNECTOR_PROTOCOL_VERSION;
+  private clearDisconnectTimer(connectorId: string): void {
+    const timer = this.disconnectTimers.get(connectorId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.disconnectTimers.delete(connectorId);
+  }
+
+  private scheduleDisconnect(connectorId: string): void {
+    this.clearDisconnectTimer(connectorId);
+    const timer = setTimeout(() => {
+      if (
+        this.disconnectTimers.get(connectorId) !== timer ||
+        this.channels.has(connectorId)
+      ) {
+        return;
+      }
+      this.disconnectTimers.delete(connectorId);
+      const error = new Error(
+        "The OvertChat Host Connector disconnected while the agent was running.",
+      );
+      for (const process of [...this.processes.values()]) {
+        if (process.connectorId !== connectorId) continue;
+        process.finish({ code: null, signal: null, error });
+      }
+      for (const [requestId, request] of this.pending) {
+        if (request.connectorId !== connectorId) continue;
+        clearTimeout(request.timeout);
+        this.pending.delete(requestId);
+        request.reject(error);
+      }
+    }, this.disconnectGraceMs);
+    timer.unref();
+    this.disconnectTimers.set(connectorId, timer);
   }
 
   private request(

@@ -13,6 +13,30 @@ import {
 
 type Emit = (event: HostConnectorEvent) => void;
 
+function killProcessTree(
+  child: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): boolean {
+  if (child.exitCode !== null || child.signalCode !== null) return false;
+  if (process.platform !== "win32" && child.pid) {
+    try {
+      process.kill(-child.pid, signal);
+      return true;
+    } catch {
+      // Fall back to the direct child when its process group is already gone.
+    }
+  }
+  return child.kill(signal);
+}
+
+function terminateProcessTree(child: ChildProcessWithoutNullStreams): void {
+  if (!killProcessTree(child, "SIGTERM")) return;
+  const forceKillTimer = setTimeout(() => {
+    killProcessTree(child, "SIGKILL");
+  }, 1_000);
+  child.once("exit", () => clearTimeout(forceKillTimer));
+}
+
 export class ConnectorRuntime {
   private readonly processes = new Map<
     string,
@@ -38,7 +62,10 @@ export class ConnectorRuntime {
         this.processes.get(command.processId)?.stdin.end();
         return;
       case "kill":
-        this.processes.get(command.processId)?.kill(command.signal);
+        {
+          const child = this.processes.get(command.processId);
+          if (child) killProcessTree(child, command.signal);
+        }
         return;
       case "request":
         await this.request(command.requestId, command.request);
@@ -46,13 +73,15 @@ export class ConnectorRuntime {
   }
 
   stop(): void {
-    for (const child of this.processes.values()) child.kill("SIGTERM");
+    for (const child of this.processes.values()) {
+      terminateProcessTree(child);
+    }
   }
 
   private sync(activeProcessIds: string[]): void {
     const active = new Set(activeProcessIds);
     for (const [id, child] of this.processes) {
-      if (!active.has(id)) child.kill("SIGTERM");
+      if (!active.has(id)) terminateProcessTree(child);
     }
     for (const id of active) {
       if (!this.processes.has(id)) {
@@ -79,9 +108,11 @@ export class ConnectorRuntime {
         target.transport === "local"
           ? spawn("/bin/sh", ["-c", buildSshRemoteCommand(launch)], {
               env: process.env,
+              detached: process.platform !== "win32",
               stdio: ["pipe", "pipe", "pipe"],
             })
           : spawn("ssh", sshSpawnArgs(target.alias, launch), {
+              detached: process.platform !== "win32",
               stdio: ["pipe", "pipe", "pipe"],
             });
     } catch (error) {

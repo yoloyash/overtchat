@@ -1,6 +1,6 @@
 import {
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  type HostConnectorCommand,
+  isHostConnectorCommand,
   type HostConnectorEvent,
   type HostConnectorEventBatch,
 } from "@overtchat/agent-bridge";
@@ -8,19 +8,44 @@ import type { ConnectorConfig } from "./config.js";
 import { ConnectorRuntime } from "./runtime.js";
 import { CONNECTOR_VERSION } from "./version.js";
 
-const RECONNECT_DELAY_MS = 1_000;
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 const EVENT_BATCH_DELAY_MS = 25;
 
 function endpoint(serverUrl: string, path: string): string {
   return `${serverUrl}${path}`;
 }
 
+function reconnectDelay(attempt: number): number {
+  const cap = Math.min(
+    RECONNECT_BASE_DELAY_MS * 2 ** Math.min(attempt, 30),
+    RECONNECT_MAX_DELAY_MS,
+  );
+  return Math.round(cap * (0.5 + Math.random() * 0.5));
+}
+
+function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, milliseconds);
+    signal.addEventListener("abort", finish, { once: true });
+  });
+}
+
 export class ConnectorClient {
   private readonly events: HostConnectorEvent[] = [];
   private readonly runtime: ConnectorRuntime;
+  private readonly stopAbort = new AbortController();
   private commandStreamAbort: AbortController | undefined;
   private eventRequestAbort: AbortController | undefined;
   private flushTimer: NodeJS.Timeout | undefined;
+  private reconnectAttempt = 0;
+  private eventRetryAttempt = 0;
   private flushing = false;
   private stopped = false;
 
@@ -40,7 +65,10 @@ export class ConnectorClient {
           }`,
         );
       }
-      await new Promise((resolve) => setTimeout(resolve, RECONNECT_DELAY_MS));
+      await waitForRetry(
+        reconnectDelay(this.reconnectAttempt++),
+        this.stopAbort.signal,
+      );
     }
   }
 
@@ -50,6 +78,7 @@ export class ConnectorClient {
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = undefined;
     this.events.length = 0;
+    this.stopAbort.abort();
     this.commandStreamAbort?.abort();
     this.eventRequestAbort?.abort();
     this.runtime.stop();
@@ -74,6 +103,7 @@ export class ConnectorClient {
     if (!response.ok || !response.body) {
       throw new Error(`OvertChat returned HTTP ${response.status}.`);
     }
+    this.reconnectAttempt = 0;
     const decoder = new TextDecoder();
     const reader = response.body.getReader();
     let buffered = "";
@@ -87,9 +117,11 @@ export class ConnectorClient {
           const line = buffered.slice(0, newline).trim();
           buffered = buffered.slice(newline + 1);
           if (line) {
-            await this.runtime.handle(
-              JSON.parse(line) as HostConnectorCommand,
-            );
+            const command: unknown = JSON.parse(line);
+            if (!isHostConnectorCommand(command)) {
+              throw new Error("OvertChat sent an invalid connector command.");
+            }
+            await this.runtime.handle(command);
           }
           newline = buffered.indexOf("\n");
         }
@@ -137,6 +169,7 @@ export class ConnectorClient {
       if (!response.ok) {
         throw new Error(`OvertChat returned HTTP ${response.status}.`);
       }
+      this.eventRetryAttempt = 0;
     } catch (error) {
       if (this.stopped) return;
       this.events.unshift(...events);
@@ -145,7 +178,10 @@ export class ConnectorClient {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      await new Promise((resolve) => setTimeout(resolve, RECONNECT_DELAY_MS));
+      await waitForRetry(
+        reconnectDelay(this.eventRetryAttempt++),
+        this.stopAbort.signal,
+      );
     } finally {
       if (this.eventRequestAbort === abort) {
         this.eventRequestAbort = undefined;

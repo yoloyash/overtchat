@@ -85,9 +85,23 @@ export async function executeOnHost(
   else processHandle.stdin.end();
 
   const timeoutMs = options.timeoutMs ?? DEFAULT_EXEC_TIMEOUT_MS;
-  const timeout = setTimeout(() => processHandle.kill("SIGKILL"), timeoutMs);
-  const exit = await processHandle.exit;
-  clearTimeout(timeout);
+  let timeout: NodeJS.Timeout | undefined;
+  let exit: AgentProcessExit;
+  try {
+    exit = await Promise.race([
+      processHandle.exit,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          processHandle.kill("SIGKILL");
+          reject(
+            new Error(`Agent command timed out after ${timeoutMs} milliseconds.`),
+          );
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 
   if (captureError) throw captureError;
   const stderrText = stderr.trim();

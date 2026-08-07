@@ -84,6 +84,91 @@ describe("Host Connector broker", () => {
     expect(second[0]).toEqual({ type: "sync", processIds: [processId] });
   });
 
+  it("fails live processes and requests when a connector stays offline", async () => {
+    vi.useFakeTimers();
+    try {
+      const broker = new HostConnectorBroker(1_000);
+      const commands: HostConnectorCommand[] = [];
+      const unregister = broker.register("connector", (command) =>
+        commands.push(command),
+      );
+      const processHandle = broker.spawn(
+        "connector",
+        { transport: "local" },
+        { command: "omp" },
+      );
+      const hosts = broker.listSshHosts("connector");
+      const processExit = expect(processHandle.exit).resolves.toMatchObject({
+        code: null,
+        error: expect.objectContaining({
+          message: expect.stringContaining("disconnected"),
+        }),
+      });
+      const requestFailure = expect(hosts).rejects.toThrow("disconnected");
+
+      unregister();
+      await vi.advanceTimersByTimeAsync(1_000);
+
+      await Promise.all([processExit, requestFailure]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles a process immediately when an offline kill cannot be sent", async () => {
+    const broker = new HostConnectorBroker();
+    const commands: HostConnectorCommand[] = [];
+    const unregister = broker.register("connector", (command) =>
+      commands.push(command),
+    );
+    const processHandle = broker.spawn(
+      "connector",
+      { transport: "local" },
+      { command: "omp" },
+    );
+    unregister();
+
+    expect(processHandle.kill("SIGKILL")).toBe(false);
+    await expect(processHandle.exit).resolves.toMatchObject({
+      code: null,
+      error: expect.objectContaining({
+        message: "The OvertChat Host Connector is offline.",
+      }),
+    });
+
+    const reconnectCommands: HostConnectorCommand[] = [];
+    broker.register("connector", (command) => reconnectCommands.push(command));
+    expect(reconnectCommands[0]).toEqual({ type: "sync", processIds: [] });
+  });
+
+  it("settles a killed process when its exit event is lost", async () => {
+    vi.useFakeTimers();
+    try {
+      const broker = new HostConnectorBroker();
+      const commands: HostConnectorCommand[] = [];
+      broker.register("connector", (command) => commands.push(command));
+      const processHandle = broker.spawn(
+        "connector",
+        { transport: "local" },
+        { command: "omp" },
+      );
+      const processExit = expect(processHandle.exit).resolves.toMatchObject({
+        code: null,
+        signal: "SIGKILL",
+        error: expect.objectContaining({
+          message: expect.stringContaining("did not confirm process exit"),
+        }),
+      });
+
+      expect(processHandle.kill("SIGKILL")).toBe(true);
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      await processExit;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("validates SSH host discovery responses", async () => {
     const broker = new HostConnectorBroker();
     const commands: HostConnectorCommand[] = [];

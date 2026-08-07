@@ -1,5 +1,7 @@
 import {
+  HOST_CONNECTOR_PROTOCOL_MIN_VERSION,
   HOST_CONNECTOR_PROTOCOL_VERSION,
+  isHostConnectorProtocolVersion,
   type HostConnectorCommand,
 } from "@overtchat/agent-bridge";
 import { authenticateHostConnector } from "@/lib/agents/connector/auth";
@@ -15,10 +17,10 @@ export async function GET(request: Request) {
   const protocol = Number(
     request.headers.get("x-overtchat-connector-protocol"),
   );
-  if (protocol !== HOST_CONNECTOR_PROTOCOL_VERSION) {
+  if (!isHostConnectorProtocolVersion(protocol)) {
     return Response.json(
       {
-        error: `Connector protocol ${protocol || "unknown"} is incompatible with server protocol ${HOST_CONNECTOR_PROTOCOL_VERSION}.`,
+        error: `Connector protocol ${protocol || "unknown"} is incompatible with server protocols ${HOST_CONNECTOR_PROTOCOL_MIN_VERSION}-${HOST_CONNECTOR_PROTOCOL_VERSION}.`,
       },
       { status: 409 },
     );
