@@ -1,14 +1,28 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { resetE2eDatabase } from "./helpers/database";
 
 const SIDEBAR_STORAGE_KEY = "overtchat_sidebar_collapsed";
 
 test.beforeEach(resetE2eDatabase);
 
+async function getTransitionProperties(page: Page) {
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  return page.evaluate(() =>
+    document
+      .getAnimations()
+      .filter(
+        (animation): animation is CSSTransition =>
+          animation instanceof CSSTransition,
+      )
+      .map((transition) => transition.transitionProperty),
+  );
+}
+
 test("sidebar behavior stays consistent across desktop and mobile", async ({
   page,
 }) => {
   test.setTimeout(60_000);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/signup");
   await page.locator("#name").fill("Sidebar Admin");
@@ -18,16 +32,26 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await page.waitForURL("**/");
 
   const desktopSidebar = page.locator("[data-desktop-sidebar]");
+  const desktopPanel = page.locator("[data-desktop-sidebar-panel]");
   await expect(desktopSidebar).toHaveCSS("width", "256px");
+  await expect(desktopPanel).toHaveCSS(
+    "transition-property",
+    "transform, translate, scale, rotate",
+  );
 
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
+  expect(await getTransitionProperties(page)).toEqual(
+    expect.arrayContaining(["translate", "width"]),
+  );
   await expect(desktopSidebar).toHaveCSS("width", "0px");
+  await expect(desktopPanel).toHaveCSS("translate", "-100%");
   await expect
     .poll(() => page.evaluate((key) => localStorage.getItem(key), SIDEBAR_STORAGE_KEY))
     .toBe("true");
 
   await page.getByRole("button", { name: "Open sidebar" }).click();
   await expect(desktopSidebar).toHaveCSS("width", "256px");
+  await expect(desktopPanel).toHaveCSS("translate", "none");
   await expect(page.getByRole("dialog", { name: "Navigation" })).toHaveCount(0);
   await page.locator("main").click({ position: { x: 20, y: 20 } });
   await expect
@@ -41,8 +65,13 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Open sidebar" }).click();
+  expect(await getTransitionProperties(page)).toContain("translate");
   const drawer = page.getByRole("dialog", { name: "Navigation" });
   await expect(drawer).toBeVisible();
+  await expect(drawer).toHaveCSS(
+    "transition-property",
+    "transform, translate, scale, rotate",
+  );
 
   await drawer.getByRole("link", { name: "Sidebar Project", exact: true }).click();
   await expect(drawer).toBeHidden();
