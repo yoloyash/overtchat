@@ -4,9 +4,9 @@ import { createContext, useContext, type RefObject } from "react";
 
 interface SidebarCtx {
   collapsed: boolean;
-  setCollapsed: (v: boolean) => void;
-  openMobile: boolean;
-  setOpenMobile: (v: boolean) => void;
+  openSidebar: () => void;
+  closeSidebar: () => void;
+  closeMobile: () => void;
   openPalette: () => void;
   // Ref to the mobile drawer's Dialog.Popup element. Popups inside the sidebar
   // pass this to `Menu.Portal container` on mobile so their floating element

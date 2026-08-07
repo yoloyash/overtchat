@@ -13,6 +13,10 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { QueryProvider } from "@/components/QueryProvider";
 import { ToastProvider } from "@/components/ui/toast";
 import { FONT_STORAGE_KEY, fontCssValueById } from "@/lib/fonts";
+import {
+  SIDEBAR_COLLAPSED_ATTRIBUTE,
+  SIDEBAR_COLLAPSED_STORAGE_KEY,
+} from "@/lib/sidebar";
 
 const sans = Plus_Jakarta_Sans({
   variable: "--font-plus-jakarta-sans",
@@ -59,6 +63,13 @@ const fontScript = `(function(){try{
   if(v){document.documentElement.style.setProperty("--app-font-sans",v);}
 }catch(e){}})();`;
 
+const sidebarScript = `(function(){try{
+  var raw=localStorage.getItem(${JSON.stringify(SIDEBAR_COLLAPSED_STORAGE_KEY)});
+  if(raw&&JSON.parse(raw)===true){
+    document.documentElement.setAttribute(${JSON.stringify(SIDEBAR_COLLAPSED_ATTRIBUTE)},"");
+  }
+}catch(e){}})();`;
+
 export const metadata: Metadata = {
   title: "overtchat",
   description: "Simple self-hosted chat UI for OpenAI-compatible endpoints",
@@ -91,7 +102,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="h-full">
-        <script dangerouslySetInnerHTML={{ __html: fontScript }} />
+        <script dangerouslySetInnerHTML={{ __html: fontScript + sidebarScript }} />
         <QueryProvider>
           <ThemeProvider>
             <ToastProvider>{children}</ToastProvider>

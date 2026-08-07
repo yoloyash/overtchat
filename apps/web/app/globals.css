@@ -136,6 +136,12 @@
     transition-timing-function: var(--motion-ease-standard);
   }
 
+  .motion-width {
+    transition-property: width;
+    transition-duration: var(--motion-duration-base);
+    transition-timing-function: var(--motion-ease-standard);
+  }
+
   .motion-surface {
     transition-property: opacity, transform, scale;
     transition-duration: var(--motion-duration-base);
@@ -164,6 +170,10 @@
 
   .motion-skeleton {
     background-color: color-mix(in oklch, var(--muted) 82%, var(--foreground) 8%);
+  }
+
+  html[data-sidebar-collapsed] [data-desktop-sidebar] {
+    width: 0;
   }
 }
 
