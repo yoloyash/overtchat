@@ -4,36 +4,47 @@ import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import {
-  CheckCircle2,
+  Check,
   ChevronLeft,
-  KeyRound,
   Loader2,
-  Monitor,
+  PencilLine,
+  RefreshCw,
   Server,
+  TerminalSquare,
   Wifi,
 } from "lucide-react";
-import claudeCodeIcon from "@/assets/agent-providers/claude-code.png";
-import codexIcon from "@/assets/agent-providers/codex.png";
 import ompIcon from "@/assets/agent-providers/omp.svg";
 import piIcon from "@/assets/agent-providers/pi.svg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Textarea } from "@/components/ui/textarea";
-import { toast } from "@/components/ui/toast";
-import type {
-  AgentConnectionDraft,
-  AgentHostKeyProbe,
-  AgentProviderId,
-  AgentReadyConnectionProbe,
-  AgentSshHostCandidate,
-} from "@/lib/agents/types";
-import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
-  useCreateAgentConnection,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "@/components/ui/toast";
+import {
+  agentDiscoveryTargetSchema,
+  type AgentConnectionDraft,
+  type AgentConnectionListItem,
+  type AgentDiscoveryTarget,
+  type AgentProviderId,
+  type AgentSshHostCandidate,
+  type DetectedAgentInstallation,
+  type HostConnectorListItem,
+} from "@/lib/agents/types";
+import {
+  AGENT_PROVIDERS,
+  agentProviderMetadata,
+} from "@/lib/agents/catalog";
+import {
   useAgentSshHosts,
-  useProbeAgentConnection,
+  useCreateAgentConnection,
+  useDetectedAgentInstallations,
 } from "@/lib/queries/agentConnections";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -44,299 +55,187 @@ import {
 import { SshHostPicker } from "./SshHostPicker";
 
 type Transport = "local" | "ssh";
-type SshAuth = "agent" | "private_key";
 type RemoteMode = "detected" | "manual";
 
-type TestedConnection = {
-  signature: string;
-  probe: AgentReadyConnectionProbe;
+const PROVIDER_ICONS: Record<
+  AgentProviderId,
+  { icon: StaticImageData; darkSurface?: boolean }
+> = {
+  pi: { icon: piIcon },
+  omp: { icon: ompIcon, darkSurface: true },
 };
 
 export function AddConnectionDialog({
+  connector,
+  connections,
   open,
   onOpenChange,
 }: {
+  connector: HostConnectorListItem;
+  connections: AgentConnectionListItem[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const initialTransport: Transport = "local";
-  const initialAuth: SshAuth = "agent";
-  const probeMutation = useProbeAgentConnection();
   const createMutation = useCreateAgentConnection();
-  const [selectedProvider, setSelectedProvider] =
-    useState<AgentProviderId | null>(null);
-  const [transport, setTransport] = useState<Transport>(initialTransport);
+  const [transport, setTransport] = useState<Transport>("local");
   const [remoteMode, setRemoteMode] = useState<RemoteMode>("detected");
-  const [selectedSshAlias, setSelectedSshAlias] = useState<string | null>(
-    null,
-  );
-  const [name, setName] = useState(
-    initialTransport === "local" ? "This server" : "Remote agent",
-  );
-  const [executable, setExecutable] = useState("");
-  const [hostname, setHostname] = useState("");
-  const [port, setPort] = useState("22");
-  const [username, setUsername] = useState("");
-  const [sshAuth, setSshAuth] = useState<SshAuth>(initialAuth);
-  const [privateKey, setPrivateKey] = useState("");
-  const [confirmedHostKey, setConfirmedHostKey] = useState("");
-  const [pendingHostKey, setPendingHostKey] =
-    useState<AgentHostKeyProbe | null>(null);
-  const [tested, setTested] = useState<TestedConnection | null>(null);
+  const [selectedSshAlias, setSelectedSshAlias] = useState<string | null>(null);
+  const [manualSshAlias, setManualSshAlias] = useState("");
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customProvider, setCustomProvider] =
+    useState<AgentProviderId>("pi");
+  const [customExecutable, setCustomExecutable] = useState("pi");
+  const [connectingKey, setConnectingKey] = useState<string | null>(null);
   const [error, setError] = useState("");
+
+  const target = useMemo<AgentDiscoveryTarget | null>(() => {
+    if (transport === "local") {
+      return { connectorId: connector.id, transport: "local" };
+    }
+    return selectedSshAlias
+      ? {
+          connectorId: connector.id,
+          transport: "ssh",
+          sshAlias: selectedSshAlias,
+        }
+      : null;
+  }, [connector.id, selectedSshAlias, transport]);
+
   const sshHosts = useAgentSshHosts(
+    connector.id,
     open &&
-      selectedProvider !== null &&
       transport === "ssh" &&
+      selectedSshAlias === null &&
       remoteMode === "detected",
   );
+  const discovery = useDetectedAgentInstallations(target, open);
+  const pending = createMutation.isPending;
 
   function reset() {
-    setSelectedProvider(null);
-    setTransport(initialTransport);
+    setTransport("local");
     setRemoteMode("detected");
     setSelectedSshAlias(null);
-    setName(initialTransport === "local" ? "This server" : "Remote agent");
-    setExecutable("");
-    setHostname("");
-    setPort("22");
-    setUsername("");
-    setSshAuth(initialAuth);
-    setPrivateKey("");
-    setConfirmedHostKey("");
-    setPendingHostKey(null);
-    setTested(null);
+    setManualSshAlias("");
+    setCustomOpen(false);
+    setCustomProvider("pi");
+    setCustomExecutable("pi");
+    setConnectingKey(null);
     setError("");
-    probeMutation.reset();
     createMutation.reset();
   }
 
-  function invalidateTest() {
-    setTested(null);
-    setPendingHostKey(null);
-    setConfirmedHostKey("");
+  function changeTransport(value: Transport) {
+    setTransport(value);
+    setRemoteMode("detected");
+    setSelectedSshAlias(null);
+    setManualSshAlias("");
+    setCustomOpen(false);
     setError("");
-  }
-
-  function selectProvider(provider: AgentProviderId) {
-    const metadata = agentProviderMetadata(provider);
-    invalidateTest();
-    setSelectedProvider(provider);
-    setName(
-      transport === "local" ? "This server" : `Remote ${metadata.label}`,
-    );
-    setExecutable(metadata.executable);
   }
 
   function selectSshHost(host: AgentSshHostCandidate) {
-    if (!selectedProvider) return;
-    invalidateTest();
     setSelectedSshAlias(host.alias);
-    setName(host.alias);
-    setHostname(host.alias);
-    setPort(String(host.port));
-    setUsername(host.username);
-    setSshAuth("agent");
-    setPrivateKey("");
-    setExecutable(agentProviderMetadata(selectedProvider).executable);
+    setCustomOpen(false);
+    setError("");
   }
 
-  function showManualConnection() {
-    if (!selectedProvider) return;
-    const metadata = agentProviderMetadata(selectedProvider);
-    invalidateTest();
+  function showManualHost() {
     setRemoteMode("manual");
-    setSelectedSshAlias(null);
-    setName(`Remote ${metadata.label}`);
-    setHostname("");
-    setPort("22");
-    setUsername("");
-    setSshAuth(initialAuth);
-    setPrivateKey("");
-    setExecutable(metadata.executable);
+    setManualSshAlias("");
+    setError("");
   }
 
-  function showDetectedConnections() {
-    if (!selectedProvider) return;
-    const metadata = agentProviderMetadata(selectedProvider);
-    invalidateTest();
+  function showSshHosts() {
     setRemoteMode("detected");
     setSelectedSshAlias(null);
-    setName(`Remote ${metadata.label}`);
-    setHostname("");
-    setPort("22");
-    setUsername("");
-    setSshAuth("agent");
-    setPrivateKey("");
-    setExecutable(metadata.executable);
+    setManualSshAlias("");
+    setCustomOpen(false);
+    setError("");
   }
 
-  function buildDraft(hostKey = confirmedHostKey):
-    | { draft: AgentConnectionDraft }
-    | { error: string } {
-    const trimmedName = name.trim();
+  function submitManualHost() {
+    const parsed = agentDiscoveryTargetSchema.safeParse({
+      connectorId: connector.id,
+      transport: "ssh",
+      sshAlias: manualSshAlias,
+    });
+    if (!parsed.success || parsed.data.transport !== "ssh") {
+      setError(
+        parsed.error?.issues[0]?.message ?? "Enter a valid SSH host alias.",
+      );
+      return;
+    }
+    setSelectedSshAlias(parsed.data.sshAlias);
+    setCustomOpen(false);
+    setError("");
+  }
+
+  function isConnected(provider: AgentProviderId): boolean {
+    if (!target) return false;
+    return connections.some(
+      (connection) =>
+        connection.provider === provider &&
+        connection.host.connectorId === target.connectorId &&
+        connection.host.transport === target.transport &&
+        (target.transport === "local" ||
+          connection.host.sshAlias === target.sshAlias),
+    );
+  }
+
+  async function connect(
+    provider: AgentProviderId,
+    executable: string,
+  ): Promise<void> {
     const trimmedExecutable = executable.trim();
-    if (!selectedProvider) return { error: "Choose a coding agent." };
-    const metadata = agentProviderMetadata(selectedProvider);
-    if (!trimmedName) return { error: "Enter a connection name." };
+    if (!target) {
+      setError("Choose a machine first.");
+      return;
+    }
     if (!trimmedExecutable) {
-      return { error: `Enter the ${metadata.label} executable path.` };
-    }
-    if (transport === "local") {
-      return {
-        draft: {
-          provider: selectedProvider,
-          transport: "local",
-          name: trimmedName,
-          executable: trimmedExecutable,
-        },
-      };
-    }
-
-    const parsedPort = Number(port);
-    if (!hostname.trim()) return { error: "Enter an SSH hostname." };
-    if (!username.trim()) return { error: "Enter an SSH username." };
-    if (
-      !Number.isInteger(parsedPort) ||
-      parsedPort < 1 ||
-      parsedPort > 65_535
-    ) {
-      return { error: "Enter a valid SSH port." };
-    }
-    if (sshAuth === "private_key" && !privateKey.trim()) {
-      return { error: "Paste an SSH private key." };
-    }
-    return {
-      draft: {
-        provider: selectedProvider,
-        transport: "ssh",
-        name: trimmedName,
-        executable: trimmedExecutable,
-        hostname: hostname.trim(),
-        port: parsedPort,
-        username: username.trim(),
-        sshAuth,
-        ...(sshAuth === "private_key"
-          ? { privateKey: privateKey.trim() }
-          : {}),
-        ...(hostKey ? { hostKey } : {}),
-      },
-    };
-  }
-
-  const currentSignature = useMemo(() => {
-    const result = buildDraft();
-    return "draft" in result ? JSON.stringify(result.draft) : null;
-    // Primitive form state is intentionally listed so a successful probe is
-    // tied to the exact values that will be saved.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    confirmedHostKey,
-    executable,
-    hostname,
-    name,
-    port,
-    privateKey,
-    selectedProvider,
-    sshAuth,
-    transport,
-  ]);
-  const isTested =
-    currentSignature !== null && tested?.signature === currentSignature;
-  const pending = probeMutation.isPending || createMutation.isPending;
-  const choosingSshHost =
-    transport === "ssh" && remoteMode === "detected";
-
-  async function testConnection() {
-    const result = buildDraft();
-    if ("error" in result) {
-      setError(result.error);
+      setError("Enter an executable command or absolute path.");
       return;
     }
+    const draft: AgentConnectionDraft =
+      target.transport === "local"
+        ? {
+            connectorId: target.connectorId,
+            provider,
+            transport: "local",
+            name: "This machine",
+            executable: trimmedExecutable,
+          }
+        : {
+            connectorId: target.connectorId,
+            provider,
+            transport: "ssh",
+            name: target.sshAlias.slice(0, 80),
+            executable: trimmedExecutable,
+            sshAlias: target.sshAlias,
+          };
+    const key = `${provider}:${trimmedExecutable}`;
+    setConnectingKey(key);
     setError("");
     try {
-      const probe = await probeMutation.mutateAsync(result.draft);
-      if (probe.status === "host_key") {
-        setPendingHostKey(probe);
-        return;
-      }
-      setTested({
-        signature: JSON.stringify(result.draft),
-        probe,
-      });
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "The connection test failed.",
-      );
-    }
-  }
-
-  async function confirmFingerprint() {
-    const hostKey = pendingHostKey?.hostKey;
-    if (!hostKey) return;
-    const result = buildDraft(hostKey);
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    setError("");
-    try {
-      const probe = await probeMutation.mutateAsync(result.draft);
-      if (probe.status !== "ready") {
-        throw new Error("The SSH host key could not be confirmed.");
-      }
-      setConfirmedHostKey(hostKey);
-      setTested({
-        signature: JSON.stringify(result.draft),
-        probe,
-      });
-      setPendingHostKey(null);
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "The connection test failed.",
-      );
-    }
-  }
-
-  async function connect() {
-    const result = buildDraft();
-    if ("error" in result) {
-      setError(result.error);
-      return;
-    }
-    if (tested?.signature !== JSON.stringify(result.draft)) {
-      setError("Test this configuration before connecting.");
-      return;
-    }
-    setError("");
-    try {
-      const connection = await createMutation.mutateAsync(result.draft);
+      const connection = await createMutation.mutateAsync(draft);
       toast.success({
-        title: `${agentProviderMetadata(result.draft.provider).label} connected`,
+        title: `${agentProviderMetadata(provider).label} connected`,
         description: connection.host.name,
       });
       reset();
       onOpenChange(false);
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "The connection could not be saved.",
+        cause instanceof Error
+          ? cause.message
+          : "The connection could not be saved.",
       );
+    } finally {
+      setConnectingKey(null);
     }
   }
 
-  const providerMetadata = selectedProvider
-    ? agentProviderMetadata(selectedProvider)
-    : null;
-  const dialogTitle = !providerMetadata
-    ? "Add connection"
-    : transport === "ssh"
-      ? "Add SSH connection"
-      : `Add ${providerMetadata.label} connection`;
-  const dialogDescription = !providerMetadata
-    ? "Choose a coding agent."
-    : choosingSshHost
-      ? "Choose a host from this server's SSH config."
-      : `Connect OvertChat to an existing ${providerMetadata.label} installation.`;
+  const selectingSshHost =
+    transport === "ssh" && selectedSshAlias === null;
 
   return (
     <Dialog.Root
@@ -352,376 +251,397 @@ export function AddConnectionDialog({
         />
         <Dialog.Popup
           className={cn(
-            "fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none",
+            "fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border bg-card p-6 text-card-foreground shadow-lg outline-none",
             motionClasses.dialog,
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            {dialogTitle}
+            Add connection
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {dialogDescription}
+            Choose where the coding agent is installed.
           </Dialog.Description>
 
-          {!providerMetadata ? (
-            <div className="mt-5 grid grid-cols-2 gap-2">
-              <ProviderChoice
-                icon={piIcon}
-                label="Pi"
-                onClick={() => selectProvider("pi")}
-              />
-              <ProviderChoice
-                icon={ompIcon}
-                label="Oh My Pi"
-                darkIconSurface
-                onClick={() => selectProvider("omp")}
-              />
-              <ProviderChoice
-                icon={claudeCodeIcon}
-                label="Claude Code"
-                disabled
-              />
-              <ProviderChoice icon={codexIcon} label="Codex" disabled />
+          <div className="mt-5 space-y-4">
+            <div className="space-y-1.5">
+              <Label>Location</Label>
+              <RadioGroup
+                aria-label="Connection location"
+                value={transport}
+                disabled={pending}
+                onValueChange={(next) =>
+                  changeTransport(next as Transport)
+                }
+                className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1"
+              >
+                <TransportChoice
+                  value="local"
+                  label="This machine"
+                  icon={Server}
+                />
+                <TransportChoice value="ssh" label="SSH" icon={Wifi} />
+              </RadioGroup>
             </div>
-          ) : (
-            <form
-              className="mt-5 space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void (isTested ? connect() : testConnection());
-              }}
-            >
-              {!choosingSshHost && (
+
+            {selectingSshHost && remoteMode === "detected" && (
+              <SshHostPicker
+                hosts={sshHosts.data ?? []}
+                selectedAlias={null}
+                loading={sshHosts.isLoading}
+                refreshing={sshHosts.isFetching}
+                disabled={pending}
+                error={
+                  sshHosts.error instanceof Error
+                    ? sshHosts.error.message
+                    : undefined
+                }
+                onSelect={selectSshHost}
+                onRefresh={() => void sshHosts.refetch()}
+                onAddManually={showManualHost}
+              />
+            )}
+
+            {selectingSshHost && remoteMode === "manual" && (
+              <form
+                className="space-y-4"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  submitManualHost();
+                }}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2"
+                  disabled={pending}
+                  onClick={showSshHosts}
+                >
+                  <ChevronLeft />
+                  SSH config
+                </Button>
                 <div className="space-y-1.5">
-                  <Label htmlFor="agent-connection-name">Name</Label>
+                  <Label htmlFor="agent-ssh-alias">SSH alias</Label>
                   <Input
-                    id="agent-connection-name"
-                    value={name}
+                    id="agent-ssh-alias"
+                    value={manualSshAlias}
                     onChange={(event) => {
-                      invalidateTest();
-                      setName(event.target.value);
+                      setManualSshAlias(event.target.value);
+                      setError("");
                     }}
+                    placeholder="devbox"
+                    className="font-mono"
+                    autoComplete="off"
                     autoFocus
                   />
                 </div>
-              )}
+                <div className="flex justify-end">
+                  <Button type="submit" size="sm" disabled={pending}>
+                    Find agents
+                  </Button>
+                </div>
+              </form>
+            )}
 
-              <div className="space-y-1.5">
-                <Label>Location</Label>
-                <RadioGroup
-                  aria-label="Connection location"
-                  value={transport}
-                  onValueChange={(next) => {
-                    const value = next as Transport;
-                    invalidateTest();
-                    setTransport(value);
-                    setSelectedSshAlias(null);
-                    if (value === "local") {
-                      setName("This server");
-                    } else {
-                      setName(`Remote ${providerMetadata.label}`);
-                      setRemoteMode("detected");
-                      setHostname("");
-                      setPort("22");
-                      setUsername("");
-                      setSshAuth(initialAuth);
-                      setPrivateKey("");
-                    }
-                  }}
-                  className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1"
-                >
-                  <TransportChoice
-                    value="local"
-                    label="This server"
-                    icon={Server}
-                  />
-                  <TransportChoice
-                    value="ssh"
-                    label="Remote"
-                    icon={Wifi}
-                  />
-                </RadioGroup>
-              </div>
+            {target && (
+              <>
+                {target.transport === "ssh" && (
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="-ml-2"
+                      disabled={pending}
+                      onClick={showSshHosts}
+                    >
+                      <ChevronLeft />
+                      SSH hosts
+                    </Button>
+                    <code
+                      className="truncate text-xs text-muted-foreground"
+                      title={`ssh ${target.sshAlias}`}
+                    >
+                      ssh {target.sshAlias}
+                    </code>
+                  </div>
+                )}
 
-              {choosingSshHost && (
-                <SshHostPicker
-                  hosts={sshHosts.data ?? []}
-                  selectedAlias={selectedSshAlias}
-                  loading={sshHosts.isLoading}
-                  refreshing={sshHosts.isFetching}
-                  disabled={pending}
+                <DetectedAgents
+                  installations={discovery.data ?? []}
+                  loading={discovery.isLoading}
+                  refreshing={discovery.isFetching}
+                  pending={pending}
+                  connectingKey={connectingKey}
                   error={
-                    sshHosts.error instanceof Error
-                      ? sshHosts.error.message
+                    discovery.error instanceof Error
+                      ? discovery.error.message
                       : undefined
                   }
-                  onSelect={selectSshHost}
-                  onRefresh={() => void sshHosts.refetch()}
-                  onAddManually={showManualConnection}
+                  isConnected={isConnected}
+                  onConnect={(installation) =>
+                    void connect(
+                      installation.provider,
+                      installation.executable,
+                    )
+                  }
+                  onRefresh={() => void discovery.refetch()}
                 />
-              )}
 
-              {transport === "ssh" && remoteMode === "manual" && (
-                <>
+                {!customOpen ? (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     className="-ml-2"
                     disabled={pending}
-                    onClick={showDetectedConnections}
-                  >
-                    <ChevronLeft />
-                    SSH config
-                  </Button>
-                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_6rem]">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="agent-hostname">Hostname</Label>
-                      <Input
-                        id="agent-hostname"
-                        value={hostname}
-                        onChange={(event) => {
-                          invalidateTest();
-                          setHostname(event.target.value);
-                        }}
-                        placeholder="workstation.local"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="agent-port">Port</Label>
-                      <Input
-                        id="agent-port"
-                        type="number"
-                        min={1}
-                        max={65_535}
-                        value={port}
-                        onChange={(event) => {
-                          invalidateTest();
-                          setPort(event.target.value);
-                        }}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="agent-username">Username</Label>
-                    <Input
-                      id="agent-username"
-                      value={username}
-                      onChange={(event) => {
-                        invalidateTest();
-                        setUsername(event.target.value);
-                      }}
-                      autoComplete="username"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Authentication</Label>
-                    <RadioGroup
-                      aria-label="SSH authentication"
-                      value={sshAuth}
-                      onValueChange={(next) => {
-                        invalidateTest();
-                        setSshAuth(next as SshAuth);
-                      }}
-                      className="grid grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1"
-                    >
-                      <TransportChoice
-                        value="agent"
-                        label="OpenSSH"
-                        icon={Monitor}
-                      />
-                      <TransportChoice
-                        value="private_key"
-                        label="Private key"
-                        icon={KeyRound}
-                      />
-                    </RadioGroup>
-                    {sshAuth === "agent" && (
-                      <p className="text-xs text-muted-foreground">
-                        Uses this server&apos;s SSH config, default identities,
-                        and SSH agent.
-                      </p>
-                    )}
-                  </div>
-                  {sshAuth === "private_key" && (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="agent-private-key">Private key</Label>
-                      <Textarea
-                        id="agent-private-key"
-                        value={privateKey}
-                        onChange={(event) => {
-                          invalidateTest();
-                          setPrivateKey(event.target.value);
-                        }}
-                        className="min-h-28 resize-y font-mono text-xs"
-                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                        spellCheck={false}
-                        autoComplete="off"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Encrypted private keys are not supported yet.
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {!choosingSshHost && (
-                <div className="space-y-1.5">
-                  <Label htmlFor="agent-executable">
-                    {providerMetadata.label} executable
-                  </Label>
-                  <Input
-                    id="agent-executable"
-                    value={executable}
-                    onChange={(event) => {
-                      invalidateTest();
-                      setExecutable(event.target.value);
+                    onClick={() => {
+                      setCustomOpen(true);
+                      setError("");
                     }}
-                    className="font-mono"
-                    spellCheck={false}
-                  />
-                </div>
-              )}
-
-              {pendingHostKey?.hostKeyFingerprint && (
-                <div className="border-y py-3">
-                  <p className="text-sm font-medium">Verify SSH host</p>
-                  <p className="mt-1 break-all font-mono text-xs text-muted-foreground">
-                    {pendingHostKey.hostKeyFingerprint}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
-                    disabled={pending}
-                    onClick={() => void confirmFingerprint()}
                   >
-                    {probeMutation.isPending ? (
-                      <Loader2 className="animate-spin motion-reduce:animate-none" />
-                    ) : (
-                      <KeyRound />
-                    )}
-                    Trust host key
+                    <PencilLine />
+                    Use custom executable
                   </Button>
-                </div>
-              )}
-
-              {isTested && tested && (
-                <div className="flex items-start gap-2 text-sm text-ring">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
-                  <span>
-                    {providerMetadata.label} {tested.probe.version} ·{" "}
-                    {tested.probe.models.length}{" "}
-                    model{tested.probe.models.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-              )}
-              {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
-
-              <SettingsActions>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => {
-                    reset();
-                    onOpenChange(false);
-                  }}
-                >
-                  Cancel
-                </Button>
-                {!choosingSshHost && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => void testConnection()}
+                ) : (
+                  <form
+                    className="space-y-4 border-t pt-4"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void connect(customProvider, customExecutable);
+                    }}
                   >
-                    {probeMutation.isPending && (
-                      <Loader2 className="animate-spin motion-reduce:animate-none" />
-                    )}
-                    {isTested ? "Test again" : "Test connection"}
-                  </Button>
+                    <div className="grid gap-4 sm:grid-cols-[10rem_minmax(0,1fr)]">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="agent-provider">Agent</Label>
+                        <Select
+                          value={customProvider}
+                          onValueChange={(next) => {
+                            const provider = next as AgentProviderId;
+                            setCustomProvider(provider);
+                            setCustomExecutable(
+                              agentProviderMetadata(provider).executable,
+                            );
+                            setError("");
+                          }}
+                        >
+                          <SelectTrigger
+                            id="agent-provider"
+                            className="w-full"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.values(AGENT_PROVIDERS).map(
+                              (provider) => (
+                                <SelectItem
+                                  key={provider.id}
+                                  value={provider.id}
+                                >
+                                  {provider.label}
+                                </SelectItem>
+                              ),
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="agent-executable">
+                          Executable command or path
+                        </Label>
+                        <Input
+                          id="agent-executable"
+                          value={customExecutable}
+                          onChange={(event) => {
+                            setCustomExecutable(event.target.value);
+                            setError("");
+                          }}
+                          className="font-mono"
+                          spellCheck={false}
+                          autoFocus
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => {
+                          setCustomOpen(false);
+                          setError("");
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        size="sm"
+                        disabled={
+                          pending ||
+                          !customExecutable.trim() ||
+                          isConnected(customProvider)
+                        }
+                      >
+                        {connectingKey ===
+                          `${customProvider}:${customExecutable.trim()}` && (
+                          <Loader2 className="animate-spin motion-reduce:animate-none" />
+                        )}
+                        {isConnected(customProvider)
+                          ? "Connected"
+                          : "Connect"}
+                      </Button>
+                    </div>
+                  </form>
                 )}
-                <Button
-                  type="submit"
-                  size="sm"
-                  disabled={
-                    pending ||
-                    Boolean(pendingHostKey) ||
-                    (choosingSshHost
-                      ? !selectedSshAlias
-                      : !isTested)
-                  }
-                >
-                  {(createMutation.isPending ||
-                    (choosingSshHost && probeMutation.isPending)) && (
-                    <Loader2 className="animate-spin motion-reduce:animate-none" />
-                  )}
-                  {choosingSshHost && !isTested ? "Add" : "Connect"}
-                </Button>
-              </SettingsActions>
-            </form>
-          )}
+              </>
+            )}
 
-          {!providerMetadata && (
-            <SettingsActions bordered={false} className="mt-5">
+            {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+
+            <SettingsActions>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                onClick={() => onOpenChange(false)}
+                disabled={pending}
+                onClick={() => {
+                  reset();
+                  onOpenChange(false);
+                }}
               >
                 Cancel
               </Button>
             </SettingsActions>
-          )}
+          </div>
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
   );
 }
 
-function ProviderChoice({
-  icon,
-  label,
-  darkIconSurface = false,
-  disabled = false,
-  onClick,
+function DetectedAgents({
+  installations,
+  loading,
+  refreshing,
+  pending,
+  connectingKey,
+  error,
+  isConnected,
+  onConnect,
+  onRefresh,
 }: {
-  icon: StaticImageData;
-  label: string;
-  darkIconSurface?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
+  installations: DetectedAgentInstallation[];
+  loading: boolean;
+  refreshing: boolean;
+  pending: boolean;
+  connectingKey: string | null;
+  error?: string;
+  isConnected: (provider: AgentProviderId) => boolean;
+  onConnect: (installation: DetectedAgentInstallation) => void;
+  onRefresh: () => void;
 }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border bg-background px-3 py-4 text-sm font-medium outline-none motion-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-55"
-    >
-      <span
-        className={cn(
-          "flex size-8 items-center justify-center rounded-md",
-          darkIconSurface && "bg-zinc-950",
+    <div className="space-y-2">
+      <div className="flex min-h-7 items-center justify-between gap-2">
+        <Label>Available agents</Label>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={pending || refreshing}
+          onClick={onRefresh}
+          aria-label="Refresh detected agents"
+          title="Refresh detected agents"
+        >
+          <RefreshCw
+            className={cn(
+              refreshing && "animate-spin motion-reduce:animate-none",
+            )}
+          />
+        </Button>
+      </div>
+      <div className="min-h-24 overflow-hidden rounded-lg border">
+        {loading ? (
+          <div className="flex h-24 items-center justify-center">
+            <Loader2 className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" />
+          </div>
+        ) : error ? (
+          <p className="px-4 py-8 text-center text-xs text-destructive">
+            {error}
+          </p>
+        ) : installations.length === 0 ? (
+          <div className="flex h-24 flex-col items-center justify-center px-4 text-center">
+            <TerminalSquare className="size-4 text-muted-foreground" />
+            <p className="mt-2 text-xs text-muted-foreground">
+              No supported agents found in PATH
+            </p>
+          </div>
+        ) : (
+          installations.map((installation) => {
+            const metadata = agentProviderMetadata(installation.provider);
+            const icon = PROVIDER_ICONS[installation.provider];
+            const connected = isConnected(installation.provider);
+            const key = `${installation.provider}:${installation.executable}`;
+            return (
+              <div
+                key={key}
+                className="flex min-h-16 items-center gap-3 border-b px-3 py-2 last:border-b-0"
+              >
+                <span
+                  className={cn(
+                    "flex size-8 shrink-0 items-center justify-center rounded-md border bg-background",
+                    icon.darkSurface && "bg-zinc-950",
+                  )}
+                >
+                  <Image
+                    src={icon.icon}
+                    alt=""
+                    className="size-5 object-contain"
+                  />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-sm font-medium">
+                      {metadata.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {installation.version}
+                    </span>
+                  </span>
+                  <code
+                    className="block truncate text-xs text-muted-foreground"
+                    title={installation.executable}
+                  >
+                    {installation.executable}
+                  </code>
+                </span>
+                <Button
+                  type="button"
+                  variant={connected ? "outline" : "default"}
+                  size="sm"
+                  disabled={pending || connected}
+                  onClick={() => onConnect(installation)}
+                  aria-label={
+                    connected
+                      ? `${metadata.label} already connected`
+                      : `Connect ${metadata.label}`
+                  }
+                >
+                  {connectingKey === key ? (
+                    <Loader2 className="animate-spin motion-reduce:animate-none" />
+                  ) : connected ? (
+                    <Check />
+                  ) : null}
+                  {connected ? "Connected" : "Connect"}
+                </Button>
+              </div>
+            );
+          })
         )}
-      >
-        <Image src={icon} alt="" className="size-6 object-contain" />
-      </span>
-      <span>{label}</span>
-      {disabled && (
-        <span className="text-[10px] font-normal text-muted-foreground">
-          Coming soon
-        </span>
-      )}
-    </button>
+      </div>
+    </div>
   );
 }
 
@@ -729,21 +649,14 @@ function TransportChoice({
   value,
   label,
   icon: Icon,
-  disabled = false,
 }: {
   value: string;
   label: string;
   icon: typeof Server;
-  disabled?: boolean;
 }) {
   return (
-    <Label
-      className={cn(
-        "relative flex h-8 cursor-pointer items-center justify-center rounded-md px-8 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground",
-        disabled && "cursor-not-allowed opacity-50",
-      )}
-    >
-      <RadioGroupItem value={value} className="sr-only" disabled={disabled} />
+    <Label className="relative flex h-8 cursor-pointer items-center justify-center rounded-md px-8 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground">
+      <RadioGroupItem value={value} className="sr-only" />
       <span className="absolute left-3 flex size-4 items-center justify-center">
         <Icon className="size-3.5" />
       </span>

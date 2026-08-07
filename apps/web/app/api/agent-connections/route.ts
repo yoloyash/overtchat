@@ -7,8 +7,8 @@ import {
   agentConnectionDraftSchema,
   type AgentConnectionListItem,
 } from "@/lib/agents/types";
-import { encryptAgentCredential } from "@/lib/agents/runtime/credentials";
 import { probePiConnection } from "@/lib/agents/pi/probe";
+import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 import {
   createAgentConnection,
   listAgentConnections,
@@ -46,21 +46,12 @@ export async function POST(req: Request) {
     );
   }
   const draft = parsed.data;
-  if (draft.transport === "ssh" && !draft.hostKey?.trim()) {
-    return Response.json(
-      { error: "Test and confirm the SSH host key before connecting." },
-      { status: 400 },
-    );
+  if (!getOwnedHostConnector(draft.connectorId, session.user.id)) {
+    return new Response("Host Connector not found", { status: 404 });
   }
 
   try {
     const probe = await probePiConnection(draft);
-    if (probe.status !== "ready") {
-      return Response.json(
-        { error: "Test and confirm the SSH host key before connecting." },
-        { status: 400 },
-      );
-    }
     const owned = createAgentConnection({
       userId: session.user.id,
       host:
@@ -68,19 +59,13 @@ export async function POST(req: Request) {
           ? {
               name: draft.name,
               transport: "local",
+              connectorId: draft.connectorId,
             }
           : {
               name: draft.name,
               transport: "ssh",
-              hostname: draft.hostname,
-              port: draft.port,
-              username: draft.username,
-              sshAuth: draft.sshAuth,
-              encryptedCredential:
-                draft.sshAuth === "private_key" && draft.privateKey
-                  ? encryptAgentCredential(draft.privateKey)
-                  : null,
-              hostKey: draft.hostKey,
+              connectorId: draft.connectorId,
+              sshAlias: draft.sshAlias,
             },
       connection: {
         provider: draft.provider,

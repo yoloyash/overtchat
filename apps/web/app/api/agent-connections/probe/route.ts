@@ -5,6 +5,7 @@ import {
 } from "@/lib/agents/access";
 import { agentConnectionDraftSchema } from "@/lib/agents/types";
 import { probePiConnection } from "@/lib/agents/pi/probe";
+import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 
 export const maxDuration = 150;
 
@@ -24,6 +25,9 @@ export async function POST(req: Request) {
       { error: parsed.error.issues[0]?.message ?? "Invalid connection." },
       { status: 400 },
     );
+  }
+  if (!getOwnedHostConnector(parsed.data.connectorId, session.user.id)) {
+    return new Response("Host Connector not found", { status: 404 });
   }
 
   try {

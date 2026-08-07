@@ -11,12 +11,16 @@ import { listAgentWorkspaceSessions } from "./sessions";
 
 const runIntegration = process.env.RUN_OMP_INTEGRATION === "1";
 const executable = process.env.OMP_COMMAND ?? "omp";
+const connectorId =
+  process.env.OVERTCHAT_TEST_CONNECTOR_ID ??
+  "11111111-1111-4111-8111-111111111111";
 
 describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
   it(
     "probes OMP, controls a session, and discovers its native history",
     async () => {
       const probe = await probeAgentConnection({
+        connectorId,
         provider: "omp",
         name: "Local Oh My Pi",
         transport: "local",
@@ -39,7 +43,7 @@ describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
       const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
       process.env.PI_CODING_AGENT_DIR = agentDirectory;
       const client = startPiRpc(
-        { transport: "local" },
+        { connectorId, transport: "local" },
         {
           provider: "omp",
           executable,
@@ -126,7 +130,7 @@ describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
         await expect(
           listAgentWorkspaceSessions(
             "omp",
-            { transport: "local" },
+            { connectorId, transport: "local" },
             workspace,
           ),
         ).resolves.toEqual([

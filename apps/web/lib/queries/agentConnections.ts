@@ -6,10 +6,14 @@ import type {
   AgentConnectionDraft,
   AgentConnectionListItem,
   AgentConnectionProbe,
+  AgentDiscoveryTarget,
   AgentDirectoryListing,
   AgentReadyConnectionProbe,
   AgentSshHostCandidate,
   AgentWorkspaceListItem,
+  DetectedAgentInstallation,
+  HostConnectorListItem,
+  HostConnectorPairing,
 } from "@/lib/agents/types";
 import { agentConnectionKeys } from "@/lib/queries/keys";
 
@@ -36,18 +40,94 @@ export function useAgentConnections() {
   });
 }
 
-export function useAgentSshHosts(enabled = true) {
+export function useHostConnectors() {
   return useQuery({
-    queryKey: agentConnectionKeys.sshHosts(),
+    queryKey: agentConnectionKeys.connectors(),
+    queryFn: async (): Promise<HostConnectorListItem[]> => {
+      const response = await fetch("/api/host-connectors");
+      if (!response.ok) throw await responseError(response);
+      return ((await response.json()) as {
+        connectors: HostConnectorListItem[];
+      }).connectors;
+    },
+    refetchInterval: 5_000,
+  });
+}
+
+export function useCreateHostConnectorPairing() {
+  return useMutation({
+    mutationFn: async (): Promise<HostConnectorPairing> => {
+      const response = await fetch("/api/host-connectors", { method: "POST" });
+      if (!response.ok) throw await responseError(response);
+      return (await response.json()) as HostConnectorPairing;
+    },
+  });
+}
+
+export function useDeleteHostConnector() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(
+        `/api/host-connectors?id=${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) throw await responseError(response);
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: agentConnectionKeys.all(),
+      }),
+  });
+}
+
+export function useAgentSshHosts(
+  connectorId: string | undefined,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: agentConnectionKeys.sshHosts(connectorId ?? ""),
     queryFn: async (): Promise<AgentSshHostCandidate[]> => {
-      const response = await fetch("/api/agent-connections/ssh-hosts");
+      const response = await fetch(
+        `/api/agent-connections/ssh-hosts?connectorId=${encodeURIComponent(
+          connectorId ?? "",
+        )}`,
+      );
       if (!response.ok) throw await responseError(response);
       return ((await response.json()) as {
         hosts: AgentSshHostCandidate[];
       }).hosts;
     },
-    enabled,
+    enabled: enabled && Boolean(connectorId),
     retry: false,
+  });
+}
+
+export function useDetectedAgentInstallations(
+  target: AgentDiscoveryTarget | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: agentConnectionKeys.discovery(
+      target?.connectorId ?? "",
+      target?.transport ?? "local",
+      target?.transport === "ssh" ? target.sshAlias : "",
+    ),
+    queryFn: async (): Promise<DetectedAgentInstallation[]> => {
+      if (!target) return [];
+      const response = await fetch("/api/agent-connections/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(target),
+      });
+      if (!response.ok) throw await responseError(response);
+      return ((await response.json()) as {
+        installations: DetectedAgentInstallation[];
+      }).installations;
+    },
+    enabled: enabled && target !== null,
+    retry: false,
+    staleTime: 30_000,
   });
 }
 

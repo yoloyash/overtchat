@@ -17,7 +17,16 @@ export type AgentThinkingLevel = (typeof AGENT_THINKING_LEVELS)[number];
 export const AGENT_TRANSPORT_IDS = ["local", "ssh"] as const;
 export type AgentTransportId = (typeof AGENT_TRANSPORT_IDS)[number];
 
+const connectorIdSchema = z.string().min(1).max(128);
+const sshAliasSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(253)
+  .regex(/^(?!-)[a-zA-Z0-9._-]+$/, "Enter a valid SSH host alias.");
+
 const connectionBaseSchema = z.object({
+  connectorId: connectorIdSchema,
   provider: z.enum(AGENT_PROVIDER_IDS),
   name: z.string().trim().min(1).max(80),
   executable: z.string().trim().min(1).max(500),
@@ -29,22 +38,7 @@ export const localConnectionDraftSchema = connectionBaseSchema.extend({
 
 export const sshConnectionDraftSchema = connectionBaseSchema.extend({
   transport: z.literal("ssh"),
-  hostname: z
-    .string()
-    .trim()
-    .min(1)
-    .max(253)
-    .regex(/^[a-zA-Z0-9._:-]+$/, "Enter a valid hostname or IP address."),
-  port: z.number().int().min(1).max(65_535).default(22),
-  username: z
-    .string()
-    .trim()
-    .min(1)
-    .max(128)
-    .regex(/^[a-zA-Z0-9._-]+$/, "Enter a valid SSH username."),
-  sshAuth: z.enum(["agent", "private_key"]).default("agent"),
-  privateKey: z.string().max(32_768).optional(),
-  hostKey: z.string().max(16_384).optional(),
+  sshAlias: sshAliasSchema,
 });
 
 export const agentConnectionDraftSchema = z.discriminatedUnion("transport", [
@@ -52,8 +46,23 @@ export const agentConnectionDraftSchema = z.discriminatedUnion("transport", [
   sshConnectionDraftSchema,
 ]);
 
+export const agentDiscoveryTargetSchema = z.discriminatedUnion("transport", [
+  z.object({
+    connectorId: connectorIdSchema,
+    transport: z.literal("local"),
+  }),
+  z.object({
+    connectorId: connectorIdSchema,
+    transport: z.literal("ssh"),
+    sshAlias: sshAliasSchema,
+  }),
+]);
+
 export type AgentConnectionDraft = z.infer<
   typeof agentConnectionDraftSchema
+>;
+export type AgentDiscoveryTarget = z.infer<
+  typeof agentDiscoveryTargetSchema
 >;
 export type LocalConnectionDraft = z.infer<typeof localConnectionDraftSchema>;
 export type SshConnectionDraft = z.infer<typeof sshConnectionDraftSchema>;
@@ -99,14 +108,26 @@ export type AgentConnectionListItem = {
   lastValidatedAt: number | null;
   host: {
     id: string;
+    connectorId: string;
     name: string;
     transport: AgentTransportId;
-    hostname: string | null;
-    port: number | null;
-    username: string | null;
-    sshAuth: "agent" | "private_key" | null;
+    sshAlias: string | null;
   };
   workspaces: AgentWorkspaceListItem[];
+};
+
+export type HostConnectorListItem = {
+  id: string;
+  name: string;
+  version: string | null;
+  lastSeenAt: number | null;
+  online: boolean;
+};
+
+export type HostConnectorPairing = {
+  pairCode: string;
+  expiresAt: number;
+  command: string;
 };
 
 export type AgentModel = {
@@ -133,15 +154,13 @@ export type AgentReadyConnectionProbe = {
   models: AgentModel[];
 };
 
-export type AgentHostKeyProbe = {
-  status: "host_key";
-  hostKey: string;
-  hostKeyFingerprint: string;
-};
+export type AgentConnectionProbe = AgentReadyConnectionProbe;
 
-export type AgentConnectionProbe =
-  | AgentReadyConnectionProbe
-  | AgentHostKeyProbe;
+export type DetectedAgentInstallation = {
+  provider: AgentProviderId;
+  executable: string;
+  version: string;
+};
 
 export type AgentSshHostCandidate = {
   alias: string;

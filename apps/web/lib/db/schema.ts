@@ -127,6 +127,48 @@ export const projects = sqliteTable(
   ],
 );
 
+export const hostConnectors = sqliteTable(
+  "host_connectors",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    version: text("version"),
+    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("host_connectors_userId_idx").on(table.userId),
+  ],
+);
+
+export const hostConnectorPairings = sqliteTable(
+  "host_connector_pairings",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    secretHash: text("secret_hash").notNull(),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("host_connector_pairings_userId_idx").on(table.userId),
+  ],
+);
+
 export const agentHosts = sqliteTable(
   "agent_hosts",
   {
@@ -134,14 +176,12 @@ export const agentHosts = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    connectorId: text("connector_id")
+      .notNull()
+      .references(() => hostConnectors.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     transport: text("transport", { enum: ["local", "ssh"] }).notNull(),
-    hostname: text("hostname"),
-    port: integer("port"),
-    username: text("username"),
-    sshAuth: text("ssh_auth", { enum: ["agent", "private_key"] }),
-    encryptedCredential: text("encrypted_credential"),
-    hostKey: text("host_key"),
+    sshAlias: text("ssh_alias"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
       .notNull(),
@@ -155,6 +195,7 @@ export const agentHosts = sqliteTable(
       table.userId,
       table.updatedAt,
     ),
+    index("agent_hosts_connectorId_idx").on(table.connectorId),
   ],
 );
 
@@ -364,6 +405,8 @@ export const userRelations = relations(user, ({ many }) => ({
   accounts: many(account),
   chats: many(chats),
   projects: many(projects),
+  hostConnectors: many(hostConnectors),
+  hostConnectorPairings: many(hostConnectorPairings),
   agentHosts: many(agentHosts),
   generationUsage: many(generationUsage),
 }));
@@ -403,10 +446,35 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   chats: many(chats),
 }));
 
+export const hostConnectorsRelations = relations(
+  hostConnectors,
+  ({ one, many }) => ({
+    user: one(user, {
+      fields: [hostConnectors.userId],
+      references: [user.id],
+    }),
+    hosts: many(agentHosts),
+  }),
+);
+
+export const hostConnectorPairingsRelations = relations(
+  hostConnectorPairings,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [hostConnectorPairings.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
 export const agentHostsRelations = relations(agentHosts, ({ one, many }) => ({
   user: one(user, {
     fields: [agentHosts.userId],
     references: [user.id],
+  }),
+  connector: one(hostConnectors, {
+    fields: [agentHosts.connectorId],
+    references: [hostConnectors.id],
   }),
   connections: many(agentConnections),
 }));

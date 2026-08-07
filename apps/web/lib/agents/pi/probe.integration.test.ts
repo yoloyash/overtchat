@@ -10,6 +10,9 @@ import { startPiRpc } from "./client";
 import { probePiConnection } from "./probe";
 
 const runIntegration = process.env.RUN_PI_INTEGRATION === "1";
+const connectorId =
+  process.env.OVERTCHAT_TEST_CONNECTOR_ID ??
+  "11111111-1111-4111-8111-111111111111";
 const fixtureDirectory = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "fixtures",
@@ -20,6 +23,7 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
     "starts RPC mode and discovers usable models",
     async () => {
       const probe = await probePiConnection({
+        connectorId,
         provider: "pi",
         name: "Local Pi",
         transport: "local",
@@ -54,7 +58,7 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
       fs.mkdirSync(workspace);
       fs.mkdirSync(sessions);
       const client = startPiRpc(
-        { transport: "local" },
+        { connectorId, transport: "local" },
         {
           executable: process.env.PI_COMMAND ?? "pi",
           cwd: workspace,
@@ -102,7 +106,7 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
       const workspace = path.join(root, "workspace");
       fs.mkdirSync(workspace);
       const client = startPiRpc(
-        { transport: "local" },
+        { connectorId, transport: "local" },
         {
           executable: process.env.PI_COMMAND ?? "pi",
           cwd: workspace,

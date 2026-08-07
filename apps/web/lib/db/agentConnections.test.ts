@@ -18,20 +18,28 @@ raw.exec(`
   CREATE TABLE user (
     id TEXT PRIMARY KEY NOT NULL
   );
-  CREATE TABLE agent_hosts (
+  CREATE TABLE host_connectors (
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
     name TEXT NOT NULL,
-    transport TEXT NOT NULL,
-    hostname TEXT,
-    port INTEGER,
-    username TEXT,
-    ssh_auth TEXT,
-    encrypted_credential TEXT,
-    host_key TEXT,
+    token_hash TEXT NOT NULL,
+    version TEXT,
+    last_seen_at INTEGER,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+  );
+  CREATE TABLE agent_hosts (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    connector_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    transport TEXT NOT NULL,
+    ssh_alias TEXT,
+    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE,
+    FOREIGN KEY (connector_id) REFERENCES host_connectors(id) ON DELETE CASCADE
   );
   CREATE TABLE agent_connections (
     id TEXT PRIMARY KEY NOT NULL,
@@ -85,8 +93,11 @@ beforeEach(() => {
     DELETE FROM agent_workspaces;
     DELETE FROM agent_connections;
     DELETE FROM agent_hosts;
+    DELETE FROM host_connectors;
     DELETE FROM user;
     INSERT INTO user (id) VALUES ('alice'), ('bob');
+    INSERT INTO host_connectors (id, user_id, name, token_hash)
+    VALUES ('alice-connector', 'alice', 'Alice host', 'test-hash');
   `);
 });
 
@@ -101,6 +112,7 @@ function createAliceConnection() {
     host: {
       name: "Workstation",
       transport: "local",
+      connectorId: "alice-connector",
     },
     connection: {
       provider: "pi",

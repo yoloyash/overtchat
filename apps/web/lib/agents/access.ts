@@ -35,15 +35,8 @@ export function connectionErrorMessage(
   ) {
     return "The remote machine could not be reached over SSH.";
   }
-  if (
-    /incorrect passphrase|encrypted private key|passphrase.*private key/i.test(
-      message,
-    )
-  ) {
-    return "Encrypted SSH private keys are not supported yet. Use an unencrypted key for this connection.";
-  }
   if (/permission denied.*publickey|authentication failed/i.test(message)) {
-    return "SSH authentication failed. Check the username and private key.";
+    return "SSH authentication failed. Verify that the alias works non-interactively on the Host Connector machine.";
   }
   return message || "The agent connection failed.";
 }

@@ -3,19 +3,29 @@ import path from "node:path";
 import type {
   AgentConnectionDraft,
   AgentConnectionProbe,
+  DetectedAgentInstallation,
   AgentProviderId,
   AgentReadyConnectionProbe,
 } from "@/lib/agents/types";
-import { agentProviderMetadata } from "@/lib/agents/catalog";
+import {
+  AGENT_PROVIDERS,
+  agentProviderMetadata,
+} from "@/lib/agents/catalog";
 import {
   type HostTarget,
   executeOnHost,
 } from "@/lib/agents/runtime/process";
-import { scanSshHostKey } from "@/lib/agents/runtime/ssh";
-import { resolveConfiguredSshHost } from "@/lib/agents/runtime/sshConfig";
 import { startPiRpc } from "@/lib/agents/pi/client";
 
 const MODEL_PROBE_TIMEOUT_MS = 120_000;
+const EXECUTABLE_DISCOVERY = String.raw`
+for candidate do
+  resolved=$(command -v "$candidate" 2>/dev/null) || continue
+  case "$resolved" in
+    /*) printf '%s\0%s\0' "$candidate" "$resolved" ;;
+  esac
+done
+`.trim();
 const DIRECTORY_PROBE = `
 const fs = require("node:fs");
 const path = require("node:path");
@@ -64,46 +74,76 @@ export type ProbedDirectoryListing = {
   directories: Array<{ name: string; path: string }>;
 };
 
+function parseVersion(output: string): string | null {
+  return output.match(/\d+\.\d+\.\d+(?:[-+][^\s]+)?/u)?.[0] ?? null;
+}
+
+export async function discoverAgentInstallations(
+  target: HostTarget,
+): Promise<DetectedAgentInstallation[]> {
+  const providers = Object.values(AGENT_PROVIDERS);
+  const result = await executeOnHost(target, {
+    command: "/bin/sh",
+    args: [
+      "-c",
+      EXECUTABLE_DISCOVERY,
+      "overtchat-agent-discovery",
+      ...providers.map(({ executable }) => executable),
+    ],
+  });
+  const fields = result.stdout.split("\0");
+  if (fields.at(-1) === "") fields.pop();
+  const resolved = new Map<string, string>();
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const command = fields[index];
+    const executable = fields[index + 1];
+    if (
+      command &&
+      executable?.startsWith("/") &&
+      executable.length <= 500
+    ) {
+      resolved.set(command, executable);
+    }
+  }
+
+  const installations = await Promise.all(
+    providers.map(async ({ id, executable: command }) => {
+      const executable = resolved.get(command);
+      if (!executable) return null;
+      try {
+        const versionResult = await executeOnHost(target, {
+          command: executable,
+          args: ["--version"],
+        });
+        const version = parseVersion(versionResult.stdout);
+        return version ? { provider: id, executable, version } : null;
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return installations.filter(
+    (installation): installation is DetectedAgentInstallation =>
+      installation !== null,
+  );
+}
+
 export async function targetForConnectionDraft(
   draft: AgentConnectionDraft,
 ): Promise<HostTarget> {
   if (draft.transport === "local") {
-    return { transport: "local" };
-  }
-  if (!draft.hostKey?.trim()) {
-    throw new Error("Confirm the SSH host key before connecting.");
-  }
-  if (draft.sshAuth === "private_key" && !draft.privateKey?.trim()) {
-    throw new Error("An SSH private key is required.");
+    return { connectorId: draft.connectorId, transport: "local" };
   }
   return {
+    connectorId: draft.connectorId,
     transport: "ssh",
-    hostname: draft.hostname,
-    port: draft.port,
-    username: draft.username,
-    hostKey: draft.hostKey.trim(),
-    ...(draft.privateKey?.trim()
-      ? { privateKey: draft.privateKey.trim() }
-      : {}),
+    alias: draft.sshAlias,
   };
 }
 
 export async function probeAgentConnection(
   draft: AgentConnectionDraft,
 ): Promise<AgentConnectionProbe> {
-  if (draft.transport === "ssh" && !draft.hostKey?.trim()) {
-    const configured = await resolveConfiguredSshHost(draft.hostname);
-    const scanned = await scanSshHostKey(
-      configured?.hostname ?? draft.hostname,
-      draft.port,
-      configured ? [draft.hostname] : [],
-    );
-    return {
-      status: "host_key",
-      hostKey: scanned.hostKey,
-      hostKeyFingerprint: scanned.fingerprint,
-    };
-  }
   return probeAgentTarget(
     await targetForConnectionDraft(draft),
     draft.provider,
@@ -121,8 +161,7 @@ export async function probeAgentTarget(
     command: executable,
     args: ["--version"],
   });
-  const version =
-    versionResult.stdout.match(/\d+\.\d+\.\d+(?:[-+][^\s]+)?/u)?.[0];
+  const version = parseVersion(versionResult.stdout);
   if (!version) {
     throw new Error(`${metadata.label} returned an invalid version.`);
   }

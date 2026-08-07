@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "72e196da-632a-4608-ba28-b06260be47e0",
+  "id": "0d0f6b09-5173-4c43-8557-a4596b84e971",
   "prevId": "3cd26b96-fe61-4642-8c5d-5238ddba1223",
   "tables": {
     "account": {
@@ -236,6 +236,13 @@
           "notNull": true,
           "autoincrement": false
         },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
         "name": {
           "name": "name",
           "type": "text",
@@ -250,43 +257,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "hostname": {
-          "name": "hostname",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "port": {
-          "name": "port",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "username": {
-          "name": "username",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "ssh_auth": {
-          "name": "ssh_auth",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "encrypted_credential": {
-          "name": "encrypted_credential",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "host_key": {
-          "name": "host_key",
+        "ssh_alias": {
+          "name": "ssh_alias",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -317,6 +289,13 @@
             "updated_at"
           ],
           "isUnique": false
+        },
+        "agent_hosts_connectorId_idx": {
+          "name": "agent_hosts_connectorId_idx",
+          "columns": [
+            "connector_id"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {
@@ -326,6 +305,19 @@
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_hosts_connector_id_host_connectors_id_fk": {
+          "name": "agent_hosts_connector_id_host_connectors_id_fk",
+          "tableFrom": "agent_hosts",
+          "tableTo": "host_connectors",
+          "columnsFrom": [
+            "connector_id"
           ],
           "columnsTo": [
             "id"
@@ -681,6 +673,14 @@
           "notNull": false,
           "autoincrement": false
         },
+        "context": {
+          "name": "context",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'chat'"
+        },
         "occurred_at": {
           "name": "occurred_at",
           "type": "integer",
@@ -744,6 +744,48 @@
           "notNull": false,
           "autoincrement": false
         },
+        "cost_source": {
+          "name": "cost_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "input_cost_nano_usd": {
+          "name": "input_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "output_cost_nano_usd": {
+          "name": "output_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cache_read_cost_nano_usd": {
+          "name": "cache_read_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cache_write_cost_nano_usd": {
+          "name": "cache_write_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "total_cost_nano_usd": {
+          "name": "total_cost_nano_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "finish_reason": {
           "name": "finish_reason",
           "type": "text",
@@ -767,6 +809,14 @@
             "user_id",
             "provider_id",
             "model",
+            "occurred_at"
+          ],
+          "isUnique": false
+        },
+        "generation_usage_context_occurredAt_idx": {
+          "name": "generation_usage_context_occurredAt_idx",
+          "columns": [
+            "context",
             "occurred_at"
           ],
           "isUnique": false
@@ -824,6 +874,164 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "host_connector_pairings": {
+      "name": "host_connector_pairings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "secret_hash": {
+          "name": "secret_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+        }
+      },
+      "indexes": {
+        "host_connector_pairings_userId_idx": {
+          "name": "host_connector_pairings_userId_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "host_connector_pairings_user_id_user_id_fk": {
+          "name": "host_connector_pairings_user_id_user_id_fk",
+          "tableFrom": "host_connector_pairings",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "host_connectors": {
+      "name": "host_connectors",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "token_hash": {
+          "name": "token_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(cast(unixepoch('subsecond') * 1000 as integer))"
+        }
+      },
+      "indexes": {
+        "host_connectors_userId_idx": {
+          "name": "host_connectors_userId_idx",
+          "columns": [
+            "user_id"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "host_connectors_user_id_user_id_fk": {
+          "name": "host_connectors_user_id_user_id_fk",
+          "tableFrom": "host_connectors",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
@@ -959,6 +1167,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "pricing": {
+          "name": "pricing",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         },
         "context_window": {

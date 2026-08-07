@@ -37,12 +37,8 @@ export type NewAgentConnection = {
   host: {
     name: string;
     transport: AgentTransportId;
-    hostname?: string | null;
-    port?: number | null;
-    username?: string | null;
-    sshAuth?: "agent" | "private_key" | null;
-    encryptedCredential?: string | null;
-    hostKey?: string | null;
+    connectorId: string;
+    sshAlias?: string | null;
   };
   connection: {
     provider: AgentProviderId;
@@ -131,12 +127,10 @@ export async function listAgentConnections(
     lastValidatedAt: connection.lastValidatedAt?.getTime() ?? null,
     host: {
       id: host.id,
+      connectorId: host.connectorId,
       name: host.name,
       transport: host.transport,
-      hostname: host.hostname,
-      port: host.port,
-      username: host.username,
-      sshAuth: host.sshAuth,
+      sshAlias: host.sshAlias,
     },
     workspaces: workspacesByConnection.get(connection.id) ?? [],
   }));

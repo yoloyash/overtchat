@@ -14,20 +14,18 @@ CREATE UNIQUE INDEX `agent_connections_hostId_provider_idx` ON `agent_connection
 CREATE TABLE `agent_hosts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
+	`connector_id` text NOT NULL,
 	`name` text NOT NULL,
 	`transport` text NOT NULL,
-	`hostname` text,
-	`port` integer,
-	`username` text,
-	`ssh_auth` text,
-	`encrypted_credential` text,
-	`host_key` text,
+	`ssh_alias` text,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
 	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`connector_id`) REFERENCES `host_connectors`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
 CREATE INDEX `agent_hosts_userId_updatedAt_idx` ON `agent_hosts` (`user_id`,`updated_at`);--> statement-breakpoint
+CREATE INDEX `agent_hosts_connectorId_idx` ON `agent_hosts` (`connector_id`);--> statement-breakpoint
 CREATE TABLE `agent_sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`workspace_id` text NOT NULL,
@@ -56,4 +54,27 @@ CREATE TABLE `agent_workspaces` (
 	FOREIGN KEY (`connection_id`) REFERENCES `agent_connections`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `agent_workspaces_connectionId_path_idx` ON `agent_workspaces` (`connection_id`,`path`);
+CREATE UNIQUE INDEX `agent_workspaces_connectionId_path_idx` ON `agent_workspaces` (`connection_id`,`path`);--> statement-breakpoint
+CREATE TABLE `host_connector_pairings` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`secret_hash` text NOT NULL,
+	`expires_at` integer NOT NULL,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `host_connector_pairings_userId_idx` ON `host_connector_pairings` (`user_id`);--> statement-breakpoint
+CREATE TABLE `host_connectors` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`name` text NOT NULL,
+	`token_hash` text NOT NULL,
+	`version` text,
+	`last_seen_at` integer,
+	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	`updated_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `host_connectors_userId_idx` ON `host_connectors` (`user_id`);

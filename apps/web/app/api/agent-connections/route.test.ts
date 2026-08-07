@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   listAgentConnections: vi.fn(),
   createAgentConnection: vi.fn(),
   probePiConnection: vi.fn(),
-  encryptAgentCredential: vi.fn(),
+  getOwnedHostConnector: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -19,8 +19,8 @@ vi.mock("@/lib/db/agentConnections", () => ({
 vi.mock("@/lib/agents/pi/probe", () => ({
   probePiConnection: mocks.probePiConnection,
 }));
-vi.mock("@/lib/agents/runtime/credentials", () => ({
-  encryptAgentCredential: mocks.encryptAgentCredential,
+vi.mock("@/lib/db/hostConnectors", () => ({
+  getOwnedHostConnector: mocks.getOwnedHostConnector,
 }));
 
 import { GET, POST } from "./route";
@@ -44,6 +44,7 @@ describe("Agent Connections route", () => {
       user: { id: "admin", role: "admin" },
     });
     mocks.listAgentConnections.mockResolvedValue([]);
+    mocks.getOwnedHostConnector.mockReturnValue({ id: "connector" });
   });
 
   it("lists connections for administrators", async () => {
@@ -65,7 +66,7 @@ describe("Agent Connections route", () => {
     expect(mocks.listAgentConnections).not.toHaveBeenCalled();
   });
 
-  it("closes the former private-key exception for non-admin users", async () => {
+  it("does not allow non-admin users to create connector-backed connections", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "member", role: "user" },
     });
@@ -74,14 +75,10 @@ describe("Agent Connections route", () => {
       request("POST", {
         provider: "pi",
         transport: "ssh",
-        name: "Private workstation",
+        connectorId: "11111111-1111-4111-8111-111111111111",
+        name: "Workstation",
         executable: "pi",
-        hostname: "workstation.local",
-        port: 22,
-        username: "member",
-        sshAuth: "private_key",
-        privateKey: "PRIVATE KEY",
-        hostKey: "workstation.local ssh-ed25519 AAAATEST",
+        sshAlias: "workstation",
       }),
     );
 

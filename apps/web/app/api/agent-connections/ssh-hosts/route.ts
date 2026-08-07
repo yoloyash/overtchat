@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth/server";
-import { listConfiguredSshHosts } from "@/lib/agents/runtime/sshConfig";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 
 export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -7,5 +8,21 @@ export async function GET(req: Request) {
   if (session.user.role !== "admin") {
     return new Response("Forbidden", { status: 403 });
   }
-  return Response.json({ hosts: await listConfiguredSshHosts() });
+  const connectorId = new URL(req.url).searchParams.get("connectorId");
+  if (!connectorId) {
+    return Response.json({ error: "Choose a Host Connector." }, { status: 400 });
+  }
+  if (!getOwnedHostConnector(connectorId, session.user.id)) {
+    return new Response("Not found", { status: 404 });
+  }
+  try {
+    return Response.json({
+      hosts: await hostConnectorBroker.listSshHosts(connectorId),
+    });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : String(error) },
+      { status: 400 },
+    );
+  }
 }

@@ -51,6 +51,15 @@ Open [http://localhost:4718](http://localhost:4718), sign up, the setup wizard t
 
 Already run SearXNG or Kokoro elsewhere? You can point overtchat at them; see [deploy docs](docs/deploy.md#reusing-sidecars).
 
+## Agent Connections (optional)
+
+OvertChat can provide a browser UI for Pi and Oh My Pi installed on the Docker
+host or on machines already reachable through its SSH config. In **Settings →
+Connections**, choose **Connect this machine** and run the generated command.
+It installs the OvertChat Host Connector as your Linux user; OvertChat never
+receives SSH keys or config. Remote aliases must already work non-interactively,
+for example `ssh devbox`.
+
 ## Mobile
 
 <a href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"><img src="https://img.shields.io/badge/Get_it_on-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Get it on Google Play"></a>
