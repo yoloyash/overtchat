@@ -51,6 +51,7 @@ function runtimeSnapshot(startedAt: number) {
   return {
     sessionId: SESSION_ID,
     provider: "pi",
+    capabilities: { steer: true },
     status: "running",
     activeTurn: { startedAt },
     state: {
@@ -146,8 +147,10 @@ test("shows durable turn activity without changing completed tool status", async
         };
         if (
           command.type === "abort" ||
+          command.type === "steer" ||
           command.type === "queue" ||
-          command.type === "remove_queued_message"
+          command.type === "remove_queued_message" ||
+          command.type === "steer_queued_message"
         ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
         }
@@ -167,6 +170,8 @@ test("shows durable turn activity without changing completed tool status", async
                 }
               : command.type === "remove_queued_message"
                 ? { queuedMessages: [] }
+                : command.type === "steer_queued_message"
+                  ? { queuedMessages: [] }
                 : {}),
           }),
         });
@@ -336,6 +341,24 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByRole("button", { name: "Edit queued message" }),
   ).toHaveCount(0);
   await composer.fill("");
+
+  await composer.fill("Focus on the failing test");
+  await page.getByRole("button", { name: "Steer Pi" }).click();
+  await expect(composer).toHaveValue("Focus on the failing test");
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveValue("");
+
+  await composer.fill("Then summarize");
+  await page.getByRole("button", { name: "Queue message for Pi" }).click();
+  await expect(
+    page.getByText("Then summarize", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Steer with queued message" })
+    .click();
+  await expect(
+    page.getByText("Then summarize", { exact: true }),
+  ).toHaveCount(0);
 
   await page.getByRole("button", { name: "Stop Pi" }).click();
   await expect(activity).toContainText("Stopping");

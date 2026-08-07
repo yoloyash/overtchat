@@ -131,7 +131,7 @@ export function AgentSessionView({
 
   async function submit(
     message: string,
-    delivery: "prompt" | "queue",
+    delivery: "prompt" | "queue" | "steer",
   ): Promise<boolean> {
     let input: AgentSessionCommand;
     try {
@@ -267,6 +267,7 @@ export function AgentSessionView({
             providerLabel={providerLabel}
             commands={snapshot.commands}
             queuedMessages={snapshot.queuedMessages}
+            supportsSteer={snapshot.capabilities.steer}
             running={running}
             pending={command.isPending}
             stopping={pendingCommand === "abort"}
@@ -276,8 +277,8 @@ export function AgentSessionView({
             onEditQueued={(id) =>
               run({ type: "remove_queued_message", id })
             }
-            onSendQueuedNow={(id) =>
-              run({ type: "send_queued_message_now", id })
+            onSteerQueued={(id) =>
+              run({ type: "steer_queued_message", id })
             }
           />
         </div>

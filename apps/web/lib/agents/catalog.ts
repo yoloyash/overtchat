@@ -1,10 +1,14 @@
-import type { AgentProviderId } from "@/lib/agents/types";
+import type {
+  AgentProviderId,
+  AgentRuntimeCapabilities,
+} from "@/lib/agents/types";
 import { AGENT_PROVIDER_IDS } from "@/lib/agents/types";
 
 export type AgentProviderMetadata = {
   id: AgentProviderId;
   label: string;
   executable: string;
+  capabilities: AgentRuntimeCapabilities;
 };
 
 export const AGENT_PROVIDERS: Record<
@@ -15,11 +19,13 @@ export const AGENT_PROVIDERS: Record<
     id: "pi",
     label: "Pi",
     executable: "pi",
+    capabilities: { steer: true },
   },
   omp: {
     id: "omp",
     label: "Oh My Pi",
     executable: "omp",
+    capabilities: { steer: true },
   },
 };
 

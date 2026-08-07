@@ -10,6 +10,7 @@ import {
 import {
   ArrowUp,
   Command,
+  CornerUpRight,
   ListEnd,
   Loader2,
   Pencil,
@@ -42,6 +43,7 @@ export function AgentComposer({
   providerLabel,
   commands,
   queuedMessages,
+  supportsSteer,
   running,
   pending,
   stopping,
@@ -49,22 +51,23 @@ export function AgentComposer({
   onSubmit,
   onStop,
   onEditQueued,
-  onSendQueuedNow,
+  onSteerQueued,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
   queuedMessages: AgentQueuedMessage[];
+  supportsSteer: boolean;
   running: boolean;
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
   onSubmit: (
     message: string,
-    delivery: "prompt" | "queue",
+    delivery: "prompt" | "queue" | "steer",
   ) => Promise<boolean>;
   onStop: () => void;
   onEditQueued: (id: string) => Promise<boolean>;
-  onSendQueuedNow: (id: string) => Promise<boolean>;
+  onSteerQueued: (id: string) => Promise<boolean>;
 }) {
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -124,7 +127,7 @@ export function AgentComposer({
 
   async function submitMessage(
     message: string,
-    delivery: "prompt" | "queue",
+    delivery: "prompt" | "queue" | "steer",
   ) {
     if (!message || pending || submitting || disabled) return;
     setSubmitting(true);
@@ -139,7 +142,13 @@ export function AgentComposer({
     }
   }
 
-  function submit(delivery: "prompt" | "queue" = "prompt") {
+  function submit(
+    delivery: "prompt" | "queue" | "steer" = running
+      ? supportsSteer
+        ? "steer"
+        : "queue"
+      : "prompt",
+  ) {
     const message = input.trim();
     void submitMessage(message, delivery);
   }
@@ -156,11 +165,11 @@ export function AgentComposer({
     }
   }
 
-  async function sendQueuedMessageNow(id: string) {
+  async function steerQueuedMessage(id: string) {
     if (pending || submitting || disabled) return;
     setSubmitting(true);
     try {
-      await onSendQueuedNow(id);
+      await onSteerQueued(id);
     } finally {
       setSubmitting(false);
     }
@@ -301,20 +310,23 @@ export function AgentComposer({
                       >
                         <Pencil />
                       </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        className="size-7 shrink-0 rounded-md"
-                        disabled={pending || submitting || disabled}
-                        onClick={() =>
-                          void sendQueuedMessageNow(queuedMessage.id)
-                        }
-                        aria-label="Send queued message now"
-                        title="Interrupt and send now"
-                      >
-                        <ArrowUp />
-                      </Button>
+                      {supportsSteer && running && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 shrink-0 rounded-md px-2 text-xs"
+                          disabled={pending || submitting || disabled}
+                          onClick={() =>
+                            void steerQueuedMessage(queuedMessage.id)
+                          }
+                          aria-label="Steer with queued message"
+                          title={`Add this message to the active ${providerLabel} turn`}
+                        >
+                          <CornerUpRight />
+                          Steer
+                        </Button>
+                      )}
                     </>
                   )}
                   <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
@@ -350,7 +362,7 @@ export function AgentComposer({
           aria-autocomplete="list"
         />
         <div className="flex h-8 items-center justify-end gap-1">
-          {running && (
+          {running && supportsSteer && (
             <Button
               type="button"
               variant="secondary"
@@ -387,20 +399,32 @@ export function AgentComposer({
             size={running ? "sm" : "icon-sm"}
             className="rounded-full"
             disabled={!input.trim() || pending || submitting || disabled}
-            onClick={() => submit("prompt")}
+            onClick={() => submit()}
             aria-label={
               running
-                ? `Interrupt ${providerLabel} and send now`
+                ? supportsSteer
+                  ? `Steer ${providerLabel}`
+                  : `Queue message for ${providerLabel}`
                 : "Send message"
             }
             title={
               running
-                ? `Interrupt ${providerLabel} and send now`
+                ? supportsSteer
+                  ? `Add message to the active ${providerLabel} turn`
+                  : `Queue after ${providerLabel} finishes`
                 : "Send message"
             }
           >
-            <ArrowUp />
-            {running && "Send now"}
+            {running ? (
+              supportsSteer ? (
+                <CornerUpRight />
+              ) : (
+                <ListEnd />
+              )
+            ) : (
+              <ArrowUp />
+            )}
+            {running && (supportsSteer ? "Steer" : "Queue")}
           </Button>
         </div>
       </div>

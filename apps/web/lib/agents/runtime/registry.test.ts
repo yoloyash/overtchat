@@ -207,6 +207,7 @@ describe("Pi session runtime", () => {
 
     expect(startedAt).toEqual(expect.any(Number));
     expect(runtime.snapshot()).toMatchObject({
+      capabilities: { steer: true },
       status: "running",
       activeTurn: { startedAt },
       messages: [
@@ -432,7 +433,64 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("interrupts an active run before submitting an immediate message", async () => {
+  it("steers the active turn without aborting or duplicating an early provider echo", async () => {
+    const client = new FakePiClient();
+    let acceptSteer: () => void = vi.fn();
+    client.steer.mockImplementationOnce(
+      () =>
+        new Promise<object>((resolve) => {
+          acceptSteer = () => resolve({});
+        }),
+    );
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "omp",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    const steering = runtime.command({
+      type: "steer",
+      message: "Focus on the failing test",
+    });
+    client.emit({
+      type: "message_end",
+      message: {
+        role: "user",
+        content: "Focus on the failing test",
+        timestamp: 20,
+      },
+    });
+    acceptSteer();
+    await steering;
+
+    expect(client.steer).toHaveBeenCalledWith(
+      "Focus on the failing test",
+    );
+    expect(client.abort).not.toHaveBeenCalled();
+    expect(
+      runtime
+        .snapshot()
+        .messages.filter(
+          (message) =>
+            message &&
+            typeof message === "object" &&
+            Reflect.get(message, "content") ===
+              "Focus on the failing test",
+        ),
+    ).toHaveLength(1);
+    await runtime.stop();
+  });
+
+  it("does not turn a prompt into an implicit interrupt", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -449,21 +507,31 @@ describe("Pi session runtime", () => {
     );
 
     await runtime.command({ type: "prompt", message: "First" });
-    await runtime.command({
-      type: "prompt",
-      message: "Send this now",
-    });
+    await expect(
+      runtime.command({
+        type: "prompt",
+        message: "Send this now",
+      }),
+    ).rejects.toThrow(
+      "Pi is already working. Queue the message or steer the active turn.",
+    );
 
-    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(client.abort).not.toHaveBeenCalled();
     expect(client.prompt).toHaveBeenNthCalledWith(1, "First");
-    expect(client.prompt).toHaveBeenNthCalledWith(2, "Send this now");
     expect(client.steer).not.toHaveBeenCalled();
     expect(client.followUp).not.toHaveBeenCalled();
     await runtime.stop();
   });
 
-  it("sends a selected queued message now and preserves FIFO order", async () => {
+  it("steers with a selected queued message and preserves FIFO order", async () => {
     const client = new FakePiClient();
+    let acceptSteer: () => void = vi.fn();
+    client.steer.mockImplementationOnce(
+      () =>
+        new Promise<object>((resolve) => {
+          acceptSteer = () => resolve({});
+        }),
+    );
     const runtime = new PiSessionRuntime(
       "session",
       "user",
@@ -481,14 +549,29 @@ describe("Pi session runtime", () => {
     await runtime.command({ type: "prompt", message: "First" });
     await runtime.command({ type: "queue", message: "Second" });
     await runtime.command({ type: "queue", message: "Third" });
-    await runtime.command({
-      type: "send_queued_message_now",
+    const steering = runtime.command({
+      type: "steer_queued_message",
       id: "session:2",
     });
 
-    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(client.steer).toHaveBeenCalledWith("Third");
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      {
+        id: "session:1",
+        message: "Second",
+        status: "pending",
+      },
+      {
+        id: "session:2",
+        message: "Third",
+        status: "sending",
+      },
+    ]);
+    acceptSteer();
+    await steering;
+
+    expect(client.abort).not.toHaveBeenCalled();
     expect(client.prompt).toHaveBeenNthCalledWith(1, "First");
-    expect(client.prompt).toHaveBeenNthCalledWith(2, "Third");
     expect(runtime.snapshot().queuedMessages).toEqual([
       {
         id: "session:1",
@@ -496,13 +579,20 @@ describe("Pi session runtime", () => {
         status: "pending",
       },
     ]);
+    expect(runtime.snapshot().messages).toContainEqual(
+      expect.objectContaining({
+        role: "user",
+        content: "Third",
+        overtchatSubmissionId: "session:2",
+      }),
+    );
     await runtime.stop();
   });
 
-  it("keeps a queued message pending when interruption fails", async () => {
+  it("keeps a queued message pending when steering fails", async () => {
     const client = new FakePiClient();
-    client.abort.mockRejectedValueOnce(
-      new Error("Provider rejected the interrupt"),
+    client.steer.mockRejectedValueOnce(
+      new Error("Provider rejected the steering message"),
     );
     const runtime = new PiSessionRuntime(
       "session",
@@ -522,21 +612,28 @@ describe("Pi session runtime", () => {
     await runtime.command({ type: "queue", message: "Second" });
     await expect(
       runtime.command({
-        type: "send_queued_message_now",
+        type: "steer_queued_message",
         id: "session:1",
       }),
-    ).rejects.toThrow("Provider rejected the interrupt");
+    ).rejects.toThrow("Provider rejected the steering message");
 
+    expect(client.abort).not.toHaveBeenCalled();
     expect(client.prompt).toHaveBeenCalledTimes(1);
     expect(runtime.snapshot()).toMatchObject({
       status: "running",
-      error: "Provider rejected the interrupt",
+      error: "Provider rejected the steering message",
       queuedMessages: [
         {
           id: "session:1",
           message: "Second",
           status: "pending",
         },
+      ],
+      messages: [
+        expect.objectContaining({
+          role: "user",
+          content: "First",
+        }),
       ],
     });
     await runtime.stop();

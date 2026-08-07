@@ -56,6 +56,12 @@ type PendingRuntimeStart = RuntimeOwner & {
   promise: Promise<PiSessionRuntime>;
 };
 
+type PendingSubmission = {
+  id: string;
+  message: string;
+  published: boolean;
+};
+
 function emptyStats(): AgentSessionStats {
   return {
     sessionFile: null,
@@ -164,16 +170,15 @@ export class PiSessionRuntime {
   private stats: AgentSessionStats;
   private queuedMessages: AgentQueuedMessage[] = [];
   private nextQueuedMessageId = 0;
+  private nextSubmissionId = 0;
   private promptAwaitingStart = false;
-  private promptSubmission:
-    | {
-        id: string;
-        message: string;
-        published: boolean;
-      }
-    | undefined;
+  private promptSubmissionId: string | undefined;
+  private readonly pendingSubmissions = new Map<
+    string,
+    PendingSubmission
+  >();
   private queueDrainPromise: Promise<void> | null = null;
-  private immediateSubmissionPromise: Promise<unknown> | null = null;
+  private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
   private ompRunSawAssistant = false;
@@ -224,17 +229,21 @@ export class PiSessionRuntime {
         ["message_start", "message_update", "message_end"].includes(
           event.type,
         ) &&
-        messageRole(event.message) === "user" &&
-        messageText(event.message) === this.promptSubmission?.message.trim()
+        messageRole(event.message) === "user"
       ) {
-        this.promptSubmission = undefined;
+        const text = messageText(event.message);
+        const submission = [...this.pendingSubmissions.values()].find(
+          (candidate) => candidate.message.trim() === text,
+        );
+        if (submission) this.pendingSubmissions.delete(submission.id);
       }
       if (event.type === "process_exit") {
         this.stopped = true;
         this.turnGeneration += 1;
         this.clearIdleStop();
         this.clearPendingExtensionRequest();
-        this.promptSubmission = undefined;
+        this.pendingSubmissions.clear();
+        this.promptSubmissionId = undefined;
         this.status = "exited";
         this.activeTurnStartedAt = null;
         this.state = {
@@ -300,10 +309,16 @@ export class PiSessionRuntime {
         this.error = event.error;
         if (event.command === "prompt" && this.promptAwaitingStart) {
           this.promptAwaitingStart = false;
-          if (this.promptSubmission?.published) {
-            this.rejectSubmission(this.promptSubmission.id);
+          const submission = this.promptSubmissionId
+            ? this.pendingSubmissions.get(this.promptSubmissionId)
+            : undefined;
+          if (submission?.published) {
+            this.rejectSubmission(submission.id);
           }
-          this.promptSubmission = undefined;
+          if (this.promptSubmissionId) {
+            this.pendingSubmissions.delete(this.promptSubmissionId);
+          }
+          this.promptSubmissionId = undefined;
           settleRejectedPrompt = true;
         }
       }
@@ -365,7 +380,8 @@ export class PiSessionRuntime {
       if (terminal || promptHandledWithoutRun) {
         if (ompAssistantEnd) this.ompRunSawAssistant = false;
         this.promptAwaitingStart = false;
-        this.promptSubmission = undefined;
+        this.pendingSubmissions.clear();
+        this.promptSubmissionId = undefined;
         this.clearPendingExtensionRequest();
         void this.settleAfterProviderTerminal();
       }
@@ -376,6 +392,7 @@ export class PiSessionRuntime {
     return {
       sessionId: this.dbSessionId,
       provider: this.provider,
+      capabilities: agentProviderMetadata(this.provider).capabilities,
       status: this.status,
       activeTurn:
         this.activeTurnStartedAt === null
@@ -434,12 +451,14 @@ export class PiSessionRuntime {
         return this.submitPrompt(command.message);
       case "abort":
         return this.abortActiveRun();
+      case "steer":
+        return this.submitSteer(command.message);
       case "queue":
         return this.enqueueMessage(command.message);
       case "remove_queued_message":
         return this.removeQueuedMessage(command.id);
-      case "send_queued_message_now":
-        return this.sendQueuedMessageNow(command.id);
+      case "steer_queued_message":
+        return this.steerQueuedMessage(command.id);
       case "set_model":
         return this.client
           .setModel(command.provider, command.modelId)
@@ -591,14 +610,29 @@ export class PiSessionRuntime {
         new Error(`${agentProviderMetadata(this.provider).label} exited.`),
       );
     }
-    return this.submitMessageNow(message).finally(() => {
+    if (
+      this.status !== "idle" ||
+      this.abortPromise ||
+      this.settlePromise ||
+      this.queueDrainPromise
+    ) {
+      const label = agentProviderMetadata(this.provider).label;
+      return Promise.reject(
+        new Error(
+          agentProviderMetadata(this.provider).capabilities.steer
+            ? `${label} is already working. Queue the message or steer the active turn.`
+            : `${label} is already working. Queue the message instead.`,
+        ),
+      );
+    }
+    return this.startPrompt(message).finally(() => {
       if (this.status === "idle") void this.drainQueuedMessage();
     });
   }
 
   private async startPrompt(
     message: string,
-    submissionId = `prompt:${this.turnGeneration + 1}`,
+    submissionId = `prompt:${++this.nextSubmissionId}`,
   ): Promise<unknown> {
     this.turnGeneration += 1;
     if (this.provider === "omp") this.ompRunSawAssistant = false;
@@ -612,20 +646,24 @@ export class PiSessionRuntime {
       message,
       published: false,
     };
-    this.promptSubmission = submission;
+    this.pendingSubmissions.set(submission.id, submission);
+    this.promptSubmissionId = submission.id;
     this.publishStatus();
     try {
       const result = await this.client.prompt(message);
-      if (this.promptSubmission === submission) {
+      if (this.pendingSubmissions.get(submission.id) === submission) {
         submission.published = true;
         this.publishSubmission(submission.id, submission.message);
       }
       return result;
     } catch (error) {
       this.promptAwaitingStart = false;
-      if (this.promptSubmission === submission) {
+      if (this.pendingSubmissions.get(submission.id) === submission) {
         if (submission.published) this.rejectSubmission(submission.id);
-        this.promptSubmission = undefined;
+        this.pendingSubmissions.delete(submission.id);
+      }
+      if (this.promptSubmissionId === submission.id) {
+        this.promptSubmissionId = undefined;
       }
       this.status = "idle";
       this.activeTurnStartedAt = null;
@@ -642,6 +680,69 @@ export class PiSessionRuntime {
       this.publishStatus();
       throw error;
     }
+  }
+
+  private submitSteer(
+    message: string,
+    submissionId = `steer:${++this.nextSubmissionId}`,
+  ): Promise<unknown> {
+    const metadata = agentProviderMetadata(this.provider);
+    if (!metadata.capabilities.steer) {
+      return Promise.reject(
+        new Error(`${metadata.label} does not support steering.`),
+      );
+    }
+    if (
+      this.status !== "running" ||
+      this.abortPromise ||
+      this.settlePromise
+    ) {
+      return Promise.reject(
+        new Error(`There is no active ${metadata.label} turn to steer.`),
+      );
+    }
+    if (this.steerPromise) {
+      return Promise.reject(
+        new Error("Another steering message is already being submitted."),
+      );
+    }
+
+    const submission: PendingSubmission = {
+      id: submissionId,
+      message,
+      published: false,
+    };
+    this.pendingSubmissions.set(submission.id, submission);
+    const operation = this.client
+      .steer(message)
+      .then((result) => {
+        if (this.pendingSubmissions.get(submission.id) === submission) {
+          submission.published = true;
+          this.publishSubmission(submission.id, submission.message);
+        }
+        return result;
+      })
+      .catch((error) => {
+        if (this.pendingSubmissions.get(submission.id) === submission) {
+          if (submission.published) this.rejectSubmission(submission.id);
+          this.pendingSubmissions.delete(submission.id);
+        }
+        this.error = errorMessage(error);
+        this.publish({
+          type: "runtime_event",
+          data: {
+            type: "rpc_error",
+            command: "steer",
+            error: this.error,
+          },
+        });
+        throw error;
+      });
+    const settled = operation.finally(() => {
+      if (this.steerPromise === settled) this.steerPromise = null;
+    });
+    this.steerPromise = settled;
+    return settled;
   }
 
   private abortActiveRun(): Promise<unknown> {
@@ -822,7 +923,7 @@ export class PiSessionRuntime {
     return Promise.resolve();
   }
 
-  private sendQueuedMessageNow(id: string): Promise<unknown> {
+  private steerQueuedMessage(id: string): Promise<unknown> {
     const message = this.queuedMessages.find((item) => item.id === id);
     if (!message || message.status !== "pending") {
       return Promise.reject(
@@ -830,7 +931,7 @@ export class PiSessionRuntime {
       );
     }
     this.updateQueuedMessageStatus(id, "sending");
-    return this.submitMessageNow(message.message, message.id)
+    return this.submitSteer(message.message, message.id)
       .then((result) => {
         this.deleteQueuedMessage(message.id);
         return result;
@@ -838,43 +939,7 @@ export class PiSessionRuntime {
       .catch((error) => {
         this.updateQueuedMessageStatus(message.id, "pending");
         throw error;
-      })
-      .finally(() => {
-        if (this.status === "idle") void this.drainQueuedMessage();
       });
-  }
-
-  private submitMessageNow(
-    message: string,
-    submissionId?: string,
-  ): Promise<unknown> {
-    if (this.immediateSubmissionPromise) {
-      return Promise.reject(
-        new Error("Another message is already being submitted."),
-      );
-    }
-    const operation = (async () => {
-      if (
-        this.status === "running" ||
-        this.abortPromise ||
-        this.settlePromise
-      ) {
-        await this.abortActiveRun();
-      }
-      if (this.status !== "idle") {
-        throw new Error(
-          `${agentProviderMetadata(this.provider).label} did not stop.`,
-        );
-      }
-      return this.startPrompt(message, submissionId);
-    })();
-    const settled = operation.finally(() => {
-      if (this.immediateSubmissionPromise === settled) {
-        this.immediateSubmissionPromise = null;
-      }
-    });
-    this.immediateSubmissionPromise = settled;
-    return settled;
   }
 
   private drainQueuedMessage(): Promise<void> {
@@ -882,8 +947,7 @@ export class PiSessionRuntime {
     if (
       this.status !== "idle" ||
       this.abortPromise ||
-      this.settlePromise ||
-      this.immediateSubmissionPromise
+      this.settlePromise
     ) {
       return Promise.resolve();
     }

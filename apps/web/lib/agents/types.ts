@@ -200,12 +200,20 @@ export type AgentQueuedMessage = {
   status: "pending" | "sending";
 };
 
+export type AgentRuntimeCapabilities = {
+  steer: boolean;
+};
+
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("prompt"),
     message: z.string().trim().min(1).max(200_000),
   }),
   z.object({ type: z.literal("abort") }),
+  z.object({
+    type: z.literal("steer"),
+    message: z.string().trim().min(1).max(200_000),
+  }),
   z.object({
     type: z.literal("queue"),
     message: z.string().trim().min(1).max(200_000),
@@ -215,7 +223,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     id: z.string().min(1).max(500),
   }),
   z.object({
-    type: z.literal("send_queued_message_now"),
+    type: z.literal("steer_queued_message"),
     id: z.string().min(1).max(500),
   }),
   z.object({
@@ -277,6 +285,7 @@ export type AgentSessionStats = {
 export type AgentRuntimeSnapshot = {
   sessionId: string;
   provider: AgentProviderId;
+  capabilities: AgentRuntimeCapabilities;
   status: AgentRuntimeStatus;
   activeTurn: {
     startedAt: number;

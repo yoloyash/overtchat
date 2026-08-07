@@ -116,7 +116,8 @@ export function useAgentSessionCommand(id: string) {
       }
       if (
         command.type === "prompt" ||
-        command.type === "send_queued_message_now" ||
+        command.type === "steer" ||
+        command.type === "steer_queued_message" ||
         command.type === "set_session_name" ||
         command.type === "new_session"
       ) {

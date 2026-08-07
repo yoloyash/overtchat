@@ -9,6 +9,7 @@ function snapshot(): AgentRuntimeSnapshot {
   return {
     sessionId: "session",
     provider: "pi",
+    capabilities: { steer: true },
     status: "idle",
     activeTurn: null,
     state: { isStreaming: false },

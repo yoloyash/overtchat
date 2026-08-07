@@ -92,7 +92,8 @@ export async function POST(
     await runtime.command(normalized);
     if (
       normalized.type === "prompt" ||
-      normalized.type === "send_queued_message_now"
+      normalized.type === "steer" ||
+      normalized.type === "steer_queued_message"
     ) {
       await updateAgentSessionMetadata(id, {
         ...(

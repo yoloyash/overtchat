@@ -185,6 +185,26 @@ describe("agent session route", () => {
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 
+  it("forwards steering as an active-turn command", async () => {
+    const response = await POST(
+      request("POST", {
+        type: "steer",
+        message: "Focus on the failing test",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.command).toHaveBeenCalledWith({
+      type: "steer",
+      message: "Focus on the failing test",
+    });
+    expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
+      "session",
+      { providerModifiedAt: expect.any(Date) },
+    );
+  });
+
   it("creates a new workspace session for /new without prompting Pi", async () => {
     mocks.normalizeCommand.mockReturnValue({ type: "new_session" });
 
