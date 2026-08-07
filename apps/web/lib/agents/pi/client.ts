@@ -306,6 +306,14 @@ export class PiRpcClient {
     });
   }
 
+  steer(message: string): Promise<unknown> {
+    return this.request({ type: "steer", message });
+  }
+
+  followUp(message: string): Promise<unknown> {
+    return this.request({ type: "follow_up", message });
+  }
+
   abort(): Promise<unknown> {
     return this.request({ type: "abort" });
   }

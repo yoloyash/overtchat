@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   AgentModel,
   AgentProviderId,
+  AgentQueuedMessage,
   AgentSlashCommand,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -181,6 +182,25 @@ export function parsePiQueueUpdate(
         followUp: parsed.data.followUp,
       }
     : null;
+}
+
+export function parseAgentQueuedMessages(
+  value: unknown,
+): AgentQueuedMessage[] | null {
+  const queue = parsePiQueueUpdate(value);
+  if (!queue) return null;
+  return [
+    ...queue.steering.map((message, index) => ({
+      id: `steer:${index}`,
+      message,
+      delivery: "steer" as const,
+    })),
+    ...queue.followUp.map((message, index) => ({
+      id: `follow_up:${index}`,
+      message,
+      delivery: "follow_up" as const,
+    })),
+  ];
 }
 
 export function parsePiSessionStats(value: unknown): AgentSessionStats {

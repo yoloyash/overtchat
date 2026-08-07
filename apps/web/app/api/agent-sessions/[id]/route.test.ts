@@ -143,33 +143,42 @@ describe("agent session route", () => {
     );
   });
 
-  it("forwards app-owned queue actions without prompt metadata", async () => {
+  it("forwards native steering and follow-up messages", async () => {
     const steer = await POST(
       request("POST", {
-        type: "steer_queued_message",
-        id: "session:2",
+        type: "steer",
+        message: "Focus on the failing test",
       }),
       context,
     );
-    const remove = await POST(
+    const followUp = await POST(
       request("POST", {
-        type: "remove_queued_message",
-        id: "session:1",
+        type: "follow_up",
+        message: "Then summarize",
       }),
       context,
     );
 
     expect(steer.status).toBe(200);
-    expect(remove.status).toBe(200);
+    expect(followUp.status).toBe(200);
     expect(mocks.command).toHaveBeenNthCalledWith(1, {
-      type: "steer_queued_message",
-      id: "session:2",
+      type: "steer",
+      message: "Focus on the failing test",
     });
     expect(mocks.command).toHaveBeenNthCalledWith(2, {
-      type: "remove_queued_message",
-      id: "session:1",
+      type: "follow_up",
+      message: "Then summarize",
     });
-    expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
+    expect(mocks.updateAgentSessionMetadata).toHaveBeenNthCalledWith(
+      1,
+      "session",
+      { providerModifiedAt: expect.any(Date) },
+    );
+    expect(mocks.updateAgentSessionMetadata).toHaveBeenNthCalledWith(
+      2,
+      "session",
+      { providerModifiedAt: expect.any(Date) },
+    );
   });
 
   it("creates a new workspace session for /new without prompting Pi", async () => {

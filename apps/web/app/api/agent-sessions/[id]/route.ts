@@ -90,9 +90,15 @@ export async function POST(
       });
     }
     await runtime.command(normalized);
-    if (normalized.type === "prompt") {
+    if (
+      normalized.type === "prompt" ||
+      normalized.type === "steer" ||
+      normalized.type === "follow_up"
+    ) {
       await updateAgentSessionMetadata(id, {
-        ...(!authorized.owned.agentSession.firstMessage
+        ...(
+          normalized.type === "prompt" &&
+          !authorized.owned.agentSession.firstMessage
           ? { firstMessage: normalized.message }
           : {}),
         providerModifiedAt: new Date(),

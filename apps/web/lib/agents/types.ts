@@ -197,6 +197,7 @@ export type AgentSlashCommand = {
 export type AgentQueuedMessage = {
   id: string;
   message: string;
+  delivery: "steer" | "follow_up";
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
@@ -206,12 +207,12 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("abort") }),
   z.object({
-    type: z.literal("steer_queued_message"),
-    id: z.string().min(1).max(500),
+    type: z.literal("steer"),
+    message: z.string().trim().min(1).max(200_000),
   }),
   z.object({
-    type: z.literal("remove_queued_message"),
-    id: z.string().min(1).max(500),
+    type: z.literal("follow_up"),
+    message: z.string().trim().min(1).max(200_000),
   }),
   z.object({
     type: z.literal("set_model"),

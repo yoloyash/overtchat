@@ -288,15 +288,13 @@ describe("agent runtime event reducer", () => {
     expect(settled.activeTurn).toBeNull();
   });
 
-  it("tracks OvertChat-owned queue updates and late prompt errors", () => {
+  it("tracks native provider queues and late prompt errors", () => {
     const queued = applyAgentRuntimeEnvelope(
       snapshot(),
       event({
-        type: "overtchat_queue_update",
-        queuedMessages: [
-          { id: "one", message: "Check the database path" },
-          { id: "two", message: "Then summarize" },
-        ],
+        type: "queue_update",
+        steering: ["Check the database path"],
+        followUp: ["Then summarize"],
       }),
     )!;
     const failed = applyAgentRuntimeEnvelope(
@@ -309,22 +307,30 @@ describe("agent runtime event reducer", () => {
     )!;
 
     expect(queued.queuedMessages).toEqual([
-      { id: "one", message: "Check the database path" },
-      { id: "two", message: "Then summarize" },
+      {
+        id: "steer:0",
+        message: "Check the database path",
+        delivery: "steer",
+      },
+      {
+        id: "follow_up:0",
+        message: "Then summarize",
+        delivery: "follow_up",
+      },
     ]);
     expect(queued.messages).toEqual(snapshot().messages);
     expect(failed.error).toBe("Queue rejected");
     expect(failed.queuedMessages).toEqual(queued.queuedMessages);
   });
 
-  it("ignores native provider queue updates", () => {
+  it("ignores malformed native provider queue updates", () => {
     const current = snapshot();
     expect(
       applyAgentRuntimeEnvelope(
         current,
         event({
           type: "queue_update",
-          steering: ["Check the database path"],
+          steering: "Check the database path",
           followUp: ["Then summarize"],
         }),
       ),

@@ -88,6 +88,28 @@ describe("PiRpcClient", () => {
     await client.stop();
   });
 
+  it("sends native steer and follow-up commands", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      fake.reply(command);
+    });
+    const client = new PiRpcClient(process);
+
+    await client.steer("Focus on the failing test");
+    await client.followUp("Then summarize");
+
+    expect(process.commands).toEqual([
+      expect.objectContaining({
+        type: "steer",
+        message: "Focus on the failing test",
+      }),
+      expect.objectContaining({
+        type: "follow_up",
+        message: "Then summarize",
+      }),
+    ]);
+    await client.stop();
+  });
+
   it("keeps historical process stderr out of later request timeouts", async () => {
     const process = new FakeAgentProcess(() => {});
     const client = new PiRpcClient(process);

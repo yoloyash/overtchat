@@ -1,8 +1,8 @@
 import type {
-  AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
 } from "@/lib/agents/types";
+import { parseAgentQueuedMessages } from "@/lib/agents/pi/protocol";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 
 type AgentRuntimeEvent = Extract<
@@ -186,8 +186,8 @@ export function applyAgentRuntimeEnvelope(
   ) {
     return { ...current, error: event.error };
   }
-  if (event.type === "overtchat_queue_update") {
-    const queuedMessages = parseQueuedMessages(event.queuedMessages);
+  if (event.type === "queue_update") {
+    const queuedMessages = parseAgentQueuedMessages(event);
     if (!queuedMessages) return current;
     return {
       ...current,
@@ -251,24 +251,4 @@ export function applyAgentRuntimeEnvelope(
     };
   }
   return current;
-}
-
-function parseQueuedMessages(value: unknown): AgentQueuedMessage[] | null {
-  if (!Array.isArray(value)) return null;
-  const messages: AgentQueuedMessage[] = [];
-  for (const item of value) {
-    if (
-      !item ||
-      typeof item !== "object" ||
-      typeof Reflect.get(item, "id") !== "string" ||
-      typeof Reflect.get(item, "message") !== "string"
-    ) {
-      return null;
-    }
-    messages.push({
-      id: Reflect.get(item, "id") as string,
-      message: Reflect.get(item, "message") as string,
-    });
-  }
-  return messages;
 }

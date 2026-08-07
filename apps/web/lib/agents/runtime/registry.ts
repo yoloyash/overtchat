@@ -18,6 +18,7 @@ import {
   normalizeAgentSessionCommand,
 } from "@/lib/agents/pi/commands";
 import {
+  parseAgentQueuedMessages,
   parsePiCommands,
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
@@ -163,10 +164,7 @@ export class PiSessionRuntime {
   private commands: AgentSlashCommand[];
   private stats: AgentSessionStats;
   private queuedMessages: AgentQueuedMessage[] = [];
-  private nextQueuedMessageId = 0;
   private promptAwaitingStart = false;
-  private startingQueuedMessage: AgentQueuedMessage | undefined;
-  private drainPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
   private ompRunSawAssistant = false;
@@ -210,10 +208,11 @@ export class PiSessionRuntime {
     this.scheduleIdleStop();
 
     client.onEvent((event) => {
-      let restoredQueuedPrompt = false;
       let settleRejectedPrompt = false;
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
+      const queuedMessages = parseAgentQueuedMessages(event);
+      if (queuedMessages) this.queuedMessages = queuedMessages;
       if (event.type === "process_exit") {
         this.stopped = true;
         this.turnGeneration += 1;
@@ -239,7 +238,6 @@ export class PiSessionRuntime {
           this.ompRunSawAssistant = false;
         }
         this.promptAwaitingStart = false;
-        this.startingQueuedMessage = undefined;
         this.status = "running";
         this.activeTurnStartedAt ??= Date.now();
         this.state = { ...this.state, isStreaming: true };
@@ -285,23 +283,11 @@ export class PiSessionRuntime {
         this.error = event.error;
         if (event.command === "prompt" && this.promptAwaitingStart) {
           this.promptAwaitingStart = false;
-          if (this.startingQueuedMessage) {
-            this.restoreQueuedMessage(this.startingQueuedMessage);
-            this.startingQueuedMessage = undefined;
-            restoredQueuedPrompt = true;
-            this.status = "idle";
-            this.activeTurnStartedAt = null;
-            this.state = { ...this.state, isStreaming: false };
-          } else {
-            settleRejectedPrompt = true;
-          }
+          settleRejectedPrompt = true;
         }
       }
       this.publish({ type: "pi_event", data: event });
-      if (restoredQueuedPrompt) {
-        this.publishQueueUpdate();
-        this.publishStatus();
-      } else if (settleRejectedPrompt) {
+      if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
       }
       if (
@@ -358,7 +344,6 @@ export class PiSessionRuntime {
       if (terminal || promptHandledWithoutRun) {
         if (ompAssistantEnd) this.ompRunSawAssistant = false;
         this.promptAwaitingStart = false;
-        this.startingQueuedMessage = undefined;
         this.clearPendingExtensionRequest();
         void this.settleAfterProviderTerminal();
       }
@@ -427,10 +412,10 @@ export class PiSessionRuntime {
         return this.submitPrompt(command.message);
       case "abort":
         return this.abortActiveRun();
-      case "steer_queued_message":
-        return this.steerQueuedMessage(command.id);
-      case "remove_queued_message":
-        return this.removeQueuedMessage(command.id);
+      case "steer":
+        return this.submitDuringRun(command.message, "steer");
+      case "follow_up":
+        return this.submitDuringRun(command.message, "follow_up");
       case "set_model":
         return this.client
           .setModel(command.provider, command.modelId)
@@ -585,19 +570,35 @@ export class PiSessionRuntime {
     if (
       this.status !== "idle" ||
       this.abortPromise ||
-      this.settlePromise ||
-      this.drainPromise
+      this.settlePromise
     ) {
-      this.enqueueMessage(message);
-      return Promise.resolve({ queued: true });
+      return this.client.followUp(message);
     }
     return this.startPrompt(message);
   }
 
-  private async startPrompt(
+  private submitDuringRun(
     message: string,
-    queuedMessage?: AgentQueuedMessage,
+    delivery: "steer" | "follow_up",
   ): Promise<unknown> {
+    if (this.status === "exited") {
+      return Promise.reject(
+        new Error(`${agentProviderMetadata(this.provider).label} exited.`),
+      );
+    }
+    if (
+      this.status === "idle" &&
+      !this.abortPromise &&
+      !this.settlePromise
+    ) {
+      return this.startPrompt(message);
+    }
+    return delivery === "steer"
+      ? this.client.steer(message)
+      : this.client.followUp(message);
+  }
+
+  private async startPrompt(message: string): Promise<unknown> {
     this.turnGeneration += 1;
     if (this.provider === "omp") this.ompRunSawAssistant = false;
     this.status = "running";
@@ -605,21 +606,10 @@ export class PiSessionRuntime {
     this.state = { ...this.state, isStreaming: true };
     this.error = undefined;
     this.promptAwaitingStart = true;
-    this.startingQueuedMessage = queuedMessage;
     this.publishStatus();
     try {
       return await this.client.prompt(message);
     } catch (error) {
-      const startingQueuedMessage = this.startingQueuedMessage;
-      const advanceWaitingQueue =
-        !startingQueuedMessage && this.queuedMessages.length > 0;
-      if (
-        startingQueuedMessage &&
-        startingQueuedMessage.id === queuedMessage?.id
-      ) {
-        this.restoreQueuedMessage(startingQueuedMessage);
-      }
-      this.startingQueuedMessage = undefined;
       this.promptAwaitingStart = false;
       this.status = "idle";
       this.activeTurnStartedAt = null;
@@ -633,67 +623,15 @@ export class PiSessionRuntime {
           error: this.error,
         },
       });
-      this.publishQueueUpdate();
       this.publishStatus();
-      if (advanceWaitingQueue) {
-        void this.settleAfterProviderTerminal();
-      }
       throw error;
     }
-  }
-
-  private enqueueMessage(message: string): AgentQueuedMessage {
-    const queuedMessage = {
-      id: `${this.dbSessionId}:${++this.nextQueuedMessageId}`,
-      message,
-    };
-    this.queuedMessages = [...this.queuedMessages, queuedMessage];
-    this.publishQueueUpdate();
-    return queuedMessage;
-  }
-
-  private restoreQueuedMessage(message: AgentQueuedMessage): void {
-    if (this.queuedMessages.some((queued) => queued.id === message.id)) return;
-    this.queuedMessages = [message, ...this.queuedMessages];
-  }
-
-  private removeQueuedMessage(id: string): Promise<void> {
-    const index = this.queuedMessages.findIndex((message) => message.id === id);
-    if (index < 0) {
-      return Promise.reject(new Error("That queued message is no longer pending."));
-    }
-    this.queuedMessages = this.queuedMessages.filter(
-      (message) => message.id !== id,
-    );
-    this.publishQueueUpdate();
-    return Promise.resolve();
-  }
-
-  private async steerQueuedMessage(id: string): Promise<unknown> {
-    const index = this.queuedMessages.findIndex((message) => message.id === id);
-    if (index < 0) {
-      throw new Error("That queued message is no longer pending.");
-    }
-    if (index > 0) {
-      const selected = this.queuedMessages[index];
-      if (!selected) throw new Error("That queued message is no longer pending.");
-      this.queuedMessages = [
-        selected,
-        ...this.queuedMessages.slice(0, index),
-        ...this.queuedMessages.slice(index + 1),
-      ];
-      this.publishQueueUpdate();
-    }
-    if (this.status === "idle" && !this.abortPromise && !this.settlePromise) {
-      return this.drainQueuedMessage();
-    }
-    return this.abortActiveRun();
   }
 
   private abortActiveRun(): Promise<unknown> {
     if (this.abortPromise) return this.abortPromise;
     if (this.status !== "running") {
-      return this.drainQueuedMessage();
+      return Promise.resolve();
     }
     const turnGeneration = this.turnGeneration;
     const operation = (async () => {
@@ -719,9 +657,6 @@ export class PiSessionRuntime {
       .finally(() => {
         if (this.abortPromise !== settled) return;
         this.abortPromise = null;
-        if (this.status === "idle") {
-          void this.drainQueuedMessage().catch(() => {});
-        }
       });
     this.abortPromise = settled;
     return settled;
@@ -749,9 +684,6 @@ export class PiSessionRuntime {
       .finally(() => {
         if (this.settlePromise !== settled) return;
         this.settlePromise = null;
-        if (this.status === "idle") {
-          void this.drainQueuedMessage().catch(() => {});
-        }
       });
     this.settlePromise = settled;
     return settled;
@@ -828,37 +760,6 @@ export class PiSessionRuntime {
       this.status !== "exited" &&
       this.turnGeneration === turnGeneration
     );
-  }
-
-  private drainQueuedMessage(): Promise<unknown> {
-    if (this.drainPromise) return this.drainPromise;
-    if (
-      this.status !== "idle" ||
-      this.abortPromise ||
-      this.settlePromise ||
-      this.queuedMessages.length === 0
-    ) {
-      return Promise.resolve();
-    }
-    const next = this.queuedMessages[0];
-    if (!next) return Promise.resolve();
-    this.queuedMessages = this.queuedMessages.slice(1);
-    this.publishQueueUpdate();
-    const drained = this.startPrompt(next.message, next).finally(() => {
-      if (this.drainPromise === drained) this.drainPromise = null;
-    });
-    this.drainPromise = drained;
-    return drained;
-  }
-
-  private publishQueueUpdate(): void {
-    this.publish({
-      type: "pi_event",
-      data: {
-        type: "overtchat_queue_update",
-        queuedMessages: this.queuedMessages,
-      },
-    });
   }
 
   private publishStatus(): void {

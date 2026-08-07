@@ -14,7 +14,6 @@ import {
   ListEnd,
   Loader2,
   Square,
-  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -49,8 +48,6 @@ export function AgentComposer({
   disabled,
   onSubmit,
   onStop,
-  onSteerQueued,
-  onRemoveQueued,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
@@ -59,10 +56,11 @@ export function AgentComposer({
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
-  onSubmit: (message: string) => void;
+  onSubmit: (
+    message: string,
+    delivery: "prompt" | "steer" | "follow_up",
+  ) => void;
   onStop: () => void;
-  onSteerQueued: (id: string) => void;
-  onRemoveQueued: (id: string) => void;
 }) {
   const [input, setInput] = useState("");
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
@@ -105,7 +103,7 @@ export function AgentComposer({
       !pending &&
       !disabled
     ) {
-      onSubmit(`/${command.name}`);
+      onSubmit(`/${command.name}`, running ? "steer" : "prompt");
       setInput("");
       setDismissedDraft(null);
       setActiveIndex(0);
@@ -122,10 +120,10 @@ export function AgentComposer({
     });
   }
 
-  function submit() {
+  function submit(delivery?: "steer" | "follow_up") {
     const message = input.trim();
     if (!message || pending || disabled) return;
-    onSubmit(message);
+    onSubmit(message, running ? (delivery ?? "steer") : "prompt");
     setInput("");
     setDismissedDraft(null);
     setActiveIndex(0);
@@ -234,38 +232,20 @@ export function AgentComposer({
                 key={queuedMessage.id}
                 className="flex min-h-10 min-w-0 items-center gap-2 text-xs"
               >
-                <ListEnd className="size-3.5 shrink-0 text-muted-foreground" />
+                {queuedMessage.delivery === "steer" ? (
+                  <CornerUpRight className="size-3.5 shrink-0 text-muted-foreground" />
+                ) : (
+                  <ListEnd className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
                 <span
                   className="min-w-0 flex-1 truncate text-foreground"
                   title={queuedMessage.message}
                 >
                   {queuedMessage.message.replace(/\s+/g, " ")}
                 </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 shrink-0 rounded-md px-2"
-                  disabled={pending || disabled}
-                  onClick={() => onSteerQueued(queuedMessage.id)}
-                  aria-label={`Steer ${providerLabel} with queued message`}
-                  title={`Steer ${providerLabel} with this message`}
-                >
-                  <CornerUpRight />
-                  Steer
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="size-7 shrink-0 rounded-md text-muted-foreground"
-                  disabled={pending || disabled}
-                  onClick={() => onRemoveQueued(queuedMessage.id)}
-                  aria-label="Remove queued message"
-                  title="Remove queued message"
-                >
-                  <Trash2 />
-                </Button>
+                <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                  {queuedMessage.delivery === "steer" ? "Steering" : "Queued"}
+                </span>
               </div>
             ))}
           </div>
@@ -313,21 +293,35 @@ export function AgentComposer({
               )}
             </Button>
           )}
+          {running && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              className="rounded-full"
+              disabled={!input.trim() || pending || disabled}
+              onClick={() => submit("follow_up")}
+              aria-label={`Queue message for ${providerLabel}`}
+              title={`Queue after ${providerLabel} finishes`}
+            >
+              <ListEnd />
+            </Button>
+          )}
           <Button
             type="button"
             size={running ? "sm" : "icon-sm"}
             className="rounded-full"
             disabled={!input.trim() || pending || disabled}
-            onClick={submit}
+            onClick={() => submit()}
             aria-label={
-              running ? `Queue message for ${providerLabel}` : "Send message"
+              running ? `Steer ${providerLabel}` : "Send message"
             }
             title={
-              running ? `Queue message for ${providerLabel}` : "Send message"
+              running ? `Steer ${providerLabel}` : "Send message"
             }
           >
-            {running ? <ListEnd /> : <ArrowUp />}
-            {running && "Queue"}
+            {running ? <CornerUpRight /> : <ArrowUp />}
+            {running && "Steer"}
           </Button>
         </div>
       </div>

@@ -127,14 +127,21 @@ export function AgentSessionView({
     }
   }
 
-  function submit(message: string) {
+  function submit(
+    message: string,
+    delivery: "prompt" | "steer" | "follow_up",
+  ) {
     let input: AgentSessionCommand;
     try {
-      input = normalizeAgentSessionCommand(
+      const normalized = normalizeAgentSessionCommand(
         provider,
         buildAgentPromptCommand(message),
         snapshot?.state ?? {},
       );
+      input =
+        normalized.type !== "prompt" || delivery === "prompt"
+          ? normalized
+          : { type: delivery, message };
     } catch (cause) {
       toast.error({
         title: `${providerLabel} command failed`,
@@ -264,12 +271,6 @@ export function AgentSessionView({
             disabled={exited || Boolean(snapshot.pendingExtensionRequest)}
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
-            onSteerQueued={(id) =>
-              void run({ type: "steer_queued_message", id })
-            }
-            onRemoveQueued={(id) =>
-              void run({ type: "remove_queued_message", id })
-            }
           />
         </div>
       </div>
