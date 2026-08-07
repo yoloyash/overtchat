@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/components/sidebar-context";
 
 export function SidebarToggle({ className }: { className?: string }) {
-  const { collapsed, setCollapsed, setOpenMobile } = useSidebar();
+  const { collapsed, openSidebar } = useSidebar();
 
   return (
     <Button
@@ -14,10 +14,7 @@ export function SidebarToggle({ className }: { className?: string }) {
       size="icon-sm"
       aria-label="Open sidebar"
       className={cn(!collapsed && "md:hidden", className)}
-      onClick={() => {
-        if (collapsed) setCollapsed(false);
-        setOpenMobile(true);
-      }}
+      onClick={openSidebar}
     >
       <PanelLeft />
     </Button>

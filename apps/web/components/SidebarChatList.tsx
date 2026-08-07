@@ -91,7 +91,7 @@ export function SidebarItem({
   const pathname = usePathname();
   const active = pathname === `/chat/${chat.id}`;
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
-  const { drawerRef } = useSidebar();
+  const { closeMobile, drawerRef } = useSidebar();
 
   const renameMut = useRenameChat();
   const deleteMut = useDeleteChat();
@@ -184,6 +184,7 @@ export function SidebarItem({
       <li className="group flex items-center">
         <Link
           href={`/chat/${chat.id}`}
+          onClick={closeMobile}
           className={cn(
             "flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
             active && "bg-sidebar-accent",

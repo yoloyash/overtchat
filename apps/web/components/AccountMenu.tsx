@@ -20,7 +20,7 @@ export function AccountMenu() {
   // dismiss logic recognizes menu-item taps as "inside" events. On desktop
   // the drawer isn't mounted, ref.current is null, and base-ui falls back to
   // portaling into <body>. See sidebar-context.tsx for the full explanation.
-  const { drawerRef } = useSidebar();
+  const { closeMobile, drawerRef } = useSidebar();
 
   async function logOut() {
     try {
@@ -92,7 +92,7 @@ export function AccountMenu() {
             )}
           >
             <Menu.Item
-              render={<Link href="/settings" />}
+              render={<Link href="/settings" onClick={closeMobile} />}
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
