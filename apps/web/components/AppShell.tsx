@@ -121,11 +121,19 @@ export function AppShell({
             aria-hidden={collapsed}
             inert={collapsed}
             className={cn(
-              "hidden h-full shrink-0 overflow-hidden motion-width md:flex",
+              "relative hidden h-full shrink-0 motion-width md:block",
               collapsed ? "w-0" : "w-64",
             )}
           >
-            {sidebar}
+            <div
+              data-desktop-sidebar-panel
+              className={cn(
+                "absolute inset-y-0 left-0 flex w-64 motion-transform",
+                collapsed && "-translate-x-full",
+              )}
+            >
+              {sidebar}
+            </div>
           </div>
           <Dialog.Portal>
             <Dialog.Backdrop
