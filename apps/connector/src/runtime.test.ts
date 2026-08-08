@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_PROTOCOL_MIN_VERSION,
@@ -38,6 +41,7 @@ describe("connector process runtime", () => {
       launch: {
         command: process.execPath,
         args: ["-e", "process.stdin.pipe(process.stdout)"],
+        shellMode: "login",
       },
     });
     await runtime.handle({
@@ -71,6 +75,7 @@ describe("connector process runtime", () => {
       launch: {
         command: "printf",
         args: ["%s", "login path works"],
+        shellMode: "login",
       },
     });
 
@@ -93,6 +98,68 @@ describe("connector process runtime", () => {
         )
         .join(""),
     ).not.toMatch(/job control|terminal process group/iu);
+  });
+
+  it("loads interactive-only PATH entries for agent launches", async () => {
+    const home = fs.mkdtempSync(
+      path.join(os.tmpdir(), "overtchat-connector-shell-"),
+    );
+    const originalHome = process.env.HOME;
+    const originalShell = process.env.SHELL;
+    try {
+      const tools = path.join(home, "tools");
+      fs.mkdirSync(tools);
+      fs.writeFileSync(
+        path.join(home, ".bash_profile"),
+        '. "$HOME/.bashrc"\n',
+      );
+      fs.writeFileSync(
+        path.join(home, ".bashrc"),
+        [
+          'case "$-" in',
+          "  *i*) ;;",
+          "  *) return ;;",
+          "esac",
+          'export PATH="$HOME/tools:$PATH"',
+        ].join("\n"),
+      );
+      const executable = path.join(tools, "overtchat-test-agent");
+      fs.writeFileSync(executable, "#!/bin/sh\nprintf 'interactive path works'\n");
+      fs.chmodSync(executable, 0o755);
+      process.env.HOME = home;
+      process.env.SHELL = "/bin/bash";
+
+      const events: HostConnectorEvent[] = [];
+      const runtime = new ConnectorRuntime((event) => events.push(event));
+      const processId = "interactive-login";
+      await runtime.handle({
+        type: "spawn",
+        processId,
+        target: { transport: "local" },
+        launch: {
+          command: "overtchat-test-agent",
+          shellMode: "interactive",
+        },
+      });
+
+      expect(await waitForExit(events, processId)).toMatchObject({ code: 0 });
+      expect(
+        events
+          .map((event) =>
+            event.type === "stdout" && event.processId === processId
+              ? Buffer.from(event.data, "base64").toString()
+              : "",
+          )
+          .join(""),
+      ).toBe("interactive path works");
+      runtime.stop();
+    } finally {
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      if (originalShell === undefined) delete process.env.SHELL;
+      else process.env.SHELL = originalShell;
+      fs.rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("fails stale server process IDs after a connector restart", async () => {
@@ -123,7 +190,7 @@ describe("connector process runtime", () => {
       type: "spawn",
       processId: "invalid-ssh",
       target: { transport: "ssh", alias: "user@host" },
-      launch: { command: "omp" },
+      launch: { command: "omp", shellMode: "interactive" },
     });
 
     expect(events).toEqual([
@@ -147,6 +214,7 @@ describe("connector protocol validation", () => {
           command: "omp",
           args: ["--mode", "rpc"],
           env: { OVERTCHAT: "1" },
+          shellMode: "interactive",
         },
       }),
     ).toBe(true);
@@ -182,11 +250,21 @@ describe("connector protocol validation", () => {
         launch: {
           command: "omp",
           env: { "INVALID-NAME": "value" },
+          shellMode: "interactive",
         },
+      }),
+    ).toBe(false);
+    expect(
+      isHostConnectorCommand({
+        type: "spawn",
+        processId: "process",
+        target: { transport: "local" },
+        launch: { command: "omp" },
       }),
     ).toBe(false);
     expect(
       isHostConnectorProtocolVersion(HOST_CONNECTOR_PROTOCOL_VERSION + 1),
     ).toBe(false);
+    expect(isHostConnectorProtocolVersion(1)).toBe(false);
   });
 });

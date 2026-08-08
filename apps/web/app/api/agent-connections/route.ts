@@ -74,6 +74,7 @@ export async function POST(req: Request) {
       connection: {
         provider: draft.provider,
         executable: draft.executable,
+        shellMode: probe.shellMode,
         detectedVersion: probe.version,
       },
     });

@@ -44,6 +44,15 @@ describe("agent host process execution", () => {
 
       await failure;
       expect(kill).toHaveBeenCalledWith("SIGKILL");
+      expect(mocks.spawn).toHaveBeenCalledWith(
+        "connector",
+        { transport: "local" },
+        {
+          command: "omp",
+          args: ["--version"],
+          shellMode: "interactive",
+        },
+      );
     } finally {
       vi.useRealTimers();
     }

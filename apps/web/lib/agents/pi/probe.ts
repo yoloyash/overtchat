@@ -1,5 +1,6 @@
 import "server-only";
 import path from "node:path";
+import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 import type {
   AgentConnectionDraft,
   AgentConnectionProbe,
@@ -18,6 +19,7 @@ import {
 import { startPiRpc } from "@/lib/agents/pi/client";
 
 const MODEL_PROBE_TIMEOUT_MS = 120_000;
+const AGENT_SHELL_MODES = ["interactive", "login"] as const satisfies readonly ConnectorShellMode[];
 const EXECUTABLE_DISCOVERY = String.raw`
 for candidate do
   resolved=$(command -v "$candidate" 2>/dev/null) || continue
@@ -78,11 +80,32 @@ function parseVersion(output: string): string | null {
   return output.match(/\d+\.\d+\.\d+(?:[-+][^\s]+)?/u)?.[0] ?? null;
 }
 
-export async function discoverAgentInstallations(
+function shellModesForTarget(target: HostTarget): ConnectorShellMode[] {
+  if (!target.shellMode) return [...AGENT_SHELL_MODES];
+  return [
+    target.shellMode,
+    ...AGENT_SHELL_MODES.filter((mode) => mode !== target.shellMode),
+  ];
+}
+
+function targetWithShellMode(
   target: HostTarget,
+  shellMode: ConnectorShellMode,
+): HostTarget {
+  return { ...target, shellMode };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function discoverAgentInstallationsInMode(
+  target: HostTarget,
+  shellMode: ConnectorShellMode,
 ): Promise<DetectedAgentInstallation[]> {
+  const resolvedTarget = targetWithShellMode(target, shellMode);
   const providers = Object.values(AGENT_PROVIDERS);
-  const result = await executeOnHost(target, {
+  const result = await executeOnHost(resolvedTarget, {
     command: "/bin/sh",
     args: [
       "-c",
@@ -111,7 +134,7 @@ export async function discoverAgentInstallations(
       const executable = resolved.get(command);
       if (!executable) return null;
       try {
-        const versionResult = await executeOnHost(target, {
+        const versionResult = await executeOnHost(resolvedTarget, {
           command: executable,
           args: ["--version"],
         });
@@ -126,6 +149,39 @@ export async function discoverAgentInstallations(
     (installation): installation is DetectedAgentInstallation =>
       installation !== null,
   );
+}
+
+export async function discoverAgentInstallations(
+  target: HostTarget,
+): Promise<DetectedAgentInstallation[]> {
+  const providers = Object.values(AGENT_PROVIDERS);
+  const found = new Map<AgentProviderId, DetectedAgentInstallation>();
+  let successfulMode = false;
+  let firstError: unknown;
+
+  for (const shellMode of shellModesForTarget(target)) {
+    try {
+      const installations = await discoverAgentInstallationsInMode(
+        target,
+        shellMode,
+      );
+      successfulMode = true;
+      for (const installation of installations) {
+        if (!found.has(installation.provider)) {
+          found.set(installation.provider, installation);
+        }
+      }
+      if (found.size === providers.length) break;
+    } catch (error) {
+      firstError ??= error;
+    }
+  }
+
+  if (!successfulMode && firstError) throw firstError;
+  return providers.flatMap(({ id }) => {
+    const installation = found.get(id);
+    return installation ? [installation] : [];
+  });
 }
 
 export async function targetForConnectionDraft(
@@ -157,16 +213,40 @@ export async function probeAgentTarget(
   executable: string,
 ): Promise<AgentReadyConnectionProbe> {
   const metadata = agentProviderMetadata(provider);
-  const versionResult = await executeOnHost(target, {
-    command: executable,
-    args: ["--version"],
-  });
-  const version = parseVersion(versionResult.stdout);
-  if (!version) {
-    throw new Error(`${metadata.label} returned an invalid version.`);
+  let resolved:
+    | {
+        target: HostTarget;
+        shellMode: ConnectorShellMode;
+        version: string;
+      }
+    | undefined;
+  const failures: string[] = [];
+  for (const shellMode of shellModesForTarget(target)) {
+    try {
+      const resolvedTarget = targetWithShellMode(target, shellMode);
+      const versionResult = await executeOnHost(resolvedTarget, {
+        command: executable,
+        args: ["--version"],
+      });
+      const version = parseVersion(versionResult.stdout);
+      if (!version) {
+        throw new Error(`${metadata.label} returned an invalid version.`);
+      }
+      resolved = { target: resolvedTarget, shellMode, version };
+      break;
+    } catch (error) {
+      failures.push(
+        `${shellMode === "interactive" ? "Interactive login" : "Login"}: ${errorMessage(error)}`,
+      );
+    }
+  }
+  if (!resolved) {
+    throw new Error(
+      `${metadata.label} could not be started. ${failures.join(" ")}`,
+    );
   }
 
-  const client = startPiRpc(target, {
+  const client = startPiRpc(resolved.target, {
     provider,
     executable,
     noSession: true,
@@ -188,8 +268,9 @@ export async function probeAgentTarget(
     }
     return {
       status: "ready",
-      version,
+      version: resolved.version,
       models,
+      shellMode: resolved.shellMode,
     };
   } finally {
     await client.stop();

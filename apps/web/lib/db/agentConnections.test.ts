@@ -46,6 +46,7 @@ raw.exec(`
     host_id TEXT NOT NULL,
     provider TEXT NOT NULL,
     executable TEXT NOT NULL,
+    shell_mode TEXT NOT NULL DEFAULT 'login',
     detected_version TEXT,
     last_validated_at INTEGER,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
@@ -117,6 +118,7 @@ function createAliceConnection() {
     connection: {
       provider: "pi",
       executable: "pi",
+      shellMode: "interactive",
       detectedVersion: "0.82.1",
     },
   });

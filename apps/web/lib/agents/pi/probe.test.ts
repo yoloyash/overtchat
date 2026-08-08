@@ -16,6 +16,7 @@ vi.mock("@/lib/agents/pi/client", () => ({
 import {
   discoverAgentInstallations,
   probeAgentConnection,
+  probeAgentTarget,
 } from "./probe";
 
 const connectorId = "11111111-1111-4111-8111-111111111111";
@@ -64,12 +65,14 @@ describe("agent connection probing", () => {
     ).resolves.toMatchObject({
       status: "ready",
       version: "17.2.1",
+      shellMode: "interactive",
     });
 
     const target = {
       connectorId,
       transport: "ssh" as const,
       alias: "macbook",
+      shellMode: "interactive" as const,
     };
     expect(mocks.executeOnHost).toHaveBeenCalledWith(target, {
       command: "omp",
@@ -91,7 +94,11 @@ describe("agent connection probing", () => {
     });
 
     expect(mocks.startPiRpc).toHaveBeenCalledWith(
-      { connectorId, transport: "local" },
+      {
+        connectorId,
+        transport: "local",
+        shellMode: "interactive",
+      },
       expect.objectContaining({
         provider: "omp",
         executable: "omp",
@@ -151,7 +158,12 @@ describe("agent connection probing", () => {
     ]);
     expect(mocks.executeOnHost).toHaveBeenNthCalledWith(
       2,
-      { connectorId, transport: "ssh", alias: "devbox" },
+      {
+        connectorId,
+        transport: "ssh",
+        alias: "devbox",
+        shellMode: "interactive",
+      },
       {
         command: "/home/developer/.local/bin/pi",
         args: ["--version"],
@@ -165,7 +177,8 @@ describe("agent connection probing", () => {
         stdout: "pi\0alias pi='other'\0omp\0/opt/bin/omp\0",
         stderr: "",
       })
-      .mockResolvedValueOnce({ stdout: "not omp\n", stderr: "" });
+      .mockResolvedValueOnce({ stdout: "not omp\n", stderr: "" })
+      .mockResolvedValueOnce({ stdout: "", stderr: "" });
 
     await expect(
       discoverAgentInstallations({
@@ -173,5 +186,64 @@ describe("agent connection probing", () => {
         transport: "local",
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("falls back to the login shell when interactive startup fails", async () => {
+    mocks.executeOnHost
+      .mockRejectedValueOnce(new Error("interactive startup failed"))
+      .mockResolvedValueOnce({
+        stdout: "omp/17.2.1\n",
+        stderr: "",
+      });
+
+    await expect(
+      probeAgentConnection({
+        connectorId,
+        provider: "omp",
+        transport: "ssh",
+        name: "MacBook",
+        executable: "/Users/yash/.bun/bin/omp",
+        sshAlias: "macbook",
+      }),
+    ).resolves.toMatchObject({
+      status: "ready",
+      shellMode: "login",
+    });
+    expect(mocks.startPiRpc).toHaveBeenCalledWith(
+      {
+        connectorId,
+        transport: "ssh",
+        alias: "macbook",
+        shellMode: "login",
+      },
+      expect.objectContaining({
+        executable: "/Users/yash/.bun/bin/omp",
+      }),
+    );
+  });
+
+  it("tries the stored shell mode first during revalidation", async () => {
+    await probeAgentTarget(
+      {
+        connectorId,
+        transport: "local",
+        shellMode: "login",
+      },
+      "omp",
+      "omp",
+    );
+
+    expect(mocks.executeOnHost).toHaveBeenCalledTimes(1);
+    expect(mocks.executeOnHost).toHaveBeenCalledWith(
+      {
+        connectorId,
+        transport: "local",
+        shellMode: "login",
+      },
+      {
+        command: "omp",
+        args: ["--version"],
+      },
+    );
   });
 });

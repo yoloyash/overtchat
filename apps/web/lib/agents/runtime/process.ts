@@ -2,6 +2,7 @@ import "server-only";
 import type { Readable, Writable } from "node:stream";
 import type {
   ConnectorProcessLaunch,
+  ConnectorShellMode,
   ConnectorTarget,
 } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
@@ -10,14 +11,22 @@ const DEFAULT_EXEC_TIMEOUT_MS = 15_000;
 const MAX_CAPTURE_BYTES = 2 * 1024 * 1024;
 
 export type HostTarget =
-  | { connectorId: string; transport: "local" }
+  | {
+      connectorId: string;
+      transport: "local";
+      shellMode?: ConnectorShellMode;
+    }
   | {
       connectorId: string;
       transport: "ssh";
       alias: string;
+      shellMode?: ConnectorShellMode;
     };
 
-export type AgentProcessLaunch = ConnectorProcessLaunch;
+export type AgentProcessLaunch = Omit<
+  ConnectorProcessLaunch,
+  "shellMode"
+>;
 
 export type AgentProcessExit = {
   code: number | null;
@@ -49,7 +58,10 @@ export function spawnOnHost(
   return hostConnectorBroker.spawn(
     target.connectorId,
     connectorTarget,
-    launch,
+    {
+      ...launch,
+      shellMode: target.shellMode ?? "interactive",
+    },
   );
 }
 

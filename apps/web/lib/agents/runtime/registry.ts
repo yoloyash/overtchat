@@ -1090,11 +1090,14 @@ export class AgentRuntimeRegistry {
     owned: OwnedAgentWorkspace,
   ): Promise<{ runtime: PiSessionRuntime; sessionId: string }> {
     const provider = this.providerFor(owned.connection.provider);
-    const client = startPiRpc(targetForStoredHost(owned.host), {
-      provider,
-      executable: owned.connection.executable,
-      cwd: owned.workspace.path,
-    });
+    const client = startPiRpc(
+      targetForStoredHost(owned.host, owned.connection.shellMode),
+      {
+        provider,
+        executable: owned.connection.executable,
+        cwd: owned.workspace.path,
+      },
+    );
     try {
       const initial = await this.loadInitial(client);
       const identity = sessionIdentity(provider, initial.state);
@@ -1153,12 +1156,15 @@ export class AgentRuntimeRegistry {
     owned: OwnedAgentSession,
   ): Promise<PiSessionRuntime> {
     const provider = this.providerFor(owned.connection.provider);
-    const client = startPiRpc(targetForStoredHost(owned.host), {
-      provider,
-      executable: owned.connection.executable,
-      cwd: owned.workspace.path,
-      sessionPath: owned.agentSession.providerSessionPath,
-    });
+    const client = startPiRpc(
+      targetForStoredHost(owned.host, owned.connection.shellMode),
+      {
+        provider,
+        executable: owned.connection.executable,
+        cwd: owned.workspace.path,
+        sessionPath: owned.agentSession.providerSessionPath,
+      },
+    );
     try {
       const initial = await this.loadInitial(client);
       const identity = sessionIdentity(provider, initial.state);

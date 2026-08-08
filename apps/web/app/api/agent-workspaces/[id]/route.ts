@@ -34,7 +34,7 @@ export async function POST(
     }
     const sessions = await listAgentWorkspaceSessions(
       owned.connection.provider,
-      targetForStoredHost(owned.host),
+      targetForStoredHost(owned.host, owned.connection.shellMode),
       owned.workspace.path,
     );
     const rows = syncAgentWorkspaceSessions(id, sessions);

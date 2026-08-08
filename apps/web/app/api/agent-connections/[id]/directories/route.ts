@@ -33,7 +33,7 @@ export async function GET(
 
   try {
     const directory = await listAgentDirectories(
-      targetForStoredHost(owned.host),
+      targetForStoredHost(owned.host, owned.connection.shellMode),
       path,
     );
     return Response.json({ directory });

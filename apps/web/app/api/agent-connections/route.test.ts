@@ -94,4 +94,56 @@ describe("Agent Connections route", () => {
     expect(mocks.probePiConnection).not.toHaveBeenCalled();
     expect(mocks.createAgentConnection).not.toHaveBeenCalled();
   });
+
+  it("persists the shell mode selected during connection probing", async () => {
+    mocks.probePiConnection.mockResolvedValue({
+      status: "ready",
+      version: "17.2.11",
+      models: [],
+      shellMode: "interactive",
+    });
+    mocks.createAgentConnection.mockReturnValue({
+      host: { id: "host" },
+      connection: { id: "connection" },
+    });
+    const connection = {
+      id: "connection",
+      provider: "omp",
+      executable: "/Users/yash/.bun/bin/omp",
+      detectedVersion: "17.2.11",
+      lastValidatedAt: Date.now(),
+      host: {
+        id: "host",
+        connectorId: "connector",
+        name: "macbook",
+        transport: "ssh",
+        sshAlias: "macbook",
+      },
+      workspaces: [],
+    };
+    mocks.listAgentConnections.mockResolvedValue([connection]);
+
+    const response = await POST(
+      request("POST", {
+        provider: "omp",
+        transport: "ssh",
+        connectorId: "connector",
+        name: "macbook",
+        executable: "/Users/yash/.bun/bin/omp",
+        sshAlias: "macbook",
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createAgentConnection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        connection: {
+          provider: "omp",
+          executable: "/Users/yash/.bun/bin/omp",
+          detectedVersion: "17.2.11",
+          shellMode: "interactive",
+        },
+      }),
+    );
+  });
 });

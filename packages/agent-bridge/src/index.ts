@@ -1,5 +1,8 @@
-export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 1;
-export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
+export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 2;
+export const HOST_CONNECTOR_PROTOCOL_VERSION = 2;
+
+export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
+export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
 
 export type ConnectorTarget =
   | { transport: "local" }
@@ -10,6 +13,7 @@ export type ConnectorProcessLaunch = {
   args?: string[];
   cwd?: string;
   env?: Record<string, string>;
+  shellMode: ConnectorShellMode;
 };
 
 export type ConnectorSshHost = {
@@ -154,7 +158,9 @@ function isConnectorProcessLaunch(
   return (
     (value.args === undefined || isStringArray(value.args)) &&
     (value.cwd === undefined || typeof value.cwd === "string") &&
-    (value.env === undefined || isStringRecord(value.env))
+    (value.env === undefined || isStringRecord(value.env)) &&
+    typeof value.shellMode === "string" &&
+    CONNECTOR_SHELL_MODES.includes(value.shellMode as ConnectorShellMode)
   );
 }
 

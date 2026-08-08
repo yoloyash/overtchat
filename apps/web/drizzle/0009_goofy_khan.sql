@@ -1,0 +1,1 @@
+ALTER TABLE `agent_connections` ADD `shell_mode` text DEFAULT 'login' NOT NULL;

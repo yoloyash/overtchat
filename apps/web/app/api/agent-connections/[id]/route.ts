@@ -32,7 +32,7 @@ export async function POST(
       throw new Error("This coding-agent provider is not supported.");
     }
     const probe = await probeAgentTarget(
-      targetForStoredHost(owned.host),
+      targetForStoredHost(owned.host, owned.connection.shellMode),
       owned.connection.provider,
       owned.connection.executable,
     );
@@ -40,6 +40,7 @@ export async function POST(
       id,
       session.user.id,
       probe.version,
+      probe.shellMode,
     );
     return Response.json({ probe });
   } catch (error) {

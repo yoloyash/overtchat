@@ -25,6 +25,7 @@ describe("SSH process launching", () => {
     const args = sshSpawnArgs("macbook", {
       command: "omp",
       args: ["--mode", "rpc"],
+      shellMode: "interactive",
     });
 
     expect(args).toEqual([
@@ -40,28 +41,44 @@ describe("SSH process launching", () => {
     expect(args).not.toContain("-i");
   });
 
-  it("loads the remote login environment without an interactive shell", () => {
+  it("loads the remote interactive login environment", () => {
     const command = buildSshRemoteCommand({
       command: "/Users/yash/.bun/bin/omp",
       args: ["--mode", "rpc", "argument with spaces"],
       cwd: "/Users/yash/project's files",
       env: { OVERTCHAT_TEST: "it's safe" },
+      shellMode: "interactive",
     });
 
-    expect(command).toContain('exec "${SHELL:-/bin/sh}" -lc');
-    expect(command).not.toContain("-lic");
+    expect(command).toContain('exec "${SHELL:-/bin/sh}" -ilc');
     expect(command).toContain("exec 1>&3 3>&-");
     expect(command).toContain("3>&1 1>&2");
     expect(command).toContain("cd --");
     expect(command).toContain("\\''");
   });
 
+  it("uses a non-interactive login shell after negotiation", () => {
+    const command = buildSshRemoteCommand({
+      command: "omp",
+      shellMode: "login",
+    });
+
+    expect(command).toContain('exec "${SHELL:-/bin/sh}" -lc');
+    expect(command).not.toContain("-ilc");
+  });
+
   it("rejects values that are not SSH aliases", () => {
     expect(() =>
-      sshSpawnArgs("developer@host", { command: "omp" }),
+      sshSpawnArgs("developer@host", {
+        command: "omp",
+        shellMode: "interactive",
+      }),
     ).toThrow("Invalid SSH host alias");
     expect(() =>
-      sshSpawnArgs("-oProxyCommand=malicious", { command: "omp" }),
+      sshSpawnArgs("-oProxyCommand=malicious", {
+        command: "omp",
+        shellMode: "interactive",
+      }),
     ).toThrow("Invalid SSH host alias");
   });
 });

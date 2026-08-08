@@ -43,7 +43,10 @@ export async function POST(
     if (!isAgentProviderId(owned.connection.provider)) {
       throw new Error("This coding-agent provider is not supported.");
     }
-    const target = targetForStoredHost(owned.host);
+    const target = targetForStoredHost(
+      owned.host,
+      owned.connection.shellMode,
+    );
     const workspace = await probeAgentWorkspace(target, parsed.data.path);
     const providerSessions = await listAgentWorkspaceSessions(
       owned.connection.provider,

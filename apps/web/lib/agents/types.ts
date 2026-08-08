@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 
 export const AGENT_PROVIDER_IDS = ["pi", "omp"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
@@ -154,6 +155,7 @@ export type AgentReadyConnectionProbe = {
   status: "ready";
   version: string;
   models: AgentModel[];
+  shellMode: ConnectorShellMode;
 };
 
 export type AgentConnectionProbe = AgentReadyConnectionProbe;

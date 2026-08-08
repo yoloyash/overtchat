@@ -13,6 +13,7 @@ import type {
   AgentSessionListItem,
   AgentTransportId,
 } from "@/lib/agents/types";
+import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 
 export type AgentHostRow = typeof agentHosts.$inferSelect;
 export type AgentConnectionRow = typeof agentConnections.$inferSelect;
@@ -43,6 +44,7 @@ export type NewAgentConnection = {
   connection: {
     provider: AgentProviderId;
     executable: string;
+    shellMode: ConnectorShellMode;
     detectedVersion: string;
   };
 };
@@ -218,6 +220,7 @@ export function createAgentConnection(
         hostId,
         provider: input.connection.provider,
         executable: input.connection.executable,
+        shellMode: input.connection.shellMode,
         detectedVersion: input.connection.detectedVersion,
         lastValidatedAt: new Date(),
       })
@@ -234,6 +237,7 @@ export async function touchAgentConnectionValidation(
   id: string,
   userId: string,
   detectedVersion: string,
+  shellMode: ConnectorShellMode,
 ): Promise<boolean> {
   const owned = await getOwnedAgentConnection(id, userId);
   if (!owned) return false;
@@ -241,6 +245,7 @@ export async function touchAgentConnectionValidation(
     .update(agentConnections)
     .set({
       detectedVersion,
+      shellMode,
       lastValidatedAt: new Date(),
       updatedAt: new Date(),
     })

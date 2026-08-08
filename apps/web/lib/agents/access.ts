@@ -19,6 +19,13 @@ export function connectionErrorMessage(
   provider: AgentProviderId = "pi",
 ): string {
   const message = error instanceof Error ? error.message : String(error);
+  const missingInterpreter =
+    /(?:^|\s)(?:\/usr\/bin\/)?env:\s*([^:\s]+):\s*No such file or directory/iu.exec(
+      message,
+    );
+  if (missingInterpreter?.[1]) {
+    return `${agentProviderMetadata(provider).label} was found, but ${missingInterpreter[1]} is not available in the selected shell environment.`;
+  }
   if (
     /\bENOENT\b/u.test(message) ||
     /not found|command not found|no such file/i.test(message)

@@ -208,6 +208,11 @@ export const agentConnections = sqliteTable(
       .references(() => agentHosts.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     executable: text("executable").notNull(),
+    shellMode: text("shell_mode", {
+      enum: ["interactive", "login"],
+    })
+      .default("login")
+      .notNull(),
     detectedVersion: text("detected_version"),
     lastValidatedAt: integer("last_validated_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" })

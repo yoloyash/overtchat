@@ -139,6 +139,7 @@ function owned(): OwnedAgentSession {
       hostId: "host",
       provider: "pi",
       executable: "pi",
+      shellMode: "interactive",
       detectedVersion: "0.82.1",
       lastValidatedAt: new Date(),
       createdAt: new Date(),

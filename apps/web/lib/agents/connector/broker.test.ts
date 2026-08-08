@@ -14,7 +14,11 @@ describe("Host Connector broker", () => {
     const processHandle = broker.spawn(
       "connector",
       { transport: "ssh", alias: "macbook" },
-      { command: "omp", args: ["--mode", "rpc"] },
+      {
+        command: "omp",
+        args: ["--mode", "rpc"],
+        shellMode: "interactive",
+      },
     );
     const spawn = commands.find(
       (
@@ -24,7 +28,11 @@ describe("Host Connector broker", () => {
     );
     expect(spawn).toMatchObject({
       target: { transport: "ssh", alias: "macbook" },
-      launch: { command: "omp", args: ["--mode", "rpc"] },
+      launch: {
+        command: "omp",
+        args: ["--mode", "rpc"],
+        shellMode: "interactive",
+      },
     });
 
     let stdout = "";
@@ -66,7 +74,7 @@ describe("Host Connector broker", () => {
     broker.spawn(
       "connector",
       { transport: "local" },
-      { command: "omp" },
+      { command: "omp", shellMode: "interactive" },
     );
     const processId = (
       first.find(
@@ -95,7 +103,7 @@ describe("Host Connector broker", () => {
       const processHandle = broker.spawn(
         "connector",
         { transport: "local" },
-        { command: "omp" },
+        { command: "omp", shellMode: "interactive" },
       );
       const hosts = broker.listSshHosts("connector");
       const processExit = expect(processHandle.exit).resolves.toMatchObject({
@@ -124,7 +132,7 @@ describe("Host Connector broker", () => {
     const processHandle = broker.spawn(
       "connector",
       { transport: "local" },
-      { command: "omp" },
+      { command: "omp", shellMode: "interactive" },
     );
     unregister();
 
@@ -150,7 +158,7 @@ describe("Host Connector broker", () => {
       const processHandle = broker.spawn(
         "connector",
         { transport: "local" },
-        { command: "omp" },
+        { command: "omp", shellMode: "interactive" },
       );
       const processExit = expect(processHandle.exit).resolves.toMatchObject({
         code: null,
@@ -220,7 +228,7 @@ describe("Host Connector broker", () => {
       broker.spawn(
         "offline",
         { transport: "local" },
-        { command: "omp" },
+        { command: "omp", shellMode: "interactive" },
       ),
     ).toThrow("Host Connector is offline");
   });
