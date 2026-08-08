@@ -7,6 +7,7 @@ import { Popover } from "@base-ui/react/popover";
 import {
   Check,
   Clipboard,
+  ExternalLink,
   Folder,
   FolderPlus,
   Info,
@@ -556,6 +557,15 @@ function HostConnectorInfo() {
               Lets OvertChat use agent binaries and SSH hosts available on this
               server. For Docker installs, run it on the Docker host.
             </p>
+            <a
+              href="https://github.com/yoloyash/overtchat/blob/main/scripts/install-connector.sh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
+            >
+              View installer source
+              <ExternalLink className="size-3" />
+            </a>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>

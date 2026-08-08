@@ -74,7 +74,7 @@ describe("Host Connectors route", () => {
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
       command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://github.com/yoloyash/overtchat/releases/latest/download/install-connector.sh | sh -s -- --pair-code 'ocp_pair.secret'",
+        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install-connector.sh | sh -s -- --pair-code 'ocp_pair.secret'",
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });

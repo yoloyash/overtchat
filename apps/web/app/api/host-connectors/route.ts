@@ -11,7 +11,7 @@ import {
 function installCommand(pairCode: string): string {
   return [
     "curl --proto '=https' --tlsv1.2 -fsSL ",
-    "https://github.com/yoloyash/overtchat/releases/latest/download/install-connector.sh",
+    "https://overtchat.com/install-connector.sh",
     " | sh -s -- --pair-code ",
     `'${pairCode}'`,
   ].join("");

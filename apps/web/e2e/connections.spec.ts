@@ -80,8 +80,15 @@ async function startHostConnector(
       /Lets OvertChat use agent binaries and SSH hosts available on this server/,
     ),
   ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View installer source" }),
+  ).toHaveAttribute(
+    "href",
+    "https://github.com/yoloyash/overtchat/blob/main/scripts/install-connector.sh",
+  );
   await page.keyboard.press("Escape");
   const command = await page.getByLabel("Host Connector install command").textContent();
+  expect(command).toContain("https://overtchat.com/install-connector.sh");
   const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
   if (!pairCode) throw new Error("The Host Connector pairing code was missing.");
 
@@ -241,6 +248,9 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
     page.getByText(
       /Lets OvertChat use agent binaries and SSH hosts available on this server/,
     ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "View installer source" }),
   ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("agent-access-setup-desktop.png"),

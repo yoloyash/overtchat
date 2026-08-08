@@ -1,2 +1,5 @@
 # Preserve the pre-Next privacy policy URL for old bookmarks and listings.
 /privacy.html /privacy/ 301
+
+# Keep the public setup URL stable while releases own the installer implementation.
+/install-connector.sh https://github.com/yoloyash/overtchat/releases/latest/download/install-connector.sh 302
