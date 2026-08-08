@@ -207,7 +207,13 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/", { timeout: 15_000 });
 
-  await page.goto("/settings/connections");
+  const connectionsSection = page.getByText("Connections", { exact: true });
+  await expect(connectionsSection).toBeVisible();
+  await expect(
+    connectionsSection.locator("..").getByText("Beta", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Add agent" }).click();
+  await page.waitForURL("**/settings/connections?add=1");
   await expect(
     page.getByText(
       "Use OvertChat as a web interface for coding agents.",
@@ -224,6 +230,9 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent access" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: /Connections Beta/ }),
   ).toBeVisible();
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(

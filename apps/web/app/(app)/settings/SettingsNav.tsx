@@ -12,6 +12,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { BetaBadge } from "@/components/BetaBadge";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth/client";
@@ -20,6 +21,7 @@ type Item = {
   href: string;
   label: string;
   icon: typeof Cpu;
+  beta?: boolean;
 };
 
 const USER_ITEMS: Item[] = [
@@ -31,7 +33,12 @@ const USER_ITEMS: Item[] = [
 ];
 
 const ADMIN_ITEMS: Item[] = [
-  { href: "/settings/connections", label: "Connections", icon: Cable },
+  {
+    href: "/settings/connections",
+    label: "Connections",
+    icon: Cable,
+    beta: true,
+  },
   { href: "/settings/models", label: "Models", icon: Cpu },
   { href: "/settings/users", label: "Users", icon: Users },
 ];
@@ -111,6 +118,7 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
     >
       <Icon className="size-3.5 shrink-0" />
       <span>{item.label}</span>
+      {item.beta && <BetaBadge />}
       <LinkPendingIndicator />
     </Link>
   );

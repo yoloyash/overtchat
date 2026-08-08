@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Popover } from "@base-ui/react/popover";
@@ -24,6 +25,7 @@ import claudeCodeIcon from "@/assets/agent-providers/claude-code.png";
 import codexIcon from "@/assets/agent-providers/codex.png";
 import ompIcon from "@/assets/agent-providers/omp.svg";
 import piIcon from "@/assets/agent-providers/pi.svg";
+import { BetaBadge } from "@/components/BetaBadge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import type {
@@ -62,7 +64,12 @@ type PendingDetach =
       workspace: AgentWorkspaceListItem;
     };
 
-export function ConnectionsPanel() {
+export function ConnectionsPanel({
+  initialAddOpen = false,
+}: {
+  initialAddOpen?: boolean;
+}) {
+  const router = useRouter();
   const { data: connections = [], error: listError } = useAgentConnections();
   const { data: connectors = [], error: connectorError } = useHostConnectors();
   const connector = connectors[0];
@@ -72,7 +79,7 @@ export function ConnectionsPanel() {
   const deleteWorkspaceMutation = useDeleteAgentWorkspace();
   const pairingMutation = useCreateHostConnectorPairing();
   const deleteConnectorMutation = useDeleteHostConnector();
-  const [addOpen, setAddOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(initialAddOpen);
   const [pairing, setPairing] = useState<HostConnectorPairing | null>(null);
   const [commandCopied, setCommandCopied] = useState(false);
   const [workspaceConnection, setWorkspaceConnection] =
@@ -181,10 +188,22 @@ export function ConnectionsPanel() {
     setCommandCopied(true);
   }
 
+  function setAddDialogOpen(open: boolean) {
+    setAddOpen(open);
+    if (!open && initialAddOpen) {
+      router.replace("/settings/connections", { scroll: false });
+    }
+  }
+
   return (
     <div className="max-w-4xl space-y-6">
       <SettingsPageHeader
-        title="Connections"
+        title={
+          <span className="inline-flex items-center gap-2">
+            Connections
+            <BetaBadge className="text-[10px]" />
+          </span>
+        }
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <span>Use OvertChat as a web interface for coding agents.</span>
@@ -428,7 +447,7 @@ export function ConnectionsPanel() {
           connector={connector}
           connections={connections}
           open={addOpen}
-          onOpenChange={setAddOpen}
+          onOpenChange={setAddDialogOpen}
         />
       )}
       <AddWorkspaceDialog

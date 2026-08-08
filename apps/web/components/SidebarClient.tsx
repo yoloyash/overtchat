@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Activity, FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
+import {
+  Activity,
+  FolderPlus,
+  PanelLeft,
+  Pencil,
+  Plus,
+  Search,
+} from "lucide-react";
+import { BetaBadge } from "@/components/BetaBadge";
 import { SidebarChatList } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
@@ -141,19 +149,49 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
 function AdminConnections() {
   const { data: connections = [] } = useAgentConnections();
-  if (connections.length === 0) return null;
+  const { setOpenMobile } = useSidebar();
+
   return (
     <>
-      <SectionLabel>Connections</SectionLabel>
+      <SectionLabel
+        badge={<BetaBadge />}
+        action={
+          <Link
+            href="/settings/connections?add=1"
+            onClick={() => setOpenMobile(false)}
+            aria-label="Add agent"
+            title="Add agent"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Plus className="size-3.5" />
+          </Link>
+        }
+      >
+        Connections
+      </SectionLabel>
       <SidebarConnections connections={connections} />
     </>
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function SectionLabel({
+  children,
+  badge,
+  action,
+}: {
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
-    <div className="mt-4 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-      {children}
+    <div className="mt-4 mb-1 flex min-h-6 items-center gap-2 px-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          {children}
+        </span>
+        {badge}
+      </div>
+      {action}
     </div>
   );
 }

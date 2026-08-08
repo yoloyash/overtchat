@@ -41,7 +41,7 @@ export function SettingsSection({
 }
 
 interface SettingsPageHeaderProps {
-  title: string;
+  title: React.ReactNode;
   description?: React.ReactNode;
   leading?: React.ReactNode;
   action?: React.ReactNode;
