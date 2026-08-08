@@ -3,6 +3,7 @@ CREATE TABLE `agent_connections` (
 	`host_id` text NOT NULL,
 	`provider` text NOT NULL,
 	`executable` text NOT NULL,
+	`shell_mode` text DEFAULT 'login' NOT NULL,
 	`detected_version` text,
 	`last_validated_at` integer,
 	`created_at` integer DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)) NOT NULL,

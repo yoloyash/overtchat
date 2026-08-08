@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "0d0f6b09-5173-4c43-8557-a4596b84e971",
+  "id": "b9b6ade3-5f32-4b13-a5d9-c6ed31b42858",
   "prevId": "3cd26b96-fe61-4642-8c5d-5238ddba1223",
   "tables": {
     "account": {
@@ -158,6 +158,14 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "shell_mode": {
+          "name": "shell_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'login'"
         },
         "detected_version": {
           "name": "detected_version",
