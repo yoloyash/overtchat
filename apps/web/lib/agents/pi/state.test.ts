@@ -183,6 +183,7 @@ describe("agent runtime event reducer", () => {
       provider: "omp" as const,
       status: "running" as const,
       state: { isStreaming: true },
+      error: "Previous runtime error",
     };
     const withOutput = applyAgentRuntimeEnvelope(
       running,
@@ -210,6 +211,7 @@ describe("agent runtime event reducer", () => {
       status: "idle",
       state: { isStreaming: false },
     });
+    expect(settled.error).toBeUndefined();
   });
 
   it("keeps Pi running until the runtime confirms provider idle", () => {

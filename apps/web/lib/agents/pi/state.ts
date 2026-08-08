@@ -228,7 +228,7 @@ export function applyAgentRuntimeEnvelope(
         isStreaming: event.status === "running",
         ...(event.status === "idle" ? { isCompacting: false } : {}),
       },
-      ...(event.status === "running" ? { error: undefined } : {}),
+      error: undefined,
     };
   }
   if (

@@ -750,14 +750,10 @@ export class PiSessionRuntime {
     if (this.status !== "running") {
       return Promise.resolve();
     }
-    const turnGeneration = this.turnGeneration;
-    const operation = (async () => {
-      await this.client.abort();
-      await this.reconcileProviderIdle(
-        PROVIDER_IDLE_TIMEOUT_MS,
-        turnGeneration,
-      );
-    })();
+    const operation = this.client.abort().then((result) => {
+      this.completeAcknowledgedAbort();
+      return result;
+    });
     const settled = operation
       .catch((error) => {
         this.error = errorMessage(error);
@@ -778,6 +774,26 @@ export class PiSessionRuntime {
       });
     this.abortPromise = settled;
     return settled;
+  }
+
+  private completeAcknowledgedAbort(): void {
+    // An acknowledged abort supersedes settlement work for the canceled turn.
+    this.turnGeneration += 1;
+    this.settlePromise = null;
+    this.promptAwaitingStart = false;
+    this.promptSubmissionId = undefined;
+    this.pendingSubmissions.clear();
+    this.clearPendingExtensionRequest();
+    if (this.provider === "omp") this.ompRunSawAssistant = false;
+    this.status = "idle";
+    this.activeTurnStartedAt = null;
+    this.state = {
+      ...this.state,
+      isStreaming: false,
+      isCompacting: false,
+    };
+    this.error = undefined;
+    this.publishStatus();
   }
 
   private settleAfterProviderTerminal(): Promise<void> {

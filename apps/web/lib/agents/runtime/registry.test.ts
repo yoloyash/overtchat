@@ -640,15 +640,8 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("waits for confirmed provider idle after abort acknowledgement", async () => {
+  it("settles immediately after abort acknowledgement", async () => {
     const client = new FakePiClient();
-    let resolveState: (state: typeof idleProviderState) => void = vi.fn();
-    client.getState.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          resolveState = resolve;
-        }),
-    );
     const runtime = new PiSessionRuntime(
       "session",
       "user",
@@ -664,14 +657,52 @@ describe("Pi session runtime", () => {
     );
 
     await runtime.command({ type: "prompt", message: "First" });
-    const stopping = runtime.command({ type: "abort" });
-    await vi.waitFor(() => {
-      expect(client.getState).toHaveBeenCalledTimes(1);
-    });
-    resolveState(idleProviderState);
-    await stopping;
+    await runtime.command({ type: "abort" });
+
+    expect(client.abort).toHaveBeenCalledTimes(1);
+    expect(client.getState).not.toHaveBeenCalled();
     expect(runtime.snapshot().status).toBe("idle");
     expect(client.prompt).toHaveBeenCalledTimes(1);
+    await runtime.stop();
+  });
+
+  it("keeps the active turn running when abort is rejected", async () => {
+    const client = new FakePiClient();
+    client.abort.mockRejectedValueOnce(new Error("Abort rejected"));
+    const runtime = new PiSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      "pi",
+      client as unknown as PiRpcClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "queue", message: "Second" });
+
+    await expect(runtime.command({ type: "abort" })).rejects.toThrow(
+      "Abort rejected",
+    );
+
+    expect(client.getState).not.toHaveBeenCalled();
+    expect(client.prompt).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot()).toMatchObject({
+      status: "running",
+      error: "Abort rejected",
+      queuedMessages: [
+        {
+          id: "session:1",
+          message: "Second",
+          status: "pending",
+        },
+      ],
+    });
     await runtime.stop();
   });
 
@@ -915,7 +946,7 @@ describe("Pi session runtime", () => {
     expect(onExit).toHaveBeenCalledTimes(1);
   });
 
-  it("drains the OvertChat queue after Stop confirms provider idle", async () => {
+  it("drains the OvertChat queue after Stop is acknowledged", async () => {
     const client = new FakePiClient();
     const runtime = new PiSessionRuntime(
       "session",
@@ -936,7 +967,7 @@ describe("Pi session runtime", () => {
     await runtime.command({ type: "abort" });
 
     expect(client.abort).toHaveBeenCalledTimes(1);
-    expect(client.getState).toHaveBeenCalled();
+    expect(client.getState).not.toHaveBeenCalled();
     expect(client.followUp).not.toHaveBeenCalled();
     await vi.waitFor(() => {
       expect(client.prompt).toHaveBeenNthCalledWith(2, "Second");
@@ -945,14 +976,15 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
-  it("sends Stop while OMP is naturally settling after compaction", async () => {
+  it("supersedes an in-flight provider idle poll when Stop is acknowledged", async () => {
     const client = new FakePiClient();
-    client.getState
-      .mockResolvedValueOnce({
-        ...idleProviderState,
-        isCompacting: true,
-      })
-      .mockResolvedValue({ ...idleProviderState });
+    let resolveState: (state: typeof idleProviderState) => void = vi.fn();
+    client.getState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveState = resolve;
+        }),
+    );
     const runtime = new PiSessionRuntime(
       "session",
       "user",
@@ -968,6 +1000,7 @@ describe("Pi session runtime", () => {
     );
 
     await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({ type: "queue", message: "Second" });
     client.emit({
       type: "agent_end",
       messages: [{ role: "assistant", content: [] }],
@@ -980,7 +1013,19 @@ describe("Pi session runtime", () => {
     await runtime.command({ type: "abort" });
 
     expect(client.abort).toHaveBeenCalledTimes(1);
-    expect(client.prompt).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenNthCalledWith(2, "Second");
+    });
+    expect(runtime.snapshot().status).toBe("running");
+
+    resolveState({
+      ...idleProviderState,
+      isStreaming: true,
+    });
+    await Promise.resolve();
+
+    expect(client.getState).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().status).toBe("running");
     await runtime.stop();
   });
 
