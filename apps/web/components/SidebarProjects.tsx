@@ -17,6 +17,7 @@ import {
   SidebarItem,
   type ProjectOption,
 } from "@/components/SidebarChatList";
+import { useSidebar } from "@/components/sidebar-context";
 
 interface ProjectWithChats extends ProjectOption {
   chats: { id: string; title: string | null }[];
@@ -55,6 +56,7 @@ function ProjectNode({
   projectOptions: ProjectOption[];
 }) {
   const pathname = usePathname();
+  const { closeMobile } = useSidebar();
   const active = pathname === `/projects/${project.id}`;
   const hasActiveChat = project.chats.some(
     (c) => pathname === `/chat/${c.id}`,
@@ -79,6 +81,7 @@ function ProjectNode({
         </button>
         <Link
           href={`/projects/${project.id}`}
+          onClick={closeMobile}
           className={cn(
             "flex-1 truncate rounded-md px-1 py-1 text-sm motion-colors hover:bg-sidebar-accent",
             active && "bg-sidebar-accent",
@@ -88,6 +91,7 @@ function ProjectNode({
         </Link>
         <Link
           href={`/?projectId=${project.id}`}
+          onClick={closeMobile}
           aria-label={`New chat in ${project.name}`}
           className={cn(
             "mr-0.5 rounded p-1 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2",

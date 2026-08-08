@@ -26,7 +26,7 @@ import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
-  const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
+  const { closeMobile, closeSidebar, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -71,10 +71,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         <span className="font-brand text-sm font-semibold tracking-tight">overtchat</span>
         <button
           type="button"
-          onClick={() => {
-            setOpenMobile(false);
-            setCollapsed(true);
-          }}
+          onClick={closeSidebar}
           aria-label="Collapse sidebar"
           className="rounded-md p-1.5 text-muted-foreground hover:bg-sidebar-accent hover:text-foreground max-md:p-2.5"
         >
@@ -87,7 +84,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           <Link
             href="/"
             onClick={(e) => {
-              setOpenMobile(false);
+              closeMobile();
               if (pathname === "/") {
                 e.preventDefault();
                 router.refresh();
@@ -102,7 +99,10 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           </Link>
           <button
             type="button"
-            onClick={openPalette}
+            onClick={() => {
+              closeMobile();
+              openPalette();
+            }}
             className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
           >
             <Search className="size-4 shrink-0 text-muted-foreground" />
@@ -111,7 +111,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           </button>
           <Link
             href="/activity"
-            onClick={() => setOpenMobile(false)}
+            onClick={closeMobile}
             className={cn(
               "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
               pathname.startsWith("/activity") && "bg-sidebar-accent",
@@ -149,7 +149,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
 function AdminConnections() {
   const { data: connections = [] } = useAgentConnections();
-  const { setOpenMobile } = useSidebar();
+  const { closeMobile } = useSidebar();
 
   return (
     <>
@@ -158,7 +158,7 @@ function AdminConnections() {
         action={
           <Link
             href="/settings/connections?add=1"
-            onClick={() => setOpenMobile(false)}
+            onClick={closeMobile}
             aria-label="Add agent"
             title="Add agent"
             className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"

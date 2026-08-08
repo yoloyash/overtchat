@@ -114,7 +114,7 @@ function WorkspaceNode({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { setOpenMobile } = useSidebar();
+  const { closeMobile } = useSidebar();
   const createSession = useCreateAgentSession();
   const hasActiveSession = workspace.sessions.some(
     (session) => pathname === `/agents/${session.id}`,
@@ -137,7 +137,7 @@ function WorkspaceNode({
   async function startSession() {
     try {
       const id = await createSession.mutateAsync(workspace.id);
-      setOpenMobile(false);
+      closeMobile();
       setOpen(true);
       router.push(`/agents/${id}`);
     } catch (cause) {
@@ -225,13 +225,13 @@ function WorkspaceNode({
 
 function SessionLink({ session }: { session: AgentSessionListItem }) {
   const pathname = usePathname();
-  const { setOpenMobile } = useSidebar();
+  const { closeMobile } = useSidebar();
   const title = session.name || session.firstMessage || "Untitled session";
   return (
     <li>
       <Link
         href={`/agents/${session.id}`}
-        onClick={() => setOpenMobile(false)}
+        onClick={closeMobile}
         title={title}
         className={cn(
           "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
