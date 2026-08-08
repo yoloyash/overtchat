@@ -29,7 +29,7 @@ import {
   RenameAgentSessionDialog,
 } from "./AgentSessionDialogs";
 import { AgentMessageList } from "./AgentMessageList";
-import type { AgentRunActivity } from "./AgentMessageList";
+import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionHeader } from "./AgentSessionHeader";
 
 type UnknownRecord = Record<string, unknown>;

@@ -1,23 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
-  Brain,
   ChevronDown,
-  CircleAlert,
-  CircleCheck,
-  CircleX,
-  FilePenLine,
-  FileText,
-  Globe,
-  Loader2,
+  Info,
   Minimize2,
-  Search,
   Terminal,
-  Wrench,
   GitBranch,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,31 +16,23 @@ import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
   STREAMDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
-import { ThinkingContent } from "@/components/chat/ThinkingContent";
 import {
-  agentToolStatus,
-  describeAgentActivity,
-  describeAgentTool,
-  formatAgentToolDetail,
   presentAgentError,
   projectAgentTranscript,
-  type AgentActivityEntry,
   type AgentErrorPresentation,
-  type AgentToolActivity,
-  type AgentToolCategory,
-  type AgentToolStatus,
   type AgentTranscriptItem,
 } from "@/lib/agents/presentation";
-import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import {
+  AgentActivityGroup,
+  AgentRunIndicator,
+  agentActivityOwnsLiveStatus,
+  type AgentRunActivity,
+} from "./AgentActivity";
+
+export type { AgentRunActivity } from "./AgentActivity";
 
 type UnknownRecord = Record<string, unknown>;
-
-export type AgentRunActivity =
-  | "working"
-  | "stopping"
-  | "compacting"
-  | "reconnecting";
 
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -104,6 +87,11 @@ export function AgentMessageList({
     () => projectAgentTranscript(messages),
     [messages],
   );
+  const trailingItem = transcript.at(-1);
+  const activityHasLiveStep =
+    activity === "working" &&
+    trailingItem?.type === "activity" &&
+    agentActivityOwnsLiveStatus(trailingItem.entries, streaming);
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -130,9 +118,10 @@ export function AgentMessageList({
                   key={item.key}
                   item={item}
                   active={streaming && index === transcript.length - 1}
+                  activityStartedAt={activityStartedAt}
                 />
               ))}
-              {activity && (
+              {activity && !activityHasLiveStep && (
                 <AgentRunIndicator
                   activity={activity}
                   startedAt={activityStartedAt}
@@ -165,63 +154,14 @@ export function AgentMessageList({
   );
 }
 
-function formatElapsed(milliseconds: number): string {
-  const seconds = Math.max(0, Math.floor(milliseconds / 1000));
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ${minutes % 60}m`;
-}
-
-function AgentRunIndicator({
-  activity,
-  startedAt,
-  providerLabel,
-}: {
-  activity: AgentRunActivity;
-  startedAt: number | null;
-  providerLabel: string;
-}) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (startedAt === null) return;
-    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [startedAt]);
-
-  const label =
-    activity === "stopping"
-      ? "Stopping"
-      : activity === "compacting"
-        ? "Compacting"
-        : activity === "reconnecting"
-          ? "Reconnecting"
-          : "Working";
-  const elapsed =
-    startedAt === null ? null : formatElapsed(Math.max(0, now - startedAt));
-
-  return (
-    <div
-      className="flex min-h-8 items-center gap-2 py-1 text-xs text-muted-foreground"
-      role="status"
-      aria-label={`${providerLabel}: ${label.toLowerCase()}${elapsed ? ` for ${elapsed}` : ""}`}
-      data-testid="agent-run-activity"
-    >
-      <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />
-      <span className="font-medium text-foreground">{label}</span>
-      {elapsed && <span className="tabular-nums">{elapsed}</span>}
-    </div>
-  );
-}
-
 function AgentTranscriptRow({
   item,
   active,
+  activityStartedAt,
 }: {
   item: AgentTranscriptItem;
   active: boolean;
+  activityStartedAt: number | null;
 }) {
   if (item.type === "message") {
     return <AgentMessage message={item.message} />;
@@ -236,7 +176,13 @@ function AgentTranscriptRow({
   if (item.type === "assistant_error") {
     return <AgentErrorNotice error={item.error} />;
   }
-  return <AgentActivityGroup entries={item.entries} active={active} />;
+  return (
+    <AgentActivityGroup
+      entries={item.entries}
+      active={active}
+      startedAt={activityStartedAt}
+    />
+  );
 }
 
 function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
@@ -286,8 +232,11 @@ function AgentMessage({ message }: { message: unknown }) {
     if (record.display === false) return null;
     const text = textOfContent(record.content);
     return text ? (
-      <div className="rounded-lg border bg-muted/20 px-3 py-2 text-sm">
-        <Markdown>{text}</Markdown>
+      <div className="flex items-start gap-2 py-1 text-sm text-muted-foreground">
+        <Info className="mt-0.5 size-4 shrink-0" />
+        <div className="min-w-0 flex-1 text-foreground/90">
+          <Markdown>{text}</Markdown>
+        </div>
       </div>
     ) : null;
   }
@@ -332,239 +281,6 @@ function UserMessage({ content }: { content: unknown }) {
       )}
     </div>
   );
-}
-
-function AgentActivityGroup({
-  entries,
-  active,
-}: {
-  entries: AgentActivityEntry[];
-  active: boolean;
-}) {
-  const presentation = describeAgentActivity(entries, active);
-  const hasError = presentation.status === "failed";
-  const [open, setOpen] = useState(hasError);
-  const toolCount = entries.filter((entry) => entry.type === "tool").length;
-
-  return (
-    <div
-      className={cn(
-        "overflow-hidden rounded-lg border bg-muted/10 text-xs",
-        hasError && "border-destructive/30",
-      )}
-      data-testid="agent-activity-group"
-    >
-      <button
-        type="button"
-        onClick={() => setOpen((current) => !current)}
-        aria-expanded={open}
-        className="flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left motion-colors hover:bg-muted/30"
-      >
-        <ActivityIcon
-          entries={entries}
-          status={presentation.status}
-        />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium text-foreground">
-            {presentation.label}
-          </span>
-          {presentation.secondary && (
-            <span className="block truncate font-mono text-[11px] text-muted-foreground">
-              {presentation.secondary}
-            </span>
-          )}
-        </span>
-        <ChevronDown
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground motion-transform",
-            open && "rotate-180",
-          )}
-        />
-      </button>
-      {open && (
-        <div className="divide-y border-t" data-testid="agent-activity-details">
-          {entries.map((entry) =>
-            entry.type === "thinking" ? (
-              <ThinkingActivityDetail
-                key={entry.id}
-                content={entry.content}
-                showLabel={toolCount > 0}
-              />
-            ) : (
-              <ToolActivityRow
-                key={entry.id}
-                tool={entry.tool}
-                active={active}
-                defaultOpen={toolCount === 1}
-              />
-            ),
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ThinkingActivityDetail({
-  content,
-  showLabel,
-}: {
-  content: string;
-  showLabel: boolean;
-}) {
-  return (
-    <div className="px-3 py-3">
-      {showLabel && (
-        <div className="mb-2 flex items-center gap-2 text-muted-foreground">
-          <Brain className="size-3.5 shrink-0" />
-          <span className="font-medium">Thinking</span>
-        </div>
-      )}
-      <ThinkingContent content={content} />
-    </div>
-  );
-}
-
-function ToolActivityRow({
-  tool,
-  active,
-  defaultOpen,
-}: {
-  tool: AgentToolActivity;
-  active: boolean;
-  defaultOpen: boolean;
-}) {
-  const presentation = describeAgentTool(tool);
-  const status = agentToolStatus(tool, active);
-  const detail = formatAgentToolDetail(tool);
-  const [open, setOpen] = useState(defaultOpen && Boolean(detail));
-  const canOpen = Boolean(detail);
-
-  return (
-    <div data-testid="agent-tool-activity">
-      <button
-        type="button"
-        onClick={() => canOpen && setOpen((current) => !current)}
-        disabled={!canOpen}
-        aria-expanded={canOpen ? open : undefined}
-        aria-label={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}
-        className={cn(
-          "flex min-h-10 w-full items-center gap-2.5 px-3 py-2 text-left",
-          canOpen && "motion-colors hover:bg-muted/30",
-        )}
-      >
-        <ToolIcon category={presentation.category} />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate font-medium text-foreground">
-            {presentation.label}
-          </span>
-          {presentation.summary && (
-            <span className="block truncate font-mono text-[11px] text-muted-foreground">
-              {presentation.summary}
-            </span>
-          )}
-        </span>
-        <ToolStatusIcon status={status} />
-        {canOpen && (
-          <ChevronDown
-            className={cn(
-              "size-3 shrink-0 text-muted-foreground motion-transform",
-              open && "rotate-180",
-            )}
-          />
-        )}
-      </button>
-      {open && detail && (
-        <pre className="max-h-80 overflow-auto border-t bg-background/40 px-3 py-3 font-mono text-xs leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
-          {detail}
-        </pre>
-      )}
-    </div>
-  );
-}
-
-function ActivityIcon({
-  entries,
-  status,
-}: {
-  entries: AgentActivityEntry[];
-  status: AgentToolStatus;
-}) {
-  if (status === "running") {
-    return (
-      <Loader2
-        className={cn(
-          "size-4 shrink-0 text-muted-foreground",
-          motionClasses.spinner,
-        )}
-      />
-    );
-  }
-  if (status === "failed" || status === "stopped") {
-    return (
-      <CircleAlert
-        className={cn(
-          "size-4 shrink-0",
-          status === "failed" ? "text-destructive" : "text-muted-foreground",
-        )}
-      />
-    );
-  }
-  const categories = new Set(
-    entries.flatMap((entry) =>
-      entry.type === "tool" ? [describeAgentTool(entry.tool).category] : [],
-    ),
-  );
-  if (categories.size === 0) {
-    return <Brain className="size-4 shrink-0 text-muted-foreground" />;
-  }
-  if (categories.size !== 1) {
-    return <Wrench className="size-4 shrink-0 text-muted-foreground" />;
-  }
-  return <ToolIcon category={[...categories][0]} className="size-4" />;
-}
-
-function ToolIcon({
-  category,
-  className = "size-3.5",
-}: {
-  category: AgentToolCategory;
-  className?: string;
-}) {
-  const iconClassName = cn(className, "shrink-0 text-muted-foreground");
-  switch (category) {
-    case "shell":
-      return <Terminal className={iconClassName} />;
-    case "read":
-      return <FileText className={iconClassName} />;
-    case "edit":
-    case "write":
-      return <FilePenLine className={iconClassName} />;
-    case "search":
-      return <Search className={iconClassName} />;
-    case "fetch":
-      return <Globe className={iconClassName} />;
-    case "other":
-      return <Wrench className={iconClassName} />;
-  }
-}
-
-function ToolStatusIcon({ status }: { status: AgentToolStatus }) {
-  const className = cn(
-    "size-3.5 shrink-0 text-muted-foreground",
-    status === "running" && motionClasses.spinner,
-    status === "failed" && "text-destructive",
-  );
-  switch (status) {
-    case "running":
-      return <Loader2 className={className} />;
-    case "completed":
-      return <CircleCheck className={className} />;
-    case "failed":
-      return <CircleAlert className={className} />;
-    case "stopped":
-      return <CircleX className={className} />;
-  }
 }
 
 function Markdown({

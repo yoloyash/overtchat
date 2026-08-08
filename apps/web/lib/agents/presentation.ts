@@ -584,12 +584,14 @@ export function describeAgentActivity(
   }
 
   if (status === "running") {
-    const runningTools = statuses.filter(
+    const runningIndex = statuses.findLastIndex(
       (candidate) => candidate === "running",
-    ).length;
+    );
+    const runningTool = tools[runningIndex];
+    const current = describeAgentTool(runningTool);
     return {
-      label: `Running ${plural(runningTools, "tool")}`,
-      secondary: null,
+      label: singleActivityLabel(current, "running"),
+      secondary: current.summary,
       status,
     };
   }

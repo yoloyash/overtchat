@@ -308,6 +308,31 @@ describe("agent activity presentation", () => {
     });
   });
 
+  it("names the latest running action instead of showing a generic tool count", () => {
+    const shell = tool("shell", "bash", { command: "npm test" });
+    const search = {
+      ...tool("search", "grep", {
+        pattern: "runtimeStatus",
+        path: "apps/web",
+      }),
+      hasResult: false,
+    };
+
+    expect(
+      describeAgentActivity(
+        [
+          { type: "tool", id: "shell", tool: shell },
+          { type: "tool", id: "search", tool: search },
+        ],
+        true,
+      ),
+    ).toEqual({
+      label: "Searching",
+      secondary: "runtimeStatus",
+      status: "running",
+    });
+  });
+
   it("surfaces failed counts without splitting their tool results", () => {
     const first = tool("first", "bash", { command: "npm test" });
     const second = {
