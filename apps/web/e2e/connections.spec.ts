@@ -290,6 +290,28 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     await page.getByRole("button", { name: "Add workspace" }).click();
     const dialog = page.getByRole("dialog", { name: "Add workspace" });
     await expect(dialog).toBeVisible();
+    await expect(dialog.getByTitle(os.homedir(), { exact: true })).toBeVisible();
+    await page.screenshot({
+      path: testInfo.outputPath("workspace-dialog-desktop.png"),
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.screenshot({
+      path: testInfo.outputPath("workspace-dialog-mobile.png"),
+      fullPage: true,
+    });
+    expect(
+      await page.evaluate(
+        () =>
+          document.documentElement.scrollWidth <=
+          document.documentElement.clientWidth,
+      ),
+    ).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await dialog.getByRole("button", { name: "Enter path" }).click();
+    await expect(dialog.getByLabel("Directory path")).toHaveValue(os.homedir());
+    await dialog.getByRole("button", { name: "Browse folders" }).click();
+    await expect(dialog.getByTitle(os.homedir(), { exact: true })).toBeVisible();
     const relativeWorkspacePath = path.relative(os.homedir(), workspacePath);
     expect(relativeWorkspacePath.startsWith("..")).toBe(false);
     for (const segment of relativeWorkspacePath.split(path.sep)) {
@@ -297,11 +319,10 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
         .getByRole("button", { name: segment, exact: true })
         .click();
     }
-    await dialog.getByRole("button", { name: "Select" }).click();
-    await expect(dialog.locator("#agent-workspace-path")).toHaveValue(
-      workspacePath,
-    );
-    await dialog.getByRole("button", { name: "Attach" }).click();
+    await expect(dialog.getByTitle(workspacePath, { exact: true })).toBeVisible();
+    await dialog
+      .getByRole("button", { name: "Add workspace", exact: true })
+      .click();
     await expect(page.getByText("Workspace attached")).toBeVisible({
       timeout: 90_000,
     });
@@ -312,13 +333,16 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
 
   await test.step("open a native Pi session from the sidebar hierarchy", async () => {
     await page
-      .getByRole("button", { name: "This machine Pi", exact: true })
+      .getByRole("button", { name: "Expand This machine", exact: true })
       .click();
     await page
-      .getByRole("button", { name: workspaceName, exact: true })
+      .getByRole("button", { name: `Expand ${workspaceName}`, exact: true })
       .click();
     await page
-      .getByRole("button", { name: "New session", exact: true })
+      .getByRole("button", {
+        name: `New session in ${workspaceName}`,
+        exact: true,
+      })
       .click();
     await page.waitForURL("**/agents/**", { timeout: 150_000 });
     await expect(page.getByText("New Pi session")).toBeVisible({
@@ -488,20 +512,24 @@ test("connect local Oh My Pi and use its native commands", async ({
       .getByRole("button", { name: segment, exact: true })
       .click();
   }
-  await dialog.getByRole("button", { name: "Select" }).click();
-  await dialog.getByRole("button", { name: "Attach" }).click();
+  await dialog
+    .getByRole("button", { name: "Add workspace", exact: true })
+    .click();
   await expect(page.getByText("Workspace attached")).toBeVisible({
     timeout: 90_000,
   });
 
   await page
-    .getByRole("button", { name: "This machine Oh My Pi", exact: true })
+    .getByRole("button", { name: "Expand This machine", exact: true })
     .click();
   await page
-    .getByRole("button", { name: workspaceName, exact: true })
+    .getByRole("button", { name: `Expand ${workspaceName}`, exact: true })
     .click();
   await page
-    .getByRole("button", { name: "New session", exact: true })
+    .getByRole("button", {
+      name: `New session in ${workspaceName}`,
+      exact: true,
+    })
     .click();
   await page.waitForURL("**/agents/**", { timeout: 150_000 });
   await expect(page.getByText("New Oh My Pi session")).toBeVisible({
@@ -593,8 +621,11 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
   ).toBeVisible({
     timeout: 30_000,
   });
-  await dialog.locator("#agent-workspace-path").fill(remoteWorkspace);
-  await dialog.getByRole("button", { name: "Attach" }).click();
+  await dialog.getByRole("button", { name: "Enter path" }).click();
+  await dialog.getByLabel("Directory path").fill(remoteWorkspace);
+  await dialog
+    .getByRole("button", { name: "Add workspace", exact: true })
+    .click();
   await expect(page.getByText("Workspace attached")).toBeVisible({
     timeout: 90_000,
   });
@@ -604,18 +635,22 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
 
   await page
     .getByRole("button", {
-      name: `${sshAlias} Oh My Pi`,
+      name: `Expand ${sshAlias}`,
+      exact: true,
+    })
+    .click();
+  const remoteWorkspaceName = path.basename(remoteWorkspace);
+  await page
+    .getByRole("button", {
+      name: `Expand ${remoteWorkspaceName}`,
       exact: true,
     })
     .click();
   await page
     .getByRole("button", {
-      name: path.basename(remoteWorkspace),
+      name: `New session in ${remoteWorkspaceName}`,
       exact: true,
     })
-    .click();
-  await page
-    .getByRole("button", { name: "New session", exact: true })
     .click();
   await page.waitForURL("**/agents/**", { timeout: 150_000 });
   await expect(page.getByText("New Oh My Pi session")).toBeVisible({
