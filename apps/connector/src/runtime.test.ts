@@ -265,6 +265,5 @@ describe("connector protocol validation", () => {
     expect(
       isHostConnectorProtocolVersion(HOST_CONNECTOR_PROTOCOL_VERSION + 1),
     ).toBe(false);
-    expect(isHostConnectorProtocolVersion(1)).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
-export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 2;
-export const HOST_CONNECTOR_PROTOCOL_VERSION = 2;
+export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 1;
+export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
 
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
