@@ -1,0 +1,433 @@
+"use client";
+
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ArrowUp,
+  Command,
+  CornerUpRight,
+  ListEnd,
+  Loader2,
+  Pencil,
+  Square,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { piSlashCommandQuery } from "@/lib/agents/pi/commands";
+import type {
+  AgentQueuedMessage,
+  AgentSlashCommand,
+} from "@/lib/agents/types";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+
+function commandSource(source: AgentSlashCommand["source"]): string {
+  const labels: Record<AgentSlashCommand["source"], string> = {
+    builtin: "Built-in",
+    extension: "Extension",
+    prompt: "Prompt",
+    skill: "Skill",
+    custom: "Custom",
+    mcp_prompt: "MCP prompt",
+    file: "File",
+  };
+  return labels[source];
+}
+
+export function AgentComposer({
+  providerLabel,
+  commands,
+  queuedMessages,
+  supportsSteer,
+  running,
+  pending,
+  stopping,
+  disabled,
+  onSubmit,
+  onStop,
+  onEditQueued,
+  onSteerQueued,
+}: {
+  providerLabel: string;
+  commands: AgentSlashCommand[];
+  queuedMessages: AgentQueuedMessage[];
+  supportsSteer: boolean;
+  running: boolean;
+  pending: boolean;
+  stopping: boolean;
+  disabled: boolean;
+  onSubmit: (
+    message: string,
+    delivery: "prompt" | "queue" | "steer",
+  ) => Promise<boolean>;
+  onStop: () => void;
+  onEditQueued: (id: string) => Promise<boolean>;
+  onSteerQueued: (id: string) => Promise<boolean>;
+}) {
+  const [input, setInput] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const listboxId = useId();
+  const optionIdPrefix = useId();
+
+  useEffect(() => {
+    const element = textareaRef.current;
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  }, [input]);
+
+  const query = piSlashCommandQuery(input);
+  const filteredCommands = useMemo(() => {
+    if (query === null) return [];
+    if (!query) return commands;
+    return commands.filter((command) =>
+      [command.name, command.description ?? "", command.source]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [commands, query]);
+  const menuOpen =
+    query !== null &&
+    input !== dismissedDraft &&
+    filteredCommands.length > 0;
+  const activeRow = Math.min(
+    activeIndex,
+    Math.max(0, filteredCommands.length - 1),
+  );
+
+  function selectCommand(command: AgentSlashCommand) {
+    if (
+      command.source === "builtin" &&
+      !command.argumentHint &&
+      !pending &&
+      !disabled
+    ) {
+      void submitMessage(`/${command.name}`, "prompt");
+      return;
+    }
+
+    setInput(`/${command.name} `);
+    setDismissedDraft(null);
+    setActiveIndex(0);
+    requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      element?.focus({ preventScroll: true });
+      element?.setSelectionRange(element.value.length, element.value.length);
+    });
+  }
+
+  async function submitMessage(
+    message: string,
+    delivery: "prompt" | "queue" | "steer",
+  ) {
+    if (!message || pending || submitting || disabled) return;
+    setSubmitting(true);
+    try {
+      const accepted = await onSubmit(message, delivery);
+      if (!accepted) return;
+      setInput("");
+      setDismissedDraft(null);
+      setActiveIndex(0);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function submit(
+    delivery: "prompt" | "queue" | "steer" = running
+      ? supportsSteer
+        ? "steer"
+        : "queue"
+      : "prompt",
+  ) {
+    const message = input.trim();
+    void submitMessage(message, delivery);
+  }
+
+  async function editQueuedMessage(message: AgentQueuedMessage) {
+    if (pending || submitting || disabled || input.trim()) return;
+    setInput(message.message);
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    setSubmitting(true);
+    try {
+      await onEditQueued(message.id);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function steerQueuedMessage(id: string) {
+    if (pending || submitting || disabled) return;
+    setSubmitting(true);
+    try {
+      await onSteerQueued(id);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function onKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.nativeEvent.isComposing) return;
+    if (menuOpen) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissedDraft(input);
+        return;
+      }
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        setActiveIndex(
+          (activeRow + delta + filteredCommands.length) %
+            filteredCommands.length,
+        );
+        return;
+      }
+      if (
+        (event.key === "Enter" && !event.shiftKey) ||
+        (event.key === "Tab" && !event.shiftKey)
+      ) {
+        event.preventDefault();
+        selectCommand(filteredCommands[activeRow]);
+        return;
+      }
+    }
+    if (event.key === "Escape" && running) {
+      event.preventDefault();
+      onStop();
+      return;
+    }
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submit();
+    }
+  }
+
+  return (
+    <div className="relative">
+      {menuOpen && (
+        <div
+          className={cn(
+            "absolute bottom-full left-0 z-30 mb-2 w-full max-w-lg overflow-hidden rounded-xl border bg-popover text-sm text-popover-foreground shadow-md",
+            motionClasses.palette,
+          )}
+        >
+          <div
+            id={listboxId}
+            role="listbox"
+            aria-label={`${providerLabel} commands`}
+            className="max-h-72 overflow-y-auto p-1.5"
+          >
+            {filteredCommands.map((command, index) => (
+              <button
+                key={`${command.source}:${command.name}`}
+                id={`${optionIdPrefix}-${index}`}
+                type="button"
+                role="option"
+                aria-selected={index === activeRow}
+                onPointerDown={(event) => event.preventDefault()}
+                onPointerMove={() => setActiveIndex(index)}
+                onClick={() => selectCommand(command)}
+                className={cn(
+                  "flex min-h-11 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left motion-colors",
+                  index === activeRow && "bg-accent text-accent-foreground",
+                )}
+              >
+                <Command className="size-4 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium">
+                    /{command.name}
+                    {command.argumentHint && (
+                      <span className="ml-1.5 font-normal text-muted-foreground">
+                        {command.argumentHint}
+                      </span>
+                    )}
+                  </span>
+                  {command.description && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {command.description}
+                    </span>
+                  )}
+                </span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">
+                  {commandSource(command.source)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {queuedMessages.length > 0 && (
+        <section
+          aria-label="Pending messages"
+          className="mx-3 max-h-32 overflow-y-auto rounded-t-xl border border-b-0 bg-muted/50 px-3"
+        >
+          <div className="divide-y">
+            {queuedMessages.map((queuedMessage) => {
+              const sending = queuedMessage.status === "sending";
+              return (
+                <div
+                  key={queuedMessage.id}
+                  className="flex min-h-10 min-w-0 items-center gap-2 text-xs"
+                >
+                  <ListEnd className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span
+                    className="min-w-0 flex-1 truncate text-foreground"
+                    title={queuedMessage.message}
+                  >
+                    {queuedMessage.message.replace(/\s+/g, " ")}
+                  </span>
+                  {!sending && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-7 shrink-0 rounded-md"
+                        disabled={
+                          pending ||
+                          submitting ||
+                          disabled ||
+                          Boolean(input.trim())
+                        }
+                        onClick={() => void editQueuedMessage(queuedMessage)}
+                        aria-label="Edit queued message"
+                        title={
+                          input.trim()
+                            ? "Clear the current draft before editing"
+                            : "Edit queued message"
+                        }
+                      >
+                        <Pencil />
+                      </Button>
+                      {supportsSteer && running && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 shrink-0 rounded-md px-2 text-xs"
+                          disabled={pending || submitting || disabled}
+                          onClick={() =>
+                            void steerQueuedMessage(queuedMessage.id)
+                          }
+                          aria-label="Steer with queued message"
+                          title={`Add this message to the active ${providerLabel} turn`}
+                        >
+                          <CornerUpRight />
+                          Steer
+                        </Button>
+                      )}
+                    </>
+                  )}
+                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
+                    {sending ? "Sending" : "Queued"}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <div className="relative flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+        <Textarea
+          ref={textareaRef}
+          rows={1}
+          value={input}
+          disabled={disabled || pending || submitting}
+          placeholder={`Message ${providerLabel} or type / for commands`}
+          className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+          onChange={(event) => {
+            setInput(event.target.value);
+            setDismissedDraft(null);
+            setActiveIndex(0);
+          }}
+          onKeyDown={onKeyDown}
+          role="combobox"
+          aria-expanded={menuOpen}
+          aria-controls={menuOpen ? listboxId : undefined}
+          aria-activedescendant={
+            menuOpen ? `${optionIdPrefix}-${activeRow}` : undefined
+          }
+          aria-autocomplete="list"
+        />
+        <div className="flex h-8 items-center justify-end gap-1">
+          {running && supportsSteer && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              className="rounded-full"
+              disabled={pending || submitting}
+              onClick={onStop}
+              aria-label={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
+              title={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
+            >
+              {stopping ? (
+                <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+              ) : (
+                <Square className="size-3 fill-current" />
+              )}
+            </Button>
+          )}
+          {running && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="icon-sm"
+              className="rounded-full"
+              disabled={!input.trim() || pending || submitting || disabled}
+              onClick={() => submit("queue")}
+              aria-label={`Queue message for ${providerLabel}`}
+              title={`Queue after ${providerLabel} finishes`}
+            >
+              <ListEnd />
+            </Button>
+          )}
+          <Button
+            type="button"
+            size={running ? "sm" : "icon-sm"}
+            className="rounded-full"
+            disabled={!input.trim() || pending || submitting || disabled}
+            onClick={() => submit()}
+            aria-label={
+              running
+                ? supportsSteer
+                  ? `Steer ${providerLabel}`
+                  : `Queue message for ${providerLabel}`
+                : "Send message"
+            }
+            title={
+              running
+                ? supportsSteer
+                  ? `Add message to the active ${providerLabel} turn`
+                  : `Queue after ${providerLabel} finishes`
+                : "Send message"
+            }
+          >
+            {running ? (
+              supportsSteer ? (
+                <CornerUpRight />
+              ) : (
+                <ListEnd />
+              )
+            ) : (
+              <ArrowUp />
+            )}
+            {running && (supportsSteer ? "Steer" : "Queue")}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Cable,
   Cpu,
   Database,
   KeyRound,
@@ -30,6 +31,7 @@ const USER_ITEMS: Item[] = [
 ];
 
 const ADMIN_ITEMS: Item[] = [
+  { href: "/settings/connections", label: "Connections", icon: Cable },
   { href: "/settings/models", label: "Models", icon: Cpu },
   { href: "/settings/users", label: "Users", icon: Users },
 ];

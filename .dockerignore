@@ -5,6 +5,13 @@
 **/.turbo
 npm-debug.log*
 apps/web/data
+apps/connector
+apps/mobile
+apps/site
+scripts
+**/test-results
+**/playwright-report
+**/coverage
 *.db
 *.db-journal
 *.db-wal

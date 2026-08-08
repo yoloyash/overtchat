@@ -9,13 +9,15 @@ import {
   SidebarProjects,
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
+import { SidebarConnections } from "@/components/SidebarConnections";
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
+import { useAgentConnections } from "@/lib/queries/agentConnections";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 
-export function SidebarClient() {
+export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const { setOpenMobile, setCollapsed, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
@@ -124,6 +126,8 @@ export function SidebarClient() {
           <span>New project</span>
         </button>
 
+        {isAdmin && <AdminConnections />}
+
         <SidebarChatList chats={unprojected} projects={projectOptions} />
       </div>
 
@@ -131,6 +135,17 @@ export function SidebarClient() {
         open={creatingProject}
         onClose={() => setCreatingProject(false)}
       />
+    </>
+  );
+}
+
+function AdminConnections() {
+  const { data: connections = [] } = useAgentConnections();
+  if (connections.length === 0) return null;
+  return (
+    <>
+      <SectionLabel>Connections</SectionLabel>
+      <SidebarConnections connections={connections} />
     </>
   );
 }

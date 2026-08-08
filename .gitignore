@@ -21,6 +21,7 @@ playwright/.cache/
 # production
 /build
 /dist
+/apps/connector/dist/
 
 # data (dev SQLite DB only; anchored so it can't match source dirs like settings/data/)
 /apps/web/data/
@@ -38,7 +39,8 @@ ROADMAP_MOBILE.md
 GEMINI.md
 CLAUDE.md
 AGENTS.md
-/scripts/
+/scripts/*
+!/scripts/install-connector.sh
 /apps/web/scripts/seed.ts
 
 # debug

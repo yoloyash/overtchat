@@ -1,0 +1,93 @@
+name: Build and publish Host Connector
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - ".github/workflows/connector-release.yml"
+      - "apps/connector/**"
+      - "packages/agent-bridge/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/install-connector.sh"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish into
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+
+      - run: npm ci
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Build Linux binaries
+        run: |
+          mkdir -p dist/connector-release
+          bun build apps/connector/src/cli.ts \
+            --compile \
+            --target=bun-linux-x64-baseline \
+            --outfile dist/connector-release/overtchat-connector-linux-amd64
+          bun build apps/connector/src/cli.ts \
+            --compile \
+            --target=bun-linux-arm64 \
+            --outfile dist/connector-release/overtchat-connector-linux-arm64
+          cp scripts/install-connector.sh dist/connector-release/
+          (
+            cd dist/connector-release
+            sha256sum \
+              overtchat-connector-linux-amd64 \
+              overtchat-connector-linux-arm64 \
+              > connector-checksums.txt
+          )
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: host-connector-release
+          path: dist/connector-release/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: host-connector-release
+          path: release
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 ||
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" release/* --clobber
