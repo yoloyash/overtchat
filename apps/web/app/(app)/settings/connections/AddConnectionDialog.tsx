@@ -201,7 +201,7 @@ export function AddConnectionDialog({
             connectorId: target.connectorId,
             provider,
             transport: "local",
-            name: "This machine",
+            name: "This server",
             executable: trimmedExecutable,
           }
         : {
@@ -218,7 +218,7 @@ export function AddConnectionDialog({
     try {
       const connection = await createMutation.mutateAsync(draft);
       toast.success({
-        title: `${agentProviderMetadata(provider).label} connected`,
+        title: `${agentProviderMetadata(provider).label} added`,
         description: connection.host.name,
       });
       reset();
@@ -227,7 +227,7 @@ export function AddConnectionDialog({
       setError(
         cause instanceof Error
           ? cause.message
-          : "The connection could not be saved.",
+          : "The agent could not be added.",
       );
     } finally {
       setConnectingKey(null);
@@ -256,7 +256,7 @@ export function AddConnectionDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Add connection
+            Add agent
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
             Choose where the coding agent is installed.
@@ -276,10 +276,10 @@ export function AddConnectionDialog({
               >
                 <TransportChoice
                   value="local"
-                  label="This machine"
+                  label="This server"
                   icon={Server}
                 />
-                <TransportChoice value="ssh" label="SSH" icon={Wifi} />
+                <TransportChoice value="ssh" label="SSH host" icon={Wifi} />
               </RadioGroup>
             </div>
 
@@ -473,7 +473,8 @@ export function AddConnectionDialog({
                           setError("");
                         }}
                       >
-                        Cancel
+                        <ChevronLeft />
+                        Back
                       </Button>
                       <Button
                         type="submit"
@@ -489,8 +490,8 @@ export function AddConnectionDialog({
                           <Loader2 className="animate-spin motion-reduce:animate-none" />
                         )}
                         {isConnected(customProvider)
-                          ? "Connected"
-                          : "Connect"}
+                          ? "Added"
+                          : "Add"}
                       </Button>
                     </div>
                   </form>
@@ -625,8 +626,8 @@ function DetectedAgents({
                   onClick={() => onConnect(installation)}
                   aria-label={
                     connected
-                      ? `${metadata.label} already connected`
-                      : `Connect ${metadata.label}`
+                      ? `${metadata.label} already added`
+                      : `Add ${metadata.label}`
                   }
                 >
                   {connectingKey === key ? (
@@ -634,7 +635,7 @@ function DetectedAgents({
                   ) : connected ? (
                     <Check />
                   ) : null}
-                  {connected ? "Connected" : "Connect"}
+                  {connected ? "Added" : "Add"}
                 </Button>
               </div>
             );
@@ -655,12 +656,12 @@ function TransportChoice({
   icon: typeof Server;
 }) {
   return (
-    <Label className="relative flex h-8 cursor-pointer items-center justify-center rounded-md px-8 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground">
+    <Label className="flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-2 text-xs font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground sm:px-3 sm:text-sm">
       <RadioGroupItem value={value} className="sr-only" />
-      <span className="absolute left-3 flex size-4 items-center justify-center">
+      <span className="flex size-4 shrink-0 items-center justify-center">
         <Icon className="size-3.5" />
       </span>
-      <span className="truncate">{label}</span>
+      <span className="whitespace-nowrap">{label}</span>
     </Label>
   );
 }

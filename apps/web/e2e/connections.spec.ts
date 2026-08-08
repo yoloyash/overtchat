@@ -42,7 +42,45 @@ async function startHostConnector(
   testInfo: import("@playwright/test").TestInfo,
 ): Promise<void> {
   await page.goto("/settings/connections");
-  await page.getByRole("button", { name: "Connect this machine" }).click();
+  await expect(
+    page.getByText(
+      "Use OvertChat as a web interface for coding agents.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByTitle("Pi", { exact: true })).toBeVisible();
+  await expect(page.getByTitle("Oh My Pi", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTitle("Claude Code · Coming soon", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByTitle("Codex · Coming soon", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Agent access" }),
+  ).toBeVisible();
+  await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Agents" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Set up" }).click();
+  await expect(
+    page.getByText("Install Host Connector", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Run this command in a terminal on the computer running OvertChat.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "About Host Connector" }).click();
+  await expect(
+    page.getByText(
+      /Lets OvertChat use agent binaries and SSH hosts available on this server/,
+    ),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   const command = await page.getByLabel("Host Connector install command").textContent();
   const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
   if (!pairCode) throw new Error("The Host Connector pairing code was missing.");
@@ -111,6 +149,8 @@ async function startHostConnector(
     .toBe(true);
   await page.reload();
   await expect(page.getByText("Playwright host · Online")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Agents" })).toBeVisible();
+  await expect(page.getByText("No agents added", { exact: true })).toBeVisible();
 }
 
 function seedSidebarSessions(count: number) {
@@ -149,6 +189,122 @@ function seedSidebarSessions(count: number) {
     db.close();
   }
 }
+
+test("explains agent access before setup", async ({ page }, testInfo) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Connections E2E Admin");
+  await page
+    .locator("#email")
+    .fill("connections-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+
+  await page.goto("/settings/connections");
+  await expect(
+    page.getByText(
+      "Use OvertChat as a web interface for coding agents.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.getByTitle("Pi", { exact: true })).toBeVisible();
+  await expect(page.getByTitle("Oh My Pi", { exact: true })).toBeVisible();
+  await expect(
+    page.getByTitle("Claude Code · Coming soon", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByTitle("Codex · Coming soon", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Agent access" }),
+  ).toBeVisible();
+  await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Agents" }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Set up" }).click();
+  await expect(
+    page.getByText("Install Host Connector", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      "Run this command in a terminal on the computer running OvertChat.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Waiting for connection…", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "About Host Connector" }).click();
+  await expect(
+    page.getByText(
+      /Lets OvertChat use agent binaries and SSH hosts available on this server/,
+    ),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("agent-access-setup-desktop.png"),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: testInfo.outputPath("agent-access-setup-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+});
+
+test("shows the Add agent flow after setup", async ({ page }, testInfo) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Agent Setup E2E Admin");
+  await page
+    .locator("#email")
+    .fill("agent-setup-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+
+  await startHostConnector(page, testInfo);
+  await expect(page.getByText("Local agents and SSH")).toBeVisible();
+  await page.getByRole("button", { name: "Add agent" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Add agent" });
+  await expect(dialog).toBeVisible();
+  const location = dialog.getByLabel("Connection location");
+  await expect(location).toContainText("This server");
+  await expect(location).toContainText("SSH host");
+  await dialog.getByRole("button", { name: "Use custom executable" }).click();
+  await expect(
+    dialog.getByRole("button", { name: "Back", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Add", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("add-agent-dialog-desktop.png"),
+    fullPage: true,
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({
+    path: testInfo.outputPath("add-agent-dialog-mobile.png"),
+    fullPage: true,
+  });
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+});
 
 test("connect local Pi, attach a workspace, and open a native session", async ({
   page,
@@ -225,9 +381,9 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     await expect(
       page.getByRole("heading", { name: "Connections" }),
     ).toBeVisible();
-    await page.getByRole("button", { name: "Add connection" }).click();
+    await page.getByRole("button", { name: "Add agent" }).click();
     const location = page.getByLabel("Connection location");
-    await location.getByText("SSH", { exact: true }).click();
+    await location.getByText("SSH host", { exact: true }).click();
     await expect(
       page.getByRole("button", { name: /docease-linode.*104\.237\.153\.169/ }),
     ).toBeVisible();
@@ -235,7 +391,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
       .getByRole("button", { name: /test-server.*10\.0\.0\.91:2222/ })
       .click();
     await expect(
-      page.getByRole("button", { name: "Connect Pi", exact: true }),
+      page.getByRole("button", { name: "Add Pi", exact: true }),
     ).toBeVisible();
     await expect(page.getByTitle("/usr/local/bin/pi")).toBeVisible();
     await expect(page.getByTitle("ssh test-server")).toBeVisible();
@@ -249,12 +405,12 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     await expect(
       page.getByRole("button", { name: "SSH config" }),
     ).toBeVisible();
-    await location.getByText("This machine", { exact: true }).click();
+    await location.getByText("This server", { exact: true }).click();
     await expect(page.getByLabel("Connection location")).toContainText(
-      "This machine",
+      "This server",
     );
     await expect(
-      page.getByRole("button", { name: "Connect Pi", exact: true }),
+      page.getByRole("button", { name: "Add Pi", exact: true }),
     ).toBeVisible({ timeout: 30_000 });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.screenshot({
@@ -278,12 +434,12 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     ).toHaveValue("pi");
     await customForm.getByRole("button", { name: "Cancel" }).click();
     await page
-      .getByRole("button", { name: "Connect Pi", exact: true })
+      .getByRole("button", { name: "Add Pi", exact: true })
       .click();
-    await expect(page.getByText("Pi connected")).toBeVisible({
+    await expect(page.getByText("Pi added")).toBeVisible({
       timeout: 150_000,
     });
-    await expect(page.getByText("This machine").first()).toBeVisible();
+    await expect(page.getByText("This server").first()).toBeVisible();
   });
 
   await test.step("browse and attach the worktree directory", async () => {
@@ -333,7 +489,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
 
   await test.step("open a native Pi session from the sidebar hierarchy", async () => {
     await page
-      .getByRole("button", { name: "Expand This machine", exact: true })
+      .getByRole("button", { name: "Expand This server", exact: true })
       .click();
     await page
       .getByRole("button", { name: `Expand ${workspaceName}`, exact: true })
@@ -482,10 +638,10 @@ test("connect local Oh My Pi and use its native commands", async ({
   await page.waitForURL("**/", { timeout: 15_000 });
 
   await startHostConnector(page, testInfo);
-  await page.getByRole("button", { name: "Add connection" }).click();
+  await page.getByRole("button", { name: "Add agent" }).click();
   await expect(
     page.getByRole("button", {
-      name: "Connect Oh My Pi",
+      name: "Add Oh My Pi",
       exact: true,
     }),
   ).toBeVisible({ timeout: 30_000 });
@@ -495,11 +651,11 @@ test("connect local Oh My Pi and use its native commands", async ({
   });
   await page
     .getByRole("button", {
-      name: "Connect Oh My Pi",
+      name: "Add Oh My Pi",
       exact: true,
     })
     .click();
-  await expect(page.getByText("Oh My Pi connected")).toBeVisible({
+  await expect(page.getByText("Oh My Pi added")).toBeVisible({
     timeout: 150_000,
   });
 
@@ -520,7 +676,7 @@ test("connect local Oh My Pi and use its native commands", async ({
   });
 
   await page
-    .getByRole("button", { name: "Expand This machine", exact: true })
+    .getByRole("button", { name: "Expand This server", exact: true })
     .click();
   await page
     .getByRole("button", { name: `Expand ${workspaceName}`, exact: true })
@@ -585,10 +741,10 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
   await page.waitForURL("**/", { timeout: 15_000 });
 
   await startHostConnector(page, testInfo);
-  await page.getByRole("button", { name: "Add connection" }).click();
+  await page.getByRole("button", { name: "Add agent" }).click();
   await page
     .getByLabel("Connection location")
-    .getByText("SSH", { exact: true })
+    .getByText("SSH host", { exact: true })
     .click();
 
   const sshHost = page
@@ -599,17 +755,17 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
   await sshHost.click();
   await expect(
     page.getByRole("button", {
-      name: "Connect Oh My Pi",
+      name: "Add Oh My Pi",
       exact: true,
     }),
   ).toBeVisible({ timeout: 30_000 });
   await page
     .getByRole("button", {
-      name: "Connect Oh My Pi",
+      name: "Add Oh My Pi",
       exact: true,
     })
     .click();
-  await expect(page.getByText("Oh My Pi connected")).toBeVisible({
+  await expect(page.getByText("Oh My Pi added")).toBeVisible({
     timeout: 150_000,
   });
 

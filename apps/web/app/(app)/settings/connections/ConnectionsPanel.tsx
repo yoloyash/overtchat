@@ -1,12 +1,15 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
+import { Popover } from "@base-ui/react/popover";
 import {
   Check,
   Clipboard,
   Folder,
   FolderPlus,
+  Info,
   Link2,
   Loader2,
   Plus,
@@ -16,6 +19,10 @@ import {
   Trash2,
   Wifi,
 } from "lucide-react";
+import claudeCodeIcon from "@/assets/agent-providers/claude-code.png";
+import codexIcon from "@/assets/agent-providers/codex.png";
+import ompIcon from "@/assets/agent-providers/omp.svg";
+import piIcon from "@/assets/agent-providers/pi.svg";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import type {
@@ -123,7 +130,7 @@ export function ConnectionsPanel() {
           pendingDetach.connection.id,
         );
         toast.success({
-          title: "Connection detached",
+          title: "Agent removed",
           description: pendingDetach.connection.host.name,
         });
       } else if (pendingDetach.type === "connector") {
@@ -177,29 +184,63 @@ export function ConnectionsPanel() {
     <div className="max-w-4xl space-y-6">
       <SettingsPageHeader
         title="Connections"
-        description="Coding agents available to your account."
+        description={
+          <span className="inline-flex flex-wrap items-center gap-2">
+            <span>Use OvertChat as a web interface for coding agents.</span>
+            <span
+              className="inline-flex items-center gap-1"
+              aria-label="Supported agents: Pi and Oh My Pi. Claude Code and Codex coming soon."
+            >
+              <span
+                className="flex size-6 items-center justify-center rounded-md border bg-background"
+                title="Pi"
+              >
+                <Image src={piIcon} alt="" className="size-4 object-contain" />
+              </span>
+              <span
+                className="flex size-6 items-center justify-center rounded-md border bg-zinc-950"
+                title="Oh My Pi"
+              >
+                <Image src={ompIcon} alt="" className="size-4 object-contain" />
+              </span>
+              <span
+                className="flex size-6 items-center justify-center rounded-md border bg-background opacity-40 grayscale"
+                title="Claude Code · Coming soon"
+              >
+                <Image
+                  src={claudeCodeIcon}
+                  alt=""
+                  className="size-4 object-contain"
+                />
+              </span>
+              <span
+                className="flex size-6 items-center justify-center rounded-md border bg-background opacity-40 grayscale"
+                title="Codex · Coming soon"
+              >
+                <Image
+                  src={codexIcon}
+                  alt=""
+                  className="size-4 object-contain"
+                />
+              </span>
+            </span>
+          </span>
+        }
         action={
-          <Button
-            size="sm"
-            disabled={!connector?.online}
-            onClick={() => setAddOpen(true)}
-            title={
-              connector?.online
-                ? "Add connection"
-                : "Connect this machine first"
-            }
-          >
-            <Plus /> Add connection
-          </Button>
+          connector?.online && connections.length > 0 ? (
+            <Button size="sm" onClick={() => setAddOpen(true)}>
+              <Plus /> Add agent
+            </Button>
+          ) : undefined
         }
       />
 
       <SettingsSection
-        title="Host Connector"
+        title="Agent access"
         description={
           connector
             ? `${connector.name} · ${connector.online ? "Online" : "Offline"}`
-            : "Not connected"
+            : "Not set up"
         }
       >
         {connectorError ? (
@@ -220,7 +261,10 @@ export function ConnectionsPanel() {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{connector.name}</p>
               <p className="text-xs text-muted-foreground">
-                {connector.version ? `Connector ${connector.version}` : "Connector"}
+                Local agents and SSH ·{" "}
+                {connector.version
+                  ? `Host Connector ${connector.version}`
+                  : "Host Connector"}
               </p>
             </div>
             {!connector.online && (
@@ -258,8 +302,13 @@ export function ConnectionsPanel() {
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
                 <Server className="size-4" />
               </span>
-              <span className="text-sm text-muted-foreground">
-                Local agents and SSH hosts
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">
+                  OvertChat host
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  Local agents and SSH
+                </span>
               </span>
             </div>
             <Button
@@ -273,12 +322,19 @@ export function ConnectionsPanel() {
               ) : (
                 <Link2 />
               )}
-              Connect this machine
+              Set up
             </Button>
           </div>
         )}
-        {pairing && (
+        {pairing && !connector && (
           <div className="border-t px-4 py-4">
+            <div className="mb-2 flex items-center gap-1">
+              <p className="text-sm font-medium">Install Host Connector</p>
+              <HostConnectorInfo />
+            </div>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Run this command in a terminal on the computer running OvertChat.
+            </p>
             <div className="flex items-center gap-2">
               <code
                 aria-label="Host Connector install command"
@@ -296,56 +352,75 @@ export function ConnectionsPanel() {
                 {commandCopied ? <Check /> : <Clipboard />}
               </Button>
             </div>
+            <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+              Waiting for connection…
+            </div>
           </div>
         )}
       </SettingsSection>
 
-      <SettingsSection
-        title="Coding agents"
-        description={`${connections.length} connection${
-          connections.length === 1 ? "" : "s"
-        } configured.`}
-      >
-        {listError ? (
-          <SettingsNotice tone="error" className="py-6">
-            {listError instanceof Error
-              ? listError.message
-              : "Connections could not be loaded."}
-          </SettingsNotice>
-        ) : connections.length === 0 ? (
-          <div className="px-4 py-12 text-center">
-            <TerminalSquare className="mx-auto size-5 text-muted-foreground" />
-            <p className="mt-3 text-sm text-muted-foreground">
-              No coding agents connected.
-            </p>
-          </div>
-        ) : (
-          connections.map((connection) => (
-            <ConnectionRow
-              key={connection.id}
-              connection={connection}
-              actionId={actionId}
-              onTest={() => void testConnection(connection)}
-              onAddWorkspace={() => setWorkspaceConnection(connection)}
-              onRefreshWorkspace={(workspace) =>
-                void refreshWorkspace(workspace)
-              }
-              onDetachWorkspace={(workspace) => {
-                setDetachError("");
-                setPendingDetach({
-                  type: "workspace",
-                  connection,
-                  workspace,
-                });
-              }}
-              onDetach={() => {
-                setDetachError("");
-                setPendingDetach({ type: "connection", connection });
-              }}
-            />
-          ))
-        )}
-      </SettingsSection>
+      {connector && (
+        <SettingsSection
+          title="Agents"
+          description={
+            connections.length > 0
+              ? `${connections.length} agent${
+                  connections.length === 1 ? "" : "s"
+                } available`
+              : undefined
+          }
+        >
+          {listError ? (
+            <SettingsNotice tone="error" className="py-6">
+              {listError instanceof Error
+                ? listError.message
+                : "Agents could not be loaded."}
+            </SettingsNotice>
+          ) : connections.length === 0 ? (
+            <div className="px-4 py-10 text-center">
+              <TerminalSquare className="mx-auto size-5 text-muted-foreground" />
+              <p className="mt-3 text-sm text-muted-foreground">
+                No agents added
+              </p>
+              {connector.online && (
+                <Button
+                  size="sm"
+                  className="mt-4"
+                  onClick={() => setAddOpen(true)}
+                >
+                  <Plus /> Add agent
+                </Button>
+              )}
+            </div>
+          ) : (
+            connections.map((connection) => (
+              <ConnectionRow
+                key={connection.id}
+                connection={connection}
+                actionId={actionId}
+                onTest={() => void testConnection(connection)}
+                onAddWorkspace={() => setWorkspaceConnection(connection)}
+                onRefreshWorkspace={(workspace) =>
+                  void refreshWorkspace(workspace)
+                }
+                onDetachWorkspace={(workspace) => {
+                  setDetachError("");
+                  setPendingDetach({
+                    type: "workspace",
+                    connection,
+                    workspace,
+                  });
+                }}
+                onDetach={() => {
+                  setDetachError("");
+                  setPendingDetach({ type: "connection", connection });
+                }}
+              />
+            ))
+          )}
+        </SettingsSection>
+      )}
 
       {connector && (
         <AddConnectionDialog
@@ -380,13 +455,11 @@ export function ConnectionsPanel() {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Detach{" "}
               {pendingDetach?.type === "workspace"
-                ? "workspace"
+                ? "Detach workspace?"
                 : pendingDetach?.type === "connector"
-                  ? "Host Connector"
-                : "connection"}
-              ?
+                  ? "Remove Host Connector?"
+                  : "Remove agent?"}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               {pendingDetach?.type === "connector" ? (
@@ -394,9 +467,8 @@ export function ConnectionsPanel() {
                   <span className="font-medium text-foreground">
                     {pendingDetach.connector.name}
                   </span>{" "}
-                  and every Agent Connection that uses it will be removed from
-                  OvertChat. Files and native agent sessions remain on their
-                  machines.
+                  and every agent that uses it will be removed from OvertChat.
+                  Files and native agent sessions remain on their machines.
                 </>
               ) : (
                 <>
@@ -437,13 +509,57 @@ export function ConnectionsPanel() {
                 {detaching && (
                   <Loader2 className="animate-spin motion-reduce:animate-none" />
                 )}
-                Detach
+                {pendingDetach?.type === "workspace" ? "Detach" : "Remove"}
               </Button>
             </div>
           </AlertDialog.Popup>
         </AlertDialog.Portal>
       </AlertDialog.Root>
     </div>
+  );
+}
+
+function HostConnectorInfo() {
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="size-7"
+            aria-label="About Host Connector"
+            title="About Host Connector"
+          />
+        }
+      >
+        <Info />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          side="bottom"
+          align="start"
+          sideOffset={6}
+          collisionPadding={8}
+          className="z-50"
+        >
+          <Popover.Popup
+            className={cn(
+              "w-72 max-w-[calc(100vw-1rem)] rounded-lg border bg-popover p-3 text-xs leading-5 text-popover-foreground shadow-md outline-none",
+              motionClasses.popup,
+            )}
+          >
+            <Popover.Title className="font-medium text-foreground">
+              Host Connector
+            </Popover.Title>
+            <p className="mt-1 text-muted-foreground">
+              Lets OvertChat use agent binaries and SSH hosts available on this
+              server. For Docker installs, run it on the Docker host.
+            </p>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }
 
@@ -468,7 +584,7 @@ function ConnectionRow({
   const provider = agentProviderMetadata(connection.provider);
   const hostDetail =
     connection.host.transport === "local"
-      ? "This machine"
+      ? "This server"
       : `ssh ${connection.host.sshAlias}`;
 
   return (
@@ -523,8 +639,8 @@ function ConnectionRow({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`Detach ${connection.host.name}`}
-            title={`Detach ${connection.host.name}`}
+            aria-label={`Remove ${provider.label} from ${connection.host.name}`}
+            title={`Remove ${provider.label}`}
             onClick={onDetach}
           >
             <Trash2 />
