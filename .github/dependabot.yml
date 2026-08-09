@@ -7,3 +7,8 @@ updates:
       interval: weekly
     # The schedule is required; routine version PRs are disabled.
     open-pull-requests-limit: 0
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns:
+          - "*"

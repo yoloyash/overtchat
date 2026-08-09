@@ -2,8 +2,13 @@ name: Web E2E Smoke
 
 on:
   push:
+    branches: [main, dev]
   pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   e2e:
