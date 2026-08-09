@@ -18,7 +18,7 @@ import {
   createModelCatalogManifest,
   MODEL_CATALOG_SOURCE_URL,
   validateModelCatalogArtifacts,
-} from "./model-catalog-artifacts";
+} from "../lib/providers/server/model-catalog-artifacts";
 
 const PROVIDERS = [
   ["openai", "openai"],
