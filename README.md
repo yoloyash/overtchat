@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A lightweight self-hosted chat and agent client that "just works".
+  A lightweight self-hosted chat client that "just works". One <code>docker compose up</code> and you're in.
 </p>
 
 <p align="center">
@@ -59,10 +59,6 @@ Connections**, choose **Set up** and run the generated command.
 It installs the OvertChat Host Connector as your Linux user; OvertChat never
 receives SSH keys or config. Remote aliases must already work non-interactively,
 for example `ssh devbox`.
-
-<p align="center">
-  <img src=".github/assets/overtchat-agents.png" alt="Oh My Pi completing a Linux hardware task through OvertChat" width="100%" />
-</p>
 
 ## Mobile
 
