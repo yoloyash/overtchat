@@ -89,6 +89,17 @@ export async function POST(
         sessionId: created.sessionId,
       });
     }
+    if (
+      normalized.type === "edit_message" ||
+      normalized.type === "fork_message"
+    ) {
+      const created = await agentRuntimeRegistry.fork(
+        authorized.owned,
+        runtime,
+        normalized,
+      );
+      return Response.json({ accepted: true, ...created });
+    }
     const commandResult = await runtime.command(normalized);
     if (
       normalized.type === "prompt" ||

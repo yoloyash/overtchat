@@ -222,6 +222,8 @@ export type AgentRuntimeCapabilities = {
   steer: boolean;
   customCompactionInstructions?: boolean;
   usage?: boolean;
+  editSentMessages?: boolean;
+  forkMessages?: boolean;
 };
 
 export type AgentUsageWindow = {
@@ -293,6 +295,14 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("new_session") }),
   z.object({ type: z.literal("show_usage") }),
+  z.object({
+    type: z.literal("edit_message"),
+    messageId: z.string().min(1).max(500),
+  }),
+  z.object({
+    type: z.literal("fork_message"),
+    messageId: z.string().min(1).max(500),
+  }),
   z.object({
     type: z.literal("interaction_response"),
     id: z.string().min(1).max(500),

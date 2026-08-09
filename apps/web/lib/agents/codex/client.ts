@@ -10,6 +10,7 @@ import type {
 import type {
   AgentRuntimeClient,
   AgentRuntimeEvent,
+  AgentSessionForkResult,
   AgentSessionLaunch,
 } from "@/lib/agents/providers/types";
 import type { HostTarget } from "@/lib/agents/runtime/process";
@@ -21,6 +22,7 @@ import {
 } from "@/lib/agents/codex/app-server";
 import {
   codexDefaultThinkingLevel,
+  codexSessionMetadata,
   codexThinkingLevels,
   emptyCodexStats,
   numberOf,
@@ -228,6 +230,14 @@ function isActiveWriterError(error: unknown): boolean {
   return (
     error instanceof Error &&
     /thread .+ already has an active writer/i.test(error.message)
+  );
+}
+
+function isBeforeTurnForkUnsupportedError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (/beforeTurnId/iu.test(error.message) ||
+      /experimentalApi capability/iu.test(error.message))
   );
 }
 
@@ -868,6 +878,99 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     );
   }
 
+  async forkSession(
+    messageId: string,
+    mode: "edit" | "fork",
+  ): Promise<AgentSessionForkResult> {
+    await this.readyPromise;
+    if (this.activeTurnId) {
+      throw new Error("Wait for the current Codex turn to finish first.");
+    }
+
+    const turns = this.orderedTurns();
+    let response: UnknownRecord;
+    let draft: string | undefined;
+
+    if (mode === "edit") {
+      const target = turns
+        .map((turn, turnIndex) => ({
+          turn,
+          turnIndex,
+          item: turn.items.find(
+            (item) => item.id === messageId && item.type === "userMessage",
+          ),
+        }))
+        .find((candidate) => candidate.item);
+      if (!target?.item) {
+        throw new Error("Codex could not find that user message.");
+      }
+      draft = itemText(target.item);
+      if (!draft) {
+        throw new Error("Codex could not restore that user message.");
+      }
+      const previousTurn = turns[target.turnIndex - 1];
+      try {
+        response = await this.server.request<UnknownRecord>("thread/fork", {
+          threadId: this.thread!.id,
+          ...(previousTurn
+            ? { lastTurnId: previousTurn.id }
+            : { beforeTurnId: target.turn.id }),
+          cwd: this.launch.cwd,
+          model: this.selectedModel || null,
+          ephemeral: false,
+        });
+      } catch (error) {
+        if (!previousTurn && isBeforeTurnForkUnsupportedError(error)) {
+          throw new Error(
+            "Editing the first message requires a newer Codex installation.",
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    } else {
+      const turnId = messageId.endsWith(":assistant")
+        ? messageId.slice(0, -":assistant".length)
+        : messageId;
+      const target = turns.find((turn) => turn.id === turnId);
+      if (!target) {
+        throw new Error("Codex could not find that assistant response.");
+      }
+      response = await this.server.request<UnknownRecord>("thread/fork", {
+        threadId: this.thread!.id,
+        lastTurnId: target.id,
+        cwd: this.launch.cwd,
+        model: this.selectedModel || null,
+        ephemeral: false,
+      });
+    }
+
+    const thread = parseCodexThread(response.thread);
+    if (thread.id === this.thread!.id) {
+      throw new Error("Codex did not create a new thread.");
+    }
+    await this.server.request(
+      "thread/unsubscribe",
+      { threadId: thread.id },
+      5_000,
+    );
+    return {
+      session: codexSessionMetadata(thread),
+      ...(draft !== undefined ? { draft } : {}),
+    };
+  }
+
+  async discardForkedSession(
+    session: AgentSessionForkResult["session"],
+  ): Promise<void> {
+    await this.readyPromise;
+    await this.server.request(
+      "thread/delete",
+      { threadId: session.providerSessionId },
+      5_000,
+    );
+  }
+
   private async openThread(): Promise<void> {
     await this.server.ready();
     const modelPromise = this.server.request("model/list", { limit: 200 });
@@ -940,12 +1043,14 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   private messages(): unknown[] {
-    return [...this.turns.values()]
-      .sort(
-        (left, right) =>
-          (left.startedAt ?? 0) - (right.startedAt ?? 0),
-      )
-      .flatMap(canonicalTurnMessages);
+    return this.orderedTurns().flatMap(canonicalTurnMessages);
+  }
+
+  private orderedTurns(): CodexTurn[] {
+    return [...this.turns.values()].sort(
+      (left, right) =>
+        (left.startedAt ?? 0) - (right.startedAt ?? 0),
+    );
   }
 
   private handleNotification(method: string, params: unknown): void {
@@ -1507,6 +1612,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   private updateTokenUsage(data: UnknownRecord | null): void {
+    const threadId = stringOf(data, "threadId");
+    if (threadId && threadId !== this.thread?.id) return;
     const tokenUsage = recordOf(data?.tokenUsage);
     const usage = recordOf(tokenUsage?.total);
     if (!usage) return;

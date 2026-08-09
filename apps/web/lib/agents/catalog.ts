@@ -37,7 +37,12 @@ export const AGENT_PROVIDERS: Record<
     id: "codex",
     label: "Codex",
     executable: "codex",
-    capabilities: { steer: true, usage: true },
+    capabilities: {
+      steer: true,
+      usage: true,
+      editSentMessages: true,
+      forkMessages: true,
+    },
   },
 };
 

@@ -140,6 +140,36 @@ describe("projectAgentTranscript", () => {
     ]);
   });
 
+  it("exposes one fork action on the final assistant text part", () => {
+    const projected = projectAgentTranscript([
+      assistant(
+        [
+          { type: "text", text: "First update." },
+          call("inspect", "read", { path: "a.ts" }),
+          { type: "text", text: "Final answer." },
+        ],
+        1,
+        { id: "turn-1:assistant" },
+      ),
+    ]);
+    const textItems = projected.filter(
+      (item) => item.type === "assistant_text",
+    );
+
+    expect(textItems).toEqual([
+      expect.objectContaining({
+        text: "First update.",
+        messageId: "turn-1:assistant",
+        actionable: false,
+      }),
+      expect.objectContaining({
+        text: "Final answer.",
+        messageId: "turn-1:assistant",
+        actionable: true,
+      }),
+    ]);
+  });
+
   it("keeps partial, failed, and orphaned results inspectable", () => {
     const partial = projectedTools([
       assistant([call("partial", "bash", { command: "npm test" })], 1),

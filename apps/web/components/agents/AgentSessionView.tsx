@@ -73,6 +73,10 @@ function sessionName(snapshot: AgentRuntimeSnapshot): string {
   return typeof value === "string" ? value : "";
 }
 
+function forkDraftKey(sessionId: string): string {
+  return `overtchat:agent-fork-draft:${sessionId}`;
+}
+
 export function AgentSessionView({
   sessionId,
   provider,
@@ -111,6 +115,22 @@ export function AgentSessionView({
     try {
       const result = await command.mutateAsync(input);
       if (result.usage) setUsage(result.usage);
+      if (
+        input.type === "edit_message" ||
+        input.type === "fork_message"
+      ) {
+        if (!result.sessionId) {
+          throw new Error(`${providerLabel} did not return the forked session.`);
+        }
+        if (result.draft !== undefined) {
+          window.sessionStorage.setItem(
+            forkDraftKey(result.sessionId),
+            result.draft,
+          );
+        }
+        router.push(`/agents/${result.sessionId}`);
+        return true;
+      }
       if (input.type === "new_session") {
         if (!result.sessionId) {
           throw new Error(`${providerLabel} did not return the new session.`);
@@ -302,11 +322,28 @@ export function AgentSessionView({
         activityStartedAt={activityStartedAt}
         error={runtimeError}
         workspaceName={workspaceName}
+        canEditMessages={
+          snapshot.capabilities.editSentMessages === true
+        }
+        canForkMessages={snapshot.capabilities.forkMessages === true}
+        actionsDisabled={
+          running ||
+          exited ||
+          command.isPending ||
+          Boolean(snapshot.pendingInteraction)
+        }
+        onEditMessage={(messageId) =>
+          void run({ type: "edit_message", messageId })
+        }
+        onForkMessage={(messageId) =>
+          void run({ type: "fork_message", messageId })
+        }
       />
 
       <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-3xl">
           <AgentComposer
+            key={sessionId}
             providerLabel={providerLabel}
             commands={snapshot.commands}
             queuedMessages={snapshot.queuedMessages}
@@ -327,6 +364,7 @@ export function AgentSessionView({
             onSteerQueued={(id) =>
               run({ type: "steer_queued_message", id })
             }
+            restoreDraftKey={forkDraftKey(sessionId)}
           />
         </div>
       </div>

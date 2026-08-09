@@ -80,6 +80,7 @@ export function useAgentSessionCommand(id: string) {
       command: AgentSessionCommand,
     ): Promise<{
       sessionId?: string;
+      draft?: string;
       queuedMessages?: AgentQueuedMessage[];
       usage?: AgentUsageSnapshot;
     }> => {
@@ -91,6 +92,7 @@ export function useAgentSessionCommand(id: string) {
       if (!response.ok) throw await responseError(response);
       return (await response.json()) as {
         sessionId?: string;
+        draft?: string;
         queuedMessages?: AgentQueuedMessage[];
         usage?: AgentUsageSnapshot;
       };
@@ -122,7 +124,9 @@ export function useAgentSessionCommand(id: string) {
         command.type === "steer" ||
         command.type === "steer_queued_message" ||
         command.type === "set_session_name" ||
-        command.type === "new_session"
+        command.type === "new_session" ||
+        command.type === "edit_message" ||
+        command.type === "fork_message"
       ) {
         void queryClient.invalidateQueries({
           queryKey: agentConnectionKeys.list(),
