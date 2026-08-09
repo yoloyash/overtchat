@@ -822,8 +822,73 @@ test("connect local Codex and resume a native thread", async ({
   await expect(
     page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
   ).toBeVisible({ timeout: 60_000 });
+
+  const sourceUrl = page.url();
+  await page
+    .getByRole("button", { name: "Edit from this message" })
+    .click();
+  await page.waitForURL(
+    (url) =>
+      url.pathname.startsWith("/agents/") && url.href !== sourceUrl,
+    { timeout: 30_000 },
+  );
+  await expect(composer).toHaveValue(prompt, { timeout: 30_000 });
+  await expect(composer).toBeFocused();
+  await expect
+    .poll(() =>
+      composer.evaluate((element) => {
+        const textarea = element as HTMLTextAreaElement;
+        return [textarea.selectionStart, textarea.selectionEnd];
+      }),
+    )
+    .toEqual([prompt.length, prompt.length]);
+
+  await page.goto(sourceUrl);
+  await expect(
+    page.locator("main").getByText(prompt, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+
+  await page
+    .getByRole("button", { name: "Fork from this response" })
+    .click();
+  await page.waitForURL(
+    (url) =>
+      url.pathname.startsWith("/agents/") && url.href !== sourceUrl,
+    { timeout: 30_000 },
+  );
+  await expect(
+    page.locator("main").getByText(prompt, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
   await page.screenshot({
-    path: testInfo.outputPath("codex-session-desktop.png"),
+    path: testInfo.outputPath("codex-forked-session-desktop.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(
+    page.getByRole("button", { name: "Edit from this message" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Fork from this response" }),
+  ).toBeVisible();
+  const editBounds = await page
+    .getByRole("button", { name: "Edit from this message" })
+    .boundingBox();
+  expect(editBounds).not.toBeNull();
+  expect(editBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(editBounds!.x + editBounds!.width).toBeLessThanOrEqual(390);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("codex-forked-session-mobile.png"),
     fullPage: true,
   });
   expect(browserErrors).toEqual([]);

@@ -51,6 +51,8 @@ export type AgentTranscriptItem =
       type: "assistant_text";
       key: string;
       text: string;
+      messageId: string | null;
+      actionable: boolean;
     }
   | {
       type: "assistant_error";
@@ -266,6 +268,14 @@ export function projectAgentTranscript(
 
     if (role === "assistant") {
       const content = Array.isArray(record.content) ? record.content : [];
+      const lastTextIndex = content.findLastIndex((part) => {
+        const candidate = recordOf(part);
+        return (
+          candidate?.type === "text" &&
+          typeof candidate.text === "string" &&
+          candidate.text.trim().length > 0
+        );
+      });
       content.forEach((part, partIndex) => {
         const partRecord = recordOf(part);
         if (!partRecord) return;
@@ -310,6 +320,9 @@ export function projectAgentTranscript(
             type: "assistant_text",
             key: `assistant:${partIdentity}`,
             text: partRecord.text,
+            messageId:
+              typeof record.id === "string" ? record.id : null,
+            actionable: partIndex === lastTextIndex,
           });
         }
       });

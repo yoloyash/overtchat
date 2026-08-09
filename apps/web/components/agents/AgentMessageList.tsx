@@ -10,6 +10,7 @@ import {
   Minimize2,
   Terminal,
   GitBranch,
+  Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -69,6 +70,11 @@ export function AgentMessageList({
   activityStartedAt,
   error,
   workspaceName,
+  canEditMessages,
+  canForkMessages,
+  actionsDisabled,
+  onEditMessage,
+  onForkMessage,
 }: {
   providerLabel: string;
   messages: unknown[];
@@ -77,6 +83,11 @@ export function AgentMessageList({
   activityStartedAt: number | null;
   error?: string;
   workspaceName: string;
+  canEditMessages: boolean;
+  canForkMessages: boolean;
+  actionsDisabled: boolean;
+  onEditMessage: (messageId: string) => void;
+  onForkMessage: (messageId: string) => void;
 }) {
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
     useStickToBottom({
@@ -119,6 +130,11 @@ export function AgentMessageList({
                   item={item}
                   active={streaming && index === transcript.length - 1}
                   activityStartedAt={activityStartedAt}
+                  canEditMessages={canEditMessages}
+                  canForkMessages={canForkMessages}
+                  actionsDisabled={actionsDisabled}
+                  onEditMessage={onEditMessage}
+                  onForkMessage={onForkMessage}
                 />
               ))}
               {activity && !activityHasLiveStep && (
@@ -158,18 +174,45 @@ function AgentTranscriptRow({
   item,
   active,
   activityStartedAt,
+  canEditMessages,
+  canForkMessages,
+  actionsDisabled,
+  onEditMessage,
+  onForkMessage,
 }: {
   item: AgentTranscriptItem;
   active: boolean;
   activityStartedAt: number | null;
+  canEditMessages: boolean;
+  canForkMessages: boolean;
+  actionsDisabled: boolean;
+  onEditMessage: (messageId: string) => void;
+  onForkMessage: (messageId: string) => void;
 }) {
   if (item.type === "message") {
-    return <AgentMessage message={item.message} />;
+    return (
+      <AgentMessage
+        message={item.message}
+        canEdit={canEditMessages}
+        actionsDisabled={actionsDisabled}
+        onEditMessage={onEditMessage}
+      />
+    );
   }
   if (item.type === "assistant_text") {
     return (
-      <div className="text-sm leading-relaxed">
+      <div className="group/assistant relative text-sm leading-relaxed">
         <Markdown streaming={active}>{item.text}</Markdown>
+        {canForkMessages && item.actionable && item.messageId && (
+          <MessageAction
+            label="Fork from this response"
+            className="-bottom-6 left-0"
+            disabled={actionsDisabled}
+            onClick={() => onForkMessage(item.messageId!)}
+          >
+            <GitBranch />
+          </MessageAction>
+        )}
       </div>
     );
   }
@@ -218,12 +261,30 @@ function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
   );
 }
 
-function AgentMessage({ message }: { message: unknown }) {
+function AgentMessage({
+  message,
+  canEdit,
+  actionsDisabled,
+  onEditMessage,
+}: {
+  message: unknown;
+  canEdit: boolean;
+  actionsDisabled: boolean;
+  onEditMessage: (messageId: string) => void;
+}) {
   const record = recordOf(message);
   if (!record) return null;
   const role = roleOf(message);
   if (role === "user") {
-    return <UserMessage content={contentOf(message)} />;
+    return (
+      <UserMessage
+        content={contentOf(message)}
+        messageId={typeof record.id === "string" ? record.id : null}
+        canEdit={canEdit}
+        actionsDisabled={actionsDisabled}
+        onEditMessage={onEditMessage}
+      />
+    );
   }
   if (role === "compactionSummary" || role === "branchSummary") {
     return <SummaryMessage message={record} role={role} />;
@@ -243,7 +304,19 @@ function AgentMessage({ message }: { message: unknown }) {
   return null;
 }
 
-function UserMessage({ content }: { content: unknown }) {
+function UserMessage({
+  content,
+  messageId,
+  canEdit,
+  actionsDisabled,
+  onEditMessage,
+}: {
+  content: unknown;
+  messageId: string | null;
+  canEdit: boolean;
+  actionsDisabled: boolean;
+  onEditMessage: (messageId: string) => void;
+}) {
   const text = textOfContent(content);
   const images = Array.isArray(content)
     ? content.flatMap((part) => {
@@ -264,7 +337,7 @@ function UserMessage({ content }: { content: unknown }) {
       })
     : [];
   return (
-    <div className="flex flex-col items-end gap-2">
+    <div className="group/user relative flex flex-col items-end gap-2">
       {images.map((image, index) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img
@@ -275,11 +348,55 @@ function UserMessage({ content }: { content: unknown }) {
         />
       ))}
       {text && (
-        <div className="min-w-0 max-w-[80%] rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
-          {text}
+        <div className="relative min-w-0 max-w-[80%]">
+          <div className="rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
+            {text}
+          </div>
+          {canEdit && messageId && (
+            <MessageAction
+              label="Edit from this message"
+              className="right-full bottom-0 mr-1"
+              disabled={actionsDisabled}
+              onClick={() => onEditMessage(messageId)}
+            >
+              <Pencil />
+            </MessageAction>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+function MessageAction({
+  label,
+  className,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  className: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className={cn(
+        "absolute size-6 text-muted-foreground opacity-60 motion-opacity hover:text-foreground sm:opacity-0 sm:group-hover/user:opacity-100 sm:group-hover/assistant:opacity-100 sm:focus:opacity-100",
+        className,
+      )}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </Button>
   );
 }
 

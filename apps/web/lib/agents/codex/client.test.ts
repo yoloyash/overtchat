@@ -17,6 +17,7 @@ class FakeCodexServer {
   readonly requests: Array<{ method: string; params: unknown }> = [];
   readonly responses: Array<{ id: string | number; result: unknown }> = [];
   resumeError: Error | null = null;
+  forkError: Error | null = null;
   rateLimitsError: Error | null = null;
   usageError: Error | null = null;
   private notification: Listener<{ method: string; params?: unknown }> =
@@ -132,6 +133,57 @@ class FakeCodexServer {
         reasoningEffort: "high",
       };
     }
+    if (method === "thread/fork") {
+      if (this.forkError) throw this.forkError;
+      const beforeTurnId =
+        params &&
+        typeof params === "object" &&
+        "beforeTurnId" in params &&
+        typeof params.beforeTurnId === "string"
+          ? params.beforeTurnId
+          : null;
+      return {
+        thread: {
+          id: "thread-fork",
+          cwd: "/workspace",
+          preview: beforeTurnId ? "" : "Resume this thread",
+          path: "/tmp/thread-fork.jsonl",
+          name: null,
+          createdAt: 3,
+          updatedAt: 4,
+          turns: beforeTurnId
+            ? []
+            : [
+                {
+                  id: "turn-history",
+                  status: "completed",
+                  startedAt: 1,
+                  completedAt: 2,
+                  items: [
+                    {
+                      id: "user-history",
+                      type: "userMessage",
+                      content: [
+                        {
+                          type: "text",
+                          text: "Resume this thread",
+                          text_elements: [],
+                        },
+                      ],
+                    },
+                    {
+                      id: "assistant-history",
+                      type: "agentMessage",
+                      text: "History restored.",
+                    },
+                  ],
+                },
+              ],
+        },
+        model: "gpt-5.6",
+        reasoningEffort: "high",
+      };
+    }
     if (method === "thread/resume") {
       if (this.resumeError) throw this.resumeError;
       return {
@@ -230,6 +282,9 @@ describe("CodexRuntimeClient", () => {
     server.requests.length = 0;
     server.responses.length = 0;
     server.resumeError = null;
+    server.forkError = null;
+    server.rateLimitsError = null;
+    server.usageError = null;
     server.respondError.mockClear();
     mocks.listCodexCustomPrompts.mockResolvedValue([
       {
@@ -999,6 +1054,152 @@ describe("CodexRuntimeClient", () => {
       unavailableReason:
         "Account usage is unavailable because this Codex connection does not expose authenticated account data.",
     });
+  });
+
+  it("edits the first user message by forking before its native turn", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+    await client.getState();
+
+    await expect(
+      client.forkSession("user-history", "edit"),
+    ).resolves.toEqual({
+      session: {
+        providerSessionId: "thread-fork",
+        providerSessionPath: "/tmp/thread-fork.jsonl",
+        name: null,
+        firstMessage: null,
+        messageCount: 0,
+        createdAt: new Date(3_000),
+        modifiedAt: new Date(4_000),
+      },
+      draft: "Resume this thread",
+    });
+    expect(server.requests).toContainEqual({
+      method: "thread/fork",
+      params: {
+        threadId: "thread-1",
+        beforeTurnId: "turn-history",
+        cwd: "/workspace",
+        model: "gpt-5.6",
+        ephemeral: false,
+      },
+    });
+    expect(server.requests).toContainEqual({
+      method: "thread/unsubscribe",
+      params: { threadId: "thread-fork" },
+    });
+    await expect(client.getMessages()).resolves.toMatchObject({
+      messages: [
+        { id: "user-history", role: "user" },
+        { id: "turn-history:assistant", role: "assistant" },
+      ],
+    });
+  });
+
+  it("deletes a discarded native fork", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+    await client.getState();
+
+    await client.discardForkedSession({
+      providerSessionId: "thread-fork",
+      providerSessionPath: "/tmp/thread-fork.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: new Date(3_000),
+      modifiedAt: new Date(4_000),
+    });
+
+    expect(server.requests).toContainEqual({
+      method: "thread/delete",
+      params: { threadId: "thread-fork" },
+    });
+  });
+
+  it("forks through an assistant turn without mutating the source", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+    await client.getState();
+
+    await expect(
+      client.forkSession("turn-history:assistant", "fork"),
+    ).resolves.toMatchObject({
+      session: {
+        providerSessionId: "thread-fork",
+        providerSessionPath: "/tmp/thread-fork.jsonl",
+        firstMessage: "Resume this thread",
+        messageCount: 2,
+      },
+    });
+    expect(server.requests).toContainEqual({
+      method: "thread/fork",
+      params: {
+        threadId: "thread-1",
+        lastTurnId: "turn-history",
+        cwd: "/workspace",
+        model: "gpt-5.6",
+        ephemeral: false,
+      },
+    });
+    expect(server.requests).toContainEqual({
+      method: "thread/unsubscribe",
+      params: { threadId: "thread-fork" },
+    });
+    await expect(client.getMessages()).resolves.toMatchObject({
+      messages: [
+        { id: "user-history", role: "user" },
+        { id: "turn-history:assistant", role: "assistant" },
+      ],
+    });
+  });
+
+  it("explains when first-message editing needs newer Codex support", async () => {
+    server.forkError = new Error("unknown field `beforeTurnId`");
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+    await client.getState();
+
+    await expect(client.forkSession("user-history", "edit")).rejects.toThrow(
+      "Editing the first message requires a newer Codex installation.",
+    );
   });
 
   it("emits each question in a multi-question request", async () => {

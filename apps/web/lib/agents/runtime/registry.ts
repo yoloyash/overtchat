@@ -26,6 +26,7 @@ import type {
   AgentRuntimeEvent,
   AgentRuntimeEventClassifier,
   AgentRuntimeInitialState,
+  AgentSessionForkResult,
 } from "@/lib/agents/providers/types";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import {
@@ -413,6 +414,11 @@ export class AgentSessionRuntime {
         return Promise.reject(
           new Error("New sessions must be created by the runtime registry."),
         );
+      case "edit_message":
+      case "fork_message":
+        return Promise.reject(
+          new Error("Session forks must be created by the runtime registry."),
+        );
       case "prompt":
         return this.submitPrompt(command.message);
       case "abort":
@@ -499,6 +505,30 @@ export class AgentSessionRuntime {
         }
         return this.client.getUsage();
     }
+  }
+
+  async forkSession(
+    messageId: string,
+    mode: "edit" | "fork",
+  ): Promise<AgentSessionForkResult> {
+    if (this.status !== "idle") {
+      throw new Error("Wait for the current agent turn to finish first.");
+    }
+    if (this.pendingInteraction) {
+      throw new Error("Respond to the pending agent request first.");
+    }
+    if (!this.client.forkSession) {
+      throw new Error(
+        `${agentProviderMetadata(this.provider).label} does not support conversation forks.`,
+      );
+    }
+    return this.client.forkSession(messageId, mode);
+  }
+
+  async discardForkedSession(
+    session: AgentSessionForkResult["session"],
+  ): Promise<void> {
+    await this.client.discardForkedSession?.(session);
   }
 
   async refresh(): Promise<void> {
@@ -1130,6 +1160,31 @@ export class AgentRuntimeRegistry {
       await client.stop();
       throw error;
     }
+  }
+
+  async fork(
+    owned: OwnedAgentSession,
+    runtime: AgentSessionRuntime,
+    input: Extract<
+      AgentSessionCommand,
+      { type: "edit_message" | "fork_message" }
+    >,
+  ): Promise<{ sessionId: string; draft?: string }> {
+    const fork = await runtime.forkSession(
+      input.messageId,
+      input.type === "edit_message" ? "edit" : "fork",
+    );
+    let row;
+    try {
+      row = await upsertAgentSession(owned.workspace.id, fork.session);
+    } catch (error) {
+      await runtime.discardForkedSession(fork.session).catch(() => {});
+      throw error;
+    }
+    return {
+      sessionId: row.id,
+      ...(fork.draft !== undefined ? { draft: fork.draft } : {}),
+    };
   }
 
   async getForUser(

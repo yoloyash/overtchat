@@ -88,6 +88,19 @@ class FakeAgentClient {
   readonly setAutoCompaction = vi.fn(async () => ({}));
   readonly setSessionName = vi.fn(async () => ({}));
   readonly retryInteractive = vi.fn(async () => ({}));
+  readonly forkSession = vi.fn(async () => ({
+    session: {
+      providerSessionId: "native-fork",
+      providerSessionPath: "/sessions/native-fork.jsonl",
+      name: null,
+      firstMessage: "Earlier prompt",
+      messageCount: 2,
+      createdAt: new Date(1_000),
+      modifiedAt: new Date(2_000),
+    },
+    draft: "Edit this prompt",
+  }));
+  readonly discardForkedSession = vi.fn(async () => {});
   readonly respondToInteraction = vi.fn();
   readonly respondToExtensionUi = this.respondToInteraction;
   readonly getState = vi.fn(async () => ({ ...idleProviderState }));
@@ -1185,6 +1198,88 @@ describe("Agent session runtime", () => {
     expect(runtime.snapshot().pendingInteraction).toBeUndefined();
     unsubscribeFirst();
     unsubscribeReplay();
+    await runtime.stop();
+  });
+
+  it("persists provider-native history forks as new sessions", async () => {
+    vi.clearAllMocks();
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+    mocks.upsertAgentSession.mockResolvedValue({
+      ...owned().agentSession,
+      id: "forked-session",
+      providerSessionId: "native-fork",
+      providerSessionPath: "/sessions/native-fork.jsonl",
+    });
+    const registry = new AgentRuntimeRegistry();
+
+    await expect(
+      registry.fork(owned(), runtime, {
+        type: "edit_message",
+        messageId: "user-message",
+      }),
+    ).resolves.toEqual({
+      sessionId: "forked-session",
+      draft: "Edit this prompt",
+    });
+    expect(client.forkSession).toHaveBeenCalledWith(
+      "user-message",
+      "edit",
+    );
+    expect(mocks.upsertAgentSession).toHaveBeenCalledWith("workspace", {
+      providerSessionId: "native-fork",
+      providerSessionPath: "/sessions/native-fork.jsonl",
+      name: null,
+      firstMessage: "Earlier prompt",
+      messageCount: 2,
+      createdAt: new Date(1_000),
+      modifiedAt: new Date(2_000),
+    });
+    await runtime.stop();
+  });
+
+  it("discards a native fork when local session persistence fails", async () => {
+    vi.clearAllMocks();
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+    mocks.upsertAgentSession.mockRejectedValueOnce(
+      new Error("database unavailable"),
+    );
+    const registry = new AgentRuntimeRegistry();
+
+    await expect(
+      registry.fork(owned(), runtime, {
+        type: "fork_message",
+        messageId: "assistant-message",
+      }),
+    ).rejects.toThrow("database unavailable");
+    expect(client.discardForkedSession).toHaveBeenCalledWith(
+      expect.objectContaining({ providerSessionId: "native-fork" }),
+    );
     await runtime.stop();
   });
 

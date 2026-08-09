@@ -52,6 +52,7 @@ export function AgentComposer({
   onStop,
   onEditQueued,
   onSteerQueued,
+  restoreDraftKey,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
@@ -68,6 +69,7 @@ export function AgentComposer({
   onStop: () => void;
   onEditQueued: (id: string) => Promise<boolean>;
   onSteerQueued: (id: string) => Promise<boolean>;
+  restoreDraftKey?: string;
 }) {
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +85,26 @@ export function AgentComposer({
     element.style.height = "auto";
     element.style.height = `${element.scrollHeight}px`;
   }, [input]);
+
+  useEffect(() => {
+    if (!restoreDraftKey) return;
+    const draft = window.sessionStorage.getItem(restoreDraftKey);
+    if (draft === null) return;
+    window.sessionStorage.removeItem(restoreDraftKey);
+    let focusFrame: number | undefined;
+    const restoreFrame = requestAnimationFrame(() => {
+      setInput((current) => current || draft);
+      focusFrame = requestAnimationFrame(() => {
+        const element = textareaRef.current;
+        element?.focus({ preventScroll: true });
+        element?.setSelectionRange(element.value.length, element.value.length);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(restoreFrame);
+      if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
+    };
+  }, [restoreDraftKey]);
 
   const query = agentSlashCommandQuery(input);
   const filteredCommands = useMemo(() => {

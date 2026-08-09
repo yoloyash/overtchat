@@ -43,6 +43,11 @@ export type AgentSessionLaunch = {
   };
 };
 
+export type AgentSessionForkResult = {
+  session: AgentProviderSessionMetadata;
+  draft?: string;
+};
+
 export interface AgentRuntimeClient {
   onEvent(subscriber: (event: AgentRuntimeEvent) => void): () => void;
   getState(timeoutMs?: number): Promise<Record<string, unknown>>;
@@ -70,6 +75,11 @@ export interface AgentRuntimeClient {
   ): void;
   retryInteractive?(): Promise<unknown>;
   getUsage?(): Promise<AgentUsageSnapshot>;
+  forkSession?(
+    messageId: string,
+    mode: "edit" | "fork",
+  ): Promise<AgentSessionForkResult>;
+  discardForkedSession?(session: AgentProviderSessionMetadata): Promise<void>;
   stop(): Promise<void>;
 }
 
