@@ -80,12 +80,16 @@ function forkDraftKey(sessionId: string): string {
 export function AgentSessionView({
   sessionId,
   provider,
+  workspaceId,
   workspaceName,
+  workspacePath,
   initialSessionName,
 }: {
   sessionId: string;
   provider: AgentProviderId;
+  workspaceId: string;
   workspaceName: string;
+  workspacePath: string;
   initialSessionName: string;
 }) {
   const providerLabel = agentProviderMetadata(provider).label;
@@ -253,7 +257,9 @@ export function AgentSessionView({
     <div className="flex flex-1 flex-col overflow-hidden">
       <AgentSessionHeader
         providerLabel={providerLabel}
+        workspaceId={workspaceId}
         workspaceName={workspaceName}
+        workspacePath={workspacePath}
         models={snapshot.models}
         currentModel={model}
         thinkingLevel={thinking}

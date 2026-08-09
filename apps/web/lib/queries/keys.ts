@@ -39,6 +39,12 @@ export const agentSessionKeys = {
     [...agentSessionKeys.all(), "detail", id] as const,
 };
 
+export const agentWorkspaceKeys = {
+  all: () => ["agentWorkspaces"] as const,
+  gitStatus: (id: string) =>
+    [...agentWorkspaceKeys.all(), "gitStatus", id] as const,
+};
+
 export const modelConfigKeys = {
   all: () => ["modelConfigs"] as const,
   publicList: () => [...modelConfigKeys.all(), "list", "public"] as const,

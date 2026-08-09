@@ -22,7 +22,9 @@ export default async function AgentSessionPage({
     <AgentSessionView
       sessionId={id}
       provider={owned.connection.provider}
+      workspaceId={owned.workspace.id}
       workspaceName={owned.workspace.name}
+      workspacePath={owned.workspace.path}
       initialSessionName={
         owned.agentSession.name ??
         owned.agentSession.firstMessage ??

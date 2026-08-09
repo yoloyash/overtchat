@@ -113,6 +113,20 @@ export type AgentWorkspaceListItem = {
   sessions: AgentSessionListItem[];
 };
 
+export type AgentWorkspaceGitStatus = {
+  isGit: boolean;
+  repositoryRoot: string | null;
+  branch: string | null;
+  upstream: string | null;
+  ahead: number | null;
+  behind: number | null;
+  dirty: boolean;
+  changedFiles: number;
+  additions: number;
+  deletions: number;
+  lineStatsComplete: boolean;
+};
+
 export type AgentConnectionListItem = {
   id: string;
   provider: AgentProviderId;
