@@ -17,7 +17,11 @@ export async function listCodexWorkspaceSessions(
   executable: string,
   workspacePath: string,
 ): Promise<AgentProviderSessionMetadata[]> {
-  const server = startCodexAppServer(target, executable, workspacePath);
+  const server = await startCodexAppServer(
+    target,
+    executable,
+    workspacePath,
+  );
   try {
     await server.ready();
     const sessions: AgentProviderSessionMetadata[] = [];

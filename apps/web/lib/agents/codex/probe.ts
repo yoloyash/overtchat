@@ -65,7 +65,7 @@ export async function probeCodexTarget(
     throw new Error(`Codex could not be started. ${failures.join(" ")}`);
   }
 
-  const server = startCodexAppServer(resolved.target, executable);
+  const server = await startCodexAppServer(resolved.target, executable);
   try {
     await server.ready();
     const [accountResponse, modelResponse] = await Promise.all([

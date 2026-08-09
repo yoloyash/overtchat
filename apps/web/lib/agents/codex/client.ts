@@ -36,7 +36,7 @@ import {
 const TURN_COMPLETION_TIMEOUT_MS = 30_000;
 const COMPACTION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVE_WRITER_MESSAGE =
-  "This session is currently open in another Codex client. You can view it here, but close it there before continuing in OvertChat.";
+  "Another Codex process currently owns this session. You can view it here and retry when it becomes available.";
 
 type CompletionWaiter<T> = {
   promise: Promise<T>;
@@ -307,7 +307,7 @@ function statsFromMessages(
 }
 
 export class CodexRuntimeClient implements AgentRuntimeClient {
-  private readonly server: CodexAppServer;
+  private server!: CodexAppServer;
   private readonly subscribers = new Set<(event: AgentRuntimeEvent) => void>();
   private readonly turns = new Map<string, CodexTurn>();
   private readonly pendingInteractions = new Map<string, PendingInteraction>();
@@ -330,18 +330,27 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private modelResponse: unknown = { data: [] };
   private stats = emptyCodexStats();
   private readOnly = false;
+  private threadSubscribed = false;
 
   constructor(
     target: HostTarget,
     private readonly launch: AgentSessionLaunch,
   ) {
-    this.server = startCodexAppServer(target, launch.executable, launch.cwd);
+    this.readyPromise = this.initialize(target);
+    void this.readyPromise.catch(() => {});
+  }
+
+  private async initialize(target: HostTarget): Promise<void> {
+    this.server = await startCodexAppServer(
+      target,
+      this.launch.executable,
+      this.launch.cwd,
+    );
     this.server.onNotification((notification) =>
       this.handleNotification(notification.method, notification.params),
     );
     this.server.onRequest((request) => this.handleRequest(request));
-    this.readyPromise = this.openThread();
-    void this.readyPromise.catch(() => {});
+    await this.openThread();
   }
 
   onEvent(subscriber: (event: AgentRuntimeEvent) => void): () => void {
@@ -585,8 +594,20 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.handleQuestionResponse(id, pending, response);
   }
 
-  stop(): Promise<void> {
-    return this.server.stop();
+  async stop(): Promise<void> {
+    await this.readyPromise.catch(() => {});
+    if (!this.server) return;
+    if (this.thread?.id && this.threadSubscribed) {
+      await this.server
+        .request(
+          "thread/unsubscribe",
+          { threadId: this.thread.id },
+          5_000,
+        )
+        .catch(() => {});
+      this.threadSubscribed = false;
+    }
+    await this.server.stop();
   }
 
   async retryInteractive(): Promise<unknown> {
@@ -596,6 +617,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       threadId: this.thread!.id,
       cwd: this.launch.cwd,
     });
+    this.threadSubscribed = true;
     const hydrated = await this.server.request<UnknownRecord>("thread/read", {
       threadId: this.thread!.id,
       includeTurns: true,
@@ -620,6 +642,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
             cwd: this.launch.cwd,
           },
         );
+        this.threadSubscribed = true;
       } catch (error) {
         if (!isActiveWriterError(error)) throw error;
         this.readOnly = true;
@@ -637,6 +660,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
           ephemeral: false,
         },
       );
+      this.threadSubscribed = true;
       hydratedThread = threadResponse;
     }
     this.modelResponse = await modelPromise;

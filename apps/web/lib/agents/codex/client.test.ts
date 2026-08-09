@@ -318,6 +318,29 @@ describe("CodexRuntimeClient", () => {
     );
   });
 
+  it("unsubscribes a resumed thread before stopping its app-server", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+    await client.getState();
+
+    await client.stop();
+
+    expect(server.requests.at(-1)).toEqual({
+      method: "thread/unsubscribe",
+      params: { threadId: "thread-1" },
+    });
+    expect(server.stop).toHaveBeenCalledOnce();
+  });
+
   it("opens an active-writer thread read-only and retries interactive access", async () => {
     server.resumeError = new Error(
       "thread thread-1 already has an active writer",
@@ -338,7 +361,7 @@ describe("CodexRuntimeClient", () => {
       sessionId: "thread-1",
       isStreaming: false,
       readOnly: {
-        reason: expect.stringContaining("open in another Codex client"),
+        reason: expect.stringContaining("Codex process currently owns"),
         retryable: true,
       },
     });
@@ -354,7 +377,7 @@ describe("CodexRuntimeClient", () => {
       ]),
     });
     await expect(client.prompt("Continue here")).rejects.toThrow(
-      "open in another Codex client",
+      "Codex process currently owns",
     );
 
     server.resumeError = null;

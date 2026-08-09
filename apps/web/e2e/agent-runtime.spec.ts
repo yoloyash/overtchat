@@ -641,7 +641,7 @@ test("shows durable turn activity without changing completed tool status", async
         },
         readOnly: {
           reason:
-            "This session is currently open in another Codex client. You can view it here, but close it there before continuing in OvertChat.",
+            "Another Codex process currently owns this session. You can view it here and retry when it becomes available.",
           retryable: true,
         },
       },

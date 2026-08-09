@@ -1,4 +1,6 @@
 import "server-only";
+import { Duplex, PassThrough, Writable } from "node:stream";
+import WebSocket from "ws";
 import type { AgentProcess, HostTarget } from "@/lib/agents/runtime/process";
 import { spawnOnHost } from "@/lib/agents/runtime/process";
 import {
@@ -9,6 +11,7 @@ import {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const INITIALIZE_TIMEOUT_MS = 60_000;
 const MAX_STDERR_CHARS = 64 * 1024;
+const PROXY_HANDSHAKE_TIMEOUT_MS = 5_000;
 
 export type JsonRpcId = string | number;
 
@@ -47,6 +50,131 @@ function errorText(error: JsonRpcError | undefined, fallback: string): string {
   return [error.message || fallback, detail].filter(Boolean).join(" ");
 }
 
+class AgentProcessDuplex extends Duplex {
+  constructor(private readonly process: AgentProcess) {
+    super();
+    process.stdout.on("data", (chunk) => this.push(chunk));
+    process.stdout.on("end", () => this.push(null));
+    process.stdout.on("error", (error) => this.destroy(error));
+    void process.exit.then((exit) => {
+      if (!this.destroyed) {
+        this.destroy(
+          exit.error ??
+            new Error(
+              `Codex app-server proxy exited (code=${exit.code ?? "unknown"}, signal=${exit.signal ?? "none"}).`,
+            ),
+        );
+      }
+    });
+  }
+
+  _read(): void {}
+
+  _write(
+    chunk: Buffer,
+    encoding: BufferEncoding,
+    callback: (error?: Error | null) => void,
+  ): void {
+    this.process.stdin.write(chunk, encoding, callback);
+  }
+
+  _final(callback: (error?: Error | null) => void): void {
+    this.process.stdin.end(callback);
+  }
+
+  setNoDelay(): this {
+    return this;
+  }
+
+  setTimeout(): this {
+    return this;
+  }
+}
+
+function spawnCodexProxy(
+  target: HostTarget,
+  executable: string,
+  cwd?: string,
+): AgentProcess {
+  const proxy = spawnOnHost(target, {
+    command: executable,
+    args: ["app-server", "proxy"],
+    cwd,
+  });
+  const transport = new AgentProcessDuplex(proxy);
+  const stdout = new PassThrough();
+  let inputBuffer = "";
+  const websocket = new WebSocket("ws://localhost/rpc", {
+    createConnection: () => {
+      process.nextTick(() => transport.emit("connect"));
+      return transport;
+    },
+    handshakeTimeout: PROXY_HANDSHAKE_TIMEOUT_MS,
+    perMessageDeflate: false,
+  });
+  const ready = new Promise<void>((resolve, reject) => {
+    websocket.once("open", resolve);
+    websocket.once("error", reject);
+  });
+  websocket.on("message", (data, isBinary) => {
+    if (isBinary) return;
+    stdout.write(`${data.toString()}\n`);
+  });
+  websocket.on("close", () => stdout.end());
+  websocket.on("error", () => {
+    proxy.kill("SIGTERM");
+  });
+
+  const stdin = new Writable({
+    write(chunk, _encoding, callback) {
+      inputBuffer += chunk.toString();
+      const lines: string[] = [];
+      for (;;) {
+        const newline = inputBuffer.indexOf("\n");
+        if (newline < 0) break;
+        const line = inputBuffer.slice(0, newline);
+        inputBuffer = inputBuffer.slice(newline + 1);
+        if (line) lines.push(line);
+      }
+      void ready.then(
+        async () => {
+          for (const line of lines) {
+            await new Promise<void>((resolve, reject) => {
+              websocket.send(line, (error) =>
+                error ? reject(error) : resolve(),
+              );
+            });
+          }
+          callback();
+        },
+        (error) =>
+          callback(error instanceof Error ? error : new Error(String(error))),
+      );
+    },
+    final(callback) {
+      void ready.then(
+        () => {
+          websocket.close();
+          callback();
+        },
+        () => callback(),
+      );
+    },
+  });
+
+  return {
+    stdin,
+    stdout,
+    stderr: proxy.stderr,
+    exit: proxy.exit,
+    kill(signal = "SIGTERM") {
+      if (signal === "SIGKILL") websocket.terminate();
+      else websocket.close();
+      return proxy.kill(signal);
+    },
+  };
+}
+
 export class CodexAppServer {
   private readonly decoder = new JsonlDecoder();
   private readonly pending = new Map<JsonRpcId, PendingRequest>();
@@ -62,6 +190,20 @@ export class CodexAppServer {
   private readonly initialized: Promise<void>;
 
   constructor(private readonly process: AgentProcess) {
+    process.stdin.on("error", (error) => {
+      if (this.closed) return;
+      this.closed = true;
+      this.rejectPending(error);
+      this.emitNotification({
+        method: "overtchat/processExit",
+        params: {
+          code: null,
+          signal: null,
+          error: error.message,
+        },
+      });
+      process.kill("SIGKILL");
+    });
     process.stdout.on("data", (chunk) => {
       for (const line of this.decoder.push(chunk)) this.handleLine(line);
     });
@@ -310,16 +452,27 @@ export class CodexAppServer {
   }
 }
 
-export function startCodexAppServer(
+export async function startCodexAppServer(
   target: HostTarget,
   executable: string,
   cwd?: string,
-): CodexAppServer {
-  return new CodexAppServer(
+): Promise<CodexAppServer> {
+  const proxyServer = new CodexAppServer(
+    spawnCodexProxy(target, executable, cwd),
+  );
+  try {
+    await proxyServer.ready();
+    return proxyServer;
+  } catch {
+    await proxyServer.stop().catch(() => {});
+  }
+  const standaloneServer = new CodexAppServer(
     spawnOnHost(target, {
       command: executable,
       args: ["app-server", "--stdio"],
       cwd,
     }),
   );
+  await standaloneServer.ready();
+  return standaloneServer;
 }
