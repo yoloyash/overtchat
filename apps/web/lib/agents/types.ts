@@ -96,6 +96,16 @@ export type AgentSessionListItem = {
   runtimeStatus: AgentRuntimeStatus;
 };
 
+export type AgentProviderSessionMetadata = {
+  providerSessionId: string;
+  providerSessionPath: string;
+  name: string | null;
+  firstMessage: string | null;
+  messageCount: number;
+  createdAt: Date | null;
+  modifiedAt: Date | null;
+};
+
 export type AgentWorkspaceListItem = {
   id: string;
   path: string;

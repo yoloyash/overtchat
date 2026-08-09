@@ -4,8 +4,8 @@ import {
   storedConnectionAccessError,
 } from "@/lib/agents/access";
 import { addAgentWorkspaceSchema } from "@/lib/agents/types";
-import { probeAgentWorkspace } from "@/lib/agents/pi/probe";
-import { listAgentWorkspaceSessions } from "@/lib/agents/pi/sessions";
+import { probeAgentWorkspace } from "@/lib/agents/runtime/filesystem";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import { isAgentProviderId } from "@/lib/agents/catalog";
 import {
@@ -48,8 +48,9 @@ export async function POST(
       owned.connection.shellMode,
     );
     const workspace = await probeAgentWorkspace(target, parsed.data.path);
-    const providerSessions = await listAgentWorkspaceSessions(
+    const providerSessions = await agentProviderAdapter(
       owned.connection.provider,
+    ).listWorkspaceSessions(
       target,
       workspace.path,
     );

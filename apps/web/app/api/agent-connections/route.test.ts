@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listAgentConnections: vi.fn(),
   createAgentConnection: vi.fn(),
-  probePiConnection: vi.fn(),
+  probeConnection: vi.fn(),
   getOwnedHostConnector: vi.fn(),
   withAgentRuntimeStatuses: vi.fn(),
 }));
@@ -17,8 +17,10 @@ vi.mock("@/lib/db/agentConnections", () => ({
   listAgentConnections: mocks.listAgentConnections,
   createAgentConnection: mocks.createAgentConnection,
 }));
-vi.mock("@/lib/agents/pi/probe", () => ({
-  probePiConnection: mocks.probePiConnection,
+vi.mock("@/lib/agents/providers/registry", () => ({
+  agentProviderAdapter: () => ({
+    probeConnection: mocks.probeConnection,
+  }),
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
   getOwnedHostConnector: mocks.getOwnedHostConnector,
@@ -91,12 +93,12 @@ describe("Agent Connections route", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(mocks.probePiConnection).not.toHaveBeenCalled();
+    expect(mocks.probeConnection).not.toHaveBeenCalled();
     expect(mocks.createAgentConnection).not.toHaveBeenCalled();
   });
 
   it("persists the shell mode selected during connection probing", async () => {
-    mocks.probePiConnection.mockResolvedValue({
+    mocks.probeConnection.mockResolvedValue({
       status: "ready",
       version: "17.2.11",
       models: [],

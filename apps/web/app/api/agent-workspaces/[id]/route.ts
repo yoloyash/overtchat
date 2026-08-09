@@ -4,7 +4,7 @@ import {
   storedConnectionAccessError,
 } from "@/lib/agents/access";
 import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
-import { listAgentWorkspaceSessions } from "@/lib/agents/pi/sessions";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import { isAgentProviderId } from "@/lib/agents/catalog";
 import {
@@ -32,8 +32,9 @@ export async function POST(
     if (!isAgentProviderId(owned.connection.provider)) {
       throw new Error("This coding-agent provider is not supported.");
     }
-    const sessions = await listAgentWorkspaceSessions(
+    const sessions = await agentProviderAdapter(
       owned.connection.provider,
+    ).listWorkspaceSessions(
       targetForStoredHost(owned.host, owned.connection.shellMode),
       owned.workspace.path,
     );

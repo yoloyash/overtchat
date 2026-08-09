@@ -4,7 +4,7 @@ import {
   connectionErrorMessage,
 } from "@/lib/agents/access";
 import { agentConnectionDraftSchema } from "@/lib/agents/types";
-import { probePiConnection } from "@/lib/agents/pi/probe";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 
 export const maxDuration = 150;
@@ -31,7 +31,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const probe = await probePiConnection(parsed.data);
+    const probe = await agentProviderAdapter(
+      parsed.data.provider,
+    ).probeConnection(parsed.data);
     return Response.json({ probe });
   } catch (error) {
     return Response.json(

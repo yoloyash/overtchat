@@ -5,7 +5,7 @@ import {
   touchAgentConnectionValidation,
 } from "@/lib/db/agentConnections";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
-import { probeAgentTarget } from "@/lib/agents/pi/probe";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
 import { connectionErrorMessage } from "@/lib/agents/access";
 import { storedConnectionAccessError } from "@/lib/agents/access";
 import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
@@ -31,9 +31,10 @@ export async function POST(
     if (!isAgentProviderId(owned.connection.provider)) {
       throw new Error("This coding-agent provider is not supported.");
     }
-    const probe = await probeAgentTarget(
-      targetForStoredHost(owned.host, owned.connection.shellMode),
+    const probe = await agentProviderAdapter(
       owned.connection.provider,
+    ).probeTarget(
+      targetForStoredHost(owned.host, owned.connection.shellMode),
       owned.connection.executable,
     );
     await touchAgentConnectionValidation(

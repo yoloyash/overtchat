@@ -9,7 +9,7 @@ vi.mock("@/lib/agents/runtime/process", () => ({
   executeOnHost: mocks.executeOnHost,
 }));
 
-import { listAgentDirectories } from "./probe";
+import { listAgentDirectories } from "./filesystem";
 
 const connectorId = "11111111-1111-4111-8111-111111111111";
 

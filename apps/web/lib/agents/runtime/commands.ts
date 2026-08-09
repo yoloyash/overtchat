@@ -1,53 +1,13 @@
 import type {
-  AgentProviderId,
   AgentSessionCommand,
   AgentSlashCommand,
 } from "@/lib/agents/types";
 
-const OVERTCHAT_SESSION_COMMANDS: readonly AgentSlashCommand[] = [
-  {
-    name: "new",
-    description: "Start a new session",
-    source: "builtin",
-  },
-  {
-    name: "autocompact",
-    description: "Toggle automatic context compaction",
-    source: "builtin",
-    argumentHint: "[on|off|toggle]",
-  },
-  {
-    name: "name",
-    description: "Set the session name",
-    source: "builtin",
-    argumentHint: "<name>",
-  },
-];
-
-export const PI_BUILTIN_COMMANDS: readonly AgentSlashCommand[] = [
-  OVERTCHAT_SESSION_COMMANDS[0],
-  {
-    name: "compact",
-    description: "Compact conversation context",
-    source: "builtin",
-    argumentHint: "[instructions]",
-  },
-  ...OVERTCHAT_SESSION_COMMANDS.slice(1),
-];
-
-export function agentBuiltinCommands(
-  provider: AgentProviderId,
-): readonly AgentSlashCommand[] {
-  return provider === "pi"
-    ? PI_BUILTIN_COMMANDS
-    : OVERTCHAT_SESSION_COMMANDS;
-}
-
 export function mergeAgentSlashCommands(
-  provider: AgentProviderId,
+  builtins: readonly AgentSlashCommand[],
   discovered: readonly AgentSlashCommand[],
 ): AgentSlashCommand[] {
-  const commands = agentBuiltinCommands(provider).map((command) => ({
+  const commands = builtins.map((command) => ({
     ...command,
   }));
   const names = new Set(commands.map((command) => command.name.toLowerCase()));
@@ -60,13 +20,7 @@ export function mergeAgentSlashCommands(
   return commands;
 }
 
-export function mergePiSlashCommands(
-  discovered: readonly AgentSlashCommand[],
-): AgentSlashCommand[] {
-  return mergeAgentSlashCommands("pi", discovered);
-}
-
-export function piSlashCommandQuery(value: string): string | null {
+export function agentSlashCommandQuery(value: string): string | null {
   const match = /^\/([a-z0-9:-]*)$/iu.exec(value);
   return match ? match[1].toLowerCase() : null;
 }
@@ -138,7 +92,6 @@ function autoCompactCommand(
 }
 
 export function normalizeAgentSessionCommand(
-  provider: AgentProviderId,
   command: AgentSessionCommand,
   state: Record<string, unknown>,
 ): AgentSessionCommand {
@@ -159,11 +112,4 @@ export function normalizeAgentSessionCommand(
     default:
       return command;
   }
-}
-
-export function normalizePiSessionCommand(
-  command: AgentSessionCommand,
-  state: Record<string, unknown>,
-): AgentSessionCommand {
-  return normalizeAgentSessionCommand("pi", command, state);
 }

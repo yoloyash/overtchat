@@ -17,7 +17,7 @@ vi.mock("@/lib/db/agentConnections", () => ({
 vi.mock("@/lib/agents/runtime/target", () => ({
   targetForStoredHost: mocks.targetForStoredHost,
 }));
-vi.mock("@/lib/agents/pi/probe", () => ({
+vi.mock("@/lib/agents/runtime/filesystem", () => ({
   listAgentDirectories: mocks.listAgentDirectories,
 }));
 

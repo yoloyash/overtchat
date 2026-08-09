@@ -7,7 +7,7 @@ import {
   agentConnectionDraftSchema,
   type AgentConnectionListItem,
 } from "@/lib/agents/types";
-import { probePiConnection } from "@/lib/agents/pi/probe";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
 import { withAgentRuntimeStatuses } from "@/lib/agents/runtime/status";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 import {
@@ -55,7 +55,9 @@ export async function POST(req: Request) {
   }
 
   try {
-    const probe = await probePiConnection(draft);
+    const probe = await agentProviderAdapter(
+      draft.provider,
+    ).probeConnection(draft);
     const owned = createAgentConnection({
       userId: session.user.id,
       host:

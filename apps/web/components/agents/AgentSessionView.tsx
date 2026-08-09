@@ -15,7 +15,7 @@ import type {
 import {
   buildAgentPromptCommand,
   normalizeAgentSessionCommand,
-} from "@/lib/agents/pi/commands";
+} from "@/lib/agents/runtime/commands";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
   useAgentSession,
@@ -136,7 +136,6 @@ export function AgentSessionView({
     let input: AgentSessionCommand;
     try {
       const normalized = normalizeAgentSessionCommand(
-        provider,
         buildAgentPromptCommand(message),
         snapshot?.state ?? {},
       );

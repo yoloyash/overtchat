@@ -1,17 +1,38 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentSlashCommandQuery,
   buildAgentPromptCommand,
   mergeAgentSlashCommands,
-  mergePiSlashCommands,
   normalizeAgentSessionCommand,
-  normalizePiSessionCommand,
-  piSlashCommandQuery,
 } from "./commands";
 
-describe("Pi slash commands", () => {
-  it("merges Overtchat built-ins ahead of discovered Pi commands", () => {
+const BUILTIN_COMMANDS = [
+  {
+    name: "new",
+    description: "Start a new session",
+    source: "builtin" as const,
+  },
+  {
+    name: "compact",
+    description: "Compact conversation context",
+    source: "builtin" as const,
+  },
+  {
+    name: "autocompact",
+    description: "Toggle automatic context compaction",
+    source: "builtin" as const,
+  },
+  {
+    name: "name",
+    description: "Set the session name",
+    source: "builtin" as const,
+  },
+];
+
+describe("agent slash commands", () => {
+  it("merges adapter built-ins ahead of discovered commands", () => {
     expect(
-      mergePiSlashCommands([
+      mergeAgentSlashCommands(BUILTIN_COMMANDS, [
         {
           name: "review",
           description: "Review changes",
@@ -39,10 +60,10 @@ describe("Pi slash commands", () => {
   });
 
   it("recognizes skill and duplicate-extension command names", () => {
-    expect(piSlashCommandQuery("/skill:docs")).toBe("skill:docs");
-    expect(piSlashCommandQuery("/review:2")).toBe("review:2");
-    expect(piSlashCommandQuery("/skill:docs extra")).toBeNull();
-    expect(piSlashCommandQuery("/etc/hosts")).toBeNull();
+    expect(agentSlashCommandQuery("/skill:docs")).toBe("skill:docs");
+    expect(agentSlashCommandQuery("/review:2")).toBe("review:2");
+    expect(agentSlashCommandQuery("/skill:docs extra")).toBeNull();
+    expect(agentSlashCommandQuery("/etc/hosts")).toBeNull();
   });
 
   it("builds ordinary prompts without provider queue behavior", () => {
@@ -54,13 +75,10 @@ describe("Pi slash commands", () => {
 
   it("routes Overtchat built-ins to native RPC commands", () => {
     expect(
-      normalizePiSessionCommand(
-        { type: "prompt", message: "/new" },
-        {},
-      ),
+      normalizeAgentSessionCommand({ type: "prompt", message: "/new" }, {}),
     ).toEqual({ type: "new_session" });
     expect(
-      normalizePiSessionCommand(
+      normalizeAgentSessionCommand(
         { type: "prompt", message: "/compact focus on tests" },
         {},
       ),
@@ -69,7 +87,7 @@ describe("Pi slash commands", () => {
       customInstructions: "focus on tests",
     });
     expect(
-      normalizePiSessionCommand(
+      normalizeAgentSessionCommand(
         { type: "prompt", message: "/name Release prep" },
         {},
       ),
@@ -78,7 +96,7 @@ describe("Pi slash commands", () => {
       name: "Release prep",
     });
     expect(
-      normalizePiSessionCommand(
+      normalizeAgentSessionCommand(
         { type: "prompt", message: "/autocompact" },
         { autoCompactionEnabled: false },
       ),
@@ -87,7 +105,7 @@ describe("Pi slash commands", () => {
       enabled: true,
     });
     expect(
-      normalizePiSessionCommand(
+      normalizeAgentSessionCommand(
         { type: "prompt", message: "/autocompact off" },
         { autoCompactionEnabled: true },
       ),
@@ -102,11 +120,13 @@ describe("Pi slash commands", () => {
       type: "prompt" as const,
       message: "/skill:docs explain caching",
     };
-    expect(normalizePiSessionCommand(command, {})).toBe(command);
+    expect(normalizeAgentSessionCommand(command, {})).toBe(command);
   });
 
-  it("routes OMP compact and OvertChat session controls to native RPC commands", () => {
-    const commands = mergeAgentSlashCommands("omp", [
+  it("preserves adapter-discovered commands", () => {
+    const commands = mergeAgentSlashCommands(
+      BUILTIN_COMMANDS.filter((command) => command.name !== "compact"),
+      [
       {
         name: "compact",
         description: "Run OMP compaction",
@@ -117,7 +137,8 @@ describe("Pi slash commands", () => {
         description: "Show the active model",
         source: "builtin",
       },
-    ]);
+      ],
+    );
 
     expect(commands).toEqual(
       expect.arrayContaining([
@@ -132,7 +153,6 @@ describe("Pi slash commands", () => {
     );
     expect(
       normalizeAgentSessionCommand(
-        "omp",
         { type: "prompt", message: "/compact focus on tests" },
         {},
       ),
@@ -142,7 +162,6 @@ describe("Pi slash commands", () => {
     });
     expect(
       normalizeAgentSessionCommand(
-        "omp",
         { type: "prompt", message: "/new" },
         {},
       ),
@@ -151,16 +170,19 @@ describe("Pi slash commands", () => {
 
   it("rejects malformed built-in invocations instead of prompting a model", () => {
     expect(() =>
-      normalizePiSessionCommand({ type: "prompt", message: "/name" }, {}),
+      normalizeAgentSessionCommand(
+        { type: "prompt", message: "/name" },
+        {},
+      ),
     ).toThrow("Usage: /name <name>");
     expect(() =>
-      normalizePiSessionCommand(
+      normalizeAgentSessionCommand(
         { type: "prompt", message: "/autocompact banana" },
         {},
       ),
     ).toThrow("Usage: /autocompact");
     expect(() =>
-      normalizePiSessionCommand(
+      normalizeAgentSessionCommand(
         { type: "prompt", message: "/new with arguments" },
         {},
       ),

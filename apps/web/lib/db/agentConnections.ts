@@ -9,6 +9,7 @@ import {
 } from "@/lib/db/schema";
 import type {
   AgentConnectionListItem,
+  AgentProviderSessionMetadata,
   AgentProviderId,
   AgentSessionListItem,
   AgentTransportId,
@@ -49,15 +50,7 @@ export type NewAgentConnection = {
   };
 };
 
-export type ProviderSessionMetadata = {
-  providerSessionId: string;
-  providerSessionPath: string;
-  name: string | null;
-  firstMessage: string | null;
-  messageCount: number;
-  createdAt: Date | null;
-  modifiedAt: Date | null;
-};
+export type ProviderSessionMetadata = AgentProviderSessionMetadata;
 
 function toSessionListItem(row: AgentSessionRow): AgentSessionListItem {
   return {
