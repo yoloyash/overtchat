@@ -79,6 +79,7 @@ function normalizeCommand(
 ): AgentSessionCommand {
   if (
     command.type === "prompt" &&
+    !command.images?.length &&
     /^\/usage(?:\s*)$/iu.test(command.message)
   ) {
     return { type: "show_usage" };

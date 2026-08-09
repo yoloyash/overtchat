@@ -206,9 +206,29 @@ export type AgentSlashCommand = {
   argumentHint?: string;
 };
 
+export const AGENT_IMAGE_MEDIA_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+] as const;
+
+export const MAX_AGENT_IMAGES = 4;
+export const MAX_AGENT_IMAGE_BYTES = 10 * 1024 * 1024;
+export const MAX_AGENT_IMAGE_TOTAL_BYTES = 20 * 1024 * 1024;
+
+export const agentPromptImageSchema = z.object({
+  uploadId: z.string().uuid(),
+  filename: z.string().trim().min(1).max(500),
+  mediaType: z.enum(AGENT_IMAGE_MEDIA_TYPES),
+});
+
+export type AgentPromptImage = z.infer<typeof agentPromptImageSchema>;
+
 export type AgentQueuedMessage = {
   id: string;
   message: string;
+  images?: AgentPromptImage[];
   status: "pending" | "sending";
 };
 
@@ -253,16 +273,19 @@ export type AgentUsageSnapshot = {
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("prompt"),
-    message: z.string().trim().min(1).max(200_000),
+    message: z.string().trim().max(200_000),
+    images: z.array(agentPromptImageSchema).max(MAX_AGENT_IMAGES).optional(),
   }),
   z.object({ type: z.literal("abort") }),
   z.object({
     type: z.literal("steer"),
-    message: z.string().trim().min(1).max(200_000),
+    message: z.string().trim().max(200_000),
+    images: z.array(agentPromptImageSchema).max(MAX_AGENT_IMAGES).optional(),
   }),
   z.object({
     type: z.literal("queue"),
-    message: z.string().trim().min(1).max(200_000),
+    message: z.string().trim().max(200_000),
+    images: z.array(agentPromptImageSchema).max(MAX_AGENT_IMAGES).optional(),
   }),
   z.object({
     type: z.literal("remove_queued_message"),

@@ -110,7 +110,12 @@ export async function POST(
         ...(
           normalized.type === "prompt" &&
           !authorized.owned.agentSession.firstMessage
-          ? { firstMessage: normalized.message }
+          ? {
+              firstMessage:
+                normalized.message ||
+                normalized.images?.[0]?.filename ||
+                "Image attachment",
+            }
           : {}),
         providerModifiedAt: new Date(),
       });

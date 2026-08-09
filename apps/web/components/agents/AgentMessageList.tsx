@@ -321,17 +321,23 @@ function UserMessage({
   const images = Array.isArray(content)
     ? content.flatMap((part) => {
         const record = recordOf(part);
-        if (
-          record?.type !== "image" ||
-          typeof record.data !== "string" ||
-          typeof record.mimeType !== "string"
-        ) {
+        if (record?.type !== "image" || typeof record.mimeType !== "string") {
           return [];
         }
+        const src =
+          typeof record.url === "string"
+            ? record.url
+            : typeof record.data === "string"
+              ? `data:${record.mimeType};base64,${record.data}`
+              : null;
+        if (!src) return [];
         return [
           {
-            src: `data:${record.mimeType};base64,${record.data}`,
-            alt: "Attached image",
+            src,
+            alt:
+              typeof record.filename === "string"
+                ? record.filename
+                : "Attached image",
           },
         ];
       })

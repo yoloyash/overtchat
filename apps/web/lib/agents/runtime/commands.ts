@@ -1,4 +1,5 @@
 import type {
+  AgentPromptImage,
   AgentSessionCommand,
   AgentSlashCommand,
 } from "@/lib/agents/types";
@@ -27,10 +28,12 @@ export function agentSlashCommandQuery(value: string): string | null {
 
 export function buildAgentPromptCommand(
   message: string,
+  images: AgentPromptImage[] = [],
 ): Extract<AgentSessionCommand, { type: "prompt" }> {
   return {
     type: "prompt",
     message,
+    ...(images.length > 0 ? { images } : {}),
   };
 }
 
@@ -96,6 +99,7 @@ export function normalizeAgentSessionCommand(
   state: Record<string, unknown>,
 ): AgentSessionCommand {
   if (command.type !== "prompt") return command;
+  if (command.images?.length) return command;
   const invocation = parseInvocation(command.message);
   if (!invocation) return command;
 

@@ -1,6 +1,7 @@
 import "server-only";
 import type {
   AgentModel,
+  AgentPromptImage,
   AgentProviderId,
   AgentQueuedMessage,
   AgentRuntimeEnvelope,
@@ -11,6 +12,7 @@ import type {
   AgentSessionStats,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
+import { resolveAgentImages } from "@/lib/agents/runtime/images";
 import {
   applyAgentRuntimeMessageEvent,
   applyAgentRuntimeStateEvent,
@@ -108,6 +110,20 @@ function firstUserMessage(messages: unknown[]): string | null {
     ) {
       const text = messageText(message);
       if (text) return text;
+      const content = Reflect.get(message, "content");
+      if (!Array.isArray(content)) continue;
+      const image = content.find(
+        (part) =>
+          part &&
+          typeof part === "object" &&
+          Reflect.get(part, "type") === "image",
+      );
+      if (image) {
+        const filename = Reflect.get(image, "filename");
+        return typeof filename === "string" && filename.trim()
+          ? filename.trim()
+          : "Image attachment";
+      }
     }
   }
   return null;
@@ -420,13 +436,13 @@ export class AgentSessionRuntime {
           new Error("Session forks must be created by the runtime registry."),
         );
       case "prompt":
-        return this.submitPrompt(command.message);
+        return this.submitPrompt(command.message, command.images ?? []);
       case "abort":
         return this.abortActiveRun();
       case "steer":
-        return this.submitSteer(command.message);
+        return this.submitSteer(command.message, command.images ?? []);
       case "queue":
-        return this.enqueueMessage(command.message);
+        return this.enqueueMessage(command.message, command.images ?? []);
       case "remove_queued_message":
         return this.removeQueuedMessage(command.id);
       case "steer_queued_message":
@@ -627,7 +643,13 @@ export class AgentSessionRuntime {
     this.onExit();
   }
 
-  private submitPrompt(message: string): Promise<unknown> {
+  private submitPrompt(
+    message: string,
+    images: AgentPromptImage[],
+  ): Promise<unknown> {
+    if (!message && images.length === 0) {
+      return Promise.reject(new Error("Enter a message or attach an image."));
+    }
     if (this.status === "exited") {
       return Promise.reject(
         new Error(`${agentProviderMetadata(this.provider).label} exited.`),
@@ -648,15 +670,22 @@ export class AgentSessionRuntime {
         ),
       );
     }
-    return this.startPrompt(message).finally(() => {
+    const imageInputError = this.imageInputError(images);
+    if (imageInputError) return Promise.reject(imageInputError);
+    return this.startPrompt(message, images).finally(() => {
       if (this.status === "idle") void this.drainQueuedMessage();
     });
   }
 
   private async startPrompt(
     message: string,
+    imageRefs: AgentPromptImage[],
     submissionId = `prompt:${++this.nextSubmissionId}`,
   ): Promise<unknown> {
+    const images =
+      imageRefs.length > 0
+        ? await resolveAgentImages(imageRefs, this.userId)
+        : [];
     this.turnGeneration += 1;
     this.eventClassifier.reset();
     this.status = "running";
@@ -673,10 +702,13 @@ export class AgentSessionRuntime {
     this.promptSubmissionId = submission.id;
     this.publishStatus();
     try {
-      const result = await this.client.prompt(message);
+      const result =
+        images.length > 0
+          ? await this.client.prompt(message, images)
+          : await this.client.prompt(message);
       if (this.pendingSubmissions.get(submission.id) === submission) {
         submission.published = true;
-        this.publishSubmission(submission.id, submission.message);
+        this.publishSubmission(submission.id, submission.message, images);
       }
       return result;
     } catch (error) {
@@ -707,8 +739,12 @@ export class AgentSessionRuntime {
 
   private submitSteer(
     message: string,
+    imageRefs: AgentPromptImage[],
     submissionId = `steer:${++this.nextSubmissionId}`,
   ): Promise<unknown> {
+    if (!message && imageRefs.length === 0) {
+      return Promise.reject(new Error("Enter a message or attach an image."));
+    }
     const metadata = agentProviderMetadata(this.provider);
     if (!metadata.capabilities.steer) {
       return Promise.reject(
@@ -729,24 +765,38 @@ export class AgentSessionRuntime {
         new Error("Another steering message is already being submitted."),
       );
     }
+    const imageInputError = this.imageInputError(imageRefs);
+    if (imageInputError) return Promise.reject(imageInputError);
 
-    const submission: PendingSubmission = {
-      id: submissionId,
-      message,
-      published: false,
-    };
-    this.pendingSubmissions.set(submission.id, submission);
-    const operation = this.client
-      .steer(message)
-      .then((result) => {
+    const submit = (
+      images: Awaited<ReturnType<typeof resolveAgentImages>>,
+    ) => {
+      const submission: PendingSubmission = {
+        id: submissionId,
+        message,
+        published: false,
+      };
+      this.pendingSubmissions.set(submission.id, submission);
+      const request =
+        images.length > 0
+          ? this.client.steer(message, images)
+          : this.client.steer(message);
+      return request.then((result) => {
         if (this.pendingSubmissions.get(submission.id) === submission) {
           submission.published = true;
-          this.publishSubmission(submission.id, submission.message);
+          this.publishSubmission(submission.id, submission.message, images);
         }
         return result;
-      })
+      });
+    };
+    const operation = (
+      imageRefs.length > 0
+        ? resolveAgentImages(imageRefs, this.userId).then(submit)
+        : submit([])
+    )
       .catch((error) => {
-        if (this.pendingSubmissions.get(submission.id) === submission) {
+        const submission = this.pendingSubmissions.get(submissionId);
+        if (submission) {
           if (submission.published) this.rejectSubmission(submission.id);
           this.pendingSubmissions.delete(submission.id);
         }
@@ -931,19 +981,47 @@ export class AgentSessionRuntime {
     });
   }
 
-  private enqueueMessage(message: string): Promise<unknown> {
-    const queuedMessage = this.addQueuedMessage(message, "pending");
+  private imageInputError(images: AgentPromptImage[]): Error | null {
+    if (images.length === 0) return null;
+    const stateModel = this.state.model;
+    const model =
+      stateModel && typeof stateModel === "object" && !Array.isArray(stateModel)
+        ? (stateModel as Record<string, unknown>)
+        : null;
+    const selected = this.models.find(
+      (candidate) =>
+        candidate.provider === model?.provider &&
+        candidate.id === model?.id,
+    );
+    if (!selected?.input.includes("image")) {
+      return new Error("The selected model does not support image input.");
+    }
+    return null;
+  }
+
+  private enqueueMessage(
+    message: string,
+    images: AgentPromptImage[],
+  ): Promise<unknown> {
+    if (!message && images.length === 0) {
+      return Promise.reject(new Error("Enter a message or attach an image."));
+    }
+    const imageInputError = this.imageInputError(images);
+    if (imageInputError) return Promise.reject(imageInputError);
+    const queuedMessage = this.addQueuedMessage(message, images, "pending");
     if (this.status === "idle") void this.drainQueuedMessage();
     return Promise.resolve({ queued: true, id: queuedMessage.id });
   }
 
   private addQueuedMessage(
     message: string,
+    images: AgentPromptImage[],
     status: AgentQueuedMessage["status"],
   ): AgentQueuedMessage {
     const queuedMessage: AgentQueuedMessage = {
       id: `${this.dbSessionId}:${++this.nextQueuedMessageId}`,
       message,
+      ...(images.length > 0 ? { images } : {}),
       status,
     };
     this.queuedMessages = [...this.queuedMessages, queuedMessage];
@@ -970,7 +1048,11 @@ export class AgentSessionRuntime {
       );
     }
     this.updateQueuedMessageStatus(id, "sending");
-    return this.submitSteer(message.message, message.id)
+    return this.submitSteer(
+      message.message,
+      message.images ?? [],
+      message.id,
+    )
       .then((result) => {
         this.deleteQueuedMessage(message.id);
         return result;
@@ -995,7 +1077,11 @@ export class AgentSessionRuntime {
     );
     if (!message) return Promise.resolve();
     this.updateQueuedMessageStatus(message.id, "sending");
-    const operation = this.startPrompt(message.message, message.id)
+    const operation = this.startPrompt(
+      message.message,
+      message.images ?? [],
+      message.id,
+    )
       .then(() => {
         this.deleteQueuedMessage(message.id);
       })
@@ -1031,12 +1117,28 @@ export class AgentSessionRuntime {
     this.publishQueueUpdate();
   }
 
-  private publishSubmission(id: string, message: string): void {
+  private publishSubmission(
+    id: string,
+    message: string,
+    images: Awaited<ReturnType<typeof resolveAgentImages>>,
+  ): void {
+    const content =
+      images.length === 0
+        ? message
+        : [
+            ...(message ? [{ type: "text", text: message }] : []),
+            ...images.map((image) => ({
+              type: "image",
+              url: `/api/uploads/${image.uploadId}`,
+              mimeType: image.mediaType,
+              filename: image.filename,
+            })),
+          ];
     const event = {
       type: "overtchat_submission",
       message: {
         role: "user",
-        content: message,
+        content,
         timestamp: Date.now(),
         overtchatSubmissionId: id,
       },
