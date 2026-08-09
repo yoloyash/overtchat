@@ -10,6 +10,7 @@ import type {
   AgentSlashCommand,
   AgentThinkingLevel,
   AgentInteractionValue,
+  AgentUsageSnapshot,
 } from "@/lib/agents/types";
 import type { HostTarget } from "@/lib/agents/runtime/process";
 
@@ -67,6 +68,8 @@ export interface AgentRuntimeClient {
       cancelled?: boolean;
     },
   ): void;
+  retryInteractive?(): Promise<unknown>;
+  getUsage?(): Promise<AgentUsageSnapshot>;
   stop(): Promise<void>;
 }
 

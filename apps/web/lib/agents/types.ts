@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 
-export const AGENT_PROVIDER_IDS = ["pi", "omp"] as const;
+export const AGENT_PROVIDER_IDS = ["pi", "omp", "codex"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
@@ -221,6 +221,31 @@ export type AgentInteractionValue =
 export type AgentRuntimeCapabilities = {
   steer: boolean;
   customCompactionInstructions?: boolean;
+  usage?: boolean;
+};
+
+export type AgentUsageWindow = {
+  id: string;
+  label: string;
+  usedPercent: number;
+  resetsAt: number | null;
+  windowDurationMins: number | null;
+};
+
+export type AgentUsageSnapshot = {
+  planType: string | null;
+  windows: AgentUsageWindow[];
+  credits: {
+    balance: string | null;
+    unlimited: boolean;
+  } | null;
+  activity: {
+    lifetimeTokens: number | null;
+    currentStreakDays: number | null;
+    longestStreakDays: number | null;
+    peakDailyTokens: number | null;
+  } | null;
+  unavailableReason: string | null;
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
@@ -267,6 +292,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     name: z.string().trim().min(1).max(120),
   }),
   z.object({ type: z.literal("new_session") }),
+  z.object({ type: z.literal("show_usage") }),
   z.object({
     type: z.literal("interaction_response"),
     id: z.string().min(1).max(500),
@@ -285,6 +311,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     confirmed: z.boolean().optional(),
     cancelled: z.boolean().optional(),
   }),
+  z.object({ type: z.literal("retry_interactive") }),
 ]);
 
 export type AgentSessionCommand = z.infer<typeof agentSessionCommandSchema>;
@@ -327,6 +354,10 @@ export type AgentRuntimeSnapshot = {
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
   queuedMessages: AgentQueuedMessage[];
+  readOnly?: {
+    reason: string;
+    retryable: boolean;
+  };
   pendingInteraction?: {
     type: "interaction_request";
     id: string;

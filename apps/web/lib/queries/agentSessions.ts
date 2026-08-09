@@ -7,6 +7,7 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentSessionCommand,
+  AgentUsageSnapshot,
 } from "@/lib/agents/types";
 import { applyAgentRuntimeEnvelope } from "@/lib/agents/runtime/state";
 import {
@@ -80,6 +81,7 @@ export function useAgentSessionCommand(id: string) {
     ): Promise<{
       sessionId?: string;
       queuedMessages?: AgentQueuedMessage[];
+      usage?: AgentUsageSnapshot;
     }> => {
       const response = await fetch(`/api/agent-sessions/${id}`, {
         method: "POST",
@@ -90,6 +92,7 @@ export function useAgentSessionCommand(id: string) {
       return (await response.json()) as {
         sessionId?: string;
         queuedMessages?: AgentQueuedMessage[];
+        usage?: AgentUsageSnapshot;
       };
     },
     onSuccess: (data, command) => {

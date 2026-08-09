@@ -53,9 +53,7 @@ async function startHostConnector(
   await expect(
     page.getByTitle("Claude Code · Coming soon", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByTitle("Codex · Coming soon", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTitle("Codex", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent access" }),
   ).toBeVisible();
@@ -226,9 +224,7 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   await expect(
     page.getByTitle("Claude Code · Coming soon", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByTitle("Codex · Coming soon", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTitle("Codex", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent access" }),
   ).toBeVisible();
@@ -730,6 +726,106 @@ test("connect local Oh My Pi and use its native commands", async ({
     { timeout: 30_000 },
   );
   await expect(page.getByText("New Oh My Pi session")).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
+test("connect local Codex and resume a native thread", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(240_000);
+  test.skip(
+    process.env.RUN_CODEX_E2E !== "1",
+    "Set RUN_CODEX_E2E=1 on a machine with Codex installed and signed in.",
+  );
+
+  const browserErrors: string[] = [];
+  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+
+  await page.goto("/signup");
+  await page.locator("#name").fill("Codex E2E Admin");
+  await page
+    .locator("#email")
+    .fill("codex-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+
+  await startHostConnector(page, testInfo);
+  await page.getByRole("button", { name: "Add agent" }).click();
+  await expect(
+    page.getByRole("button", { name: "Add Codex", exact: true }),
+  ).toBeVisible({ timeout: 30_000 });
+  await page
+    .getByRole("button", { name: "Add Codex", exact: true })
+    .click();
+  await expect(page.getByText("Codex added")).toBeVisible({
+    timeout: 150_000,
+  });
+
+  await page.getByRole("button", { name: "Add workspace" }).click();
+  const dialog = page.getByRole("dialog", { name: "Add workspace" });
+  await dialog.getByRole("button", { name: "Enter path" }).click();
+  await dialog.getByLabel("Directory path").fill(workspacePath);
+  await dialog
+    .getByRole("button", { name: "Add workspace", exact: true })
+    .click();
+  await expect(page.getByText("Workspace attached")).toBeVisible({
+    timeout: 90_000,
+  });
+
+  await page
+    .getByRole("button", { name: "Expand This server", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: `Expand ${workspaceName}`, exact: true })
+    .click();
+  await page
+    .getByRole("button", {
+      name: `New session in ${workspaceName}`,
+      exact: true,
+    })
+    .click();
+  await page.waitForURL("**/agents/**", { timeout: 150_000 });
+  await expect(page.getByText("New Codex session")).toBeVisible({
+    timeout: 150_000,
+  });
+
+  const composer = page.getByPlaceholder(
+    "Message Codex or type / for commands",
+  );
+  await composer.fill("/usage");
+  await composer.press("Enter");
+  const usageDialog = page.getByRole("dialog", { name: "Codex usage" });
+  await expect(usageDialog).toBeVisible({ timeout: 30_000 });
+  await usageDialog.getByRole("button", { name: "Done" }).click();
+
+  const prompt =
+    "Respond with exactly OVERTCHAT_CODEX_E2E_OK and nothing else.";
+  await composer.fill(prompt);
+  await composer.press("Enter");
+  await expect(
+    page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
+  ).toBeVisible({ timeout: 150_000 });
+  await expect(composer).toBeEnabled({ timeout: 30_000 });
+  await expect(composer).toHaveValue("");
+  await expect(
+    page.locator("main").getByText(prompt, { exact: true }),
+  ).toBeVisible();
+
+  await page.reload();
+  await expect(
+    page.locator("main").getByText(prompt, { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect(
+    page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
+  ).toBeVisible({ timeout: 60_000 });
+  await page.screenshot({
+    path: testInfo.outputPath("codex-session-desktop.png"),
+    fullPage: true,
+  });
   expect(browserErrors).toEqual([]);
 });
 

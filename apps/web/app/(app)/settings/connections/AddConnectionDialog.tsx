@@ -13,6 +13,7 @@ import {
   TerminalSquare,
   Wifi,
 } from "lucide-react";
+import codexIcon from "@/assets/agent-providers/codex.png";
 import ompIcon from "@/assets/agent-providers/omp.svg";
 import piIcon from "@/assets/agent-providers/pi.svg";
 import { Button } from "@/components/ui/button";
@@ -63,6 +64,7 @@ const PROVIDER_ICONS: Record<
 > = {
   pi: { icon: piIcon },
   omp: { icon: ompIcon, darkSurface: true },
+  codex: { icon: codexIcon, darkSurface: true },
 };
 
 export function AddConnectionDialog({

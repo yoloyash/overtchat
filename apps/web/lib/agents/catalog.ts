@@ -33,6 +33,12 @@ export const AGENT_PROVIDERS: Record<
       customCompactionInstructions: true,
     },
   },
+  codex: {
+    id: "codex",
+    label: "Codex",
+    executable: "codex",
+    capabilities: { steer: true, usage: true },
+  },
 };
 
 export function agentProviderMetadata(

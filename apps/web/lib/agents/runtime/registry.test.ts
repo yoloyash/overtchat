@@ -87,6 +87,7 @@ class FakeAgentClient {
   readonly compact = vi.fn(async () => ({}));
   readonly setAutoCompaction = vi.fn(async () => ({}));
   readonly setSessionName = vi.fn(async () => ({}));
+  readonly retryInteractive = vi.fn(async () => ({}));
   readonly respondToInteraction = vi.fn();
   readonly respondToExtensionUi = this.respondToInteraction;
   readonly getState = vi.fn(async () => ({ ...idleProviderState }));
@@ -175,6 +176,40 @@ function owned(): OwnedAgentSession {
 }
 
 describe("Agent session runtime", () => {
+  it("blocks mutations in read-only sessions and retries interactive access", async () => {
+    const client = new FakeAgentClient();
+    const readOnly = {
+      reason: "This session is open elsewhere.",
+      retryable: true,
+    };
+    client.getState.mockResolvedValueOnce({ ...idleProviderState });
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        state: { ...initial().state, readOnly },
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    expect(runtime.snapshot().readOnly).toEqual(readOnly);
+    await expect(
+      runtime.command({ type: "prompt", message: "Continue" }),
+    ).rejects.toThrow("open elsewhere");
+    expect(client.prompt).not.toHaveBeenCalled();
+
+    await runtime.command({ type: "retry_interactive" });
+    expect(client.retryInteractive).toHaveBeenCalledTimes(1);
+    expect(runtime.snapshot().readOnly).toBeUndefined();
+    await runtime.stop();
+  });
+
   it("keeps live provider messages in authoritative snapshots", async () => {
     const client = new FakeAgentClient();
     const runtime = new AgentSessionRuntime(

@@ -43,6 +43,7 @@ export function AgentSessionHeader({
   stats,
   running,
   commandPending,
+  readOnly,
   onSelectModel,
   onSelectThinking,
   onRename,
@@ -57,6 +58,7 @@ export function AgentSessionHeader({
   stats: AgentSessionStats;
   running: boolean;
   commandPending: boolean;
+  readOnly: boolean;
   onSelectModel: (model: AgentModel) => void;
   onSelectThinking: (level: AgentThinkingLevel) => void;
   onRename: () => void;
@@ -75,7 +77,7 @@ export function AgentSessionHeader({
         providerLabel={providerLabel}
         models={models}
         currentModel={currentModel}
-        disabled={running || commandPending}
+        disabled={readOnly || running || commandPending}
         onSelect={onSelectModel}
       />
       {thinkingLevels.length > 0 && thinkingLevel && (
@@ -84,7 +86,7 @@ export function AgentSessionHeader({
           onValueChange={(value) =>
             onSelectThinking(value as AgentThinkingLevel)
           }
-          disabled={running || commandPending}
+          disabled={readOnly || running || commandPending}
         >
           <SelectTrigger
             size="sm"
@@ -122,6 +124,7 @@ export function AgentSessionHeader({
                 size="icon-sm"
                 aria-label="Session actions"
                 title="Session actions"
+                disabled={readOnly}
               />
             }
           >
@@ -136,14 +139,15 @@ export function AgentSessionHeader({
                 )}
               >
                 <Menu.Item
+                  disabled={readOnly}
                   onClick={onRename}
-                  className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                  className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
                 >
                   <Pencil className="size-3.5 text-muted-foreground" />
                   Rename session
                 </Menu.Item>
                 <Menu.Item
-                  disabled={running || commandPending}
+                  disabled={readOnly || running || commandPending}
                   onClick={onCompact}
                   className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
                 >
