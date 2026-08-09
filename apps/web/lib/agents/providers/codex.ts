@@ -88,7 +88,11 @@ export const codexProviderAdapter: AgentProviderAdapter = {
   listWorkspaceSessions: listCodexWorkspaceSessions,
   sessionIdentity,
   createEventClassifier: () => new CodexEventClassifier(),
-  commandsFromEvent: () => null,
+  commandsFromEvent: (event) =>
+    event.type === "available_commands_update" &&
+    Array.isArray(event.commands)
+      ? (event.commands as AgentSlashCommand[])
+      : null,
   mergeCommands: (discovered) =>
     mergeAgentSlashCommands(CODEX_COMMANDS, discovered),
   normalizeCommand,

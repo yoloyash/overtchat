@@ -1,5 +1,6 @@
 import "server-only";
 import type {
+  AgentInteractionValue,
   AgentModel,
   AgentSessionStats,
   AgentSlashCommand,
@@ -32,6 +33,16 @@ import {
   type CodexTurn,
   type UnknownRecord,
 } from "@/lib/agents/codex/protocol";
+import {
+  commandMap,
+  expandCodexCustomPrompt,
+  listCodexCustomPrompts,
+  parseCodexSkills,
+  parseCodexSlashInvocation,
+  publicCommands,
+  skillInput,
+  type CodexDiscoveredCommand,
+} from "@/lib/agents/codex/commands";
 
 const TURN_COMPLETION_TIMEOUT_MS = 30_000;
 const COMPACTION_TIMEOUT_MS = 5 * 60_000;
@@ -64,6 +75,11 @@ type PendingInteraction =
       answers: Record<string, { answers: string[] }>;
       awaitingOther: boolean;
       timeout?: number;
+    }
+  | {
+      kind: "mcpElicitation";
+      rpcId: JsonRpcId;
+      mode: "form" | "url";
     };
 
 type KnownUserInput = {
@@ -103,6 +119,107 @@ function toolOutput(value: unknown): string {
     return JSON.stringify(value, null, 2);
   } catch {
     return String(value);
+  }
+}
+
+function mcpElicitationOptions(
+  schema: UnknownRecord,
+): Array<{ value: string; label: string }> {
+  if (Array.isArray(schema.enum)) {
+    const labels = Array.isArray(schema.enumNames) ? schema.enumNames : [];
+    return schema.enum.flatMap((value, index) =>
+      typeof value === "string"
+        ? [
+            {
+              value,
+              label:
+                typeof labels[index] === "string" ? labels[index] : value,
+            },
+          ]
+        : [],
+    );
+  }
+  const choices = Array.isArray(schema.oneOf)
+    ? schema.oneOf
+    : Array.isArray(schema.anyOf)
+      ? schema.anyOf
+      : [];
+  return choices.flatMap((choice) => {
+    const record = recordOf(choice);
+    const value = stringOf(record, "const");
+    return value
+      ? [{ value, label: stringOf(record, "title") ?? value }]
+      : [];
+  });
+}
+
+function mcpElicitationFields(value: unknown): UnknownRecord[] {
+  const schema = recordOf(value);
+  const properties = recordOf(schema?.properties);
+  if (!properties) return [];
+  const required = new Set(
+    Array.isArray(schema?.required)
+      ? schema.required.filter(
+          (field): field is string => typeof field === "string",
+        )
+      : [],
+  );
+  return Object.entries(properties).flatMap(([id, candidate]) => {
+    const field = recordOf(candidate);
+    const nativeType = stringOf(field, "type");
+    if (!field || !nativeType) return [];
+    const itemSchema = recordOf(field.items);
+    const options =
+      nativeType === "array"
+        ? mcpElicitationOptions(itemSchema ?? {})
+        : mcpElicitationOptions(field);
+    const type =
+      nativeType === "boolean"
+        ? "boolean"
+        : nativeType === "number" || nativeType === "integer"
+          ? "number"
+          : nativeType === "array" && options.length > 0
+            ? "multiselect"
+            : options.length > 0
+              ? "select"
+              : nativeType === "string"
+                ? "text"
+                : null;
+    if (!type) return [];
+    const defaultValue =
+      field.default ??
+      (type === "multiselect" ? [] : type === "boolean" ? false : undefined);
+    return [
+      {
+        id,
+        type,
+        label: stringOf(field, "title") ?? id,
+        ...(stringOf(field, "description")
+          ? { description: stringOf(field, "description") }
+          : {}),
+        required: required.has(id),
+        options,
+        ...(defaultValue !== undefined ? { defaultValue } : {}),
+        ...(typeof field.minimum === "number"
+          ? { minimum: field.minimum }
+          : {}),
+        ...(typeof field.maximum === "number"
+          ? { maximum: field.maximum }
+          : {}),
+      },
+    ];
+  });
+}
+
+function safeMcpUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol)
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
   }
 }
 
@@ -316,6 +433,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     Set<CompletionWaiter<CodexTurn>>
   >();
   private readonly knownUserInputs = new Map<string, KnownUserInput[]>();
+  private discoveredCommands = new Map<string, CodexDiscoveredCommand>();
+  private commandRefreshPromise: Promise<void> | null = null;
   private readonly readyPromise: Promise<void>;
   private thread: CodexThread | null = null;
   private activeTurnId: string | null = null;
@@ -333,16 +452,16 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private threadSubscribed = false;
 
   constructor(
-    target: HostTarget,
+    private readonly target: HostTarget,
     private readonly launch: AgentSessionLaunch,
   ) {
-    this.readyPromise = this.initialize(target);
+    this.readyPromise = this.initialize();
     void this.readyPromise.catch(() => {});
   }
 
-  private async initialize(target: HostTarget): Promise<void> {
+  private async initialize(): Promise<void> {
     this.server = await startCodexAppServer(
-      target,
+      this.target,
       this.launch.executable,
       this.launch.cwd,
     );
@@ -351,6 +470,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     );
     this.server.onRequest((request) => this.handleRequest(request));
     await this.openThread();
+    await this.reloadCommands();
   }
 
   onEvent(subscriber: (event: AgentRuntimeEvent) => void): () => void {
@@ -401,8 +521,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     return codexThinkingLevels(this.modelResponse, this.selectedModel);
   }
 
-  getCommands(): Promise<AgentSlashCommand[]> {
-    return Promise.resolve([]);
+  async getCommands(): Promise<AgentSlashCommand[]> {
+    await this.readyPromise;
+    return publicCommands([...this.discoveredCommands.values()]);
   }
 
   async prompt(message: string): Promise<unknown> {
@@ -413,7 +534,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     try {
       const response = await this.server.request<UnknownRecord>("turn/start", {
         threadId: this.thread!.id,
-        input: textInput(message),
+        input: this.resolvePromptInput(message),
         model: this.selectedModel || null,
         ...(this.selectedThinking
           ? { effort: this.selectedThinking }
@@ -437,7 +558,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const response = await this.server.request("turn/steer", {
       threadId: this.thread!.id,
       expectedTurnId: turnId,
-      input: textInput(message),
+      input: this.resolvePromptInput(message),
     });
     this.rememberUserInput(turnId, this.createKnownUserInput(message));
     return response;
@@ -549,6 +670,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     id: string,
     response: {
       value?: string;
+      values?: Record<string, AgentInteractionValue>;
       confirmed?: boolean;
       cancelled?: boolean;
     },
@@ -588,6 +710,25 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
           allowed && response.value === "Allow for session"
             ? "session"
             : "turn",
+      });
+      return;
+    }
+    if (pending.kind === "mcpElicitation") {
+      this.pendingInteractions.delete(id);
+      const accepted =
+        !response.cancelled &&
+        (response.confirmed === true || response.values !== undefined);
+      this.server.respond(pending.rpcId, {
+        action: response.cancelled
+          ? "cancel"
+          : accepted
+            ? "accept"
+            : "decline",
+        content:
+          accepted && pending.mode === "form"
+            ? (response.values ?? {})
+            : null,
+        _meta: null,
       });
       return;
     }
@@ -805,6 +946,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       }
       return;
     }
+    if (method === "skills/changed") {
+      void this.reloadCommands(true);
+      return;
+    }
     if (method === "turn/completed") {
       const turn = this.withKnownUserInputs(parseCodexTurn(data?.turn));
       this.turns.set(turn.id, turn);
@@ -905,7 +1050,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       });
       return;
     }
-    if (request.method === "item/tool/requestUserInput") {
+    if (
+      request.method === "item/tool/requestUserInput" ||
+      request.method === "tool/requestUserInput"
+    ) {
       const params = recordOf(request.params);
       const questions = Array.isArray(params?.questions)
         ? params.questions
@@ -934,6 +1082,71 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       };
       this.pendingInteractions.set(id, pending);
       this.emitQuestion(id, pending);
+      return;
+    }
+    if (request.method === "mcpServer/elicitation/request") {
+      const params = recordOf(request.params);
+      const mode = stringOf(params, "mode");
+      const serverName = stringOf(params, "serverName") ?? "MCP server";
+      const message =
+        stringOf(params, "message") ??
+        `${serverName} needs additional information.`;
+      const id = `codex:${request.id}`;
+      if (mode === "url") {
+        const url = safeMcpUrl(params?.url);
+        if (!url) {
+          this.server.respond(request.id, {
+            action: "decline",
+            content: null,
+            _meta: null,
+          });
+          return;
+        }
+        this.pendingInteractions.set(id, {
+          kind: "mcpElicitation",
+          rpcId: request.id,
+          mode: "url",
+        });
+        this.emit({
+          type: "interaction_request",
+          id,
+          method: "external",
+          title: `Continue with ${serverName}?`,
+          message,
+          url,
+        });
+        return;
+      }
+      if (mode === "form" || mode === "openai/form") {
+        const fields = mcpElicitationFields(params?.requestedSchema);
+        if (fields.length === 0) {
+          this.server.respond(request.id, {
+            action: "decline",
+            content: null,
+            _meta: null,
+          });
+          return;
+        }
+        this.pendingInteractions.set(id, {
+          kind: "mcpElicitation",
+          rpcId: request.id,
+          mode: "form",
+        });
+        this.emit({
+          type: "interaction_request",
+          id,
+          method: "form",
+          title: `${serverName} needs your input`,
+          message,
+          fields,
+        });
+        return;
+      }
+      this.server.respond(request.id, {
+        action: "decline",
+        content: null,
+        _meta: null,
+      });
       return;
     }
     if (request.method === "item/permissions/requestApproval") {
@@ -1045,6 +1258,58 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       id: `overtchat:codex-user:${++this.nextUserInputId}`,
       text,
     };
+  }
+
+  private resolvePromptInput(message: string): UnknownRecord[] {
+    const invocation = parseCodexSlashInvocation(message);
+    const command = invocation
+      ? this.discoveredCommands.get(invocation.name.toLowerCase())
+      : undefined;
+    if (!invocation || !command) return textInput(message);
+    if (command.source === "skill") {
+      return skillInput(command, invocation.arguments);
+    }
+    return textInput(
+      expandCodexCustomPrompt(command.template, invocation.arguments),
+    );
+  }
+
+  private async reloadCommands(publish = false): Promise<void> {
+    if (this.commandRefreshPromise) return this.commandRefreshPromise;
+    const refresh = (async () => {
+      const [skills, prompts] = await Promise.all([
+        this.server
+          .request("skills/list", { cwds: [this.launch.cwd] })
+          .then(parseCodexSkills)
+          .catch(() => []),
+        listCodexCustomPrompts(this.target).catch((error) => {
+          console.warn(
+            "Unable to load Codex custom prompts:",
+            error instanceof Error ? error.message : String(error),
+          );
+          return [];
+        }),
+      ]);
+      this.discoveredCommands = commandMap(
+        [...skills, ...prompts].sort((left, right) =>
+          left.name.localeCompare(right.name),
+        ),
+      );
+      if (publish) {
+        this.emit({
+          type: "available_commands_update",
+          commands: publicCommands([...this.discoveredCommands.values()]),
+        });
+      }
+    })();
+    this.commandRefreshPromise = refresh;
+    try {
+      await refresh;
+    } finally {
+      if (this.commandRefreshPromise === refresh) {
+        this.commandRefreshPromise = null;
+      }
+    }
   }
 
   private rememberUserInput(turnId: string, input: KnownUserInput): void {

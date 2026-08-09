@@ -2,6 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+const mocks = vi.hoisted(() => ({
+  listCodexCustomPrompts: vi.fn(),
+}));
+
+vi.mock("./commands", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./commands")>()),
+  listCodexCustomPrompts: mocks.listCodexCustomPrompts,
+}));
+
 type Listener<T> = (value: T) => void;
 
 class FakeCodexServer {
@@ -47,6 +56,23 @@ class FakeCodexServer {
           },
         ],
         nextCursor: null,
+      };
+    }
+    if (method === "skills/list") {
+      return {
+        data: [
+          {
+            cwd: "/workspace",
+            skills: [
+              {
+                name: "release-notes",
+                path: "/workspace/.codex/skills/release-notes/SKILL.md",
+                description: "Draft release notes",
+                enabled: true,
+              },
+            ],
+          },
+        ],
       };
     }
     if (method === "thread/start") {
@@ -159,10 +185,99 @@ import { CodexRuntimeClient } from "./client";
 
 describe("CodexRuntimeClient", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     server.requests.length = 0;
     server.responses.length = 0;
     server.resumeError = null;
     server.respondError.mockClear();
+    mocks.listCodexCustomPrompts.mockResolvedValue([
+      {
+        name: "prompts:review",
+        description: "Review a path",
+        argumentHint: "<path>",
+        source: "prompt",
+        template: "Review $1 carefully.",
+      },
+    ]);
+  });
+
+  it("discovers and invokes native skills and custom prompts", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+
+    await expect(client.getCommands()).resolves.toEqual([
+      {
+        name: "prompts:review",
+        description: "Review a path",
+        argumentHint: "<path>",
+        source: "prompt",
+      },
+      {
+        name: "release-notes",
+        description: "Draft release notes",
+        source: "skill",
+      },
+    ]);
+
+    await client.prompt("/release-notes v1.2.3");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [
+          {
+            type: "skill",
+            name: "release-notes",
+            path: "/workspace/.codex/skills/release-notes/SKILL.md",
+          },
+          {
+            type: "text",
+            text: "$release-notes v1.2.3",
+            text_elements: [],
+          },
+        ],
+      },
+    });
+
+    await client.prompt('/prompts:review "src/a b.ts"');
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [
+          {
+            type: "text",
+            text: "Review src/a b.ts carefully.",
+            text_elements: [],
+          },
+        ],
+      },
+    });
+  });
+
+  it("refreshes native skills when Codex reports a change", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getCommands();
+
+    server.emit("skills/changed", {});
+    await vi.waitFor(() => {
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "available_commands_update",
+          commands: expect.arrayContaining([
+            expect.objectContaining({
+              name: "release-notes",
+              source: "skill",
+            }),
+          ]),
+        }),
+      );
+    });
   });
 
   it("starts a native thread and maps streamed activity", async () => {
@@ -563,6 +678,172 @@ describe("CodexRuntimeClient", () => {
     expect(events.at(-1)).toEqual({
       type: "interaction_resolved",
       id: "codex:question-1",
+    });
+  });
+
+  it("supports legacy Codex user-input requests", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+
+    server.ask("legacy-question", "tool/requestUserInput", {
+      questions: [
+        {
+          id: "choice",
+          header: "Choose",
+          question: "Which path?",
+          isOther: false,
+          isSecret: false,
+          options: [
+            { label: "A", description: "First" },
+            { label: "B", description: "Second" },
+          ],
+        },
+      ],
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: "interaction_request",
+      id: "codex:legacy-question",
+      method: "select",
+      options: ["A", "B"],
+    });
+
+    client.respondToInteraction("codex:legacy-question", { value: "B" });
+    expect(server.responses.at(-1)).toEqual({
+      id: "legacy-question",
+      result: {
+        answers: {
+          choice: { answers: ["B"] },
+        },
+      },
+    });
+  });
+
+  it("handles typed MCP elicitation forms and authorization URLs", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+
+    server.ask("mcp-form", "mcpServer/elicitation/request", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      serverName: "GitHub",
+      mode: "form",
+      message: "Configure the GitHub tool",
+      requestedSchema: {
+        type: "object",
+        properties: {
+          token: {
+            type: "string",
+            title: "Token",
+            description: "Personal access token",
+          },
+          environment: {
+            type: "string",
+            title: "Environment",
+            enum: ["production", "staging"],
+            enumNames: ["Production", "Staging"],
+          },
+          scopes: {
+            type: "array",
+            title: "Scopes",
+            items: {
+              type: "string",
+              enum: ["repo", "issues"],
+            },
+          },
+          private: {
+            type: "boolean",
+            title: "Private repository",
+            default: false,
+          },
+        },
+        required: ["token", "environment"],
+      },
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: "interaction_request",
+      id: "codex:mcp-form",
+      method: "form",
+      title: "GitHub needs your input",
+      fields: [
+        expect.objectContaining({
+          id: "token",
+          type: "text",
+          required: true,
+        }),
+        expect.objectContaining({
+          id: "environment",
+          type: "select",
+          options: [
+            { value: "production", label: "Production" },
+            { value: "staging", label: "Staging" },
+          ],
+        }),
+        expect.objectContaining({
+          id: "scopes",
+          type: "multiselect",
+        }),
+        expect.objectContaining({
+          id: "private",
+          type: "boolean",
+          defaultValue: false,
+        }),
+      ],
+    });
+    client.respondToInteraction("codex:mcp-form", {
+      values: {
+        token: "secret",
+        environment: "staging",
+        scopes: ["repo"],
+        private: false,
+      },
+    });
+    expect(server.responses.at(-1)).toEqual({
+      id: "mcp-form",
+      result: {
+        action: "accept",
+        content: {
+          token: "secret",
+          environment: "staging",
+          scopes: ["repo"],
+          private: false,
+        },
+        _meta: null,
+      },
+    });
+
+    server.ask("mcp-url", "mcpServer/elicitation/request", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      serverName: "GitHub",
+      mode: "url",
+      message: "Authorize GitHub",
+      url: "https://github.com/login/oauth/authorize",
+      elicitationId: "oauth-1",
+    });
+    expect(events.at(-1)).toMatchObject({
+      type: "interaction_request",
+      id: "codex:mcp-url",
+      method: "external",
+      url: "https://github.com/login/oauth/authorize",
+    });
+    client.respondToInteraction("codex:mcp-url", { confirmed: true });
+    expect(server.responses.at(-1)).toEqual({
+      id: "mcp-url",
+      result: {
+        action: "accept",
+        content: null,
+        _meta: null,
+      },
     });
   });
 
