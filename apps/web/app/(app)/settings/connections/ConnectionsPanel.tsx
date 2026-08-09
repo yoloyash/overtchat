@@ -209,7 +209,7 @@ export function ConnectionsPanel({
             <span>Use OvertChat as a web interface for coding agents.</span>
             <span
               className="inline-flex items-center gap-1"
-              aria-label="Supported agents: Pi and Oh My Pi. Claude Code and Codex coming soon."
+              aria-label="Supported agents: Pi, Oh My Pi, and Codex. Claude Code coming soon."
             >
               <span
                 className="flex size-6 items-center justify-center rounded-md border bg-background"
@@ -234,8 +234,8 @@ export function ConnectionsPanel({
                 />
               </span>
               <span
-                className="flex size-6 items-center justify-center rounded-md border bg-background opacity-40 grayscale"
-                title="Codex · Coming soon"
+                className="flex size-6 items-center justify-center rounded-md border bg-zinc-950"
+                title="Codex"
               >
                 <Image
                   src={codexIcon}

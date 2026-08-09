@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 
-export const AGENT_PROVIDER_IDS = ["pi", "omp"] as const;
+export const AGENT_PROVIDER_IDS = ["pi", "omp", "codex"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
