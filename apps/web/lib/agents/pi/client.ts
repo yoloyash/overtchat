@@ -466,6 +466,13 @@ export class PiRpcClient {
       this.failProtocol(`${this.label} RPC event is missing a type.`);
       return;
     }
+    if (record.type === "extension_ui_request") {
+      this.emit({
+        ...record,
+        type: "interaction_request",
+      } as PiRpcEvent);
+      return;
+    }
     this.emit(record as PiRpcEvent);
   }
 

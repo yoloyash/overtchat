@@ -14,7 +14,6 @@ import type {
   AgentSessionLaunch,
 } from "@/lib/agents/providers/types";
 import type {
-  AgentProviderId,
   AgentSlashCommand,
 } from "@/lib/agents/types";
 import { startPiRpc } from "@/lib/agents/pi/client";
@@ -42,6 +41,8 @@ const OVERTCHAT_SESSION_COMMANDS: readonly AgentSlashCommand[] = [
   },
 ];
 
+type PiRpcProviderId = "pi" | "omp";
+
 const PI_BUILTIN_COMMANDS: readonly AgentSlashCommand[] = [
   OVERTCHAT_SESSION_COMMANDS[0],
   {
@@ -54,7 +55,7 @@ const PI_BUILTIN_COMMANDS: readonly AgentSlashCommand[] = [
 ];
 
 function builtinCommands(
-  provider: AgentProviderId,
+  provider: PiRpcProviderId,
 ): readonly AgentSlashCommand[] {
   return provider === "pi"
     ? PI_BUILTIN_COMMANDS
@@ -71,7 +72,7 @@ function messageRole(message: unknown): string | null {
 class PiRpcEventClassifier implements AgentRuntimeEventClassifier {
   private ompRunSawAssistant = false;
 
-  constructor(private readonly provider: AgentProviderId) {}
+  constructor(private readonly provider: PiRpcProviderId) {}
 
   reset(): void {
     this.ompRunSawAssistant = false;
@@ -117,7 +118,7 @@ class PiRpcEventClassifier implements AgentRuntimeEventClassifier {
 }
 
 function sessionIdentity(
-  provider: AgentProviderId,
+  provider: PiRpcProviderId,
   state: Record<string, unknown>,
 ): AgentSessionIdentity {
   const label = agentProviderMetadata(provider).label;
@@ -140,7 +141,7 @@ function sessionIdentity(
 }
 
 export function createPiRpcProviderAdapter(
-  provider: AgentProviderId,
+  provider: PiRpcProviderId,
 ): AgentProviderAdapter {
   const mergeCommands = (
     discovered: readonly AgentSlashCommand[],
@@ -167,7 +168,7 @@ export function createPiRpcProviderAdapter(
       ),
     probeTarget: (target, executable) =>
       probeAgentTarget(target, provider, executable),
-    listWorkspaceSessions: (target, workspacePath) =>
+    listWorkspaceSessions: (target, _executable, workspacePath) =>
       listAgentWorkspaceSessions(provider, target, workspacePath),
     sessionIdentity: (state) => sessionIdentity(provider, state),
     createEventClassifier: () => new PiRpcEventClassifier(provider),

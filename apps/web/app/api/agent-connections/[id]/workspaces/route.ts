@@ -52,6 +52,7 @@ export async function POST(
       owned.connection.provider,
     ).listWorkspaceSessions(
       target,
+      owned.connection.executable,
       workspace.path,
     );
     const row = await createAgentWorkspace(id, session.user.id, {

@@ -12,8 +12,8 @@ import type { AgentRuntimeSnapshot } from "@/lib/agents/types";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-type ExtensionRequest = NonNullable<
-  AgentRuntimeSnapshot["pendingExtensionRequest"]
+type AgentInteraction = NonNullable<
+  AgentRuntimeSnapshot["pendingInteraction"]
 >;
 
 const dialogBackdrop = cn(
@@ -134,6 +134,7 @@ function RenameAgentSessionDialogContent({
 
 export function CompactAgentSessionDialog({
   providerLabel,
+  supportsCustomInstructions,
   open,
   pending,
   error,
@@ -141,6 +142,7 @@ export function CompactAgentSessionDialog({
   onSubmit,
 }: {
   providerLabel: string;
+  supportsCustomInstructions: boolean;
   open: boolean;
   pending: boolean;
   error?: string;
@@ -151,6 +153,7 @@ export function CompactAgentSessionDialog({
     <CompactAgentSessionDialogContent
       pending={pending}
       providerLabel={providerLabel}
+      supportsCustomInstructions={supportsCustomInstructions}
       error={error}
       onOpenChange={onOpenChange}
       onSubmit={onSubmit}
@@ -160,12 +163,14 @@ export function CompactAgentSessionDialog({
 
 function CompactAgentSessionDialogContent({
   providerLabel,
+  supportsCustomInstructions,
   pending,
   error,
   onOpenChange,
   onSubmit,
 }: {
   providerLabel: string;
+  supportsCustomInstructions: boolean;
   pending: boolean;
   error?: string;
   onOpenChange: (open: boolean) => void;
@@ -197,21 +202,23 @@ function CompactAgentSessionDialogContent({
               onSubmit(instructions.trim() || undefined);
             }}
           >
-            <div className="space-y-1.5">
-              <Label htmlFor="agent-compact-instructions">
-                Instructions{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional)
-                </span>
-              </Label>
-              <Textarea
-                id="agent-compact-instructions"
-                value={instructions}
-                maxLength={20_000}
-                className="min-h-24 resize-y"
-                onChange={(event) => setInstructions(event.target.value)}
-              />
-            </div>
+            {supportsCustomInstructions && (
+              <div className="space-y-1.5">
+                <Label htmlFor="agent-compact-instructions">
+                  Instructions{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </Label>
+                <Textarea
+                  id="agent-compact-instructions"
+                  value={instructions}
+                  maxLength={20_000}
+                  className="min-h-24 resize-y"
+                  onChange={(event) => setInstructions(event.target.value)}
+                />
+              </div>
+            )}
             {error && <DialogError>{error}</DialogError>}
             <DialogActions>
               <Button
@@ -235,7 +242,7 @@ function CompactAgentSessionDialogContent({
   );
 }
 
-export function AgentExtensionDialog({
+export function AgentInteractionDialog({
   providerLabel,
   request,
   pending,
@@ -243,7 +250,7 @@ export function AgentExtensionDialog({
   onRespond,
 }: {
   providerLabel: string;
-  request?: ExtensionRequest;
+  request?: AgentInteraction;
   pending: boolean;
   error?: string;
   onRespond: (response: {
@@ -253,7 +260,7 @@ export function AgentExtensionDialog({
   }) => void;
 }) {
   return request ? (
-    <ExtensionDialogContent
+    <InteractionDialogContent
       key={request.id}
       providerLabel={providerLabel}
       request={request}
@@ -264,7 +271,7 @@ export function AgentExtensionDialog({
   ) : null;
 }
 
-function ExtensionDialogContent({
+function InteractionDialogContent({
   providerLabel,
   request,
   pending,
@@ -272,7 +279,7 @@ function ExtensionDialogContent({
   onRespond,
 }: {
   providerLabel: string;
-  request: ExtensionRequest;
+  request: AgentInteraction;
   pending: boolean;
   error?: string;
   onRespond: (response: {
@@ -346,6 +353,7 @@ function ExtensionDialogContent({
             )}
             {request.method === "input" && (
               <Input
+                type={request.secret === true ? "password" : "text"}
                 value={value}
                 autoFocus
                 placeholder={

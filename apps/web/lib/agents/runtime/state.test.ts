@@ -214,6 +214,42 @@ describe("agent runtime event reducer", () => {
     expect(settled.error).toBeUndefined();
   });
 
+  it("replaces streamed provider messages by stable message id", () => {
+    const initial = {
+      ...snapshot(),
+      messages: [
+        { role: "user", content: "Hello" },
+        {
+          id: "turn-1:assistant",
+          role: "assistant",
+          content: [{ type: "text", text: "OVER" }],
+          timestamp: 1,
+        },
+      ],
+    };
+
+    const updated = applyAgentRuntimeEnvelope(
+      initial,
+      event({
+        type: "message_update",
+        message: {
+          id: "turn-1:assistant",
+          role: "assistant",
+          content: [{ type: "text", text: "OVERTCHAT" }],
+          timestamp: 2,
+        },
+      }),
+    )!;
+
+    expect(updated.messages).toHaveLength(2);
+    expect(updated.messages.at(-1)).toEqual({
+      id: "turn-1:assistant",
+      role: "assistant",
+      content: [{ type: "text", text: "OVERTCHAT" }],
+      timestamp: 2,
+    });
+  });
+
   it("keeps Pi running until the runtime confirms provider idle", () => {
     const running = {
       ...snapshot(),

@@ -1080,24 +1080,37 @@ describe("Agent session runtime", () => {
     ]);
 
     client.emit({
-      type: "extension_ui_request",
+      type: "interaction_request",
       id: "question",
       method: "confirm",
       title: "Continue?",
     });
-    expect(runtime.snapshot().pendingExtensionRequest).toMatchObject({
+    expect(runtime.snapshot().pendingInteraction).toMatchObject({
       id: "question",
     });
 
+    client.respondToInteraction.mockImplementationOnce(() => {
+      client.emit({
+        type: "interaction_request",
+        id: "question",
+        method: "input",
+        title: "Follow-up",
+      });
+    });
     await runtime.command({
-      type: "extension_ui_response",
+      type: "interaction_response",
       id: "question",
       confirmed: true,
     });
     expect(client.respondToInteraction).toHaveBeenCalledWith("question", {
       confirmed: true,
     });
-    expect(runtime.snapshot().pendingExtensionRequest).toBeUndefined();
+    expect(runtime.snapshot().pendingInteraction).toMatchObject({
+      id: "question",
+      title: "Follow-up",
+    });
+    client.emit({ type: "interaction_resolved", id: "question" });
+    expect(runtime.snapshot().pendingInteraction).toBeUndefined();
     unsubscribeFirst();
     unsubscribeReplay();
     await runtime.stop();

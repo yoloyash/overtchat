@@ -93,6 +93,7 @@ export interface AgentProviderAdapter {
   ): Promise<AgentReadyConnectionProbe>;
   listWorkspaceSessions(
     target: HostTarget,
+    executable: string,
     workspacePath: string,
   ): Promise<AgentProviderSessionMetadata[]>;
   sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity;

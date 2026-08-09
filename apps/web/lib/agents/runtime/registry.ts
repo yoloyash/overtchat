@@ -153,10 +153,10 @@ export class AgentSessionRuntime {
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
-  private pendingExtensionRequest:
-    | NonNullable<AgentRuntimeSnapshot["pendingExtensionRequest"]>
+  private pendingInteraction:
+    | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
     | undefined;
-  private pendingExtensionTimer: NodeJS.Timeout | undefined;
+  private pendingInteractionTimer: NodeJS.Timeout | undefined;
   private error: string | undefined;
   private refreshPromise: Promise<void> | null = null;
   private idleStopTimer: NodeJS.Timeout | undefined;
@@ -207,7 +207,7 @@ export class AgentSessionRuntime {
         this.stopped = true;
         this.turnGeneration += 1;
         this.clearIdleStop();
-        this.clearPendingExtensionRequest();
+        this.clearPendingInteraction();
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
         this.status = "exited";
@@ -233,14 +233,14 @@ export class AgentSessionRuntime {
         this.error = undefined;
       }
       if (
-        event.type === "extension_ui_request" &&
+        event.type === "interaction_request" &&
         typeof event.id === "string" &&
         typeof event.method === "string" &&
         ["select", "confirm", "input", "editor"].includes(event.method)
       ) {
-        this.clearPendingExtensionRequest();
-        this.pendingExtensionRequest = event as NonNullable<
-          AgentRuntimeSnapshot["pendingExtensionRequest"]
+        this.clearPendingInteraction();
+        this.pendingInteraction = event as NonNullable<
+          AgentRuntimeSnapshot["pendingInteraction"]
         >;
         if (
           typeof event.timeout === "number" &&
@@ -248,13 +248,20 @@ export class AgentSessionRuntime {
           event.timeout >= 0
         ) {
           const requestId = event.id;
-          this.pendingExtensionTimer = setTimeout(() => {
-            if (this.pendingExtensionRequest?.id !== requestId) return;
-            this.pendingExtensionRequest = undefined;
-            this.pendingExtensionTimer = undefined;
+          this.pendingInteractionTimer = setTimeout(() => {
+            if (this.pendingInteraction?.id !== requestId) return;
+            this.pendingInteraction = undefined;
+            this.pendingInteractionTimer = undefined;
             this.publishSnapshot();
           }, event.timeout + 100);
         }
+      }
+      if (
+        event.type === "interaction_resolved" &&
+        typeof event.id === "string" &&
+        this.pendingInteraction?.id === event.id
+      ) {
+        this.clearPendingInteraction();
       }
       if (
         event.type === "rpc_error" &&
@@ -317,7 +324,7 @@ export class AgentSessionRuntime {
         this.promptAwaitingStart = false;
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
-        this.clearPendingExtensionRequest();
+        this.clearPendingInteraction();
         void this.settleAfterProviderTerminal();
       }
     });
@@ -344,8 +351,8 @@ export class AgentSessionRuntime {
       commands: this.commands,
       stats: this.stats,
       queuedMessages: this.queuedMessages,
-      ...(this.pendingExtensionRequest
-        ? { pendingExtensionRequest: this.pendingExtensionRequest }
+      ...(this.pendingInteraction
+        ? { pendingInteraction: this.pendingInteraction }
         : {}),
       ...(this.error ? { error: this.error } : {}),
     };
@@ -425,7 +432,8 @@ export class AgentSessionRuntime {
           await this.refresh();
           return value;
         });
-      case "extension_ui_response":
+      case "interaction_response": {
+        const pendingInteraction = this.pendingInteraction;
         this.client.respondToInteraction(command.id, {
           ...(command.value !== undefined ? { value: command.value } : {}),
           ...(command.confirmed !== undefined
@@ -435,11 +443,15 @@ export class AgentSessionRuntime {
             ? { cancelled: command.cancelled }
             : {}),
         });
-        if (this.pendingExtensionRequest?.id === command.id) {
-          this.clearPendingExtensionRequest();
+        if (
+          pendingInteraction?.id === command.id &&
+          this.pendingInteraction === pendingInteraction
+        ) {
+          this.clearPendingInteraction();
           this.publishSnapshot();
         }
         return Promise.resolve();
+      }
     }
   }
 
@@ -487,7 +499,7 @@ export class AgentSessionRuntime {
     this.stopped = true;
     this.turnGeneration += 1;
     this.clearIdleStop();
-    this.clearPendingExtensionRequest();
+    this.clearPendingInteraction();
     try {
       await this.client.stop();
     } finally {
@@ -525,12 +537,12 @@ export class AgentSessionRuntime {
     this.idleStopTimer = undefined;
   }
 
-  private clearPendingExtensionRequest(): void {
-    if (this.pendingExtensionTimer) {
-      clearTimeout(this.pendingExtensionTimer);
-      this.pendingExtensionTimer = undefined;
+  private clearPendingInteraction(): void {
+    if (this.pendingInteractionTimer) {
+      clearTimeout(this.pendingInteractionTimer);
+      this.pendingInteractionTimer = undefined;
     }
-    this.pendingExtensionRequest = undefined;
+    this.pendingInteraction = undefined;
   }
 
   private notifyExit(): void {
@@ -718,7 +730,7 @@ export class AgentSessionRuntime {
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
     this.pendingSubmissions.clear();
-    this.clearPendingExtensionRequest();
+    this.clearPendingInteraction();
     this.eventClassifier.reset();
     this.status = "idle";
     this.activeTurnStartedAt = null;

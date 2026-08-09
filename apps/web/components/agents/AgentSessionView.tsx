@@ -24,7 +24,7 @@ import {
 import { motionClasses } from "@/lib/motion";
 import { AgentComposer } from "./AgentComposer";
 import {
-  AgentExtensionDialog,
+  AgentInteractionDialog,
   CompactAgentSessionDialog,
   RenameAgentSessionDialog,
 } from "./AgentSessionDialogs";
@@ -117,7 +117,7 @@ export function AgentSessionView({
         cause instanceof Error
           ? cause.message
           : `${providerLabel} command failed.`;
-      if (renameOpen || compactOpen || snapshot?.pendingExtensionRequest) {
+      if (renameOpen || compactOpen || snapshot?.pendingInteraction) {
         setDialogError(message);
       } else {
         toast.error({
@@ -270,7 +270,7 @@ export function AgentSessionView({
             running={running}
             pending={command.isPending}
             stopping={pendingCommand === "abort"}
-            disabled={exited || Boolean(snapshot.pendingExtensionRequest)}
+            disabled={exited || Boolean(snapshot.pendingInteraction)}
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
             onEditQueued={(id) =>
@@ -302,6 +302,9 @@ export function AgentSessionView({
       />
       <CompactAgentSessionDialog
         providerLabel={providerLabel}
+        supportsCustomInstructions={
+          snapshot.capabilities.customCompactionInstructions === true
+        }
         open={compactOpen}
         pending={command.isPending}
         error={dialogError}
@@ -319,15 +322,15 @@ export function AgentSessionView({
           )
         }
       />
-      <AgentExtensionDialog
+      <AgentInteractionDialog
         providerLabel={providerLabel}
-        request={snapshot.pendingExtensionRequest}
+        request={snapshot.pendingInteraction}
         pending={command.isPending}
         error={dialogError}
         onRespond={(response) =>
           void run({
-            type: "extension_ui_response",
-            id: snapshot.pendingExtensionRequest!.id,
+            type: "interaction_response",
+            id: snapshot.pendingInteraction!.id,
             ...response,
           })
         }

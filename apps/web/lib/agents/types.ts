@@ -151,8 +151,8 @@ export type AgentModel = {
   baseUrl: string;
   reasoning: boolean;
   input: Array<"text" | "image">;
-  contextWindow: number;
-  maxTokens: number;
+  contextWindow: number | null;
+  maxTokens: number | null;
   cost: {
     input: number;
     output: number;
@@ -214,6 +214,7 @@ export type AgentQueuedMessage = {
 
 export type AgentRuntimeCapabilities = {
   steer: boolean;
+  customCompactionInstructions?: boolean;
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
@@ -261,7 +262,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("new_session") }),
   z.object({
-    type: z.literal("extension_ui_response"),
+    type: z.literal("interaction_response"),
     id: z.string().min(1).max(500),
     value: z.string().max(200_000).optional(),
     confirmed: z.boolean().optional(),
@@ -309,8 +310,8 @@ export type AgentRuntimeSnapshot = {
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
   queuedMessages: AgentQueuedMessage[];
-  pendingExtensionRequest?: {
-    type: "extension_ui_request";
+  pendingInteraction?: {
+    type: "interaction_request";
     id: string;
     method: string;
     [key: string]: unknown;
