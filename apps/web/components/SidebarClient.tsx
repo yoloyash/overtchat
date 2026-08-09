@@ -3,19 +3,29 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { Activity, FolderPlus, PanelLeft, Pencil, Search } from "lucide-react";
+import {
+  Activity,
+  FolderPlus,
+  PanelLeft,
+  Pencil,
+  Plus,
+  Search,
+} from "lucide-react";
+import { BetaBadge } from "@/components/BetaBadge";
 import { SidebarChatList } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
+import { SidebarConnections } from "@/components/SidebarConnections";
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
+import { useAgentConnections } from "@/lib/queries/agentConnections";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 
-export function SidebarClient() {
+export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const { closeMobile, closeSidebar, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
@@ -124,6 +134,8 @@ export function SidebarClient() {
           <span>New project</span>
         </button>
 
+        {isAdmin && <AdminConnections />}
+
         <SidebarChatList chats={unprojected} projects={projectOptions} />
       </div>
 
@@ -135,10 +147,51 @@ export function SidebarClient() {
   );
 }
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
+function AdminConnections() {
+  const { data: connections = [] } = useAgentConnections();
+  const { closeMobile } = useSidebar();
+
   return (
-    <div className="mt-4 mb-1 px-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-      {children}
+    <>
+      <SectionLabel
+        badge={<BetaBadge />}
+        action={
+          <Link
+            href="/settings/connections?add=1"
+            onClick={closeMobile}
+            aria-label="Add agent"
+            title="Add agent"
+            className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+          >
+            <Plus className="size-3.5" />
+          </Link>
+        }
+      >
+        Connections
+      </SectionLabel>
+      <SidebarConnections connections={connections} />
+    </>
+  );
+}
+
+function SectionLabel({
+  children,
+  badge,
+  action,
+}: {
+  children: React.ReactNode;
+  badge?: React.ReactNode;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mt-4 mb-1 flex min-h-6 items-center gap-2 px-2">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          {children}
+        </span>
+        {badge}
+      </div>
+      {action}
     </div>
   );
 }

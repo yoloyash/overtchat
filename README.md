@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  A lightweight self-hosted chat client that "just works". One <code>docker compose up</code> and you're in.
+  A lightweight self-hosted client for AI chat and coding agents that "just works".
 </p>
 
 <p align="center">
@@ -50,6 +50,15 @@ Open [http://localhost:4718](http://localhost:4718), sign up, the setup wizard t
 - **Internet access:** uncomment the `cloudflared` block in `compose.yml` and paste a tunnel token.
 
 Already run SearXNG or Kokoro elsewhere? You can point overtchat at them; see [deploy docs](docs/deploy.md#reusing-sidecars).
+
+## Agent Connections (Beta)
+
+Use OvertChat as a browser interface for Pi and Oh My Pi installed on the Docker
+host or on machines already reachable through its SSH config. In **Settings →
+Connections**, choose **Set up** and run the generated command.
+It installs the OvertChat Host Connector as your Linux user; OvertChat never
+receives SSH keys or config. Remote aliases must already work non-interactively,
+for example `ssh devbox`.
 
 ## Mobile
 

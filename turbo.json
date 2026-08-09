@@ -13,6 +13,9 @@
       "env": ["GITHUB_TOKEN", "NEXT_PUBLIC_BASE_PATH", "NEXT_PUBLIC_SITE_ORIGIN"],
       "outputs": [".next/**", "!.next/cache/**", "out/**"]
     },
+    "@overtchat/connector#build": {
+      "outputs": ["dist/**"]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

@@ -1,2 +1,8 @@
 # Preserve the pre-Next privacy policy URL for old bookmarks and listings.
 /privacy.html /privacy/ 301
+
+# Generated setup commands use immutable connector versions.
+/install/connector/0.1.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.1.0/install-connector.sh 302
+
+# Friendly alias for the current connector release.
+/install-connector.sh /install/connector/0.1.0 302

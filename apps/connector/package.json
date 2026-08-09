@@ -1,0 +1,30 @@
+{
+  "name": "@overtchat/connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "overtchat-connector": "./dist/overtchat-connector.mjs"
+  },
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/overtchat-connector.mjs",
+    "build:binary": "bun build src/cli.ts --compile --outfile dist/overtchat-connector",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@overtchat/agent-bridge": "*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9",
+    "@types/node": "^22",
+    "esbuild": "^0.25.0",
+    "eslint": "^9",
+    "tsx": "^4.23.1",
+    "typescript": "^5",
+    "typescript-eslint": "^8",
+    "vitest": "^4.1.6"
+  }
+}

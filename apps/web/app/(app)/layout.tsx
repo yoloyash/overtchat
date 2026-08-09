@@ -4,10 +4,17 @@ import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
 import { listChats } from "@/lib/db/chats";
 import { listProjects } from "@/lib/db/projects";
+import { listAgentConnections } from "@/lib/db/agentConnections";
+import { withAgentRuntimeStatuses } from "@/lib/agents/runtime/status";
 import { AppShell } from "@/components/AppShell";
 import { Sidebar } from "@/components/Sidebar";
 import { getQueryClient } from "@/lib/queryClient";
-import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import {
+  agentConnectionKeys,
+  chatKeys,
+  projectKeys,
+} from "@/lib/queries/keys";
+import type { AgentConnectionListItem } from "@/lib/agents/types";
 import type { ChatListItem } from "@/lib/queries/chats";
 import type { ProjectListItem } from "@/lib/queries/projects";
 
@@ -18,6 +25,7 @@ export default async function AppLayout({
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
   if (!session) redirect("/login");
+  const isAdmin = session.user.role === "admin";
 
   const qc = getQueryClient();
   await Promise.all([
@@ -45,11 +53,21 @@ export default async function AppLayout({
         }));
       },
     }),
+    isAdmin
+      ? qc.prefetchQuery({
+          queryKey: agentConnectionKeys.list(),
+          queryFn: async (): Promise<AgentConnectionListItem[]> =>
+            withAgentRuntimeStatuses(
+              await listAgentConnections(session.user.id),
+              session.user.id,
+            ),
+        })
+      : Promise.resolve(),
   ]);
 
   return (
     <HydrationBoundary state={dehydrate(qc)}>
-      <AppShell sidebar={<Sidebar />}>{children}</AppShell>
+      <AppShell sidebar={<Sidebar isAdmin={isAdmin} />}>{children}</AppShell>
     </HydrationBoundary>
   );
 }
