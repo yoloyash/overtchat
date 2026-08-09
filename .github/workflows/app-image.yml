@@ -6,6 +6,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      version:
+        description: Version tag to publish without the leading v
+        required: false
+        type: string
 
 env:
   REGISTRY: ghcr.io
@@ -29,12 +34,23 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Validate manual version
+        if: github.event_name == 'workflow_dispatch' && inputs.version != ''
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "version must be a semantic version such as 0.13.0" >&2
+            exit 1
+          fi
+
       - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-app
           tags: |
             type=match,pattern=v(.*),group=1
+            type=raw,value=${{ inputs.version }},enable=${{ inputs.version != '' }}
             type=raw,value=latest
 
       - uses: docker/build-push-action@v6
