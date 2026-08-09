@@ -163,12 +163,25 @@ export function AgentActivityGroup({
             className={cn(
               "shrink-0 font-medium text-foreground",
               live && !open && motionClasses.shimmer,
-              completedDuration && "tabular-nums [word-spacing:0.125rem]",
             )}
           >
-            {completedDuration
-              ? `Worked for ${completedDuration}`
-              : headerLabel}
+            {completedDuration ? (
+              <span aria-hidden="true">
+                <span>Worked</span>
+                <span style={{ marginInlineStart: 4 }}>for</span>
+                {completedDuration.split(" ").map((part) => (
+                  <span
+                    key={part}
+                    className="tabular-nums"
+                    style={{ marginInlineStart: 4 }}
+                  >
+                    {part}
+                  </span>
+                ))}
+              </span>
+            ) : (
+              headerLabel
+            )}
           </span>
           {headerSecondary && (
             <span className="min-w-0 truncate font-mono text-[11px]">
