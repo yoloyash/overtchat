@@ -116,6 +116,20 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+function readOnlyState(
+  state: Record<string, unknown>,
+): AgentRuntimeSnapshot["readOnly"] {
+  const value = state.readOnly;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const reason = Reflect.get(value, "reason");
+  const retryable = Reflect.get(value, "retryable");
+  return typeof reason === "string" && typeof retryable === "boolean"
+    ? { reason, retryable }
+    : undefined;
+}
+
 function wait(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
@@ -335,6 +349,7 @@ export class AgentSessionRuntime {
   }
 
   snapshot(): AgentRuntimeSnapshot {
+    const readOnly = readOnlyState(this.state);
     return {
       sessionId: this.dbSessionId,
       provider: this.provider,
@@ -351,6 +366,7 @@ export class AgentSessionRuntime {
       commands: this.commands,
       stats: this.stats,
       queuedMessages: this.queuedMessages,
+      ...(readOnly ? { readOnly } : {}),
       ...(this.pendingInteraction
         ? { pendingInteraction: this.pendingInteraction }
         : {}),
@@ -384,6 +400,10 @@ export class AgentSessionRuntime {
 
   command(input: AgentSessionCommand): Promise<unknown> {
     const command = this.normalizeCommand(input);
+    const readOnly = readOnlyState(this.state);
+    if (readOnly && command.type !== "retry_interactive") {
+      return Promise.reject(new Error(readOnly.reason));
+    }
     switch (command.type) {
       case "new_session":
         return Promise.reject(
@@ -453,6 +473,18 @@ export class AgentSessionRuntime {
         }
         return Promise.resolve();
       }
+      case "retry_interactive":
+        if (!this.client.retryInteractive) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} cannot retry interactive access.`,
+            ),
+          );
+        }
+        return this.client.retryInteractive().then(async (value) => {
+          await this.refresh();
+          return value;
+        });
     }
   }
 

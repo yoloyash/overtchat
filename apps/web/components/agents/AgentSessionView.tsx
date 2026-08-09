@@ -2,7 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Loader2,
+  LockKeyhole,
+  RefreshCw,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import type {
@@ -193,6 +199,7 @@ export function AgentSessionView({
 
   const running = snapshot.status === "running";
   const exited = snapshot.status === "exited";
+  const readOnly = snapshot.readOnly;
   const model = currentModel(snapshot);
   const thinking = currentThinking(snapshot);
   const currentName = sessionName(snapshot) || initialSessionName;
@@ -230,6 +237,7 @@ export function AgentSessionView({
         stats={snapshot.stats}
         running={running}
         commandPending={command.isPending}
+        readOnly={Boolean(readOnly)}
         onSelectModel={(selected: AgentModel) =>
           void run({
             type: "set_model",
@@ -249,6 +257,38 @@ export function AgentSessionView({
           setCompactOpen(true);
         }}
       />
+
+      {readOnly && (
+        <section
+          aria-label={`Read-only ${providerLabel} session`}
+          className="border-b bg-muted/30 px-4 py-3"
+        >
+          <div className="mx-auto flex max-w-3xl items-start gap-3">
+            <LockKeyhole className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+              {readOnly.reason}
+            </p>
+            {readOnly.retryable && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={command.isPending}
+                onClick={() => void run({ type: "retry_interactive" })}
+              >
+                <RefreshCw
+                  className={
+                    pendingCommand === "retry_interactive"
+                      ? motionClasses.spinner
+                      : undefined
+                  }
+                />
+                Retry
+              </Button>
+            )}
+          </div>
+        </section>
+      )}
 
       <AgentMessageList
         providerLabel={providerLabel}
@@ -270,7 +310,11 @@ export function AgentSessionView({
             running={running}
             pending={command.isPending}
             stopping={pendingCommand === "abort"}
-            disabled={exited || Boolean(snapshot.pendingInteraction)}
+            disabled={
+              exited ||
+              Boolean(readOnly) ||
+              Boolean(snapshot.pendingInteraction)
+            }
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
             onEditQueued={(id) =>

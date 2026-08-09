@@ -67,6 +67,7 @@ export interface AgentRuntimeClient {
       cancelled?: boolean;
     },
   ): void;
+  retryInteractive?(): Promise<unknown>;
   stop(): Promise<void>;
 }
 

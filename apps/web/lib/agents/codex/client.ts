@@ -35,6 +35,8 @@ import {
 
 const TURN_COMPLETION_TIMEOUT_MS = 30_000;
 const COMPACTION_TIMEOUT_MS = 5 * 60_000;
+const ACTIVE_WRITER_MESSAGE =
+  "This session is currently open in another Codex client. You can view it here, but close it there before continuing in OvertChat.";
 
 type CompletionWaiter<T> = {
   promise: Promise<T>;
@@ -102,6 +104,13 @@ function toolOutput(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+function isActiveWriterError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /thread .+ already has an active writer/i.test(error.message)
+  );
 }
 
 function itemTool(item: CodexItem): {
@@ -320,6 +329,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private selectedThinking: AgentThinkingLevel | null = null;
   private modelResponse: unknown = { data: [] };
   private stats = emptyCodexStats();
+  private readOnly = false;
 
   constructor(
     target: HostTarget,
@@ -348,6 +358,14 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       isStreaming: this.activeTurnId !== null,
       isCompacting: this.isCompacting,
       model: { provider: "codex", id: this.selectedModel },
+      ...(this.readOnly
+        ? {
+            readOnly: {
+              reason: ACTIVE_WRITER_MESSAGE,
+              retryable: true,
+            },
+          }
+        : {}),
       ...(this.selectedThinking
         ? { thinkingLevel: this.selectedThinking }
         : {}),
@@ -380,6 +398,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async prompt(message: string): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     const input = this.createKnownUserInput(message);
     this.pendingPromptInput = input;
     try {
@@ -403,6 +422,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async steer(message: string): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     if (!this.activeTurnId) throw new Error("Codex has no active turn to steer.");
     const turnId = this.activeTurnId;
     const response = await this.server.request("turn/steer", {
@@ -416,6 +436,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async abort(): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     if (!this.activeTurnId) return;
     const turnId = this.activeTurnId;
     const terminal = this.waitForTurnCompletion(
@@ -441,6 +462,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async setModel(_provider: string, modelId: string): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     const models = parseCodexModels(this.modelResponse);
     if (!models.some((model) => model.id === modelId)) {
       throw new Error(`Codex model ${modelId} is not available.`);
@@ -452,6 +474,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async setThinkingLevel(level: string): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     const levels = await this.getAvailableThinkingLevels();
     if (!levels.includes(level as AgentThinkingLevel)) {
       throw new Error(`Codex reasoning level ${level} is not available.`);
@@ -463,6 +486,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async compact(customInstructions?: string): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     if (customInstructions) {
       throw new Error("Codex does not support custom compaction instructions.");
     }
@@ -502,6 +526,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async setSessionName(name: string): Promise<unknown> {
     await this.readyPromise;
+    this.assertInteractive();
     const result = await this.server.request("thread/name/set", {
       threadId: this.thread!.id,
       name,
@@ -519,6 +544,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       cancelled?: boolean;
     },
   ): void {
+    this.assertInteractive();
     const pending = this.pendingInteractions.get(id);
     if (!pending) return;
     if (pending.kind === "approval") {
@@ -563,47 +589,90 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     return this.server.stop();
   }
 
+  async retryInteractive(): Promise<unknown> {
+    await this.readyPromise;
+    if (!this.readOnly) return;
+    const response = await this.server.request<UnknownRecord>("thread/resume", {
+      threadId: this.thread!.id,
+      cwd: this.launch.cwd,
+    });
+    const hydrated = await this.server.request<UnknownRecord>("thread/read", {
+      threadId: this.thread!.id,
+      includeTurns: true,
+    });
+    this.hydrateThread(hydrated);
+    this.applyThreadConfiguration(response);
+    this.readOnly = false;
+    return response;
+  }
+
   private async openThread(): Promise<void> {
     await this.server.ready();
-    const [modelResponse, threadResponse] = await Promise.all([
-      this.server.request("model/list", { limit: 200 }),
-      this.launch.resume
-        ? this.server.request<UnknownRecord>("thread/resume", {
+    const modelPromise = this.server.request("model/list", { limit: 200 });
+    let threadResponse: UnknownRecord;
+    let hydratedThread: UnknownRecord;
+    if (this.launch.resume) {
+      try {
+        threadResponse = await this.server.request<UnknownRecord>(
+          "thread/resume",
+          {
             threadId: this.launch.resume.providerSessionId,
             cwd: this.launch.cwd,
-          })
-        : this.server.request<UnknownRecord>("thread/start", {
-            cwd: this.launch.cwd,
-            ephemeral: false,
-        }),
-    ]);
-    this.modelResponse = modelResponse;
-    const hydratedThread = this.launch.resume
-      ? await this.server.request<UnknownRecord>("thread/read", {
-          threadId: this.launch.resume.providerSessionId,
-          includeTurns: true,
-        })
-      : threadResponse;
-    this.thread = parseCodexThread(hydratedThread.thread);
+          },
+        );
+      } catch (error) {
+        if (!isActiveWriterError(error)) throw error;
+        this.readOnly = true;
+        threadResponse = {};
+      }
+      hydratedThread = await this.server.request<UnknownRecord>("thread/read", {
+        threadId: this.launch.resume.providerSessionId,
+        includeTurns: true,
+      });
+    } else {
+      threadResponse = await this.server.request<UnknownRecord>(
+        "thread/start",
+        {
+          cwd: this.launch.cwd,
+          ephemeral: false,
+        },
+      );
+      hydratedThread = threadResponse;
+    }
+    this.modelResponse = await modelPromise;
+    this.hydrateThread(hydratedThread);
+    this.applyThreadConfiguration(threadResponse);
+  }
+
+  private hydrateThread(value: UnknownRecord): void {
+    this.thread = parseCodexThread(value.thread);
+    this.turns.clear();
+    for (const turn of this.thread.turns) this.turns.set(turn.id, turn);
+  }
+
+  private applyThreadConfiguration(threadResponse: UnknownRecord): void {
     this.selectedModel =
       stringOf(threadResponse, "model") ??
-      parseCodexModels(modelResponse)[0]?.id ??
+      parseCodexModels(this.modelResponse)[0]?.id ??
       "";
     const effort = stringOf(threadResponse, "reasoningEffort");
     if (
       effort &&
-      codexThinkingLevels(modelResponse, this.selectedModel).includes(
+      codexThinkingLevels(this.modelResponse, this.selectedModel).includes(
         effort as AgentThinkingLevel,
       )
     ) {
       this.selectedThinking = effort as AgentThinkingLevel;
     } else {
       this.selectedThinking = codexDefaultThinkingLevel(
-        modelResponse,
+        this.modelResponse,
         this.selectedModel,
       );
     }
-    for (const turn of this.thread.turns) this.turns.set(turn.id, turn);
+  }
+
+  private assertInteractive(): void {
+    if (this.readOnly) throw new Error(ACTIVE_WRITER_MESSAGE);
   }
 
   private messages(): unknown[] {

@@ -178,6 +178,7 @@ test("shows durable turn activity without changing completed tool status", async
   const snapshot: ReturnType<typeof runtimeSnapshot> & {
     pendingInteraction?: Record<string, unknown>;
   } = runtimeSnapshot(startedAt);
+  let retryRequested = false;
   let interactionResponse: Record<string, unknown> | null = null;
   await page.route(
     new RegExp(`/api/agent-sessions/${SESSION_ID}$`),
@@ -192,6 +193,7 @@ test("shows durable turn activity without changing completed tool status", async
           interactionResponse = command;
           delete snapshot.pendingInteraction;
         }
+        if (command.type === "retry_interactive") retryRequested = true;
         if (
           command.type === "abort" ||
           command.type === "steer" ||
@@ -617,4 +619,41 @@ test("shows durable turn activity without changing completed tool status", async
     id: "mcp-url",
     confirmed: true,
   });
+
+  await page.evaluate((initialSnapshot) => {
+    const controls = (
+      window as unknown as {
+        __agentRuntimeControls: {
+          emit: (envelope: unknown) => void;
+        };
+      }
+    ).__agentRuntimeControls;
+    controls.emit({
+      sequence: 6,
+      type: "snapshot",
+      data: {
+        ...initialSnapshot,
+        status: "idle",
+        activeTurn: null,
+        state: {
+          ...initialSnapshot.state,
+          isStreaming: false,
+        },
+        readOnly: {
+          reason:
+            "This session is currently open in another Codex client. You can view it here, but close it there before continuing in OvertChat.",
+          retryable: true,
+        },
+      },
+    });
+  }, snapshot);
+  await expect(
+    page.getByRole("region", { name: "Read-only Pi session" }),
+  ).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Message Pi or type / for commands"),
+  ).toBeDisabled();
+  await expect(page.getByLabel("Session actions")).toBeDisabled();
+  await page.getByRole("button", { name: "Retry" }).click();
+  await expect.poll(() => retryRequested).toBe(true);
 });

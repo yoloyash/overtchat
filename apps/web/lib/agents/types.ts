@@ -285,6 +285,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     confirmed: z.boolean().optional(),
     cancelled: z.boolean().optional(),
   }),
+  z.object({ type: z.literal("retry_interactive") }),
 ]);
 
 export type AgentSessionCommand = z.infer<typeof agentSessionCommandSchema>;
@@ -327,6 +328,10 @@ export type AgentRuntimeSnapshot = {
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
   queuedMessages: AgentQueuedMessage[];
+  readOnly?: {
+    reason: string;
+    retryable: boolean;
+  };
   pendingInteraction?: {
     type: "interaction_request";
     id: string;

@@ -7,6 +7,7 @@ type Listener<T> = (value: T) => void;
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: unknown }> = [];
   readonly responses: Array<{ id: string | number; result: unknown }> = [];
+  resumeError: Error | null = null;
   private notification: Listener<{ method: string; params?: unknown }> =
     () => {};
   private serverRequest: Listener<{
@@ -65,6 +66,7 @@ class FakeCodexServer {
       };
     }
     if (method === "thread/resume") {
+      if (this.resumeError) throw this.resumeError;
       return {
         thread: {
           id: "thread-1",
@@ -159,6 +161,7 @@ describe("CodexRuntimeClient", () => {
   beforeEach(() => {
     server.requests.length = 0;
     server.responses.length = 0;
+    server.resumeError = null;
     server.respondError.mockClear();
   });
 
@@ -313,6 +316,54 @@ describe("CodexRuntimeClient", () => {
         },
       ]),
     );
+  });
+
+  it("opens an active-writer thread read-only and retries interactive access", async () => {
+    server.resumeError = new Error(
+      "thread thread-1 already has an active writer",
+    );
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      sessionId: "thread-1",
+      isStreaming: false,
+      readOnly: {
+        reason: expect.stringContaining("open in another Codex client"),
+        retryable: true,
+      },
+    });
+    await expect(client.getMessages()).resolves.toEqual({
+      messages: expect.arrayContaining([
+        expect.objectContaining({
+          id: "user-history",
+          content: "Resume this thread",
+        }),
+        expect.objectContaining({
+          id: "turn-history:assistant",
+        }),
+      ]),
+    });
+    await expect(client.prompt("Continue here")).rejects.toThrow(
+      "open in another Codex client",
+    );
+
+    server.resumeError = null;
+    await client.retryInteractive();
+    const state = await client.getState();
+    expect(state).not.toHaveProperty("readOnly");
+    expect(
+      server.requests.filter(({ method }) => method === "thread/resume"),
+    ).toHaveLength(2);
   });
 
   it("round-trips native approvals through the generic interaction contract", async () => {
