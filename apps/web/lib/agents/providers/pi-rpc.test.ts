@@ -166,10 +166,9 @@ describe("Pi RPC provider adapter", () => {
         ],
       }),
     ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "new" }),
+      [
         expect.objectContaining({ name: "model" }),
-      ]),
+      ],
     );
     expect(
       adapter

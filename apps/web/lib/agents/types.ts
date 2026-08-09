@@ -212,6 +212,12 @@ export type AgentQueuedMessage = {
   status: "pending" | "sending";
 };
 
+export type AgentInteractionValue =
+  | string
+  | number
+  | boolean
+  | string[];
+
 export type AgentRuntimeCapabilities = {
   steer: boolean;
   customCompactionInstructions?: boolean;
@@ -265,6 +271,17 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     type: z.literal("interaction_response"),
     id: z.string().min(1).max(500),
     value: z.string().max(200_000).optional(),
+    values: z
+      .record(
+        z.string().min(1).max(500),
+        z.union([
+          z.string().max(200_000),
+          z.number().finite(),
+          z.boolean(),
+          z.array(z.string().max(20_000)).max(500),
+        ]),
+      )
+      .optional(),
     confirmed: z.boolean().optional(),
     cancelled: z.boolean().optional(),
   }),

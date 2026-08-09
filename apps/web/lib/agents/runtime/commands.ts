@@ -21,7 +21,7 @@ export function mergeAgentSlashCommands(
 }
 
 export function agentSlashCommandQuery(value: string): string | null {
-  const match = /^\/([a-z0-9:-]*)$/iu.exec(value);
+  const match = /^\/([a-z0-9:_-]*)$/iu.exec(value);
   return match ? match[1].toLowerCase() : null;
 }
 
@@ -40,7 +40,7 @@ type PiSlashInvocation = {
 };
 
 function parseInvocation(value: string): PiSlashInvocation | null {
-  const match = /^\/([a-z0-9:-]+)(?:[^\S\n]+([^\n]*))?$/iu.exec(
+  const match = /^\/([a-z0-9:_-]+)(?:[^\S\n]+([^\n]*))?$/iu.exec(
     value.trim(),
   );
   return match

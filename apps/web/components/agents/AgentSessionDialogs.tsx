@@ -2,13 +2,17 @@
 
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { Loader2 } from "lucide-react";
+import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import type { AgentRuntimeSnapshot } from "@/lib/agents/types";
+import type {
+  AgentInteractionValue,
+  AgentRuntimeSnapshot,
+} from "@/lib/agents/types";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -255,6 +259,7 @@ export function AgentInteractionDialog({
   error?: string;
   onRespond: (response: {
     value?: string;
+    values?: Record<string, AgentInteractionValue>;
     confirmed?: boolean;
     cancelled?: boolean;
   }) => void;
@@ -284,6 +289,7 @@ function InteractionDialogContent({
   error?: string;
   onRespond: (response: {
     value?: string;
+    values?: Record<string, AgentInteractionValue>;
     confirmed?: boolean;
     cancelled?: boolean;
   }) => void;
@@ -298,6 +304,17 @@ function InteractionDialogContent({
       ? request.prefill
       : "",
   );
+  const fields = interactionFormFields(request.fields);
+  const [formValues, setFormValues] = useState<Record<string, AgentInteractionValue>>(
+    () =>
+      Object.fromEntries(
+        fields.flatMap((field) =>
+          field.defaultValue === undefined
+            ? []
+            : [[field.id, field.defaultValue]],
+        ),
+      ),
+  );
   const title =
     typeof request.title === "string" && request.title.trim()
       ? request.title
@@ -307,6 +324,10 @@ function InteractionDialogContent({
     event.preventDefault();
     if (request.method === "confirm") {
       onRespond({ confirmed: true });
+    } else if (request.method === "external") {
+      onRespond({ confirmed: true });
+    } else if (request.method === "form") {
+      onRespond({ values: normalizeFormValues(fields, formValues) });
     } else if (request.method === "select" && value) {
       onRespond({ value });
     } else if (request.method === "input" || request.method === "editor") {
@@ -372,6 +393,41 @@ function InteractionDialogContent({
                 onChange={(event) => setValue(event.target.value)}
               />
             )}
+            {request.method === "external" &&
+              safeExternalUrl(request.url) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  render={
+                    <a
+                      href={safeExternalUrl(request.url)!}
+                      target="_blank"
+                      rel="noreferrer"
+                    />
+                  }
+                >
+                  <ExternalLink />
+                  Open authorization page
+                </Button>
+              )}
+            {request.method === "form" && (
+              <div className="space-y-4">
+                {fields.map((field) => (
+                  <InteractionFormField
+                    key={field.id}
+                    field={field}
+                    value={formValues[field.id]}
+                    onChange={(next) =>
+                      setFormValues((current) => ({
+                        ...current,
+                        [field.id]: next,
+                      }))
+                    }
+                  />
+                ))}
+              </div>
+            )}
             {error && <DialogError>{error}</DialogError>}
             <DialogActions>
               {request.method === "confirm" ? (
@@ -406,11 +462,13 @@ function InteractionDialogContent({
                     size="sm"
                     disabled={
                       pending ||
-                      (request.method === "select" && !value)
+                      (request.method === "select" && !value) ||
+                      (request.method === "form" &&
+                        !interactionFormComplete(fields, formValues))
                     }
                   >
                     {pending && <PendingIcon />}
-                    Continue
+                    {request.method === "form" ? "Submit" : "Continue"}
                   </Button>
                 </>
               )}
@@ -420,6 +478,239 @@ function InteractionDialogContent({
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+type InteractionFormField = {
+  id: string;
+  label: string;
+  description?: string;
+  type: "text" | "number" | "boolean" | "select" | "multiselect";
+  required: boolean;
+  secret: boolean;
+  options: Array<{ value: string; label: string }>;
+  defaultValue?: AgentInteractionValue;
+  minimum?: number;
+  maximum?: number;
+};
+
+function interactionFormFields(value: unknown): InteractionFormField[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      return [];
+    }
+    const field = candidate as Record<string, unknown>;
+    const id = typeof field.id === "string" ? field.id : "";
+    const type = field.type;
+    if (
+      !id ||
+      !["text", "number", "boolean", "select", "multiselect"].includes(
+        typeof type === "string" ? type : "",
+      )
+    ) {
+      return [];
+    }
+    const options = Array.isArray(field.options)
+      ? field.options.flatMap((option) => {
+          if (
+            !option ||
+            typeof option !== "object" ||
+            Array.isArray(option)
+          ) {
+            return [];
+          }
+          const record = option as Record<string, unknown>;
+          return typeof record.value === "string"
+            ? [
+                {
+                  value: record.value,
+                  label:
+                    typeof record.label === "string"
+                      ? record.label
+                      : record.value,
+                },
+              ]
+            : [];
+        })
+      : [];
+    const defaultValue = field.defaultValue;
+    return [
+      {
+        id,
+        label:
+          typeof field.label === "string" && field.label
+            ? field.label
+            : id,
+        ...(typeof field.description === "string" && field.description
+          ? { description: field.description }
+          : {}),
+        type: type as InteractionFormField["type"],
+        required: field.required === true,
+        secret: field.secret === true,
+        options,
+        ...(typeof defaultValue === "string" ||
+        typeof defaultValue === "number" ||
+        typeof defaultValue === "boolean" ||
+        (Array.isArray(defaultValue) &&
+          defaultValue.every((item) => typeof item === "string"))
+          ? { defaultValue: defaultValue as AgentInteractionValue }
+          : {}),
+        ...(typeof field.minimum === "number"
+          ? { minimum: field.minimum }
+          : {}),
+        ...(typeof field.maximum === "number"
+          ? { maximum: field.maximum }
+          : {}),
+      },
+    ];
+  });
+}
+
+function InteractionFormField({
+  field,
+  value,
+  onChange,
+}: {
+  field: InteractionFormField;
+  value: AgentInteractionValue | undefined;
+  onChange: (value: AgentInteractionValue) => void;
+}) {
+  const inputId = `agent-interaction-${field.id}`;
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={inputId}>
+        {field.label}
+        {!field.required && (
+          <span className="ml-1 font-normal text-muted-foreground">
+            (optional)
+          </span>
+        )}
+      </Label>
+      {field.description && (
+        <p className="text-xs text-muted-foreground">{field.description}</p>
+      )}
+      {field.type === "text" && (
+        <Input
+          id={inputId}
+          type={field.secret ? "password" : "text"}
+          value={typeof value === "string" ? value : ""}
+          required={field.required}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+      {field.type === "number" && (
+        <Input
+          id={inputId}
+          type="number"
+          value={typeof value === "number" ? value : ""}
+          required={field.required}
+          min={field.minimum}
+          max={field.maximum}
+          onChange={(event) =>
+            onChange(
+              event.target.value === "" ? "" : event.target.valueAsNumber,
+            )
+          }
+        />
+      )}
+      {field.type === "boolean" && (
+        <div className="flex min-h-8 items-center">
+          <Switch
+            id={inputId}
+            checked={value === true}
+            onCheckedChange={(checked) => onChange(checked)}
+          />
+        </div>
+      )}
+      {field.type === "select" && (
+        <select
+          id={inputId}
+          value={typeof value === "string" ? value : ""}
+          required={field.required}
+          className="h-8 w-full rounded-lg border border-input bg-background px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          onChange={(event) => onChange(event.target.value)}
+        >
+          <option value="">Select an option</option>
+          {field.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      )}
+      {field.type === "multiselect" && (
+        <div id={inputId} className="space-y-2">
+          {field.options.map((option) => {
+            const selected = Array.isArray(value) ? value : [];
+            return (
+              <Label
+                key={option.value}
+                className="flex min-h-8 items-center gap-2 font-normal"
+              >
+                <input
+                  type="checkbox"
+                  className="size-4 accent-primary"
+                  checked={selected.includes(option.value)}
+                  onChange={(event) =>
+                    onChange(
+                      event.target.checked
+                        ? [...selected, option.value]
+                        : selected.filter(
+                            (candidate) => candidate !== option.value,
+                          ),
+                    )
+                  }
+                />
+                {option.label}
+              </Label>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function interactionFormComplete(
+  fields: InteractionFormField[],
+  values: Record<string, AgentInteractionValue>,
+): boolean {
+  return fields.every((field) => {
+    if (!field.required) return true;
+    const value = values[field.id];
+    if (field.type === "boolean") return typeof value === "boolean";
+    if (field.type === "number") {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+    if (field.type === "multiselect") {
+      return Array.isArray(value) && value.length > 0;
+    }
+    return typeof value === "string" && value.length > 0;
+  });
+}
+
+function normalizeFormValues(
+  fields: InteractionFormField[],
+  values: Record<string, AgentInteractionValue>,
+): Record<string, AgentInteractionValue> {
+  return Object.fromEntries(
+    fields.flatMap((field) => {
+      const value = values[field.id];
+      return value === undefined || value === ""
+        ? []
+        : [[field.id, value]];
+    }),
+  );
+}
+
+function safeExternalUrl(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 function DialogActions({ children }: { children: React.ReactNode }) {

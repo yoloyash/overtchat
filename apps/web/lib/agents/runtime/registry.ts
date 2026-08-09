@@ -290,7 +290,7 @@ export class AgentSessionRuntime {
       try {
         const commands = this.adapter.commandsFromEvent(event);
         if (commands) {
-          this.commands = commands;
+          this.commands = this.adapter.mergeCommands(commands);
           this.publishSnapshot();
         }
       } catch {
@@ -436,6 +436,7 @@ export class AgentSessionRuntime {
         const pendingInteraction = this.pendingInteraction;
         this.client.respondToInteraction(command.id, {
           ...(command.value !== undefined ? { value: command.value } : {}),
+          ...(command.values !== undefined ? { values: command.values } : {}),
           ...(command.confirmed !== undefined
             ? { confirmed: command.confirmed }
             : {}),
@@ -472,7 +473,7 @@ export class AgentSessionRuntime {
       this.messages = messageData.messages;
       this.stats = stats;
       this.thinkingLevels = thinkingLevels;
-      this.commands = commands;
+      this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
       this.activeTurnStartedAt =
         this.status === "running"

@@ -236,6 +236,43 @@ describe("Agent session runtime", () => {
     await runtime.stop();
   });
 
+  it("keeps provider built-ins when discovered commands refresh", async () => {
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    client.emit({
+      type: "available_commands_update",
+      commands: [
+        {
+          name: "release-notes",
+          description: "Draft release notes",
+          source: "extension",
+        },
+      ],
+    });
+
+    expect(runtime.snapshot().commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "compact" }),
+        expect.objectContaining({ name: "new" }),
+        expect.objectContaining({ name: "release-notes" }),
+      ]),
+    );
+    await runtime.stop();
+  });
+
   it("moves an accepted prompt into the transcript without duplicating an early provider echo", async () => {
     const client = new FakeAgentClient();
     let acceptPrompt: () => void = vi.fn();

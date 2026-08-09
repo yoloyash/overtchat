@@ -179,7 +179,7 @@ export function createPiRpcProviderAdapter(
       ) {
         return null;
       }
-      return mergeCommands(parsePiCommands({ commands: event.commands }));
+      return parsePiCommands({ commands: event.commands });
     },
     mergeCommands,
     normalizeCommand: (command, state) =>

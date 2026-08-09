@@ -9,6 +9,7 @@ import type {
   AgentSessionStats,
   AgentSlashCommand,
   AgentThinkingLevel,
+  AgentInteractionValue,
 } from "@/lib/agents/types";
 import type { HostTarget } from "@/lib/agents/runtime/process";
 
@@ -61,6 +62,7 @@ export interface AgentRuntimeClient {
     id: string,
     response: {
       value?: string;
+      values?: Record<string, AgentInteractionValue>;
       confirmed?: boolean;
       cancelled?: boolean;
     },
