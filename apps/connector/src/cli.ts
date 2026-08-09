@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 import os from "node:os";
 import {
-  DEFAULT_SERVER_URL,
   normalizeServerUrl,
   readConnectorConfig,
   writeConnectorConfig,
@@ -37,9 +36,9 @@ function parseArgs(argv: string[]): ParsedArgs {
 async function pair(values: Map<string, string>): Promise<void> {
   const pairCode = values.get("pair-code");
   if (!pairCode) throw new Error("--pair-code is required.");
-  const serverUrl = normalizeServerUrl(
-    values.get("server") ?? DEFAULT_SERVER_URL,
-  );
+  const server = values.get("server");
+  if (!server) throw new Error("--server is required.");
+  const serverUrl = normalizeServerUrl(server);
   const response = await fetch(`${serverUrl}/api/host-connectors/pair`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -92,7 +91,7 @@ async function main(): Promise<void> {
       return;
     default:
       throw new Error(
-        "Usage: overtchat-connector <install|pair|run> [--server URL] [--pair-code CODE]",
+        "Usage: overtchat-connector <install|pair|run> --server URL --pair-code CODE",
       );
   }
 }

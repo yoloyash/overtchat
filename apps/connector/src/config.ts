@@ -1,8 +1,7 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-
-export const DEFAULT_SERVER_URL = "http://127.0.0.1:4718";
+import { normalizeHostConnectorServerUrl } from "@overtchat/agent-bridge";
 
 export type ConnectorConfig = {
   serverUrl: string;
@@ -24,7 +23,7 @@ export async function readConnectorConfig(): Promise<ConnectorConfig> {
     parsed = JSON.parse(await readFile(file, "utf8"));
   } catch {
     throw new Error(
-      `OvertChat Connector is not paired. Run overtchat-connector install --pair-code <code>.`,
+      `OvertChat Connector is not paired. Run overtchat-connector install --server <url> --pair-code <code>.`,
     );
   }
   if (
@@ -52,13 +51,5 @@ export async function writeConnectorConfig(
 }
 
 export function normalizeServerUrl(value: string): string {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol)) {
-    throw new Error("OvertChat URL must use HTTP or HTTPS.");
-  }
-  url.username = "";
-  url.password = "";
-  url.hash = "";
-  url.search = "";
-  return url.toString().replace(/\/$/u, "");
+  return normalizeHostConnectorServerUrl(value);
 }

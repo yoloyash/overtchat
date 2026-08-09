@@ -88,7 +88,8 @@ async function startHostConnector(
   );
   await page.keyboard.press("Escape");
   const command = await page.getByLabel("Host Connector install command").textContent();
-  expect(command).toContain("https://overtchat.com/install-connector.sh");
+  expect(command).toContain("https://overtchat.com/install/connector/0.1.0");
+  expect(command).toContain("--server 'http://127.0.0.1:4718'");
   const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
   if (!pairCode) throw new Error("The Host Connector pairing code was missing.");
 

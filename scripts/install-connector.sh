@@ -2,12 +2,13 @@
 set -eu
 
 repository="yoloyash/overtchat"
-server="http://127.0.0.1:4718"
+connector_version="0.1.0"
+server=""
 pair_code=""
 connector_name=""
 
 usage() {
-  echo "Usage: install-connector.sh --pair-code CODE [--server URL] [--name NAME]" >&2
+  echo "Usage: install-connector.sh --server URL --pair-code CODE [--name NAME]" >&2
 }
 
 while [ "$#" -gt 0 ]; do
@@ -34,7 +35,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-[ -n "$pair_code" ] || { usage; exit 2; }
+[ -n "$server" ] && [ -n "$pair_code" ] || { usage; exit 2; }
 [ "$(uname -s)" = "Linux" ] || {
   echo "The OvertChat Host Connector currently supports Linux." >&2
   exit 1
@@ -57,7 +58,7 @@ for command in curl sha256sum install systemctl; do
 done
 
 asset="overtchat-connector-linux-$architecture"
-release_url="https://github.com/$repository/releases/latest/download"
+release_url="https://github.com/$repository/releases/download/connector-v$connector_version"
 temporary_directory=$(mktemp -d)
 trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
 

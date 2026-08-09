@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
@@ -36,8 +36,13 @@ function request(method = "GET", query = ""): Request {
 }
 
 describe("Host Connectors route", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubEnv("HOST_CONNECTOR_URL", "http://127.0.0.1:9000");
     mocks.getSession.mockResolvedValue({
       user: { id: "admin", role: "admin" },
     });
@@ -74,7 +79,7 @@ describe("Host Connectors route", () => {
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
       command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install-connector.sh | sh -s -- --pair-code 'ocp_pair.secret'",
+        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.1.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });

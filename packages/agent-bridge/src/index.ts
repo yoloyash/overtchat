@@ -1,5 +1,7 @@
 export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 1;
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.1.0";
+export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
@@ -87,6 +89,30 @@ export type HostConnectorEventBatch = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase().replace(/\.$/u, "");
+  return (
+    normalized === "localhost" ||
+    normalized === "[::1]" ||
+    /^127(?:\.\d{1,3}){3}$/u.test(normalized)
+  );
+}
+
+export function normalizeHostConnectorServerUrl(value: string): string {
+  const url = new URL(value);
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw new Error("OvertChat URL must use HTTP or HTTPS.");
+  }
+  if (url.protocol === "http:" && !isLoopbackHostname(url.hostname)) {
+    throw new Error("Non-local OvertChat URLs must use HTTPS.");
+  }
+  url.username = "";
+  url.password = "";
+  url.hash = "";
+  url.search = "";
+  return url.toString().replace(/\/$/u, "");
 }
 
 function isNonEmptyString(value: unknown): value is string {

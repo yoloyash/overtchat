@@ -1,3 +1,7 @@
+import {
+  HOST_CONNECTOR_RELEASE_VERSION,
+  normalizeHostConnectorServerUrl,
+} from "@overtchat/agent-bridge";
 import { auth } from "@/lib/auth/server";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
@@ -8,12 +12,25 @@ import {
   listHostConnectors,
 } from "@/lib/db/hostConnectors";
 
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function connectorServerUrl(): string {
+  return normalizeHostConnectorServerUrl(
+    process.env.HOST_CONNECTOR_URL ?? "http://127.0.0.1:4718",
+  );
+}
+
 function installCommand(pairCode: string): string {
+  const installUrl = `https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION}`;
   return [
     "curl --proto '=https' --tlsv1.2 -fsSL ",
-    "https://overtchat.com/install-connector.sh",
-    " | sh -s -- --pair-code ",
-    `'${pairCode}'`,
+    installUrl,
+    " | sh -s -- --server ",
+    shellQuote(connectorServerUrl()),
+    " --pair-code ",
+    shellQuote(pairCode),
   ].join("");
 }
 

@@ -2,7 +2,7 @@ name: Build and publish Host Connector
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["connector-v*"]
   pull_request:
     paths:
       - ".github/workflows/connector-release.yml"
@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to publish into
+        description: Existing connector-v* release tag to publish into
         required: true
         type: string
 
@@ -22,11 +22,15 @@ permissions: {}
 
 jobs:
   build:
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - uses: actions/setup-node@v6
         with:
@@ -38,6 +42,13 @@ jobs:
         run: npm install --global npm@10.9.8
 
       - run: npm ci
+
+      - name: Validate connector release version
+        id: version
+        run: |
+          version=$(node -p "require('./apps/connector/package.json').version")
+          grep -F "connector_version=\"$version\"" scripts/install-connector.sh
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -87,7 +98,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag || github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
+          test "$TAG" = "connector-v$VERSION"
           gh release view "$TAG" >/dev/null 2>&1 ||
-            gh release create "$TAG" --title "$TAG" --generate-notes
+            gh release create "$TAG" \
+              --title "OvertChat Host Connector v$VERSION" \
+              --generate-notes
           gh release upload "$TAG" release/* --clobber
