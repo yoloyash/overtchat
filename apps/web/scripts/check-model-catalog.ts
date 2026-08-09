@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { validateModelCatalogArtifacts } from "./model-catalog-artifacts";
+import { validateModelCatalogArtifacts } from "../lib/providers/server/model-catalog-artifacts";
 
 const catalogPath = resolve(
   process.cwd(),

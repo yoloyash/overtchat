@@ -5,7 +5,7 @@ import {
   MODEL_CATALOG_SCHEMA_VERSION,
   MODEL_CATALOG_SOURCE_URL,
   validateModelCatalogArtifacts,
-} from "@/scripts/model-catalog-artifacts";
+} from "./model-catalog-artifacts";
 
 const catalogText = readFileSync(
   resolve(process.cwd(), "lib/providers/server/model-catalog.json"),
