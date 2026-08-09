@@ -5,6 +5,7 @@ import type {
   AgentSessionStats,
   AgentSlashCommand,
   AgentThinkingLevel,
+  AgentUsageSnapshot,
 } from "@/lib/agents/types";
 import type {
   AgentRuntimeClient,
@@ -423,6 +424,85 @@ function statsFromMessages(
   };
 }
 
+function parseUsageSnapshot(
+  rateLimitValue: unknown,
+  activityValue: unknown,
+  unavailableReason: string | null = null,
+): AgentUsageSnapshot {
+  const rateLimitResponse = recordOf(rateLimitValue);
+  const byId = recordOf(rateLimitResponse?.rateLimitsByLimitId);
+  const snapshots: Array<[string, unknown]> =
+    byId && Object.keys(byId).length > 0
+      ? Object.entries(byId)
+      : [["codex", rateLimitResponse?.rateLimits]];
+  const windows: AgentUsageSnapshot["windows"] = [];
+  let planType: string | null = null;
+  let credits: AgentUsageSnapshot["credits"] = null;
+
+  for (const [fallbackId, value] of snapshots) {
+    const snapshot = recordOf(value);
+    if (!snapshot) continue;
+    const id = stringOf(snapshot, "limitId") ?? fallbackId;
+    const label =
+      stringOf(snapshot, "limitName") ??
+      id.replace(/[_-]+/gu, " ").replace(/\b\w/gu, (char) => char.toUpperCase());
+    planType ??= stringOf(snapshot, "planType");
+    const creditData = recordOf(snapshot.credits);
+    if (!credits && creditData) {
+      credits = {
+        balance: stringOf(creditData, "balance"),
+        unlimited: creditData.unlimited === true,
+      };
+    }
+    for (const [kind, windowValue] of [
+      ["primary", snapshot.primary],
+      ["secondary", snapshot.secondary],
+    ] as const) {
+      const window = recordOf(windowValue);
+      const usedPercent = numberOf(window, "usedPercent");
+      if (usedPercent === null) continue;
+      windows.push({
+        id: `${id}:${kind}`,
+        label,
+        usedPercent: Math.max(0, Math.min(100, usedPercent)),
+        resetsAt: numberOf(window, "resetsAt"),
+        windowDurationMins: numberOf(window, "windowDurationMins"),
+      });
+    }
+  }
+
+  const summary = recordOf(recordOf(activityValue)?.summary);
+  return {
+    planType,
+    windows,
+    credits,
+    activity: summary
+      ? {
+          lifetimeTokens: numberOf(summary, "lifetimeTokens"),
+          currentStreakDays: numberOf(summary, "currentStreakDays"),
+          longestStreakDays: numberOf(summary, "longestStreakDays"),
+          peakDailyTokens: numberOf(summary, "peakDailyTokens"),
+        }
+      : null,
+    unavailableReason,
+  };
+}
+
+function usageUnavailableReason(reasons: PromiseRejectedResult[]): string {
+  const messages = reasons.map((result) =>
+    result.reason instanceof Error
+      ? result.reason.message
+      : String(result.reason),
+  );
+  if (messages.some((message) => /authentication required/iu.test(message))) {
+    return "Account usage is unavailable because this Codex connection does not expose authenticated account data.";
+  }
+  if (messages.some((message) => /method not found/iu.test(message))) {
+    return "Account usage is unavailable in this version of Codex.";
+  }
+  return "Codex could not read account usage for this connection.";
+}
+
 export class CodexRuntimeClient implements AgentRuntimeClient {
   private server!: CodexAppServer;
   private readonly subscribers = new Set<(event: AgentRuntimeEvent) => void>();
@@ -767,6 +847,25 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.applyThreadConfiguration(response);
     this.readOnly = false;
     return response;
+  }
+
+  async getUsage(): Promise<AgentUsageSnapshot> {
+    await this.readyPromise;
+    const [rateLimits, activity] = await Promise.allSettled([
+      this.server.request("account/rateLimits/read"),
+      this.server.request("account/usage/read"),
+    ]);
+    const rejected = [rateLimits, activity].filter(
+      (result): result is PromiseRejectedResult =>
+        result.status === "rejected",
+    );
+    return parseUsageSnapshot(
+      rateLimits.status === "fulfilled" ? rateLimits.value : null,
+      activity.status === "fulfilled" ? activity.value : null,
+      rateLimits.status === "rejected" && activity.status === "rejected"
+        ? usageUnavailableReason(rejected)
+        : null,
+    );
   }
 
   private async openThread(): Promise<void> {

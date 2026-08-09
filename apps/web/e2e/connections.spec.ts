@@ -796,6 +796,12 @@ test("connect local Codex and resume a native thread", async ({
   const composer = page.getByPlaceholder(
     "Message Codex or type / for commands",
   );
+  await composer.fill("/usage");
+  await composer.press("Enter");
+  const usageDialog = page.getByRole("dialog", { name: "Codex usage" });
+  await expect(usageDialog).toBeVisible({ timeout: 30_000 });
+  await usageDialog.getByRole("button", { name: "Done" }).click();
+
   const prompt =
     "Respond with exactly OVERTCHAT_CODEX_E2E_OK and nothing else.";
   await composer.fill(prompt);

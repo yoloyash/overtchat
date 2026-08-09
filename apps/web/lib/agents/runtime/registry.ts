@@ -401,7 +401,11 @@ export class AgentSessionRuntime {
   command(input: AgentSessionCommand): Promise<unknown> {
     const command = this.normalizeCommand(input);
     const readOnly = readOnlyState(this.state);
-    if (readOnly && command.type !== "retry_interactive") {
+    if (
+      readOnly &&
+      command.type !== "retry_interactive" &&
+      command.type !== "show_usage"
+    ) {
       return Promise.reject(new Error(readOnly.reason));
     }
     switch (command.type) {
@@ -485,6 +489,15 @@ export class AgentSessionRuntime {
           await this.refresh();
           return value;
         });
+      case "show_usage":
+        if (!this.client.getUsage) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} does not provide account usage.`,
+            ),
+          );
+        }
+        return this.client.getUsage();
     }
   }
 

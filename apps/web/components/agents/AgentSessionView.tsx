@@ -17,6 +17,7 @@ import type {
   AgentRuntimeSnapshot,
   AgentSessionCommand,
   AgentThinkingLevel,
+  AgentUsageSnapshot,
 } from "@/lib/agents/types";
 import {
   buildAgentPromptCommand,
@@ -31,6 +32,7 @@ import { motionClasses } from "@/lib/motion";
 import { AgentComposer } from "./AgentComposer";
 import {
   AgentInteractionDialog,
+  AgentUsageDialog,
   CompactAgentSessionDialog,
   RenameAgentSessionDialog,
 } from "./AgentSessionDialogs";
@@ -88,6 +90,7 @@ export function AgentSessionView({
   const command = useAgentSessionCommand(sessionId);
   const [renameOpen, setRenameOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
+  const [usage, setUsage] = useState<AgentUsageSnapshot | null>(null);
   const [dialogError, setDialogError] = useState("");
   const snapshot = session.data;
 
@@ -107,6 +110,7 @@ export function AgentSessionView({
     setDialogError("");
     try {
       const result = await command.mutateAsync(input);
+      if (result.usage) setUsage(result.usage);
       if (input.type === "new_session") {
         if (!result.sessionId) {
           throw new Error(`${providerLabel} did not return the new session.`);
@@ -378,6 +382,13 @@ export function AgentSessionView({
             ...response,
           })
         }
+      />
+      <AgentUsageDialog
+        open={Boolean(usage)}
+        usage={usage}
+        onOpenChange={(open) => {
+          if (!open) setUsage(null);
+        }}
       />
     </div>
   );

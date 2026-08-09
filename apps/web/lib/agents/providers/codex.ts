@@ -36,6 +36,11 @@ const CODEX_COMMANDS: readonly AgentSlashCommand[] = [
     source: "builtin",
     argumentHint: "<name>",
   },
+  {
+    name: "usage",
+    description: "Show Codex plan usage and token activity",
+    source: "builtin",
+  },
 ];
 
 class CodexEventClassifier implements AgentRuntimeEventClassifier {
@@ -72,6 +77,12 @@ function normalizeCommand(
   command: AgentSessionCommand,
   state: Record<string, unknown>,
 ): AgentSessionCommand {
+  if (
+    command.type === "prompt" &&
+    /^\/usage(?:\s*)$/iu.test(command.message)
+  ) {
+    return { type: "show_usage" };
+  }
   const normalized = normalizeAgentSessionCommand(command, state);
   if (normalized.type === "set_auto_compaction") {
     throw new Error("Codex manages context compaction automatically.");

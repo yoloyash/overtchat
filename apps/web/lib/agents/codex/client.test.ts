@@ -17,6 +17,8 @@ class FakeCodexServer {
   readonly requests: Array<{ method: string; params: unknown }> = [];
   readonly responses: Array<{ id: string | number; result: unknown }> = [];
   resumeError: Error | null = null;
+  rateLimitsError: Error | null = null;
+  usageError: Error | null = null;
   private notification: Listener<{ method: string; params?: unknown }> =
     () => {};
   private serverRequest: Listener<{
@@ -73,6 +75,45 @@ class FakeCodexServer {
             ],
           },
         ],
+      };
+    }
+    if (method === "account/rateLimits/read") {
+      if (this.rateLimitsError) throw this.rateLimitsError;
+      return {
+        rateLimits: {
+          limitId: "codex",
+          limitName: "Codex",
+          planType: "plus",
+          primary: {
+            usedPercent: 25,
+            windowDurationMins: 300,
+            resetsAt: 1_786_300_000,
+          },
+          secondary: {
+            usedPercent: 40,
+            windowDurationMins: 10_080,
+            resetsAt: 1_786_900_000,
+          },
+          credits: {
+            hasCredits: true,
+            unlimited: false,
+            balance: "12.50",
+          },
+        },
+        rateLimitsByLimitId: null,
+        rateLimitResetCredits: null,
+      };
+    }
+    if (method === "account/usage/read") {
+      if (this.usageError) throw this.usageError;
+      return {
+        summary: {
+          lifetimeTokens: 1_234_567,
+          currentStreakDays: 4,
+          longestStreakDays: 12,
+          peakDailyTokens: 345_678,
+        },
+        dailyUsageBuckets: null,
       };
     }
     if (method === "thread/start") {
@@ -890,6 +931,73 @@ describe("CodexRuntimeClient", () => {
         contextWindow: 100_000,
         percent: 20,
       },
+    });
+  });
+
+  it("reads account usage without starting a turn", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+
+    await expect(client.getUsage()).resolves.toEqual({
+      planType: "plus",
+      windows: [
+        {
+          id: "codex:primary",
+          label: "Codex",
+          usedPercent: 25,
+          resetsAt: 1_786_300_000,
+          windowDurationMins: 300,
+        },
+        {
+          id: "codex:secondary",
+          label: "Codex",
+          usedPercent: 40,
+          resetsAt: 1_786_900_000,
+          windowDurationMins: 10_080,
+        },
+      ],
+      credits: { balance: "12.50", unlimited: false },
+      activity: {
+        lifetimeTokens: 1_234_567,
+        currentStreakDays: 4,
+        longestStreakDays: 12,
+        peakDailyTokens: 345_678,
+      },
+      unavailableReason: null,
+    });
+    expect(server.requests).toContainEqual({
+      method: "account/rateLimits/read",
+      params: undefined,
+    });
+    expect(server.requests).toContainEqual({
+      method: "account/usage/read",
+      params: undefined,
+    });
+  });
+
+  it("explains when account usage is unavailable", async () => {
+    server.rateLimitsError = new Error(
+      "codex account authentication required to read rate limits",
+    );
+    server.usageError = new Error(
+      "codex account authentication required to read token usage",
+    );
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+
+    await expect(client.getUsage()).resolves.toEqual({
+      planType: null,
+      windows: [],
+      credits: null,
+      activity: null,
+      unavailableReason:
+        "Account usage is unavailable because this Codex connection does not expose authenticated account data.",
     });
   });
 

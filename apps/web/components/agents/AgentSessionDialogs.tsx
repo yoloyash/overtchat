@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   AgentInteractionValue,
   AgentRuntimeSnapshot,
+  AgentUsageSnapshot,
 } from "@/lib/agents/types";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -274,6 +275,156 @@ export function AgentInteractionDialog({
       onRespond={onRespond}
     />
   ) : null;
+}
+
+export function AgentUsageDialog({
+  open,
+  usage,
+  onOpenChange,
+}: {
+  open: boolean;
+  usage: AgentUsageSnapshot | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!open || !usage) return null;
+  const activityRows = [
+    ["Lifetime tokens", usage.activity?.lifetimeTokens],
+    ["Current streak", usage.activity?.currentStreakDays],
+    ["Longest streak", usage.activity?.longestStreakDays],
+    ["Peak daily tokens", usage.activity?.peakDailyTokens],
+  ].filter((row): row is [string, number] => typeof row[1] === "number");
+
+  return (
+    <Dialog.Root open onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className={dialogBackdrop} />
+        <Dialog.Popup className={dialogPopup}>
+          <Dialog.Title className="text-lg font-semibold tracking-tight">
+            Codex usage
+          </Dialog.Title>
+          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+            {usage.planType
+              ? `${formatPlanType(usage.planType)} plan`
+              : "Current account limits"}
+          </Dialog.Description>
+
+          <div className="mt-5 space-y-5">
+            {usage.windows.length > 0 && (
+              <div className="space-y-4">
+                {usage.windows.map((window) => (
+                  <div key={window.id} className="space-y-1.5">
+                    <div className="flex items-baseline justify-between gap-3 text-sm">
+                      <span className="min-w-0 truncate font-medium">
+                        {window.label}
+                        {window.windowDurationMins
+                          ? ` · ${formatDuration(window.windowDurationMins)}`
+                          : ""}
+                      </span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {Math.round(window.usedPercent)}% used
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, window.usedPercent))}%`,
+                        }}
+                      />
+                    </div>
+                    {window.resetsAt && (
+                      <p className="text-xs text-muted-foreground">
+                        Resets {formatResetTime(window.resetsAt)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {usage.credits && (
+              <div className="flex items-center justify-between border-t pt-4 text-sm">
+                <span className="text-muted-foreground">Credits</span>
+                <span className="font-medium tabular-nums">
+                  {usage.credits.unlimited
+                    ? "Unlimited"
+                    : usage.credits.balance ?? "Available"}
+                </span>
+              </div>
+            )}
+
+            {activityRows.length > 0 && (
+              <dl className="grid grid-cols-2 gap-x-5 gap-y-3 border-t pt-4 text-sm">
+                {activityRows.map(([label, value]) => (
+                  <div key={label}>
+                    <dt className="text-xs text-muted-foreground">{label}</dt>
+                    <dd className="mt-0.5 font-medium tabular-nums">
+                      {label.includes("streak")
+                        ? `${value.toLocaleString()} days`
+                        : value.toLocaleString()}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+
+            {usage.windows.length === 0 &&
+              !usage.credits &&
+              activityRows.length === 0 &&
+              !usage.unavailableReason && (
+                <p className="text-sm text-muted-foreground">
+                  Codex did not return usage details for this account.
+                </p>
+              )}
+            {usage.unavailableReason && (
+              <p className="text-sm text-muted-foreground">
+                {usage.unavailableReason}
+              </p>
+            )}
+          </div>
+
+          <DialogActions>
+            <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          </DialogActions>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+function formatPlanType(value: string): string {
+  return value
+    .replace(/_/gu, " ")
+    .replace(/\b\w/gu, (character) => character.toUpperCase());
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes % (24 * 60) === 0) {
+    const days = minutes / (24 * 60);
+    return `${days} ${days === 1 ? "day" : "days"}`;
+  }
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  return `${minutes} min`;
+}
+
+function formatResetTime(timestampSeconds: number): string {
+  const date = new Date(timestampSeconds * 1_000);
+  const delta = date.getTime() - Date.now();
+  if (delta > 0 && delta < 48 * 60 * 60 * 1_000) {
+    const hours = Math.max(1, Math.ceil(delta / (60 * 60 * 1_000)));
+    return `in ${hours}h`;
+  }
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function InteractionDialogContent({

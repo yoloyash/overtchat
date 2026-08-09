@@ -89,7 +89,7 @@ export async function POST(
         sessionId: created.sessionId,
       });
     }
-    await runtime.command(normalized);
+    const commandResult = await runtime.command(normalized);
     if (
       normalized.type === "prompt" ||
       normalized.type === "steer" ||
@@ -109,6 +109,9 @@ export async function POST(
     return Response.json({
       accepted: true,
       queuedMessages: runtime.snapshot().queuedMessages,
+      ...(normalized.type === "show_usage"
+        ? { usage: commandResult }
+        : {}),
     });
   } catch (error) {
     return Response.json(
