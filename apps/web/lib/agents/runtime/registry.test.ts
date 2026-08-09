@@ -22,12 +22,15 @@ vi.mock("@/lib/db/agentConnections", () => ({
   upsertAgentSession: mocks.upsertAgentSession,
 }));
 
-import type { PiRpcClient } from "@/lib/agents/pi/client";
-import type { PiRpcEvent } from "@/lib/agents/pi/protocol";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
+import type {
+  AgentRuntimeClient,
+  AgentRuntimeEvent,
+} from "@/lib/agents/providers/types";
 import type { OwnedAgentSession } from "@/lib/db/agentConnections";
 import {
   AgentRuntimeRegistry,
-  PiSessionRuntime,
+  AgentSessionRuntime,
 } from "./registry";
 
 const stats: AgentSessionStats = {
@@ -72,8 +75,8 @@ const idleProviderState = {
   isCompacting: false,
 };
 
-class FakePiClient {
-  private listeners = new Set<(event: PiRpcEvent) => void>();
+class FakeAgentClient {
+  private listeners = new Set<(event: AgentRuntimeEvent) => void>();
   readonly stop = vi.fn(async () => {});
   readonly prompt = vi.fn(async () => ({}));
   readonly steer = vi.fn(async () => ({}));
@@ -84,7 +87,8 @@ class FakePiClient {
   readonly compact = vi.fn(async () => ({}));
   readonly setAutoCompaction = vi.fn(async () => ({}));
   readonly setSessionName = vi.fn(async () => ({}));
-  readonly respondToExtensionUi = vi.fn();
+  readonly respondToInteraction = vi.fn();
+  readonly respondToExtensionUi = this.respondToInteraction;
   readonly getState = vi.fn(async () => ({ ...idleProviderState }));
   readonly getMessages = vi.fn(async () => ({ messages: [] }));
   readonly getAvailableModels = vi.fn(async () => [model]);
@@ -95,12 +99,12 @@ class FakePiClient {
   ]);
   readonly getCommands = vi.fn(async () => []);
 
-  onEvent(listener: (event: PiRpcEvent) => void) {
+  onEvent(listener: (event: AgentRuntimeEvent) => void) {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
-  emit(event: PiRpcEvent) {
+  emit(event: AgentRuntimeEvent) {
     for (const listener of this.listeners) listener(event);
   }
 }
@@ -170,16 +174,16 @@ function owned(): OwnedAgentSession {
   };
 }
 
-describe("Pi session runtime", () => {
+describe("Agent session runtime", () => {
   it("keeps live provider messages in authoritative snapshots", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -232,8 +236,45 @@ describe("Pi session runtime", () => {
     await runtime.stop();
   });
 
+  it("keeps provider built-ins when discovered commands refresh", async () => {
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    client.emit({
+      type: "available_commands_update",
+      commands: [
+        {
+          name: "release-notes",
+          description: "Draft release notes",
+          source: "extension",
+        },
+      ],
+    });
+
+    expect(runtime.snapshot().commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "compact" }),
+        expect.objectContaining({ name: "new" }),
+        expect.objectContaining({ name: "release-notes" }),
+      ]),
+    );
+    await runtime.stop();
+  });
+
   it("moves an accepted prompt into the transcript without duplicating an early provider echo", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     let acceptPrompt: () => void = vi.fn();
     client.prompt.mockImplementationOnce(
       () =>
@@ -241,13 +282,13 @@ describe("Pi session runtime", () => {
           acceptPrompt = () => resolve({});
         }),
     );
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -283,14 +324,14 @@ describe("Pi session runtime", () => {
   });
 
   it("executes Overtchat slash commands through native Pi RPC methods", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         state: {
@@ -323,7 +364,7 @@ describe("Pi session runtime", () => {
   });
 
   it("runs OMP compaction out of band and refreshes session usage", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     const compactedStats = {
       ...stats,
       tokens: {
@@ -338,13 +379,13 @@ describe("Pi session runtime", () => {
       },
     };
     client.getSessionStats.mockResolvedValueOnce(compactedStats);
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -365,14 +406,14 @@ describe("Pi session runtime", () => {
   });
 
   it("owns queued messages independently of the provider queue", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -435,7 +476,7 @@ describe("Pi session runtime", () => {
   });
 
   it("steers the active turn without aborting or duplicating an early provider echo", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     let acceptSteer: () => void = vi.fn();
     client.steer.mockImplementationOnce(
       () =>
@@ -443,13 +484,13 @@ describe("Pi session runtime", () => {
           acceptSteer = () => resolve({});
         }),
     );
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -492,14 +533,14 @@ describe("Pi session runtime", () => {
   });
 
   it("does not turn a prompt into an implicit interrupt", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -525,7 +566,7 @@ describe("Pi session runtime", () => {
   });
 
   it("steers with a selected queued message and preserves FIFO order", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     let acceptSteer: () => void = vi.fn();
     client.steer.mockImplementationOnce(
       () =>
@@ -533,13 +574,13 @@ describe("Pi session runtime", () => {
           acceptSteer = () => resolve({});
         }),
     );
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -591,17 +632,17 @@ describe("Pi session runtime", () => {
   });
 
   it("keeps a queued message pending when steering fails", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     client.steer.mockRejectedValueOnce(
       new Error("Provider rejected the steering message"),
     );
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -641,14 +682,14 @@ describe("Pi session runtime", () => {
   });
 
   it("settles immediately after abort acknowledgement", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -667,15 +708,15 @@ describe("Pi session runtime", () => {
   });
 
   it("keeps the active turn running when abort is rejected", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     client.abort.mockRejectedValueOnce(new Error("Abort rejected"));
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -707,15 +748,15 @@ describe("Pi session runtime", () => {
   });
 
   it("resets runtime state when normal prompt submission fails", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     client.prompt.mockRejectedValueOnce(new Error("Prompt rejected"));
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -734,15 +775,15 @@ describe("Pi session runtime", () => {
   });
 
   it("settles provider idle even when transcript refresh fails", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     client.getMessages.mockRejectedValueOnce(new Error("History unavailable"));
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -761,14 +802,14 @@ describe("Pi session runtime", () => {
   });
 
   it("ignores OMP extension cycles without assistant output", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "omp-session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -800,7 +841,7 @@ describe("Pi session runtime", () => {
   });
 
   it("waits through OMP auto-compaction after assistant output", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     let resolveState: (state: typeof idleProviderState) => void = vi.fn();
     client.getState.mockImplementationOnce(
       () =>
@@ -808,13 +849,13 @@ describe("Pi session runtime", () => {
           resolveState = resolve;
         }),
     );
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -847,19 +888,19 @@ describe("Pi session runtime", () => {
 
   it("stops polling and preserves the queue when OMP never becomes idle", async () => {
     vi.useFakeTimers();
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     client.getState.mockResolvedValue({
       ...idleProviderState,
       isStreaming: false,
       isCompacting: true,
     });
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -902,7 +943,7 @@ describe("Pi session runtime", () => {
   });
 
   it("cancels provider-idle reconciliation when the runtime stops", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     let resolveState: (state: typeof idleProviderState) => void = vi.fn();
     client.getState.mockImplementationOnce(
       () =>
@@ -911,13 +952,13 @@ describe("Pi session runtime", () => {
         }),
     );
     const onExit = vi.fn();
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -947,14 +988,14 @@ describe("Pi session runtime", () => {
   });
 
   it("drains the OvertChat queue after Stop is acknowledged", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -977,7 +1018,7 @@ describe("Pi session runtime", () => {
   });
 
   it("supersedes an in-flight provider idle poll when Stop is acknowledged", async () => {
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     let resolveState: (state: typeof idleProviderState) => void = vi.fn();
     client.getState.mockImplementationOnce(
       () =>
@@ -985,13 +1026,13 @@ describe("Pi session runtime", () => {
           resolveState = resolve;
         }),
     );
-    const runtime = new PiSessionRuntime(
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "omp",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("omp"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -1030,14 +1071,14 @@ describe("Pi session runtime", () => {
   });
 
   it("replays sequenced provider and OvertChat queue events", async () => {
-    const client = new FakePiClient();
-    const runtime = new PiSessionRuntime(
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
       "session",
       "user",
       "connection",
       "workspace",
-      "pi",
-      client as unknown as PiRpcClient,
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
       {
         ...initial(),
         thinkingLevels: [...initial().thinkingLevels],
@@ -1076,24 +1117,37 @@ describe("Pi session runtime", () => {
     ]);
 
     client.emit({
-      type: "extension_ui_request",
+      type: "interaction_request",
       id: "question",
       method: "confirm",
       title: "Continue?",
     });
-    expect(runtime.snapshot().pendingExtensionRequest).toMatchObject({
+    expect(runtime.snapshot().pendingInteraction).toMatchObject({
       id: "question",
     });
 
+    client.respondToInteraction.mockImplementationOnce(() => {
+      client.emit({
+        type: "interaction_request",
+        id: "question",
+        method: "input",
+        title: "Follow-up",
+      });
+    });
     await runtime.command({
-      type: "extension_ui_response",
+      type: "interaction_response",
       id: "question",
       confirmed: true,
     });
-    expect(client.respondToExtensionUi).toHaveBeenCalledWith("question", {
+    expect(client.respondToInteraction).toHaveBeenCalledWith("question", {
       confirmed: true,
     });
-    expect(runtime.snapshot().pendingExtensionRequest).toBeUndefined();
+    expect(runtime.snapshot().pendingInteraction).toMatchObject({
+      id: "question",
+      title: "Follow-up",
+    });
+    client.emit({ type: "interaction_resolved", id: "question" });
+    expect(runtime.snapshot().pendingInteraction).toBeUndefined();
     unsubscribeFirst();
     unsubscribeReplay();
     await runtime.stop();
@@ -1101,7 +1155,7 @@ describe("Pi session runtime", () => {
 
   it("deduplicates concurrent starts and stops matching owners", async () => {
     vi.clearAllMocks();
-    const client = new FakePiClient();
+    const client = new FakeAgentClient();
     mocks.startPiRpc.mockReturnValue(client);
     const registry = new AgentRuntimeRegistry();
     const record = owned();
@@ -1124,7 +1178,7 @@ describe("Pi session runtime", () => {
     await registry.stopWorkspace("workspace", "user");
     expect(client.stop).toHaveBeenCalledTimes(1);
 
-    const secondClient = new FakePiClient();
+    const secondClient = new FakeAgentClient();
     mocks.startPiRpc.mockReturnValue(secondClient);
     await registry.getOrStart(record);
     await registry.stopUser("user");

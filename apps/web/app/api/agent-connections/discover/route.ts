@@ -7,7 +7,7 @@ import {
   agentDiscoveryTargetSchema,
   type AgentDiscoveryTarget,
 } from "@/lib/agents/types";
-import { discoverAgentInstallations } from "@/lib/agents/pi/probe";
+import { discoverAgentInstallations } from "@/lib/agents/runtime/discovery";
 import type { HostTarget } from "@/lib/agents/runtime/process";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 

@@ -11,24 +11,22 @@ import type {
   AgentSessionStats,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
-import { startPiRpc, type PiRpcClient } from "@/lib/agents/pi/client";
-import {
-  agentBuiltinCommands,
-  mergeAgentSlashCommands,
-  normalizeAgentSessionCommand,
-} from "@/lib/agents/pi/commands";
-import {
-  parsePiCommands,
-  type PiRpcEvent,
-} from "@/lib/agents/pi/protocol";
 import {
   applyAgentRuntimeMessageEvent,
   applyAgentRuntimeStateEvent,
-} from "@/lib/agents/pi/state";
+} from "@/lib/agents/runtime/state";
 import {
   agentProviderMetadata,
   isAgentProviderId,
 } from "@/lib/agents/catalog";
+import { agentProviderAdapter } from "@/lib/agents/providers/registry";
+import type {
+  AgentProviderAdapter,
+  AgentRuntimeClient,
+  AgentRuntimeEvent,
+  AgentRuntimeEventClassifier,
+  AgentRuntimeInitialState,
+} from "@/lib/agents/providers/types";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import {
   getOwnedAgentSession,
@@ -53,7 +51,7 @@ type RuntimeOwner = {
 };
 
 type PendingRuntimeStart = RuntimeOwner & {
-  promise: Promise<PiSessionRuntime>;
+  promise: Promise<AgentSessionRuntime>;
 };
 
 type PendingSubmission = {
@@ -79,33 +77,6 @@ function emptyStats(): AgentSessionStats {
       total: 0,
     },
     cost: 0,
-  };
-}
-
-function sessionIdentity(
-  provider: AgentProviderId,
-  state: Record<string, unknown>,
-): {
-  sessionFile: string;
-  sessionId: string;
-  sessionName: string | null;
-} {
-  const label = agentProviderMetadata(provider).label;
-  const sessionFile = state.sessionFile;
-  const sessionId = state.sessionId;
-  if (typeof sessionFile !== "string" || !sessionFile) {
-    throw new Error(`${label} did not create a persistent session file.`);
-  }
-  if (typeof sessionId !== "string" || !sessionId) {
-    throw new Error(`${label} did not return a session ID.`);
-  }
-  return {
-    sessionFile,
-    sessionId,
-    sessionName:
-      typeof state.sessionName === "string" && state.sessionName.trim()
-        ? state.sessionName.trim()
-        : null,
   };
 }
 
@@ -156,7 +127,7 @@ function messageRole(message: unknown): string | null {
     : null;
 }
 
-export class PiSessionRuntime {
+export class AgentSessionRuntime {
   private readonly subscribers = new Set<Subscriber>();
   private readonly replay: AgentRuntimeEnvelope[] = [];
   private sequence = 0;
@@ -181,11 +152,11 @@ export class PiSessionRuntime {
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
-  private ompRunSawAssistant = false;
-  private pendingExtensionRequest:
-    | NonNullable<AgentRuntimeSnapshot["pendingExtensionRequest"]>
+  private readonly eventClassifier: AgentRuntimeEventClassifier;
+  private pendingInteraction:
+    | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
     | undefined;
-  private pendingExtensionTimer: NodeJS.Timeout | undefined;
+  private pendingInteractionTimer: NodeJS.Timeout | undefined;
   private error: string | undefined;
   private refreshPromise: Promise<void> | null = null;
   private idleStopTimer: NodeJS.Timeout | undefined;
@@ -198,18 +169,12 @@ export class PiSessionRuntime {
     readonly userId: string,
     readonly connectionId: string,
     readonly workspaceId: string,
-    readonly provider: AgentProviderId,
-    private readonly client: PiRpcClient,
-    initial: {
-      state: Record<string, unknown>;
-      messages: unknown[];
-      models: AgentModel[];
-      thinkingLevels: AgentThinkingLevel[];
-      commands: AgentSlashCommand[];
-      stats: AgentSessionStats;
-    },
+    private readonly adapter: AgentProviderAdapter,
+    private readonly client: AgentRuntimeClient,
+    initial: AgentRuntimeInitialState,
     private readonly onExit: () => void,
   ) {
+    this.eventClassifier = adapter.createEventClassifier();
     this.state = initial.state;
     this.messages = initial.messages;
     this.models = initial.models;
@@ -223,6 +188,7 @@ export class PiSessionRuntime {
 
     client.onEvent((event) => {
       let settleRejectedPrompt = false;
+      const classification = this.eventClassifier.classify(event);
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
       if (
@@ -241,7 +207,7 @@ export class PiSessionRuntime {
         this.stopped = true;
         this.turnGeneration += 1;
         this.clearIdleStop();
-        this.clearPendingExtensionRequest();
+        this.clearPendingInteraction();
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
         this.status = "exited";
@@ -259,10 +225,7 @@ export class PiSessionRuntime {
         this.notifyExit();
         return;
       }
-      if (event.type === "agent_start" || event.type === "turn_start") {
-        if (this.provider === "omp" && event.type === "agent_start") {
-          this.ompRunSawAssistant = false;
-        }
+      if (classification.started) {
         this.promptAwaitingStart = false;
         this.status = "running";
         this.activeTurnStartedAt ??= Date.now();
@@ -270,23 +233,14 @@ export class PiSessionRuntime {
         this.error = undefined;
       }
       if (
-        this.provider === "omp" &&
-        ["message_start", "message_update", "message_end"].includes(
-          event.type,
-        ) &&
-        messageRole(event.message) === "assistant"
-      ) {
-        this.ompRunSawAssistant = true;
-      }
-      if (
-        event.type === "extension_ui_request" &&
+        event.type === "interaction_request" &&
         typeof event.id === "string" &&
         typeof event.method === "string" &&
         ["select", "confirm", "input", "editor"].includes(event.method)
       ) {
-        this.clearPendingExtensionRequest();
-        this.pendingExtensionRequest = event as NonNullable<
-          AgentRuntimeSnapshot["pendingExtensionRequest"]
+        this.clearPendingInteraction();
+        this.pendingInteraction = event as NonNullable<
+          AgentRuntimeSnapshot["pendingInteraction"]
         >;
         if (
           typeof event.timeout === "number" &&
@@ -294,13 +248,20 @@ export class PiSessionRuntime {
           event.timeout >= 0
         ) {
           const requestId = event.id;
-          this.pendingExtensionTimer = setTimeout(() => {
-            if (this.pendingExtensionRequest?.id !== requestId) return;
-            this.pendingExtensionRequest = undefined;
-            this.pendingExtensionTimer = undefined;
+          this.pendingInteractionTimer = setTimeout(() => {
+            if (this.pendingInteraction?.id !== requestId) return;
+            this.pendingInteraction = undefined;
+            this.pendingInteractionTimer = undefined;
             this.publishSnapshot();
           }, event.timeout + 100);
         }
+      }
+      if (
+        event.type === "interaction_resolved" &&
+        typeof event.id === "string" &&
+        this.pendingInteraction?.id === event.id
+      ) {
+        this.clearPendingInteraction();
       }
       if (
         event.type === "rpc_error" &&
@@ -326,19 +287,14 @@ export class PiSessionRuntime {
       if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
       }
-      if (
-        event.type === "available_commands_update" &&
-        Array.isArray(event.commands)
-      ) {
-        try {
-          this.commands = mergeAgentSlashCommands(
-            this.provider,
-            parsePiCommands({ commands: event.commands }),
-          );
+      try {
+        const commands = this.adapter.commandsFromEvent(event);
+        if (commands) {
+          this.commands = this.adapter.mergeCommands(commands);
           this.publishSnapshot();
-        } catch {
-          // A later refresh can recover if a newer provider adds metadata.
         }
+      } catch {
+        // A later refresh can recover if a newer provider adds metadata.
       }
       if (
         event.type === "config_update" &&
@@ -364,28 +320,18 @@ export class PiSessionRuntime {
         });
         this.publishSnapshot();
       }
-      const ompAssistantEnd =
-        this.provider === "omp" &&
-        event.type === "agent_end" &&
-        (this.ompRunSawAssistant ||
-          (Array.isArray(event.messages) &&
-            event.messages.some(
-              (message) => messageRole(message) === "assistant",
-            )));
-      const terminal =
-        (this.provider === "pi" && event.type === "agent_settled") ||
-        ompAssistantEnd;
-      const promptHandledWithoutRun =
-        event.type === "prompt_result" && event.agentInvoked === false;
-      if (terminal || promptHandledWithoutRun) {
-        if (ompAssistantEnd) this.ompRunSawAssistant = false;
+      if (classification.terminal) {
         this.promptAwaitingStart = false;
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
-        this.clearPendingExtensionRequest();
+        this.clearPendingInteraction();
         void this.settleAfterProviderTerminal();
       }
     });
+  }
+
+  get provider(): AgentProviderId {
+    return this.adapter.provider;
   }
 
   snapshot(): AgentRuntimeSnapshot {
@@ -405,8 +351,8 @@ export class PiSessionRuntime {
       commands: this.commands,
       stats: this.stats,
       queuedMessages: this.queuedMessages,
-      ...(this.pendingExtensionRequest
-        ? { pendingExtensionRequest: this.pendingExtensionRequest }
+      ...(this.pendingInteraction
+        ? { pendingInteraction: this.pendingInteraction }
         : {}),
       ...(this.error ? { error: this.error } : {}),
     };
@@ -433,11 +379,7 @@ export class PiSessionRuntime {
   }
 
   normalizeCommand(command: AgentSessionCommand): AgentSessionCommand {
-    return normalizeAgentSessionCommand(
-      this.provider,
-      command,
-      this.state,
-    );
+    return this.adapter.normalizeCommand(command, this.state);
   }
 
   command(input: AgentSessionCommand): Promise<unknown> {
@@ -490,9 +432,11 @@ export class PiSessionRuntime {
           await this.refresh();
           return value;
         });
-      case "extension_ui_response":
-        this.client.respondToExtensionUi(command.id, {
+      case "interaction_response": {
+        const pendingInteraction = this.pendingInteraction;
+        this.client.respondToInteraction(command.id, {
           ...(command.value !== undefined ? { value: command.value } : {}),
+          ...(command.values !== undefined ? { values: command.values } : {}),
           ...(command.confirmed !== undefined
             ? { confirmed: command.confirmed }
             : {}),
@@ -500,11 +444,15 @@ export class PiSessionRuntime {
             ? { cancelled: command.cancelled }
             : {}),
         });
-        if (this.pendingExtensionRequest?.id === command.id) {
-          this.clearPendingExtensionRequest();
+        if (
+          pendingInteraction?.id === command.id &&
+          this.pendingInteraction === pendingInteraction
+        ) {
+          this.clearPendingInteraction();
           this.publishSnapshot();
         }
         return Promise.resolve();
+      }
     }
   }
 
@@ -525,7 +473,7 @@ export class PiSessionRuntime {
       this.messages = messageData.messages;
       this.stats = stats;
       this.thinkingLevels = thinkingLevels;
-      this.commands = commands;
+      this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
       this.activeTurnStartedAt =
         this.status === "running"
@@ -552,7 +500,7 @@ export class PiSessionRuntime {
     this.stopped = true;
     this.turnGeneration += 1;
     this.clearIdleStop();
-    this.clearPendingExtensionRequest();
+    this.clearPendingInteraction();
     try {
       await this.client.stop();
     } finally {
@@ -590,12 +538,12 @@ export class PiSessionRuntime {
     this.idleStopTimer = undefined;
   }
 
-  private clearPendingExtensionRequest(): void {
-    if (this.pendingExtensionTimer) {
-      clearTimeout(this.pendingExtensionTimer);
-      this.pendingExtensionTimer = undefined;
+  private clearPendingInteraction(): void {
+    if (this.pendingInteractionTimer) {
+      clearTimeout(this.pendingInteractionTimer);
+      this.pendingInteractionTimer = undefined;
     }
-    this.pendingExtensionRequest = undefined;
+    this.pendingInteraction = undefined;
   }
 
   private notifyExit(): void {
@@ -635,7 +583,7 @@ export class PiSessionRuntime {
     submissionId = `prompt:${++this.nextSubmissionId}`,
   ): Promise<unknown> {
     this.turnGeneration += 1;
-    if (this.provider === "omp") this.ompRunSawAssistant = false;
+    this.eventClassifier.reset();
     this.status = "running";
     this.activeTurnStartedAt = Date.now();
     this.state = { ...this.state, isStreaming: true };
@@ -783,8 +731,8 @@ export class PiSessionRuntime {
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
     this.pendingSubmissions.clear();
-    this.clearPendingExtensionRequest();
-    if (this.provider === "omp") this.ompRunSawAssistant = false;
+    this.clearPendingInteraction();
+    this.eventClassifier.reset();
     this.status = "idle";
     this.activeTurnStartedAt = null;
     this.state = {
@@ -1068,24 +1016,24 @@ export class PiSessionRuntime {
   ): AgentRuntimeEnvelope;
   private envelope(
     type: "runtime_event",
-    data: PiRpcEvent,
+    data: AgentRuntimeEvent,
   ): AgentRuntimeEnvelope;
   private envelope(
     type: AgentRuntimeEnvelope["type"],
-    data: AgentRuntimeSnapshot | PiRpcEvent,
+    data: AgentRuntimeSnapshot | AgentRuntimeEvent,
   ): AgentRuntimeEnvelope {
     const sequence = ++this.sequence;
     return type === "snapshot"
       ? { sequence, type, data: data as AgentRuntimeSnapshot }
-      : { sequence, type, data: data as PiRpcEvent };
+      : { sequence, type, data: data as AgentRuntimeEvent };
   }
 }
 
 export class AgentRuntimeRegistry {
-  private readonly runtimes = new Map<string, PiSessionRuntime>();
+  private readonly runtimes = new Map<string, AgentSessionRuntime>();
   private readonly starts = new Map<string, PendingRuntimeStart>();
 
-  async getOrStart(owned: OwnedAgentSession): Promise<PiSessionRuntime> {
+  async getOrStart(owned: OwnedAgentSession): Promise<AgentSessionRuntime> {
     const existing = this.runtimes.get(owned.agentSession.id);
     if (existing) return existing;
     const starting = this.starts.get(owned.agentSession.id);
@@ -1104,29 +1052,34 @@ export class AgentRuntimeRegistry {
 
   async create(
     owned: OwnedAgentWorkspace,
-  ): Promise<{ runtime: PiSessionRuntime; sessionId: string }> {
-    const provider = this.providerFor(owned.connection.provider);
-    const client = startPiRpc(
+  ): Promise<{ runtime: AgentSessionRuntime; sessionId: string }> {
+    const adapter = this.adapterFor(owned.connection.provider);
+    const client = adapter.startSession(
       targetForStoredHost(owned.host, owned.connection.shellMode),
       {
-        provider,
         executable: owned.connection.executable,
         cwd: owned.workspace.path,
       },
     );
     try {
-      const initial = await this.loadInitial(client);
-      const identity = sessionIdentity(provider, initial.state);
+      const initial = await this.loadInitial(adapter, client);
+      const identity = adapter.sessionIdentity(initial.state);
       const row = await upsertAgentSession(owned.workspace.id, {
-        providerSessionId: identity.sessionId,
-        providerSessionPath: identity.sessionFile,
+        providerSessionId: identity.providerSessionId,
+        providerSessionPath: identity.providerSessionPath,
         name: identity.sessionName,
         firstMessage: null,
         messageCount: 0,
         createdAt: new Date(),
         modifiedAt: new Date(),
       });
-      const runtime = this.register(row.id, owned, client, initial);
+      const runtime = this.register(
+        row.id,
+        owned,
+        adapter,
+        client,
+        initial,
+      );
       return { runtime, sessionId: row.id };
     } catch (error) {
       await client.stop();
@@ -1137,7 +1090,7 @@ export class AgentRuntimeRegistry {
   async getForUser(
     sessionId: string,
     userId: string,
-  ): Promise<PiSessionRuntime | null> {
+  ): Promise<AgentSessionRuntime | null> {
     const owned = await getOwnedAgentSession(sessionId, userId);
     return owned ? this.getOrStart(owned) : null;
   }
@@ -1170,28 +1123,34 @@ export class AgentRuntimeRegistry {
 
   private async startExisting(
     owned: OwnedAgentSession,
-  ): Promise<PiSessionRuntime> {
-    const provider = this.providerFor(owned.connection.provider);
-    const client = startPiRpc(
+  ): Promise<AgentSessionRuntime> {
+    const adapter = this.adapterFor(owned.connection.provider);
+    const client = adapter.startSession(
       targetForStoredHost(owned.host, owned.connection.shellMode),
       {
-        provider,
         executable: owned.connection.executable,
         cwd: owned.workspace.path,
-        sessionPath: owned.agentSession.providerSessionPath,
+        resume: {
+          providerSessionId: owned.agentSession.providerSessionId,
+          providerSessionPath: owned.agentSession.providerSessionPath,
+        },
       },
     );
     try {
-      const initial = await this.loadInitial(client);
-      const identity = sessionIdentity(provider, initial.state);
-      if (identity.sessionId !== owned.agentSession.providerSessionId) {
+      const initial = await this.loadInitial(adapter, client);
+      const identity = adapter.sessionIdentity(initial.state);
+      if (
+        identity.providerSessionId !==
+        owned.agentSession.providerSessionId
+      ) {
         throw new Error(
-          `${agentProviderMetadata(provider).label} opened a different session than requested.`,
+          `${agentProviderMetadata(adapter.provider).label} opened a different session than requested.`,
         );
       }
       return this.register(
         owned.agentSession.id,
         owned,
+        adapter,
         client,
         initial,
       );
@@ -1204,22 +1163,16 @@ export class AgentRuntimeRegistry {
   private register(
     sessionId: string,
     owned: OwnedAgentWorkspace,
-    client: PiRpcClient,
-    initial: {
-      state: Record<string, unknown>;
-      messages: unknown[];
-      models: AgentModel[];
-      thinkingLevels: AgentThinkingLevel[];
-      commands: AgentSlashCommand[];
-      stats: AgentSessionStats;
-    },
-  ): PiSessionRuntime {
-    const runtime = new PiSessionRuntime(
+    adapter: AgentProviderAdapter,
+    client: AgentRuntimeClient,
+    initial: AgentRuntimeInitialState,
+  ): AgentSessionRuntime {
+    const runtime = new AgentSessionRuntime(
       sessionId,
       owned.host.userId,
       owned.connection.id,
       owned.workspace.id,
-      this.providerFor(owned.connection.provider),
+      adapter,
       client,
       initial,
       () => {
@@ -1232,21 +1185,21 @@ export class AgentRuntimeRegistry {
     return runtime;
   }
 
-  private async loadInitial(client: PiRpcClient) {
+  private async loadInitial(
+    adapter: AgentProviderAdapter,
+    client: AgentRuntimeClient,
+  ): Promise<AgentRuntimeInitialState> {
     const [state, messageData, models, stats, thinkingLevels, commands] =
       await Promise.all([
-      client.getState(),
-      client.getMessages(),
-      client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
-      client.getSessionStats().catch(() => emptyStats()),
+        client.getState(),
+        client.getMessages(),
+        client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
+        client.getSessionStats().catch(() => emptyStats()),
         client.getAvailableThinkingLevels().catch(() => []),
         client
           .getCommands()
-          .catch(() =>
-            agentBuiltinCommands(client.provider).map((command) => ({
-              ...command,
-            })),
-          ),
+          .then((commands) => adapter.mergeCommands(commands))
+          .catch(() => adapter.mergeCommands([])),
       ]);
     return {
       state,
@@ -1258,11 +1211,11 @@ export class AgentRuntimeRegistry {
     };
   }
 
-  private providerFor(value: string): AgentProviderId {
+  private adapterFor(value: string): AgentProviderAdapter {
     if (!isAgentProviderId(value)) {
       throw new Error(`Unsupported coding-agent provider "${value}".`);
     }
-    return value;
+    return agentProviderAdapter(value);
   }
 
   private async stopMatching(

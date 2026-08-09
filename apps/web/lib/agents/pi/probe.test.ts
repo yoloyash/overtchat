@@ -14,10 +14,10 @@ vi.mock("@/lib/agents/pi/client", () => ({
 }));
 
 import {
-  discoverAgentInstallations,
   probeAgentConnection,
   probeAgentTarget,
 } from "./probe";
+import { discoverAgentInstallations } from "@/lib/agents/runtime/discovery";
 
 const connectorId = "11111111-1111-4111-8111-111111111111";
 const model = {

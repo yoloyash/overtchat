@@ -19,13 +19,19 @@ export const AGENT_PROVIDERS: Record<
     id: "pi",
     label: "Pi",
     executable: "pi",
-    capabilities: { steer: true },
+    capabilities: {
+      steer: true,
+      customCompactionInstructions: true,
+    },
   },
   omp: {
     id: "omp",
     label: "Oh My Pi",
     executable: "omp",
-    capabilities: { steer: true },
+    capabilities: {
+      steer: true,
+      customCompactionInstructions: true,
+    },
   },
 };
 

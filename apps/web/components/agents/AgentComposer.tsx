@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { piSlashCommandQuery } from "@/lib/agents/pi/commands";
+import { agentSlashCommandQuery } from "@/lib/agents/runtime/commands";
 import type {
   AgentQueuedMessage,
   AgentSlashCommand,
@@ -84,7 +84,7 @@ export function AgentComposer({
     element.style.height = `${element.scrollHeight}px`;
   }, [input]);
 
-  const query = piSlashCommandQuery(input);
+  const query = agentSlashCommandQuery(input);
   const filteredCommands = useMemo(() => {
     if (query === null) return [];
     if (!query) return commands;

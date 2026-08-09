@@ -8,7 +8,7 @@ import type {
   AgentRuntimeSnapshot,
   AgentSessionCommand,
 } from "@/lib/agents/types";
-import { applyAgentRuntimeEnvelope } from "@/lib/agents/pi/state";
+import { applyAgentRuntimeEnvelope } from "@/lib/agents/runtime/state";
 import {
   agentConnectionKeys,
   agentSessionKeys,

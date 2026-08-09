@@ -175,7 +175,10 @@ test("shows durable turn activity without changing completed tool status", async
   seedAgentSession();
 
   const startedAt = Date.now() - 3_000;
-  const snapshot = runtimeSnapshot(startedAt);
+  const snapshot: ReturnType<typeof runtimeSnapshot> & {
+    pendingInteraction?: Record<string, unknown>;
+  } = runtimeSnapshot(startedAt);
+  let interactionResponse: Record<string, unknown> | null = null;
   await page.route(
     new RegExp(`/api/agent-sessions/${SESSION_ID}$`),
     async (route) => {
@@ -183,7 +186,12 @@ test("shows durable turn activity without changing completed tool status", async
         const command = route.request().postDataJSON() as {
           type?: string;
           message?: string;
+          [key: string]: unknown;
         };
+        if (command.type === "interaction_response") {
+          interactionResponse = command;
+          delete snapshot.pendingInteraction;
+        }
         if (
           command.type === "abort" ||
           command.type === "steer" ||
@@ -516,4 +524,97 @@ test("shows durable turn activity without changing completed tool status", async
     });
   });
   await expect(genericActivity).not.toBeVisible();
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  snapshot.pendingInteraction = {
+    type: "interaction_request",
+    id: "mcp-form",
+    method: "form",
+    title: "GitHub needs your input",
+    message: "Configure the GitHub tool",
+    fields: [
+      {
+        id: "token",
+        type: "text",
+        label: "Token",
+        description: "Personal access token",
+        required: true,
+        secret: true,
+        options: [],
+      },
+      {
+        id: "environment",
+        type: "select",
+        label: "Environment",
+        required: true,
+        secret: false,
+        options: [
+          { value: "production", label: "Production" },
+          { value: "staging", label: "Staging" },
+        ],
+      },
+      {
+        id: "scopes",
+        type: "multiselect",
+        label: "Scopes",
+        required: false,
+        secret: false,
+        options: [
+          { value: "repo", label: "Repo" },
+          { value: "issues", label: "Issues" },
+        ],
+      },
+      {
+        id: "private",
+        type: "boolean",
+        label: "Private repository",
+        required: false,
+        secret: false,
+        options: [],
+        defaultValue: false,
+      },
+    ],
+  };
+  await page.reload();
+  await expect(
+    page.getByRole("dialog", { name: "GitHub needs your input" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Token")).toHaveAttribute("type", "password");
+  await page.getByLabel("Token").fill("secret");
+  await page.getByLabel("Environment").selectOption("staging");
+  await page.getByRole("checkbox", { name: "Repo", exact: true }).check();
+  await page
+    .getByRole("switch", { name: "Private repository (optional)", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Submit" }).click();
+  await expect.poll(() => interactionResponse).toMatchObject({
+    type: "interaction_response",
+    id: "mcp-form",
+    values: {
+      token: "secret",
+      environment: "staging",
+      scopes: ["repo"],
+      private: true,
+    },
+  });
+
+  interactionResponse = null;
+  snapshot.pendingInteraction = {
+    type: "interaction_request",
+    id: "mcp-url",
+    method: "external",
+    title: "Continue with GitHub?",
+    message: "Authorize the GitHub tool",
+    url: "https://github.com/login/oauth/authorize",
+  };
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Open authorization page" }),
+  ).toHaveAttribute("href", "https://github.com/login/oauth/authorize");
+  await page.getByRole("button", { name: "Continue" }).click();
+  await expect.poll(() => interactionResponse).toMatchObject({
+    type: "interaction_response",
+    id: "mcp-url",
+    confirmed: true,
+  });
 });

@@ -10,7 +10,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
-vi.mock("@/lib/agents/pi/probe", () => ({
+vi.mock("@/lib/agents/runtime/discovery", () => ({
   discoverAgentInstallations: mocks.discover,
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({

@@ -25,7 +25,6 @@ import {
   type PiRpcCommand,
   type PiRpcEvent,
 } from "@/lib/agents/pi/protocol";
-import { mergeAgentSlashCommands } from "@/lib/agents/pi/commands";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_STDERR_CHARS = 64 * 1024;
@@ -230,16 +229,13 @@ export class PiRpcClient {
   }
 
   async getCommands(): Promise<AgentSlashCommand[]> {
-    return mergeAgentSlashCommands(
-      this.provider,
-      parsePiCommands(
-        await this.request({
-          type:
-            this.provider === "omp"
-              ? "get_available_commands"
-              : "get_commands",
-        }),
-      ),
+    return parsePiCommands(
+      await this.request({
+        type:
+          this.provider === "omp"
+            ? "get_available_commands"
+            : "get_commands",
+      }),
     );
   }
 
@@ -355,6 +351,17 @@ export class PiRpcClient {
     this.send({ type: "extension_ui_response", id, ...response });
   }
 
+  respondToInteraction(
+    id: string,
+    response: {
+      value?: string;
+      confirmed?: boolean;
+      cancelled?: boolean;
+    },
+  ): void {
+    this.respondToExtensionUi(id, response);
+  }
+
   async stop(): Promise<void> {
     if (this.closed) return;
     this.closed = true;
@@ -457,6 +464,13 @@ export class PiRpcClient {
     }
     if (typeof record.type !== "string") {
       this.failProtocol(`${this.label} RPC event is missing a type.`);
+      return;
+    }
+    if (record.type === "extension_ui_request") {
+      this.emit({
+        ...record,
+        type: "interaction_request",
+      } as PiRpcEvent);
       return;
     }
     this.emit(record as PiRpcEvent);

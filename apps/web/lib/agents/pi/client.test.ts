@@ -125,7 +125,7 @@ describe("PiRpcClient", () => {
     await client.stop();
   });
 
-  it("merges built-ins with discovered commands and toggles auto-compaction", async () => {
+  it("parses discovered commands and toggles auto-compaction", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "get_commands") {
         fake.reply(command, {
@@ -144,10 +144,6 @@ describe("PiRpcClient", () => {
     const client = new PiRpcClient(process);
 
     await expect(client.getCommands()).resolves.toEqual([
-      expect.objectContaining({ name: "new", source: "builtin" }),
-      expect.objectContaining({ name: "compact", source: "builtin" }),
-      expect.objectContaining({ name: "autocompact", source: "builtin" }),
-      expect.objectContaining({ name: "name", source: "builtin" }),
       {
         name: "skill:docs",
         description: "Read docs",
@@ -203,7 +199,6 @@ describe("PiRpcClient", () => {
 
     await expect(client.getCommands()).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: "new", source: "builtin" }),
         expect.objectContaining({
           name: "security",
           argumentHint: "<plan|scan>",

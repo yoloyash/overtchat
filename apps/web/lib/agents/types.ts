@@ -96,6 +96,16 @@ export type AgentSessionListItem = {
   runtimeStatus: AgentRuntimeStatus;
 };
 
+export type AgentProviderSessionMetadata = {
+  providerSessionId: string;
+  providerSessionPath: string;
+  name: string | null;
+  firstMessage: string | null;
+  messageCount: number;
+  createdAt: Date | null;
+  modifiedAt: Date | null;
+};
+
 export type AgentWorkspaceListItem = {
   id: string;
   path: string;
@@ -141,8 +151,8 @@ export type AgentModel = {
   baseUrl: string;
   reasoning: boolean;
   input: Array<"text" | "image">;
-  contextWindow: number;
-  maxTokens: number;
+  contextWindow: number | null;
+  maxTokens: number | null;
   cost: {
     input: number;
     output: number;
@@ -202,8 +212,15 @@ export type AgentQueuedMessage = {
   status: "pending" | "sending";
 };
 
+export type AgentInteractionValue =
+  | string
+  | number
+  | boolean
+  | string[];
+
 export type AgentRuntimeCapabilities = {
   steer: boolean;
+  customCompactionInstructions?: boolean;
 };
 
 export const agentSessionCommandSchema = z.discriminatedUnion("type", [
@@ -251,9 +268,20 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("new_session") }),
   z.object({
-    type: z.literal("extension_ui_response"),
+    type: z.literal("interaction_response"),
     id: z.string().min(1).max(500),
     value: z.string().max(200_000).optional(),
+    values: z
+      .record(
+        z.string().min(1).max(500),
+        z.union([
+          z.string().max(200_000),
+          z.number().finite(),
+          z.boolean(),
+          z.array(z.string().max(20_000)).max(500),
+        ]),
+      )
+      .optional(),
     confirmed: z.boolean().optional(),
     cancelled: z.boolean().optional(),
   }),
@@ -299,8 +327,8 @@ export type AgentRuntimeSnapshot = {
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
   queuedMessages: AgentQueuedMessage[];
-  pendingExtensionRequest?: {
-    type: "extension_ui_request";
+  pendingInteraction?: {
+    type: "interaction_request";
     id: string;
     method: string;
     [key: string]: unknown;

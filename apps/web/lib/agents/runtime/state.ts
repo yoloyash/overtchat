@@ -22,6 +22,12 @@ function toolCallIdOf(message: unknown): string | null {
     : null;
 }
 
+function idOf(message: unknown): string | null {
+  if (!message || typeof message !== "object") return null;
+  const id = Reflect.get(message, "id");
+  return typeof id === "string" && id ? id : null;
+}
+
 function timestampOf(message: unknown): number | null {
   if (!message || typeof message !== "object") return null;
   const timestamp = Reflect.get(message, "timestamp");
@@ -66,6 +72,16 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
     );
     if (pendingIndex >= 0) {
       next[pendingIndex] = message;
+      return next;
+    }
+  }
+  const id = idOf(message);
+  if (id) {
+    const index = next.findIndex(
+      (candidate) => roleOf(candidate) === role && idOf(candidate) === id,
+    );
+    if (index >= 0) {
+      next[index] = message;
       return next;
     }
   }
@@ -299,16 +315,23 @@ export function applyAgentRuntimeEnvelope(
     };
   }
   if (
-    event.type === "extension_ui_request" &&
+    event.type === "interaction_request" &&
     typeof event.id === "string" &&
     typeof event.method === "string" &&
     ["select", "confirm", "input", "editor"].includes(event.method)
   ) {
     return {
       ...current,
-      pendingExtensionRequest:
-        event as AgentRuntimeSnapshot["pendingExtensionRequest"],
+      pendingInteraction:
+        event as AgentRuntimeSnapshot["pendingInteraction"],
     };
+  }
+  if (
+    event.type === "interaction_resolved" &&
+    typeof event.id === "string" &&
+    current.pendingInteraction?.id === event.id
+  ) {
+    return { ...current, pendingInteraction: undefined };
   }
   return current;
 }

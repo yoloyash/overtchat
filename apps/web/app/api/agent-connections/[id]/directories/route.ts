@@ -3,7 +3,7 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { listAgentDirectories } from "@/lib/agents/pi/probe";
+import { listAgentDirectories } from "@/lib/agents/runtime/filesystem";
 import { targetForStoredHost } from "@/lib/agents/runtime/target";
 import { getOwnedAgentConnection } from "@/lib/db/agentConnections";
 
