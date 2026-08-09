@@ -1,4 +1,5 @@
 import {
+  HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   isHostConnectorEvent,
   isHostConnectorProtocolVersion,
   type HostConnectorEventBatch,
@@ -6,8 +7,6 @@ import {
 import { authenticateHostConnector } from "@/lib/agents/connector/auth";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { touchHostConnector } from "@/lib/db/hostConnectors";
-
-const MAX_EVENTS = 1_000;
 
 export async function POST(request: Request) {
   const connector = authenticateHostConnector(request);
@@ -19,7 +18,7 @@ export async function POST(request: Request) {
     !batch ||
     !isHostConnectorProtocolVersion(batch.protocolVersion) ||
     !Array.isArray(batch.events) ||
-    batch.events.length > MAX_EVENTS ||
+    batch.events.length > HOST_CONNECTOR_EVENT_BATCH_LIMIT ||
     !batch.events.every(isHostConnectorEvent)
   ) {
     return Response.json({ error: "Invalid connector event batch." }, { status: 400 });

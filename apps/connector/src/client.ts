@@ -5,6 +5,10 @@ import {
   type HostConnectorEventBatch,
 } from "@overtchat/agent-bridge";
 import type { ConnectorConfig } from "./config.js";
+import {
+  restoreConnectorEventBatch,
+  takeConnectorEventBatch,
+} from "./eventQueue.js";
 import { ConnectorRuntime } from "./runtime.js";
 import { CONNECTOR_VERSION } from "./version.js";
 
@@ -146,7 +150,7 @@ export class ConnectorClient {
   private async flush(): Promise<void> {
     if (this.stopped || this.flushing || this.events.length === 0) return;
     this.flushing = true;
-    const events = this.events.splice(0, this.events.length);
+    const events = takeConnectorEventBatch(this.events);
     const body: HostConnectorEventBatch = {
       protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
       events,
@@ -172,7 +176,7 @@ export class ConnectorClient {
       this.eventRetryAttempt = 0;
     } catch (error) {
       if (this.stopped) return;
-      this.events.unshift(...events);
+      restoreConnectorEventBatch(this.events, events);
       console.error(
         `Unable to deliver connector events: ${
           error instanceof Error ? error.message : String(error)

@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { HOST_CONNECTOR_PROTOCOL_VERSION } from "@overtchat/agent-bridge";
+import {
+  HOST_CONNECTOR_EVENT_BATCH_LIMIT,
+  HOST_CONNECTOR_PROTOCOL_VERSION,
+} from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
@@ -59,6 +62,25 @@ describe("Host Connector event route", () => {
       request({
         protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
         events: [null],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.accept).not.toHaveBeenCalled();
+  });
+
+  it("rejects event batches above the shared connector limit", async () => {
+    const response = await POST(
+      request({
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+        events: Array.from(
+          { length: HOST_CONNECTOR_EVENT_BATCH_LIMIT + 1 },
+          (_, index) => ({
+            type: "stdout",
+            processId: "process",
+            data: String(index),
+          }),
+        ),
       }),
     );
 
