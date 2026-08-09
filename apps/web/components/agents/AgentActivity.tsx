@@ -11,6 +11,7 @@ import {
   FileText,
   Globe,
   Loader2,
+  MessageSquareText,
   Search,
   Terminal,
   Wrench,
@@ -116,10 +117,12 @@ export function AgentActivityGroup({
   entries,
   active,
   startedAt,
+  durationMs,
 }: {
   entries: AgentActivityEntry[];
   active: boolean;
   startedAt: number | null;
+  durationMs: number | null;
 }) {
   const presentation = describeAgentActivity(entries, active);
   const hasError = presentation.status === "failed";
@@ -134,7 +137,12 @@ export function AgentActivityGroup({
   ).length;
   const progress =
     live && completedCount > 0 ? `${completedCount} completed` : null;
-  const headerLabel = open && live && hasTools ? "Activity" : presentation.label;
+  const completedDuration =
+    presentation.status === "completed" && durationMs !== null
+      ? formatElapsed(durationMs)
+      : null;
+  const headerLabel =
+    open && live && hasTools ? "Activity" : presentation.label;
   const headerSecondary =
     open && live && hasTools ? null : presentation.secondary;
 
@@ -144,6 +152,9 @@ export function AgentActivityGroup({
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
+        aria-label={
+          completedDuration ? `Worked for ${completedDuration}` : undefined
+        }
         className="group flex min-h-8 w-full items-center gap-2 rounded-md py-1 pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
       >
         <ActivityIcon entries={entries} status={presentation.status} />
@@ -152,9 +163,12 @@ export function AgentActivityGroup({
             className={cn(
               "shrink-0 font-medium text-foreground",
               live && !open && motionClasses.shimmer,
+              completedDuration && "tabular-nums [word-spacing:0.125rem]",
             )}
           >
-            {headerLabel}
+            {completedDuration
+              ? `Worked for ${completedDuration}`
+              : headerLabel}
           </span>
           {headerSecondary && (
             <span className="min-w-0 truncate font-mono text-[11px]">
@@ -199,7 +213,7 @@ export function AgentActivityGroup({
                 entry={entry}
                 active={active}
                 last={index === entries.length - 1}
-                showThinkingStep={hasTools || entries.length > 1}
+                showDetailedStep={hasTools || entries.length > 1}
               />
             ))}
           </div>
@@ -213,15 +227,33 @@ function ActivityStep({
   entry,
   active,
   last,
-  showThinkingStep,
+  showDetailedStep,
 }: {
   entry: AgentActivityEntry;
   active: boolean;
   last: boolean;
-  showThinkingStep: boolean;
+  showDetailedStep: boolean;
 }) {
+  if (entry.type === "commentary") {
+    if (!showDetailedStep) {
+      return (
+        <div className={cn("min-w-0", last ? "pb-1" : "pb-4")}>
+          <ThinkingContent content={entry.content} />
+        </div>
+      );
+    }
+    return (
+      <TimelineStep
+        icon={<MessageSquareText className="size-3.5" />}
+        last={last}
+      >
+        <ThinkingContent content={entry.content} />
+      </TimelineStep>
+    );
+  }
+
   if (entry.type === "thinking") {
-    if (!showThinkingStep) {
+    if (!showDetailedStep) {
       return (
         <div className={cn("min-w-0", last ? "pb-1" : "pb-4")}>
           <ThinkingContent content={entry.content} />
@@ -564,6 +596,11 @@ function ActivityIcon({
     ),
   );
   if (categories.size === 0) {
+    if (entries.some((entry) => entry.type === "commentary")) {
+      return (
+        <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground" />
+      );
+    }
     return <Brain className="size-3.5 shrink-0 text-muted-foreground" />;
   }
   if (categories.size > 1) {

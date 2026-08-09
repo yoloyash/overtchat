@@ -12,7 +12,7 @@ const THINKING_REMARK_PLUGINS = [
   remarkBreaks,
 ];
 
-/** A reasoning part's markdown, rendered as muted text inside a ChainOfThought step. */
+/** Muted markdown rendered inside reasoning and agent-work details. */
 export function ThinkingContent({ content }: { content: string }) {
   const trimmed = content.trim();
   if (!trimmed) return null;

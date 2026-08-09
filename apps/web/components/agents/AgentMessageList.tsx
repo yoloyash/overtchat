@@ -224,6 +224,7 @@ function AgentTranscriptRow({
       entries={item.entries}
       active={active}
       startedAt={activityStartedAt}
+      durationMs={item.durationMs}
     />
   );
 }
