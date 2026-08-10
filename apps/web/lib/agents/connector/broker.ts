@@ -12,6 +12,7 @@ import {
 const REQUEST_TIMEOUT_MS = 15_000;
 const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
 const PROCESS_EXIT_GRACE_MS = 5_000;
+const STDIN_CHUNK_BYTES = 64 * 1024;
 
 export type ConnectorProcessExit = {
   code: number | null;
@@ -118,11 +119,15 @@ export class HostConnectorBroker {
       write(chunk, _encoding, callback) {
         try {
           const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          send({
-            type: "stdin",
-            processId,
-            data: bytes.toString("base64"),
-          });
+          for (let offset = 0; offset < bytes.length; offset += STDIN_CHUNK_BYTES) {
+            send({
+              type: "stdin",
+              processId,
+              data: bytes
+                .subarray(offset, offset + STDIN_CHUNK_BYTES)
+                .toString("base64"),
+            });
+          }
           callback();
         } catch (error) {
           callback(error instanceof Error ? error : new Error(String(error)));

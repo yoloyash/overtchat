@@ -4,11 +4,15 @@ vi.mock("server-only", () => ({}));
 
 const mocks = vi.hoisted(() => ({
   listCodexCustomPrompts: vi.fn(),
+  materializeAgentImages: vi.fn(),
 }));
 
 vi.mock("./commands", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./commands")>()),
   listCodexCustomPrompts: mocks.listCodexCustomPrompts,
+}));
+vi.mock("@/lib/agents/runtime/materialize-images", () => ({
+  materializeAgentImages: mocks.materializeAgentImages,
 }));
 
 type Listener<T> = (value: T) => void;
@@ -293,6 +297,7 @@ describe("CodexRuntimeClient", () => {
     server.rateLimitsError = null;
     server.usageError = null;
     server.respondError.mockClear();
+    mocks.materializeAgentImages.mockResolvedValue([]);
     mocks.listCodexCustomPrompts.mockResolvedValue([
       {
         name: "prompts:review",
@@ -352,6 +357,81 @@ describe("CodexRuntimeClient", () => {
             type: "text",
             text: "Review src/a b.ts carefully.",
             text_elements: [],
+          },
+        ],
+      },
+    });
+  });
+
+  it("materializes images on the target host for prompts and steering", async () => {
+    const target = {
+      connectorId: "connector",
+      transport: "ssh" as const,
+      alias: "macbook",
+    };
+    const client = new CodexRuntimeClient(target, {
+      executable: "codex",
+      cwd: "/workspace",
+    });
+    const image = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png" as const,
+      data: "aW1hZ2U=",
+    };
+    mocks.materializeAgentImages.mockResolvedValue([
+      "/tmp/overtchat-agent-images/screen.png",
+    ]);
+
+    await client.prompt("Inspect this", [image]);
+    expect(mocks.materializeAgentImages).toHaveBeenCalledWith(target, [image]);
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        input: [
+          {
+            type: "text",
+            text: "Inspect this",
+            text_elements: [],
+          },
+          {
+            type: "localImage",
+            path: "/tmp/overtchat-agent-images/screen.png",
+          },
+        ],
+      },
+    });
+    await expect(client.getMessages()).resolves.toEqual({
+      messages: [
+        expect.objectContaining({
+          role: "user",
+          content: [
+            { type: "text", text: "Inspect this" },
+            {
+              type: "image",
+              url: `/api/uploads/${image.uploadId}`,
+              filename: "screen.png",
+              mimeType: "image/png",
+            },
+          ],
+        }),
+      ],
+    });
+
+    await client.steer("", [image]);
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/steer",
+      params: {
+        expectedTurnId: "turn-1",
+        input: [
+          {
+            type: "text",
+            text: "",
+            text_elements: [],
+          },
+          {
+            type: "localImage",
+            path: "/tmp/overtchat-agent-images/screen.png",
           },
         ],
       },

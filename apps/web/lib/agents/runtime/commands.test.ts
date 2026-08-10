@@ -73,6 +73,22 @@ describe("agent slash commands", () => {
     });
   });
 
+  it("keeps attached images on the ordinary prompt path", () => {
+    const image = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png" as const,
+    };
+    const command = buildAgentPromptCommand("/new", [image]);
+
+    expect(command).toEqual({
+      type: "prompt",
+      message: "/new",
+      images: [image],
+    });
+    expect(normalizeAgentSessionCommand(command, {})).toBe(command);
+  });
+
   it("routes Overtchat built-ins to native RPC commands", () => {
     expect(
       normalizeAgentSessionCommand({ type: "prompt", message: "/new" }, {}),

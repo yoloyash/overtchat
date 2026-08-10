@@ -110,6 +110,46 @@ describe("PiRpcClient", () => {
     await client.stop();
   });
 
+  it("sends native image attachments with prompts and steering", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      fake.reply(command);
+    });
+    const client = new PiRpcClient(process);
+    const image = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png" as const,
+      data: "aW1hZ2U=",
+    };
+
+    await client.prompt("Inspect this", [image]);
+    await client.steer("", [image]);
+
+    expect(process.commands).toEqual([
+      expect.objectContaining({
+        type: "prompt",
+        message: "Inspect this",
+        images: [
+          {
+            data: "aW1hZ2U=",
+            mimeType: "image/png",
+          },
+        ],
+      }),
+      expect.objectContaining({
+        type: "steer",
+        message: "",
+        images: [
+          {
+            data: "aW1hZ2U=",
+            mimeType: "image/png",
+          },
+        ],
+      }),
+    ]);
+    await client.stop();
+  });
+
   it("keeps historical process stderr out of later request timeouts", async () => {
     const process = new FakeAgentProcess(() => {});
     const client = new PiRpcClient(process);

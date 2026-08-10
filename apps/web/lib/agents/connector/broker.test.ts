@@ -65,6 +65,39 @@ describe("Host Connector broker", () => {
     expect(stdout).toBe("world");
   });
 
+  it("chunks large stdin writes before sending them to the connector", async () => {
+    const broker = new HostConnectorBroker();
+    const commands: HostConnectorCommand[] = [];
+    broker.register("connector", (command) => commands.push(command));
+    const processHandle = broker.spawn(
+      "connector",
+      { transport: "local" },
+      { command: "pi", shellMode: "interactive" },
+    );
+    const payload = Buffer.alloc(64 * 1024 + 17, 7);
+
+    await new Promise<void>((resolve, reject) => {
+      processHandle.stdin.end(payload, (error?: Error | null) => {
+        if (error) reject(error);
+        else resolve();
+      });
+    });
+
+    const stdinCommands = commands.filter(
+      (
+        command,
+      ): command is Extract<HostConnectorCommand, { type: "stdin" }> =>
+        command.type === "stdin",
+    );
+    expect(stdinCommands).toHaveLength(2);
+    expect(
+      Buffer.concat(
+        stdinCommands.map((command) => Buffer.from(command.data, "base64")),
+      ),
+    ).toEqual(payload);
+    expect(commands.at(-1)).toMatchObject({ type: "stdin_end" });
+  });
+
   it("synchronizes active process IDs when a channel reconnects", () => {
     const broker = new HostConnectorBroker();
     const first: HostConnectorCommand[] = [];

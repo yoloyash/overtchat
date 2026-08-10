@@ -7,6 +7,7 @@ import type {
 
 const mocks = vi.hoisted(() => ({
   startPiRpc: vi.fn(),
+  resolveAgentImages: vi.fn(),
   getOwnedAgentSession: vi.fn(),
   updateAgentSessionMetadata: vi.fn(),
   upsertAgentSession: vi.fn(),
@@ -15,6 +16,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/agents/pi/client", () => ({
   startPiRpc: mocks.startPiRpc,
+}));
+vi.mock("@/lib/agents/runtime/images", () => ({
+  resolveAgentImages: mocks.resolveAgentImages,
 }));
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentSession: mocks.getOwnedAgentSession,
@@ -520,6 +524,116 @@ describe("Agent session runtime", () => {
     });
     expect(runtime.snapshot().queuedMessages).toEqual([]);
     unsubscribe();
+    await runtime.stop();
+  });
+
+  it("preserves queued images and resolves them only when sent", async () => {
+    mocks.resolveAgentImages.mockClear();
+    const client = new FakeAgentClient();
+    const imageModel: AgentModel = {
+      ...model,
+      input: ["text", "image"],
+    };
+    const imageRef = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png" as const,
+    };
+    const resolvedImage = {
+      ...imageRef,
+      data: "aW1hZ2U=",
+    };
+    mocks.resolveAgentImages.mockResolvedValueOnce([resolvedImage]);
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        state: {
+          ...initial().state,
+          model: imageModel,
+        },
+        models: [imageModel],
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({ type: "prompt", message: "First" });
+    await runtime.command({
+      type: "queue",
+      message: "",
+      images: [imageRef],
+    });
+
+    expect(mocks.resolveAgentImages).not.toHaveBeenCalled();
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      {
+        id: "session:1",
+        message: "",
+        images: [imageRef],
+        status: "pending",
+      },
+    ]);
+
+    client.emit({ type: "agent_settled" });
+    await vi.waitFor(() => {
+      expect(client.prompt).toHaveBeenNthCalledWith(2, "", [resolvedImage]);
+    });
+    expect(mocks.resolveAgentImages).toHaveBeenCalledWith([imageRef], "user");
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    expect(runtime.snapshot().messages).toContainEqual(
+      expect.objectContaining({
+        role: "user",
+        content: [
+          {
+            type: "image",
+            url: `/api/uploads/${imageRef.uploadId}`,
+            mimeType: "image/png",
+            filename: "screen.png",
+          },
+        ],
+      }),
+    );
+    await runtime.stop();
+  });
+
+  it("rejects image input when the selected model is text-only", async () => {
+    mocks.resolveAgentImages.mockClear();
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("pi"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await expect(
+      runtime.command({
+        type: "prompt",
+        message: "Inspect this",
+        images: [
+          {
+            uploadId: "11111111-1111-4111-8111-111111111111",
+            filename: "screen.png",
+            mediaType: "image/png",
+          },
+        ],
+      }),
+    ).rejects.toThrow("does not support image input");
+    expect(mocks.resolveAgentImages).not.toHaveBeenCalled();
+    expect(client.prompt).not.toHaveBeenCalled();
     await runtime.stop();
   });
 
