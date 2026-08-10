@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import type { AgentConnectionListItem } from "@/lib/agents/types";
+import type {
+  AgentConnectionListItem,
+  AgentRuntimeSnapshot,
+} from "@/lib/agents/types";
 import {
   openE2eDatabase,
   resetE2eDatabase,
@@ -12,11 +15,11 @@ const TEST_PNG = Buffer.from(
   "base64",
 );
 
-const imageModel = {
-  id: "pi-image-model",
-  name: "Pi Image Model",
-  provider: "test",
-  api: "test",
+const imageModel: AgentRuntimeSnapshot["models"][number] = {
+  id: "gpt-5.6",
+  name: "GPT-5.6",
+  provider: "codex",
+  api: "codex-app-server",
   baseUrl: "",
   reasoning: true,
   input: ["text", "image"],
@@ -52,7 +55,7 @@ function seedAgentSession() {
     db.prepare(`
       INSERT INTO agent_connections (
         id, host_id, provider, executable, detected_version
-      ) VALUES ('connection', 'host', 'pi', 'pi', 'test')
+      ) VALUES ('connection', 'host', 'codex', 'codex', '0.147.0')
     `).run();
     db.prepare(`
       INSERT INTO agent_workspaces (id, connection_id, path, name)
@@ -70,11 +73,16 @@ function seedAgentSession() {
   }
 }
 
-function runtimeSnapshot(startedAt: number) {
+function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
   return {
     sessionId: SESSION_ID,
-    provider: "pi",
-    capabilities: { steer: true },
+    provider: "codex",
+    capabilities: {
+      steer: true,
+      usage: true,
+      editSentMessages: true,
+      forkMessages: true,
+    },
     status: "running",
     activeTurn: { startedAt },
     state: {
@@ -82,6 +90,20 @@ function runtimeSnapshot(startedAt: number) {
       isCompacting: false,
       sessionName: "Runtime activity",
       model: imageModel,
+      collaborationMode: "default",
+      collaborationModes: ["default", "plan"],
+      fastModeEnabled: false,
+      fastModeAvailable: true,
+      goalsSupported: true,
+      goal: {
+        objective: "Finish Codex parity",
+        status: "active",
+        tokenBudget: 20_000,
+        tokensUsed: 4_200,
+        timeUsedSeconds: 180,
+        createdAt: 1,
+        updatedAt: 2,
+      },
     },
     messages: [
       {
@@ -112,10 +134,27 @@ function runtimeSnapshot(startedAt: number) {
         role: "assistant",
         content: [
           {
+            type: "plan",
+            id: "plan",
+            text: "- [x] Audit the runtime\n- [ ] Finish parity",
+            explanation: "Two focused steps.",
+            steps: [
+              { step: "Audit the runtime", status: "completed" },
+              { step: "Finish parity", status: "inProgress" },
+            ],
+          },
+        ],
+        timestamp: 2.5,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
             type: "toolCall",
             id: "command",
             name: "bash",
             arguments: { command: "printf done" },
+            terminalInputs: ["y\n"],
           },
         ],
         timestamp: 3,
@@ -127,6 +166,27 @@ function runtimeSnapshot(startedAt: number) {
         content: [{ type: "text", text: "done" }],
         isError: false,
         timestamp: 4,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "subagent",
+            id: "collab",
+            action: "spawnAgent",
+            prompt: "Inspect the runtime tests",
+            status: "completed",
+            receivers: [
+              {
+                threadId: "child-thread",
+                status: "completed",
+                message: "Tests are green",
+              },
+            ],
+            events: ["Checked the runtime suite.", "$ npm test\n476 passed"],
+          },
+        ],
+        timestamp: 6.5,
       },
       {
         role: "assistant",
@@ -249,6 +309,32 @@ test("shows durable turn activity without changing completed tool status", async
           delete snapshot.pendingInteraction;
         }
         if (command.type === "retry_interactive") retryRequested = true;
+        if (command.type === "set_collaboration_mode") {
+          snapshot.state.collaborationMode = command.mode;
+        }
+        if (command.type === "set_fast_mode") {
+          snapshot.state.fastModeEnabled = command.enabled;
+        }
+        if (command.type === "update_goal") {
+          if (command.action === "clear") {
+            snapshot.state.goal = null;
+          } else {
+            const current =
+              snapshot.state.goal &&
+              typeof snapshot.state.goal === "object"
+                ? snapshot.state.goal
+                : {};
+            snapshot.state.goal = {
+              ...current,
+              ...(command.action === "set" &&
+              typeof command.objective === "string"
+                ? { objective: command.objective }
+                : {}),
+              status:
+                command.action === "pause" ? "paused" : "active",
+            };
+          }
+        }
         if (
           command.type === "abort" ||
           command.type === "steer" ||
@@ -473,6 +559,12 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("I will inspect the runtime.", { exact: true }),
   ).toBeVisible();
+  await expect(page.getByTestId("agent-plan-card")).toContainText(
+    "Finish parity",
+  );
+  await expect(page.getByTestId("agent-goal-bar")).toContainText(
+    "Finish Codex parity",
+  );
   const liveActivity = page.getByRole("button", {
     name: /Searching.*runtimeStatus/u,
   });
@@ -494,11 +586,12 @@ test("shows durable turn activity without changing completed tool status", async
   await completedCommand.click();
   await expect(page.getByText("$ printf done", { exact: true })).toBeVisible();
   await expect(page.getByText("done", { exact: true })).toBeVisible();
+  await expect(page.getByText("› y", { exact: true })).toBeVisible();
   const completedEdit = page.getByRole("button", {
     name: "Edit: apps/web/runtime.ts, completed",
   });
   await completedEdit.click();
-  await expect(page.getByText("Changes", { exact: true })).toBeVisible();
+  await expect(page.getByText("Changes", { exact: true }).first()).toBeVisible();
   await expect(
     page.getByText("+export const state = 'ready';", { exact: true }),
   ).toBeVisible();
@@ -507,9 +600,16 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("Running command", { exact: true }),
   ).not.toBeVisible();
+  const subagentActivity = page.getByTestId("agent-subagent-activity");
+  await expect(subagentActivity).toContainText("Started subagent");
+  await subagentActivity.getByRole("button").click();
+  await expect(subagentActivity).toContainText("Checked the runtime suite.");
+  await expect(
+    page.getByText("Turn changes", { exact: true }),
+  ).toHaveCount(0);
 
   const composer = page.getByPlaceholder(
-    "Message Pi or type / for commands",
+    "Message Codex or type / for commands",
   );
   await expect(page.getByRole("button", { name: "Attach images" })).toBeVisible();
   await composer.evaluate(async (element) => {
@@ -547,7 +647,7 @@ test("shows durable turn activity without changing completed tool status", async
     fullPage: true,
   });
   await composer.fill("Run the tests");
-  await page.getByRole("button", { name: "Queue message for Pi" }).click();
+  await page.getByRole("button", { name: "Queue message for Codex" }).click();
   await expect(composer).toHaveValue("Run the tests");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveValue("");
@@ -577,13 +677,13 @@ test("shows durable turn activity without changing completed tool status", async
   await composer.fill("");
 
   await composer.fill("Focus on the failing test");
-  await page.getByRole("button", { name: "Steer Pi" }).click();
+  await page.getByRole("button", { name: "Steer Codex" }).click();
   await expect(composer).toHaveValue("Focus on the failing test");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveValue("");
 
   await composer.fill("Then summarize");
-  await page.getByRole("button", { name: "Queue message for Pi" }).click();
+  await page.getByRole("button", { name: "Queue message for Codex" }).click();
   await expect(
     page.getByText("Then summarize", { exact: true }),
   ).toBeVisible();
@@ -594,11 +694,13 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("Then summarize", { exact: true }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Stop Pi" }).click();
+  await page.getByRole("button", { name: "Stop Codex" }).click();
   await expect(genericActivity).toContainText("Stopping");
-  await expect(page.getByRole("button", { name: "Stopping Pi" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Stopping Codex" }),
+  ).toBeVisible();
   await expect(genericActivity).toHaveCount(0, { timeout: 2_000 });
-  await expect(page.getByRole("button", { name: "Stop Pi" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop Codex" })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-desktop.png"),
     fullPage: true,
@@ -685,6 +787,34 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(genericActivity).not.toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 720 });
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  await page.getByRole("button", { name: "Plan", exact: true }).click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_collaboration_mode",
+    mode: "plan",
+  });
+  await page.getByRole("button", { name: "Fast" }).click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_fast_mode",
+    enabled: true,
+  });
+  await page.getByRole("button", { name: "Pause goal" }).click();
+  await expect(page.getByRole("button", { name: "Resume goal" })).toBeVisible();
+  await page.getByRole("button", { name: "Resume goal" }).click();
+  await expect(page.getByRole("button", { name: "Pause goal" })).toBeVisible();
+  await page.getByRole("button", { name: "Implement plan" }).click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "implement_plan",
+    plan: expect.stringContaining("Finish parity"),
+  });
+  await page.getByRole("button", { name: "Clear goal" }).click();
+  await expect(page.getByTestId("agent-goal-bar")).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-codex-parity-desktop.png"),
+    fullPage: true,
+  });
   snapshot.pendingInteraction = {
     type: "interaction_request",
     id: "mcp-form",
@@ -805,10 +935,10 @@ test("shows durable turn activity without changing completed tool status", async
     });
   }, snapshot);
   await expect(
-    page.getByRole("region", { name: "Read-only Pi session" }),
+    page.getByRole("region", { name: "Read-only Codex session" }),
   ).toBeVisible();
   await expect(
-    page.getByPlaceholder("Message Pi or type / for commands"),
+    page.getByPlaceholder("Message Codex or type / for commands"),
   ).toBeDisabled();
   await page.getByLabel("Session actions").click();
   await expect(

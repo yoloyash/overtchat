@@ -103,6 +103,7 @@ export async function POST(
     const commandResult = await runtime.command(normalized);
     if (
       normalized.type === "prompt" ||
+      normalized.type === "implement_plan" ||
       normalized.type === "steer" ||
       normalized.type === "steer_queued_message"
     ) {

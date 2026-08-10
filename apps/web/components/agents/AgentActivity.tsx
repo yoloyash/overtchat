@@ -14,6 +14,7 @@ import {
   MessageSquareText,
   Search,
   Terminal,
+  Users,
   Wrench,
 } from "lucide-react";
 import { ThinkingContent } from "@/components/chat/ThinkingContent";
@@ -129,7 +130,11 @@ export function AgentActivityGroup({
   const live = active && presentation.status === "running";
   const elapsed = useElapsed(live ? startedAt : null);
   const [open, setOpen] = useState(hasError);
-  const hasTools = entries.some((entry) => entry.type === "tool");
+  const hasDetailedSteps = entries.some(
+    (entry) =>
+      entry.type === "tool" ||
+      entry.type === "subagent",
+  );
   const completedCount = entries.filter(
     (entry) =>
       entry.type === "tool" &&
@@ -142,9 +147,9 @@ export function AgentActivityGroup({
       ? formatElapsed(durationMs)
       : null;
   const headerLabel =
-    open && live && hasTools ? "Activity" : presentation.label;
+    open && live && hasDetailedSteps ? "Activity" : presentation.label;
   const headerSecondary =
-    open && live && hasTools ? null : presentation.secondary;
+    open && live && hasDetailedSteps ? null : presentation.secondary;
 
   return (
     <div className="text-xs" data-testid="agent-activity-group">
@@ -166,7 +171,7 @@ export function AgentActivityGroup({
             )}
           >
             {completedDuration
-              ? `Worked · ${completedDuration.replaceAll(" ", " · ")}`
+              ? `Worked for ${completedDuration}`
               : headerLabel}
           </span>
           {headerSecondary && (
@@ -202,7 +207,7 @@ export function AgentActivityGroup({
           <div
             className={cn(
               "relative mt-1 ml-2 pl-5",
-              hasTools && "border-l border-border/70",
+              hasDetailedSteps && "border-l border-border/70",
             )}
             data-testid="agent-activity-details"
           >
@@ -212,7 +217,9 @@ export function AgentActivityGroup({
                 entry={entry}
                 active={active}
                 last={index === entries.length - 1}
-                showDetailedStep={hasTools || entries.length > 1}
+                showDetailedStep={
+                  hasDetailedSteps || entries.length > 1
+                }
               />
             ))}
           </div>
@@ -272,6 +279,17 @@ function ActivityStep({
     );
   }
 
+  if (entry.type === "subagent") {
+    return (
+      <TimelineStep
+        icon={<Users className="size-3.5" />}
+        last={last}
+      >
+        <SubagentActivityStep activity={entry.activity} />
+      </TimelineStep>
+    );
+  }
+
   return (
     <TimelineStep
       icon={
@@ -284,6 +302,122 @@ function ActivityStep({
     >
       <ToolActivityStep tool={entry.tool} active={active} />
     </TimelineStep>
+  );
+}
+
+function SubagentActivityStep({
+  activity,
+}: {
+  activity: Extract<
+    AgentActivityEntry,
+    { type: "subagent" }
+  >["activity"];
+}) {
+  const [open, setOpen] = useState(false);
+  const running = ["inProgress", "pendingInit", "running"].includes(
+    activity.status,
+  );
+  const count = Math.max(1, activity.receivers.length);
+  const label =
+    activity.action === "spawnAgent"
+      ? running
+        ? "Starting subagent"
+        : "Started subagent"
+      : activity.action === "sendInput"
+        ? "Sent subagent input"
+        : activity.action === "wait"
+          ? running
+            ? "Waiting for subagents"
+            : "Waited for subagents"
+          : activity.action === "closeAgent"
+            ? "Closed subagent"
+            : `${count} ${count === 1 ? "subagent" : "subagents"}`;
+  const canOpen =
+    Boolean(activity.prompt) ||
+    activity.receivers.length > 0 ||
+    activity.events.length > 0;
+
+  return (
+    <div data-testid="agent-subagent-activity">
+      <button
+        type="button"
+        onClick={() => canOpen && setOpen((current) => !current)}
+        disabled={!canOpen}
+        aria-expanded={canOpen ? open : undefined}
+        className={cn(
+          "flex min-h-5 w-full items-start gap-2 text-left",
+          canOpen && "cursor-pointer hover:text-foreground",
+        )}
+      >
+        <span className="min-w-0 flex-1 font-medium text-foreground">
+          {label}
+        </span>
+        {running ? (
+          <Loader2
+            className={cn(
+              "mt-0.5 size-3.5 shrink-0 text-muted-foreground",
+              motionClasses.spinner,
+            )}
+          />
+        ) : (
+          <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        {canOpen && (
+          <ChevronRight
+            className={cn(
+              "mt-0.5 size-3 shrink-0 text-muted-foreground/60 motion-transform",
+              open && "rotate-90",
+            )}
+          />
+        )}
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          {activity.prompt && (
+            <CodeSurface label="Prompt" value={activity.prompt} />
+          )}
+          {activity.receivers.length > 0 && (
+            <div className="overflow-hidden rounded-md border bg-muted/15">
+              {activity.receivers.map((receiver) => (
+                <div
+                  key={receiver.threadId}
+                  className="flex items-start gap-2 border-b px-3 py-2 text-[11px] last:border-b-0"
+                >
+                  <span className="min-w-0 flex-1 truncate font-mono">
+                    {receiver.threadId}
+                  </span>
+                  <span className="shrink-0 text-muted-foreground">
+                    {receiver.status}
+                  </span>
+                  {receiver.message && (
+                    <span className="max-w-48 truncate text-muted-foreground">
+                      {receiver.message}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {activity.events.length > 0 && (
+            <div className="overflow-hidden rounded-md border bg-muted/15">
+              <div className="border-b px-3 py-1.5 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                Activity
+              </div>
+              <div className="divide-y">
+                {activity.events.map((event, index) => (
+                  <div
+                    key={index}
+                    className="px-3 py-2 text-[11px] leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground"
+                  >
+                    {event}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -398,7 +532,14 @@ function toolDetail(
         : null,
     ].filter((notice): notice is string => notice !== null);
 
-    if (!command && !tool.output && notices.length === 0) return null;
+    if (
+      !command &&
+      !tool.output &&
+      tool.terminalInputs.length === 0 &&
+      notices.length === 0
+    ) {
+      return null;
+    }
     return (
       <div className="mt-2 overflow-hidden rounded-md border bg-muted/15">
         {command && (
@@ -410,6 +551,18 @@ function toolDetail(
         {tool.output && (
           <pre className="max-h-72 overflow-auto border-t bg-background/50 px-3 py-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
             {tool.output.replace(/^\n+/, "")}
+          </pre>
+        )}
+        {tool.terminalInputs.length > 0 && (
+          <pre className="max-h-40 overflow-auto border-t px-3 py-2.5 font-mono text-[11px] leading-5 whitespace-pre-wrap wrap-anywhere text-muted-foreground">
+            {tool.terminalInputs.map((input, index) => (
+              <span key={index} className="block">
+                <span className="select-none text-muted-foreground">
+                  {"› "}
+                </span>
+                {input.replace(/\n$/u, "")}
+              </span>
+            ))}
           </pre>
         )}
         {notices.length > 0 && (
@@ -595,6 +748,9 @@ function ActivityIcon({
     ),
   );
   if (categories.size === 0) {
+    if (entries.some((entry) => entry.type === "subagent")) {
+      return <Users className="size-3.5 shrink-0 text-muted-foreground" />;
+    }
     if (entries.some((entry) => entry.type === "commentary")) {
       return (
         <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground" />

@@ -301,6 +301,7 @@ describe("CodexAppServer", () => {
       { connectorId: "connector", transport: "local" },
       "/opt/bin/codex",
       "/workspace",
+      { enableGoals: true },
     );
     await expect(server.request("model/list")).resolves.toEqual({
       data: [],
@@ -312,7 +313,7 @@ describe("CodexAppServer", () => {
       { connectorId: "connector", transport: "local" },
       {
         command: "/opt/bin/codex",
-        args: ["app-server", "proxy"],
+        args: ["app-server", "proxy", "--enable", "goals"],
         cwd: "/workspace",
       },
     );
@@ -342,6 +343,7 @@ describe("CodexAppServer", () => {
       { connectorId: "connector", transport: "ssh", alias: "devbox" },
       "codex",
       "/workspace",
+      { enableGoals: true },
     );
     await expect(server.request("model/list")).resolves.toEqual({
       data: [],
@@ -353,7 +355,7 @@ describe("CodexAppServer", () => {
       { connectorId: "connector", transport: "ssh", alias: "devbox" },
       {
         command: "codex",
-        args: ["app-server", "proxy"],
+        args: ["app-server", "proxy", "--enable", "goals"],
         cwd: "/workspace",
       },
     );
@@ -362,7 +364,7 @@ describe("CodexAppServer", () => {
       { connectorId: "connector", transport: "ssh", alias: "devbox" },
       {
         command: "codex",
-        args: ["app-server", "--stdio"],
+        args: ["app-server", "--enable", "goals", "--stdio"],
         cwd: "/workspace",
       },
     );

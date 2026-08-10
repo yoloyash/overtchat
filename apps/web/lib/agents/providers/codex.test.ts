@@ -38,4 +38,29 @@ describe("codexProviderAdapter", () => {
 
     expect(codexProviderAdapter.normalizeCommand(command, {})).toBe(command);
   });
+
+  it("routes supported /goal invocations out of band", () => {
+    expect(
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/goal Ship parity" },
+        { goalsSupported: true },
+      ),
+    ).toEqual({
+      type: "update_goal",
+      action: "set",
+      objective: "Ship parity",
+    });
+    expect(
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/goal pause" },
+        { goalsSupported: true },
+      ),
+    ).toEqual({ type: "update_goal", action: "pause" });
+    expect(() =>
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/goal Ship parity" },
+        { goalsSupported: false },
+      ),
+    ).toThrow("does not support durable goals");
+  });
 });

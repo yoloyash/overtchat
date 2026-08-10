@@ -6,13 +6,20 @@ import {
   AlertTriangle,
   Loader2,
   LockKeyhole,
+  Pause,
+  Play,
   RefreshCw,
+  Target,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
+import { AGENT_GOAL_STATUSES } from "@/lib/agents/types";
 import type {
   AgentModel,
+  AgentCollaborationMode,
+  AgentGoal,
   AgentPromptImage,
   AgentProviderId,
   AgentRuntimeSnapshot,
@@ -72,6 +79,45 @@ function currentThinking(
 function sessionName(snapshot: AgentRuntimeSnapshot): string {
   const value = snapshot.state.sessionName;
   return typeof value === "string" ? value : "";
+}
+
+function collaborationModes(
+  snapshot: AgentRuntimeSnapshot,
+): AgentCollaborationMode[] {
+  const value = snapshot.state.collaborationModes;
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (mode): mode is AgentCollaborationMode =>
+      mode === "default" || mode === "plan",
+  );
+}
+
+function currentCollaborationMode(
+  snapshot: AgentRuntimeSnapshot,
+): AgentCollaborationMode {
+  return snapshot.state.collaborationMode === "plan" ? "plan" : "default";
+}
+
+function currentGoal(snapshot: AgentRuntimeSnapshot): AgentGoal | null {
+  const goal = recordOf(snapshot.state.goal);
+  if (
+    typeof goal?.objective !== "string" ||
+    typeof goal.status !== "string" ||
+    !AGENT_GOAL_STATUSES.includes(goal.status as AgentGoal["status"])
+  ) {
+    return null;
+  }
+  return {
+    objective: goal.objective,
+    status: goal.status as AgentGoal["status"],
+    tokenBudget:
+      typeof goal.tokenBudget === "number" ? goal.tokenBudget : null,
+    tokensUsed: typeof goal.tokensUsed === "number" ? goal.tokensUsed : 0,
+    timeUsedSeconds:
+      typeof goal.timeUsedSeconds === "number" ? goal.timeUsedSeconds : 0,
+    createdAt: typeof goal.createdAt === "number" ? goal.createdAt : 0,
+    updatedAt: typeof goal.updatedAt === "number" ? goal.updatedAt : 0,
+  };
 }
 
 function forkDraftKey(sessionId: string): string {
@@ -244,6 +290,11 @@ export function AgentSessionView({
     : undefined;
   const thinking = currentThinking(snapshot);
   const currentName = sessionName(snapshot) || initialSessionName;
+  const availableCollaborationModes = collaborationModes(snapshot);
+  const collaborationMode = currentCollaborationMode(snapshot);
+  const fastModeEnabled = snapshot.state.fastModeEnabled === true;
+  const fastModeAvailable = snapshot.state.fastModeAvailable === true;
+  const goal = currentGoal(snapshot);
   const runtimeError =
     snapshot.error ??
     (session.error instanceof Error ? session.error.message : undefined);
@@ -277,6 +328,10 @@ export function AgentSessionView({
         currentModel={model}
         thinkingLevel={thinking}
         thinkingLevels={snapshot.thinkingLevels}
+        collaborationMode={collaborationMode}
+        collaborationModes={availableCollaborationModes}
+        fastModeEnabled={fastModeEnabled}
+        fastModeAvailable={fastModeAvailable}
         stats={snapshot.stats}
         running={running}
         commandPending={command.isPending}
@@ -291,6 +346,12 @@ export function AgentSessionView({
         onSelectThinking={(level) =>
           void run({ type: "set_thinking_level", level })
         }
+        onSelectCollaborationMode={(mode) =>
+          void run({ type: "set_collaboration_mode", mode })
+        }
+        onToggleFastMode={(enabled) =>
+          void run({ type: "set_fast_mode", enabled })
+        }
         onRename={() => {
           setDialogError("");
           setRenameOpen(true);
@@ -300,6 +361,31 @@ export function AgentSessionView({
           setCompactOpen(true);
         }}
       />
+
+      {goal && (
+        <AgentGoalBar
+          goal={goal}
+          disabled={Boolean(readOnly) || command.isPending}
+          onPause={() =>
+            void run(
+              { type: "update_goal", action: "pause" },
+              { toastTitle: "Goal paused" },
+            )
+          }
+          onResume={() =>
+            void run(
+              { type: "update_goal", action: "resume" },
+              { toastTitle: "Goal resumed" },
+            )
+          }
+          onClear={() =>
+            void run(
+              { type: "update_goal", action: "clear" },
+              { toastTitle: "Goal cleared" },
+            )
+          }
+        />
+      )}
 
       {readOnly && (
         <section
@@ -356,6 +442,9 @@ export function AgentSessionView({
         }
         onForkMessage={(messageId) =>
           void run({ type: "fork_message", messageId })
+        }
+        onImplementPlan={(plan) =>
+          void run({ type: "implement_plan", plan })
         }
       />
 
@@ -449,6 +538,84 @@ export function AgentSessionView({
         }}
       />
     </div>
+  );
+}
+
+function AgentGoalBar({
+  goal,
+  disabled,
+  onPause,
+  onResume,
+  onClear,
+}: {
+  goal: AgentGoal;
+  disabled: boolean;
+  onPause: () => void;
+  onResume: () => void;
+  onClear: () => void;
+}) {
+  const paused = goal.status === "paused";
+  const status = goal.status.replace(/([a-z])([A-Z])/gu, "$1 $2");
+  const budget =
+    goal.tokenBudget !== null
+      ? `${goal.tokensUsed.toLocaleString()} / ${goal.tokenBudget.toLocaleString()} tokens`
+      : goal.tokensUsed > 0
+        ? `${goal.tokensUsed.toLocaleString()} tokens`
+        : null;
+
+  return (
+    <section
+      aria-label={`Goal: ${goal.objective}`}
+      className="border-b bg-muted/20 px-4 py-2"
+      data-testid="agent-goal-bar"
+    >
+      <div className="mx-auto flex max-w-3xl items-center gap-2">
+        <Target className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {goal.objective}
+        </span>
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+          {status}
+          {budget ? ` · ${budget}` : ""}
+        </span>
+        {paused ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title="Resume goal"
+            aria-label="Resume goal"
+            disabled={disabled}
+            onClick={onResume}
+          >
+            <Play />
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            title="Pause goal"
+            aria-label="Pause goal"
+            disabled={disabled}
+            onClick={onPause}
+          >
+            <Pause />
+          </Button>
+        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          title="Clear goal"
+          aria-label="Clear goal"
+          disabled={disabled}
+          onClick={onClear}
+        >
+          <X />
+        </Button>
+      </div>
+    </section>
   );
 }
 

@@ -88,6 +88,9 @@ class FakeAgentClient {
   readonly abort = vi.fn(async () => ({}));
   readonly setModel = vi.fn(async () => ({}));
   readonly setThinkingLevel = vi.fn(async () => ({}));
+  readonly setCollaborationMode = vi.fn(async () => ({}));
+  readonly setFastMode = vi.fn(async () => ({}));
+  readonly updateGoal = vi.fn(async () => null);
   readonly compact = vi.fn(async () => ({}));
   readonly setAutoCompaction = vi.fn(async () => ({}));
   readonly setSessionName = vi.fn(async () => ({}));
@@ -412,6 +415,59 @@ describe("Agent session runtime", () => {
     expect(client.setAutoCompaction).toHaveBeenCalledWith(true);
     expect(client.setSessionName).toHaveBeenCalledWith("Release prep");
     expect(client.prompt).not.toHaveBeenCalled();
+    await runtime.stop();
+  });
+
+  it("runs Codex goals and plan handoff through native runtime controls", async () => {
+    const client = new FakeAgentClient();
+    const runtime = new AgentSessionRuntime(
+      "session",
+      "user",
+      "connection",
+      "workspace",
+      agentProviderAdapter("codex"),
+      client as unknown as AgentRuntimeClient,
+      {
+        ...initial(),
+        state: {
+          ...initial().state,
+          goalsSupported: true,
+          collaborationMode: "default",
+          collaborationModes: ["default", "plan"],
+          fastModeAvailable: true,
+          fastModeEnabled: false,
+        },
+        thinkingLevels: [...initial().thinkingLevels],
+      },
+      vi.fn(),
+    );
+
+    await runtime.command({
+      type: "prompt",
+      message: "/goal Ship parity",
+    });
+    expect(client.updateGoal).toHaveBeenCalledWith("set", "Ship parity");
+    expect(client.prompt).not.toHaveBeenCalled();
+
+    await runtime.command({
+      type: "set_collaboration_mode",
+      mode: "plan",
+    });
+    await runtime.command({ type: "set_fast_mode", enabled: true });
+    expect(client.setCollaborationMode).toHaveBeenCalledWith("plan");
+    expect(client.setFastMode).toHaveBeenCalledWith(true);
+
+    await runtime.command({
+      type: "implement_plan",
+      plan: "- Inspect\n- Implement",
+    });
+    expect(client.setCollaborationMode).toHaveBeenLastCalledWith("default");
+    expect(client.prompt).toHaveBeenCalledWith(
+      expect.stringContaining("The user approved the plan."),
+    );
+    expect(client.prompt).toHaveBeenCalledWith(
+      expect.stringContaining("- Inspect\n- Implement"),
+    );
     await runtime.stop();
   });
 

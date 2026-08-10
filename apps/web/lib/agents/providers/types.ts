@@ -1,5 +1,7 @@
 import type {
+  AgentCollaborationMode,
   AgentConnectionDraft,
+  AgentGoal,
   AgentModel,
   AgentPromptImage,
   AgentProviderSessionMetadata,
@@ -38,6 +40,7 @@ export type AgentSessionIdentity = {
 export type AgentSessionLaunch = {
   executable: string;
   cwd: string;
+  detectedVersion?: string | null;
   resume?: {
     providerSessionId: string;
     providerSessionPath: string;
@@ -72,6 +75,12 @@ export interface AgentRuntimeClient {
   abort(): Promise<unknown>;
   setModel(provider: string, modelId: string): Promise<unknown>;
   setThinkingLevel(level: string): Promise<unknown>;
+  setCollaborationMode?(mode: AgentCollaborationMode): Promise<unknown>;
+  setFastMode?(enabled: boolean): Promise<unknown>;
+  updateGoal?(
+    action: "set" | "pause" | "resume" | "clear",
+    objective?: string,
+  ): Promise<AgentGoal | null>;
   compact(customInstructions?: string): Promise<unknown>;
   setAutoCompaction(enabled: boolean): Promise<unknown>;
   setSessionName(name: string): Promise<unknown>;

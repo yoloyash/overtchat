@@ -260,6 +260,30 @@ export type AgentRuntimeCapabilities = {
   forkMessages?: boolean;
 };
 
+export const AGENT_COLLABORATION_MODES = ["default", "plan"] as const;
+export type AgentCollaborationMode =
+  (typeof AGENT_COLLABORATION_MODES)[number];
+
+export const AGENT_GOAL_STATUSES = [
+  "active",
+  "paused",
+  "blocked",
+  "usageLimited",
+  "budgetLimited",
+  "complete",
+] as const;
+export type AgentGoalStatus = (typeof AGENT_GOAL_STATUSES)[number];
+
+export type AgentGoal = {
+  objective: string;
+  status: AgentGoalStatus;
+  tokenBudget: number | null;
+  tokensUsed: number;
+  timeUsedSeconds: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type AgentUsageWindow = {
   id: string;
   label: string;
@@ -317,6 +341,23 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("set_thinking_level"),
     level: z.enum(AGENT_THINKING_LEVELS),
+  }),
+  z.object({
+    type: z.literal("set_collaboration_mode"),
+    mode: z.enum(AGENT_COLLABORATION_MODES),
+  }),
+  z.object({
+    type: z.literal("set_fast_mode"),
+    enabled: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("update_goal"),
+    action: z.enum(["set", "pause", "resume", "clear"]),
+    objective: z.string().trim().min(1).max(20_000).optional(),
+  }),
+  z.object({
+    type: z.literal("implement_plan"),
+    plan: z.string().trim().max(100_000),
   }),
   z.object({
     type: z.literal("compact"),

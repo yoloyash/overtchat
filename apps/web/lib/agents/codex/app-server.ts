@@ -13,6 +13,10 @@ const INITIALIZE_TIMEOUT_MS = 60_000;
 const MAX_STDERR_CHARS = 64 * 1024;
 const PROXY_HANDSHAKE_TIMEOUT_MS = 5_000;
 
+type CodexAppServerOptions = {
+  enableGoals?: boolean;
+};
+
 export type JsonRpcId = string | number;
 
 export type CodexAppServerNotification = {
@@ -95,10 +99,15 @@ function spawnCodexProxy(
   target: HostTarget,
   executable: string,
   cwd?: string,
+  options: CodexAppServerOptions = {},
 ): AgentProcess {
   const proxy = spawnOnHost(target, {
     command: executable,
-    args: ["app-server", "proxy"],
+    args: [
+      "app-server",
+      "proxy",
+      ...(options.enableGoals ? ["--enable", "goals"] : []),
+    ],
     cwd,
   });
   const transport = new AgentProcessDuplex(proxy);
@@ -456,9 +465,10 @@ export async function startCodexAppServer(
   target: HostTarget,
   executable: string,
   cwd?: string,
+  options: CodexAppServerOptions = {},
 ): Promise<CodexAppServer> {
   const proxyServer = new CodexAppServer(
-    spawnCodexProxy(target, executable, cwd),
+    spawnCodexProxy(target, executable, cwd, options),
   );
   try {
     await proxyServer.ready();
@@ -469,7 +479,11 @@ export async function startCodexAppServer(
   const standaloneServer = new CodexAppServer(
     spawnOnHost(target, {
       command: executable,
-      args: ["app-server", "--stdio"],
+      args: [
+        "app-server",
+        ...(options.enableGoals ? ["--enable", "goals"] : []),
+        "--stdio",
+      ],
       cwd,
     }),
   );
