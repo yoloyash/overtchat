@@ -122,6 +122,33 @@ describe("agent session route", () => {
     expect(invalid.status).toBe(400);
   });
 
+  it("forwards image-only prompts and records a useful first message", async () => {
+    const image = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png",
+    };
+    const response = await POST(
+      request("POST", {
+        type: "prompt",
+        message: "",
+        images: [image],
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.command).toHaveBeenCalledWith({
+      type: "prompt",
+      message: "",
+      images: [image],
+    });
+    expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
+      "session",
+      expect.objectContaining({ firstMessage: "screen.png" }),
+    );
+  });
+
   it("executes built-in slash commands without recording prompt metadata", async () => {
     mocks.normalizeCommand.mockReturnValue({
       type: "set_session_name",

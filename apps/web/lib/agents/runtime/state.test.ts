@@ -435,6 +435,44 @@ describe("agent runtime event reducer", () => {
     expect(rejected.messages).toEqual(snapshot().messages);
   });
 
+  it("preserves image references in queue updates", () => {
+    const updated = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_queue_update",
+        queuedMessages: [
+          {
+            id: "session:1",
+            message: "",
+            images: [
+              {
+                uploadId: "11111111-1111-4111-8111-111111111111",
+                filename: "screen.png",
+                mediaType: "image/png",
+              },
+            ],
+            status: "pending",
+          },
+        ],
+      }),
+    )!;
+
+    expect(updated.queuedMessages).toEqual([
+      {
+        id: "session:1",
+        message: "",
+        images: [
+          {
+            uploadId: "11111111-1111-4111-8111-111111111111",
+            filename: "screen.png",
+            mediaType: "image/png",
+          },
+        ],
+        status: "pending",
+      },
+    ]);
+  });
+
   it("uses authoritative snapshots after live deltas", () => {
     const authoritative = snapshot();
     authoritative.messages.push({

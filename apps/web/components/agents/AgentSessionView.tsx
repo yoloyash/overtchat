@@ -13,6 +13,7 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import type {
   AgentModel,
+  AgentPromptImage,
   AgentProviderId,
   AgentRuntimeSnapshot,
   AgentSessionCommand,
@@ -165,18 +166,23 @@ export function AgentSessionView({
 
   async function submit(
     message: string,
+    images: AgentPromptImage[],
     delivery: "prompt" | "queue" | "steer",
   ): Promise<boolean> {
     let input: AgentSessionCommand;
     try {
       const normalized = normalizeAgentSessionCommand(
-        buildAgentPromptCommand(message),
+        buildAgentPromptCommand(message, images),
         snapshot?.state ?? {},
       );
       input =
         normalized.type !== "prompt" || delivery === "prompt"
           ? normalized
-          : { type: delivery, message };
+          : {
+              type: delivery,
+              message,
+              ...(images.length > 0 ? { images } : {}),
+            };
     } catch (cause) {
       toast.error({
         title: `${providerLabel} command failed`,
@@ -229,6 +235,13 @@ export function AgentSessionView({
   const exited = snapshot.status === "exited";
   const readOnly = snapshot.readOnly;
   const model = currentModel(snapshot);
+  const selectedModel = model
+    ? snapshot.models.find(
+        (candidate) =>
+          candidate.provider === model.provider &&
+          candidate.id === model.id,
+      )
+    : undefined;
   const thinking = currentThinking(snapshot);
   const currentName = sessionName(snapshot) || initialSessionName;
   const runtimeError =
@@ -354,6 +367,7 @@ export function AgentSessionView({
             commands={snapshot.commands}
             queuedMessages={snapshot.queuedMessages}
             supportsSteer={snapshot.capabilities.steer}
+            supportsImages={selectedModel?.input.includes("image") === true}
             running={running}
             pending={command.isPending}
             stopping={pendingCommand === "abort"}

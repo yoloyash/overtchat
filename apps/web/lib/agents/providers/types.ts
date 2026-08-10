@@ -1,6 +1,7 @@
 import type {
   AgentConnectionDraft,
   AgentModel,
+  AgentPromptImage,
   AgentProviderSessionMetadata,
   AgentProviderId,
   AgentReadyConnectionProbe,
@@ -48,6 +49,10 @@ export type AgentSessionForkResult = {
   draft?: string;
 };
 
+export type ResolvedAgentImage = AgentPromptImage & {
+  data: string;
+};
+
 export interface AgentRuntimeClient {
   onEvent(subscriber: (event: AgentRuntimeEvent) => void): () => void;
   getState(timeoutMs?: number): Promise<Record<string, unknown>>;
@@ -56,8 +61,14 @@ export interface AgentRuntimeClient {
   getSessionStats(): Promise<AgentSessionStats>;
   getAvailableThinkingLevels(): Promise<AgentThinkingLevel[]>;
   getCommands(): Promise<AgentSlashCommand[]>;
-  prompt(message: string): Promise<unknown>;
-  steer(message: string): Promise<unknown>;
+  prompt(
+    message: string,
+    images?: readonly ResolvedAgentImage[],
+  ): Promise<unknown>;
+  steer(
+    message: string,
+    images?: readonly ResolvedAgentImage[],
+  ): Promise<unknown>;
   abort(): Promise<unknown>;
   setModel(provider: string, modelId: string): Promise<unknown>;
   setThinkingLevel(level: string): Promise<unknown>;

@@ -6,6 +6,29 @@ import {
 } from "./helpers/database";
 
 const SESSION_ID = "runtime-session";
+const IMAGE_UPLOAD_ID = "11111111-1111-4111-8111-111111111111";
+const TEST_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+const imageModel = {
+  id: "pi-image-model",
+  name: "Pi Image Model",
+  provider: "test",
+  api: "test",
+  baseUrl: "",
+  reasoning: true,
+  input: ["text", "image"],
+  contextWindow: 100_000,
+  maxTokens: 10_000,
+  cost: {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+  },
+};
 
 test.beforeEach(resetE2eDatabase);
 
@@ -58,6 +81,7 @@ function runtimeSnapshot(startedAt: number) {
       isStreaming: true,
       isCompacting: false,
       sessionName: "Runtime activity",
+      model: imageModel,
     },
     messages: [
       {
@@ -69,6 +93,10 @@ function runtimeSnapshot(startedAt: number) {
         role: "assistant",
         content: [
           {
+            type: "commentary",
+            text: "I'm auditing the release state before merging anything.",
+          },
+          {
             type: "thinking",
             thinking: "I should inspect the runtime before responding.",
           },
@@ -78,6 +106,7 @@ function runtimeSnapshot(startedAt: number) {
           },
         ],
         timestamp: 2,
+        overtchatActivityDurationMs: 246_000,
       },
       {
         role: "assistant",
@@ -139,7 +168,7 @@ function runtimeSnapshot(startedAt: number) {
         timestamp: 7,
       },
     ],
-    models: [],
+    models: [imageModel],
     thinkingLevels: ["off"],
     commands: [],
     queuedMessages: [],
@@ -180,6 +209,31 @@ test("shows durable turn activity without changing completed tool status", async
   } = runtimeSnapshot(startedAt);
   let retryRequested = false;
   let interactionResponse: Record<string, unknown> | null = null;
+  const submittedCommands: Array<Record<string, unknown>> = [];
+  await page.route("**/api/uploads", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        url: `/api/uploads/${IMAGE_UPLOAD_ID}`,
+        mediaType: "image/png",
+        filename: "clipboard.png",
+        category: "image",
+        size: TEST_PNG.byteLength,
+        pageCount: null,
+        truncated: false,
+      }),
+    });
+  });
+  await page.route(`**/api/uploads/${IMAGE_UPLOAD_ID}`, async (route) => {
+    await route.fulfill({
+      contentType: "image/png",
+      body: TEST_PNG,
+    });
+  });
   await page.route(
     new RegExp(`/api/agent-sessions/${SESSION_ID}$`),
     async (route) => {
@@ -189,6 +243,7 @@ test("shows durable turn activity without changing completed tool status", async
           message?: string;
           [key: string]: unknown;
         };
+        submittedCommands.push(command);
         if (command.type === "interaction_response") {
           interactionResponse = command;
           delete snapshot.pendingInteraction;
@@ -213,6 +268,9 @@ test("shows durable turn activity without changing completed tool status", async
                     {
                       id: "queued-message",
                       message: command.message,
+                      ...(Array.isArray(command.images)
+                        ? { images: command.images }
+                        : {}),
                       status: "pending",
                     },
                   ],
@@ -400,15 +458,21 @@ test("shows durable turn activity without changing completed tool status", async
 
   const genericActivity = page.getByTestId("agent-run-activity");
   await expect(genericActivity).toHaveCount(0);
-  const thoughts = page.getByRole("button", { name: "Thoughts", exact: true });
-  await thoughts.click();
+  const completedWork = page.getByRole("button", {
+    name: "Worked for 4m 6s",
+    exact: true,
+  });
+  await completedWork.click();
+  await expect(
+    page.getByText("I'm auditing the release state before merging anything."),
+  ).toBeVisible();
   await expect(
     page.getByText("I should inspect the runtime before responding."),
   ).toBeVisible();
-  await expect(page.getByText("Thinking", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Thinking", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Thinking", exact: true }),
-  ).toHaveCount(0);
+    page.getByText("I will inspect the runtime.", { exact: true }),
+  ).toBeVisible();
   const liveActivity = page.getByRole("button", {
     name: /Searching.*runtimeStatus/u,
   });
@@ -447,20 +511,69 @@ test("shows durable turn activity without changing completed tool status", async
   const composer = page.getByPlaceholder(
     "Message Pi or type / for commands",
   );
+  await expect(page.getByRole("button", { name: "Attach images" })).toBeVisible();
+  await composer.evaluate(async (element) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 96;
+    canvas.height = 72;
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Canvas is unavailable.");
+    context.fillStyle = "#2563eb";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#f8fafc";
+    context.fillRect(18, 18, 60, 36);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (value) =>
+          value ? resolve(value) : reject(new Error("PNG encoding failed.")),
+        "image/png",
+      );
+    });
+    const transfer = new DataTransfer();
+    transfer.items.add(
+      new File([blob], "clipboard.png", { type: "image/png" }),
+    );
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: transfer,
+      }),
+    );
+  });
+  await expect(page.getByAltText("clipboard.png")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-image-paste-desktop.png"),
+    fullPage: true,
+  });
   await composer.fill("Run the tests");
   await page.getByRole("button", { name: "Queue message for Pi" }).click();
   await expect(composer).toHaveValue("Run the tests");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveValue("");
   await expect(page.getByText("Run the tests", { exact: true })).toBeVisible();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "queue",
+    message: "Run the tests",
+    images: [
+      {
+        uploadId: IMAGE_UPLOAD_ID,
+        filename: "clipboard.png",
+        mediaType: "image/png",
+      },
+    ],
+  });
 
   await page.getByRole("button", { name: "Edit queued message" }).click();
   await expect(composer).toHaveValue("Run the tests");
-  await expect(composer).toBeDisabled();
   await expect(composer).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Edit queued message" }),
   ).toHaveCount(0);
+  await expect(page.getByAltText("clipboard.png")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Remove clipboard.png" })
+    .click();
   await composer.fill("");
 
   await composer.fill("Focus on the failing test");

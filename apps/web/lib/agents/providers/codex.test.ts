@@ -22,4 +22,20 @@ describe("codexProviderAdapter", () => {
       ),
     ).toEqual({ type: "prompt", message: "/usage extra" });
   });
+
+  it("keeps /usage as model input when an image is attached", () => {
+    const command = {
+      type: "prompt" as const,
+      message: "/usage",
+      images: [
+        {
+          uploadId: "11111111-1111-4111-8111-111111111111",
+          filename: "screen.png",
+          mediaType: "image/png" as const,
+        },
+      ],
+    };
+
+    expect(codexProviderAdapter.normalizeCommand(command, {})).toBe(command);
+  });
 });

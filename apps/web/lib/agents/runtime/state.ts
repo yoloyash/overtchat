@@ -3,6 +3,7 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
 } from "@/lib/agents/types";
+import { agentPromptImageSchema } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 
 type AgentRuntimeEvent = Extract<
@@ -351,9 +352,17 @@ function parseQueuedMessages(value: unknown): AgentQueuedMessage[] | null {
     ) {
       return null;
     }
+    const rawImages = Reflect.get(item, "images");
+    if (rawImages !== undefined && !Array.isArray(rawImages)) return null;
+    const images = (rawImages ?? []).flatMap((image: unknown) => {
+      const parsed = agentPromptImageSchema.safeParse(image);
+      return parsed.success ? [parsed.data] : [];
+    });
+    if (images.length !== (rawImages ?? []).length) return null;
     messages.push({
       id: Reflect.get(item, "id") as string,
       message: Reflect.get(item, "message") as string,
+      ...(images.length > 0 ? { images } : {}),
       status: Reflect.get(item, "status") as "pending" | "sending",
     });
   }

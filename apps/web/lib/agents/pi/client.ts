@@ -6,6 +6,7 @@ import type {
   AgentSessionStats,
   AgentThinkingLevel,
 } from "@/lib/agents/types";
+import type { ResolvedAgentImage } from "@/lib/agents/providers/types";
 import { AGENT_THINKING_LEVELS } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
 import {
@@ -295,15 +296,40 @@ export class PiRpcClient {
     return this.request({ type: "get_messages" });
   }
 
-  prompt(message: string): Promise<unknown> {
+  prompt(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+  ): Promise<unknown> {
     return this.request({
       type: "prompt",
       message,
+      ...(images.length
+        ? {
+            images: images.map((image) => ({
+              data: image.data,
+              mimeType: image.mediaType,
+            })),
+          }
+        : {}),
     });
   }
 
-  steer(message: string): Promise<unknown> {
-    return this.request({ type: "steer", message });
+  steer(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+  ): Promise<unknown> {
+    return this.request({
+      type: "steer",
+      message,
+      ...(images.length
+        ? {
+            images: images.map((image) => ({
+              data: image.data,
+              mimeType: image.mediaType,
+            })),
+          }
+        : {}),
+    });
   }
 
   followUp(message: string): Promise<unknown> {

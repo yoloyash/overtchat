@@ -11,20 +11,35 @@ import {
   ArrowUp,
   Command,
   CornerUpRight,
+  ImagePlus,
   ListEnd,
   Loader2,
   Pencil,
   Square,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { agentSlashCommandQuery } from "@/lib/agents/runtime/commands";
 import type {
+  AgentPromptImage,
   AgentQueuedMessage,
   AgentSlashCommand,
 } from "@/lib/agents/types";
+import {
+  AGENT_IMAGE_MEDIA_TYPES,
+  MAX_AGENT_IMAGES,
+  MAX_AGENT_IMAGE_BYTES,
+  MAX_AGENT_IMAGE_TOTAL_BYTES,
+} from "@/lib/agents/types";
+import { getDataTransferFiles } from "@/lib/chat/attachments";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import {
+  type ChatAttachment,
+  useChatAttachments,
+} from "@/components/chat/useChatAttachments";
+import { toast } from "@/components/ui/toast";
 
 function commandSource(source: AgentSlashCommand["source"]): string {
   const labels: Record<AgentSlashCommand["source"], string> = {
@@ -44,6 +59,7 @@ export function AgentComposer({
   commands,
   queuedMessages,
   supportsSteer,
+  supportsImages,
   running,
   pending,
   stopping,
@@ -58,12 +74,14 @@ export function AgentComposer({
   commands: AgentSlashCommand[];
   queuedMessages: AgentQueuedMessage[];
   supportsSteer: boolean;
+  supportsImages: boolean;
   running: boolean;
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
   onSubmit: (
     message: string,
+    images: AgentPromptImage[],
     delivery: "prompt" | "queue" | "steer",
   ) => Promise<boolean>;
   onStop: () => void;
@@ -76,6 +94,16 @@ export function AgentComposer({
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const {
+    attachments,
+    uploading,
+    readyParts,
+    addFiles,
+    addReadyParts,
+    removeAttachment,
+    clearAttachments,
+  } = useChatAttachments();
   const listboxId = useId();
   const optionIdPrefix = useId();
 
@@ -133,7 +161,7 @@ export function AgentComposer({
       !pending &&
       !disabled
     ) {
-      void submitMessage(`/${command.name}`, "prompt");
+      void submitMessage(`/${command.name}`, [], "prompt");
       return;
     }
 
@@ -149,14 +177,17 @@ export function AgentComposer({
 
   async function submitMessage(
     message: string,
+    images: AgentPromptImage[],
     delivery: "prompt" | "queue" | "steer",
   ) {
-    if (!message || pending || submitting || disabled) return;
+    if ((!message && images.length === 0) || pending || submitting || disabled)
+      return;
     setSubmitting(true);
     try {
-      const accepted = await onSubmit(message, delivery);
+      const accepted = await onSubmit(message, images, delivery);
       if (!accepted) return;
       setInput("");
+      clearAttachments();
       setDismissedDraft(null);
       setActiveIndex(0);
     } finally {
@@ -172,16 +203,97 @@ export function AgentComposer({
       : "prompt",
   ) {
     const message = input.trim();
-    void submitMessage(message, delivery);
+    const prefix = "/api/uploads/";
+    const images = readyParts.flatMap((part) =>
+      part.url.startsWith(prefix) &&
+      AGENT_IMAGE_MEDIA_TYPES.includes(
+        part.mediaType as AgentPromptImage["mediaType"],
+      )
+        ? [
+            {
+              uploadId: part.url.slice(prefix.length),
+              filename: part.filename || "image",
+              mediaType: part.mediaType as AgentPromptImage["mediaType"],
+            },
+          ]
+        : [],
+    );
+    void submitMessage(message, images, delivery);
+  }
+
+  function addImageFiles(files: readonly File[]) {
+    const images = files.filter((file) =>
+      AGENT_IMAGE_MEDIA_TYPES.includes(
+        file.type as AgentPromptImage["mediaType"],
+      ),
+    );
+    if (images.length === 0) {
+      if (files.some((file) => file.type.startsWith("image/"))) {
+        toast.error({ title: "Use PNG, JPEG, GIF, or WebP images" });
+      }
+      return;
+    }
+    if (!supportsImages) {
+      toast.error({ title: "The selected model does not support images" });
+      return;
+    }
+    const available = Math.max(0, MAX_AGENT_IMAGES - attachments.length);
+    if (available === 0) {
+      toast.error({ title: `Attach up to ${MAX_AGENT_IMAGES} images` });
+      return;
+    }
+    let totalBytes = attachments.reduce(
+      (total, attachment) => total + (attachment.meta?.size ?? 0),
+      0,
+    );
+    const accepted = images.slice(0, available).filter((file) => {
+      if (file.size > MAX_AGENT_IMAGE_BYTES) {
+        toast.error({ title: `${file.name || "Image"} exceeds 10MB` });
+        return false;
+      }
+      if (totalBytes + file.size > MAX_AGENT_IMAGE_TOTAL_BYTES) {
+        toast.error({ title: "Image attachments must total 20MB or less" });
+        return false;
+      }
+      totalBytes += file.size;
+      return true;
+    });
+    if (images.length > available) {
+      toast.error({ title: `Attach up to ${MAX_AGENT_IMAGES} images` });
+    }
+    addFiles(accepted);
+  }
+
+  function handlePaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const files = getDataTransferFiles(event.clipboardData);
+    if (!files.some((file) => file.type.startsWith("image/"))) return;
+    event.preventDefault();
+    addImageFiles(files);
   }
 
   async function editQueuedMessage(message: AgentQueuedMessage) {
-    if (pending || submitting || disabled || input.trim()) return;
-    setInput(message.message);
-    requestAnimationFrame(() => textareaRef.current?.focus());
+    if (
+      pending ||
+      submitting ||
+      disabled ||
+      input.trim() ||
+      attachments.length > 0
+    )
+      return;
     setSubmitting(true);
     try {
-      await onEditQueued(message.id);
+      const accepted = await onEditQueued(message.id);
+      if (!accepted) return;
+      setInput(message.message);
+      addReadyParts(
+        (message.images ?? []).map((image) => ({
+          type: "file",
+          url: `/api/uploads/${image.uploadId}`,
+          mediaType: image.mediaType,
+          filename: image.filename,
+        })),
+      );
+      requestAnimationFrame(() => textareaRef.current?.focus());
     } finally {
       setSubmitting(false);
     }
@@ -307,7 +419,8 @@ export function AgentComposer({
                     className="min-w-0 flex-1 truncate text-foreground"
                     title={queuedMessage.message}
                   >
-                    {queuedMessage.message.replace(/\s+/g, " ")}
+                    {queuedMessage.message.replace(/\s+/g, " ") ||
+                      `${queuedMessage.images?.length ?? 0} attached ${(queuedMessage.images?.length ?? 0) === 1 ? "image" : "images"}`}
                   </span>
                   {!sending && (
                     <>
@@ -320,12 +433,13 @@ export function AgentComposer({
                           pending ||
                           submitting ||
                           disabled ||
-                          Boolean(input.trim())
+                          Boolean(input.trim()) ||
+                          attachments.length > 0
                         }
                         onClick={() => void editQueuedMessage(queuedMessage)}
                         aria-label="Edit queued message"
                         title={
-                          input.trim()
+                          input.trim() || attachments.length > 0
                             ? "Clear the current draft before editing"
                             : "Edit queued message"
                         }
@@ -362,6 +476,17 @@ export function AgentComposer({
       )}
 
       <div className="relative flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
+        {attachments.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto px-1">
+            {attachments.map((attachment) => (
+              <AgentImageChip
+                key={attachment.id}
+                attachment={attachment}
+                onRemove={() => removeAttachment(attachment.id)}
+              />
+            ))}
+          </div>
+        )}
         <Textarea
           ref={textareaRef}
           rows={1}
@@ -375,6 +500,7 @@ export function AgentComposer({
             setActiveIndex(0);
           }}
           onKeyDown={onKeyDown}
+          onPaste={handlePaste}
           role="combobox"
           aria-expanded={menuOpen}
           aria-controls={menuOpen ? listboxId : undefined}
@@ -383,7 +509,35 @@ export function AgentComposer({
           }
           aria-autocomplete="list"
         />
-        <div className="flex h-8 items-center justify-end gap-1">
+        <div className="flex h-8 items-center gap-1">
+          {supportsImages && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={AGENT_IMAGE_MEDIA_TYPES.join(",")}
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  addImageFiles(Array.from(event.target.files ?? []));
+                  event.target.value = "";
+                }}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="rounded-full"
+                disabled={pending || submitting || uploading || disabled}
+                onClick={() => fileInputRef.current?.click()}
+                aria-label="Attach images"
+                title="Attach images"
+              >
+                <ImagePlus />
+              </Button>
+            </>
+          )}
+          <span className="flex-1" />
           {running && supportsSteer && (
             <Button
               type="button"
@@ -408,7 +562,13 @@ export function AgentComposer({
               variant="secondary"
               size="icon-sm"
               className="rounded-full"
-              disabled={!input.trim() || pending || submitting || disabled}
+              disabled={
+                (!input.trim() && readyParts.length === 0) ||
+                uploading ||
+                pending ||
+                submitting ||
+                disabled
+              }
               onClick={() => submit("queue")}
               aria-label={`Queue message for ${providerLabel}`}
               title={`Queue after ${providerLabel} finishes`}
@@ -420,7 +580,13 @@ export function AgentComposer({
             type="button"
             size={running ? "sm" : "icon-sm"}
             className="rounded-full"
-            disabled={!input.trim() || pending || submitting || disabled}
+            disabled={
+              (!input.trim() && readyParts.length === 0) ||
+              uploading ||
+              pending ||
+              submitting ||
+              disabled
+            }
             onClick={() => submit()}
             aria-label={
               running
@@ -450,6 +616,49 @@ export function AgentComposer({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function AgentImageChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: ChatAttachment;
+  onRemove: () => void;
+}) {
+  const src = attachment.previewUrl ?? attachment.part?.url;
+  return (
+    <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border bg-muted">
+      {src && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={attachment.filename}
+          className="size-full object-cover"
+        />
+      )}
+      {attachment.status === "uploading" && (
+        <span className="absolute inset-0 flex items-center justify-center bg-background/60">
+          <Loader2 className={cn("size-4", motionClasses.spinner)} />
+        </span>
+      )}
+      {attachment.status === "error" && (
+        <span
+          className="absolute inset-0 flex items-center justify-center bg-destructive/10 px-1 text-center text-[10px] text-destructive"
+          title={attachment.error}
+        >
+          Upload failed
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={`Remove ${attachment.filename}`}
+        className="absolute top-1 right-1 rounded-full bg-foreground/70 p-0.5 text-background"
+      >
+        <X className="size-3" />
+      </button>
     </div>
   );
 }

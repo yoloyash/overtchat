@@ -10,10 +10,12 @@ import type {
 import type {
   AgentRuntimeClient,
   AgentRuntimeEvent,
+  ResolvedAgentImage,
   AgentSessionForkResult,
   AgentSessionLaunch,
 } from "@/lib/agents/providers/types";
 import type { HostTarget } from "@/lib/agents/runtime/process";
+import { materializeAgentImages } from "@/lib/agents/runtime/materialize-images";
 import {
   type CodexAppServer,
   type CodexAppServerRequest,
@@ -88,6 +90,11 @@ type PendingInteraction =
 type KnownUserInput = {
   id: string;
   text: string;
+  images: Array<{
+    uploadId: string;
+    filename: string;
+    mediaType: ResolvedAgentImage["mediaType"];
+  }>;
 };
 
 function textInput(text: string) {
@@ -322,6 +329,8 @@ function itemTool(item: CodexItem): {
 
 function canonicalTurnMessages(turn: CodexTurn): unknown[] {
   const startedAt = (turn.startedAt ?? Date.now() / 1_000) * 1_000;
+  const completedAt =
+    turn.completedAt === null ? null : turn.completedAt * 1_000;
   const messages: unknown[] = [];
   const assistantContent: UnknownRecord[] = [];
   const results: unknown[] = [];
@@ -329,11 +338,35 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
   for (const item of turn.items) {
     if (item.type === "userMessage") {
       const text = itemText(item);
-      if (text) {
+      const images = Array.isArray(item.overtchatImages)
+        ? item.overtchatImages.flatMap((value) => {
+            const image = recordOf(value);
+            const uploadId = stringOf(image, "uploadId");
+            const filename = stringOf(image, "filename");
+            const mediaType = stringOf(image, "mediaType");
+            return uploadId && filename && mediaType
+              ? [
+                  {
+                    type: "image",
+                    url: `/api/uploads/${uploadId}`,
+                    filename,
+                    mimeType: mediaType,
+                  },
+                ]
+              : [];
+          })
+        : [];
+      if (text || images.length > 0) {
         messages.push({
           id: item.id,
           role: "user",
-          content: text,
+          content:
+            images.length > 0
+              ? [
+                  ...(text ? [{ type: "text", text }] : []),
+                  ...images,
+                ]
+              : text,
           timestamp: startedAt,
         });
       }
@@ -341,7 +374,14 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     }
     if (item.type === "agentMessage") {
       const text = stringOf(item, "text") ?? "";
-      if (text) assistantContent.push({ type: "text", text });
+      const phase = stringOf(item, "phase");
+      if (text) {
+        assistantContent.push(
+          phase === "commentary"
+            ? { type: "commentary", text }
+            : { type: "text", text },
+        );
+      }
       continue;
     }
     if (item.type === "reasoning" || item.type === "plan") {
@@ -394,6 +434,14 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       role: "assistant",
       content: assistantContent,
       timestamp: startedAt + 1,
+      ...(completedAt !== null
+        ? {
+            overtchatActivityDurationMs: Math.max(
+              0,
+              completedAt - startedAt,
+            ),
+          }
+        : {}),
       ...(turn.status === "failed" && recordOf(turn.error)
         ? { errorMessage: stringOf(recordOf(turn.error), "message") ?? undefined }
         : {}),
@@ -616,15 +664,18 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     return publicCommands([...this.discoveredCommands.values()]);
   }
 
-  async prompt(message: string): Promise<unknown> {
+  async prompt(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+  ): Promise<unknown> {
     await this.readyPromise;
     this.assertInteractive();
-    const input = this.createKnownUserInput(message);
+    const input = this.createKnownUserInput(message, images);
     this.pendingPromptInput = input;
     try {
       const response = await this.server.request<UnknownRecord>("turn/start", {
         threadId: this.thread!.id,
-        input: this.resolvePromptInput(message),
+        input: await this.resolvePromptInput(message, images),
         model: this.selectedModel || null,
         ...(this.selectedThinking
           ? { effort: this.selectedThinking }
@@ -640,7 +691,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     }
   }
 
-  async steer(message: string): Promise<unknown> {
+  async steer(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+  ): Promise<unknown> {
     await this.readyPromise;
     this.assertInteractive();
     if (!this.activeTurnId) throw new Error("Codex has no active turn to steer.");
@@ -648,9 +702,12 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const response = await this.server.request("turn/steer", {
       threadId: this.thread!.id,
       expectedTurnId: turnId,
-      input: this.resolvePromptInput(message),
+      input: await this.resolvePromptInput(message, images),
     });
-    this.rememberUserInput(turnId, this.createKnownUserInput(message));
+    this.rememberUserInput(
+      turnId,
+      this.createKnownUserInput(message, images),
+    );
     return response;
   }
 
@@ -1155,7 +1212,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (method === "turn/completed") {
-      const turn = this.withKnownUserInputs(parseCodexTurn(data?.turn));
+      const completedTurn = this.withKnownUserInputs(
+        parseCodexTurn(data?.turn),
+      );
+      const turn = this.reconcileCompletedTurn(completedTurn);
       this.turns.set(turn.id, turn);
       this.emitTurn(turn);
       if (this.activeTurnId === turn.id) this.activeTurnId = null;
@@ -1457,25 +1517,41 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     });
   }
 
-  private createKnownUserInput(text: string): KnownUserInput {
+  private createKnownUserInput(
+    text: string,
+    images: readonly ResolvedAgentImage[] = [],
+  ): KnownUserInput {
     return {
       id: `overtchat:codex-user:${++this.nextUserInputId}`,
       text,
+      images: images.map(({ uploadId, filename, mediaType }) => ({
+        uploadId,
+        filename,
+        mediaType,
+      })),
     };
   }
 
-  private resolvePromptInput(message: string): UnknownRecord[] {
+  private async resolvePromptInput(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+  ): Promise<UnknownRecord[]> {
     const invocation = parseCodexSlashInvocation(message);
     const command = invocation
       ? this.discoveredCommands.get(invocation.name.toLowerCase())
       : undefined;
-    if (!invocation || !command) return textInput(message);
-    if (command.source === "skill") {
-      return skillInput(command, invocation.arguments);
-    }
-    return textInput(
-      expandCodexCustomPrompt(command.template, invocation.arguments),
-    );
+    const text = !invocation || !command
+      ? textInput(message)
+      : command.source === "skill"
+        ? skillInput(command, invocation.arguments)
+        : textInput(
+            expandCodexCustomPrompt(command.template, invocation.arguments),
+          );
+    const paths = await materializeAgentImages(this.target, images);
+    return [
+      ...text,
+      ...paths.map((path) => ({ type: "localImage", path })),
+    ];
   }
 
   private async reloadCommands(publish = false): Promise<void> {
@@ -1533,25 +1609,64 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const known = this.knownUserInputs.get(turn.id);
     if (!known?.length) return turn;
     const items = turn.items.filter((item) => !isSyntheticUserItem(item));
-    const nativeUserTexts = items
-      .filter((item) => item.type === "userMessage")
-      .map(itemText);
+    const nativeUsers = items.flatMap((item, index) =>
+      item.type === "userMessage" ? [{ index, text: itemText(item) }] : [],
+    );
+    const claimedNativeUsers = new Set<number>();
     const synthetic: CodexItem[] = [];
     for (const input of known) {
-      const nativeIndex = nativeUserTexts.indexOf(input.text);
-      if (nativeIndex >= 0) {
-        nativeUserTexts.splice(nativeIndex, 1);
+      const native = nativeUsers.find(
+        (candidate) =>
+          !claimedNativeUsers.has(candidate.index) &&
+          candidate.text === input.text,
+      );
+      if (native) {
+        claimedNativeUsers.add(native.index);
+        if (input.images.length > 0) {
+          items[native.index] = {
+            ...items[native.index],
+            overtchatImages: input.images,
+          };
+        }
         continue;
       }
       synthetic.push({
         id: input.id,
         type: "userMessage",
         content: textInput(input.text),
+        ...(input.images.length > 0
+          ? { overtchatImages: input.images }
+          : {}),
       });
     }
     return synthetic.length === 0 && items.length === turn.items.length
       ? turn
       : { ...turn, items: [...synthetic, ...items] };
+  }
+
+  private reconcileCompletedTurn(completed: CodexTurn): CodexTurn {
+    const streamed = this.turns.get(completed.id);
+    if (!streamed) return completed;
+    const items = [...streamed.items];
+    const indexById = new Map(
+      items.map((item, index) => [item.id, index] as const),
+    );
+    for (const item of completed.items) {
+      const index = indexById.get(item.id);
+      if (index === undefined) {
+        indexById.set(item.id, items.length);
+        items.push(item);
+      } else {
+        items[index] = item;
+      }
+    }
+    return {
+      ...streamed,
+      ...completed,
+      items,
+      startedAt: completed.startedAt ?? streamed.startedAt,
+      completedAt: completed.completedAt ?? streamed.completedAt,
+    };
   }
 
   private upsertItem(turnId: string, value: UnknownRecord): void {

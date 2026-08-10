@@ -72,6 +72,22 @@ export function useChatAttachments() {
     });
   }
 
+  function addReadyParts(parts: readonly FileUIPart[]): void {
+    const next = parts.map((part) => ({
+      id: nextIdRef.current++,
+      status: "ready" as const,
+      filename: part.filename || "image",
+      mediaType: part.mediaType,
+      part,
+      meta: {
+        category: part.mediaType.startsWith("image/")
+          ? ("image" as const)
+          : undefined,
+      },
+    }));
+    setAttachments((prev) => [...prev, ...next]);
+  }
+
   function addRejectedFile(file: File): void {
     const id = nextIdRef.current++;
     setAttachments((prev) => [
@@ -98,6 +114,7 @@ export function useChatAttachments() {
         previewUrl,
         filename: file.name || "file",
         mediaType: file.type || "application/octet-stream",
+        meta: { size: file.size },
       },
     ]);
 
@@ -132,7 +149,9 @@ export function useChatAttachments() {
       };
       setAttachments((prev) =>
         prev.map((a) =>
-          a.id === id ? { ...a, status: "ready", part, meta } : a,
+          a.id === id
+            ? { ...a, status: "ready", part, meta: { ...a.meta, ...meta } }
+            : a,
         ),
       );
     } catch (err) {
@@ -152,6 +171,7 @@ export function useChatAttachments() {
     addFiles,
     removeAttachment,
     clearAttachments,
+    addReadyParts,
   };
 }
 
