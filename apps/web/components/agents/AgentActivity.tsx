@@ -11,7 +11,6 @@ import {
   FileText,
   Globe,
   Loader2,
-  MessageSquareText,
   Search,
   Terminal,
   Users,
@@ -38,7 +37,7 @@ export type AgentRunActivity =
   | "compacting"
   | "reconnecting";
 
-function formatElapsed(milliseconds: number): string {
+export function formatAgentElapsed(milliseconds: number): string {
   const seconds = Math.max(0, Math.floor(milliseconds / 1000));
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
@@ -64,14 +63,7 @@ function useElapsed(startedAt: number | null): string | null {
 
   return startedAt === null
     ? null
-    : formatElapsed(Math.max(0, now - startedAt));
-}
-
-export function agentActivityOwnsLiveStatus(
-  entries: AgentActivityEntry[],
-  active: boolean,
-): boolean {
-  return active && describeAgentActivity(entries, true).status === "running";
+    : formatAgentElapsed(Math.max(0, now - startedAt));
 }
 
 export function AgentRunIndicator({
@@ -117,19 +109,30 @@ export function AgentRunIndicator({
 export function AgentActivityGroup({
   entries,
   active,
-  startedAt,
-  durationMs,
 }: {
   entries: AgentActivityEntry[];
   active: boolean;
-  startedAt: number | null;
-  durationMs: number | null;
 }) {
   const presentation = describeAgentActivity(entries, active);
   const hasError = presentation.status === "failed";
-  const live = active && presentation.status === "running";
-  const elapsed = useElapsed(live ? startedAt : null);
   const [open, setOpen] = useState(hasError);
+  const singleEntry = entries.length === 1 ? entries[0] : null;
+  if (singleEntry?.type === "tool") {
+    return (
+      <div className="text-xs" data-testid="agent-activity-group">
+        <ToolActivityStep tool={singleEntry.tool} active={active} showIcon />
+      </div>
+    );
+  }
+  if (singleEntry?.type === "subagent") {
+    return (
+      <div className="text-xs" data-testid="agent-activity-group">
+        <SubagentActivityStep activity={singleEntry.activity} showIcon />
+      </div>
+    );
+  }
+
+  const live = active && presentation.status === "running";
   const hasDetailedSteps = entries.some(
     (entry) =>
       entry.type === "tool" ||
@@ -142,10 +145,6 @@ export function AgentActivityGroup({
   ).length;
   const progress =
     live && completedCount > 0 ? `${completedCount} completed` : null;
-  const completedDuration =
-    presentation.status === "completed" && durationMs !== null
-      ? formatElapsed(durationMs)
-      : null;
   const headerLabel =
     open && live && hasDetailedSteps ? "Activity" : presentation.label;
   const headerSecondary =
@@ -157,9 +156,6 @@ export function AgentActivityGroup({
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
-        aria-label={
-          completedDuration ? `Worked for ${completedDuration}` : undefined
-        }
         className="group flex min-h-8 w-full items-center gap-2 rounded-md py-1 pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
       >
         <ActivityIcon entries={entries} status={presentation.status} />
@@ -170,9 +166,7 @@ export function AgentActivityGroup({
               live && !open && motionClasses.shimmer,
             )}
           >
-            {completedDuration
-              ? `Worked for ${completedDuration}`
-              : headerLabel}
+            {headerLabel}
           </span>
           {headerSecondary && (
             <span className="min-w-0 truncate font-mono text-[11px]">
@@ -184,9 +178,6 @@ export function AgentActivityGroup({
           <span className="hidden shrink-0 tabular-nums text-[11px] sm:inline">
             {progress}
           </span>
-        )}
-        {elapsed && (
-          <span className="shrink-0 tabular-nums text-[11px]">{elapsed}</span>
         )}
         <ChevronRight
           className={cn(
@@ -240,24 +231,6 @@ function ActivityStep({
   last: boolean;
   showDetailedStep: boolean;
 }) {
-  if (entry.type === "commentary") {
-    if (!showDetailedStep) {
-      return (
-        <div className={cn("min-w-0", last ? "pb-1" : "pb-4")}>
-          <ThinkingContent content={entry.content} />
-        </div>
-      );
-    }
-    return (
-      <TimelineStep
-        icon={<MessageSquareText className="size-3.5" />}
-        last={last}
-      >
-        <ThinkingContent content={entry.content} />
-      </TimelineStep>
-    );
-  }
-
   if (entry.type === "thinking") {
     if (!showDetailedStep) {
       return (
@@ -307,11 +280,13 @@ function ActivityStep({
 
 function SubagentActivityStep({
   activity,
+  showIcon = false,
 }: {
   activity: Extract<
     AgentActivityEntry,
     { type: "subagent" }
   >["activity"];
+  showIcon?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const running = ["inProgress", "pendingInit", "running"].includes(
@@ -349,6 +324,9 @@ function SubagentActivityStep({
           canOpen && "cursor-pointer hover:text-foreground",
         )}
       >
+        {showIcon && (
+          <Users className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+        )}
         <span className="min-w-0 flex-1 font-medium text-foreground">
           {label}
         </span>
@@ -443,9 +421,11 @@ function TimelineStep({
 function ToolActivityStep({
   tool,
   active,
+  showIcon = false,
 }: {
   tool: AgentToolActivity;
   active: boolean;
+  showIcon?: boolean;
 }) {
   const presentation = describeAgentTool(tool);
   const status = agentToolStatus(tool, active);
@@ -466,6 +446,12 @@ function ToolActivityStep({
           canOpen && "cursor-pointer hover:text-foreground",
         )}
       >
+        {showIcon && (
+          <ToolCategoryIcon
+            category={presentation.category}
+            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
+          />
+        )}
         <span className="min-w-0 flex flex-1 items-baseline gap-2">
           <span className="shrink-0 font-medium text-foreground">
             {toolStepLabel(presentation.category, status)}
@@ -750,11 +736,6 @@ function ActivityIcon({
   if (categories.size === 0) {
     if (entries.some((entry) => entry.type === "subagent")) {
       return <Users className="size-3.5 shrink-0 text-muted-foreground" />;
-    }
-    if (entries.some((entry) => entry.type === "commentary")) {
-      return (
-        <MessageSquareText className="size-3.5 shrink-0 text-muted-foreground" />
-      );
     }
     return <Brain className="size-3.5 shrink-0 text-muted-foreground" />;
   }

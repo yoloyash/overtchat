@@ -1,11 +1,14 @@
 "use client";
 
+import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
+  Copy,
   Info,
   ListChecks,
   Minimize2,
@@ -15,6 +18,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
   STREAMDOWN_PLUGINS,
@@ -29,7 +33,7 @@ import { cn } from "@/lib/utils";
 import {
   AgentActivityGroup,
   AgentRunIndicator,
-  agentActivityOwnsLiveStatus,
+  formatAgentElapsed,
   type AgentRunActivity,
 } from "./AgentActivity";
 
@@ -104,11 +108,6 @@ export function AgentMessageList({
     () => projectAgentTranscript(messages),
     [messages],
   );
-  const trailingItem = transcript.at(-1);
-  const activityHasLiveStep =
-    activity === "working" &&
-    trailingItem?.type === "activity" &&
-    agentActivityOwnsLiveStatus(trailingItem.entries, streaming);
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -129,22 +128,39 @@ export function AgentMessageList({
               </p>
             </div>
           ) : (
-            <div className="space-y-6">
-              {transcript.map((item, index) => (
-                <AgentTranscriptRow
-                  key={item.key}
-                  item={item}
-                  active={streaming && index === transcript.length - 1}
-                  activityStartedAt={activityStartedAt}
-                  canEditMessages={canEditMessages}
-                  canForkMessages={canForkMessages}
-                  actionsDisabled={actionsDisabled}
-                  onEditMessage={onEditMessage}
-                  onForkMessage={onForkMessage}
-                  onImplementPlan={onImplementPlan}
-                />
-              ))}
-              {activity && !activityHasLiveStep && (
+            <div className="flex flex-col">
+              {transcript.map((item, index) => {
+                const previous = transcript[index - 1];
+                const compact =
+                  previous &&
+                  (item.type === "activity" ||
+                    previous.type === "activity" ||
+                    item.type === "turn_footer");
+                return (
+                  <div
+                    key={item.key}
+                    className={cn(
+                      index > 0 && (compact ? "mt-3" : "mt-6"),
+                      item.type === "activity" &&
+                        previous?.type === "activity" &&
+                        "mt-1",
+                      item.type === "turn_footer" && "mt-2",
+                    )}
+                  >
+                    <AgentTranscriptRow
+                      item={item}
+                      active={streaming && index === transcript.length - 1}
+                      canEditMessages={canEditMessages}
+                      canForkMessages={canForkMessages}
+                      actionsDisabled={actionsDisabled}
+                      onEditMessage={onEditMessage}
+                      onForkMessage={onForkMessage}
+                      onImplementPlan={onImplementPlan}
+                    />
+                  </div>
+                );
+              })}
+              {activity && (
                 <AgentRunIndicator
                   activity={activity}
                   startedAt={activityStartedAt}
@@ -180,7 +196,6 @@ export function AgentMessageList({
 function AgentTranscriptRow({
   item,
   active,
-  activityStartedAt,
   canEditMessages,
   canForkMessages,
   actionsDisabled,
@@ -190,7 +205,6 @@ function AgentTranscriptRow({
 }: {
   item: AgentTranscriptItem;
   active: boolean;
-  activityStartedAt: number | null;
   canEditMessages: boolean;
   canForkMessages: boolean;
   actionsDisabled: boolean;
@@ -228,6 +242,16 @@ function AgentTranscriptRow({
   if (item.type === "assistant_error") {
     return <AgentErrorNotice error={item.error} />;
   }
+  if (item.type === "turn_footer") {
+    return (
+      <AgentTurnFooter
+        item={item}
+        canFork={canForkMessages}
+        actionsDisabled={actionsDisabled}
+        onForkMessage={onForkMessage}
+      />
+    );
+  }
   if (item.type === "plan") {
     return (
       <AgentPlanCard
@@ -237,13 +261,78 @@ function AgentTranscriptRow({
       />
     );
   }
+  return <AgentActivityGroup entries={item.entries} active={active} />;
+}
+
+function AgentTurnFooter({
+  item,
+  canFork,
+  actionsDisabled,
+  onForkMessage,
+}: {
+  item: Extract<AgentTranscriptItem, { type: "turn_footer" }>;
+  canFork: boolean;
+  actionsDisabled: boolean;
+  onForkMessage: (messageId: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const showFork = canFork && item.messageId !== null;
+
+  if (!item.text && !showFork && item.durationMs === null) return null;
+
+  function copyTurn() {
+    void clipboardWriteText(item.text)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1_200);
+      })
+      .catch(() => {
+        toast.error({
+          title: "Failed to copy",
+          description: "Clipboard access was denied by the browser.",
+        });
+      });
+  }
+
   return (
-    <AgentActivityGroup
-      entries={item.entries}
-      active={active}
-      startedAt={activityStartedAt}
-      durationMs={item.durationMs}
-    />
+    <div
+      className="flex min-h-7 items-center gap-1 text-xs text-muted-foreground"
+      data-testid="agent-turn-footer"
+    >
+      {item.text && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          aria-label={copied ? "Copied response" : "Copy response"}
+          title={copied ? "Copied" : "Copy response"}
+          disabled={actionsDisabled}
+          onClick={copyTurn}
+        >
+          {copied ? <Check /> : <Copy />}
+        </Button>
+      )}
+      {showFork && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-7"
+          aria-label="Fork from this response"
+          title="Fork from this response"
+          disabled={actionsDisabled}
+          onClick={() => onForkMessage(item.messageId!)}
+        >
+          <GitBranch />
+        </Button>
+      )}
+      {item.durationMs !== null && (
+        <span className="ml-1 tabular-nums">
+          Worked for {formatAgentElapsed(item.durationMs)}
+        </span>
+      )}
+    </div>
   );
 }
 

@@ -410,6 +410,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     turn.completedAt === null ? null : turn.completedAt * 1_000;
   const messages: unknown[] = [];
   const assistantContent: UnknownRecord[] = [];
+  const assistantOrders: number[] = [];
   const results: unknown[] = [];
   const planItems = turn.items.filter((item) => item.type === "plan");
   const structuredPlan = planItems.findLast((item) =>
@@ -420,8 +421,12 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     structuredPlan ??
     null;
   let planAdded = false;
+  const pushAssistantContent = (content: UnknownRecord, order: number) => {
+    assistantContent.push(content);
+    assistantOrders.push(order);
+  };
 
-  for (const item of turn.items) {
+  for (const [itemIndex, item] of turn.items.entries()) {
     if (item.type === "userMessage") {
       const text = itemText(item);
       const images = Array.isArray(item.overtchatImages)
@@ -453,7 +458,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
                   ...images,
                 ]
               : text,
-          timestamp: startedAt,
+          timestamp: startedAt + itemIndex,
         });
       }
       continue;
@@ -462,24 +467,25 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       const text = stringOf(item, "text") ?? "";
       const phase = stringOf(item, "phase");
       if (text) {
-        assistantContent.push(
-          phase === "commentary"
-            ? { type: "commentary", text }
-            : { type: "text", text },
-        );
+        pushAssistantContent({
+          type: "text",
+          id: item.id,
+          text,
+          ...(phase ? { phase } : {}),
+        }, itemIndex);
       }
       continue;
     }
     if (item.type === "plan") {
       if (!planAdded && item.id === selectedPlan?.id) {
         const structured = structuredPlan ?? selectedPlan;
-        assistantContent.push({
+        pushAssistantContent({
           type: "plan",
           id: selectedPlan.id,
           text: stringOf(selectedPlan, "text") ?? "",
           explanation: stringOf(structured, "explanation"),
           steps: Array.isArray(structured?.steps) ? structured.steps : [],
-        });
+        }, itemIndex);
         planAdded = true;
       }
       continue;
@@ -492,7 +498,13 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
         ? item.content.filter((part): part is string => typeof part === "string")
         : [];
       const thinking = [...summary, ...content].join("\n\n");
-      if (thinking) assistantContent.push({ type: "thinking", thinking });
+      if (thinking) {
+        pushAssistantContent({
+          type: "thinking",
+          id: item.id,
+          thinking,
+        }, itemIndex);
+      }
       continue;
     }
     if (item.type === "collabAgentToolCall") {
@@ -502,7 +514,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
           )
         : [];
       const states = recordOf(item.agentsStates);
-      assistantContent.push({
+      pushAssistantContent({
         type: "subagent",
         id: item.id,
         action: stringOf(item, "tool") ?? "agent",
@@ -571,11 +583,11 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
               return [];
             })
           : [],
-      });
+      }, itemIndex);
       continue;
     }
     if (item.type === "subAgentActivity") {
-      assistantContent.push({
+      pushAssistantContent({
         type: "subagent",
         id: item.id,
         action: stringOf(item, "kind") ?? "activity",
@@ -591,7 +603,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
             message: stringOf(item, "agentPath"),
           },
         ],
-      });
+      }, itemIndex);
       continue;
     }
     if (item.type === "contextCompaction") {
@@ -600,19 +612,19 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
         role: "custom",
         display: true,
         content: "Conversation context compacted.",
-        timestamp: startedAt + messages.length + 1,
+        timestamp: startedAt + itemIndex,
       });
       continue;
     }
     const tool = itemTool(item);
     if (!tool) continue;
-    assistantContent.push({
+    pushAssistantContent({
       type: "toolCall",
       id: item.id,
       name: tool.name,
       arguments: tool.args,
       terminalInputs: tool.terminalInputs,
-    });
+    }, itemIndex);
     results.push({
       id: `${item.id}:result`,
       role: "toolResult",
@@ -621,30 +633,50 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       content: [{ type: "text", text: tool.output }],
       overtchatPartial: tool.partial,
       isError: tool.isError,
-      timestamp: startedAt + results.length + 2,
+      timestamp: startedAt + itemIndex,
     });
   }
 
-  if (assistantContent.length > 0) {
-    messages.push({
-      id: `${turn.id}:assistant`,
+  messages.push(
+    ...assistantContent.map((content, index) => ({
+      id:
+        typeof content.id === "string"
+          ? content.id
+          : `${turn.id}:assistant:${index}`,
       role: "assistant",
-      content: assistantContent,
-      timestamp: startedAt + 1,
-      ...(completedAt !== null
-        ? {
-            overtchatActivityDurationMs: Math.max(
-              0,
-              completedAt - startedAt,
-            ),
-          }
-        : {}),
+      content: [content],
+      timestamp: startedAt + assistantOrders[index],
+      overtchatTurnId: turn.id,
+      overtchatTurnBoundaryId: `${turn.id}:assistant`,
+    })),
+  );
+  messages.push(...results);
+  messages.sort(
+    (left, right) =>
+      (numberOf(recordOf(left), "timestamp") ?? 0) -
+      (numberOf(recordOf(right), "timestamp") ?? 0),
+  );
+  if (turn.status !== "inProgress") {
+    messages.push({
+      id: `${turn.id}:footer`,
+      role: "turnFooter",
+      messageId:
+        assistantContent.length > 0 ? `${turn.id}:assistant` : null,
+      content: assistantContent
+        .flatMap((content) =>
+          content.type === "text" && typeof content.text === "string"
+            ? [content.text]
+            : [],
+        )
+        .join("\n\n"),
+      durationMs:
+        completedAt === null ? null : Math.max(0, completedAt - startedAt),
+      timestamp: startedAt + turn.items.length + 1,
       ...(turn.status === "failed" && recordOf(turn.error)
         ? { errorMessage: stringOf(recordOf(turn.error), "message") ?? undefined }
         : {}),
     });
   }
-  messages.push(...results);
   return messages;
 }
 
@@ -653,14 +685,19 @@ function statsFromMessages(
   base: AgentSessionStats,
 ): AgentSessionStats {
   let userMessages = 0;
-  let assistantMessages = 0;
+  const assistantTurns = new Set<string>();
   let toolCalls = 0;
   let toolResults = 0;
+  let otherMessages = 0;
   for (const message of messages) {
     const record = recordOf(message);
     if (record?.role === "user") userMessages += 1;
     if (record?.role === "assistant") {
-      assistantMessages += 1;
+      assistantTurns.add(
+        stringOf(record, "overtchatTurnId") ??
+          stringOf(record, "id") ??
+          `assistant:${assistantTurns.size}`,
+      );
       if (Array.isArray(record.content)) {
         toolCalls += record.content.filter(
           (part) => recordOf(part)?.type === "toolCall",
@@ -668,14 +705,24 @@ function statsFromMessages(
       }
     }
     if (record?.role === "toolResult") toolResults += 1;
+    if (
+      record?.role &&
+      !["user", "assistant", "toolResult", "turnFooter"].includes(
+        String(record.role),
+      )
+    ) {
+      otherMessages += 1;
+    }
   }
+  const assistantMessages = assistantTurns.size;
   return {
     ...base,
     userMessages,
     assistantMessages,
     toolCalls,
     toolResults,
-    totalMessages: messages.length,
+    totalMessages:
+      userMessages + assistantMessages + toolResults + otherMessages,
   };
 }
 
