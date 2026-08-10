@@ -166,18 +166,8 @@ export function AgentActivityGroup({
             )}
           >
             {completedDuration ? (
-              <span aria-hidden="true">
-                <span>Worked</span>
-                <span style={{ marginInlineStart: 4 }}>for</span>
-                {completedDuration.split(" ").map((part) => (
-                  <span
-                    key={part}
-                    className="tabular-nums"
-                    style={{ marginInlineStart: 4 }}
-                  >
-                    {part}
-                  </span>
-                ))}
+              <span aria-hidden="true" className="tabular-nums">
+                {`Worked\u00a0for\u00a0${completedDuration.replaceAll(" ", "\u00a0")}`}
               </span>
             ) : (
               headerLabel
