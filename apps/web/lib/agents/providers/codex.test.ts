@@ -63,4 +63,38 @@ describe("codexProviderAdapter", () => {
       ),
     ).toThrow("does not support durable goals");
   });
+
+  it("toggles supported Plan mode out of band", () => {
+    const state = {
+      collaborationMode: "default",
+      collaborationModes: ["default", "plan"],
+    };
+    expect(
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/plan" },
+        state,
+      ),
+    ).toEqual({
+      type: "set_collaboration_mode",
+      mode: "plan",
+    });
+    expect(
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/plan" },
+        { ...state, collaborationMode: "plan" },
+      ),
+    ).toEqual({
+      type: "set_collaboration_mode",
+      mode: "default",
+    });
+  });
+
+  it("rejects /plan when Plan mode is unavailable", () => {
+    expect(() =>
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/plan" },
+        { collaborationModes: ["default"] },
+      ),
+    ).toThrow("does not provide Plan mode");
+  });
 });

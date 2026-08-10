@@ -17,7 +17,6 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import { AGENT_GOAL_STATUSES } from "@/lib/agents/types";
 import type {
-  AgentModel,
   AgentCollaborationMode,
   AgentGoal,
   AgentPromptImage,
@@ -147,6 +146,7 @@ export function AgentSessionView({
   const [compactOpen, setCompactOpen] = useState(false);
   const [usage, setUsage] = useState<AgentUsageSnapshot | null>(null);
   const [dialogError, setDialogError] = useState("");
+  const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const snapshot = session.data;
 
   useEffect(() => {
@@ -316,42 +316,21 @@ export function AgentSessionView({
           command.submittedAt > 0
         ? command.submittedAt
         : null;
+  const composerDisabled =
+    exited || Boolean(readOnly) || Boolean(snapshot.pendingInteraction);
+  const controlsDisabled =
+    composerDisabled || running || command.isPending;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <AgentSessionHeader
-        providerLabel={providerLabel}
         workspaceId={workspaceId}
         workspaceName={workspaceName}
         workspacePath={workspacePath}
-        models={snapshot.models}
-        currentModel={model}
-        thinkingLevel={thinking}
-        thinkingLevels={snapshot.thinkingLevels}
-        collaborationMode={collaborationMode}
-        collaborationModes={availableCollaborationModes}
-        fastModeEnabled={fastModeEnabled}
-        fastModeAvailable={fastModeAvailable}
         stats={snapshot.stats}
         running={running}
         commandPending={command.isPending}
         readOnly={Boolean(readOnly)}
-        onSelectModel={(selected: AgentModel) =>
-          void run({
-            type: "set_model",
-            provider: selected.provider,
-            modelId: selected.id,
-          })
-        }
-        onSelectThinking={(level) =>
-          void run({ type: "set_thinking_level", level })
-        }
-        onSelectCollaborationMode={(mode) =>
-          void run({ type: "set_collaboration_mode", mode })
-        }
-        onToggleFastMode={(enabled) =>
-          void run({ type: "set_fast_mode", enabled })
-        }
         onRename={() => {
           setDialogError("");
           setRenameOpen(true);
@@ -437,6 +416,7 @@ export function AgentSessionView({
           command.isPending ||
           Boolean(snapshot.pendingInteraction)
         }
+        suppressScrollButton={composerMenuOpen}
         onEditMessage={(messageId) =>
           void run({ type: "edit_message", messageId })
         }
@@ -460,11 +440,33 @@ export function AgentSessionView({
             running={running}
             pending={command.isPending}
             stopping={pendingCommand === "abort"}
-            disabled={
-              exited ||
-              Boolean(readOnly) ||
-              Boolean(snapshot.pendingInteraction)
-            }
+            disabled={composerDisabled}
+            controls={{
+              providerLabel,
+              models: snapshot.models,
+              currentModel: model,
+              thinkingLevel: thinking,
+              thinkingLevels: snapshot.thinkingLevels,
+              collaborationMode,
+              collaborationModes: availableCollaborationModes,
+              fastModeEnabled,
+              fastModeAvailable,
+              disabled: controlsDisabled,
+              onSelectModel: (selected) =>
+                void run({
+                  type: "set_model",
+                  provider: selected.provider,
+                  modelId: selected.id,
+                }),
+              onSelectThinking: (level) =>
+                void run({ type: "set_thinking_level", level }),
+              onSelectCollaborationMode: (mode) =>
+                void run({ type: "set_collaboration_mode", mode }),
+              onToggleFastMode: (enabled) =>
+                void run({ type: "set_fast_mode", enabled }),
+              onMenuOpenChange: setComposerMenuOpen,
+            }}
+            contextUsage={snapshot.stats.contextUsage}
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
             onEditQueued={(id) =>

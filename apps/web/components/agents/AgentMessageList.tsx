@@ -75,6 +75,7 @@ export function AgentMessageList({
   canEditMessages,
   canForkMessages,
   actionsDisabled,
+  suppressScrollButton,
   onEditMessage,
   onForkMessage,
   onImplementPlan,
@@ -89,6 +90,7 @@ export function AgentMessageList({
   canEditMessages: boolean;
   canForkMessages: boolean;
   actionsDisabled: boolean;
+  suppressScrollButton: boolean;
   onEditMessage: (messageId: string) => void;
   onForkMessage: (messageId: string) => void;
   onImplementPlan: (plan: string) => void;
@@ -157,7 +159,7 @@ export function AgentMessageList({
         </div>
       </div>
 
-      {!isAtBottom && (
+      {!isAtBottom && !suppressScrollButton && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 flex justify-center">
           <Button
             type="button"

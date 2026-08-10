@@ -80,6 +80,26 @@ function normalizeCommand(
   if (
     command.type === "prompt" &&
     !command.images?.length &&
+    /^\/plan(?:[^\S\n]+([^\n]*))?$/iu.test(command.message.trim())
+  ) {
+    const argumentsText =
+      /^\/plan(?:[^\S\n]+([^\n]*))?$/iu.exec(command.message.trim())?.[1]?.trim() ??
+      "";
+    if (argumentsText) throw new Error("Usage: /plan");
+    const modes = Array.isArray(state.collaborationModes)
+      ? state.collaborationModes
+      : [];
+    if (!modes.includes("default") || !modes.includes("plan")) {
+      throw new Error("This Codex installation does not provide Plan mode.");
+    }
+    return {
+      type: "set_collaboration_mode",
+      mode: state.collaborationMode === "plan" ? "default" : "plan",
+    };
+  }
+  if (
+    command.type === "prompt" &&
+    !command.images?.length &&
     /^\/usage(?:\s*)$/iu.test(command.message)
   ) {
     return { type: "show_usage" };
