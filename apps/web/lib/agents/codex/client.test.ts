@@ -539,6 +539,11 @@ describe("CodexRuntimeClient", () => {
       source: "builtin",
       argumentHint: "<objective>|pause|resume|clear",
     });
+    await expect(client.getCommands()).resolves.toContainEqual({
+      name: "plan",
+      description: "Toggle Plan mode",
+      source: "builtin",
+    });
 
     await client.setCollaborationMode("plan");
     await client.setFastMode(true);

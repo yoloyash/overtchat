@@ -2337,6 +2337,15 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   private availableCommands(): AgentSlashCommand[] {
     return [
+      ...(this.availableCollaborationModes().includes("plan")
+        ? [
+            {
+              name: "plan",
+              description: "Toggle Plan mode",
+              source: "builtin" as const,
+            },
+          ]
+        : []),
       ...(this.goalsSupported
         ? [
             {

@@ -24,6 +24,7 @@ import { agentSlashCommandQuery } from "@/lib/agents/runtime/commands";
 import type {
   AgentPromptImage,
   AgentQueuedMessage,
+  AgentSessionStats,
   AgentSlashCommand,
 } from "@/lib/agents/types";
 import {
@@ -40,6 +41,11 @@ import {
   useChatAttachments,
 } from "@/components/chat/useChatAttachments";
 import { toast } from "@/components/ui/toast";
+import { UsageIndicator } from "@/components/chat/UsageIndicator";
+import {
+  AgentComposerControls,
+  type AgentComposerControlsProps,
+} from "./AgentComposerControls";
 
 function commandSource(source: AgentSlashCommand["source"]): string {
   const labels: Record<AgentSlashCommand["source"], string> = {
@@ -64,6 +70,8 @@ export function AgentComposer({
   pending,
   stopping,
   disabled,
+  controls,
+  contextUsage,
   onSubmit,
   onStop,
   onEditQueued,
@@ -79,6 +87,8 @@ export function AgentComposer({
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
+  controls: AgentComposerControlsProps;
+  contextUsage?: AgentSessionStats["contextUsage"];
   onSubmit: (
     message: string,
     images: AgentPromptImage[],
@@ -106,6 +116,13 @@ export function AgentComposer({
   } = useChatAttachments();
   const listboxId = useId();
   const optionIdPrefix = useId();
+  const composerContextUsage =
+    contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
+      ? {
+          usedTokens: contextUsage.tokens,
+          contextWindow: contextUsage.contextWindow,
+        }
+      : undefined;
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -347,7 +364,7 @@ export function AgentComposer({
   }
 
   return (
-    <div className="relative">
+    <div className="relative @container" data-testid="agent-composer">
       {menuOpen && (
         <div
           className={cn(
@@ -509,58 +526,94 @@ export function AgentComposer({
           }
           aria-autocomplete="list"
         />
-        <div className="flex h-8 items-center gap-1">
-          {supportsImages && (
-            <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept={AGENT_IMAGE_MEDIA_TYPES.join(",")}
-                multiple
-                className="hidden"
-                onChange={(event) => {
-                  addImageFiles(Array.from(event.target.files ?? []));
-                  event.target.value = "";
-                }}
-              />
+        <div className="flex min-h-10 items-center gap-1 @2xl:min-h-8">
+          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+            {supportsImages && (
+              <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={AGENT_IMAGE_MEDIA_TYPES.join(",")}
+                  multiple
+                  className="hidden"
+                  onChange={(event) => {
+                    addImageFiles(Array.from(event.target.files ?? []));
+                    event.target.value = "";
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full"
+                  disabled={pending || submitting || uploading || disabled}
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach images"
+                  title="Attach images"
+                >
+                  <ImagePlus />
+                </Button>
+              </>
+            )}
+            <AgentComposerControls {...controls} />
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {composerContextUsage && (
+              <>
+                <UsageIndicator
+                  contextUsage={composerContextUsage}
+                  compact
+                  side="top"
+                  className="@2xl:hidden"
+                />
+                <UsageIndicator
+                  contextUsage={composerContextUsage}
+                  side="top"
+                  className="hidden @2xl:inline-flex"
+                />
+              </>
+            )}
+            {running && supportsSteer && (
               <Button
                 type="button"
-                variant="ghost"
+                variant="secondary"
                 size="icon-sm"
                 className="rounded-full"
-                disabled={pending || submitting || uploading || disabled}
-                onClick={() => fileInputRef.current?.click()}
-                aria-label="Attach images"
-                title="Attach images"
+                disabled={pending || submitting}
+                onClick={onStop}
+                aria-label={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
+                title={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
               >
-                <ImagePlus />
+                {stopping ? (
+                  <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+                ) : (
+                  <Square className="size-3 fill-current" />
+                )}
               </Button>
-            </>
-          )}
-          <span className="flex-1" />
-          {running && supportsSteer && (
+            )}
+            {running && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-sm"
+                className="rounded-full"
+                disabled={
+                  (!input.trim() && readyParts.length === 0) ||
+                  uploading ||
+                  pending ||
+                  submitting ||
+                  disabled
+                }
+                onClick={() => submit("queue")}
+                aria-label={`Queue message for ${providerLabel}`}
+                title={`Queue after ${providerLabel} finishes`}
+              >
+                <ListEnd />
+              </Button>
+            )}
             <Button
               type="button"
-              variant="secondary"
-              size="icon-sm"
-              className="rounded-full"
-              disabled={pending || submitting}
-              onClick={onStop}
-              aria-label={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
-              title={`${stopping ? "Stopping" : "Stop"} ${providerLabel}`}
-            >
-              {stopping ? (
-                <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-              ) : (
-                <Square className="size-3 fill-current" />
-              )}
-            </Button>
-          )}
-          {running && (
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon-sm"
+              size={running ? "sm" : "icon-sm"}
               className="rounded-full"
               disabled={
                 (!input.trim() && readyParts.length === 0) ||
@@ -569,51 +622,34 @@ export function AgentComposer({
                 submitting ||
                 disabled
               }
-              onClick={() => submit("queue")}
-              aria-label={`Queue message for ${providerLabel}`}
-              title={`Queue after ${providerLabel} finishes`}
+              onClick={() => submit()}
+              aria-label={
+                running
+                  ? supportsSteer
+                    ? `Steer ${providerLabel}`
+                    : `Queue message for ${providerLabel}`
+                  : "Send message"
+              }
+              title={
+                running
+                  ? supportsSteer
+                    ? `Add message to the active ${providerLabel} turn`
+                    : `Queue after ${providerLabel} finishes`
+                  : "Send message"
+              }
             >
-              <ListEnd />
-            </Button>
-          )}
-          <Button
-            type="button"
-            size={running ? "sm" : "icon-sm"}
-            className="rounded-full"
-            disabled={
-              (!input.trim() && readyParts.length === 0) ||
-              uploading ||
-              pending ||
-              submitting ||
-              disabled
-            }
-            onClick={() => submit()}
-            aria-label={
-              running
-                ? supportsSteer
-                  ? `Steer ${providerLabel}`
-                  : `Queue message for ${providerLabel}`
-                : "Send message"
-            }
-            title={
-              running
-                ? supportsSteer
-                  ? `Add message to the active ${providerLabel} turn`
-                  : `Queue after ${providerLabel} finishes`
-                : "Send message"
-            }
-          >
-            {running ? (
-              supportsSteer ? (
-                <CornerUpRight />
+              {running ? (
+                supportsSteer ? (
+                  <CornerUpRight />
+                ) : (
+                  <ListEnd />
+                )
               ) : (
-                <ListEnd />
-              )
-            ) : (
-              <ArrowUp />
-            )}
-            {running && (supportsSteer ? "Steer" : "Queue")}
-          </Button>
+                <ArrowUp />
+              )}
+              {running && (supportsSteer ? "Steer" : "Queue")}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

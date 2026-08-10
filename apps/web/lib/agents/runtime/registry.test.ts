@@ -420,6 +420,15 @@ describe("Agent session runtime", () => {
 
   it("runs Codex goals and plan handoff through native runtime controls", async () => {
     const client = new FakeAgentClient();
+    const codexProviderState = {
+      ...idleProviderState,
+      goalsSupported: true,
+      collaborationMode: "default",
+      collaborationModes: ["default", "plan"],
+      fastModeAvailable: true,
+      fastModeEnabled: false,
+    };
+    client.getState.mockResolvedValue(codexProviderState);
     const runtime = new AgentSessionRuntime(
       "session",
       "user",
@@ -450,8 +459,8 @@ describe("Agent session runtime", () => {
     expect(client.prompt).not.toHaveBeenCalled();
 
     await runtime.command({
-      type: "set_collaboration_mode",
-      mode: "plan",
+      type: "prompt",
+      message: "/plan",
     });
     await runtime.command({ type: "set_fast_mode", enabled: true });
     expect(client.setCollaborationMode).toHaveBeenCalledWith("plan");

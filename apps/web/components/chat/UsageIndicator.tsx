@@ -20,6 +20,9 @@ interface ContextUsage {
 interface UsageIndicatorProps {
   contextUsage?: ContextUsage;
   sessionUsage?: UsageTotals;
+  compact?: boolean;
+  side?: "top" | "bottom";
+  className?: string;
 }
 
 function contextTone(values: ContextMeterValues): string {
@@ -70,6 +73,9 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 export function UsageIndicator({
   contextUsage,
   sessionUsage,
+  compact = false,
+  side = "bottom",
+  className,
 }: UsageIndicatorProps) {
   const context = contextUsage
     ? getContextMeterValues(
@@ -114,7 +120,11 @@ export function UsageIndicator({
         type="button"
         aria-label={`Usage: ${triggerDetails.join("; ")}. Show details`}
         title="Usage"
-        className="inline-flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium tabular-nums text-muted-foreground outline-none motion-colors hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:bg-accent data-[popup-open]:text-foreground max-md:h-9"
+        className={cn(
+          "inline-flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium tabular-nums text-muted-foreground outline-none motion-colors hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 data-[popup-open]:bg-accent data-[popup-open]:text-foreground max-md:h-9",
+          compact && "w-8 justify-center px-0 max-md:size-10",
+          className,
+        )}
       >
         {context ? (
           <span
@@ -124,22 +134,22 @@ export function UsageIndicator({
             )}
           >
             <ContextRing values={context} />
-            <span>{contextValue}</span>
+            {!compact && <span>{contextValue}</span>}
           </span>
         ) : null}
-        {context && session ? (
+        {context && session && !compact ? (
           <span aria-hidden="true" className="mx-2 h-4 w-px bg-border" />
         ) : null}
         {session ? (
           <span className="inline-flex items-center gap-1.5">
             <CircleDollarSign className="size-4" />
-            <span>{visibleCost}</span>
+            {!compact && <span>{visibleCost}</span>}
           </span>
         ) : null}
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Positioner
-          side="bottom"
+          side={side}
           align="end"
           sideOffset={6}
           collisionPadding={8}

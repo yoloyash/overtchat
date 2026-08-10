@@ -33,6 +33,13 @@ const imageModel: AgentRuntimeSnapshot["models"][number] = {
   },
 };
 
+const textModel: AgentRuntimeSnapshot["models"][number] = {
+  ...imageModel,
+  id: "gpt-5.6-mini",
+  name: "GPT-5.6 Mini",
+  input: ["text"],
+};
+
 test.beforeEach(resetE2eDatabase);
 
 function seedAgentSession() {
@@ -90,6 +97,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       isCompacting: false,
       sessionName: "Runtime activity",
       model: imageModel,
+      thinkingLevel: "high",
       collaborationMode: "default",
       collaborationModes: ["default", "plan"],
       fastModeEnabled: false,
@@ -228,9 +236,15 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         timestamp: 7,
       },
     ],
-    models: [imageModel],
-    thinkingLevels: ["off"],
-    commands: [],
+    models: [imageModel, textModel],
+    thinkingLevels: ["low", "high"],
+    commands: [
+      {
+        name: "plan",
+        description: "Toggle Plan mode",
+        source: "builtin",
+      },
+    ],
     queuedMessages: [],
     stats: {
       sessionFile: "/tmp/runtime-test.jsonl",
@@ -248,6 +262,11 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         total: 0,
       },
       cost: 0,
+      contextUsage: {
+        tokens: 42_000,
+        contextWindow: 100_000,
+        percent: 42,
+      },
     },
   };
 }
@@ -311,6 +330,23 @@ test("shows durable turn activity without changing completed tool status", async
         if (command.type === "retry_interactive") retryRequested = true;
         if (command.type === "set_collaboration_mode") {
           snapshot.state.collaborationMode = command.mode;
+        }
+        if (
+          command.type === "prompt" &&
+          command.message?.trim() === "/plan"
+        ) {
+          snapshot.state.collaborationMode =
+            snapshot.state.collaborationMode === "plan" ? "default" : "plan";
+        }
+        if (command.type === "set_model") {
+          snapshot.state.model = snapshot.models.find(
+            (model) =>
+              model.provider === command.provider &&
+              model.id === command.modelId,
+          );
+        }
+        if (command.type === "set_thinking_level") {
+          snapshot.state.thinkingLevel = command.level;
         }
         if (command.type === "set_fast_mode") {
           snapshot.state.fastModeEnabled = command.enabled;
@@ -497,6 +533,25 @@ test("shows durable turn activity without changing completed tool status", async
     name: "Runtime activity is working",
   });
   await expect(sessionActivity).toBeVisible();
+  const agentHeader = page.getByTestId("agent-session-header");
+  const agentComposer = page.getByTestId("agent-composer");
+  await expect(
+    agentHeader.getByTestId("agent-model-effort-trigger"),
+  ).toHaveCount(0);
+  await expect(
+    agentComposer.getByRole("button", {
+      name: "Model and effort: GPT-5.6, High",
+    }),
+  ).toBeDisabled();
+  await expect(agentComposer.getByRole("button", { name: "Plan mode" })).toHaveCount(0);
+  await expect(
+    agentComposer.getByRole("button", { name: "Fast", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    agentComposer.getByRole("button", {
+      name: /Usage: 42% context used/u,
+    }),
+  ).toBeVisible();
   const headerGitStatus = page.getByTestId("agent-workspace-git-status");
   await expect(headerGitStatus).toContainText("feature/runtime-status");
   await expect(headerGitStatus).toContainText("2 files");
@@ -742,6 +797,9 @@ test("shows durable turn activity without changing completed tool status", async
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(genericActivity).toBeVisible();
   await expect(headerGitStatus).not.toBeVisible();
+  await expect(
+    agentComposer.getByTestId("agent-model-effort-trigger"),
+  ).toBeVisible();
   expect(
     await page.evaluate(
       () =>
@@ -767,6 +825,7 @@ test("shows durable turn activity without changing completed tool status", async
     path: testInfo.outputPath("runtime-activity-mobile.png"),
     fullPage: true,
   });
+  await page.getByRole("button", { name: "Collapse sidebar" }).click();
 
   await page.evaluate(() => {
     const controls = (
@@ -786,16 +845,128 @@ test("shows durable turn activity without changing completed tool status", async
   });
   await expect(genericActivity).not.toBeVisible();
 
-  await page.setViewportSize({ width: 1280, height: 720 });
   snapshot.status = "idle";
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
-  await page.getByRole("button", { name: "Plan", exact: true }).click();
+  const modelEffortControl = agentComposer.getByRole("button", {
+    name: "Model and effort: GPT-5.6, High",
+  });
+  await expect(modelEffortControl).toBeEnabled();
+  await modelEffortControl.click();
+  await expect(
+    page.getByRole("button", { name: "Scroll to bottom" }),
+  ).toHaveCount(0);
+  const modelEffortMenu = page.getByRole("menu", {
+    name: "Model and effort",
+  });
+  await expect(
+    modelEffortMenu.getByRole("menuitem", { name: /Model.*GPT-5\.6/u }),
+  ).toBeVisible();
+  await modelEffortMenu
+    .getByRole("menuitem", { name: /Effort.*High/u })
+    .click();
+  await expect(
+    modelEffortMenu.getByRole("menuitem", {
+      name: "Back to model and effort",
+    }),
+  ).toBeVisible();
+  await expect(
+    modelEffortMenu.getByRole("menuitem", { name: "Low" }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-model-effort-mobile.png"),
+    fullPage: true,
+  });
+  await modelEffortMenu.getByRole("menuitem", { name: "Low" }).click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_thinking_level",
+    level: "low",
+  });
+
+  await composer.fill("/plan");
+  await expect(
+    page
+      .getByRole("listbox", { name: "Codex commands" })
+      .getByRole("option", { name: /\/plan/u }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "prompt",
+    message: "/plan",
+  });
+  await page.evaluate((model) => {
+    const controls = (
+      window as unknown as {
+        __agentRuntimeControls: {
+          emit: (envelope: unknown) => void;
+        };
+      }
+    ).__agentRuntimeControls;
+    controls.emit({
+      sequence: 4,
+      type: "runtime_event",
+      data: {
+        type: "config_update",
+        model,
+        thinkingLevel: "low",
+        collaborationMode: "plan",
+        collaborationModes: ["default", "plan"],
+        fastModeEnabled: false,
+        fastModeAvailable: true,
+      },
+    });
+  }, imageModel);
+  const planModeControl = agentComposer.getByRole("button", {
+    name: "Plan mode",
+  });
+  await expect(planModeControl).toBeVisible();
+  await planModeControl.click();
+  await page
+    .getByRole("menu", { name: "Plan mode" })
+    .getByRole("menuitem", { name: "Exit plan mode" })
+    .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
     type: "set_collaboration_mode",
-    mode: "plan",
+    mode: "default",
   });
-  await page.getByRole("button", { name: "Fast" }).click();
+  await expect(planModeControl).toHaveCount(0);
+
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await agentComposer
+    .getByRole("button", {
+      name: "Model and effort: GPT-5.6, Low",
+    })
+    .click();
+  await page
+    .getByRole("menu", { name: "Model and effort" })
+    .getByRole("menuitem", { name: /Model.*GPT-5\.6/u })
+    .click();
+  await expect(
+    page
+      .getByRole("menu", { name: "Model and effort" })
+      .getByRole("menuitem", { name: "Back to model and effort" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("menu", { name: "Model and effort" })
+      .getByRole("menuitem", { name: /GPT-5.6 Mini/u }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-model-effort-desktop.png"),
+    fullPage: true,
+  });
+  await page
+    .getByRole("menu", { name: "Model and effort" })
+    .getByRole("menuitem", { name: /GPT-5.6 Mini/u })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_model",
+    provider: "codex",
+    modelId: "gpt-5.6-mini",
+  });
+  await agentComposer
+    .getByRole("button", { name: "Fast", exact: true })
+    .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
     type: "set_fast_mode",
     enabled: true,
