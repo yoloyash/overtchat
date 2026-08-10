@@ -60,7 +60,7 @@ function projectedTools(messages: unknown[]) {
 }
 
 describe("projectAgentTranscript", () => {
-  it("pairs calls and results into one contiguous activity group", () => {
+  it("projects reasoning and tools as distinct ordered activity rows", () => {
     const projected = projectAgentTranscript([
       { role: "user", content: "Remove the old image", timestamp: 1 },
       assistant(
@@ -91,31 +91,42 @@ describe("projectAgentTranscript", () => {
     expect(projected.map((item) => item.type)).toEqual([
       "message",
       "activity",
+      "activity",
+      "activity",
       "assistant_text",
     ]);
-    const activity = projected[1];
-    expect(activity).toMatchObject({
-      type: "activity",
-      entries: [
-        { type: "thinking" },
-        {
-          type: "tool",
-          tool: {
-            id: "inspect",
-            output: "0.11.2 abc\n0.11.4 def",
-            hasResult: true,
-          },
-        },
-        {
-          type: "tool",
-          tool: {
-            id: "remove",
-            output: "Deleted: sha256:abc",
-            hasResult: true,
-          },
-        },
-      ],
-    });
+    expect(projected.slice(1, 4)).toEqual([
+      expect.objectContaining({
+        type: "activity",
+        entries: [expect.objectContaining({ type: "thinking" })],
+      }),
+      expect.objectContaining({
+        type: "activity",
+        entries: [
+          expect.objectContaining({
+            type: "tool",
+            tool: expect.objectContaining({
+              id: "inspect",
+              output: "0.11.2 abc\n0.11.4 def",
+              hasResult: true,
+            }),
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        type: "activity",
+        entries: [
+          expect.objectContaining({
+            type: "tool",
+            tool: expect.objectContaining({
+              id: "remove",
+              output: "Deleted: sha256:abc",
+              hasResult: true,
+            }),
+          }),
+        ],
+      }),
+    ]);
     expect(JSON.stringify(projected)).not.toContain("48,088");
   });
 
@@ -140,7 +151,7 @@ describe("projectAgentTranscript", () => {
     ]);
   });
 
-  it("keeps commentary in a timed work group before the final answer", () => {
+  it("keeps commentary inline and puts timing on the turn footer", () => {
     const projected = projectAgentTranscript([
       assistant(
         [
@@ -154,22 +165,27 @@ describe("projectAgentTranscript", () => {
         1,
         {
           id: "turn-1:assistant",
-          overtchatActivityDurationMs: 246_355,
         },
       ),
       result("build", "bash", "done"),
+      {
+        id: "turn-1:footer",
+        role: "turnFooter",
+        messageId: "turn-1:assistant",
+        content: "I'm checking the release image.\n\nThe image is ready.",
+        durationMs: 246_355,
+      },
     ]);
 
     expect(projected).toEqual([
       expect.objectContaining({
+        type: "assistant_text",
+        text: "I'm checking the release image.",
+        actionable: false,
+      }),
+      expect.objectContaining({
         type: "activity",
-        durationMs: 246_355,
         entries: [
-          {
-            type: "commentary",
-            id: "commentary:turn-1:assistant:0",
-            content: "I'm checking the release image.",
-          },
           expect.objectContaining({
             type: "tool",
             tool: expect.objectContaining({ id: "build", output: "done" }),
@@ -179,8 +195,15 @@ describe("projectAgentTranscript", () => {
       expect.objectContaining({
         type: "assistant_text",
         text: "The image is ready.",
-        actionable: true,
+        actionable: false,
       }),
+      {
+        type: "turn_footer",
+        key: "turn-footer:turn-1:footer",
+        text: "I'm checking the release image.\n\nThe image is ready.",
+        durationMs: 246_355,
+        messageId: "turn-1:assistant",
+      },
     ]);
   });
 

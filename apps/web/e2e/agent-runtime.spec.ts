@@ -120,23 +120,56 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         timestamp: 1,
       },
       {
+        id: "commentary",
         role: "assistant",
         content: [
           {
-            type: "commentary",
+            id: "commentary",
+            type: "text",
+            phase: "commentary",
             text: "I'm auditing the release state before merging anything.",
           },
+        ],
+        timestamp: 2,
+        overtchatTurnId: "turn-1",
+        overtchatTurnBoundaryId: "turn-1:assistant",
+      },
+      {
+        id: "reasoning",
+        role: "assistant",
+        content: [
           {
+            id: "reasoning",
             type: "thinking",
             thinking: "I should inspect the runtime before responding.",
           },
+        ],
+        timestamp: 2.1,
+        overtchatTurnId: "turn-1",
+        overtchatTurnBoundaryId: "turn-1:assistant",
+      },
+      {
+        id: "answer",
+        role: "assistant",
+        content: [
           {
+            id: "answer",
             type: "text",
             text: "I will inspect the runtime.",
           },
         ],
-        timestamp: 2,
-        overtchatActivityDurationMs: 246_000,
+        timestamp: 2.2,
+        overtchatTurnId: "turn-1",
+        overtchatTurnBoundaryId: "turn-1:assistant",
+      },
+      {
+        id: "turn-1:footer",
+        role: "turnFooter",
+        messageId: "turn-1:assistant",
+        content:
+          "I'm auditing the release state before merging anything.\n\nI will inspect the runtime.",
+        durationMs: 246_000,
+        timestamp: 2.3,
       },
       {
         role: "assistant",
@@ -598,19 +631,21 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(sessionActivity).toBeVisible();
 
   const genericActivity = page.getByTestId("agent-run-activity");
-  await expect(genericActivity).toHaveCount(0);
-  const completedWork = page.getByRole("button", {
-    name: "Worked for 4m 6s",
-    exact: true,
-  });
-  await completedWork.click();
+  await expect(genericActivity).toBeVisible();
+  await expect(genericActivity).toContainText(/\d+s/u);
   await expect(
     page.getByText("I'm auditing the release state before merging anything."),
   ).toBeVisible();
+  const completedTurn = page.getByTestId("agent-turn-footer");
+  await expect(completedTurn).toContainText("Worked for 4m 6s");
+  await expect(
+    completedTurn.getByRole("button", { name: "Copy response" }),
+  ).toBeVisible();
+  const thinking = page.getByRole("button", { name: "Thoughts" });
+  await thinking.click();
   await expect(
     page.getByText("I should inspect the runtime before responding."),
   ).toBeVisible();
-  await expect(page.getByText("Thinking", { exact: true })).toBeVisible();
   await expect(
     page.getByText("I will inspect the runtime.", { exact: true }),
   ).toBeVisible();
@@ -621,19 +656,13 @@ test("shows durable turn activity without changing completed tool status", async
     "Finish Codex parity",
   );
   const liveActivity = page.getByRole("button", {
-    name: /Searching.*runtimeStatus/u,
+    name: "Search: runtimeStatus, running",
   });
   await expect(liveActivity).toBeVisible();
-  await expect(liveActivity).toContainText(/\d+s/u);
-  await expect(liveActivity).toContainText("2 completed");
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-collapsed-desktop.png"),
     fullPage: true,
   });
-  await liveActivity.click();
-  await expect(
-    page.getByRole("button", { name: /Activity.*2 completed/u }),
-  ).toBeVisible();
   const completedCommand = page.getByRole("button", {
     name: "Terminal: printf done, completed",
   });
@@ -754,7 +783,7 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("button", { name: "Stopping Codex" }),
   ).toBeVisible();
-  await expect(genericActivity).toHaveCount(0, { timeout: 2_000 });
+  await expect(genericActivity).toContainText("Working", { timeout: 2_000 });
   await expect(page.getByRole("button", { name: "Stop Codex" })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-desktop.png"),

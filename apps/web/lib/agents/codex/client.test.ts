@@ -18,6 +18,25 @@ vi.mock("@/lib/agents/runtime/materialize-images", () => ({
 
 type Listener<T> = (value: T) => void;
 
+function assistantParts(messages: unknown[]): Array<Record<string, unknown>> {
+  return messages.flatMap((message) => {
+    if (
+      !message ||
+      typeof message !== "object" ||
+      Reflect.get(message, "role") !== "assistant"
+    ) {
+      return [];
+    }
+    const content = Reflect.get(message, "content");
+    return Array.isArray(content)
+      ? content.filter(
+          (part): part is Record<string, unknown> =>
+            Boolean(part) && typeof part === "object",
+        )
+      : [];
+  });
+}
+
 class FakeCodexServer {
   readonly requests: Array<{ method: string; params: unknown }> = [];
   readonly responses: Array<{ id: string | number; result: unknown }> = [];
@@ -691,13 +710,7 @@ describe("CodexRuntimeClient", () => {
     });
 
     const messages = (await client.getMessages()).messages;
-    const assistant = messages.find(
-      (message) =>
-        message &&
-        typeof message === "object" &&
-        Reflect.get(message, "role") === "assistant",
-    ) as { content: Array<Record<string, unknown>> };
-    expect(assistant.content).toEqual(
+    expect(assistantParts(messages)).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           type: "subagent",
@@ -713,7 +726,7 @@ describe("CodexRuntimeClient", () => {
           type: "plan",
           explanation: "Two focused steps.",
         }),
-        { type: "text", text: "Ready." },
+        expect.objectContaining({ type: "text", text: "Ready." }),
       ]),
     );
     await expect(client.getState()).resolves.toMatchObject({
@@ -885,19 +898,35 @@ describe("CodexRuntimeClient", () => {
           content: "Inspect the tests",
         }),
         expect.objectContaining({
+          id: "command-1",
           role: "assistant",
-          content: expect.arrayContaining([
+          content: [
             expect.objectContaining({
               type: "toolCall",
               name: "bash",
             }),
-            { type: "text", text: "Everything passes." },
-          ]),
+          ],
+        }),
+        expect.objectContaining({
+          id: "assistant-1",
+          role: "assistant",
+          content: [
+            expect.objectContaining({
+              type: "text",
+              text: "Everything passes.",
+            }),
+          ],
         }),
         expect.objectContaining({
           role: "toolResult",
           toolCallId: "command-1",
           isError: false,
+        }),
+        expect.objectContaining({
+          id: "turn-1:footer",
+          role: "turnFooter",
+          content: "Everything passes.",
+          durationMs: 1_000,
         }),
       ]),
     });
@@ -973,6 +1002,29 @@ describe("CodexRuntimeClient", () => {
         exitCode: 0,
       },
     });
+    server.emit("item/completed", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "commentary-2",
+        type: "agentMessage",
+        phase: "commentary",
+        text: "The image built; I'm checking its contents.",
+      },
+    });
+    server.emit("item/completed", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "command-2",
+        type: "commandExecution",
+        command: "docker inspect image",
+        cwd: "/workspace",
+        status: "completed",
+        aggregatedOutput: "healthy\n",
+        exitCode: 0,
+      },
+    });
     server.emit("item/started", {
       threadId: "thread-1",
       turnId: "turn-1",
@@ -1008,34 +1060,58 @@ describe("CodexRuntimeClient", () => {
     });
 
     const { messages } = await client.getMessages();
-    const assistant = messages.find(
-      (message) =>
-        message &&
-        typeof message === "object" &&
-        Reflect.get(message, "id") === "turn-1:assistant",
+    expect(assistantParts(messages)).toEqual([
+      expect.objectContaining({
+        id: "commentary-1",
+        type: "text",
+        phase: "commentary",
+        text: "I'm checking the release image.",
+      }),
+      expect.objectContaining({
+        type: "toolCall",
+        id: "command-1",
+        name: "bash",
+      }),
+      expect.objectContaining({
+        id: "commentary-2",
+        type: "text",
+        phase: "commentary",
+        text: "The image built; I'm checking its contents.",
+      }),
+      expect.objectContaining({
+        type: "toolCall",
+        id: "command-2",
+        name: "bash",
+      }),
+      expect.objectContaining({
+        id: "final-1",
+        type: "text",
+        text: "The image is ready.",
+      }),
+    ]);
+    expect(messages).toContainEqual(
+      expect.objectContaining({
+        id: "turn-1:footer",
+        role: "turnFooter",
+        durationMs: 246_000,
+        content:
+          "I'm checking the release image.\n\nThe image built; I'm checking its contents.\n\nThe image is ready.",
+      }),
     );
-    expect(assistant).toMatchObject({
-      role: "assistant",
-      overtchatActivityDurationMs: 246_000,
-      content: [
-        {
-          type: "commentary",
-          text: "I'm checking the release image.",
-        },
-        {
-          type: "toolCall",
-          id: "command-1",
-          name: "bash",
-        },
-        { type: "text", text: "The image is ready." },
-      ],
-    });
     expect(
       messages.filter(
         (message) =>
           message &&
           typeof message === "object" &&
           Reflect.get(message, "toolCallId") === "command-1",
+      ),
+    ).toHaveLength(1);
+    expect(
+      messages.filter(
+        (message) =>
+          message &&
+          typeof message === "object" &&
+          Reflect.get(message, "toolCallId") === "command-2",
       ),
     ).toHaveLength(1);
   });
@@ -1061,16 +1137,30 @@ describe("CodexRuntimeClient", () => {
           content: "Resume this thread",
         }),
         expect.objectContaining({
-          id: "turn-history:assistant",
+          id: "commentary-history",
           role: "assistant",
-          overtchatActivityDurationMs: 1_000,
           content: [
-            {
-              type: "commentary",
+            expect.objectContaining({
+              type: "text",
+              phase: "commentary",
               text: "I am restoring the native thread.",
-            },
-            { type: "text", text: "History restored." },
+            }),
           ],
+        }),
+        expect.objectContaining({
+          id: "assistant-history",
+          role: "assistant",
+          content: [
+            expect.objectContaining({
+              type: "text",
+              text: "History restored.",
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          id: "turn-history:footer",
+          role: "turnFooter",
+          durationMs: 1_000,
         }),
       ]),
     });
@@ -1176,7 +1266,14 @@ describe("CodexRuntimeClient", () => {
       (message) =>
         message &&
         typeof message === "object" &&
-        Reflect.get(message, "id") === "turn-root:assistant",
+        Reflect.get(message, "role") === "assistant" &&
+        Array.isArray(Reflect.get(message, "content")) &&
+        Reflect.get(message, "content").some(
+          (part: unknown) =>
+            part &&
+            typeof part === "object" &&
+            Reflect.get(part, "type") === "subagent",
+        ),
     ) as { content: Array<Record<string, unknown>> };
     expect(assistant.content).toContainEqual(
       expect.objectContaining({
@@ -1247,7 +1344,12 @@ describe("CodexRuntimeClient", () => {
           content: "Resume this thread",
         }),
         expect.objectContaining({
-          id: "turn-history:assistant",
+          id: "assistant-history",
+          role: "assistant",
+        }),
+        expect.objectContaining({
+          id: "turn-history:footer",
+          role: "turnFooter",
         }),
       ]),
     });
@@ -1763,10 +1865,21 @@ describe("CodexRuntimeClient", () => {
       params: { threadId: "thread-fork" },
     });
     await expect(client.getMessages()).resolves.toMatchObject({
-      messages: [
-        { id: "user-history", role: "user" },
-        { id: "turn-history:assistant", role: "assistant" },
-      ],
+      messages: expect.arrayContaining([
+        expect.objectContaining({ id: "user-history", role: "user" }),
+        expect.objectContaining({
+          id: "commentary-history",
+          role: "assistant",
+        }),
+        expect.objectContaining({
+          id: "assistant-history",
+          role: "assistant",
+        }),
+        expect.objectContaining({
+          id: "turn-history:footer",
+          role: "turnFooter",
+        }),
+      ]),
     });
   });
 
@@ -1839,10 +1952,21 @@ describe("CodexRuntimeClient", () => {
       params: { threadId: "thread-fork" },
     });
     await expect(client.getMessages()).resolves.toMatchObject({
-      messages: [
-        { id: "user-history", role: "user" },
-        { id: "turn-history:assistant", role: "assistant" },
-      ],
+      messages: expect.arrayContaining([
+        expect.objectContaining({ id: "user-history", role: "user" }),
+        expect.objectContaining({
+          id: "commentary-history",
+          role: "assistant",
+        }),
+        expect.objectContaining({
+          id: "assistant-history",
+          role: "assistant",
+        }),
+        expect.objectContaining({
+          id: "turn-history:footer",
+          role: "turnFooter",
+        }),
+      ]),
     });
   });
 
