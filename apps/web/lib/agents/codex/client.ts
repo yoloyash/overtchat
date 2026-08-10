@@ -329,6 +329,8 @@ function itemTool(item: CodexItem): {
 
 function canonicalTurnMessages(turn: CodexTurn): unknown[] {
   const startedAt = (turn.startedAt ?? Date.now() / 1_000) * 1_000;
+  const completedAt =
+    turn.completedAt === null ? null : turn.completedAt * 1_000;
   const messages: unknown[] = [];
   const assistantContent: UnknownRecord[] = [];
   const results: unknown[] = [];
@@ -372,7 +374,14 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     }
     if (item.type === "agentMessage") {
       const text = stringOf(item, "text") ?? "";
-      if (text) assistantContent.push({ type: "text", text });
+      const phase = stringOf(item, "phase");
+      if (text) {
+        assistantContent.push(
+          phase === "commentary"
+            ? { type: "commentary", text }
+            : { type: "text", text },
+        );
+      }
       continue;
     }
     if (item.type === "reasoning" || item.type === "plan") {
@@ -425,6 +434,14 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       role: "assistant",
       content: assistantContent,
       timestamp: startedAt + 1,
+      ...(completedAt !== null
+        ? {
+            overtchatActivityDurationMs: Math.max(
+              0,
+              completedAt - startedAt,
+            ),
+          }
+        : {}),
       ...(turn.status === "failed" && recordOf(turn.error)
         ? { errorMessage: stringOf(recordOf(turn.error), "message") ?? undefined }
         : {}),
@@ -1195,7 +1212,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (method === "turn/completed") {
-      const turn = this.withKnownUserInputs(parseCodexTurn(data?.turn));
+      const completedTurn = this.withKnownUserInputs(
+        parseCodexTurn(data?.turn),
+      );
+      const turn = this.reconcileCompletedTurn(completedTurn);
       this.turns.set(turn.id, turn);
       this.emitTurn(turn);
       if (this.activeTurnId === turn.id) this.activeTurnId = null;
@@ -1622,6 +1642,31 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     return synthetic.length === 0 && items.length === turn.items.length
       ? turn
       : { ...turn, items: [...synthetic, ...items] };
+  }
+
+  private reconcileCompletedTurn(completed: CodexTurn): CodexTurn {
+    const streamed = this.turns.get(completed.id);
+    if (!streamed) return completed;
+    const items = [...streamed.items];
+    const indexById = new Map(
+      items.map((item, index) => [item.id, index] as const),
+    );
+    for (const item of completed.items) {
+      const index = indexById.get(item.id);
+      if (index === undefined) {
+        indexById.set(item.id, items.length);
+        items.push(item);
+      } else {
+        items[index] = item;
+      }
+    }
+    return {
+      ...streamed,
+      ...completed,
+      items,
+      startedAt: completed.startedAt ?? streamed.startedAt,
+      completedAt: completed.completedAt ?? streamed.completedAt,
+    };
   }
 
   private upsertItem(turnId: string, value: UnknownRecord): void {

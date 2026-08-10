@@ -93,6 +93,10 @@ function runtimeSnapshot(startedAt: number) {
         role: "assistant",
         content: [
           {
+            type: "commentary",
+            text: "I'm auditing the release state before merging anything.",
+          },
+          {
             type: "thinking",
             thinking: "I should inspect the runtime before responding.",
           },
@@ -102,6 +106,7 @@ function runtimeSnapshot(startedAt: number) {
           },
         ],
         timestamp: 2,
+        overtchatActivityDurationMs: 246_000,
       },
       {
         role: "assistant",
@@ -411,15 +416,21 @@ test("shows durable turn activity without changing completed tool status", async
 
   const genericActivity = page.getByTestId("agent-run-activity");
   await expect(genericActivity).toHaveCount(0);
-  const thoughts = page.getByRole("button", { name: "Thoughts", exact: true });
-  await thoughts.click();
+  const completedWork = page.getByRole("button", {
+    name: "Worked for 4m 6s",
+    exact: true,
+  });
+  await completedWork.click();
+  await expect(
+    page.getByText("I'm auditing the release state before merging anything."),
+  ).toBeVisible();
   await expect(
     page.getByText("I should inspect the runtime before responding."),
   ).toBeVisible();
-  await expect(page.getByText("Thinking", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Thinking", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Thinking", exact: true }),
-  ).toHaveCount(0);
+    page.getByText("I will inspect the runtime.", { exact: true }),
+  ).toBeVisible();
   const liveActivity = page.getByRole("button", {
     name: /Searching.*runtimeStatus/u,
   });

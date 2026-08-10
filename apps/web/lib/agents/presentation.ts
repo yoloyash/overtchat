@@ -26,6 +26,11 @@ export type AgentToolActivity = {
 
 export type AgentActivityEntry =
   | {
+      type: "commentary";
+      id: string;
+      content: string;
+    }
+  | {
       type: "thinking";
       id: string;
       content: string;
@@ -63,6 +68,7 @@ export type AgentTranscriptItem =
       type: "activity";
       key: string;
       entries: AgentActivityEntry[];
+      durationMs: number | null;
     };
 
 export type AgentToolStatus =
@@ -139,6 +145,13 @@ function resultId(message: unknown): string | null {
   return roleOf(message) === "toolResult" &&
     typeof record?.toolCallId === "string"
     ? record.toolCallId
+    : null;
+}
+
+function activityDurationOf(message: UnknownRecord): number | null {
+  const value = message.overtchatActivityDurationMs;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
     : null;
 }
 
@@ -249,15 +262,18 @@ export function projectAgentTranscript(
 ): AgentTranscriptItem[] {
   const items: AgentTranscriptItem[] = [];
   const pendingActivity: AgentActivityEntry[] = [];
+  let pendingActivityDurationMs: number | null = null;
   const { callIds, results } = collectToolData(messages);
 
-  const flushActivity = () => {
+  const flushActivity = (durationMs: number | null = null) => {
     if (pendingActivity.length === 0) return;
     items.push({
       type: "activity",
       key: `activity:${pendingActivity[0].id}`,
       entries: pendingActivity.splice(0),
+      durationMs: durationMs ?? pendingActivityDurationMs,
     });
+    pendingActivityDurationMs = null;
   };
 
   messages.forEach((message, messageIndex) => {
@@ -268,6 +284,7 @@ export function projectAgentTranscript(
 
     if (role === "assistant") {
       const content = Array.isArray(record.content) ? record.content : [];
+      const activityDurationMs = activityDurationOf(record);
       const lastTextIndex = content.findLastIndex((part) => {
         const candidate = recordOf(part);
         return (
@@ -282,6 +299,20 @@ export function projectAgentTranscript(
         const partIdentity = `${identity}:${partIndex}`;
 
         if (
+          partRecord.type === "commentary" &&
+          typeof partRecord.text === "string" &&
+          partRecord.text.trim()
+        ) {
+          pendingActivity.push({
+            type: "commentary",
+            id: `commentary:${partIdentity}`,
+            content: partRecord.text,
+          });
+          pendingActivityDurationMs ??= activityDurationMs;
+          return;
+        }
+
+        if (
           partRecord.type === "thinking" &&
           typeof partRecord.thinking === "string" &&
           partRecord.thinking.trim()
@@ -291,6 +322,7 @@ export function projectAgentTranscript(
             id: `thinking:${partIdentity}`,
             content: partRecord.thinking,
           });
+          pendingActivityDurationMs ??= activityDurationMs;
           return;
         }
 
@@ -307,6 +339,7 @@ export function projectAgentTranscript(
             id: `tool:${id}`,
             tool: toolFromCall(partRecord, results.get(id), id),
           });
+          pendingActivityDurationMs ??= activityDurationMs;
           return;
         }
 
@@ -315,7 +348,7 @@ export function projectAgentTranscript(
           typeof partRecord.text === "string" &&
           partRecord.text.trim()
         ) {
-          flushActivity();
+          flushActivity(activityDurationMs);
           items.push({
             type: "assistant_text",
             key: `assistant:${partIdentity}`,
@@ -331,7 +364,7 @@ export function projectAgentTranscript(
         typeof record.errorMessage === "string" &&
         record.errorMessage.trim()
       ) {
-        flushActivity();
+        flushActivity(activityDurationMs);
         items.push({
           type: "assistant_error",
           key: `assistant-error:${identity}`,

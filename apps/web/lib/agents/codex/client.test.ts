@@ -234,8 +234,15 @@ class FakeCodexServer {
                   ],
                 },
                 {
+                  id: "commentary-history",
+                  type: "agentMessage",
+                  phase: "commentary",
+                  text: "I am restoring the native thread.",
+                },
+                {
                   id: "assistant-history",
                   type: "agentMessage",
+                  phase: "final_answer",
                   text: "History restored.",
                 },
               ],
@@ -568,6 +575,129 @@ describe("CodexRuntimeClient", () => {
     );
   });
 
+  it("preserves streamed work when the completed turn only includes the final answer", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    await client.prompt("Check the release");
+
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "inProgress",
+        startedAt: 10,
+        items: [],
+      },
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "commentary-1",
+        type: "agentMessage",
+        phase: "commentary",
+        text: "",
+      },
+    });
+    server.emit("item/agentMessage/delta", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "commentary-1",
+      delta: "I'm checking the release image.",
+    });
+    server.emit("item/completed", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "commentary-1",
+        type: "agentMessage",
+        phase: "commentary",
+        text: "I'm checking the release image.",
+      },
+    });
+    server.emit("item/completed", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "command-1",
+        type: "commandExecution",
+        command: "docker build .",
+        cwd: "/workspace",
+        status: "completed",
+        aggregatedOutput: "done\n",
+        exitCode: 0,
+      },
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "final-1",
+        type: "agentMessage",
+        phase: "final_answer",
+        text: "",
+      },
+    });
+    server.emit("item/agentMessage/delta", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "final-1",
+      delta: "The image is ready.",
+    });
+    server.emit("turn/completed", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "completed",
+        startedAt: 10,
+        completedAt: 256,
+        items: [
+          {
+            id: "final-1",
+            type: "agentMessage",
+            phase: "final_answer",
+            text: "The image is ready.",
+          },
+        ],
+      },
+    });
+
+    const { messages } = await client.getMessages();
+    const assistant = messages.find(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "id") === "turn-1:assistant",
+    );
+    expect(assistant).toMatchObject({
+      role: "assistant",
+      overtchatActivityDurationMs: 246_000,
+      content: [
+        {
+          type: "commentary",
+          text: "I'm checking the release image.",
+        },
+        {
+          type: "toolCall",
+          id: "command-1",
+          name: "bash",
+        },
+        { type: "text", text: "The image is ready." },
+      ],
+    });
+    expect(
+      messages.filter(
+        (message) =>
+          message &&
+          typeof message === "object" &&
+          Reflect.get(message, "toolCallId") === "command-1",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("hydrates complete native history after resuming a thread", async () => {
     const client = new CodexRuntimeClient(
       { connectorId: "connector", transport: "local" },
@@ -591,7 +721,14 @@ describe("CodexRuntimeClient", () => {
         expect.objectContaining({
           id: "turn-history:assistant",
           role: "assistant",
-          content: [{ type: "text", text: "History restored." }],
+          overtchatActivityDurationMs: 1_000,
+          content: [
+            {
+              type: "commentary",
+              text: "I am restoring the native thread.",
+            },
+            { type: "text", text: "History restored." },
+          ],
         }),
       ]),
     });
