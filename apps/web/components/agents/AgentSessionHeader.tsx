@@ -7,14 +7,17 @@ import { Popover } from "@base-ui/react/popover";
 import {
   Check,
   ChevronDown,
+  Code2,
   Coins,
   Copy,
   FileDiff,
   GitBranch,
   MoreHorizontal,
+  ListTodo,
   Pencil,
   Search,
   Sparkles,
+  Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +33,7 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { UsageIndicator } from "@/components/chat/UsageIndicator";
 import type {
   AgentModel,
+  AgentCollaborationMode,
   AgentSessionStats,
   AgentThinkingLevel,
   AgentWorkspaceGitStatus,
@@ -49,12 +53,18 @@ export function AgentSessionHeader({
   currentModel,
   thinkingLevel,
   thinkingLevels,
+  collaborationMode,
+  collaborationModes,
+  fastModeEnabled,
+  fastModeAvailable,
   stats,
   running,
   commandPending,
   readOnly,
   onSelectModel,
   onSelectThinking,
+  onSelectCollaborationMode,
+  onToggleFastMode,
   onRename,
   onCompact,
 }: {
@@ -66,12 +76,18 @@ export function AgentSessionHeader({
   currentModel: { provider: string; id: string } | null;
   thinkingLevel: AgentThinkingLevel | null;
   thinkingLevels: AgentThinkingLevel[];
+  collaborationMode: AgentCollaborationMode;
+  collaborationModes: AgentCollaborationMode[];
+  fastModeEnabled: boolean;
+  fastModeAvailable: boolean;
   stats: AgentSessionStats;
   running: boolean;
   commandPending: boolean;
   readOnly: boolean;
   onSelectModel: (model: AgentModel) => void;
   onSelectThinking: (level: AgentThinkingLevel) => void;
+  onSelectCollaborationMode: (mode: AgentCollaborationMode) => void;
+  onToggleFastMode: (enabled: boolean) => void;
   onRename: () => void;
   onCompact: () => void;
 }) {
@@ -133,6 +149,54 @@ export function AgentSessionHeader({
           </SelectContent>
         </Select>
       )}
+      {collaborationModes.length > 1 && (
+        <div
+          role="group"
+          aria-label="Codex mode"
+          className="hidden h-8 shrink-0 items-center rounded-md border bg-muted/20 p-0.5 md:flex"
+        >
+          {collaborationModes.map((mode) => {
+            const selected = mode === collaborationMode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={selected}
+                disabled={readOnly || running || commandPending}
+                onClick={() => onSelectCollaborationMode(mode)}
+                className={cn(
+                  "flex h-6 items-center gap-1 rounded px-2 text-xs font-medium motion-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  selected
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {mode === "plan" ? (
+                  <ListTodo className="size-3.5" />
+                ) : (
+                  <Code2 className="size-3.5" />
+                )}
+                {mode === "plan" ? "Plan" : "Code"}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {fastModeAvailable && (
+        <Button
+          type="button"
+          variant={fastModeEnabled ? "secondary" : "ghost"}
+          size="sm"
+          className="hidden h-8 px-2 md:inline-flex"
+          aria-pressed={fastModeEnabled}
+          title="Fast mode uses priority inference at higher usage"
+          disabled={readOnly || running || commandPending}
+          onClick={() => onToggleFastMode(!fastModeEnabled)}
+        >
+          <Zap className="size-3.5" />
+          Fast
+        </Button>
+      )}
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {stats.contextUsage && stats.contextUsage.tokens !== null && (
           <UsageIndicator
@@ -185,6 +249,41 @@ export function AgentSessionHeader({
                   </Menu.Item>
                 )}
                 <Menu.Separator className="my-1 h-px bg-border" />
+                {collaborationModes.length > 1 &&
+                  collaborationModes.map((mode) => (
+                    <Menu.Item
+                      key={mode}
+                      disabled={readOnly || running || commandPending}
+                      onClick={() => onSelectCollaborationMode(mode)}
+                      className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                    >
+                      {mode === "plan" ? (
+                        <ListTodo className="size-3.5 text-muted-foreground" />
+                      ) : (
+                        <Code2 className="size-3.5 text-muted-foreground" />
+                      )}
+                      {mode === "plan" ? "Plan mode" : "Code mode"}
+                      {mode === collaborationMode && (
+                        <Check className="ml-auto size-3.5" />
+                      )}
+                    </Menu.Item>
+                  ))}
+                {fastModeAvailable && (
+                  <Menu.Item
+                    disabled={readOnly || running || commandPending}
+                    onClick={() => onToggleFastMode(!fastModeEnabled)}
+                    className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                  >
+                    <Zap className="size-3.5 text-muted-foreground" />
+                    Fast mode
+                    {fastModeEnabled && (
+                      <Check className="ml-auto size-3.5" />
+                    )}
+                  </Menu.Item>
+                )}
+                {(collaborationModes.length > 1 || fastModeAvailable) && (
+                  <Menu.Separator className="my-1 h-px bg-border" />
+                )}
                 <Menu.Item
                   disabled={readOnly}
                   onClick={onRename}

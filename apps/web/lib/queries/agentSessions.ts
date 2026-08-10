@@ -110,6 +110,10 @@ export function useAgentSessionCommand(id: string) {
       if (
         command.type === "set_model" ||
         command.type === "set_thinking_level" ||
+        command.type === "set_collaboration_mode" ||
+        command.type === "set_fast_mode" ||
+        command.type === "update_goal" ||
+        command.type === "implement_plan" ||
         command.type === "compact" ||
         command.type === "set_auto_compaction" ||
         command.type === "set_session_name" ||
@@ -121,6 +125,7 @@ export function useAgentSessionCommand(id: string) {
       }
       if (
         command.type === "prompt" ||
+        command.type === "implement_plan" ||
         command.type === "steer" ||
         command.type === "steer_queued_message" ||
         command.type === "set_session_name" ||

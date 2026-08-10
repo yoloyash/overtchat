@@ -7,7 +7,9 @@ import {
   AlertTriangle,
   ChevronDown,
   Info,
+  ListChecks,
   Minimize2,
+  Play,
   Terminal,
   GitBranch,
   Pencil,
@@ -75,6 +77,7 @@ export function AgentMessageList({
   actionsDisabled,
   onEditMessage,
   onForkMessage,
+  onImplementPlan,
 }: {
   providerLabel: string;
   messages: unknown[];
@@ -88,6 +91,7 @@ export function AgentMessageList({
   actionsDisabled: boolean;
   onEditMessage: (messageId: string) => void;
   onForkMessage: (messageId: string) => void;
+  onImplementPlan: (plan: string) => void;
 }) {
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
     useStickToBottom({
@@ -135,6 +139,7 @@ export function AgentMessageList({
                   actionsDisabled={actionsDisabled}
                   onEditMessage={onEditMessage}
                   onForkMessage={onForkMessage}
+                  onImplementPlan={onImplementPlan}
                 />
               ))}
               {activity && !activityHasLiveStep && (
@@ -179,6 +184,7 @@ function AgentTranscriptRow({
   actionsDisabled,
   onEditMessage,
   onForkMessage,
+  onImplementPlan,
 }: {
   item: AgentTranscriptItem;
   active: boolean;
@@ -188,6 +194,7 @@ function AgentTranscriptRow({
   actionsDisabled: boolean;
   onEditMessage: (messageId: string) => void;
   onForkMessage: (messageId: string) => void;
+  onImplementPlan: (plan: string) => void;
 }) {
   if (item.type === "message") {
     return (
@@ -219,6 +226,15 @@ function AgentTranscriptRow({
   if (item.type === "assistant_error") {
     return <AgentErrorNotice error={item.error} />;
   }
+  if (item.type === "plan") {
+    return (
+      <AgentPlanCard
+        item={item}
+        disabled={actionsDisabled || active}
+        onImplement={() => onImplementPlan(item.text)}
+      />
+    );
+  }
   return (
     <AgentActivityGroup
       entries={item.entries}
@@ -226,6 +242,58 @@ function AgentTranscriptRow({
       startedAt={activityStartedAt}
       durationMs={item.durationMs}
     />
+  );
+}
+
+function AgentPlanCard({
+  item,
+  disabled,
+  onImplement,
+}: {
+  item: Extract<AgentTranscriptItem, { type: "plan" }>;
+  disabled: boolean;
+  onImplement: () => void;
+}) {
+  return (
+    <section
+      className="overflow-hidden rounded-lg border bg-muted/15"
+      data-testid="agent-plan-card"
+    >
+      <div className="flex items-center gap-2 border-b px-3 py-2">
+        <ListChecks className="size-4 text-muted-foreground" />
+        <h3 className="text-sm font-medium">Plan</h3>
+      </div>
+      <div className="space-y-3 px-3 py-3 text-sm">
+        {item.explanation && (
+          <p className="text-muted-foreground">{item.explanation}</p>
+        )}
+        {item.text ? (
+          <Markdown>{item.text}</Markdown>
+        ) : item.steps.length > 0 ? (
+          <ol className="space-y-2">
+            {item.steps.map((step, index) => (
+              <li key={`${step.step}:${index}`} className="flex gap-2">
+                <span className="text-muted-foreground tabular-nums">
+                  {index + 1}.
+                </span>
+                <span className="min-w-0 flex-1">{step.step}</span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
+        <div className="flex justify-end border-t pt-3">
+          <Button
+            type="button"
+            size="sm"
+            disabled={disabled}
+            onClick={onImplement}
+          >
+            <Play />
+            Implement plan
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -338,6 +338,22 @@ export class AgentSessionRuntime {
           ...(typeof event.thinkingLevel === "string"
             ? { thinkingLevel: event.thinkingLevel }
             : {}),
+          ...(typeof event.collaborationMode === "string"
+            ? { collaborationMode: event.collaborationMode }
+            : {}),
+          ...(Array.isArray(event.collaborationModes)
+            ? { collaborationModes: event.collaborationModes }
+            : {}),
+          ...(typeof event.fastModeEnabled === "boolean"
+            ? { fastModeEnabled: event.fastModeEnabled }
+            : {}),
+          ...(typeof event.fastModeAvailable === "boolean"
+            ? { fastModeAvailable: event.fastModeAvailable }
+            : {}),
+          ...(typeof event.goalsSupported === "boolean"
+            ? { goalsSupported: event.goalsSupported }
+            : {}),
+          ...("goal" in event ? { goal: event.goal } : {}),
         };
         this.publishSnapshot();
       }
@@ -459,6 +475,71 @@ export class AgentSessionRuntime {
           await this.refresh();
           return value;
         });
+      case "set_collaboration_mode":
+        if (!this.client.setCollaborationMode) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} does not provide collaboration modes.`,
+            ),
+          );
+        }
+        return this.client
+          .setCollaborationMode(command.mode)
+          .then(async (value) => {
+            await this.refresh();
+            return value;
+          });
+      case "set_fast_mode":
+        if (!this.client.setFastMode) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} does not provide fast mode.`,
+            ),
+          );
+        }
+        return this.client.setFastMode(command.enabled).then(async (value) => {
+          await this.refresh();
+          return value;
+        });
+      case "update_goal":
+        if (!this.client.updateGoal) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} does not provide durable goals.`,
+            ),
+          );
+        }
+        return this.client
+          .updateGoal(command.action, command.objective)
+          .then(async (value) => {
+            await this.refresh();
+            return value;
+          });
+      case "implement_plan":
+        if (!this.client.setCollaborationMode) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} does not provide Plan mode.`,
+            ),
+          );
+        }
+        return this.client
+          .setCollaborationMode("default")
+          .then(() =>
+            this.submitPrompt(
+              [
+                "The user approved the plan. Implement it now. Do not restate or revise the plan unless blocked.",
+                ...(command.plan
+                  ? [
+                      "Approved plan:",
+                      command.plan,
+                      "Carry out the work, make the necessary code changes, and verify the result.",
+                    ]
+                  : ["Make the required code changes and verify them."]),
+              ].join("\n\n"),
+              [],
+            ),
+          );
       case "compact":
         return this.client
           .compact(command.customInstructions)
@@ -1236,6 +1317,7 @@ export class AgentRuntimeRegistry {
       {
         executable: owned.connection.executable,
         cwd: owned.workspace.path,
+        detectedVersion: owned.connection.detectedVersion,
       },
     );
     try {
@@ -1332,6 +1414,7 @@ export class AgentRuntimeRegistry {
       {
         executable: owned.connection.executable,
         cwd: owned.workspace.path,
+        detectedVersion: owned.connection.detectedVersion,
         resume: {
           providerSessionId: owned.agentSession.providerSessionId,
           providerSessionPath: owned.agentSession.providerSessionPath,

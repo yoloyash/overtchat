@@ -279,6 +279,64 @@ describe("projectAgentTranscript", () => {
       },
     });
   });
+
+  it("projects plans and rich Codex activity without flattening them", () => {
+    const projected = projectAgentTranscript([
+      assistant(
+        [
+          {
+            type: "subagent",
+            id: "collab-1",
+            action: "spawnAgent",
+            prompt: "Inspect tests",
+            status: "completed",
+            receivers: [
+              {
+                threadId: "child-1",
+                status: "completed",
+                message: null,
+              },
+            ],
+            events: ["Tests are green."],
+          },
+          {
+            type: "plan",
+            id: "plan-1",
+            text: "- [x] Inspect\n- [ ] Implement",
+            explanation: "A focused plan.",
+            steps: [
+              { step: "Inspect", status: "completed" },
+              { step: "Implement", status: "pending" },
+            ],
+          },
+          { type: "text", text: "Plan ready." },
+        ],
+        1,
+      ),
+    ]);
+
+    expect(projected.map((item) => item.type)).toEqual([
+      "activity",
+      "plan",
+      "assistant_text",
+    ]);
+    expect(projected[0]).toMatchObject({
+      entries: [
+        {
+          type: "subagent",
+          activity: { events: ["Tests are green."] },
+        },
+      ],
+    });
+    expect(projected[1]).toMatchObject({
+      type: "plan",
+      explanation: "A focused plan.",
+      steps: [
+        { step: "Inspect", status: "completed" },
+        { step: "Implement", status: "pending" },
+      ],
+    });
+  });
 });
 
 describe("agent error presentation", () => {
@@ -322,6 +380,7 @@ describe("agent activity presentation", () => {
     cancelled: false,
     truncated: false,
     fullOutputPath: null,
+    terminalInputs: [],
   });
 
   it("uses typed labels and compact aggregate summaries", () => {

@@ -22,6 +22,20 @@ export type AgentToolActivity = {
   cancelled: boolean;
   truncated: boolean;
   fullOutputPath: string | null;
+  terminalInputs: string[];
+};
+
+export type AgentSubagentActivity = {
+  id: string;
+  action: string;
+  prompt: string | null;
+  status: string;
+  receivers: Array<{
+    threadId: string;
+    status: string;
+    message: string | null;
+  }>;
+  events: string[];
 };
 
 export type AgentActivityEntry =
@@ -39,6 +53,11 @@ export type AgentActivityEntry =
       type: "tool";
       id: string;
       tool: AgentToolActivity;
+    }
+  | {
+      type: "subagent";
+      id: string;
+      activity: AgentSubagentActivity;
     };
 
 export type AgentErrorPresentation = {
@@ -69,6 +88,16 @@ export type AgentTranscriptItem =
       key: string;
       entries: AgentActivityEntry[];
       durationMs: number | null;
+    }
+  | {
+      type: "plan";
+      key: string;
+      text: string;
+      explanation: string | null;
+      steps: Array<{
+        step: string;
+        status: string;
+      }>;
     };
 
 export type AgentToolStatus =
@@ -204,6 +233,11 @@ function toolFromCall(
     cancelled: false,
     truncated: false,
     fullOutputPath: null,
+    terminalInputs: Array.isArray(part.terminalInputs)
+      ? part.terminalInputs.filter(
+          (value): value is string => typeof value === "string",
+        )
+      : [],
   };
 }
 
@@ -226,6 +260,7 @@ function toolFromResult(
     cancelled: false,
     truncated: false,
     fullOutputPath: null,
+    terminalInputs: [],
   };
 }
 
@@ -254,6 +289,7 @@ function directShellTool(
       typeof message.fullOutputPath === "string"
         ? message.fullOutputPath
         : null,
+    terminalInputs: [],
   };
 }
 
@@ -297,6 +333,91 @@ export function projectAgentTranscript(
         const partRecord = recordOf(part);
         if (!partRecord) return;
         const partIdentity = `${identity}:${partIndex}`;
+
+        if (
+          partRecord.type === "plan" &&
+          typeof partRecord.text === "string"
+        ) {
+          flushActivity(activityDurationMs);
+          items.push({
+            type: "plan",
+            key: `plan:${typeof partRecord.id === "string" ? partRecord.id : partIdentity}`,
+            text: partRecord.text,
+            explanation:
+              typeof partRecord.explanation === "string"
+                ? partRecord.explanation
+                : null,
+            steps: Array.isArray(partRecord.steps)
+              ? partRecord.steps.flatMap((value) => {
+                  const step = recordOf(value);
+                  return typeof step?.step === "string"
+                    ? [
+                        {
+                          step: step.step,
+                          status:
+                            typeof step.status === "string"
+                              ? step.status
+                              : "pending",
+                        },
+                      ]
+                    : [];
+                })
+              : [],
+          });
+          return;
+        }
+
+        if (
+          partRecord.type === "subagent" &&
+          typeof partRecord.id === "string"
+        ) {
+          pendingActivity.push({
+            type: "subagent",
+            id: `subagent:${partRecord.id}`,
+            activity: {
+              id: partRecord.id,
+              action:
+                typeof partRecord.action === "string"
+                  ? partRecord.action
+                  : "agent",
+              prompt:
+                typeof partRecord.prompt === "string"
+                  ? partRecord.prompt
+                  : null,
+              status:
+                typeof partRecord.status === "string"
+                  ? partRecord.status
+                  : "completed",
+              receivers: Array.isArray(partRecord.receivers)
+                ? partRecord.receivers.flatMap((value) => {
+                    const receiver = recordOf(value);
+                    return typeof receiver?.threadId === "string"
+                      ? [
+                          {
+                            threadId: receiver.threadId,
+                            status:
+                              typeof receiver.status === "string"
+                                ? receiver.status
+                                : "unknown",
+                            message:
+                              typeof receiver.message === "string"
+                                ? receiver.message
+                                : null,
+                          },
+                        ]
+                      : [];
+                  })
+                : [],
+              events: Array.isArray(partRecord.events)
+                ? partRecord.events.filter(
+                    (value): value is string => typeof value === "string",
+                  )
+                : [],
+            },
+          });
+          pendingActivityDurationMs ??= activityDurationMs;
+          return;
+        }
 
         if (
           partRecord.type === "commentary" &&
@@ -604,6 +725,21 @@ export function describeAgentActivity(
     entry.type === "tool" ? [entry.tool] : [],
   );
   if (tools.length === 0) {
+    const subagents = entries.filter((entry) => entry.type === "subagent");
+    if (subagents.length > 0) {
+      const running = subagents.some((entry) =>
+        ["inProgress", "pendingInit", "running"].includes(
+          entry.activity.status,
+        ),
+      );
+      return {
+        label: running
+          ? `Running ${plural(subagents.length, "subagent")}`
+          : `Used ${plural(subagents.length, "subagent")}`,
+        secondary: null,
+        status: running ? "running" : "completed",
+      };
+    }
     return {
       label: active ? "Thinking" : "Thoughts",
       secondary: null,

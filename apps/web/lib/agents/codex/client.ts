@@ -1,5 +1,8 @@
 import "server-only";
 import type {
+  AgentCollaborationMode,
+  AgentGoal,
+  AgentGoalStatus,
   AgentInteractionValue,
   AgentModel,
   AgentSessionStats,
@@ -7,6 +10,7 @@ import type {
   AgentThinkingLevel,
   AgentUsageSnapshot,
 } from "@/lib/agents/types";
+import { AGENT_GOAL_STATUSES } from "@/lib/agents/types";
 import type {
   AgentRuntimeClient,
   AgentRuntimeEvent,
@@ -53,6 +57,28 @@ const TURN_COMPLETION_TIMEOUT_MS = 30_000;
 const COMPACTION_TIMEOUT_MS = 5 * 60_000;
 const ACTIVE_WRITER_MESSAGE =
   "Another Codex process currently owns this session. You can view it here and retry when it becomes available.";
+const CODEX_FAST_MODE_MODEL_PREFIXES = [
+  "gpt-5",
+  "gpt-4.1",
+  "o3",
+  "o4-mini",
+] as const;
+const MAX_SUBAGENT_HISTORY_THREADS = 100;
+const MAX_PENDING_SUBAGENT_THREADS = 32;
+const MAX_PENDING_SUBAGENT_NOTIFICATIONS = 50;
+const CODEX_GOALS_MIN_VERSION = [0, 128, 0] as const;
+
+type CodexCollaborationPreset = {
+  name: string;
+  mode: AgentCollaborationMode | null;
+  model: string | null;
+  reasoningEffort: AgentThinkingLevel | null;
+};
+
+type CodexSubagentOwner = {
+  turnId: string;
+  itemId: string;
+};
 
 type CompletionWaiter<T> = {
   promise: Promise<T>;
@@ -248,10 +274,50 @@ function isBeforeTurnForkUnsupportedError(error: unknown): boolean {
   );
 }
 
+function codexModelSupportsFastMode(modelId: string): boolean {
+  return CODEX_FAST_MODE_MODEL_PREFIXES.some(
+    (prefix) => modelId === prefix || modelId.startsWith(prefix),
+  );
+}
+
+function codexVersionSupportsGoals(version: string | null | undefined): boolean {
+  const match = version?.match(/(\d+)\.(\d+)\.(\d+)/u);
+  if (!match) return false;
+  const parsed = [Number(match[1]), Number(match[2]), Number(match[3])];
+  for (let index = 0; index < CODEX_GOALS_MIN_VERSION.length; index += 1) {
+    if (parsed[index] > CODEX_GOALS_MIN_VERSION[index]) return true;
+    if (parsed[index] < CODEX_GOALS_MIN_VERSION[index]) return false;
+  }
+  return true;
+}
+
+function parseGoal(value: unknown): AgentGoal | null {
+  const goal = recordOf(value);
+  const objective = stringOf(goal, "objective");
+  const status = stringOf(goal, "status");
+  if (
+    !objective ||
+    !status ||
+    !(AGENT_GOAL_STATUSES as readonly string[]).includes(status)
+  ) {
+    return null;
+  }
+  return {
+    objective,
+    status: status as AgentGoalStatus,
+    tokenBudget: numberOf(goal, "tokenBudget"),
+    tokensUsed: numberOf(goal, "tokensUsed") ?? 0,
+    timeUsedSeconds: numberOf(goal, "timeUsedSeconds") ?? 0,
+    createdAt: numberOf(goal, "createdAt") ?? 0,
+    updatedAt: numberOf(goal, "updatedAt") ?? 0,
+  };
+}
+
 function itemTool(item: CodexItem): {
   name: string;
   args: unknown;
   output: string;
+  terminalInputs: string[];
   partial: boolean;
   isError: boolean;
 } | null {
@@ -264,6 +330,12 @@ function itemTool(item: CodexItem): {
           cwd: stringOf(item, "cwd") ?? "",
         },
         output: stringOf(item, "aggregatedOutput") ?? "",
+        terminalInputs: Array.isArray(item.overtchatTerminalInteractions)
+          ? item.overtchatTerminalInteractions.flatMap((value) => {
+              const input = stringOf(recordOf(value), "stdin");
+              return input ? [input] : [];
+            })
+          : [],
         partial: stringOf(item, "status") === "inProgress",
         isError: ["failed", "declined"].includes(
           stringOf(item, "status") ?? "",
@@ -283,6 +355,7 @@ function itemTool(item: CodexItem): {
             .join("\n"),
         },
         output: "",
+        terminalInputs: [],
         partial: stringOf(item, "status") === "inProgress",
         isError: ["failed", "declined"].includes(
           stringOf(item, "status") ?? "",
@@ -294,6 +367,7 @@ function itemTool(item: CodexItem): {
         name: `${stringOf(item, "server") ?? "mcp"}/${stringOf(item, "tool") ?? "tool"}`,
         args: item.arguments,
         output: toolOutput(item.result ?? item.error),
+        terminalInputs: [],
         partial: stringOf(item, "status") === "inProgress",
         isError: stringOf(item, "status") === "failed",
       };
@@ -302,6 +376,7 @@ function itemTool(item: CodexItem): {
         name: stringOf(item, "tool") ?? "tool",
         args: item.arguments,
         output: toolOutput(item.contentItems),
+        terminalInputs: [],
         partial: stringOf(item, "status") === "inProgress",
         isError:
           stringOf(item, "status") === "failed" || item.success === false,
@@ -311,6 +386,7 @@ function itemTool(item: CodexItem): {
         name: "web_search",
         args: { query: stringOf(item, "query") ?? "" },
         output: toolOutput(item.results),
+        terminalInputs: [],
         partial: item.results === null,
         isError: false,
       };
@@ -319,6 +395,7 @@ function itemTool(item: CodexItem): {
         name: "read",
         args: { path: stringOf(item, "path") ?? "" },
         output: "",
+        terminalInputs: [],
         partial: false,
         isError: false,
       };
@@ -334,6 +411,15 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
   const messages: unknown[] = [];
   const assistantContent: UnknownRecord[] = [];
   const results: unknown[] = [];
+  const planItems = turn.items.filter((item) => item.type === "plan");
+  const structuredPlan = planItems.findLast((item) =>
+    Array.isArray(item.steps),
+  );
+  const selectedPlan =
+    planItems.findLast((item) => (stringOf(item, "text") ?? "").trim()) ??
+    structuredPlan ??
+    null;
+  let planAdded = false;
 
   for (const item of turn.items) {
     if (item.type === "userMessage") {
@@ -384,18 +470,128 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       }
       continue;
     }
-    if (item.type === "reasoning" || item.type === "plan") {
+    if (item.type === "plan") {
+      if (!planAdded && item.id === selectedPlan?.id) {
+        const structured = structuredPlan ?? selectedPlan;
+        assistantContent.push({
+          type: "plan",
+          id: selectedPlan.id,
+          text: stringOf(selectedPlan, "text") ?? "",
+          explanation: stringOf(structured, "explanation"),
+          steps: Array.isArray(structured?.steps) ? structured.steps : [],
+        });
+        planAdded = true;
+      }
+      continue;
+    }
+    if (item.type === "reasoning") {
       const summary = Array.isArray(item.summary)
         ? item.summary.filter((part): part is string => typeof part === "string")
         : [];
       const content = Array.isArray(item.content)
         ? item.content.filter((part): part is string => typeof part === "string")
         : [];
-      const thinking =
-        item.type === "plan"
-          ? stringOf(item, "text") ?? ""
-          : [...summary, ...content].join("\n\n");
+      const thinking = [...summary, ...content].join("\n\n");
       if (thinking) assistantContent.push({ type: "thinking", thinking });
+      continue;
+    }
+    if (item.type === "collabAgentToolCall") {
+      const receivers = Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [];
+      const states = recordOf(item.agentsStates);
+      assistantContent.push({
+        type: "subagent",
+        id: item.id,
+        action: stringOf(item, "tool") ?? "agent",
+        prompt: stringOf(item, "prompt"),
+        status: stringOf(item, "status") ?? "completed",
+        receivers: receivers.map((threadId) => {
+          const state = recordOf(states?.[threadId]);
+          return {
+            threadId,
+            status: stringOf(state, "status") ?? "unknown",
+            message: stringOf(state, "message"),
+          };
+        }),
+        events: Array.isArray(item.overtchatChildItems)
+          ? item.overtchatChildItems.flatMap((value) => {
+              const child = recordOf(value);
+              const type = stringOf(child, "type");
+              if (type === "agentMessage") {
+                const text = stringOf(child, "text");
+                return text ? [text] : [];
+              }
+              if (type === "reasoning") {
+                const summary = Array.isArray(child?.summary)
+                  ? child.summary.filter(
+                      (part): part is string => typeof part === "string",
+                    )
+                  : [];
+                return summary;
+              }
+              if (type === "commandExecution") {
+                const command = stringOf(child, "command");
+                const output = stringOf(child, "aggregatedOutput");
+                const terminalInputs = Array.isArray(
+                  child?.overtchatTerminalInteractions,
+                )
+                  ? child.overtchatTerminalInteractions.flatMap((value) => {
+                      const stdin = stringOf(recordOf(value), "stdin");
+                      return stdin ? [`› ${stdin.replace(/\n$/u, "")}`] : [];
+                    })
+                  : [];
+                return [
+                  [
+                    command ? `$ ${command}` : "",
+                    output ?? "",
+                    ...terminalInputs,
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                ].filter(Boolean);
+              }
+              if (type === "fileChange") {
+                const paths = Array.isArray(child?.changes)
+                  ? child.changes.flatMap((change) => {
+                      const path = stringOf(recordOf(change), "path");
+                      return path ? [path] : [];
+                    })
+                  : [];
+                return paths.length > 0
+                  ? [`Changed ${paths.join(", ")}`]
+                  : [];
+              }
+              if (type === "plan") {
+                const text = stringOf(child, "text");
+                return text ? [text] : [];
+              }
+              return [];
+            })
+          : [],
+      });
+      continue;
+    }
+    if (item.type === "subAgentActivity") {
+      assistantContent.push({
+        type: "subagent",
+        id: item.id,
+        action: stringOf(item, "kind") ?? "activity",
+        prompt: null,
+        status:
+          stringOf(item, "kind") === "interrupted"
+            ? "failed"
+            : "completed",
+        receivers: [
+          {
+            threadId: stringOf(item, "agentThreadId") ?? "subagent",
+            status: stringOf(item, "kind") ?? "unknown",
+            message: stringOf(item, "agentPath"),
+          },
+        ],
+      });
       continue;
     }
     if (item.type === "contextCompaction") {
@@ -415,6 +611,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       id: item.id,
       name: tool.name,
       arguments: tool.args,
+      terminalInputs: tool.terminalInputs,
     });
     results.push({
       id: `${item.id}:result`,
@@ -571,6 +768,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     Set<CompletionWaiter<CodexTurn>>
   >();
   private readonly knownUserInputs = new Map<string, KnownUserInput[]>();
+  private readonly subagentOwners = new Map<string, CodexSubagentOwner>();
+  private readonly pendingSubagentNotifications = new Map<
+    string,
+    Array<{ method: string; data: UnknownRecord }>
+  >();
   private discoveredCommands = new Map<string, CodexDiscoveredCommand>();
   private commandRefreshPromise: Promise<void> | null = null;
   private readonly readyPromise: Promise<void>;
@@ -584,6 +786,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private isCompacting = false;
   private selectedModel = "";
   private selectedThinking: AgentThinkingLevel | null = null;
+  private collaborationModes: CodexCollaborationPreset[] = [];
+  private selectedCollaborationMode: AgentCollaborationMode = "default";
+  private fastModeEnabled = false;
+  private goalsSupported = false;
+  private goal: AgentGoal | null = null;
   private modelResponse: unknown = { data: [] };
   private stats = emptyCodexStats();
   private readOnly = false;
@@ -602,6 +809,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       this.target,
       this.launch.executable,
       this.launch.cwd,
+      {
+        enableGoals: codexVersionSupportsGoals(
+          this.launch.detectedVersion,
+        ),
+      },
     );
     this.server.onNotification((notification) =>
       this.handleNotification(notification.method, notification.params),
@@ -625,6 +837,12 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       isStreaming: this.activeTurnId !== null,
       isCompacting: this.isCompacting,
       model: { provider: "codex", id: this.selectedModel },
+      collaborationMode: this.selectedCollaborationMode,
+      collaborationModes: this.availableCollaborationModes(),
+      fastModeEnabled: this.fastModeEnabled,
+      fastModeAvailable: codexModelSupportsFastMode(this.selectedModel),
+      goalsSupported: this.goalsSupported,
+      goal: this.goal,
       ...(this.readOnly
         ? {
             readOnly: {
@@ -661,7 +879,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async getCommands(): Promise<AgentSlashCommand[]> {
     await this.readyPromise;
-    return publicCommands([...this.discoveredCommands.values()]);
+    return this.availableCommands();
   }
 
   async prompt(
@@ -679,6 +897,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         model: this.selectedModel || null,
         ...(this.selectedThinking
           ? { effort: this.selectedThinking }
+          : {}),
+        ...(this.fastModeEnabled ? { serviceTier: "fast" } : {}),
+        ...(this.resolvedCollaborationMode()
+          ? { collaborationMode: this.resolvedCollaborationMode() }
           : {}),
       });
       const turn = parseCodexTurn(response.turn);
@@ -745,6 +967,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       throw new Error(`Codex model ${modelId} is not available.`);
     }
     this.selectedModel = modelId;
+    if (!codexModelSupportsFastMode(modelId)) this.fastModeEnabled = false;
     this.emitConfig();
     return { model: modelId };
   }
@@ -759,6 +982,69 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.selectedThinking = level as AgentThinkingLevel;
     this.emitConfig();
     return { thinkingLevel: level };
+  }
+
+  async setCollaborationMode(
+    mode: AgentCollaborationMode,
+  ): Promise<unknown> {
+    await this.readyPromise;
+    this.assertInteractive();
+    if (!this.availableCollaborationModes().includes(mode)) {
+      throw new Error(
+        mode === "plan"
+          ? "This Codex installation does not provide Plan mode."
+          : "This Codex installation does not provide Code mode.",
+      );
+    }
+    this.selectedCollaborationMode = mode;
+    this.emitConfig();
+    return { collaborationMode: mode };
+  }
+
+  async setFastMode(enabled: boolean): Promise<unknown> {
+    await this.readyPromise;
+    this.assertInteractive();
+    if (enabled && !codexModelSupportsFastMode(this.selectedModel)) {
+      throw new Error(
+        `Codex model ${this.selectedModel || "unknown"} does not support Fast mode.`,
+      );
+    }
+    this.fastModeEnabled = enabled;
+    this.emitConfig();
+    return { fastModeEnabled: enabled };
+  }
+
+  async updateGoal(
+    action: "set" | "pause" | "resume" | "clear",
+    objective?: string,
+  ): Promise<AgentGoal | null> {
+    await this.readyPromise;
+    this.assertInteractive();
+    if (!this.goalsSupported) {
+      throw new Error("This Codex installation does not support durable goals.");
+    }
+    if (action === "clear") {
+      await this.server.request("thread/goal/clear", {
+        threadId: this.thread!.id,
+      });
+      this.goal = null;
+      this.emitConfig();
+      return null;
+    }
+    if (action === "set" && !objective?.trim()) {
+      throw new Error("Usage: /goal <objective>|pause|resume|clear");
+    }
+    const response = await this.server.request<UnknownRecord>(
+      "thread/goal/set",
+      {
+        threadId: this.thread!.id,
+        ...(action === "set" ? { objective: objective!.trim() } : {}),
+        status: action === "pause" ? "paused" : "active",
+      },
+    );
+    this.goal = parseGoal(response.goal);
+    this.emitConfig();
+    return this.goal;
   }
 
   async compact(customInstructions?: string): Promise<unknown> {
@@ -1031,6 +1317,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private async openThread(): Promise<void> {
     await this.server.ready();
     const modelPromise = this.server.request("model/list", { limit: 200 });
+    const collaborationModePromise = this.server
+      .request("collaborationMode/list", {})
+      .catch(() => null);
     let threadResponse: UnknownRecord;
     let hydratedThread: UnknownRecord;
     if (this.launch.resume) {
@@ -1064,14 +1353,24 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       hydratedThread = threadResponse;
     }
     this.modelResponse = await modelPromise;
+    this.loadCollaborationModes(await collaborationModePromise);
     this.hydrateThread(hydratedThread);
     this.applyThreadConfiguration(threadResponse);
+    await this.hydrateSubagentHistories();
+    await this.loadGoal();
   }
 
   private hydrateThread(value: UnknownRecord): void {
     this.thread = parseCodexThread(value.thread);
     this.turns.clear();
-    for (const turn of this.thread.turns) this.turns.set(turn.id, turn);
+    this.subagentOwners.clear();
+    this.pendingSubagentNotifications.clear();
+    for (const turn of this.thread.turns) {
+      this.turns.set(turn.id, turn);
+      for (const item of turn.items) {
+        this.registerSubagentOwners(turn.id, item);
+      }
+    }
   }
 
   private applyThreadConfiguration(threadResponse: UnknownRecord): void {
@@ -1092,6 +1391,105 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         this.modelResponse,
         this.selectedModel,
       );
+    }
+    this.fastModeEnabled =
+      stringOf(threadResponse, "serviceTier") === "fast" &&
+      codexModelSupportsFastMode(this.selectedModel);
+  }
+
+  private loadCollaborationModes(value: unknown): void {
+    const response = recordOf(value);
+    const data = Array.isArray(response?.data) ? response.data : [];
+    this.collaborationModes = data.flatMap((candidate) => {
+      const preset = recordOf(candidate);
+      const name = stringOf(preset, "name");
+      const rawMode = stringOf(preset, "mode");
+      if (!name) return [];
+      const mode =
+        rawMode === "plan" || rawMode === "default" ? rawMode : null;
+      const effort = stringOf(preset, "reasoning_effort");
+      return [
+        {
+          name,
+          mode,
+          model: stringOf(preset, "model"),
+          reasoningEffort:
+            effort &&
+            ["minimal", "low", "medium", "high", "xhigh", "max"].includes(
+              effort,
+            )
+              ? (effort as AgentThinkingLevel)
+              : null,
+        },
+      ];
+    });
+    if (!this.availableCollaborationModes().includes("default")) {
+      this.selectedCollaborationMode =
+        this.availableCollaborationModes()[0] ?? "default";
+    }
+  }
+
+  private availableCollaborationModes(): AgentCollaborationMode[] {
+    return (["default", "plan"] as const).filter(
+      (mode) => this.findCollaborationMode(mode) !== null,
+    );
+  }
+
+  private findCollaborationMode(
+    mode: AgentCollaborationMode,
+  ): CodexCollaborationPreset | null {
+    if (mode === "plan") {
+      return (
+        this.collaborationModes.find(
+          (preset) =>
+            preset.mode === "plan" ||
+            /plan|read/iu.test(preset.name),
+        ) ?? null
+      );
+    }
+    return (
+      this.collaborationModes.find(
+        (preset) =>
+          preset.mode === "default" ||
+          /auto|code/iu.test(preset.name),
+      ) ??
+      this.collaborationModes.find(
+        (preset) => !/plan|read/iu.test(preset.name),
+      ) ??
+      null
+    );
+  }
+
+  private resolvedCollaborationMode(): UnknownRecord | null {
+    const preset = this.findCollaborationMode(
+      this.selectedCollaborationMode,
+    );
+    if (!preset) return null;
+    return {
+      mode: preset.mode ?? this.selectedCollaborationMode,
+      settings: {
+        model: this.selectedModel || preset.model || "",
+        reasoning_effort:
+          this.selectedThinking ?? preset.reasoningEffort ?? null,
+        developer_instructions: null,
+      },
+    };
+  }
+
+  private async loadGoal(): Promise<void> {
+    try {
+      const response = await this.server.request<UnknownRecord>(
+        "thread/goal/get",
+        { threadId: this.thread!.id },
+      );
+      if (!Object.hasOwn(response, "goal")) {
+        throw new Error("Codex returned an invalid goal response.");
+      }
+      this.goalsSupported = true;
+      this.goal = parseGoal(response.goal);
+    } catch {
+      this.goalsSupported = false;
+      this.goal = null;
     }
   }
 
@@ -1121,6 +1519,42 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         signal: stringOf(data, "signal"),
         error: error.message,
       });
+      return;
+    }
+    const notificationThreadId = stringOf(data, "threadId");
+    if (
+      notificationThreadId &&
+      this.thread?.id &&
+      notificationThreadId !== this.thread.id
+    ) {
+      const notification = { method, data: data ?? {} };
+      if (this.subagentOwners.has(notificationThreadId)) {
+        this.handleSubagentNotification(
+          notification.method,
+          notification.data,
+          notificationThreadId,
+        );
+      } else {
+        let pending =
+          this.pendingSubagentNotifications.get(notificationThreadId);
+        if (!pending) {
+          if (
+            this.pendingSubagentNotifications.size >=
+            MAX_PENDING_SUBAGENT_THREADS
+          ) {
+            const oldest = this.pendingSubagentNotifications.keys().next().value;
+            if (typeof oldest === "string") {
+              this.pendingSubagentNotifications.delete(oldest);
+            }
+          }
+          pending = [];
+        }
+        pending.push(notification);
+        if (pending.length > MAX_PENDING_SUBAGENT_NOTIFICATIONS) {
+          pending.shift();
+        }
+        this.pendingSubagentNotifications.set(notificationThreadId, pending);
+      }
       return;
     }
     if (method === "overtchat/protocolError") {
@@ -1184,6 +1618,27 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       );
       return;
     }
+    if (method === "item/commandExecution/terminalInteraction") {
+      const turnId = stringOf(data, "turnId");
+      const itemId = stringOf(data, "itemId");
+      const stdin = stringOf(data, "stdin");
+      const turn = turnId ? this.turns.get(turnId) : undefined;
+      const item = turn?.items.find((candidate) => candidate.id === itemId);
+      if (turn && item && stdin) {
+        const interactions = Array.isArray(
+          item.overtchatTerminalInteractions,
+        )
+          ? [...item.overtchatTerminalInteractions]
+          : [];
+        interactions.push({
+          processId: stringOf(data, "processId"),
+          stdin,
+        });
+        item.overtchatTerminalInteractions = interactions;
+        this.emitTurn(turn);
+      }
+      return;
+    }
     if (method === "item/fileChange/patchUpdated") {
       const turnId = stringOf(data, "turnId");
       const itemId = stringOf(data, "itemId");
@@ -1195,6 +1650,44 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       }
       return;
     }
+    if (method === "turn/plan/updated") {
+      const turnId = stringOf(data, "turnId");
+      if (turnId) {
+        const steps = Array.isArray(data?.plan)
+          ? data.plan.flatMap((value) => {
+              const step = recordOf(value);
+              const text = stringOf(step, "step");
+              const status = stringOf(step, "status");
+              return text
+                ? [{ step: text, status: status ?? "pending" }]
+                : [];
+            })
+          : [];
+        const text = steps
+          .map(({ step, status }) => {
+            const marker = status === "completed" ? "x" : " ";
+            return `- [${marker}] ${step}`;
+          })
+          .join("\n");
+        this.upsertItem(turnId, {
+          id: `overtchat:turn-plan:${turnId}`,
+          type: "plan",
+          text,
+          explanation: stringOf(data, "explanation"),
+          steps,
+        });
+      }
+      return;
+    }
+    if (method === "item/plan/delta") {
+      this.appendItemText(data, "text", stringOf(data, "delta") ?? "");
+      return;
+    }
+    if (method === "turn/diff/updated") {
+      // This is accumulated progress telemetry. Concrete fileChange items
+      // remain the durable review surface.
+      return;
+    }
     if (method === "thread/tokenUsage/updated") {
       this.updateTokenUsage(data);
       return;
@@ -1204,6 +1697,43 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       if (name && this.thread) {
         this.thread = { ...this.thread, name };
         this.emit({ type: "session_info_update", title: name });
+      }
+      return;
+    }
+    if (method === "thread/settings/updated") {
+      const threadId = stringOf(data, "threadId");
+      if (!threadId || threadId === this.thread?.id) {
+        const settings = recordOf(data?.threadSettings);
+        this.fastModeEnabled =
+          stringOf(settings, "serviceTier") === "fast" &&
+          codexModelSupportsFastMode(this.selectedModel);
+        const collaboration = recordOf(settings?.collaborationMode);
+        const mode = stringOf(collaboration, "mode");
+        if (
+          (mode === "default" || mode === "plan") &&
+          this.availableCollaborationModes().includes(mode)
+        ) {
+          this.selectedCollaborationMode = mode;
+        }
+        this.emitConfig();
+      }
+      return;
+    }
+    if (method === "thread/goal/updated") {
+      const threadId = stringOf(data, "threadId");
+      if (!threadId || threadId === this.thread?.id) {
+        this.goalsSupported = true;
+        this.goal = parseGoal(data?.goal);
+        this.emitConfig();
+      }
+      return;
+    }
+    if (method === "thread/goal/cleared") {
+      const threadId = stringOf(data, "threadId");
+      if (!threadId || threadId === this.thread?.id) {
+        this.goalsSupported = true;
+        this.goal = null;
+        this.emitConfig();
       }
       return;
     }
@@ -1578,7 +2108,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       if (publish) {
         this.emit({
           type: "available_commands_update",
-          commands: publicCommands([...this.discoveredCommands.values()]),
+          commands: this.availableCommands(),
         });
       }
     })();
@@ -1657,7 +2187,22 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         indexById.set(item.id, items.length);
         items.push(item);
       } else {
-        items[index] = item;
+        const streamedItem = items[index];
+        items[index] = {
+          ...streamedItem,
+          ...item,
+          ...(Array.isArray(streamedItem.overtchatTerminalInteractions) &&
+          !Array.isArray(item.overtchatTerminalInteractions)
+            ? {
+                overtchatTerminalInteractions:
+                  streamedItem.overtchatTerminalInteractions,
+              }
+            : {}),
+          ...(Array.isArray(streamedItem.overtchatChildItems) &&
+          !Array.isArray(item.overtchatChildItems)
+            ? { overtchatChildItems: streamedItem.overtchatChildItems }
+            : {}),
+        };
       }
     }
     return {
@@ -1686,7 +2231,278 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     if (index >= 0) turn.items[index] = item;
     else turn.items.push(item);
     this.turns.set(turnId, turn);
+    this.registerSubagentOwners(turnId, item);
     this.emitTurn(turn);
+  }
+
+  private registerSubagentOwners(turnId: string, item: CodexItem): void {
+    this.registerSubagentThreads({ turnId, itemId: item.id }, item);
+  }
+
+  private registerSubagentThreads(
+    owner: CodexSubagentOwner,
+    item: CodexItem,
+  ): string[] {
+    const receiverThreadIds =
+      item.type === "collabAgentToolCall" &&
+      Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : item.type === "subAgentActivity"
+          ? [stringOf(item, "agentThreadId")].filter(
+              (value): value is string => Boolean(value),
+            )
+          : [];
+    const registered: string[] = [];
+    for (const threadId of receiverThreadIds) {
+      if (threadId !== this.thread?.id) {
+        this.subagentOwners.set(threadId, owner);
+        registered.push(threadId);
+        const pending = this.pendingSubagentNotifications.get(threadId);
+        if (pending) {
+          this.pendingSubagentNotifications.delete(threadId);
+          for (const notification of pending) {
+            this.handleSubagentNotification(
+              notification.method,
+              notification.data,
+              threadId,
+            );
+          }
+        }
+      }
+    }
+    return registered;
+  }
+
+  private async hydrateSubagentHistories(): Promise<void> {
+    if (!this.thread) return;
+    const queue = [...this.subagentOwners.keys()];
+    const visited = new Set([this.thread.id]);
+    while (
+      queue.length > 0 &&
+      visited.size < MAX_SUBAGENT_HISTORY_THREADS
+    ) {
+      const childThreadId = queue.shift();
+      if (!childThreadId || visited.has(childThreadId)) continue;
+      visited.add(childThreadId);
+      const owner = this.subagentOwners.get(childThreadId);
+      if (!owner) continue;
+      try {
+        const response = await this.server.request<UnknownRecord>(
+          "thread/read",
+          { threadId: childThreadId, includeTurns: true },
+        );
+        const childThread = parseCodexThread(response.thread);
+        const turn = this.turns.get(owner.turnId);
+        const item = turn?.items.find(
+          (candidate) => candidate.id === owner.itemId,
+        );
+        if (!item) continue;
+        const childItems = Array.isArray(item.overtchatChildItems)
+          ? [...item.overtchatChildItems]
+          : [];
+        const indexes = new Map(
+          childItems.flatMap((candidate, index) => {
+            const id = stringOf(recordOf(candidate), "id");
+            return id ? [[id, index] as const] : [];
+          }),
+        );
+        for (const childTurn of childThread.turns) {
+          for (const childItem of childTurn.items) {
+            const hydrated = {
+              ...childItem,
+              overtchatThreadId: childThreadId,
+            };
+            const index = indexes.get(childItem.id);
+            if (index === undefined) {
+              indexes.set(childItem.id, childItems.length);
+              childItems.push(hydrated);
+            } else {
+              childItems[index] = {
+                ...recordOf(childItems[index]),
+                ...hydrated,
+              };
+            }
+            item.overtchatChildItems = childItems;
+            queue.push(...this.registerSubagentThreads(owner, childItem));
+          }
+        }
+        item.overtchatChildItems = childItems;
+      } catch {
+        // Child threads can be archived or deleted independently.
+      }
+    }
+  }
+
+  private availableCommands(): AgentSlashCommand[] {
+    return [
+      ...(this.goalsSupported
+        ? [
+            {
+              name: "goal",
+              description: "Set, pause, resume, or clear the agent goal",
+              source: "builtin" as const,
+              argumentHint: "<objective>|pause|resume|clear",
+            },
+          ]
+        : []),
+      ...publicCommands([...this.discoveredCommands.values()]),
+    ];
+  }
+
+  private handleSubagentNotification(
+    method: string,
+    data: UnknownRecord,
+    threadId: string,
+  ): void {
+    const owner = this.subagentOwners.get(threadId);
+    if (!owner) return;
+    const turn = this.turns.get(owner.turnId);
+    const item = turn?.items.find(
+      (candidate) => candidate.id === owner.itemId,
+    );
+    if (!turn || !item) return;
+
+    const childItems = Array.isArray(item.overtchatChildItems)
+      ? [...item.overtchatChildItems]
+      : [];
+    const upsertChild = (value: UnknownRecord) => {
+      const childId = stringOf(value, "id");
+      const type = stringOf(value, "type");
+      if (!childId || !type) return;
+      const child = { ...value, id: childId, type };
+      const index = childItems.findIndex(
+        (candidate) => stringOf(recordOf(candidate), "id") === childId,
+      );
+      if (index >= 0) childItems[index] = child;
+      else childItems.push(child);
+      item.overtchatChildItems = childItems;
+      this.registerSubagentThreads(owner, child);
+      this.emitTurn(turn);
+    };
+    const appendChildText = (
+      key: string,
+      delta: string,
+      arrayIndex?: number,
+    ) => {
+      const childId = stringOf(data, "itemId");
+      const child = childItems
+        .map(recordOf)
+        .find((candidate) => stringOf(candidate, "id") === childId);
+      if (!child || !delta) return;
+      if (arrayIndex === undefined) {
+        child[key] = `${typeof child[key] === "string" ? child[key] : ""}${delta}`;
+      } else {
+        const parts = Array.isArray(child[key]) ? [...child[key]] : [];
+        parts[arrayIndex] =
+          `${typeof parts[arrayIndex] === "string" ? parts[arrayIndex] : ""}${delta}`;
+        child[key] = parts;
+      }
+      item.overtchatChildItems = childItems;
+      this.emitTurn(turn);
+    };
+
+    if (method === "item/started" || method === "item/completed") {
+      const child = recordOf(data.item);
+      if (child) upsertChild(child);
+      return;
+    }
+    if (method === "item/agentMessage/delta") {
+      appendChildText("text", stringOf(data, "delta") ?? "");
+      return;
+    }
+    if (method === "item/reasoning/summaryTextDelta") {
+      appendChildText(
+        "summary",
+        stringOf(data, "delta") ?? "",
+        numberOf(data, "summaryIndex") ?? 0,
+      );
+      return;
+    }
+    if (method === "item/reasoning/textDelta") {
+      appendChildText(
+        "content",
+        stringOf(data, "delta") ?? "",
+        numberOf(data, "contentIndex") ?? 0,
+      );
+      return;
+    }
+    if (method === "item/commandExecution/outputDelta") {
+      appendChildText(
+        "aggregatedOutput",
+        stringOf(data, "delta") ?? "",
+      );
+      return;
+    }
+    if (method === "item/commandExecution/terminalInteraction") {
+      const childId = stringOf(data, "itemId");
+      const child = childItems
+        .map(recordOf)
+        .find((candidate) => stringOf(candidate, "id") === childId);
+      const stdin = stringOf(data, "stdin");
+      if (!child || !stdin) return;
+      const interactions = Array.isArray(
+        child.overtchatTerminalInteractions,
+      )
+        ? [...child.overtchatTerminalInteractions]
+        : [];
+      interactions.push({
+        processId: stringOf(data, "processId"),
+        stdin,
+      });
+      child.overtchatTerminalInteractions = interactions;
+      item.overtchatChildItems = childItems;
+      this.emitTurn(turn);
+      return;
+    }
+    if (method === "item/fileChange/patchUpdated") {
+      const childId = stringOf(data, "itemId");
+      const child = childItems
+        .map(recordOf)
+        .find((candidate) => stringOf(candidate, "id") === childId);
+      if (child && Array.isArray(data.changes)) {
+        child.changes = data.changes;
+        item.overtchatChildItems = childItems;
+        this.emitTurn(turn);
+      }
+      return;
+    }
+    if (method === "item/plan/delta") {
+      appendChildText("text", stringOf(data, "delta") ?? "");
+      return;
+    }
+    if (method === "turn/plan/updated") {
+      const steps = Array.isArray(data.plan)
+        ? data.plan.flatMap((value) => {
+            const step = recordOf(value);
+            const text = stringOf(step, "step");
+            return text ? [text] : [];
+          })
+        : [];
+      upsertChild({
+        id: `overtchat:child-plan:${threadId}`,
+        type: "plan",
+        text: steps.map((step) => `- ${step}`).join("\n"),
+      });
+      return;
+    }
+    if (method === "turn/completed") {
+      const states = recordOf(item.agentsStates) ?? {};
+      const completedTurn = recordOf(data.turn);
+      const status = stringOf(completedTurn, "status");
+      states[threadId] = {
+        status:
+          status === "failed"
+            ? "errored"
+            : status === "interrupted"
+              ? "interrupted"
+              : "completed",
+        message: stringOf(recordOf(completedTurn?.error), "message"),
+      };
+      item.agentsStates = states;
+      this.emitTurn(turn);
+    }
   }
 
   private appendItemText(
@@ -1764,6 +2580,12 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.emit({
       type: "config_update",
       model: { provider: "codex", id: this.selectedModel },
+      collaborationMode: this.selectedCollaborationMode,
+      collaborationModes: this.availableCollaborationModes(),
+      fastModeEnabled: this.fastModeEnabled,
+      fastModeAvailable: codexModelSupportsFastMode(this.selectedModel),
+      goalsSupported: this.goalsSupported,
+      goal: this.goal,
       ...(this.selectedThinking
         ? { thinkingLevel: this.selectedThinking }
         : {}),

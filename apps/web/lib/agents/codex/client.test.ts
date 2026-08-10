@@ -5,6 +5,7 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   listCodexCustomPrompts: vi.fn(),
   materializeAgentImages: vi.fn(),
+  startCodexAppServer: vi.fn(),
 }));
 
 vi.mock("./commands", async (importOriginal) => ({
@@ -24,6 +25,10 @@ class FakeCodexServer {
   forkError: Error | null = null;
   rateLimitsError: Error | null = null;
   usageError: Error | null = null;
+  collaborationModes: unknown[] = [];
+  goalSupported = false;
+  goal: Record<string, unknown> | null = null;
+  readonly threadReads = new Map<string, Record<string, unknown>>();
   private notification: Listener<{ method: string; params?: unknown }> =
     () => {};
   private serverRequest: Listener<{
@@ -64,6 +69,42 @@ class FakeCodexServer {
         ],
         nextCursor: null,
       };
+    }
+    if (method === "collaborationMode/list") {
+      return { data: this.collaborationModes };
+    }
+    if (method === "thread/goal/get") {
+      if (!this.goalSupported) throw new Error("Method not found");
+      return { goal: this.goal };
+    }
+    if (method === "thread/goal/set") {
+      if (!this.goalSupported) throw new Error("Method not found");
+      const input =
+        params && typeof params === "object"
+          ? (params as Record<string, unknown>)
+          : {};
+      this.goal = {
+        threadId: "thread-1",
+        objective:
+          typeof input.objective === "string"
+            ? input.objective
+            : typeof this.goal?.objective === "string"
+              ? this.goal.objective
+              : "Existing goal",
+        status:
+          typeof input.status === "string" ? input.status : "active",
+        tokenBudget: null,
+        tokensUsed: 12,
+        timeUsedSeconds: 3,
+        createdAt: 1,
+        updatedAt: 2,
+      };
+      return { goal: this.goal };
+    }
+    if (method === "thread/goal/clear") {
+      if (!this.goalSupported) throw new Error("Method not found");
+      this.goal = null;
+      return { cleared: true };
     }
     if (method === "skills/list") {
       return {
@@ -206,6 +247,15 @@ class FakeCodexServer {
       };
     }
     if (method === "thread/read") {
+      const threadId =
+        params &&
+        typeof params === "object" &&
+        "threadId" in params &&
+        typeof params.threadId === "string"
+          ? params.threadId
+          : "";
+      const override = this.threadReads.get(threadId);
+      if (override) return { thread: override };
       return {
         thread: {
           id: "thread-1",
@@ -282,7 +332,8 @@ class FakeCodexServer {
 const server = new FakeCodexServer();
 
 vi.mock("./app-server", () => ({
-  startCodexAppServer: () => server,
+  startCodexAppServer: (...args: unknown[]) =>
+    mocks.startCodexAppServer(...args),
 }));
 
 import { CodexRuntimeClient } from "./client";
@@ -296,7 +347,12 @@ describe("CodexRuntimeClient", () => {
     server.forkError = null;
     server.rateLimitsError = null;
     server.usageError = null;
+    server.collaborationModes = [];
+    server.goalSupported = false;
+    server.goal = null;
+    server.threadReads.clear();
     server.respondError.mockClear();
+    mocks.startCodexAppServer.mockResolvedValue(server);
     mocks.materializeAgentImages.mockResolvedValue([]);
     mocks.listCodexCustomPrompts.mockResolvedValue([
       {
@@ -438,7 +494,284 @@ describe("CodexRuntimeClient", () => {
     });
   });
 
+  it("supports native goals, Code/Plan modes, and Fast turns", async () => {
+    server.goalSupported = true;
+    server.collaborationModes = [
+      {
+        name: "Code",
+        mode: "default",
+        model: null,
+        reasoning_effort: null,
+      },
+      {
+        name: "Plan",
+        mode: "plan",
+        model: null,
+        reasoning_effort: null,
+      },
+    ];
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        detectedVersion: "0.147.0",
+      },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      collaborationMode: "default",
+      collaborationModes: ["default", "plan"],
+      fastModeEnabled: false,
+      fastModeAvailable: true,
+      goalsSupported: true,
+      goal: null,
+    });
+    expect(mocks.startCodexAppServer).toHaveBeenCalledWith(
+      { connectorId: "connector", transport: "local" },
+      "codex",
+      "/workspace",
+      { enableGoals: true },
+    );
+    await expect(client.getCommands()).resolves.toContainEqual({
+      name: "goal",
+      description: "Set, pause, resume, or clear the agent goal",
+      source: "builtin",
+      argumentHint: "<objective>|pause|resume|clear",
+    });
+
+    await client.setCollaborationMode("plan");
+    await client.setFastMode(true);
+    await client.prompt("Design the change");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        serviceTier: "fast",
+        collaborationMode: {
+          mode: "plan",
+          settings: {
+            model: "gpt-5.6",
+            reasoning_effort: "high",
+            developer_instructions: null,
+          },
+        },
+      },
+    });
+
+    await expect(
+      client.updateGoal("set", "Ship the parity work"),
+    ).resolves.toMatchObject({
+      objective: "Ship the parity work",
+      status: "active",
+    });
+    expect(server.requests).toContainEqual({
+      method: "thread/goal/set",
+      params: {
+        threadId: "thread-1",
+        objective: "Ship the parity work",
+        status: "active",
+      },
+    });
+    await client.updateGoal("pause");
+    await expect(client.getState()).resolves.toMatchObject({
+      goal: {
+        objective: "Ship the parity work",
+        status: "paused",
+      },
+    });
+    await client.updateGoal("clear");
+    await expect(client.getState()).resolves.toMatchObject({ goal: null });
+  });
+
+  it("keeps plans, terminal input, and child activity after sparse completion", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    await client.prompt("Plan and implement");
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "inProgress",
+        startedAt: 10,
+        items: [],
+      },
+    });
+    server.emit("item/started", {
+      threadId: "child-1",
+      turnId: "child-turn",
+      item: {
+        id: "child-message",
+        type: "agentMessage",
+        phase: "commentary",
+        text: "Checking ",
+      },
+    });
+    server.emit("item/agentMessage/delta", {
+      threadId: "child-1",
+      turnId: "child-turn",
+      itemId: "child-message",
+      delta: "the suite.",
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "collab-1",
+        type: "collabAgentToolCall",
+        tool: "spawnAgent",
+        status: "inProgress",
+        senderThreadId: "thread-1",
+        receiverThreadIds: ["child-1"],
+        prompt: "Inspect the tests",
+        agentsStates: {
+          "child-1": { status: "running", message: null },
+        },
+      },
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "command-1",
+        type: "commandExecution",
+        command: "npm test",
+        cwd: "/workspace",
+        status: "inProgress",
+        aggregatedOutput: "",
+      },
+    });
+    server.emit("item/commandExecution/terminalInteraction", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "command-1",
+      processId: "pty-1",
+      stdin: "y\n",
+    });
+    server.emit("turn/plan/updated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      explanation: "Two focused steps.",
+      plan: [
+        { step: "Inspect the runtime", status: "completed" },
+        { step: "Implement parity", status: "inProgress" },
+      ],
+    });
+    server.emit("turn/completed", {
+      threadId: "child-1",
+      turn: {
+        id: "child-turn",
+        status: "completed",
+        items: [],
+      },
+    });
+    server.emit("turn/completed", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "completed",
+        startedAt: 10,
+        completedAt: 12,
+        items: [
+          {
+            id: "answer-1",
+            type: "agentMessage",
+            phase: "final_answer",
+            text: "Ready.",
+          },
+        ],
+      },
+    });
+
+    const messages = (await client.getMessages()).messages;
+    const assistant = messages.find(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "role") === "assistant",
+    ) as { content: Array<Record<string, unknown>> };
+    expect(assistant.content).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "subagent",
+          prompt: "Inspect the tests",
+          events: ["Checking the suite."],
+        }),
+        expect.objectContaining({
+          type: "toolCall",
+          id: "command-1",
+          terminalInputs: ["y\n"],
+        }),
+        expect.objectContaining({
+          type: "plan",
+          explanation: "Two focused steps.",
+        }),
+        { type: "text", text: "Ready." },
+      ]),
+    );
+    await expect(client.getState()).resolves.toMatchObject({
+      isStreaming: false,
+    });
+  });
+
+  it("ignores aggregate diff telemetry and keeps concrete file changes", async () => {
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "inProgress",
+        startedAt: 10,
+        items: [],
+      },
+    });
+    server.emit("turn/diff/updated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      diff: "--- a/runtime.ts\n+++ b/runtime.ts\n@@\n-old\n+new",
+    });
+    server.emit("item/completed", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "edit-1",
+        type: "fileChange",
+        status: "completed",
+        changes: [
+          {
+            path: "runtime.ts",
+            kind: "update",
+            diff: "@@\n-old\n+new",
+          },
+        ],
+      },
+    });
+
+    const messages = (await client.getMessages()).messages;
+    const assistant = messages.find(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "role") === "assistant",
+    ) as { content: Array<Record<string, unknown>> };
+    expect(assistant.content).toContainEqual(
+      expect.objectContaining({
+        type: "toolCall",
+        id: "edit-1",
+        name: "apply_patch",
+      }),
+    );
+    expect(assistant.content).toHaveLength(1);
+  });
+
   it("refreshes native skills when Codex reports a change", async () => {
+    server.goalSupported = true;
     const client = new CodexRuntimeClient(
       { connectorId: "connector", transport: "local" },
       { executable: "codex", cwd: "/workspace" },
@@ -456,6 +789,10 @@ describe("CodexRuntimeClient", () => {
             expect.objectContaining({
               name: "release-notes",
               source: "skill",
+            }),
+            expect.objectContaining({
+              name: "goal",
+              source: "builtin",
             }),
           ]),
         }),
@@ -744,6 +1081,111 @@ describe("CodexRuntimeClient", () => {
         },
       ]),
     );
+  });
+
+  it("rehydrates persisted subagent activity after resuming", async () => {
+    server.threadReads.set("thread-1", {
+      id: "thread-1",
+      cwd: "/workspace",
+      preview: "Delegate the audit",
+      path: "/tmp/thread-1.jsonl",
+      name: null,
+      createdAt: 1,
+      updatedAt: 2,
+      turns: [
+        {
+          id: "turn-root",
+          status: "completed",
+          startedAt: 1,
+          completedAt: 2,
+          items: [
+            {
+              id: "collab-1",
+              type: "collabAgentToolCall",
+              tool: "spawnAgent",
+              status: "completed",
+              senderThreadId: "thread-1",
+              receiverThreadIds: ["child-1"],
+              prompt: "Inspect the tests",
+              agentsStates: {
+                "child-1": { status: "completed", message: "Tests are green" },
+              },
+            },
+            {
+              id: "answer-root",
+              type: "agentMessage",
+              phase: "final_answer",
+              text: "The audit passed.",
+            },
+          ],
+        },
+      ],
+    });
+    server.threadReads.set("child-1", {
+      id: "child-1",
+      cwd: "/workspace",
+      preview: "Inspect the tests",
+      path: "/tmp/child-1.jsonl",
+      name: null,
+      createdAt: 1,
+      updatedAt: 2,
+      turns: [
+        {
+          id: "turn-child",
+          status: "completed",
+          startedAt: 1,
+          completedAt: 2,
+          items: [
+            {
+              id: "child-commentary",
+              type: "agentMessage",
+              phase: "commentary",
+              text: "Checking the restored suite.",
+            },
+            {
+              id: "child-command",
+              type: "commandExecution",
+              command: "npm test",
+              cwd: "/workspace",
+              status: "completed",
+              aggregatedOutput: "491 passed",
+            },
+          ],
+        },
+      ],
+    });
+    const client = new CodexRuntimeClient(
+      { connectorId: "connector", transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+
+    const messages = (await client.getMessages()).messages;
+    const assistant = messages.find(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "id") === "turn-root:assistant",
+    ) as { content: Array<Record<string, unknown>> };
+    expect(assistant.content).toContainEqual(
+      expect.objectContaining({
+        type: "subagent",
+        events: [
+          "Checking the restored suite.",
+          "$ npm test\n491 passed",
+        ],
+      }),
+    );
+    expect(server.requests).toContainEqual({
+      method: "thread/read",
+      params: { threadId: "child-1", includeTurns: true },
+    });
   });
 
   it("unsubscribes a resumed thread before stopping its app-server", async () => {

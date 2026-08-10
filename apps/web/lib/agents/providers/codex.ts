@@ -84,6 +84,36 @@ function normalizeCommand(
   ) {
     return { type: "show_usage" };
   }
+  if (
+    command.type === "prompt" &&
+    !command.images?.length &&
+    /^\/goal(?:[^\S\n]+([^\n]*))?$/iu.test(command.message)
+  ) {
+    if (state.goalsSupported !== true) {
+      throw new Error("This Codex installation does not support durable goals.");
+    }
+    const argumentsText =
+      /^\/goal(?:[^\S\n]+([^\n]*))?$/iu.exec(command.message.trim())?.[1]?.trim() ??
+      "";
+    if (!argumentsText) {
+      throw new Error("Usage: /goal <objective>|pause|resume|clear");
+    }
+    const action = argumentsText.toLowerCase();
+    if (["pause", "resume", "clear"].includes(action)) {
+      return {
+        type: "update_goal",
+        action: action as "pause" | "resume" | "clear",
+      };
+    }
+    if (argumentsText.length > 20_000) {
+      throw new Error("Goal objectives must be 20,000 characters or less.");
+    }
+    return {
+      type: "update_goal",
+      action: "set",
+      objective: argumentsText,
+    };
+  }
   const normalized = normalizeAgentSessionCommand(command, state);
   if (normalized.type === "set_auto_compaction") {
     throw new Error("Codex manages context compaction automatically.");

@@ -316,6 +316,38 @@ export function applyAgentRuntimeEnvelope(
     };
   }
   if (
+    event.type === "config_update" &&
+    event.model &&
+    typeof event.model === "object"
+  ) {
+    return {
+      ...current,
+      state: {
+        ...current.state,
+        model: event.model,
+        ...(typeof event.thinkingLevel === "string"
+          ? { thinkingLevel: event.thinkingLevel }
+          : {}),
+        ...(typeof event.collaborationMode === "string"
+          ? { collaborationMode: event.collaborationMode }
+          : {}),
+        ...(Array.isArray(event.collaborationModes)
+          ? { collaborationModes: event.collaborationModes }
+          : {}),
+        ...(typeof event.fastModeEnabled === "boolean"
+          ? { fastModeEnabled: event.fastModeEnabled }
+          : {}),
+        ...(typeof event.fastModeAvailable === "boolean"
+          ? { fastModeAvailable: event.fastModeAvailable }
+          : {}),
+        ...(typeof event.goalsSupported === "boolean"
+          ? { goalsSupported: event.goalsSupported }
+          : {}),
+        ...("goal" in event ? { goal: event.goal } : {}),
+      },
+    };
+  }
+  if (
     event.type === "interaction_request" &&
     typeof event.id === "string" &&
     typeof event.method === "string" &&
