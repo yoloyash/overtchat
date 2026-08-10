@@ -1492,53 +1492,6 @@
       "reasoning": true,
       "temperature": true
     },
-    "gemini-2.0-flash": {
-      "context": 1048576,
-      "output": 8192,
-      "cost": {
-        "cache_read": 0.025,
-        "input": 0.1,
-        "output": 0.4
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "audio",
-        "video",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": true,
-      "temperature": true
-    },
-    "gemini-2.0-flash-lite": {
-      "context": 1048576,
-      "output": 8192,
-      "cost": {
-        "input": 0.075,
-        "output": 0.3
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "audio",
-        "video",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": false,
-      "structured_output": true,
-      "temperature": true
-    },
     "gemini-2.5-computer-use-preview-10-2025": {
       "context": 131072,
       "output": 65536,
@@ -1782,46 +1735,6 @@
       "attachment": true,
       "tool_call": false,
       "reasoning": true,
-      "temperature": true
-    },
-    "gemini-3-pro-preview": {
-      "context": 1048576,
-      "output": 65536,
-      "cost": {
-        "cache_read": 0.2,
-        "context_over_200k": {
-          "cache_read": 0.4,
-          "input": 4,
-          "output": 18
-        },
-        "input": 2,
-        "output": 12,
-        "tiers": [
-          {
-            "cache_read": 0.4,
-            "input": 4,
-            "output": 18,
-            "tier": {
-              "size": 200000,
-              "type": "context"
-            }
-          }
-        ]
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "video",
-        "audio",
-        "pdf"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
       "temperature": true
     },
     "gemini-3.1-flash-image": {
