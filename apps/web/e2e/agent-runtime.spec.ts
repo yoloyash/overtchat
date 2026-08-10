@@ -304,6 +304,29 @@ test("shows durable turn activity without changing completed tool status", async
     }
     await route.fulfill({ response, json: body });
   });
+  await page.route(
+    new RegExp("/api/agent-workspaces/workspace/git-status$"),
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: {
+            isGit: true,
+            repositoryRoot: "/tmp/runtime-test",
+            branch: "feature/runtime-status",
+            upstream: "origin/feature/runtime-status",
+            ahead: 2,
+            behind: 1,
+            dirty: true,
+            changedFiles: 2,
+            additions: 8,
+            deletions: 3,
+            lineStatsComplete: true,
+          },
+        }),
+      });
+    },
+  );
   await page.addInitScript(() => {
     type RuntimeEnvelope = {
       sequence: number;
@@ -388,6 +411,25 @@ test("shows durable turn activity without changing completed tool status", async
     name: "Runtime activity is working",
   });
   await expect(sessionActivity).toBeVisible();
+  const headerGitStatus = page.getByTestId("agent-workspace-git-status");
+  await expect(headerGitStatus).toContainText("feature/runtime-status");
+  await expect(headerGitStatus).toContainText("2 files");
+  await expect(headerGitStatus).toContainText("+8");
+  await expect(headerGitStatus).toContainText("-3");
+  const sidebarGitStatus = page.locator(
+    '[data-testid="sidebar-workspace-git-status-workspace"]:visible',
+  );
+  await expect(sidebarGitStatus).toContainText("feature/runtime-status");
+  await expect(sidebarGitStatus).toContainText("+8");
+  await expect(sidebarGitStatus).toContainText("-3");
+  await page.getByRole("button", { name: "Session actions" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy workspace path" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy branch name" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect(
     page.getByRole("button", { name: "New session in Runtime test" }),
   ).toBeVisible();
@@ -597,6 +639,7 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(genericActivity).toContainText("Reconnecting");
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(genericActivity).toBeVisible();
+  await expect(headerGitStatus).not.toBeVisible();
   expect(
     await page.evaluate(
       () =>
@@ -610,6 +653,7 @@ test("shows durable turn activity without changing completed tool status", async
   });
   await page.getByRole("button", { name: "Open sidebar" }).click();
   await expect(sessionActivity).toBeVisible();
+  await expect(sidebarGitStatus).toBeVisible();
   expect(
     await page.evaluate(
       () =>
@@ -766,7 +810,17 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByPlaceholder("Message Pi or type / for commands"),
   ).toBeDisabled();
-  await expect(page.getByLabel("Session actions")).toBeDisabled();
+  await page.getByLabel("Session actions").click();
+  await expect(
+    page.getByRole("menuitem", { name: "Copy workspace path" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Rename session" }),
+  ).toHaveAttribute("aria-disabled", "true");
+  await expect(
+    page.getByRole("menuitem", { name: "Compact context" }),
+  ).toHaveAttribute("aria-disabled", "true");
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => retryRequested).toBe(true);
 });

@@ -7,7 +7,9 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
+  FileDiff,
   Folder,
+  GitBranch,
   Loader2,
   Plus,
   TerminalSquare,
@@ -15,6 +17,7 @@ import {
 import type {
   AgentConnectionListItem,
   AgentSessionListItem,
+  AgentWorkspaceGitStatus,
   AgentWorkspaceListItem,
 } from "@/lib/agents/types";
 import { agentProviderMetadata } from "@/lib/agents/catalog";
@@ -29,6 +32,7 @@ import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
 import { useCreateAgentSession } from "@/lib/queries/agentConnections";
+import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 
 export function SidebarConnections({
@@ -122,6 +126,10 @@ function WorkspaceNode({
   const [open, setOpen] = useState(hasActiveSession);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
   const hasRunningSession = agentWorkspaceHasRunningSession(workspace);
+  const gitStatus = useAgentWorkspaceGitStatus(workspace.id, {
+    active: hasActiveSession,
+    running: hasRunningSession,
+  }).data;
   const activeSessionId =
     workspace.sessions.find(
       (session) => pathname === `/agents/${session.id}`,
@@ -160,7 +168,7 @@ function WorkspaceNode({
               ? `Collapse ${workspace.name}`
               : `Expand ${workspace.name}`
           }
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1.5 text-left text-sm motion-colors hover:bg-sidebar-accent"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-1 text-left text-sm motion-colors hover:bg-sidebar-accent"
           title={workspace.path}
         >
           <ChevronRight
@@ -170,7 +178,10 @@ function WorkspaceNode({
             )}
           />
           <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
+          <span className="flex min-h-8 min-w-0 flex-1 flex-col justify-center">
+            <span className="truncate">{workspace.name}</span>
+            <WorkspaceGitMeta status={gitStatus} workspaceId={workspace.id} />
+          </span>
           <RuntimeActivityIndicator
             active={!open && hasRunningSession}
             label={`${workspace.name} has running sessions`}
@@ -220,6 +231,45 @@ function WorkspaceNode({
         </ul>
       )}
     </li>
+  );
+}
+
+function WorkspaceGitMeta({
+  status,
+  workspaceId,
+}: {
+  status: AgentWorkspaceGitStatus | undefined;
+  workspaceId: string;
+}) {
+  if (!status?.isGit) return null;
+  return (
+    <span
+      data-testid={`sidebar-workspace-git-status-${workspaceId}`}
+      className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground"
+    >
+      <span className="flex min-w-0 items-center gap-1">
+        <GitBranch className="size-3 shrink-0" />
+        <span className="max-w-24 truncate">
+          {status.branch ?? "Detached HEAD"}
+        </span>
+      </span>
+      {status.dirty && (
+        <span className="flex shrink-0 items-center gap-1 tabular-nums">
+          <FileDiff className="size-3" />
+          <span>{status.changedFiles}</span>
+          {status.lineStatsComplete && (
+            <>
+              <span className="text-emerald-700 dark:text-emerald-300">
+                +{status.additions}
+              </span>
+              <span className="text-red-700 dark:text-red-300">
+                -{status.deletions}
+              </span>
+            </>
+          )}
+        </span>
+      )}
+    </span>
   );
 }
 

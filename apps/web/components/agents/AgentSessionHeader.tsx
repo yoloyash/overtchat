@@ -1,12 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { Menu } from "@base-ui/react/menu";
 import { Popover } from "@base-ui/react/popover";
 import {
   Check,
   ChevronDown,
   Coins,
+  Copy,
+  FileDiff,
+  GitBranch,
   MoreHorizontal,
   Pencil,
   Search,
@@ -28,14 +32,19 @@ import type {
   AgentModel,
   AgentSessionStats,
   AgentThinkingLevel,
+  AgentWorkspaceGitStatus,
 } from "@/lib/agents/types";
 import { modelIconForModel } from "@/lib/providers/catalog";
 import { motionClasses } from "@/lib/motion";
+import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/toast";
 
 export function AgentSessionHeader({
   providerLabel,
+  workspaceId,
   workspaceName,
+  workspacePath,
   models,
   currentModel,
   thinkingLevel,
@@ -50,7 +59,9 @@ export function AgentSessionHeader({
   onCompact,
 }: {
   providerLabel: string;
+  workspaceId: string;
   workspaceName: string;
+  workspacePath: string;
   models: AgentModel[];
   currentModel: { provider: string; id: string } | null;
   thinkingLevel: AgentThinkingLevel | null;
@@ -64,6 +75,21 @@ export function AgentSessionHeader({
   onRename: () => void;
   onCompact: () => void;
 }) {
+  const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
+    active: true,
+    running,
+  }).data;
+  const branch = gitStatus?.branch;
+
+  async function copyWorkspaceValue(value: string, label: string) {
+    try {
+      await clipboardWriteText(value);
+      toast.success({ title: `${label} copied` });
+    } catch {
+      toast.error({ title: `Could not copy ${label.toLowerCase()}` });
+    }
+  }
+
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
       <SidebarToggle />
@@ -73,6 +99,7 @@ export function AgentSessionHeader({
       >
         {workspaceName}
       </span>
+      <WorkspaceGitSummary status={gitStatus} />
       <AgentModelPicker
         providerLabel={providerLabel}
         models={models}
@@ -124,7 +151,6 @@ export function AgentSessionHeader({
                 size="icon-sm"
                 aria-label="Session actions"
                 title="Session actions"
-                disabled={readOnly}
               />
             }
           >
@@ -138,6 +164,27 @@ export function AgentSessionHeader({
                   motionClasses.popup,
                 )}
               >
+                <Menu.Item
+                  onClick={() =>
+                    void copyWorkspaceValue(workspacePath, "Workspace path")
+                  }
+                  className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                >
+                  <Copy className="size-3.5 text-muted-foreground" />
+                  Copy workspace path
+                </Menu.Item>
+                {branch && (
+                  <Menu.Item
+                    onClick={() =>
+                      void copyWorkspaceValue(branch, "Branch name")
+                    }
+                    className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[highlighted]:bg-accent"
+                  >
+                    <GitBranch className="size-3.5 text-muted-foreground" />
+                    Copy branch name
+                  </Menu.Item>
+                )}
+                <Menu.Separator className="my-1 h-px bg-border" />
                 <Menu.Item
                   disabled={readOnly}
                   onClick={onRename}
@@ -160,6 +207,58 @@ export function AgentSessionHeader({
         </Menu.Root>
       </div>
     </header>
+  );
+}
+
+function WorkspaceGitSummary({
+  status,
+}: {
+  status: AgentWorkspaceGitStatus | undefined;
+}) {
+  if (!status?.isGit) return null;
+  const branch = status.branch ?? "Detached HEAD";
+  const tracking = [
+    status.ahead ? `${status.ahead} ahead` : null,
+    status.behind ? `${status.behind} behind` : null,
+  ].filter(Boolean);
+  const title = [
+    branch,
+    ...tracking,
+    status.dirty
+      ? `${status.changedFiles} changed ${status.changedFiles === 1 ? "file" : "files"}`
+      : "Clean working tree",
+  ].join(" · ");
+
+  return (
+    <div
+      data-testid="agent-workspace-git-status"
+      title={title}
+      className="hidden min-w-0 items-center gap-2 px-1 text-[11px] text-muted-foreground lg:flex"
+    >
+      <span className="flex min-w-0 items-center gap-1">
+        <GitBranch className="size-3.5 shrink-0" />
+        <span className="max-w-28 truncate">{branch}</span>
+      </span>
+      {status.dirty && (
+        <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+          <FileDiff className="size-3.5" />
+          <span>
+            {status.changedFiles}{" "}
+            {status.changedFiles === 1 ? "file" : "files"}
+          </span>
+          {status.lineStatsComplete && (
+            <>
+              <span className="text-emerald-700 dark:text-emerald-300">
+                +{status.additions}
+              </span>
+              <span className="text-red-700 dark:text-red-300">
+                -{status.deletions}
+              </span>
+            </>
+          )}
+        </span>
+      )}
+    </div>
   );
 }
 
