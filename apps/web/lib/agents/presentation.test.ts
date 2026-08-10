@@ -140,6 +140,50 @@ describe("projectAgentTranscript", () => {
     ]);
   });
 
+  it("keeps commentary in a timed work group before the final answer", () => {
+    const projected = projectAgentTranscript([
+      assistant(
+        [
+          {
+            type: "commentary",
+            text: "I'm checking the release image.",
+          },
+          call("build", "bash", { command: "docker build ." }),
+          { type: "text", text: "The image is ready." },
+        ],
+        1,
+        {
+          id: "turn-1:assistant",
+          overtchatActivityDurationMs: 246_355,
+        },
+      ),
+      result("build", "bash", "done"),
+    ]);
+
+    expect(projected).toEqual([
+      expect.objectContaining({
+        type: "activity",
+        durationMs: 246_355,
+        entries: [
+          {
+            type: "commentary",
+            id: "commentary:turn-1:assistant:0",
+            content: "I'm checking the release image.",
+          },
+          expect.objectContaining({
+            type: "tool",
+            tool: expect.objectContaining({ id: "build", output: "done" }),
+          }),
+        ],
+      }),
+      expect.objectContaining({
+        type: "assistant_text",
+        text: "The image is ready.",
+        actionable: true,
+      }),
+    ]);
+  });
+
   it("exposes one fork action on the final assistant text part", () => {
     const projected = projectAgentTranscript([
       assistant(
