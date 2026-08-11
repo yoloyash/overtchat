@@ -64,16 +64,30 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
   if (!role) return messages;
   const next = [...messages];
   if (role === "user") {
-    const text = textOf(message);
-    const pendingIndex = next.findIndex(
-      (candidate) =>
-        roleOf(candidate) === "user" &&
-        submissionIdOf(candidate) !== null &&
-        textOf(candidate) === text,
-    );
-    if (pendingIndex >= 0) {
-      next[pendingIndex] = message;
+    const submissionId = submissionIdOf(message);
+    if (submissionId) {
+      const submissionIndex = next.findIndex(
+        (candidate) => submissionIdOf(candidate) === submissionId,
+      );
+      if (submissionIndex >= 0) {
+        next[submissionIndex] = message;
+        return next;
+      }
+      next.push(message);
       return next;
+    }
+    if (!submissionId) {
+      const text = textOf(message);
+      const pendingIndex = next.findIndex(
+        (candidate) =>
+          roleOf(candidate) === "user" &&
+          submissionIdOf(candidate) !== null &&
+          textOf(candidate) === text,
+      );
+      if (pendingIndex >= 0) {
+        next[pendingIndex] = message;
+        return next;
+      }
     }
   }
   const id = idOf(message);

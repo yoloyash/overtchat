@@ -945,6 +945,88 @@ describe("CodexRuntimeClient", () => {
     );
   });
 
+  it("reconciles the native Codex user item with its submitted identity", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    await client.prompt("Inspect the tests", [], {
+      clientMessageId: "client-message",
+    });
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "inProgress",
+        startedAt: 10,
+        items: [],
+      },
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "provider-message",
+        type: "userMessage",
+        content: [
+          {
+            type: "text",
+            text: "Inspect the tests",
+            text_elements: [],
+          },
+        ],
+      },
+    });
+
+    expect(
+      (await client.getMessages()).messages.filter(
+        (message) =>
+          message &&
+          typeof message === "object" &&
+          Reflect.get(message, "role") === "user",
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        id: "provider-message",
+        content: "Inspect the tests",
+        overtchatSubmissionId: "client-message",
+      }),
+    ]);
+
+    server.emit("turn/completed", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "completed",
+        startedAt: 10,
+        completedAt: 11,
+        items: [
+          {
+            id: "provider-message",
+            type: "userMessage",
+            content: [
+              {
+                type: "text",
+                text: "Inspect the tests",
+                text_elements: [],
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(
+      (await client.getMessages()).messages.filter(
+        (message) =>
+          message &&
+          typeof message === "object" &&
+          Reflect.get(message, "role") === "user",
+      ),
+    ).toHaveLength(1);
+  });
+
   it("preserves streamed work when the completed turn only includes the final answer", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },

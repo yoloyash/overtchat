@@ -130,7 +130,7 @@ function textInput(text: string) {
 function isSyntheticUserItem(item: CodexItem): boolean {
   return (
     item.type === "userMessage" &&
-    item.id.startsWith("overtchat:codex-user:")
+    item.overtchatSyntheticUserInput === true
   );
 }
 
@@ -448,6 +448,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
           })
         : [];
       if (text || images.length > 0) {
+        const submissionId = stringOf(item, "overtchatSubmissionId");
         messages.push({
           id: item.id,
           role: "user",
@@ -459,6 +460,9 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
                 ]
               : text,
           timestamp: startedAt + itemIndex,
+          ...(submissionId
+            ? { overtchatSubmissionId: submissionId }
+            : {}),
         });
       }
       continue;
@@ -1804,7 +1808,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       const completedTurn = this.withKnownUserInputs(
         parseCodexTurn(data?.turn),
       );
-      const turn = this.reconcileCompletedTurn(completedTurn);
+      const turn = this.withKnownUserInputs(
+        this.reconcileCompletedTurn(completedTurn),
+      );
       this.turns.set(turn.id, turn);
       this.emitTurn(turn);
       if (this.activeTurnId === turn.id) this.activeTurnId = null;
@@ -2214,18 +2220,21 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       );
       if (native) {
         claimedNativeUsers.add(native.index);
-        if (input.images.length > 0) {
-          items[native.index] = {
-            ...items[native.index],
-            overtchatImages: input.images,
-          };
-        }
+        items[native.index] = {
+          ...items[native.index],
+          overtchatSubmissionId: input.id,
+          ...(input.images.length > 0
+            ? { overtchatImages: input.images }
+            : {}),
+        };
         continue;
       }
       synthetic.push({
         id: input.id,
         type: "userMessage",
         content: textInput(input.text),
+        overtchatSubmissionId: input.id,
+        overtchatSyntheticUserInput: true,
         ...(input.images.length > 0
           ? { overtchatImages: input.images }
           : {}),
@@ -2292,9 +2301,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const index = turn.items.findIndex((candidate) => candidate.id === id);
     if (index >= 0) turn.items[index] = item;
     else turn.items.push(item);
-    this.turns.set(turnId, turn);
+    const reconciled = this.withKnownUserInputs(turn);
+    this.turns.set(turnId, reconciled);
     this.registerSubagentOwners(turnId, item);
-    this.emitTurn(turn);
+    this.emitTurn(reconciled);
   }
 
   private registerSubagentOwners(turnId: string, item: CodexItem): void {

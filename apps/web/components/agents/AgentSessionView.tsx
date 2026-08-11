@@ -472,6 +472,9 @@ export function AgentSessionView({
             onEditQueued={(id) =>
               run({ type: "remove_queued_message", id })
             }
+            onDeleteQueued={(id) =>
+              run({ type: "remove_queued_message", id })
+            }
             onSteerQueued={(id) =>
               run({ type: "steer_queued_message", id })
             }

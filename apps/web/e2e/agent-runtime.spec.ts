@@ -694,9 +694,7 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("Turn changes", { exact: true }),
   ).toHaveCount(0);
 
-  const composer = page.getByPlaceholder(
-    "Message Codex or type / for commands",
-  );
+  const composer = agentComposer.getByRole("combobox");
   await expect(page.getByRole("button", { name: "Attach images" })).toBeVisible();
   await composer.evaluate(async (element) => {
     const canvas = document.createElement("canvas");
@@ -749,7 +747,6 @@ test("shows durable turn activity without changing completed tool status", async
       },
     ],
   });
-
   await page.getByRole("button", { name: "Edit queued message" }).click();
   await expect(composer).toHaveValue("Run the tests");
   await expect(composer).toBeEnabled();
@@ -779,6 +776,58 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("Then summarize", { exact: true }),
   ).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.localStorage.setItem(
+      "overtchat_agent_send_behavior",
+      JSON.stringify("queue"),
+    );
+    window.dispatchEvent(new Event("overtchat:localstorage"));
+  });
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Queue a follow-up for Codex",
+  );
+  await composer.fill("Delete this follow-up");
+  await composer.press("Enter");
+  await expect(
+    page.getByText("Delete this follow-up", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete queued message" }).click();
+  await expect(
+    page.getByText("Delete this follow-up", { exact: true }),
+  ).toHaveCount(0);
+
+  await composer.fill("Steer with the alternate shortcut");
+  await composer.press("Control+Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "steer",
+    message: "Steer with the alternate shortcut",
+  });
+  await expect(composer).toBeEnabled();
+
+  await composer.fill("Submit this only once");
+  const commandCountBeforeDoubleSubmit = submittedCommands.length;
+  await composer.evaluate((element) => {
+    for (let index = 0; index < 2; index += 1) {
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+  });
+  await expect.poll(() => submittedCommands.length).toBe(
+    commandCountBeforeDoubleSubmit + 1,
+  );
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "queue",
+    message: "Submit this only once",
+  });
+  await expect(composer).toBeEnabled();
+  expect(submittedCommands).toHaveLength(commandCountBeforeDoubleSubmit + 1);
 
   await page.getByRole("button", { name: "Stop Codex" }).click();
   await expect(genericActivity).toContainText("Stopping");

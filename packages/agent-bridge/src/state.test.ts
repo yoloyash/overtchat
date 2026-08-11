@@ -412,6 +412,61 @@ describe("agent runtime event reducer", () => {
     ]);
   });
 
+  it("reconciles identical submissions by client identity", () => {
+    const first = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "Same follow-up",
+          timestamp: 100,
+          overtchatSubmissionId: "submission:1",
+        },
+      }),
+    )!;
+    const second = applyAgentRuntimeEnvelope(
+      first,
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "Same follow-up",
+          timestamp: 100,
+          overtchatSubmissionId: "submission:2",
+        },
+      }),
+    )!;
+    const acknowledged = applyAgentRuntimeEnvelope(
+      second,
+      event({
+        type: "message_start",
+        message: {
+          id: "provider:2",
+          role: "user",
+          content: "Same follow-up",
+          overtchatSubmissionId: "submission:2",
+        },
+      }),
+    )!;
+
+    expect(acknowledged.messages).toEqual([
+      { role: "user", content: "Hello" },
+      {
+        role: "user",
+        content: "Same follow-up",
+        timestamp: 100,
+        overtchatSubmissionId: "submission:1",
+      },
+      {
+        id: "provider:2",
+        role: "user",
+        content: "Same follow-up",
+        overtchatSubmissionId: "submission:2",
+      },
+    ]);
+  });
+
   it("removes a submission rejected before the provider starts it", () => {
     const submitted = applyAgentRuntimeEnvelope(
       snapshot(),

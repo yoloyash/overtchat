@@ -51,6 +51,7 @@ type PendingSubmission = {
   id: string;
   message: string;
   published: boolean;
+  providerAcknowledged: boolean;
 };
 
 export type AgentWorkspaceDescriptor = RuntimeOwner & {
@@ -184,6 +185,12 @@ function messageRole(message: unknown): string | null {
     : null;
 }
 
+function messageSubmissionId(message: unknown): string | null {
+  if (!message || typeof message !== "object") return null;
+  const id = Reflect.get(message, "overtchatSubmissionId");
+  return typeof id === "string" && id ? id : null;
+}
+
 export class AgentSessionRuntime {
   private readonly subscribers = new Set<Subscriber>();
   private readonly replay: AgentRuntimeEnvelope[] = [];
@@ -271,10 +278,13 @@ export class AgentSessionRuntime {
         messageRole(event.message) === "user"
       ) {
         const text = messageText(event.message);
-        const submission = [...this.pendingSubmissions.values()].find(
-          (candidate) => candidate.message.trim() === text,
-        );
-        if (submission) this.pendingSubmissions.delete(submission.id);
+        const submissionId = messageSubmissionId(event.message);
+        const submission = submissionId
+          ? this.pendingSubmissions.get(submissionId)
+          : [...this.pendingSubmissions.values()].find(
+              (candidate) => candidate.message.trim() === text,
+            );
+        if (submission) submission.providerAcknowledged = true;
       }
       if (event.type === "process_exit") {
         this.stopped = true;
@@ -340,20 +350,26 @@ export class AgentSessionRuntime {
         event.type === "rpc_error" &&
         typeof event.error === "string"
       ) {
-        this.error = event.error;
         if (event.command === "prompt" && this.promptAwaitingStart) {
           this.promptAwaitingStart = false;
           const submission = this.promptSubmissionId
             ? this.pendingSubmissions.get(this.promptSubmissionId)
             : undefined;
-          if (submission?.published) {
-            this.rejectSubmission(submission.id);
+          if (submission?.providerAcknowledged) {
+            this.pendingSubmissions.delete(submission.id);
+          } else {
+            this.error = event.error;
+            if (submission?.published) {
+              this.rejectSubmission(submission.id);
+            }
+            settleRejectedPrompt = true;
           }
           if (this.promptSubmissionId) {
             this.pendingSubmissions.delete(this.promptSubmissionId);
           }
           this.promptSubmissionId = undefined;
-          settleRejectedPrompt = true;
+        } else {
+          this.error = event.error;
         }
       }
       this.publish({ type: "runtime_event", data: event });
@@ -411,6 +427,9 @@ export class AgentSessionRuntime {
       }
       if (classification.terminal) {
         this.promptAwaitingStart = false;
+        for (const submission of this.pendingSubmissions.values()) {
+          submission.providerAcknowledged = true;
+        }
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
         this.clearPendingInteraction();
@@ -839,11 +858,13 @@ export class AgentSessionRuntime {
     const submission = {
       id: submissionId,
       message,
-      published: false,
+      published: true,
+      providerAcknowledged: false,
     };
     this.pendingSubmissions.set(submission.id, submission);
     this.promptSubmissionId = submission.id;
     this.publishStatus();
+    this.publishSubmission(submission.id, submission.message, images);
     try {
       const result =
         images.length > 0
@@ -853,13 +874,20 @@ export class AgentSessionRuntime {
           : await this.client.prompt(message, undefined, {
               clientMessageId: submissionId,
             });
-      if (this.pendingSubmissions.get(submission.id) === submission) {
-        submission.published = true;
-        this.publishSubmission(submission.id, submission.message, images);
+      this.pendingSubmissions.delete(submission.id);
+      if (this.promptSubmissionId === submission.id) {
+        this.promptSubmissionId = undefined;
       }
       return result;
     } catch (error) {
       this.promptAwaitingStart = false;
+      if (submission.providerAcknowledged) {
+        this.pendingSubmissions.delete(submission.id);
+        if (this.promptSubmissionId === submission.id) {
+          this.promptSubmissionId = undefined;
+        }
+        return { accepted: true, providerAcknowledged: true };
+      }
       if (this.pendingSubmissions.get(submission.id) === submission) {
         if (submission.published) this.rejectSubmission(submission.id);
         this.pendingSubmissions.delete(submission.id);
@@ -921,9 +949,11 @@ export class AgentSessionRuntime {
       const submission: PendingSubmission = {
         id: submissionId,
         message,
-        published: false,
+        published: true,
+        providerAcknowledged: false,
       };
       this.pendingSubmissions.set(submission.id, submission);
+      this.publishSubmission(submission.id, submission.message, images);
       const request =
         images.length > 0
           ? this.client.steer(message, images, {
@@ -933,10 +963,7 @@ export class AgentSessionRuntime {
               clientMessageId: submissionId,
             });
       return request.then((result) => {
-        if (this.pendingSubmissions.get(submission.id) === submission) {
-          submission.published = true;
-          this.publishSubmission(submission.id, submission.message, images);
-        }
+        this.pendingSubmissions.delete(submission.id);
         return result;
       });
     };
@@ -947,6 +974,10 @@ export class AgentSessionRuntime {
     )
       .catch((error) => {
         const submission = this.pendingSubmissions.get(submissionId);
+        if (submission?.providerAcknowledged) {
+          this.pendingSubmissions.delete(submission.id);
+          return { accepted: true, providerAcknowledged: true };
+        }
         if (submission) {
           if (submission.published) this.rejectSubmission(submission.id);
           this.pendingSubmissions.delete(submission.id);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { CornerUpRight, ListEnd, Monitor, Moon, Sun } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
@@ -33,6 +33,11 @@ import {
   DEFAULT_SESSION_COST_ENABLED,
   SESSION_COST_STORAGE_KEY,
 } from "@/lib/chat/session-cost";
+import {
+  AGENT_SEND_BEHAVIOR_STORAGE_KEY,
+  DEFAULT_AGENT_SEND_BEHAVIOR,
+  type AgentSendBehavior,
+} from "@/lib/agents/send-behavior";
 
 type ThemeValue = "light" | "dark" | "system";
 
@@ -67,6 +72,11 @@ export function GeneralForm() {
       DEFAULT_SESSION_COST_ENABLED,
     );
   const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
+  const [agentSendBehavior, setAgentSendBehavior] =
+    useLocalStorage<AgentSendBehavior>(
+      AGENT_SEND_BEHAVIOR_STORAGE_KEY,
+      DEFAULT_AGENT_SEND_BEHAVIOR,
+    );
   const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
 
   function selectFont(next: FontId) {
@@ -136,6 +146,45 @@ export function GeneralForm() {
               ))}
             </SelectContent>
           </Select>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Agents"
+        description="Choose how messages sent during an active agent turn behave."
+      >
+        <SettingsRow
+          title="Default send"
+          description={
+            agentSendBehavior === "queue"
+              ? "While an agent is working, Enter queues. Command/Ctrl+Enter steers."
+              : "While an agent is working, Enter steers. Command/Ctrl+Enter queues."
+          }
+          align="center"
+          controlAlign="end"
+        >
+          <RadioGroup
+            aria-label="Default agent send behavior"
+            value={agentSendBehavior}
+            onValueChange={(next) =>
+              setAgentSendBehavior(next as AgentSendBehavior)
+            }
+            className="grid w-full grid-cols-2 gap-1 rounded-lg border bg-muted/30 p-1 @2xl:max-w-xs"
+          >
+            {([
+              { value: "steer", label: "Steer", icon: CornerUpRight },
+              { value: "queue", label: "Queue", icon: ListEnd },
+            ] as const).map(({ value, label, icon: Icon }) => (
+              <Label
+                key={value}
+                className="flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground"
+              >
+                <RadioGroupItem value={value} className="sr-only" />
+                <Icon className="size-3.5" />
+                <span>{label}</span>
+              </Label>
+            ))}
+          </RadioGroup>
         </SettingsRow>
       </SettingsSection>
 

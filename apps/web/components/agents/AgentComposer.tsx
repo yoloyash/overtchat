@@ -16,6 +16,7 @@ import {
   Loader2,
   Pencil,
   Square,
+  Trash2,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,13 @@ import {
 } from "@/components/chat/useChatAttachments";
 import { toast } from "@/components/ui/toast";
 import { UsageIndicator } from "@/components/chat/UsageIndicator";
+import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  AGENT_SEND_BEHAVIOR_STORAGE_KEY,
+  DEFAULT_AGENT_SEND_BEHAVIOR,
+  resolveAgentSendDelivery,
+  type AgentSendBehavior,
+} from "@/lib/agents/send-behavior";
 import {
   AgentComposerControls,
   type AgentComposerControlsProps,
@@ -75,6 +83,7 @@ export function AgentComposer({
   onSubmit,
   onStop,
   onEditQueued,
+  onDeleteQueued,
   onSteerQueued,
   restoreDraftKey,
 }: {
@@ -96,11 +105,13 @@ export function AgentComposer({
   ) => Promise<boolean>;
   onStop: () => void;
   onEditQueued: (id: string) => Promise<boolean>;
+  onDeleteQueued: (id: string) => Promise<boolean>;
   onSteerQueued: (id: string) => Promise<boolean>;
   restoreDraftKey?: string;
 }) {
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -116,6 +127,10 @@ export function AgentComposer({
   } = useChatAttachments();
   const listboxId = useId();
   const optionIdPrefix = useId();
+  const [sendBehavior] = useLocalStorage<AgentSendBehavior>(
+    AGENT_SEND_BEHAVIOR_STORAGE_KEY,
+    DEFAULT_AGENT_SEND_BEHAVIOR,
+  );
   const composerContextUsage =
     contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
       ? {
@@ -197,8 +212,14 @@ export function AgentComposer({
     images: AgentPromptImage[],
     delivery: "prompt" | "queue" | "steer",
   ) {
-    if ((!message && images.length === 0) || pending || submitting || disabled)
+    if (
+      (!message && images.length === 0) ||
+      pending ||
+      submittingRef.current ||
+      disabled
+    )
       return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const accepted = await onSubmit(message, images, delivery);
@@ -208,16 +229,17 @@ export function AgentComposer({
       setDismissedDraft(null);
       setActiveIndex(0);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
   function submit(
-    delivery: "prompt" | "queue" | "steer" = running
-      ? supportsSteer
-        ? "steer"
-        : "queue"
-      : "prompt",
+    delivery: "prompt" | "queue" | "steer" = resolveAgentSendDelivery({
+      running,
+      supportsSteer,
+      behavior: sendBehavior,
+    }),
   ) {
     const message = input.trim();
     const prefix = "/api/uploads/";
@@ -291,12 +313,13 @@ export function AgentComposer({
   async function editQueuedMessage(message: AgentQueuedMessage) {
     if (
       pending ||
-      submitting ||
+      submittingRef.current ||
       disabled ||
       input.trim() ||
       attachments.length > 0
     )
       return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const accepted = await onEditQueued(message.id);
@@ -312,16 +335,31 @@ export function AgentComposer({
       );
       requestAnimationFrame(() => textareaRef.current?.focus());
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
 
   async function steerQueuedMessage(id: string) {
-    if (pending || submitting || disabled) return;
+    if (pending || submittingRef.current || disabled) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       await onSteerQueued(id);
     } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  async function deleteQueuedMessage(id: string) {
+    if (pending || submittingRef.current || disabled) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      await onDeleteQueued(id);
+    } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -359,9 +397,32 @@ export function AgentComposer({
     }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      submit();
+      submit(
+        resolveAgentSendDelivery({
+          running,
+          supportsSteer,
+          behavior: sendBehavior,
+          alternate: running && (event.metaKey || event.ctrlKey),
+        }),
+      );
     }
   }
+
+  const primaryDelivery = resolveAgentSendDelivery({
+    running,
+    supportsSteer,
+    behavior: sendBehavior,
+  });
+  const alternateDelivery = resolveAgentSendDelivery({
+    running,
+    supportsSteer,
+    behavior: sendBehavior,
+    alternate: true,
+  });
+  const activePlaceholder =
+    primaryDelivery === "queue"
+      ? `Queue a follow-up for ${providerLabel}`
+      : `Steer ${providerLabel}`;
 
   return (
     <div className="relative @container" data-testid="agent-composer">
@@ -421,74 +482,101 @@ export function AgentComposer({
       {queuedMessages.length > 0 && (
         <section
           aria-label="Pending messages"
-          className="mx-3 max-h-32 overflow-y-auto rounded-t-xl border border-b-0 bg-muted/50 px-3"
+          className="mx-3 mb-2 max-h-44 space-y-2 overflow-y-auto"
         >
-          <div className="divide-y">
-            {queuedMessages.map((queuedMessage) => {
-              const sending = queuedMessage.status === "sending";
-              return (
-                <div
-                  key={queuedMessage.id}
-                  className="flex min-h-10 min-w-0 items-center gap-2 text-xs"
-                >
+          {queuedMessages.map((queuedMessage) => {
+            const sending = queuedMessage.status === "sending";
+            const imageCount = queuedMessage.images?.length ?? 0;
+            return (
+              <article
+                key={queuedMessage.id}
+                className="flex min-h-12 min-w-0 items-center gap-2 rounded-xl border bg-background px-3 py-2 text-xs shadow-sm"
+              >
+                {sending ? (
+                  <Loader2
+                    className={cn(
+                      "size-3.5 shrink-0 text-muted-foreground",
+                      motionClasses.spinner,
+                    )}
+                  />
+                ) : (
                   <ListEnd className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span
-                    className="min-w-0 flex-1 truncate text-foreground"
+                )}
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="line-clamp-2 whitespace-pre-wrap text-foreground"
                     title={queuedMessage.message}
                   >
-                    {queuedMessage.message.replace(/\s+/g, " ") ||
-                      `${queuedMessage.images?.length ?? 0} attached ${(queuedMessage.images?.length ?? 0) === 1 ? "image" : "images"}`}
-                  </span>
-                  {!sending && (
-                    <>
+                    {queuedMessage.message ||
+                      `${imageCount} attached ${imageCount === 1 ? "image" : "images"}`}
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
+                    {sending ? "Sending" : "Queued"}
+                    {imageCount > 0
+                      ? ` · ${imageCount} ${imageCount === 1 ? "image" : "images"}`
+                      : ""}
+                  </p>
+                </div>
+                {!sending && (
+                  <div className="flex shrink-0 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 rounded-md"
+                      disabled={
+                        pending ||
+                        submitting ||
+                        disabled ||
+                        Boolean(input.trim()) ||
+                        attachments.length > 0
+                      }
+                      onClick={() => void editQueuedMessage(queuedMessage)}
+                      aria-label="Edit queued message"
+                      title={
+                        input.trim() || attachments.length > 0
+                          ? "Clear the current draft before editing"
+                          : "Edit queued message"
+                      }
+                    >
+                      <Pencil />
+                    </Button>
+                    {supportsSteer && running && (
                       <Button
                         type="button"
                         variant="ghost"
-                        size="icon-sm"
-                        className="size-7 shrink-0 rounded-md"
-                        disabled={
-                          pending ||
-                          submitting ||
-                          disabled ||
-                          Boolean(input.trim()) ||
-                          attachments.length > 0
+                        size="sm"
+                        className="h-7 rounded-md px-2 text-xs"
+                        disabled={pending || submitting || disabled}
+                        onClick={() =>
+                          void steerQueuedMessage(queuedMessage.id)
                         }
-                        onClick={() => void editQueuedMessage(queuedMessage)}
-                        aria-label="Edit queued message"
-                        title={
-                          input.trim() || attachments.length > 0
-                            ? "Clear the current draft before editing"
-                            : "Edit queued message"
-                        }
+                        aria-label="Steer with queued message"
+                        title={`Add this message to the active ${providerLabel} turn`}
                       >
-                        <Pencil />
+                        <CornerUpRight />
+                        Steer
                       </Button>
-                      {supportsSteer && running && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 shrink-0 rounded-md px-2 text-xs"
-                          disabled={pending || submitting || disabled}
-                          onClick={() =>
-                            void steerQueuedMessage(queuedMessage.id)
-                          }
-                          aria-label="Steer with queued message"
-                          title={`Add this message to the active ${providerLabel} turn`}
-                        >
-                          <CornerUpRight />
-                          Steer
-                        </Button>
-                      )}
-                    </>
-                  )}
-                  <span className="shrink-0 text-[10px] font-medium text-muted-foreground">
-                    {sending ? "Sending" : "Queued"}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="size-7 rounded-md text-muted-foreground hover:text-destructive"
+                      disabled={pending || submitting || disabled}
+                      onClick={() =>
+                        void deleteQueuedMessage(queuedMessage.id)
+                      }
+                      aria-label="Delete queued message"
+                      title="Delete queued message"
+                    >
+                      <Trash2 />
+                    </Button>
+                  </div>
+                )}
+              </article>
+            );
+          })}
         </section>
       )}
 
@@ -509,7 +597,11 @@ export function AgentComposer({
           rows={1}
           value={input}
           disabled={disabled || pending || submitting}
-          placeholder={`Message ${providerLabel} or type / for commands`}
+          placeholder={
+            running
+              ? activePlaceholder
+              : `Message ${providerLabel} or type / for commands`
+          }
           className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
           onChange={(event) => {
             setInput(event.target.value);
@@ -591,7 +683,7 @@ export function AgentComposer({
                 )}
               </Button>
             )}
-            {running && (
+            {running && supportsSteer && (
               <Button
                 type="button"
                 variant="secondary"
@@ -604,11 +696,23 @@ export function AgentComposer({
                   submitting ||
                   disabled
                 }
-                onClick={() => submit("queue")}
-                aria-label={`Queue message for ${providerLabel}`}
-                title={`Queue after ${providerLabel} finishes`}
+                onClick={() => submit(alternateDelivery)}
+                aria-label={
+                  alternateDelivery === "queue"
+                    ? `Queue message for ${providerLabel}`
+                    : `Steer ${providerLabel}`
+                }
+                title={
+                  alternateDelivery === "queue"
+                    ? `Queue after ${providerLabel} finishes (Command/Ctrl+Enter)`
+                    : `Steer the active ${providerLabel} turn (Command/Ctrl+Enter)`
+                }
               >
-                <ListEnd />
+                {alternateDelivery === "queue" ? (
+                  <ListEnd />
+                ) : (
+                  <CornerUpRight />
+                )}
               </Button>
             )}
             <Button
@@ -622,24 +726,24 @@ export function AgentComposer({
                 submitting ||
                 disabled
               }
-              onClick={() => submit()}
+              onClick={() => submit(primaryDelivery)}
               aria-label={
                 running
-                  ? supportsSteer
+                  ? primaryDelivery === "steer"
                     ? `Steer ${providerLabel}`
                     : `Queue message for ${providerLabel}`
                   : "Send message"
               }
               title={
                 running
-                  ? supportsSteer
+                  ? primaryDelivery === "steer"
                     ? `Add message to the active ${providerLabel} turn`
                     : `Queue after ${providerLabel} finishes`
                   : "Send message"
               }
             >
               {running ? (
-                supportsSteer ? (
+                primaryDelivery === "steer" ? (
                   <CornerUpRight />
                 ) : (
                   <ListEnd />
@@ -647,7 +751,7 @@ export function AgentComposer({
               ) : (
                 <ArrowUp />
               )}
-              {running && (supportsSteer ? "Steer" : "Queue")}
+              {running && (primaryDelivery === "steer" ? "Steer" : "Queue")}
             </Button>
           </div>
         </div>
