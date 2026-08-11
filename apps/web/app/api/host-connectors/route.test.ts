@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   isOnline: vi.fn(),
-  stopUser: vi.fn(),
+  daemonRequest: vi.fn(),
   createPairing: vi.fn(),
   deleteConnector: vi.fn(),
   getOwnedConnector: vi.fn(),
@@ -15,10 +15,10 @@ vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
 vi.mock("@/lib/agents/connector/broker", () => ({
-  hostConnectorBroker: { isOnline: mocks.isOnline },
-}));
-vi.mock("@/lib/agents/runtime/registry", () => ({
-  agentRuntimeRegistry: { stopUser: mocks.stopUser },
+  hostConnectorBroker: {
+    isOnline: mocks.isOnline,
+    request: mocks.daemonRequest,
+  },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
   createHostConnectorPairing: mocks.createPairing,
@@ -54,6 +54,7 @@ describe("Host Connectors route", () => {
     });
     mocks.getOwnedConnector.mockReturnValue({ id: "connector" });
     mocks.deleteConnector.mockReturnValue(true);
+    mocks.daemonRequest.mockResolvedValue({ stopped: true });
   });
 
   it("keeps connector administration restricted to administrators", async () => {
@@ -68,7 +69,7 @@ describe("Host Connectors route", () => {
     ).toBe(403);
     expect(mocks.listConnectors).not.toHaveBeenCalled();
     expect(mocks.createPairing).not.toHaveBeenCalled();
-    expect(mocks.stopUser).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
   it("returns a one-command local pairing flow", async () => {
@@ -79,7 +80,7 @@ describe("Host Connectors route", () => {
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
       command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.1.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
+        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.2.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });
@@ -94,12 +95,14 @@ describe("Host Connectors route", () => {
       "connector",
       "admin",
     );
-    expect(mocks.stopUser).toHaveBeenCalledWith("admin");
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "stop_all",
+    });
     expect(mocks.deleteConnector).toHaveBeenCalledWith(
       "connector",
       "admin",
     );
-    expect(mocks.stopUser.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.daemonRequest.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.deleteConnector.mock.invocationCallOrder[0],
     );
   });
@@ -112,7 +115,7 @@ describe("Host Connectors route", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(mocks.stopUser).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
     expect(mocks.deleteConnector).not.toHaveBeenCalled();
   });
 });

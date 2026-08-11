@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import {
   openE2eDatabase,
   resetE2eDatabase,
@@ -484,6 +484,7 @@ test("shows durable turn activity without changing completed tool status", async
   );
   await page.addInitScript(() => {
     type RuntimeEnvelope = {
+      epoch: string;
       sequence: number;
       type: "runtime_event" | "snapshot";
       data: Record<string, unknown>;
@@ -556,7 +557,8 @@ test("shows durable turn activity without changing completed tool status", async
       }
     ).__agentRuntimeControls;
     controls.emit({
-      sequence: 0,
+      epoch: "runtime-test",
+      sequence: 1,
       type: "snapshot",
       data: initialSnapshot,
     });
@@ -799,7 +801,8 @@ test("shows durable turn activity without changing completed tool status", async
       }
     ).__agentRuntimeControls;
     controls.emit({
-      sequence: 1,
+      epoch: "runtime-test",
+      sequence: 2,
       type: "runtime_event",
       data: { type: "compaction_start", reason: "auto" },
     });
@@ -816,7 +819,8 @@ test("shows durable turn activity without changing completed tool status", async
       }
     ).__agentRuntimeControls;
     controls.emit({
-      sequence: 2,
+      epoch: "runtime-test",
+      sequence: 3,
       type: "runtime_event",
       data: { type: "compaction_end", reason: "auto" },
     });
@@ -867,7 +871,8 @@ test("shows durable turn activity without changing completed tool status", async
     ).__agentRuntimeControls;
     controls.reconnect();
     controls.emit({
-      sequence: 3,
+      epoch: "runtime-test",
+      sequence: 4,
       type: "runtime_event",
       data: { type: "overtchat_status", status: "idle", startedAt: null },
     });
@@ -932,7 +937,8 @@ test("shows durable turn activity without changing completed tool status", async
       }
     ).__agentRuntimeControls;
     controls.emit({
-      sequence: 4,
+      epoch: "runtime-test",
+      sequence: 5,
       type: "runtime_event",
       data: {
         type: "config_update",
@@ -1116,7 +1122,8 @@ test("shows durable turn activity without changing completed tool status", async
       }
     ).__agentRuntimeControls;
     controls.emit({
-      sequence: 6,
+      epoch: "runtime-test",
+      sequence: 7,
       type: "snapshot",
       data: {
         ...initialSnapshot,

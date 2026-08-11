@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentSession: vi.fn(),
-  getOrStart: vi.fn(),
-  subscribe: vi.fn(),
+  subscribeSession: vi.fn(),
   unsubscribe: vi.fn(),
 }));
 
@@ -15,11 +14,46 @@ vi.mock("@/lib/auth/server", () => ({
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentSession: mocks.getOwnedAgentSession,
 }));
-vi.mock("@/lib/agents/runtime/registry", () => ({
-  agentRuntimeRegistry: { getOrStart: mocks.getOrStart },
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { subscribeSession: mocks.subscribeSession },
 }));
 
 import { GET } from "./route";
+
+const owned = {
+  host: {
+    connectorId: "connector",
+    transport: "local",
+    sshAlias: null,
+    userId: "owner",
+  },
+  connection: {
+    id: "connection",
+    provider: "pi",
+    shellMode: "interactive",
+    executable: "pi",
+    detectedVersion: "0.55.0",
+  },
+  workspace: { id: "workspace", path: "/workspace" },
+  agentSession: {
+    id: "session",
+    providerSessionId: "provider-session",
+    providerSessionPath: "/sessions/provider-session.jsonl",
+  },
+};
+
+const sessionDescriptor = {
+  connectionId: "connection",
+  workspaceId: "workspace",
+  provider: "pi",
+  target: { transport: "local", shellMode: "interactive" },
+  executable: "pi",
+  cwd: "/workspace",
+  detectedVersion: "0.55.0",
+  sessionId: "session",
+  providerSessionId: "provider-session",
+  providerSessionPath: "/sessions/provider-session.jsonl",
+};
 
 const context = { params: Promise.resolve({ id: "session" }) };
 
@@ -29,17 +63,17 @@ describe("agent session event stream", () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "owner", role: "admin" },
     });
-    mocks.getOwnedAgentSession.mockResolvedValue({
-      host: { transport: "local", userId: "owner" },
-    });
-    mocks.getOrStart.mockResolvedValue({ subscribe: mocks.subscribe });
-    mocks.subscribe.mockImplementation(
-      (
+    mocks.getOwnedAgentSession.mockResolvedValue(owned);
+    mocks.subscribeSession.mockImplementation(
+      async (
+        _connectorId: string,
+        _session: unknown,
+        after: { epoch: string; sequence: number } | undefined,
         listener: (event: Record<string, unknown>) => void,
-        afterSequence: number,
       ) => {
         listener({
-          sequence: afterSequence + 1,
+          epoch: "runtime",
+          sequence: (after?.sequence ?? 0) + 1,
           type: "snapshot",
           data: { sessionId: "session", status: "idle" },
         });
@@ -48,10 +82,10 @@ describe("agent session event stream", () => {
     );
   });
 
-  it("passes Last-Event-ID into replay and emits valid SSE", async () => {
+  it("passes the runtime cursor into replay and emits valid SSE", async () => {
     const response = await GET(
       new Request("http://server.test/events", {
-        headers: { "Last-Event-ID": "7" },
+        headers: { "Last-Event-ID": "runtime:7" },
       }),
       context,
     );
@@ -63,17 +97,20 @@ describe("agent session event stream", () => {
     const reader = response.body!.getReader();
     const first = await reader.read();
     const text = new TextDecoder().decode(first.value);
-    expect(text).toContain("id: 8");
+    expect(text).toContain("id: runtime:8");
     expect(text).toContain("event: runtime");
-    expect(mocks.subscribe).toHaveBeenCalledWith(
+    expect(mocks.subscribeSession).toHaveBeenCalledWith(
+      "connector",
+      sessionDescriptor,
+      { epoch: "runtime", sequence: 7 },
       expect.any(Function),
-      7,
+      expect.any(Function),
     );
     await reader.cancel();
     expect(mocks.unsubscribe).toHaveBeenCalled();
   });
 
-  it("does not start a runtime for a session owned by another user", async () => {
+  it("does not subscribe to a session owned by another user", async () => {
     mocks.getOwnedAgentSession.mockResolvedValue(null);
 
     const response = await GET(
@@ -82,6 +119,6 @@ describe("agent session event stream", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(mocks.getOrStart).not.toHaveBeenCalled();
+    expect(mocks.subscribeSession).not.toHaveBeenCalled();
   });
 });

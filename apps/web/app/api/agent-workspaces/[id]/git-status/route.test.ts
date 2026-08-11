@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentWorkspace: vi.fn(),
-  targetForStoredHost: vi.fn(),
-  inspectAgentWorkspaceGitStatus: vi.fn(),
+  daemonRequest: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,11 +13,8 @@ vi.mock("@/lib/auth/server", () => ({
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentWorkspace: mocks.getOwnedAgentWorkspace,
 }));
-vi.mock("@/lib/agents/runtime/target", () => ({
-  targetForStoredHost: mocks.targetForStoredHost,
-}));
-vi.mock("@/lib/agents/runtime/git", () => ({
-  inspectAgentWorkspaceGitStatus: mocks.inspectAgentWorkspaceGitStatus,
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 
 import { GET } from "./route";
@@ -35,18 +31,14 @@ describe("agent workspace Git status route", () => {
       user: { id: "owner", role: "admin" },
     });
     mocks.getOwnedAgentWorkspace.mockResolvedValue({
-      host: { transport: "local", userId: "owner" },
+      host: { connectorId: "connector", transport: "local", userId: "owner" },
       connection: { id: "connection", shellMode: "interactive" },
       workspace: {
         id: "workspace",
         path: "/srv/project",
       },
     });
-    mocks.targetForStoredHost.mockReturnValue({
-      connectorId: "connector",
-      transport: "local",
-    });
-    mocks.inspectAgentWorkspaceGitStatus.mockResolvedValue({
+    mocks.daemonRequest.mockResolvedValue({
       isGit: true,
       repositoryRoot: "/srv/project",
       branch: "feature/status",
@@ -66,11 +58,11 @@ describe("agent workspace Git status route", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Cache-Control")).toBe("no-store");
-    expect(mocks.targetForStoredHost).toHaveBeenCalled();
-    expect(mocks.inspectAgentWorkspaceGitStatus).toHaveBeenCalledWith(
-      { connectorId: "connector", transport: "local" },
-      "/srv/project",
-    );
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "git_status",
+      target: { transport: "local", shellMode: "interactive" },
+      path: "/srv/project",
+    });
     await expect(response.json()).resolves.toMatchObject({
       status: {
         branch: "feature/status",
@@ -90,11 +82,11 @@ describe("agent workspace Git status route", () => {
 
     mocks.getOwnedAgentWorkspace.mockResolvedValueOnce(null);
     expect((await GET(request, context)).status).toBe(404);
-    expect(mocks.inspectAgentWorkspaceGitStatus).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
   it("returns a useful connector error without caching it", async () => {
-    mocks.inspectAgentWorkspaceGitStatus.mockRejectedValue(
+    mocks.daemonRequest.mockRejectedValue(
       new Error("Git is not installed on the selected machine."),
     );
 

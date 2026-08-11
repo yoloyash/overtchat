@@ -3,25 +3,11 @@ import {
   connectionAccessError,
   connectionErrorMessage,
 } from "@/lib/agents/access";
-import {
-  agentDiscoveryTargetSchema,
-  type AgentDiscoveryTarget,
-} from "@/lib/agents/types";
-import { discoverAgentInstallations } from "@/lib/agents/runtime/discovery";
-import type { HostTarget } from "@/lib/agents/runtime/process";
+import { agentDiscoveryTargetSchema } from "@overtchat/agent-bridge";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 
 export const maxDuration = 30;
-
-function hostTarget(target: AgentDiscoveryTarget): HostTarget {
-  return target.transport === "local"
-    ? { connectorId: target.connectorId, transport: "local" }
-    : {
-        connectorId: target.connectorId,
-        transport: "ssh",
-        alias: target.sshAlias,
-      };
-}
 
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
@@ -46,8 +32,9 @@ export async function POST(request: Request) {
 
   try {
     return Response.json({
-      installations: await discoverAgentInstallations(
-        hostTarget(parsed.data),
+      installations: await hostConnectorBroker.request(
+        parsed.data.connectorId,
+        { type: "discover", target: parsed.data },
       ),
     });
   } catch (error) {

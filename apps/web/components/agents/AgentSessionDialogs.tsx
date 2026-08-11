@@ -13,7 +13,7 @@ import type {
   AgentInteractionValue,
   AgentRuntimeSnapshot,
   AgentUsageSnapshot,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 

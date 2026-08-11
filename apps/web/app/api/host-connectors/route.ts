@@ -4,7 +4,6 @@ import {
 } from "@overtchat/agent-bridge";
 import { auth } from "@/lib/auth/server";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
 import {
   createHostConnectorPairing,
   deleteHostConnector,
@@ -83,7 +82,7 @@ export async function DELETE(request: Request) {
   if (!getOwnedHostConnector(id, result.user.id)) {
     return new Response("Not found", { status: 404 });
   }
-  await agentRuntimeRegistry.stopUser(result.user.id);
+  await hostConnectorBroker.request(id, { type: "stop_all" }).catch(() => {});
   return deleteHostConnector(id, result.user.id)
     ? new Response(null, { status: 204 })
     : new Response("Not found", { status: 404 });

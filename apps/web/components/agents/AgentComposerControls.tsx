@@ -18,7 +18,7 @@ import type {
   AgentCollaborationMode,
   AgentModel,
   AgentThinkingLevel,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { modelIconForModel } from "@/lib/providers/catalog";
 import { cn } from "@/lib/utils";

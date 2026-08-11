@@ -14,7 +14,7 @@ import type {
   DetectedAgentInstallation,
   HostConnectorListItem,
   HostConnectorPairing,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import { agentConnectionKeys } from "@/lib/queries/keys";
 import { agentConnectionHasRunningSession } from "@/lib/agents/sidebar";
 

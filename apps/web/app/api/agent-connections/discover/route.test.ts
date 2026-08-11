@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  discover: vi.fn(),
+  daemonRequest: vi.fn(),
   getOwnedConnector: vi.fn(),
   getSession: vi.fn(),
 }));
@@ -10,8 +10,8 @@ vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
-vi.mock("@/lib/agents/runtime/discovery", () => ({
-  discoverAgentInstallations: mocks.discover,
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
   getOwnedHostConnector: mocks.getOwnedConnector,
@@ -37,7 +37,7 @@ describe("Agent Connection discovery route", () => {
       user: { id: "admin", role: "admin" },
     });
     mocks.getOwnedConnector.mockReturnValue({ id: "connector" });
-    mocks.discover.mockResolvedValue([
+    mocks.daemonRequest.mockResolvedValue([
       {
         provider: "omp",
         executable: "/home/admin/.bun/bin/omp",
@@ -69,10 +69,13 @@ describe("Agent Connection discovery route", () => {
       "connector",
       "admin",
     );
-    expect(mocks.discover).toHaveBeenCalledWith({
-      connectorId: "connector",
-      transport: "ssh",
-      alias: "macbook",
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "discover",
+      target: {
+        connectorId: "connector",
+        transport: "ssh",
+        sshAlias: "macbook",
+      },
     });
   });
 
@@ -84,7 +87,7 @@ describe("Agent Connection discovery route", () => {
     );
 
     expect(response.status).toBe(404);
-    expect(mocks.discover).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
   it("keeps discovery restricted to administrators", async () => {
@@ -98,6 +101,6 @@ describe("Agent Connection discovery route", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.getOwnedConnector).not.toHaveBeenCalled();
-    expect(mocks.discover).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 });

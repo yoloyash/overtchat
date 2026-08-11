@@ -15,7 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
-import { AGENT_GOAL_STATUSES } from "@/lib/agents/types";
+import { AGENT_GOAL_STATUSES } from "@overtchat/agent-bridge";
 import type {
   AgentCollaborationMode,
   AgentGoal,
@@ -25,12 +25,12 @@ import type {
   AgentSessionCommand,
   AgentThinkingLevel,
   AgentUsageSnapshot,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import {
   buildAgentPromptCommand,
   normalizeAgentSessionCommand,
-} from "@/lib/agents/runtime/commands";
-import { agentProviderMetadata } from "@/lib/agents/catalog";
+  agentProviderMetadata,
+} from "@overtchat/agent-bridge";
 import {
   useAgentSession,
   useAgentSessionCommand,

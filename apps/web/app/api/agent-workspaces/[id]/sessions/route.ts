@@ -3,9 +3,16 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
-import { getOwnedAgentWorkspace } from "@/lib/db/agentConnections";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import {
+  daemonWorkspace,
+  parseProviderSessionMetadata,
+} from "@/lib/agents/connector/descriptors";
+import {
+  getOwnedAgentWorkspace,
+  upsertAgentSession,
+} from "@/lib/db/agentConnections";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 
 export const maxDuration = 150;
 
@@ -24,12 +31,25 @@ export async function POST(
   if (!owned) return new Response("Not found", { status: 404 });
 
   try {
-    const created = await agentRuntimeRegistry.create(owned);
+    const sessionId = crypto.randomUUID();
+    const created = await hostConnectorBroker.request<{
+      session: unknown;
+      snapshot: unknown;
+    }>(owned.host.connectorId, {
+      type: "create_session",
+      sessionId,
+      workspace: daemonWorkspace(owned),
+    });
+    const row = await upsertAgentSession(
+      owned.workspace.id,
+      parseProviderSessionMetadata(created.session),
+      sessionId,
+    );
     return Response.json(
       {
         session: {
-          id: created.sessionId,
-          snapshot: created.runtime.snapshot(),
+          id: row.id,
+          snapshot: created.snapshot,
         },
       },
       { status: 201 },

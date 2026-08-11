@@ -2,7 +2,7 @@ import type {
   AgentConnectionListItem,
   AgentSessionListItem,
   AgentWorkspaceListItem,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 
 export const AGENT_SESSION_PREVIEW_COUNT = 8;
 

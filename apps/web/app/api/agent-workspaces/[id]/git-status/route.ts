@@ -3,8 +3,8 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { inspectAgentWorkspaceGitStatus } from "@/lib/agents/runtime/git";
-import { targetForStoredHost } from "@/lib/agents/runtime/target";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { daemonTarget } from "@/lib/agents/connector/descriptors";
 import { getOwnedAgentWorkspace } from "@/lib/db/agentConnections";
 
 export const maxDuration = 30;
@@ -25,9 +25,13 @@ export async function GET(
   if (!owned) return new Response("Not found", { status: 404 });
 
   try {
-    const status = await inspectAgentWorkspaceGitStatus(
-      targetForStoredHost(owned.host, owned.connection.shellMode),
-      owned.workspace.path,
+    const status = await hostConnectorBroker.request(
+      owned.host.connectorId,
+      {
+        type: "git_status",
+        target: daemonTarget(owned.host, owned.connection.shellMode),
+        path: owned.workspace.path,
+      },
     );
     return Response.json(
       { status },

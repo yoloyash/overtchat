@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentConnection: vi.fn(),
-  targetForStoredHost: vi.fn(),
-  listAgentDirectories: vi.fn(),
+  daemonRequest: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,11 +13,8 @@ vi.mock("@/lib/auth/server", () => ({
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentConnection: mocks.getOwnedAgentConnection,
 }));
-vi.mock("@/lib/agents/runtime/target", () => ({
-  targetForStoredHost: mocks.targetForStoredHost,
-}));
-vi.mock("@/lib/agents/runtime/filesystem", () => ({
-  listAgentDirectories: mocks.listAgentDirectories,
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 
 import { GET } from "./route";
@@ -32,11 +28,10 @@ describe("agent directory route", () => {
       user: { id: "owner", role: "admin" },
     });
     mocks.getOwnedAgentConnection.mockResolvedValue({
-      host: { transport: "local", userId: "owner" },
-      connection: { id: "connection" },
+      host: { connectorId: "connector", transport: "local", userId: "owner" },
+      connection: { id: "connection", shellMode: "interactive" },
     });
-    mocks.targetForStoredHost.mockReturnValue({ transport: "local" });
-    mocks.listAgentDirectories.mockResolvedValue({
+    mocks.daemonRequest.mockResolvedValue({
       path: "/home/owner",
       parent: "/home",
       directories: [{ name: "code", path: "/home/owner/code" }],
@@ -52,11 +47,11 @@ describe("agent directory route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.targetForStoredHost).toHaveBeenCalled();
-    expect(mocks.listAgentDirectories).toHaveBeenCalledWith(
-      { transport: "local" },
-      "/home/owner",
-    );
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "list_directories",
+      target: { transport: "local", shellMode: "interactive" },
+      path: "/home/owner",
+    });
     await expect(response.json()).resolves.toMatchObject({
       directory: { path: "/home/owner" },
     });
@@ -78,6 +73,6 @@ describe("agent directory route", () => {
       context,
     );
     expect(relative.status).toBe(400);
-    expect(mocks.listAgentDirectories).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listAgentConnections: vi.fn(),
   createAgentConnection: vi.fn(),
-  probeConnection: vi.fn(),
+  daemonRequest: vi.fn(),
   getOwnedHostConnector: vi.fn(),
   withAgentRuntimeStatuses: vi.fn(),
 }));
@@ -17,15 +17,13 @@ vi.mock("@/lib/db/agentConnections", () => ({
   listAgentConnections: mocks.listAgentConnections,
   createAgentConnection: mocks.createAgentConnection,
 }));
-vi.mock("@/lib/agents/providers/registry", () => ({
-  agentProviderAdapter: () => ({
-    probeConnection: mocks.probeConnection,
-  }),
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
   getOwnedHostConnector: mocks.getOwnedHostConnector,
 }));
-vi.mock("@/lib/agents/runtime/status", () => ({
+vi.mock("@/lib/agents/connector/status", () => ({
   withAgentRuntimeStatuses: mocks.withAgentRuntimeStatuses,
 }));
 
@@ -62,7 +60,7 @@ describe("Agent Connections route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ connections: [] });
     expect(mocks.listAgentConnections).toHaveBeenCalledWith("admin");
-    expect(mocks.withAgentRuntimeStatuses).toHaveBeenCalledWith([], "admin");
+    expect(mocks.withAgentRuntimeStatuses).toHaveBeenCalledWith([]);
   });
 
   it("does not expose connections to non-admin users", async () => {
@@ -93,12 +91,12 @@ describe("Agent Connections route", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(mocks.probeConnection).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
     expect(mocks.createAgentConnection).not.toHaveBeenCalled();
   });
 
   it("persists the shell mode selected during connection probing", async () => {
-    mocks.probeConnection.mockResolvedValue({
+    mocks.daemonRequest.mockResolvedValue({
       status: "ready",
       version: "17.2.11",
       models: [],

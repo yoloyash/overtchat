@@ -3,20 +3,32 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import {
-  agentRuntimeRegistry,
-} from "@/lib/agents/runtime/registry";
-import type { AgentRuntimeEnvelope } from "@/lib/agents/types";
+import { daemonSession } from "@/lib/agents/connector/descriptors";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import type { AgentRuntimeEnvelope } from "@overtchat/agent-bridge";
 import { getOwnedAgentSession } from "@/lib/db/agentConnections";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 function encodeEvent(envelope: AgentRuntimeEnvelope): Uint8Array {
   return new TextEncoder().encode(
-    `id: ${envelope.sequence}\nevent: runtime\ndata: ${JSON.stringify(envelope)}\n\n`,
+    `id: ${envelope.epoch}:${envelope.sequence}\nevent: runtime\ndata: ${JSON.stringify(envelope)}\n\n`,
   );
+}
+
+function parseCursor(value: string | null):
+  | { epoch: string; sequence: number }
+  | undefined {
+  if (!value) return undefined;
+  const separator = value.lastIndexOf(":");
+  if (separator <= 0) return undefined;
+  const epoch = value.slice(0, separator);
+  const sequence = Number(value.slice(separator + 1));
+  return Number.isSafeInteger(sequence) && sequence >= 0
+    ? { epoch, sequence }
+    : undefined;
 }
 
 export async function GET(
@@ -33,47 +45,61 @@ export async function GET(
   const owned = await getOwnedAgentSession(id, session.user.id);
   if (!owned) return new Response("Not found", { status: 404 });
 
+  const pending: AgentRuntimeEnvelope[] = [];
+  let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  let closed = false;
+  let closeStream = () => {};
   try {
-    const runtime = await agentRuntimeRegistry.getOrStart(owned);
-    const lastEventId = Number(req.headers.get("last-event-id") ?? "0");
-    let close = () => {};
+    const unsubscribe = await hostConnectorBroker.subscribeSession(
+      owned.host.connectorId,
+      daemonSession(owned),
+      parseCursor(req.headers.get("last-event-id")),
+      (envelope) => {
+        if (closed) return;
+        if (!controller) {
+          pending.push(envelope);
+          return;
+        }
+        try {
+          controller.enqueue(encodeEvent(envelope));
+        } catch {
+          closeStream();
+        }
+      },
+      () => closeStream(),
+    );
+
     const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        let closed = false;
-        let unsubscribe = () => {};
-        const finish = () => {
+      start(streamController) {
+        controller = streamController;
+        for (const envelope of pending.splice(0)) {
+          streamController.enqueue(encodeEvent(envelope));
+        }
+        const keepAlive = setInterval(() => {
+          if (closed) return;
+          try {
+            streamController.enqueue(
+              new TextEncoder().encode(": keepalive\n\n"),
+            );
+          } catch {
+            closeStream();
+          }
+        }, 15_000);
+        closeStream = () => {
           if (closed) return;
           closed = true;
           clearInterval(keepAlive);
           unsubscribe();
           try {
-            controller.close();
+            streamController.close();
           } catch {
-            // The browser may already have closed its side of the stream.
+            // The browser may already have closed the stream.
           }
         };
-        const keepAlive = setInterval(() => {
-          if (!closed) {
-            try {
-              controller.enqueue(new TextEncoder().encode(": keepalive\n\n"));
-            } catch {
-              finish();
-            }
-          }
-        }, 15_000);
-        unsubscribe = runtime.subscribe((envelope) => {
-          if (closed) return;
-          try {
-            controller.enqueue(encodeEvent(envelope));
-          } catch {
-            finish();
-          }
-        }, Number.isFinite(lastEventId) ? lastEventId : 0);
-        req.signal.addEventListener("abort", finish, { once: true });
-        close = finish;
+        req.signal.addEventListener("abort", closeStream, { once: true });
       },
       cancel() {
-        close();
+        closeStream();
       },
     });
     return new Response(body, {
@@ -85,6 +111,7 @@ export async function GET(
       },
     });
   } catch (error) {
+    closed = true;
     return Response.json(
       {
         error: connectionErrorMessage(

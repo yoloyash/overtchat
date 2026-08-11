@@ -3,8 +3,8 @@ import {
   connectionAccessError,
   connectionErrorMessage,
 } from "@/lib/agents/access";
-import { agentConnectionDraftSchema } from "@/lib/agents/types";
-import { agentProviderAdapter } from "@/lib/agents/providers/registry";
+import { agentConnectionDraftSchema } from "@overtchat/agent-bridge";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 
 export const maxDuration = 150;
@@ -31,9 +31,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const probe = await agentProviderAdapter(
-      parsed.data.provider,
-    ).probeConnection(parsed.data);
+    const probe = await hostConnectorBroker.request(
+      parsed.data.connectorId,
+      { type: "probe", draft: parsed.data },
+    );
     return Response.json({ probe });
   } catch (error) {
     return Response.json(

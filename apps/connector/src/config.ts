@@ -16,6 +16,16 @@ export function connectorConfigPath(): string {
   );
 }
 
+export function connectorStatePath(connectorId: string): string {
+  return (
+    process.env.OVERTCHAT_CONNECTOR_STATE ??
+    path.join(
+      path.dirname(connectorConfigPath()),
+      `connector-${connectorId}.state.json`,
+    )
+  );
+}
+
 export async function readConnectorConfig(): Promise<ConnectorConfig> {
   const file = connectorConfigPath();
   let parsed: unknown;

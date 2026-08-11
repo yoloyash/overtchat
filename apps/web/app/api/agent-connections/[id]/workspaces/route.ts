@@ -3,11 +3,13 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { addAgentWorkspaceSchema } from "@/lib/agents/types";
-import { probeAgentWorkspace } from "@/lib/agents/runtime/filesystem";
-import { agentProviderAdapter } from "@/lib/agents/providers/registry";
-import { targetForStoredHost } from "@/lib/agents/runtime/target";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { addAgentWorkspaceSchema } from "@overtchat/agent-bridge";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import {
+  daemonTarget,
+  parseProviderSessionMetadata,
+} from "@/lib/agents/connector/descriptors";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 import {
   createAgentWorkspace,
   getOwnedAgentConnection,
@@ -43,24 +45,46 @@ export async function POST(
     if (!isAgentProviderId(owned.connection.provider)) {
       throw new Error("This coding-agent provider is not supported.");
     }
-    const target = targetForStoredHost(
-      owned.host,
-      owned.connection.shellMode,
-    );
-    const workspace = await probeAgentWorkspace(target, parsed.data.path);
-    const providerSessions = await agentProviderAdapter(
-      owned.connection.provider,
-    ).listWorkspaceSessions(
+    const target = daemonTarget(owned.host, owned.connection.shellMode);
+    const workspace = await hostConnectorBroker.request<{
+      path: string;
+      name: string;
+    }>(owned.host.connectorId, {
+      type: "probe_workspace",
       target,
-      owned.connection.executable,
-      workspace.path,
-    );
-    const row = await createAgentWorkspace(id, session.user.id, {
-      path: workspace.path,
-      name: parsed.data.name ?? workspace.name,
+      path: parsed.data.path,
     });
+    const workspaceId = crypto.randomUUID();
+    const providerSessions = await hostConnectorBroker.request<unknown[]>(
+      owned.host.connectorId,
+      {
+        type: "list_sessions",
+        workspace: {
+          connectionId: owned.connection.id,
+          workspaceId,
+          provider: owned.connection.provider,
+          target,
+          executable: owned.connection.executable,
+          cwd: workspace.path,
+          detectedVersion: owned.connection.detectedVersion,
+        },
+      },
+    );
+    const metadata = providerSessions.map(parseProviderSessionMetadata);
+    const row = await createAgentWorkspace(
+      id,
+      session.user.id,
+      {
+        path: workspace.path,
+        name: parsed.data.name ?? workspace.name,
+      },
+      workspaceId,
+    );
     if (!row) return new Response("Not found", { status: 404 });
-    const sessions = syncAgentWorkspaceSessions(row.id, providerSessions);
+    const sessions = syncAgentWorkspaceSessions(
+      row.id,
+      metadata,
+    );
     return Response.json(
       {
         workspace: {

@@ -16,7 +16,9 @@ const raw = new Database(databasePath);
 raw.pragma("foreign_keys = ON");
 raw.exec(`
   CREATE TABLE user (
-    id TEXT PRIMARY KEY NOT NULL
+    id TEXT PRIMARY KEY NOT NULL,
+    role TEXT DEFAULT 'admin',
+    banned INTEGER DEFAULT 0
   );
   CREATE TABLE host_connectors (
     id TEXT PRIMARY KEY NOT NULL,
@@ -270,5 +272,39 @@ describe("agent connection persistence", () => {
     expect(
       raw.prepare("SELECT count(*) AS count FROM agent_workspaces").get(),
     ).toEqual({ count: 0 });
+  });
+
+  it("reconciles only sessions still authorized for a connector", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const agentSession = await repository.upsertAgentSession(workspace!.id, {
+      providerSessionId: "session",
+      providerSessionPath: "/remote/session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    });
+
+    await expect(
+      repository.listActiveAgentSessionIds("alice-connector"),
+    ).resolves.toEqual([agentSession.id]);
+
+    raw.prepare("UPDATE user SET role = 'user' WHERE id = 'alice'").run();
+    await expect(
+      repository.listActiveAgentSessionIds("alice-connector"),
+    ).resolves.toEqual([]);
+
+    raw.prepare(
+      "UPDATE user SET role = 'admin', banned = 1 WHERE id = 'alice'",
+    ).run();
+    await expect(
+      repository.listActiveAgentSessionIds("alice-connector"),
+    ).resolves.toEqual([]);
   });
 });

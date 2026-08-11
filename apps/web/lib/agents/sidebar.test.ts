@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AgentConnectionListItem,
   AgentSessionListItem,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import {
   AGENT_SESSION_PREVIEW_COUNT,
   agentConnectionHasRunningSession,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AgentQueuedMessage,
@@ -8,8 +8,8 @@ import type {
   AgentRuntimeSnapshot,
   AgentSessionCommand,
   AgentUsageSnapshot,
-} from "@/lib/agents/types";
-import { applyAgentRuntimeEnvelope } from "@/lib/agents/runtime/state";
+} from "@overtchat/agent-bridge";
+import { applyAgentRuntimeEnvelope } from "@overtchat/agent-bridge";
 import {
   agentConnectionKeys,
   agentSessionKeys,
@@ -31,6 +31,7 @@ async function fetchAgentSession(id: string): Promise<AgentRuntimeSnapshot> {
 
 export function useAgentSession(id: string) {
   const queryClient = useQueryClient();
+  const cursor = useRef<{ epoch: string; sequence: number } | null>(null);
   const [streamStatus, setStreamStatus] = useState<
     "connecting" | "connected" | "reconnecting"
   >("connecting");
@@ -42,6 +43,7 @@ export function useAgentSession(id: string) {
 
   useEffect(() => {
     if (!query.isSuccess) return;
+    cursor.current = null;
     const events = new EventSource(`/api/agent-sessions/${id}/events`);
     events.onopen = () => setStreamStatus("connected");
     events.onerror = () => setStreamStatus("reconnecting");
@@ -57,6 +59,27 @@ export function useAgentSession(id: string) {
         });
         return;
       }
+      const previous = cursor.current;
+      if (
+        previous?.epoch === envelope.epoch &&
+        envelope.sequence <= previous.sequence
+      ) {
+        return;
+      }
+      if (
+        envelope.type !== "snapshot" &&
+        previous?.epoch === envelope.epoch &&
+        envelope.sequence > previous.sequence + 1
+      ) {
+        void queryClient.invalidateQueries({
+          queryKey: agentSessionKeys.detail(id),
+        });
+        return;
+      }
+      cursor.current = {
+        epoch: envelope.epoch,
+        sequence: envelope.sequence,
+      };
       queryClient.setQueryData<AgentRuntimeSnapshot>(
         agentSessionKeys.detail(id),
         (current) => applyAgentRuntimeEnvelope(current, envelope),
@@ -84,10 +107,18 @@ export function useAgentSessionCommand(id: string) {
       queuedMessages?: AgentQueuedMessage[];
       usage?: AgentUsageSnapshot;
     }> => {
+      const wireCommand =
+        (command.type === "prompt" ||
+          command.type === "steer" ||
+          command.type === "queue" ||
+          command.type === "implement_plan") &&
+        !command.clientMessageId
+          ? { ...command, clientMessageId: crypto.randomUUID() }
+          : command;
       const response = await fetch(`/api/agent-sessions/${id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(command),
+        body: JSON.stringify(wireCommand),
       });
       if (!response.ok) throw await responseError(response);
       return (await response.json()) as {

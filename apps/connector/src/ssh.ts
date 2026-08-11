@@ -3,10 +3,8 @@ import { readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import type {
-  ConnectorProcessLaunch,
-  ConnectorSshHost,
-} from "@overtchat/agent-bridge";
+import type { ConnectorSshHost } from "@overtchat/agent-bridge";
+import type { AgentProcessHostLaunch } from "@overtchat/agent-runtime";
 
 const execFileAsync = promisify(execFile);
 const MAX_ALIASES = 128;
@@ -18,7 +16,7 @@ function shellQuote(value: string): string {
 }
 
 export function buildSshRemoteCommand(
-  launch: ConnectorProcessLaunch,
+  launch: AgentProcessHostLaunch,
 ): string {
   const env = Object.entries(launch.env ?? {})
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
@@ -38,7 +36,7 @@ export function buildSshRemoteCommand(
 
 export function sshSpawnArgs(
   alias: string,
-  launch: ConnectorProcessLaunch,
+  launch: AgentProcessHostLaunch,
 ): string[] {
   if (!SAFE_ALIAS.test(alias)) throw new Error("Invalid SSH host alias.");
   return [

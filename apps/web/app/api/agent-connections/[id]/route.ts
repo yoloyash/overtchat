@@ -4,12 +4,10 @@ import {
   getOwnedAgentConnection,
   touchAgentConnectionValidation,
 } from "@/lib/db/agentConnections";
-import { targetForStoredHost } from "@/lib/agents/runtime/target";
-import { agentProviderAdapter } from "@/lib/agents/providers/registry";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { connectionErrorMessage } from "@/lib/agents/access";
 import { storedConnectionAccessError } from "@/lib/agents/access";
-import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 
 export const maxDuration = 150;
 
@@ -31,12 +29,27 @@ export async function POST(
     if (!isAgentProviderId(owned.connection.provider)) {
       throw new Error("This coding-agent provider is not supported.");
     }
-    const probe = await agentProviderAdapter(
-      owned.connection.provider,
-    ).probeTarget(
-      targetForStoredHost(owned.host, owned.connection.shellMode),
-      owned.connection.executable,
-    );
+    const draft =
+      owned.host.transport === "local"
+        ? {
+            connectorId: owned.host.connectorId,
+            provider: owned.connection.provider,
+            name: owned.host.name,
+            executable: owned.connection.executable,
+            transport: "local" as const,
+          }
+        : {
+            connectorId: owned.host.connectorId,
+            provider: owned.connection.provider,
+            name: owned.host.name,
+            executable: owned.connection.executable,
+            transport: "ssh" as const,
+            sshAlias: owned.host.sshAlias ?? "",
+          };
+    const probe = await hostConnectorBroker.request<{
+      version: string;
+      shellMode: "interactive" | "login";
+    }>(owned.host.connectorId, { type: "probe", draft });
     await touchAgentConnectionValidation(
       id,
       session.user.id,
@@ -70,7 +83,14 @@ export async function DELETE(
     return Response.json({ error: accessError }, { status: 403 });
   }
   const { id } = await params;
-  await agentRuntimeRegistry.stopConnection(id, session.user.id);
+  const owned = await getOwnedAgentConnection(id, session.user.id);
+  if (!owned) return new Response("Not found", { status: 404 });
+  await hostConnectorBroker
+    .request(owned.host.connectorId, {
+      type: "stop_connection",
+      connectionId: id,
+    })
+    .catch(() => {});
   const deleted = await deleteAgentConnection(id, session.user.id);
   return deleted
     ? new Response(null, { status: 204 })

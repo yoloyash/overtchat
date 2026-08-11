@@ -3,14 +3,20 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { agentSessionCommandSchema } from "@/lib/agents/types";
-import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
+import { agentSessionCommandSchema } from "@overtchat/agent-bridge";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import {
+  daemonSession,
+  daemonWorkspace,
+  parseProviderSessionMetadata,
+} from "@/lib/agents/connector/descriptors";
 import {
   getOwnedAgentSession,
   type OwnedAgentSession,
   updateAgentSessionMetadata,
+  upsertAgentSession,
 } from "@/lib/db/agentConnections";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 
 export const maxDuration = 300;
 
@@ -45,8 +51,13 @@ export async function GET(
   const authorized = await authorize(req, id);
   if ("error" in authorized) return authorized.error;
   try {
-    const runtime = await agentRuntimeRegistry.getOrStart(authorized.owned);
-    return Response.json({ snapshot: runtime.snapshot() });
+    const result = await hostConnectorBroker.request<{
+      snapshot: unknown;
+    }>(authorized.owned.host.connectorId, {
+      type: "open_session",
+      session: daemonSession(authorized.owned),
+    });
+    return Response.json({ snapshot: result.snapshot });
   } catch (error) {
     return Response.json(
       {
@@ -80,54 +91,80 @@ export async function POST(
   }
 
   try {
-    const runtime = await agentRuntimeRegistry.getOrStart(authorized.owned);
-    const normalized = runtime.normalizeCommand(parsed.data);
-    if (normalized.type === "new_session") {
-      const created = await agentRuntimeRegistry.create(authorized.owned);
+    const command = parsed.data;
+    if (command.type === "new_session") {
+      const sessionId = crypto.randomUUID();
+      const created = await hostConnectorBroker.request<{
+        session: unknown;
+        snapshot: unknown;
+      }>(authorized.owned.host.connectorId, {
+        type: "create_session",
+        sessionId,
+        workspace: daemonWorkspace(authorized.owned),
+      });
+      const row = await upsertAgentSession(
+        authorized.owned.workspace.id,
+        parseProviderSessionMetadata(created.session),
+        sessionId,
+      );
       return Response.json({
         accepted: true,
-        sessionId: created.sessionId,
+        sessionId: row.id,
+      });
+    }
+    const clientMessageId =
+      "clientMessageId" in command ? command.clientMessageId : undefined;
+    const result = await hostConnectorBroker.request<{
+      commandResult?: unknown;
+      snapshot?: { queuedMessages?: unknown[] };
+      fork?: { session: unknown; draft?: string };
+    }>(authorized.owned.host.connectorId, {
+      type: "session_command",
+      commandId: clientMessageId ?? crypto.randomUUID(),
+      ...(clientMessageId ? { clientMessageId } : {}),
+      session: daemonSession(authorized.owned),
+      command,
+    });
+    if (result.fork) {
+      const row = await upsertAgentSession(
+        authorized.owned.workspace.id,
+        parseProviderSessionMetadata(result.fork.session),
+      );
+      return Response.json({
+        accepted: true,
+        sessionId: row.id,
+        ...(result.fork.draft !== undefined
+          ? { draft: result.fork.draft }
+          : {}),
       });
     }
     if (
-      normalized.type === "edit_message" ||
-      normalized.type === "fork_message"
-    ) {
-      const created = await agentRuntimeRegistry.fork(
-        authorized.owned,
-        runtime,
-        normalized,
-      );
-      return Response.json({ accepted: true, ...created });
-    }
-    const commandResult = await runtime.command(normalized);
-    if (
-      normalized.type === "prompt" ||
-      normalized.type === "implement_plan" ||
-      normalized.type === "steer" ||
-      normalized.type === "steer_queued_message"
+      command.type === "prompt" ||
+      command.type === "implement_plan" ||
+      command.type === "steer" ||
+      command.type === "steer_queued_message"
     ) {
       await updateAgentSessionMetadata(id, {
         ...(
-          normalized.type === "prompt" &&
+          command.type === "prompt" &&
           !authorized.owned.agentSession.firstMessage
           ? {
               firstMessage:
-                normalized.message ||
-                normalized.images?.[0]?.filename ||
+                command.message ||
+                command.images?.[0]?.filename ||
                 "Image attachment",
             }
           : {}),
         providerModifiedAt: new Date(),
       });
-    } else if (normalized.type === "set_session_name") {
-      await updateAgentSessionMetadata(id, { name: normalized.name });
+    } else if (command.type === "set_session_name") {
+      await updateAgentSessionMetadata(id, { name: command.name });
     }
     return Response.json({
       accepted: true,
-      queuedMessages: runtime.snapshot().queuedMessages,
-      ...(normalized.type === "show_usage"
-        ? { usage: commandResult }
+      queuedMessages: result.snapshot?.queuedMessages,
+      ...(command.type === "show_usage"
+        ? { usage: result.commandResult }
         : {}),
     });
   } catch (error) {
