@@ -406,35 +406,35 @@ test("shows durable turn activity without changing completed tool status", async
         }
         if (
           command.type === "abort" ||
-          command.type === "steer" ||
           command.type === "queue" ||
           command.type === "remove_queued_message" ||
           command.type === "steer_queued_message"
         ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
         }
+        const queueResult =
+          command.type === "queue"
+            ? {
+                queuedMessages: [
+                  {
+                    id: "queued-message",
+                    message: command.message,
+                    ...(Array.isArray(command.images)
+                      ? { images: command.images }
+                      : {}),
+                    status: "pending",
+                  },
+                ],
+              }
+            : command.type === "remove_queued_message" ||
+                command.type === "steer_queued_message"
+              ? { queuedMessages: [] }
+              : {};
         await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
-            ...(command.type === "queue"
-              ? {
-                  queuedMessages: [
-                    {
-                      id: "queued-message",
-                      message: command.message,
-                      ...(Array.isArray(command.images)
-                        ? { images: command.images }
-                        : {}),
-                      status: "pending",
-                    },
-                  ],
-                }
-              : command.type === "remove_queued_message"
-                ? { queuedMessages: [] }
-                : command.type === "steer_queued_message"
-                  ? { queuedMessages: [] }
-                : {}),
+            ...queueResult,
           }),
         });
         return;
@@ -694,9 +694,14 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("Turn changes", { exact: true }),
   ).toHaveCount(0);
 
-  const composer = page.getByPlaceholder(
+  const composer = agentComposer.getByRole("combobox");
+  await expect(composer).toHaveAttribute(
+    "placeholder",
     "Message Codex or type / for commands",
   );
+  await expect(
+    page.getByLabel("Active turn message actions"),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Attach images" })).toBeVisible();
   await composer.evaluate(async (element) => {
     const canvas = document.createElement("canvas");
@@ -749,7 +754,10 @@ test("shows durable turn activity without changing completed tool status", async
       },
     ],
   });
-
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-queued-message-desktop.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Edit queued message" }).click();
   await expect(composer).toHaveValue("Run the tests");
   await expect(composer).toBeEnabled();
@@ -763,22 +771,75 @@ test("shows durable turn activity without changing completed tool status", async
   await composer.fill("");
 
   await composer.fill("Focus on the failing test");
-  await page.getByRole("button", { name: "Steer Codex" }).click();
+  await composer.press("Enter");
   await expect(composer).toHaveValue("Focus on the failing test");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveValue("");
-
-  await composer.fill("Then summarize");
-  await page.getByRole("button", { name: "Queue message for Codex" }).click();
   await expect(
-    page.getByText("Then summarize", { exact: true }),
+    page.getByText("Focus on the failing test", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Steer with queued message" })
     .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "steer_queued_message",
+  });
   await expect(
-    page.getByText("Then summarize", { exact: true }),
+    page.getByText("Focus on the failing test", { exact: true }),
   ).toHaveCount(0);
+
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Message Codex or type / for commands",
+  );
+  await composer.fill("Delete this follow-up");
+  await composer.press("Enter");
+  await expect(
+    page.getByText("Delete this follow-up", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Delete queued message" }).click();
+  await expect(
+    page.getByText("Delete this follow-up", { exact: true }),
+  ).toHaveCount(0);
+
+  await expect(
+    page.getByRole("button", { name: "Interrupt Codex and send message" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Steer Codex" }),
+  ).toHaveCount(0);
+
+  await composer.fill("Queue with the alternate shortcut");
+  await composer.press("Control+Enter");
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "queue",
+    message: "Queue with the alternate shortcut",
+  });
+  await page.getByRole("button", { name: "Delete queued message" }).click();
+  await expect(composer).toBeEnabled();
+
+  await composer.fill("Submit this only once");
+  const commandCountBeforeDoubleSubmit = submittedCommands.length;
+  await composer.evaluate((element) => {
+    for (let index = 0; index < 2; index += 1) {
+      element.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+  });
+  await expect.poll(() => submittedCommands.length).toBe(
+    commandCountBeforeDoubleSubmit + 1,
+  );
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "queue",
+    message: "Submit this only once",
+  });
+  await expect(composer).toBeEnabled();
+  expect(submittedCommands).toHaveLength(commandCountBeforeDoubleSubmit + 1);
 
   await page.getByRole("button", { name: "Stop Codex" }).click();
   await expect(genericActivity).toContainText("Stopping");

@@ -73,6 +73,87 @@ describe("agent runtime event reducer", () => {
     ]);
   });
 
+  it("atomically restores canonical turn order after optimistic steer races", () => {
+    const initial = { ...snapshot(), messages: [] };
+    const prompt = applyAgentRuntimeEnvelope(
+      initial,
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "write a paragraph on overtchat",
+          overtchatSubmissionId: "prompt",
+        },
+      }),
+    )!;
+    const steered = applyAgentRuntimeEnvelope(
+      prompt,
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "2 more now",
+          overtchatSubmissionId: "steer",
+        },
+      }),
+    )!;
+    const reconciled = applyAgentRuntimeEnvelope(
+      steered,
+      event({
+        type: "overtchat_turn_update",
+        turnId: "turn-1",
+        messages: [
+          {
+            id: "turn-1:user:0",
+            role: "user",
+            content: "write a paragraph on overtchat",
+            overtchatSubmissionId: "prompt",
+            overtchatTurnId: "turn-1",
+          },
+          {
+            id: "assistant-1",
+            role: "assistant",
+            content: [{ type: "text", text: "First paragraph" }],
+            overtchatTurnId: "turn-1",
+          },
+          {
+            id: "turn-1:user:1",
+            role: "user",
+            content: "2 more now",
+            overtchatSubmissionId: "steer",
+            overtchatTurnId: "turn-1",
+          },
+          {
+            id: "assistant-2",
+            role: "assistant",
+            content: [{ type: "text", text: "Two more paragraphs" }],
+            overtchatTurnId: "turn-1",
+          },
+          {
+            id: "turn-1:footer",
+            role: "turnFooter",
+            content: "First paragraph\n\nTwo more paragraphs",
+            overtchatTurnId: "turn-1",
+          },
+        ],
+      }),
+    )!;
+
+    expect(
+      reconciled.messages.map((message) =>
+        message && typeof message === "object"
+          ? [Reflect.get(message, "role"), Reflect.get(message, "id")]
+          : null,
+      ),
+    ).toEqual([
+      ["user", "turn-1:user:0"],
+      ["assistant", "assistant-1"],
+      ["user", "turn-1:user:1"],
+      ["assistant", "assistant-2"],
+      ["turnFooter", "turn-1:footer"],
+    ]);
+  });
+
   it("replaces repeated user lifecycle events with the same timestamp", () => {
     const started = applyAgentRuntimeEnvelope(
       snapshot(),
@@ -409,6 +490,61 @@ describe("agent runtime event reducer", () => {
     expect(acknowledged.messages).toEqual([
       { role: "user", content: "Hello" },
       { role: "user", content: "Next prompt", timestamp: 200 },
+    ]);
+  });
+
+  it("reconciles identical submissions by client identity", () => {
+    const first = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "Same follow-up",
+          timestamp: 100,
+          overtchatSubmissionId: "submission:1",
+        },
+      }),
+    )!;
+    const second = applyAgentRuntimeEnvelope(
+      first,
+      event({
+        type: "overtchat_submission",
+        message: {
+          role: "user",
+          content: "Same follow-up",
+          timestamp: 100,
+          overtchatSubmissionId: "submission:2",
+        },
+      }),
+    )!;
+    const acknowledged = applyAgentRuntimeEnvelope(
+      second,
+      event({
+        type: "message_start",
+        message: {
+          id: "provider:2",
+          role: "user",
+          content: "Same follow-up",
+          overtchatSubmissionId: "submission:2",
+        },
+      }),
+    )!;
+
+    expect(acknowledged.messages).toEqual([
+      { role: "user", content: "Hello" },
+      {
+        role: "user",
+        content: "Same follow-up",
+        timestamp: 100,
+        overtchatSubmissionId: "submission:1",
+      },
+      {
+        id: "provider:2",
+        role: "user",
+        content: "Same follow-up",
+        overtchatSubmissionId: "submission:2",
+      },
     ]);
   });
 

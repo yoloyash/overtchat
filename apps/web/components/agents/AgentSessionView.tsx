@@ -213,7 +213,6 @@ export function AgentSessionView({
   async function submit(
     message: string,
     images: AgentPromptImage[],
-    delivery: "prompt" | "queue" | "steer",
   ): Promise<boolean> {
     let input: AgentSessionCommand;
     try {
@@ -222,10 +221,10 @@ export function AgentSessionView({
         snapshot?.state ?? {},
       );
       input =
-        normalized.type !== "prompt" || delivery === "prompt"
+        normalized.type !== "prompt" || snapshot?.status !== "running"
           ? normalized
           : {
-              type: delivery,
+              type: "queue",
               message,
               ...(images.length > 0 ? { images } : {}),
             };
@@ -470,6 +469,9 @@ export function AgentSessionView({
             onSubmit={submit}
             onStop={() => void run({ type: "abort" })}
             onEditQueued={(id) =>
+              run({ type: "remove_queued_message", id })
+            }
+            onDeleteQueued={(id) =>
               run({ type: "remove_queued_message", id })
             }
             onSteerQueued={(id) =>

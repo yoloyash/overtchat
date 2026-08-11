@@ -59,21 +59,74 @@ function submissionIdOf(message: unknown): string | null {
   return typeof id === "string" ? id : null;
 }
 
+function turnIdOf(message: unknown): string | null {
+  if (!message || typeof message !== "object") return null;
+  const id = Reflect.get(message, "overtchatTurnId");
+  return typeof id === "string" && id ? id : null;
+}
+
+function replaceTurnMessages(
+  messages: unknown[],
+  turnId: string,
+  incoming: unknown[],
+): unknown[] {
+  // The provider projection owns order within a turn. Replace that block as one
+  // unit so neither connector nor browser delivery timing can reorder its rows.
+  const incomingSubmissionIds = new Set(
+    incoming.flatMap((message) => {
+      const id = submissionIdOf(message);
+      return id ? [id] : [];
+    }),
+  );
+  const matchedIndexes: number[] = [];
+  const remaining = messages.filter((message, index) => {
+    const submissionId = submissionIdOf(message);
+    const matched =
+      turnIdOf(message) === turnId ||
+      (submissionId !== null && incomingSubmissionIds.has(submissionId));
+    if (matched) matchedIndexes.push(index);
+    return !matched;
+  });
+  const insertionIndex = Math.min(
+    matchedIndexes.length > 0 ? Math.min(...matchedIndexes) : remaining.length,
+    remaining.length,
+  );
+  return [
+    ...remaining.slice(0, insertionIndex),
+    ...incoming,
+    ...remaining.slice(insertionIndex),
+  ];
+}
+
 function upsertMessage(messages: unknown[], message: unknown): unknown[] {
   const role = roleOf(message);
   if (!role) return messages;
   const next = [...messages];
   if (role === "user") {
-    const text = textOf(message);
-    const pendingIndex = next.findIndex(
-      (candidate) =>
-        roleOf(candidate) === "user" &&
-        submissionIdOf(candidate) !== null &&
-        textOf(candidate) === text,
-    );
-    if (pendingIndex >= 0) {
-      next[pendingIndex] = message;
+    const submissionId = submissionIdOf(message);
+    if (submissionId) {
+      const submissionIndex = next.findIndex(
+        (candidate) => submissionIdOf(candidate) === submissionId,
+      );
+      if (submissionIndex >= 0) {
+        next[submissionIndex] = message;
+        return next;
+      }
+      next.push(message);
       return next;
+    }
+    if (!submissionId) {
+      const text = textOf(message);
+      const pendingIndex = next.findIndex(
+        (candidate) =>
+          roleOf(candidate) === "user" &&
+          submissionIdOf(candidate) !== null &&
+          textOf(candidate) === text,
+      );
+      if (pendingIndex >= 0) {
+        next[pendingIndex] = message;
+        return next;
+      }
     }
   }
   const id = idOf(message);
@@ -153,6 +206,14 @@ export function applyAgentRuntimeMessageEvent(
   messages: unknown[],
   event: AgentRuntimeEvent,
 ): unknown[] {
+  if (
+    event.type === "overtchat_turn_update" &&
+    typeof event.turnId === "string" &&
+    event.turnId &&
+    Array.isArray(event.messages)
+  ) {
+    return replaceTurnMessages(messages, event.turnId, event.messages);
+  }
   if (
     event.type === "overtchat_submission" &&
     event.message !== undefined
@@ -288,8 +349,11 @@ export function applyAgentRuntimeEnvelope(
     };
   }
   if (
-    ["message_start", "message_update", "message_end"].includes(event.type) &&
-    event.message !== undefined
+    event.type === "overtchat_turn_update" ||
+    (["message_start", "message_update", "message_end"].includes(
+      event.type,
+    ) &&
+      event.message !== undefined)
   ) {
     return {
       ...current,

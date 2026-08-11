@@ -521,16 +521,14 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
       timeout: 150_000,
     });
     await expect(
-      page.getByPlaceholder("Message Pi or type / for commands"),
+      page.getByTestId("agent-composer").getByRole("combobox"),
     ).toBeVisible();
     await expect(page.getByLabel("Session usage")).toBeVisible();
     await expect(page.getByLabel("Session actions")).toBeVisible();
   });
 
   await test.step("select and execute a built-in slash command", async () => {
-    const composer = page.getByPlaceholder(
-      "Message Pi or type / for commands",
-    );
+    const composer = page.getByTestId("agent-composer").getByRole("combobox");
     await composer.fill("/na");
     const nameCommand = page.getByRole("option", {
       name: /\/name.*Set the session name.*Built-in/,
@@ -601,7 +599,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
 
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
-      page.getByPlaceholder("Message Pi or type / for commands"),
+      page.getByTestId("agent-composer").getByRole("combobox"),
     ).toBeVisible();
     await page.getByLabel("Open sidebar").click();
     await expect(
@@ -708,9 +706,7 @@ test("connect local Oh My Pi and use its native commands", async ({
     timeout: 150_000,
   });
 
-  const composer = page.getByPlaceholder(
-    "Message Oh My Pi or type / for commands",
-  );
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
   await composer.fill("/model");
   await composer.press("Enter");
   await expect(page.getByText(/Current model:/)).toBeVisible({
@@ -793,9 +789,7 @@ test("connect local Codex and resume a native thread", async ({
     timeout: 150_000,
   });
 
-  const composer = page.getByPlaceholder(
-    "Message Codex or type / for commands",
-  );
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
   await composer.fill("/usage");
   await composer.press("Enter");
   const usageDialog = page.getByRole("dialog", { name: "Codex usage" });
@@ -994,9 +988,7 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
     timeout: 150_000,
   });
 
-  const composer = page.getByPlaceholder(
-    "Message Oh My Pi or type / for commands",
-  );
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
   await composer.fill("/model");
   await composer.press("Enter");
   await expect(page.getByText(/Current model:/)).toBeVisible({

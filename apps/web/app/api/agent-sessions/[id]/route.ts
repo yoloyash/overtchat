@@ -141,7 +141,6 @@ export async function POST(
     if (
       command.type === "prompt" ||
       command.type === "implement_plan" ||
-      command.type === "steer" ||
       command.type === "steer_queued_message"
     ) {
       await updateAgentSessionMetadata(id, {
