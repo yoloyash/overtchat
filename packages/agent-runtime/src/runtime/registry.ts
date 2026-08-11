@@ -535,18 +535,6 @@ export class AgentSessionRuntime {
         );
       case "abort":
         return this.abortActiveRun();
-      case "interrupt":
-        return this.submitInterrupt(
-          command.message,
-          command.images ?? [],
-          clientMessageId,
-        );
-      case "steer":
-        return this.submitSteer(
-          command.message,
-          command.images ?? [],
-          clientMessageId,
-        );
       case "queue":
         return this.enqueueMessage(
           command.message,
@@ -557,8 +545,6 @@ export class AgentSessionRuntime {
         return this.removeQueuedMessage(command.id);
       case "steer_queued_message":
         return this.steerQueuedMessage(command.id);
-      case "interrupt_queued_message":
-        return this.interruptQueuedMessage(command.id);
       case "set_model":
         return this.client
           .setModel(command.provider, command.modelId)
@@ -1017,35 +1003,7 @@ export class AgentSessionRuntime {
     return settled;
   }
 
-  private submitInterrupt(
-    message: string,
-    imageRefs: AgentPromptImage[],
-    submissionId = `interrupt:${++this.nextSubmissionId}`,
-  ): Promise<unknown> {
-    if (!message && imageRefs.length === 0) {
-      return Promise.reject(new Error("Enter a message or attach an image."));
-    }
-    if (this.status === "exited") {
-      return Promise.reject(
-        new Error(`${agentProviderMetadata(this.provider).label} exited.`),
-      );
-    }
-    const imageInputError = this.imageInputError(imageRefs);
-    if (imageInputError) return Promise.reject(imageInputError);
-
-    const start = () => this.startPrompt(message, imageRefs, submissionId);
-    if (this.status === "idle") return start();
-    if (this.status !== "running") {
-      return Promise.reject(
-        new Error(
-          `${agentProviderMetadata(this.provider).label} cannot be interrupted right now.`,
-        ),
-      );
-    }
-    return this.abortActiveRun(false).then(start);
-  }
-
-  private abortActiveRun(drainQueue = true): Promise<unknown> {
+  private abortActiveRun(): Promise<unknown> {
     if (this.abortPromise) return this.abortPromise;
     if (this.status !== "running") {
       return Promise.resolve();
@@ -1070,7 +1028,7 @@ export class AgentSessionRuntime {
       .finally(() => {
         if (this.abortPromise !== settled) return;
         this.abortPromise = null;
-        if (drainQueue && this.status === "idle") {
+        if (this.status === "idle") {
           void this.drainQueuedMessage();
         }
       });
@@ -1285,29 +1243,6 @@ export class AgentSessionRuntime {
     }
     this.updateQueuedMessageStatus(id, "sending");
     return this.submitSteer(
-      message.message,
-      message.images ?? [],
-      message.id,
-    )
-      .then((result) => {
-        this.deleteQueuedMessage(message.id);
-        return result;
-      })
-      .catch((error) => {
-        this.updateQueuedMessageStatus(message.id, "pending");
-        throw error;
-      });
-  }
-
-  private interruptQueuedMessage(id: string): Promise<unknown> {
-    const message = this.queuedMessages.find((item) => item.id === id);
-    if (!message || message.status !== "pending") {
-      return Promise.reject(
-        new Error("That queued message is no longer pending."),
-      );
-    }
-    this.updateQueuedMessageStatus(id, "sending");
-    return this.submitInterrupt(
       message.message,
       message.images ?? [],
       message.id,

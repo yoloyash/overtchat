@@ -406,12 +406,9 @@ test("shows durable turn activity without changing completed tool status", async
         }
         if (
           command.type === "abort" ||
-          command.type === "interrupt" ||
-          command.type === "steer" ||
           command.type === "queue" ||
           command.type === "remove_queued_message" ||
-          command.type === "steer_queued_message" ||
-          command.type === "interrupt_queued_message"
+          command.type === "steer_queued_message"
         ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
         }
@@ -430,8 +427,7 @@ test("shows durable turn activity without changing completed tool status", async
                 ],
               }
             : command.type === "remove_queued_message" ||
-                command.type === "steer_queued_message" ||
-                command.type === "interrupt_queued_message"
+                command.type === "steer_queued_message"
               ? { queuedMessages: [] }
               : {};
         await route.fulfill({
@@ -699,6 +695,13 @@ test("shows durable turn activity without changing completed tool status", async
   ).toHaveCount(0);
 
   const composer = agentComposer.getByRole("combobox");
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Message Codex or type / for commands",
+  );
+  await expect(
+    page.getByLabel("Active turn message actions"),
+  ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Attach images" })).toBeVisible();
   await composer.evaluate(async (element) => {
     const canvas = document.createElement("canvas");
@@ -768,26 +771,26 @@ test("shows durable turn activity without changing completed tool status", async
   await composer.fill("");
 
   await composer.fill("Focus on the failing test");
-  await page.getByRole("button", { name: "Steer Codex" }).click();
+  await composer.press("Enter");
   await expect(composer).toHaveValue("Focus on the failing test");
   await expect(composer).toBeDisabled();
   await expect(composer).toHaveValue("");
-
-  await composer.fill("Then summarize");
-  await page.getByRole("button", { name: "Queue message for Codex" }).click();
   await expect(
-    page.getByText("Then summarize", { exact: true }),
+    page.getByText("Focus on the failing test", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Steer with queued message" })
     .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "steer_queued_message",
+  });
   await expect(
-    page.getByText("Then summarize", { exact: true }),
+    page.getByText("Focus on the failing test", { exact: true }),
   ).toHaveCount(0);
 
   await expect(composer).toHaveAttribute(
     "placeholder",
-    "Queue a follow-up for Codex",
+    "Message Codex or type / for commands",
   );
   await composer.fill("Delete this follow-up");
   await composer.press("Enter");
@@ -799,36 +802,20 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("Delete this follow-up", { exact: true }),
   ).toHaveCount(0);
 
-  await composer.fill("Interrupt with this queued message");
-  await composer.press("Enter");
   await expect(
-    page.getByText("Interrupt with this queued message", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Interrupt with queued message" })
-    .click();
-  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "interrupt_queued_message",
-  });
+    page.getByRole("button", { name: "Interrupt Codex and send message" }),
+  ).toHaveCount(0);
   await expect(
-    page.getByText("Interrupt with this queued message", { exact: true }),
+    page.getByRole("button", { name: "Steer Codex" }),
   ).toHaveCount(0);
 
-  await composer.fill("Interrupt and replace the active approach");
-  await page
-    .getByRole("button", { name: "Interrupt Codex and send message" })
-    .click();
-  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "interrupt",
-    message: "Interrupt and replace the active approach",
-  });
-
-  await composer.fill("Steer with the alternate shortcut");
+  await composer.fill("Queue with the alternate shortcut");
   await composer.press("Control+Enter");
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "steer",
-    message: "Steer with the alternate shortcut",
+    type: "queue",
+    message: "Queue with the alternate shortcut",
   });
+  await page.getByRole("button", { name: "Delete queued message" }).click();
   await expect(composer).toBeEnabled();
 
   await composer.fill("Submit this only once");

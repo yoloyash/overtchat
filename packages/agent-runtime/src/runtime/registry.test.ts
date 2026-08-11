@@ -233,7 +233,7 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
-  it("interrupts the active turn before starting the replacement prompt", async () => {
+  it("stops the active turn without starting a replacement prompt", async () => {
     const registry = new AgentRuntimeRegistry({
       resolveImages: async () => [],
     });
@@ -253,68 +253,16 @@ describe("agent runtime", () => {
       { type: "prompt", message: "Start the task" },
       "initial-message",
     );
-    await runtime.command(
-      { type: "interrupt", message: "Take a different approach" },
-      "replacement-message",
-    );
+    await runtime.command({ type: "abort" });
 
     expect(mocks.abort).toHaveBeenCalledOnce();
-    expect(mocks.prompt.mock.calls[1]).toEqual([
-      "Take a different approach",
-      undefined,
-      { clientMessageId: "replacement-message" },
-    ]);
-    expect(runtime.snapshot().status).toBe("running");
-    await registry.stopAll();
-  });
-
-  it("interrupts with a selected queued message without draining earlier items", async () => {
-    const registry = new AgentRuntimeRegistry({
-      resolveImages: async () => [],
-    });
-    const runtime = await registry.getOrStart({
-      connectionId: "connection",
-      workspaceId: "workspace",
-      provider: "codex",
-      target: { transport: "local" },
-      executable: "codex",
-      cwd: "/workspace",
-      sessionId: "session",
-      providerSessionId: "provider-session",
-      providerSessionPath: "/sessions/provider-session.jsonl",
-    });
-
-    await runtime.command(
-      { type: "prompt", message: "Start the task" },
-      "initial-message",
-    );
-    await runtime.command(
-      { type: "queue", message: "Keep this queued" },
-      "queued-first",
-    );
-    await runtime.command(
-      { type: "queue", message: "Interrupt with this" },
-      "queued-second",
-    );
-    await runtime.command({
-      type: "interrupt_queued_message",
-      id: "queued-second",
-    });
-
-    expect(mocks.abort).toHaveBeenCalledOnce();
-    expect(mocks.prompt.mock.calls[1]).toEqual([
-      "Interrupt with this",
-      undefined,
-      { clientMessageId: "queued-second" },
-    ]);
-    expect(runtime.snapshot().queuedMessages).toEqual([
-      expect.objectContaining({ id: "queued-first", status: "pending" }),
-    ]);
+    expect(mocks.prompt).toHaveBeenCalledOnce();
+    expect(runtime.snapshot().status).toBe("idle");
     await registry.stopAll();
   });
 
   it.each(["pi", "omp"] as const)(
-    "uses the shared durable queue and interrupt path for %s",
+    "uses the shared durable queue and steering path for %s",
     async (provider) => {
       const registry = new AgentRuntimeRegistry({
         resolveImages: async () => [],
@@ -340,16 +288,15 @@ describe("agent runtime", () => {
         `queued-${provider}`,
       );
       await runtime.command({
-        type: "interrupt_queued_message",
+        type: "steer_queued_message",
         id: `queued-${provider}`,
       });
 
-      expect(mocks.abort).toHaveBeenCalledOnce();
-      expect(mocks.prompt.mock.calls[1]).toEqual([
+      expect(mocks.steer).toHaveBeenCalledWith(
         "Replace the approach",
         undefined,
         { clientMessageId: `queued-${provider}` },
-      ]);
+      );
       expect(runtime.snapshot().provider).toBe(provider);
       expect(runtime.snapshot().queuedMessages).toEqual([]);
       await registry.stopAll();
@@ -518,9 +465,13 @@ describe("agent runtime", () => {
       "client-prompt",
     );
     await runtime.command(
-      { type: "steer", message: "Use the other approach" },
+      { type: "queue", message: "Use the other approach" },
       "client-steer",
     );
+    await runtime.command({
+      type: "steer_queued_message",
+      id: "client-steer",
+    });
 
     expect(runtime.snapshot().messages).toEqual([
       expect.objectContaining({
@@ -556,9 +507,13 @@ describe("agent runtime", () => {
       "client-prompt",
     );
     await runtime.command(
-      { type: "steer", message: "2 more now" },
+      { type: "queue", message: "2 more now" },
       "client-steer",
     );
+    await runtime.command({
+      type: "steer_queued_message",
+      id: "client-steer",
+    });
     mocks.eventSubscriber?.({
       type: "overtchat_turn_update",
       turnId: "turn-1",
@@ -652,10 +607,17 @@ describe("agent runtime", () => {
       "client-prompt",
     );
     await expect(
-      runtime.command(
-        { type: "steer", message: "Use the other approach" },
-        "client-steer",
-      ),
+      runtime
+        .command(
+          { type: "queue", message: "Use the other approach" },
+          "client-steer",
+        )
+        .then(() =>
+          runtime.command({
+            type: "steer_queued_message",
+            id: "client-steer",
+          }),
+        ),
     ).resolves.toEqual({ accepted: true, providerAcknowledged: true });
     expect(runtime.snapshot().messages).toEqual([
       expect.objectContaining({ content: "Start the task" }),

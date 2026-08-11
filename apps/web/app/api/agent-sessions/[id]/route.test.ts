@@ -236,8 +236,8 @@ describe("agent session route", () => {
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 
-  it("forwards steering as an active-turn command", async () => {
-    const response = await POST(
+  it("rejects delivery modes that bypass the connector-owned queue", async () => {
+    const steer = await POST(
       request("POST", {
         type: "steer",
         message: "Focus on the failing test",
@@ -245,23 +245,7 @@ describe("agent session route", () => {
       }),
       context,
     );
-
-    expect(response.status).toBe(200);
-    expect(mocks.daemonRequest).toHaveBeenCalledWith(
-      "connector",
-      expect.objectContaining({
-        commandId: "steer-message",
-        command: expect.objectContaining({ type: "steer" }),
-      }),
-    );
-    expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
-      "session",
-      { providerModifiedAt: expect.any(Date) },
-    );
-  });
-
-  it("forwards interrupt-and-send with one stable command identity", async () => {
-    const response = await POST(
+    const interrupt = await POST(
       request("POST", {
         type: "interrupt",
         message: "Replace the current approach",
@@ -270,22 +254,9 @@ describe("agent session route", () => {
       context,
     );
 
-    expect(response.status).toBe(200);
-    expect(mocks.daemonRequest).toHaveBeenCalledWith(
-      "connector",
-      expect.objectContaining({
-        commandId: "interrupt-message",
-        clientMessageId: "interrupt-message",
-        command: expect.objectContaining({
-          type: "interrupt",
-          clientMessageId: "interrupt-message",
-        }),
-      }),
-    );
-    expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
-      "session",
-      { providerModifiedAt: expect.any(Date) },
-    );
+    expect(steer.status).toBe(400);
+    expect(interrupt.status).toBe(400);
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
   it("creates a new connector-owned workspace session", async () => {
