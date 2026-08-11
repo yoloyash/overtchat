@@ -140,9 +140,11 @@ export async function POST(
     }
     if (
       command.type === "prompt" ||
+      command.type === "interrupt" ||
       command.type === "implement_plan" ||
       command.type === "steer" ||
-      command.type === "steer_queued_message"
+      command.type === "steer_queued_message" ||
+      command.type === "interrupt_queued_message"
     ) {
       await updateAgentSessionMetadata(id, {
         ...(

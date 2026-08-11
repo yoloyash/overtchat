@@ -988,7 +988,7 @@ describe("CodexRuntimeClient", () => {
       ),
     ).toEqual([
       expect.objectContaining({
-        id: "provider-message",
+        id: "turn-1:user:0",
         content: "Inspect the tests",
         overtchatSubmissionId: "client-message",
       }),
@@ -1003,7 +1003,7 @@ describe("CodexRuntimeClient", () => {
         completedAt: 11,
         items: [
           {
-            id: "provider-message",
+            id: "completed-provider-message",
             type: "userMessage",
             content: [
               {
@@ -1017,14 +1017,13 @@ describe("CodexRuntimeClient", () => {
       },
     });
 
-    expect(
-      (await client.getMessages()).messages.filter(
-        (message) =>
-          message &&
-          typeof message === "object" &&
-          Reflect.get(message, "role") === "user",
-      ),
-    ).toHaveLength(1);
+    const completedUsers = (await client.getMessages()).messages.filter(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "role") === "user",
+    );
+    expect(completedUsers).toHaveLength(1);
   });
 
   it("preserves streamed work when the completed turn only includes the final answer", async () => {
@@ -1213,7 +1212,7 @@ describe("CodexRuntimeClient", () => {
     await expect(client.getMessages()).resolves.toEqual({
       messages: expect.arrayContaining([
         expect.objectContaining({
-          id: "user-history",
+          id: "turn-history:user:0",
           role: "user",
           content: "Resume this thread",
         }),
@@ -1257,6 +1256,75 @@ describe("CodexRuntimeClient", () => {
         },
       ]),
     );
+  });
+
+  it("restores an active turn and appends steering input after its existing user message", async () => {
+    server.threadReads.set("thread-1", {
+      id: "thread-1",
+      cwd: "/workspace",
+      preview: "Original prompt",
+      path: "/tmp/thread-1.jsonl",
+      name: null,
+      createdAt: 1,
+      updatedAt: 2,
+      turns: [
+        {
+          id: "turn-active",
+          status: "inProgress",
+          startedAt: 10,
+          completedAt: null,
+          items: [
+            {
+              id: "hydrated-provider-user",
+              type: "userMessage",
+              content: [
+                {
+                  type: "text",
+                  text: "Original prompt",
+                  text_elements: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        resume: {
+          providerSessionId: "thread-1",
+          providerSessionPath: "/tmp/thread-1.jsonl",
+        },
+      },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      isStreaming: true,
+    });
+    await client.steer("Steering follow-up", [], {
+      clientMessageId: "client-steer",
+    });
+
+    const users = (await client.getMessages()).messages.filter(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "role") === "user",
+    );
+    expect(users).toEqual([
+      expect.objectContaining({
+        id: "turn-active:user:0",
+        content: "Original prompt",
+      }),
+      expect.objectContaining({
+        id: "turn-active:user:1",
+        content: "Steering follow-up",
+        overtchatSubmissionId: "client-steer",
+      }),
+    ]);
   });
 
   it("rehydrates persisted subagent activity after resuming", async () => {
@@ -1421,7 +1489,7 @@ describe("CodexRuntimeClient", () => {
     await expect(client.getMessages()).resolves.toEqual({
       messages: expect.arrayContaining([
         expect.objectContaining({
-          id: "user-history",
+          id: "turn-history:user:0",
           content: "Resume this thread",
         }),
         expect.objectContaining({
@@ -1918,7 +1986,7 @@ describe("CodexRuntimeClient", () => {
     await client.getState();
 
     await expect(
-      client.forkSession("user-history", "edit"),
+      client.forkSession("turn-history:user:0", "edit"),
     ).resolves.toEqual({
       session: {
         providerSessionId: "thread-fork",
@@ -1947,7 +2015,7 @@ describe("CodexRuntimeClient", () => {
     });
     await expect(client.getMessages()).resolves.toMatchObject({
       messages: expect.arrayContaining([
-        expect.objectContaining({ id: "user-history", role: "user" }),
+        expect.objectContaining({ id: "turn-history:user:0", role: "user" }),
         expect.objectContaining({
           id: "commentary-history",
           role: "assistant",
@@ -2034,7 +2102,7 @@ describe("CodexRuntimeClient", () => {
     });
     await expect(client.getMessages()).resolves.toMatchObject({
       messages: expect.arrayContaining([
-        expect.objectContaining({ id: "user-history", role: "user" }),
+        expect.objectContaining({ id: "turn-history:user:0", role: "user" }),
         expect.objectContaining({
           id: "commentary-history",
           role: "assistant",
@@ -2066,7 +2134,9 @@ describe("CodexRuntimeClient", () => {
     );
     await client.getState();
 
-    await expect(client.forkSession("user-history", "edit")).rejects.toThrow(
+    await expect(
+      client.forkSession("turn-history:user:0", "edit"),
+    ).rejects.toThrow(
       "Editing the first message requires a newer Codex installation.",
     );
   });

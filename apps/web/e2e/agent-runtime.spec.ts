@@ -406,35 +406,39 @@ test("shows durable turn activity without changing completed tool status", async
         }
         if (
           command.type === "abort" ||
+          command.type === "interrupt" ||
           command.type === "steer" ||
           command.type === "queue" ||
           command.type === "remove_queued_message" ||
-          command.type === "steer_queued_message"
+          command.type === "steer_queued_message" ||
+          command.type === "interrupt_queued_message"
         ) {
           await new Promise((resolve) => setTimeout(resolve, 750));
         }
+        const queueResult =
+          command.type === "queue"
+            ? {
+                queuedMessages: [
+                  {
+                    id: "queued-message",
+                    message: command.message,
+                    ...(Array.isArray(command.images)
+                      ? { images: command.images }
+                      : {}),
+                    status: "pending",
+                  },
+                ],
+              }
+            : command.type === "remove_queued_message" ||
+                command.type === "steer_queued_message" ||
+                command.type === "interrupt_queued_message"
+              ? { queuedMessages: [] }
+              : {};
         await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
-            ...(command.type === "queue"
-              ? {
-                  queuedMessages: [
-                    {
-                      id: "queued-message",
-                      message: command.message,
-                      ...(Array.isArray(command.images)
-                        ? { images: command.images }
-                        : {}),
-                      status: "pending",
-                    },
-                  ],
-                }
-              : command.type === "remove_queued_message"
-                ? { queuedMessages: [] }
-                : command.type === "steer_queued_message"
-                  ? { queuedMessages: [] }
-                : {}),
+            ...queueResult,
           }),
         });
         return;
@@ -747,6 +751,10 @@ test("shows durable turn activity without changing completed tool status", async
       },
     ],
   });
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-queued-message-desktop.png"),
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Edit queued message" }).click();
   await expect(composer).toHaveValue("Run the tests");
   await expect(composer).toBeEnabled();
@@ -777,13 +785,6 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("Then summarize", { exact: true }),
   ).toHaveCount(0);
 
-  await page.evaluate(() => {
-    window.localStorage.setItem(
-      "overtchat_agent_send_behavior",
-      JSON.stringify("queue"),
-    );
-    window.dispatchEvent(new Event("overtchat:localstorage"));
-  });
   await expect(composer).toHaveAttribute(
     "placeholder",
     "Queue a follow-up for Codex",
@@ -797,6 +798,30 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByText("Delete this follow-up", { exact: true }),
   ).toHaveCount(0);
+
+  await composer.fill("Interrupt with this queued message");
+  await composer.press("Enter");
+  await expect(
+    page.getByText("Interrupt with this queued message", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Interrupt with queued message" })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "interrupt_queued_message",
+  });
+  await expect(
+    page.getByText("Interrupt with this queued message", { exact: true }),
+  ).toHaveCount(0);
+
+  await composer.fill("Interrupt and replace the active approach");
+  await page
+    .getByRole("button", { name: "Interrupt Codex and send message" })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "interrupt",
+    message: "Interrupt and replace the active approach",
+  });
 
   await composer.fill("Steer with the alternate shortcut");
   await composer.press("Control+Enter");

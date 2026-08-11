@@ -260,6 +260,34 @@ describe("agent session route", () => {
     );
   });
 
+  it("forwards interrupt-and-send with one stable command identity", async () => {
+    const response = await POST(
+      request("POST", {
+        type: "interrupt",
+        message: "Replace the current approach",
+        clientMessageId: "interrupt-message",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.daemonRequest).toHaveBeenCalledWith(
+      "connector",
+      expect.objectContaining({
+        commandId: "interrupt-message",
+        clientMessageId: "interrupt-message",
+        command: expect.objectContaining({
+          type: "interrupt",
+          clientMessageId: "interrupt-message",
+        }),
+      }),
+    );
+    expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
+      "session",
+      { providerModifiedAt: expect.any(Date) },
+    );
+  });
+
   it("creates a new connector-owned workspace session", async () => {
     mocks.daemonRequest.mockResolvedValue({
       session: {

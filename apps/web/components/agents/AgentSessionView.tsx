@@ -213,7 +213,7 @@ export function AgentSessionView({
   async function submit(
     message: string,
     images: AgentPromptImage[],
-    delivery: "prompt" | "queue" | "steer",
+    delivery: "prompt" | "queue" | "steer" | "interrupt",
   ): Promise<boolean> {
     let input: AgentSessionCommand;
     try {
@@ -477,6 +477,9 @@ export function AgentSessionView({
             }
             onSteerQueued={(id) =>
               run({ type: "steer_queued_message", id })
+            }
+            onInterruptQueued={(id) =>
+              run({ type: "interrupt_queued_message", id })
             }
             restoreDraftKey={forkDraftKey(sessionId)}
           />

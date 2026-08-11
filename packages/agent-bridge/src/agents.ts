@@ -321,6 +321,12 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("abort") }),
   z.object({
+    type: z.literal("interrupt"),
+    message: z.string().trim().max(200_000),
+    images: z.array(agentPromptImageSchema).max(MAX_AGENT_IMAGES).optional(),
+    clientMessageId: clientMessageIdSchema,
+  }),
+  z.object({
     type: z.literal("steer"),
     message: z.string().trim().max(200_000),
     images: z.array(agentPromptImageSchema).max(MAX_AGENT_IMAGES).optional(),
@@ -338,6 +344,10 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("steer_queued_message"),
+    id: z.string().min(1).max(500),
+  }),
+  z.object({
+    type: z.literal("interrupt_queued_message"),
     id: z.string().min(1).max(500),
   }),
   z.object({

@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentProviderId } from "@overtchat/agent-bridge";
 import type { AgentRuntimeEvent } from "@overtchat/agent-runtime/providers/types";
 
 const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   steer: vi.fn(),
+  abort: vi.fn(),
   stop: vi.fn(),
   saveQueue: vi.fn(),
   eventSubscriber: null as ((event: AgentRuntimeEvent) => void) | null,
@@ -28,8 +30,8 @@ const stats = {
 };
 
 vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
-  agentProviderAdapter: () => ({
-    provider: "codex",
+  agentProviderAdapter: (provider: AgentProviderId) => ({
+    provider,
     capabilities: { steer: true },
     probeConnection: vi.fn(),
     probeTarget: vi.fn(),
@@ -53,6 +55,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
       getCommands: vi.fn().mockResolvedValue([]),
       prompt: mocks.prompt,
       steer: mocks.steer,
+      abort: mocks.abort,
       stop: mocks.stop,
     }),
     sessionIdentity: () => ({
@@ -80,6 +83,7 @@ describe("agent runtime", () => {
     vi.clearAllMocks();
     mocks.prompt.mockResolvedValue({ accepted: true });
     mocks.steer.mockResolvedValue({ accepted: true });
+    mocks.abort.mockResolvedValue({ interrupted: true });
     mocks.stop.mockResolvedValue(undefined);
     mocks.saveQueue.mockResolvedValue(undefined);
     mocks.eventSubscriber = null;
@@ -228,6 +232,129 @@ describe("agent runtime", () => {
     ).toBe(false);
     await registry.stopAll();
   });
+
+  it("interrupts the active turn before starting the replacement prompt", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await runtime.command(
+      { type: "prompt", message: "Start the task" },
+      "initial-message",
+    );
+    await runtime.command(
+      { type: "interrupt", message: "Take a different approach" },
+      "replacement-message",
+    );
+
+    expect(mocks.abort).toHaveBeenCalledOnce();
+    expect(mocks.prompt.mock.calls[1]).toEqual([
+      "Take a different approach",
+      undefined,
+      { clientMessageId: "replacement-message" },
+    ]);
+    expect(runtime.snapshot().status).toBe("running");
+    await registry.stopAll();
+  });
+
+  it("interrupts with a selected queued message without draining earlier items", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await runtime.command(
+      { type: "prompt", message: "Start the task" },
+      "initial-message",
+    );
+    await runtime.command(
+      { type: "queue", message: "Keep this queued" },
+      "queued-first",
+    );
+    await runtime.command(
+      { type: "queue", message: "Interrupt with this" },
+      "queued-second",
+    );
+    await runtime.command({
+      type: "interrupt_queued_message",
+      id: "queued-second",
+    });
+
+    expect(mocks.abort).toHaveBeenCalledOnce();
+    expect(mocks.prompt.mock.calls[1]).toEqual([
+      "Interrupt with this",
+      undefined,
+      { clientMessageId: "queued-second" },
+    ]);
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      expect.objectContaining({ id: "queued-first", status: "pending" }),
+    ]);
+    await registry.stopAll();
+  });
+
+  it.each(["pi", "omp"] as const)(
+    "uses the shared durable queue and interrupt path for %s",
+    async (provider) => {
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider,
+        target: { transport: "local" },
+        executable: provider,
+        cwd: "/workspace",
+        sessionId: `session-${provider}`,
+        providerSessionId: "provider-session",
+        providerSessionPath: "/sessions/provider-session.jsonl",
+      });
+
+      await runtime.command(
+        { type: "prompt", message: "Start the task" },
+        `initial-${provider}`,
+      );
+      await runtime.command(
+        { type: "queue", message: "Replace the approach" },
+        `queued-${provider}`,
+      );
+      await runtime.command({
+        type: "interrupt_queued_message",
+        id: `queued-${provider}`,
+      });
+
+      expect(mocks.abort).toHaveBeenCalledOnce();
+      expect(mocks.prompt.mock.calls[1]).toEqual([
+        "Replace the approach",
+        undefined,
+        { clientMessageId: `queued-${provider}` },
+      ]);
+      expect(runtime.snapshot().provider).toBe(provider);
+      expect(runtime.snapshot().queuedMessages).toEqual([]);
+      await registry.stopAll();
+    },
+  );
 
   it("publishes one canonical user message when a provider echoes before accepting", async () => {
     mocks.prompt.mockImplementation(async () => {

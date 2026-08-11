@@ -134,6 +134,22 @@ function isSyntheticUserItem(item: CodexItem): boolean {
   );
 }
 
+function codexUserMessageId(turnId: string, userIndex: number): string {
+  return `${turnId}:user:${userIndex}`;
+}
+
+function userItemForMessageId(
+  turn: CodexTurn,
+  messageId: string,
+): CodexItem | undefined {
+  let userIndex = 0;
+  for (const item of turn.items) {
+    if (item.type !== "userMessage") continue;
+    if (codexUserMessageId(turn.id, userIndex++) === messageId) return item;
+  }
+  return undefined;
+}
+
 function itemText(item: CodexItem): string {
   const content = item.content;
   if (typeof content === "string") return content;
@@ -426,8 +442,10 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     assistantOrders.push(order);
   };
 
+  let userIndex = 0;
   for (const [itemIndex, item] of turn.items.entries()) {
     if (item.type === "userMessage") {
+      const messageId = codexUserMessageId(turn.id, userIndex++);
       const text = itemText(item);
       const images = Array.isArray(item.overtchatImages)
         ? item.overtchatImages.flatMap((value) => {
@@ -450,7 +468,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       if (text || images.length > 0) {
         const submissionId = stringOf(item, "overtchatSubmissionId");
         messages.push({
-          id: item.id,
+          id: messageId,
           role: "user",
           content:
             images.length > 0
@@ -1302,9 +1320,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         .map((turn, turnIndex) => ({
           turn,
           turnIndex,
-          item: turn.items.find(
-            (item) => item.id === messageId && item.type === "userMessage",
-          ),
+          item: userItemForMessageId(turn, messageId),
         }))
         .find((candidate) => candidate.item);
       if (!target?.item) {
@@ -1428,8 +1444,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.turns.clear();
     this.subagentOwners.clear();
     this.pendingSubagentNotifications.clear();
+    this.activeTurnId = null;
     for (const turn of this.thread.turns) {
       this.turns.set(turn.id, turn);
+      if (turn.status === "inProgress") this.activeTurnId = turn.id;
       for (const item of turn.items) {
         this.registerSubagentOwners(turn.id, item);
       }
@@ -2207,6 +2225,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const known = this.knownUserInputs.get(turn.id);
     if (!known?.length) return turn;
     const items = turn.items.filter((item) => !isSyntheticUserItem(item));
+    let changed = items.length !== turn.items.length;
     const nativeUsers = items.flatMap((item, index) =>
       item.type === "userMessage" ? [{ index, text: itemText(item) }] : [],
     );
@@ -2227,6 +2246,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
             ? { overtchatImages: input.images }
             : {}),
         };
+        changed = true;
         continue;
       }
       synthetic.push({
@@ -2240,9 +2260,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
           : {}),
       });
     }
-    return synthetic.length === 0 && items.length === turn.items.length
+    return synthetic.length === 0 && !changed
       ? turn
-      : { ...turn, items: [...synthetic, ...items] };
+      : { ...turn, items: [...items, ...synthetic] };
   }
 
   private reconcileCompletedTurn(completed: CodexTurn): CodexTurn {
@@ -2252,8 +2272,16 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const indexById = new Map(
       items.map((item, index) => [item.id, index] as const),
     );
+    const streamedUserIndexes = items.flatMap((item, index) =>
+      item.type === "userMessage" ? [index] : [],
+    );
+    let completedUserIndex = 0;
     for (const item of completed.items) {
-      const index = indexById.get(item.id);
+      const userIndex =
+        item.type === "userMessage" ? completedUserIndex++ : null;
+      const index =
+        indexById.get(item.id) ??
+        (userIndex === null ? undefined : streamedUserIndexes[userIndex]);
       if (index === undefined) {
         indexById.set(item.id, items.length);
         items.push(item);
