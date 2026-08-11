@@ -535,17 +535,100 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
+  it("keeps the connector snapshot in canonical turn order after a steer race", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await runtime.command(
+      { type: "prompt", message: "write a paragraph on overtchat" },
+      "client-prompt",
+    );
+    await runtime.command(
+      { type: "steer", message: "2 more now" },
+      "client-steer",
+    );
+    mocks.eventSubscriber?.({
+      type: "overtchat_turn_update",
+      turnId: "turn-1",
+      messages: [
+        {
+          id: "turn-1:user:0",
+          role: "user",
+          content: "write a paragraph on overtchat",
+          overtchatSubmissionId: "client-prompt",
+          overtchatTurnId: "turn-1",
+        },
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: [{ type: "text", text: "First paragraph" }],
+          overtchatTurnId: "turn-1",
+        },
+        {
+          id: "turn-1:user:1",
+          role: "user",
+          content: "2 more now",
+          overtchatSubmissionId: "client-steer",
+          overtchatTurnId: "turn-1",
+        },
+        {
+          id: "assistant-2",
+          role: "assistant",
+          content: [{ type: "text", text: "Two more paragraphs" }],
+          overtchatTurnId: "turn-1",
+        },
+        {
+          id: "turn-1:footer",
+          role: "turnFooter",
+          content: "First paragraph\n\nTwo more paragraphs",
+          overtchatTurnId: "turn-1",
+        },
+      ],
+    });
+
+    expect(
+      runtime.snapshot().messages.map((message) =>
+        message && typeof message === "object"
+          ? [Reflect.get(message, "role"), Reflect.get(message, "id")]
+          : null,
+      ),
+    ).toEqual([
+      ["user", "turn-1:user:0"],
+      ["assistant", "assistant-1"],
+      ["user", "turn-1:user:1"],
+      ["assistant", "assistant-2"],
+      ["turnFooter", "turn-1:footer"],
+    ]);
+    await registry.stopAll();
+  });
+
   it("keeps an acknowledged steer when the transport rejects afterward", async () => {
     mocks.steer.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
-        type: "message_start",
-        message: {
-          id: "provider-steer",
-          role: "user",
-          content: "Use the other approach",
-          timestamp: 124,
-          overtchatSubmissionId: options?.clientMessageId,
-        },
+        type: "overtchat_turn_update",
+        turnId: "turn-1",
+        messages: [
+          {
+            id: "provider-steer",
+            role: "user",
+            content: "Use the other approach",
+            timestamp: 124,
+            overtchatSubmissionId: options?.clientMessageId,
+            overtchatTurnId: "turn-1",
+          },
+        ],
       });
       throw new Error("Transport closed after provider acceptance");
     });

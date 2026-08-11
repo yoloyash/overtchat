@@ -116,6 +116,7 @@ type PendingInteraction =
 type KnownUserInput = {
   id: string;
   text: string;
+  afterItemId: string | null;
   images: Array<{
     uploadId: string;
     filename: string;
@@ -470,6 +471,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
         messages.push({
           id: messageId,
           role: "user",
+          overtchatTurnId: turn.id,
           content:
             images.length > 0
               ? [
@@ -632,6 +634,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       messages.push({
         id: item.id,
         role: "custom",
+        overtchatTurnId: turn.id,
         display: true,
         content: "Conversation context compacted.",
         timestamp: startedAt + itemIndex,
@@ -650,6 +653,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     results.push({
       id: `${item.id}:result`,
       role: "toolResult",
+      overtchatTurnId: turn.id,
       toolCallId: item.id,
       toolName: tool.name,
       content: [{ type: "text", text: tool.output }],
@@ -682,6 +686,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     messages.push({
       id: `${turn.id}:footer`,
       role: "turnFooter",
+      overtchatTurnId: turn.id,
       messageId:
         assistantContent.length > 0 ? `${turn.id}:assistant` : null,
       content: assistantContent
@@ -999,6 +1004,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.assertInteractive();
     if (!this.activeTurnId) throw new Error("Codex has no active turn to steer.");
     const turnId = this.activeTurnId;
+    const afterItemId = this.lastNativeItemId(turnId);
     const response = await this.server.request("turn/steer", {
       threadId: this.thread!.id,
       expectedTurnId: turnId,
@@ -1009,7 +1015,12 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     });
     this.rememberUserInput(
       turnId,
-      this.createKnownUserInput(message, images, options.clientMessageId),
+      this.createKnownUserInput(
+        message,
+        images,
+        options.clientMessageId,
+        afterItemId,
+      ),
     );
     return response;
   }
@@ -2134,12 +2145,14 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     text: string,
     images: readonly ResolvedAgentImage[] = [],
     clientMessageId?: string,
+    afterItemId: string | null = null,
   ): KnownUserInput {
     return {
       id:
         clientMessageId ??
         `overtchat:codex-user:${++this.nextUserInputId}`,
       text,
+      afterItemId,
       images: images.map(({ uploadId, filename, mediaType }) => ({
         uploadId,
         filename,
@@ -2221,16 +2234,22 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.emitTurn(next);
   }
 
+  private lastNativeItemId(turnId: string): string | null {
+    const items = this.turns
+      .get(turnId)
+      ?.items.filter((item) => !isSyntheticUserItem(item));
+    return items?.at(-1)?.id ?? null;
+  }
+
   private withKnownUserInputs(turn: CodexTurn): CodexTurn {
     const known = this.knownUserInputs.get(turn.id);
     if (!known?.length) return turn;
-    const items = turn.items.filter((item) => !isSyntheticUserItem(item));
-    let changed = items.length !== turn.items.length;
-    const nativeUsers = items.flatMap((item, index) =>
+    const nativeItems = turn.items.filter((item) => !isSyntheticUserItem(item));
+    const nativeUsers = nativeItems.flatMap((item, index) =>
       item.type === "userMessage" ? [{ index, text: itemText(item) }] : [],
     );
     const claimedNativeUsers = new Set<number>();
-    const synthetic: CodexItem[] = [];
+    const placements: Array<{ input: KnownUserInput; item: CodexItem }> = [];
     for (const input of known) {
       const native = nativeUsers.find(
         (candidate) =>
@@ -2239,30 +2258,54 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       );
       if (native) {
         claimedNativeUsers.add(native.index);
-        items[native.index] = {
-          ...items[native.index],
+        placements.push({
+          input,
+          item: {
+            ...nativeItems[native.index],
+            overtchatSubmissionId: input.id,
+            ...(input.images.length > 0
+              ? { overtchatImages: input.images }
+              : {}),
+          },
+        });
+        continue;
+      }
+      placements.push({
+        input,
+        item: {
+          id: input.id,
+          type: "userMessage",
+          content: textInput(input.text),
           overtchatSubmissionId: input.id,
+          overtchatSyntheticUserInput: true,
           ...(input.images.length > 0
             ? { overtchatImages: input.images }
             : {}),
-        };
-        changed = true;
-        continue;
-      }
-      synthetic.push({
-        id: input.id,
-        type: "userMessage",
-        content: textInput(input.text),
-        overtchatSubmissionId: input.id,
-        overtchatSyntheticUserInput: true,
-        ...(input.images.length > 0
-          ? { overtchatImages: input.images }
-          : {}),
+        },
       });
     }
-    return synthetic.length === 0 && !changed
-      ? turn
-      : { ...turn, items: [...items, ...synthetic] };
+    const items = nativeItems.filter(
+      (_item, index) => !claimedNativeUsers.has(index),
+    );
+    const lastPlacementByAnchor = new Map<string, CodexItem>();
+    for (const { input, item } of placements) {
+      const anchorKey = input.afterItemId ?? "overtchat:turn-start";
+      const previousAtAnchor = lastPlacementByAnchor.get(anchorKey);
+      const anchorIndex = previousAtAnchor
+        ? items.indexOf(previousAtAnchor)
+        : input.afterItemId
+          ? items.findIndex((candidate) => candidate.id === input.afterItemId)
+          : -1;
+      const insertionIndex =
+        anchorIndex >= 0
+          ? anchorIndex + 1
+          : input.afterItemId === null
+            ? 0
+            : items.length;
+      items.splice(insertionIndex, 0, item);
+      lastPlacementByAnchor.set(anchorKey, item);
+    }
+    return { ...turn, items };
   }
 
   private reconcileCompletedTurn(completed: CodexTurn): CodexTurn {
@@ -2646,9 +2689,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   private emitTurn(turn: CodexTurn): void {
-    for (const message of canonicalTurnMessages(turn)) {
-      this.emit({ type: "message_update", message });
-    }
+    this.emit({
+      type: "overtchat_turn_update",
+      turnId: turn.id,
+      messages: canonicalTurnMessages(turn),
+    });
   }
 
   private updateTokenUsage(data: UnknownRecord | null): void {

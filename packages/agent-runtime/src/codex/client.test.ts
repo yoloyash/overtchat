@@ -933,13 +933,17 @@ describe("CodexRuntimeClient", () => {
       expect.arrayContaining([
         expect.objectContaining({ type: "turn_start", turnId: "turn-1" }),
         expect.objectContaining({
-          type: "message_update",
-          message: expect.objectContaining({
-            role: "user",
-            content: "Inspect the tests",
-          }),
+          type: "overtchat_turn_update",
+          turnId: "turn-1",
+          messages: expect.arrayContaining([
+            expect.objectContaining({
+              role: "user",
+              content: "Inspect the tests",
+              overtchatTurnId: "turn-1",
+            }),
+          ]),
         }),
-        expect.objectContaining({ type: "message_update" }),
+        expect.objectContaining({ type: "overtchat_turn_update" }),
         expect.objectContaining({ type: "turn_end", status: "completed" }),
       ]),
     );
@@ -1024,6 +1028,87 @@ describe("CodexRuntimeClient", () => {
         Reflect.get(message, "role") === "user",
     );
     expect(completedUsers).toHaveLength(1);
+  });
+
+  it("emits one authoritative ordered turn after a mid-turn steer", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    await client.prompt("write a paragraph on overtchat", [], {
+      clientMessageId: "client-prompt",
+    });
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-1",
+        status: "inProgress",
+        startedAt: 10,
+        items: [],
+      },
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "assistant-1",
+        type: "agentMessage",
+        text: "First paragraph",
+        phase: "final_answer",
+      },
+    });
+    await client.steer("2 more now", [], {
+      clientMessageId: "client-steer",
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "provider-steer",
+        type: "userMessage",
+        content: [
+          {
+            type: "text",
+            text: "2 more now",
+            text_elements: [],
+          },
+        ],
+      },
+    });
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: {
+        id: "assistant-2",
+        type: "agentMessage",
+        text: "Two more paragraphs",
+        phase: "final_answer",
+      },
+    });
+
+    const update = events.findLast(
+      (event) => event.type === "overtchat_turn_update",
+    );
+    const messages = Array.isArray(update?.messages) ? update.messages : [];
+    expect(
+      messages.map((message) =>
+        message && typeof message === "object"
+          ? [
+              Reflect.get(message, "role"),
+              Reflect.get(message, "id"),
+              Reflect.get(message, "overtchatTurnId"),
+            ]
+          : null,
+      ),
+    ).toEqual([
+      ["user", "turn-1:user:0", "turn-1"],
+      ["assistant", "assistant-1", "turn-1"],
+      ["user", "turn-1:user:1", "turn-1"],
+      ["assistant", "assistant-2", "turn-1"],
+    ]);
   });
 
   it("preserves streamed work when the completed turn only includes the final answer", async () => {

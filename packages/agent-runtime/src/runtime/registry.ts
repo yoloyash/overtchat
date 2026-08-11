@@ -191,6 +191,20 @@ function messageSubmissionId(message: unknown): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
+function eventUserMessages(event: AgentRuntimeEvent): unknown[] {
+  if (
+    event.type === "overtchat_turn_update" &&
+    Array.isArray(event.messages)
+  ) {
+    return event.messages.filter((message) => messageRole(message) === "user");
+  }
+  return ["message_start", "message_update", "message_end"].includes(
+    event.type,
+  ) && messageRole(event.message) === "user"
+    ? [event.message]
+    : [];
+}
+
 export class AgentSessionRuntime {
   private readonly subscribers = new Set<Subscriber>();
   private readonly replay: AgentRuntimeEnvelope[] = [];
@@ -271,14 +285,9 @@ export class AgentSessionRuntime {
       const classification = this.eventClassifier.classify(event);
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
-      if (
-        ["message_start", "message_update", "message_end"].includes(
-          event.type,
-        ) &&
-        messageRole(event.message) === "user"
-      ) {
-        const text = messageText(event.message);
-        const submissionId = messageSubmissionId(event.message);
+      for (const userMessage of eventUserMessages(event)) {
+        const text = messageText(userMessage);
+        const submissionId = messageSubmissionId(userMessage);
         const submission = submissionId
           ? this.pendingSubmissions.get(submissionId)
           : [...this.pendingSubmissions.values()].find(
