@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
-import type { AgentConnectionListItem } from "@/lib/agents/types";
+import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import {
   useAgentDirectories,
   useCreateAgentWorkspace,

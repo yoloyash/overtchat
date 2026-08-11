@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { listChats } from "@/lib/db/chats";
 import { listProjects } from "@/lib/db/projects";
 import { listAgentConnections } from "@/lib/db/agentConnections";
-import { withAgentRuntimeStatuses } from "@/lib/agents/runtime/status";
+import { withAgentRuntimeStatuses } from "@/lib/agents/connector/status";
 import { AppShell } from "@/components/AppShell";
 import { Sidebar } from "@/components/Sidebar";
 import { getQueryClient } from "@/lib/queryClient";
@@ -14,7 +14,7 @@ import {
   chatKeys,
   projectKeys,
 } from "@/lib/queries/keys";
-import type { AgentConnectionListItem } from "@/lib/agents/types";
+import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import type { ChatListItem } from "@/lib/queries/chats";
 import type { ProjectListItem } from "@/lib/queries/projects";
 
@@ -59,7 +59,6 @@ export default async function AppLayout({
           queryFn: async (): Promise<AgentConnectionListItem[]> =>
             withAgentRuntimeStatuses(
               await listAgentConnections(session.user.id),
-              session.user.id,
             ),
         })
       : Promise.resolve(),

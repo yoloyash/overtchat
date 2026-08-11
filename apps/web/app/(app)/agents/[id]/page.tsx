@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { AgentSessionView } from "@/components/agents/AgentSessionView";
 import { auth } from "@/lib/auth/server";
 import { getOwnedAgentSession } from "@/lib/db/agentConnections";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 
 export default async function AgentSessionPage({
   params,

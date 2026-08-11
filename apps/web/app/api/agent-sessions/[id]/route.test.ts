@@ -4,11 +4,8 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentSession: vi.fn(),
   updateAgentSessionMetadata: vi.fn(),
-  getOrStart: vi.fn(),
-  create: vi.fn(),
-  command: vi.fn(),
-  normalizeCommand: vi.fn(),
-  snapshot: vi.fn(),
+  upsertAgentSession: vi.fn(),
+  daemonRequest: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -18,27 +15,57 @@ vi.mock("@/lib/auth/server", () => ({
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentSession: mocks.getOwnedAgentSession,
   updateAgentSessionMetadata: mocks.updateAgentSessionMetadata,
+  upsertAgentSession: mocks.upsertAgentSession,
 }));
-vi.mock("@/lib/agents/runtime/registry", () => ({
-  agentRuntimeRegistry: {
-    getOrStart: mocks.getOrStart,
-    create: mocks.create,
-  },
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 
 import { GET, POST } from "./route";
 
 const owned = {
-  host: { transport: "local", userId: "owner" },
-  connection: { id: "connection" },
-  workspace: { id: "workspace" },
-  agentSession: { id: "session", firstMessage: null },
+  host: {
+    connectorId: "connector",
+    transport: "local",
+    sshAlias: null,
+    userId: "owner",
+  },
+  connection: {
+    id: "connection",
+    provider: "pi",
+    shellMode: "interactive",
+    executable: "pi",
+    detectedVersion: "0.55.0",
+  },
+  workspace: { id: "workspace", path: "/workspace" },
+  agentSession: {
+    id: "session",
+    providerSessionId: "provider-session",
+    providerSessionPath: "/sessions/provider-session.jsonl",
+    firstMessage: null,
+  },
 };
 
-function request(
-  method = "GET",
-  body?: Record<string, unknown>,
-): Request {
+const sessionDescriptor = {
+  connectionId: "connection",
+  workspaceId: "workspace",
+  provider: "pi",
+  target: { transport: "local", shellMode: "interactive" },
+  executable: "pi",
+  cwd: "/workspace",
+  detectedVersion: "0.55.0",
+  sessionId: "session",
+  providerSessionId: "provider-session",
+  providerSessionPath: "/sessions/provider-session.jsonl",
+};
+
+const snapshot = {
+  sessionId: "session",
+  status: "idle",
+  queuedMessages: [],
+};
+
+function request(method = "GET", body?: Record<string, unknown>): Request {
   return new Request("http://server.test/api/agent-sessions/session", {
     method,
     ...(body
@@ -59,21 +86,13 @@ describe("agent session route", () => {
       user: { id: "owner", role: "admin" },
     });
     mocks.getOwnedAgentSession.mockResolvedValue(owned);
-    mocks.getOrStart.mockResolvedValue({
-      command: mocks.command,
-      normalizeCommand: mocks.normalizeCommand,
-      snapshot: mocks.snapshot,
-    });
-    mocks.normalizeCommand.mockImplementation((command) => command);
-    mocks.snapshot.mockReturnValue({
-      sessionId: "session",
-      status: "idle",
-      queuedMessages: [],
-    });
-    mocks.create.mockResolvedValue({
-      sessionId: "new-session",
-      runtime: { snapshot: vi.fn() },
-    });
+    mocks.daemonRequest.mockImplementation(
+      async (_connectorId: string, command: { type: string }) =>
+        command.type === "open_session"
+          ? { snapshot }
+          : { commandResult: null, snapshot },
+    );
+    mocks.upsertAgentSession.mockResolvedValue({ id: "new-session" });
   });
 
   it("requires authentication and owner-scoped persistence", async () => {
@@ -85,7 +104,7 @@ describe("agent session route", () => {
     });
     mocks.getOwnedAgentSession.mockResolvedValueOnce(null);
     expect((await GET(request(), context)).status).toBe(404);
-    expect(mocks.getOrStart).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
   it("blocks non-admin users from Agent Connections", async () => {
@@ -96,19 +115,41 @@ describe("agent session route", () => {
     const response = await GET(request(), context);
 
     expect(response.status).toBe(403);
-    expect(mocks.getOrStart).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
-  it("validates and forwards native Pi commands", async () => {
+  it("opens the connector-owned session", async () => {
+    const response = await GET(request(), context);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ snapshot });
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "open_session",
+      session: sessionDescriptor,
+    });
+  });
+
+  it("forwards submissions with the browser message identity intact", async () => {
     const response = await POST(
-      request("POST", { type: "prompt", message: "Inspect this repo" }),
+      request("POST", {
+        type: "prompt",
+        message: "Inspect this repo",
+        clientMessageId: "message-1",
+      }),
       context,
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.command).toHaveBeenCalledWith({
-      type: "prompt",
-      message: "Inspect this repo",
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "session_command",
+      commandId: "message-1",
+      clientMessageId: "message-1",
+      session: sessionDescriptor,
+      command: {
+        type: "prompt",
+        message: "Inspect this repo",
+        clientMessageId: "message-1",
+      },
     });
     expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
       "session",
@@ -133,63 +174,43 @@ describe("agent session route", () => {
         type: "prompt",
         message: "",
         images: [image],
+        clientMessageId: "message-image",
       }),
       context,
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.command).toHaveBeenCalledWith({
-      type: "prompt",
-      message: "",
-      images: [image],
-    });
+    expect(mocks.daemonRequest).toHaveBeenCalledWith(
+      "connector",
+      expect.objectContaining({
+        type: "session_command",
+        commandId: "message-image",
+        command: expect.objectContaining({ images: [image] }),
+      }),
+    );
     expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
       "session",
       expect.objectContaining({ firstMessage: "screen.png" }),
     );
   });
 
-  it("executes built-in slash commands without recording prompt metadata", async () => {
-    mocks.normalizeCommand.mockReturnValue({
-      type: "set_session_name",
-      name: "Release prep",
-    });
-
-    const response = await POST(
-      request("POST", { type: "prompt", message: "/name Release prep" }),
-      context,
-    );
-
-    expect(response.status).toBe(200);
-    expect(mocks.command).toHaveBeenCalledWith({
-      type: "set_session_name",
-      name: "Release prep",
-    });
-    expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith("session", {
-      name: "Release prep",
-    });
-    expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalledWith(
-      "session",
-      expect.objectContaining({ firstMessage: expect.anything() }),
-    );
-  });
-
   it("forwards provider-neutral queue commands", async () => {
-    mocks.snapshot.mockReturnValue({
-      sessionId: "session",
-      status: "running",
-      queuedMessages: [
-        {
-          id: "session:1",
-          message: "Then summarize",
-          status: "pending",
-        },
-      ],
+    const queuedMessages = [
+      {
+        id: "queue-message",
+        message: "Then summarize",
+        status: "pending",
+      },
+    ];
+    mocks.daemonRequest.mockResolvedValue({
+      commandResult: null,
+      snapshot: { ...snapshot, status: "running", queuedMessages },
     });
     const queued = await POST(
       request("POST", {
         type: "queue",
         message: "Then summarize",
+        clientMessageId: "queue-message",
       }),
       context,
     );
@@ -197,18 +218,21 @@ describe("agent session route", () => {
     expect(queued.status).toBe(200);
     await expect(queued.json()).resolves.toEqual({
       accepted: true,
-      queuedMessages: [
-        {
-          id: "session:1",
+      queuedMessages,
+    });
+    expect(mocks.daemonRequest).toHaveBeenCalledWith(
+      "connector",
+      expect.objectContaining({
+        type: "session_command",
+        commandId: "queue-message",
+        clientMessageId: "queue-message",
+        command: {
+          type: "queue",
           message: "Then summarize",
-          status: "pending",
+          clientMessageId: "queue-message",
         },
-      ],
-    });
-    expect(mocks.command).toHaveBeenCalledWith({
-      type: "queue",
-      message: "Then summarize",
-    });
+      }),
+    );
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 
@@ -217,26 +241,41 @@ describe("agent session route", () => {
       request("POST", {
         type: "steer",
         message: "Focus on the failing test",
+        clientMessageId: "steer-message",
       }),
       context,
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.command).toHaveBeenCalledWith({
-      type: "steer",
-      message: "Focus on the failing test",
-    });
+    expect(mocks.daemonRequest).toHaveBeenCalledWith(
+      "connector",
+      expect.objectContaining({
+        commandId: "steer-message",
+        command: expect.objectContaining({ type: "steer" }),
+      }),
+    );
     expect(mocks.updateAgentSessionMetadata).toHaveBeenCalledWith(
       "session",
       { providerModifiedAt: expect.any(Date) },
     );
   });
 
-  it("creates a new workspace session for /new without prompting Pi", async () => {
-    mocks.normalizeCommand.mockReturnValue({ type: "new_session" });
+  it("creates a new connector-owned workspace session", async () => {
+    mocks.daemonRequest.mockResolvedValue({
+      session: {
+        providerSessionId: "new-provider-session",
+        providerSessionPath: "/sessions/new-provider-session.jsonl",
+        name: null,
+        firstMessage: null,
+        messageCount: 0,
+        createdAt: null,
+        modifiedAt: null,
+      },
+      snapshot: { ...snapshot, sessionId: "new-session" },
+    });
 
     const response = await POST(
-      request("POST", { type: "prompt", message: "/new" }),
+      request("POST", { type: "new_session" }),
       context,
     );
 
@@ -245,8 +284,24 @@ describe("agent session route", () => {
       accepted: true,
       sessionId: "new-session",
     });
-    expect(mocks.create).toHaveBeenCalledWith(owned);
-    expect(mocks.command).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "create_session",
+      sessionId: expect.any(String),
+      workspace: {
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider: "pi",
+        target: { transport: "local", shellMode: "interactive" },
+        executable: "pi",
+        cwd: "/workspace",
+        detectedVersion: "0.55.0",
+      },
+    });
+    expect(mocks.upsertAgentSession).toHaveBeenCalledWith(
+      "workspace",
+      expect.objectContaining({ providerSessionId: "new-provider-session" }),
+      expect.any(String),
+    );
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 });

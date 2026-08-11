@@ -1,22 +1,31 @@
-export const HOST_CONNECTOR_PROTOCOL_MIN_VERSION = 1;
+import type {
+  AgentConnectionDraft,
+  AgentDiscoveryTarget,
+  AgentProviderId,
+  AgentRuntimeEnvelope,
+  AgentSessionCommand,
+  ConnectorShellMode,
+} from "./agents";
+import {
+  CONNECTOR_SHELL_MODES,
+  AGENT_PROVIDER_IDS,
+  agentConnectionDraftSchema,
+  agentDiscoveryTargetSchema,
+  agentSessionCommandSchema,
+} from "./agents";
+
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.1.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.2.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
-export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
-export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
+export * from "./agents";
+export * from "./catalog";
+export * from "./commands";
+export * from "./state";
 
 export type ConnectorTarget =
   | { transport: "local" }
   | { transport: "ssh"; alias: string };
-
-export type ConnectorProcessLaunch = {
-  command: string;
-  args?: string[];
-  cwd?: string;
-  env?: Record<string, string>;
-  shellMode: ConnectorShellMode;
-};
 
 export type ConnectorSshHost = {
   alias: string;
@@ -25,38 +34,75 @@ export type ConnectorSshHost = {
   username: string;
 };
 
+export type AgentDaemonTarget = ConnectorTarget & {
+  shellMode?: ConnectorShellMode;
+};
+
+export type AgentDaemonWorkspaceDescriptor = {
+  connectionId: string;
+  workspaceId: string;
+  provider: AgentProviderId;
+  target: AgentDaemonTarget;
+  executable: string;
+  cwd: string;
+  detectedVersion?: string | null;
+};
+
+export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
+  sessionId: string;
+  providerSessionId: string;
+  providerSessionPath: string;
+};
+
+export type AgentDaemonRequest =
+  | { type: "list_ssh_hosts" }
+  | { type: "discover"; target: AgentDiscoveryTarget }
+  | { type: "probe"; draft: AgentConnectionDraft }
+  | {
+      type: "list_sessions";
+      workspace: AgentDaemonWorkspaceDescriptor;
+    }
+  | { type: "list_directories"; target: AgentDaemonTarget; path?: string }
+  | { type: "probe_workspace"; target: AgentDaemonTarget; path: string }
+  | { type: "git_status"; target: AgentDaemonTarget; path: string }
+  | {
+      type: "create_session";
+      sessionId: string;
+      workspace: AgentDaemonWorkspaceDescriptor;
+    }
+  | { type: "open_session"; session: AgentDaemonSessionDescriptor }
+  | {
+      type: "session_command";
+      commandId: string;
+      clientMessageId?: string;
+      session: AgentDaemonSessionDescriptor;
+      command: AgentSessionCommand;
+    }
+  | {
+      type: "subscribe_session";
+      subscriptionId: string;
+      session: AgentDaemonSessionDescriptor;
+      after?: { epoch: string; sequence: number };
+    }
+  | { type: "unsubscribe_session"; subscriptionId: string }
+  | { type: "stop_session"; sessionId: string }
+  | { type: "stop_workspace"; workspaceId: string }
+  | { type: "stop_connection"; connectionId: string }
+  | { type: "stop_all" };
+
 export type HostConnectorCommand =
   | {
       type: "sync";
-      processIds: string[];
-    }
-  | {
-      type: "spawn";
-      processId: string;
-      target: ConnectorTarget;
-      launch: ConnectorProcessLaunch;
-    }
-  | {
-      type: "stdin";
-      processId: string;
-      data: string;
-    }
-  | {
-      type: "stdin_end";
-      processId: string;
-    }
-  | {
-      type: "kill";
-      processId: string;
-      signal: NodeJS.Signals;
+      connectionEpoch: string;
+      activeSessionIds: string[];
     }
   | {
       type: "request";
       requestId: string;
-      request: { type: "list_ssh_hosts" };
+      request: AgentDaemonRequest;
     };
 
-export type HostConnectorEvent =
+export type HostConnectorEventPayload =
   | {
       type: "response";
       requestId: string;
@@ -70,21 +116,36 @@ export type HostConnectorEvent =
       error: string;
     }
   | {
-      type: "stdout" | "stderr";
-      processId: string;
-      data: string;
+      type: "session_event";
+      subscriptionId: string;
+      sessionId: string;
+      envelope: AgentRuntimeEnvelope;
     }
   | {
-      type: "exit";
-      processId: string;
-      code: number | null;
-      signal: NodeJS.Signals | null;
-      error?: string;
+      type: "session_metadata";
+      sessionId: string;
+      patch: {
+        name?: string | null;
+        firstMessage?: string | null;
+        messageCount?: number;
+        providerModifiedAt?: number;
+      };
     };
 
+export type HostConnectorEvent = {
+  sequence: number;
+  payload: HostConnectorEventPayload;
+};
+
 export type HostConnectorEventBatch = {
-  protocolVersion: number;
+  protocolVersion: 1;
+  connectorEpoch: string;
   events: HostConnectorEvent[];
+};
+
+export type HostConnectorEventAck = {
+  connectorEpoch: string;
+  acknowledgedSequence: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -119,56 +180,6 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
 }
 
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return (
-    isRecord(value) &&
-    Object.entries(value).every(
-      ([key, item]) =>
-        /^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) && typeof item === "string",
-    )
-  );
-}
-
-const CONNECTOR_SIGNALS = new Set<NodeJS.Signals>([
-  "SIGABRT",
-  "SIGALRM",
-  "SIGBUS",
-  "SIGCHLD",
-  "SIGCONT",
-  "SIGFPE",
-  "SIGHUP",
-  "SIGILL",
-  "SIGINT",
-  "SIGIO",
-  "SIGIOT",
-  "SIGKILL",
-  "SIGPIPE",
-  "SIGPOLL",
-  "SIGPROF",
-  "SIGPWR",
-  "SIGQUIT",
-  "SIGSEGV",
-  "SIGSTKFLT",
-  "SIGSTOP",
-  "SIGSYS",
-  "SIGTERM",
-  "SIGTRAP",
-  "SIGTSTP",
-  "SIGTTIN",
-  "SIGTTOU",
-  "SIGURG",
-  "SIGUSR1",
-  "SIGUSR2",
-  "SIGVTALRM",
-  "SIGWINCH",
-  "SIGXCPU",
-  "SIGXFSZ",
-]);
-
 function isConnectorTarget(value: unknown): value is ConnectorTarget {
   if (!isRecord(value)) return false;
   return (
@@ -177,28 +188,111 @@ function isConnectorTarget(value: unknown): value is ConnectorTarget {
   );
 }
 
-function isConnectorProcessLaunch(
-  value: unknown,
-): value is ConnectorProcessLaunch {
-  if (!isRecord(value) || !isNonEmptyString(value.command)) return false;
-  return (
-    (value.args === undefined || isStringArray(value.args)) &&
-    (value.cwd === undefined || typeof value.cwd === "string") &&
-    (value.env === undefined || isStringRecord(value.env)) &&
-    typeof value.shellMode === "string" &&
-    CONNECTOR_SHELL_MODES.includes(value.shellMode as ConnectorShellMode)
-  );
-}
-
 export function isHostConnectorProtocolVersion(
   value: unknown,
 ): value is number {
+  return value === HOST_CONNECTOR_PROTOCOL_VERSION;
+}
+
+function isAgentDaemonTarget(value: unknown): value is AgentDaemonTarget {
   return (
-    typeof value === "number" &&
-    Number.isInteger(value) &&
-    value >= HOST_CONNECTOR_PROTOCOL_MIN_VERSION &&
-    value <= HOST_CONNECTOR_PROTOCOL_VERSION
+    isRecord(value) &&
+    isConnectorTarget(value) &&
+    (Reflect.get(value, "shellMode") === undefined ||
+      (typeof Reflect.get(value, "shellMode") === "string" &&
+        CONNECTOR_SHELL_MODES.includes(
+          Reflect.get(value, "shellMode") as ConnectorShellMode,
+        )))
   );
+}
+
+export function isAgentDaemonWorkspaceDescriptor(
+  value: unknown,
+): value is AgentDaemonWorkspaceDescriptor {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.connectionId) &&
+    isNonEmptyString(value.workspaceId) &&
+    (AGENT_PROVIDER_IDS as readonly unknown[]).includes(value.provider) &&
+    isAgentDaemonTarget(value.target) &&
+    isNonEmptyString(value.executable) &&
+    typeof value.cwd === "string" &&
+    (value.detectedVersion === undefined ||
+      value.detectedVersion === null ||
+      typeof value.detectedVersion === "string")
+  );
+}
+
+export function isAgentDaemonSessionDescriptor(
+  value: unknown,
+): value is AgentDaemonSessionDescriptor {
+  return (
+    isRecord(value) &&
+    isAgentDaemonWorkspaceDescriptor(value) &&
+    isNonEmptyString(Reflect.get(value, "sessionId")) &&
+    isNonEmptyString(Reflect.get(value, "providerSessionId")) &&
+    isNonEmptyString(Reflect.get(value, "providerSessionPath"))
+  );
+}
+
+function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
+  if (!isRecord(value) || typeof value.type !== "string") return false;
+  switch (value.type) {
+    case "list_ssh_hosts":
+      return true;
+    case "discover":
+      return agentDiscoveryTargetSchema.safeParse(value.target).success;
+    case "probe":
+      return agentConnectionDraftSchema.safeParse(value.draft).success;
+    case "list_sessions":
+      return isAgentDaemonWorkspaceDescriptor(value.workspace);
+    case "list_directories":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        (value.path === undefined || typeof value.path === "string")
+      );
+    case "probe_workspace":
+      return isAgentDaemonTarget(value.target) && typeof value.path === "string";
+    case "git_status":
+      return isAgentDaemonTarget(value.target) && typeof value.path === "string";
+    case "create_session":
+      return (
+        isNonEmptyString(value.sessionId) &&
+        isAgentDaemonWorkspaceDescriptor(value.workspace)
+      );
+    case "open_session":
+      return isAgentDaemonSessionDescriptor(value.session);
+    case "session_command":
+      return (
+        isNonEmptyString(value.commandId) &&
+        (value.clientMessageId === undefined ||
+          isNonEmptyString(value.clientMessageId)) &&
+        isAgentDaemonSessionDescriptor(value.session) &&
+        agentSessionCommandSchema.safeParse(value.command).success
+      );
+    case "subscribe_session":
+      return (
+        isNonEmptyString(value.subscriptionId) &&
+        isAgentDaemonSessionDescriptor(value.session) &&
+        (value.after === undefined ||
+          (isRecord(value.after) &&
+            isNonEmptyString(value.after.epoch) &&
+            Number.isSafeInteger(value.after.sequence) &&
+            Number(value.after.sequence) >= 0))
+      );
+    case "unsubscribe_session":
+      return isNonEmptyString(value.subscriptionId);
+    case "stop_session":
+      return isNonEmptyString(value.sessionId);
+    case "stop_workspace":
+      return isNonEmptyString(value.workspaceId);
+    case "stop_connection":
+      return isNonEmptyString(value.connectionId);
+    case "stop_all":
+      return true;
+    default:
+      return false;
+  }
 }
 
 export function isHostConnectorCommand(
@@ -207,30 +301,15 @@ export function isHostConnectorCommand(
   if (!isRecord(value)) return false;
   switch (value.type) {
     case "sync":
-      return isStringArray(value.processIds);
-    case "spawn":
       return (
-        isNonEmptyString(value.processId) &&
-        isConnectorTarget(value.target) &&
-        isConnectorProcessLaunch(value.launch)
-      );
-    case "stdin":
-      return (
-        isNonEmptyString(value.processId) && typeof value.data === "string"
-      );
-    case "stdin_end":
-      return isNonEmptyString(value.processId);
-    case "kill":
-      return (
-        isNonEmptyString(value.processId) &&
-        typeof value.signal === "string" &&
-        CONNECTOR_SIGNALS.has(value.signal as NodeJS.Signals)
+        isNonEmptyString(value.connectionEpoch) &&
+        Array.isArray(value.activeSessionIds) &&
+        value.activeSessionIds.every(isNonEmptyString)
       );
     case "request":
       return (
         isNonEmptyString(value.requestId) &&
-        isRecord(value.request) &&
-        value.request.type === "list_ssh_hosts"
+        isAgentDaemonRequest(value.request)
       );
     default:
       return false;
@@ -253,28 +332,70 @@ export function isConnectorSshHost(value: unknown): value is ConnectorSshHost {
 export function isHostConnectorEvent(
   value: unknown,
 ): value is HostConnectorEvent {
-  if (!isRecord(value) || typeof value.type !== "string") return false;
-  if (value.type === "response") {
-    return (
-      typeof value.requestId === "string" &&
-      ((value.success === true && "data" in value) ||
-        (value.success === false && typeof value.error === "string"))
-    );
-  }
   if (
-    typeof value.processId !== "string" ||
-    value.processId.length === 0
+    !isRecord(value) ||
+    !Number.isSafeInteger(value.sequence) ||
+    Number(value.sequence) < 1 ||
+    !isRecord(value.payload) ||
+    typeof value.payload.type !== "string"
   ) {
     return false;
   }
-  if (value.type === "stdout" || value.type === "stderr") {
-    return typeof value.data === "string";
-  }
-  if (value.type === "exit") {
+  const payload = value.payload;
+  if (payload.type === "response") {
     return (
-      (value.code === null || typeof value.code === "number") &&
-      (value.signal === null || typeof value.signal === "string") &&
-      (value.error === undefined || typeof value.error === "string")
+      isNonEmptyString(payload.requestId) &&
+      ((payload.success === true && "data" in payload) ||
+        (payload.success === false && typeof payload.error === "string"))
+    );
+  }
+  if (payload.type === "session_event") {
+    if (
+      !(
+      isNonEmptyString(payload.subscriptionId) &&
+      isNonEmptyString(payload.sessionId) &&
+      isRecord(payload.envelope) &&
+      isNonEmptyString(payload.envelope.epoch) &&
+      Number.isSafeInteger(payload.envelope.sequence) &&
+      Number(payload.envelope.sequence) >= 1 &&
+      ["snapshot", "runtime_event"].includes(String(payload.envelope.type)) &&
+      "data" in payload.envelope
+      ) ||
+      !isRecord(payload.envelope.data)
+    ) {
+      return false;
+    }
+    return payload.envelope.type === "snapshot"
+      ? payload.envelope.data.sessionId === payload.sessionId &&
+          ["idle", "running", "exited"].includes(
+            String(payload.envelope.data.status),
+          )
+      : isNonEmptyString(payload.envelope.data.type);
+  }
+  if (payload.type === "session_metadata") {
+    if (!isNonEmptyString(payload.sessionId) || !isRecord(payload.patch)) {
+      return false;
+    }
+    const allowed = new Set([
+      "name",
+      "firstMessage",
+      "messageCount",
+      "providerModifiedAt",
+    ]);
+    return (
+      Object.keys(payload.patch).every((key) => allowed.has(key)) &&
+      (payload.patch.name === undefined ||
+        payload.patch.name === null ||
+        typeof payload.patch.name === "string") &&
+      (payload.patch.firstMessage === undefined ||
+        payload.patch.firstMessage === null ||
+        typeof payload.patch.firstMessage === "string") &&
+      (payload.patch.messageCount === undefined ||
+        (Number.isSafeInteger(payload.patch.messageCount) &&
+          Number(payload.patch.messageCount) >= 0)) &&
+      (payload.patch.providerModifiedAt === undefined ||
+        (typeof payload.patch.providerModifiedAt === "number" &&
+          Number.isFinite(payload.patch.providerModifiedAt)))
     );
   }
   return false;

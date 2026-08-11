@@ -1,15 +1,16 @@
 import {
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isHostConnectorCommand,
-  type HostConnectorEvent,
+  MAX_AGENT_IMAGE_BYTES,
+  type AgentPromptImage,
+  type HostConnectorEventAck,
   type HostConnectorEventBatch,
+  type HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
-import type { ConnectorConfig } from "./config.js";
-import {
-  restoreConnectorEventBatch,
-  takeConnectorEventBatch,
-} from "./eventQueue.js";
-import { ConnectorRuntime } from "./runtime.js";
+import type { ResolvedAgentImage } from "@overtchat/agent-runtime";
+import { connectorStatePath, type ConnectorConfig } from "./config.js";
+import { ConnectorDaemon } from "./daemon.js";
+import { ConnectorStateJournal } from "./state.js";
 import { CONNECTOR_VERSION } from "./version.js";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -42,8 +43,7 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
 }
 
 export class ConnectorClient {
-  private readonly events: HostConnectorEvent[] = [];
-  private readonly runtime: ConnectorRuntime;
+  private readonly daemon: ConnectorDaemon;
   private readonly stopAbort = new AbortController();
   private commandStreamAbort: AbortController | undefined;
   private eventRequestAbort: AbortController | undefined;
@@ -53,11 +53,26 @@ export class ConnectorClient {
   private flushing = false;
   private stopped = false;
 
-  constructor(private readonly config: ConnectorConfig) {
-    this.runtime = new ConnectorRuntime((event) => this.enqueue(event));
+  private constructor(
+    private readonly config: ConnectorConfig,
+    private readonly journal: ConnectorStateJournal,
+  ) {
+    this.daemon = new ConnectorDaemon(
+      (event) => this.enqueue(event),
+      (images) => this.resolveImages(images),
+      journal,
+    );
+  }
+
+  static async create(config: ConnectorConfig): Promise<ConnectorClient> {
+    const journal = await ConnectorStateJournal.open(
+      connectorStatePath(config.connectorId),
+    );
+    return new ConnectorClient(config, journal);
   }
 
   async run(): Promise<void> {
+    void this.flush();
     while (!this.stopped) {
       try {
         await this.openCommandStream();
@@ -76,16 +91,16 @@ export class ConnectorClient {
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = undefined;
-    this.events.length = 0;
     this.stopAbort.abort();
     this.commandStreamAbort?.abort();
     this.eventRequestAbort?.abort();
-    this.runtime.stop();
+    await this.daemon.stop();
+    await this.journal.close();
   }
 
   private async openCommandStream(): Promise<void> {
@@ -105,7 +120,12 @@ export class ConnectorClient {
       },
     );
     if (!response.ok || !response.body) {
-      throw new Error(`OvertChat returned HTTP ${response.status}.`);
+      const detail = (await response.json().catch(() => null)) as
+        | { error?: string }
+        | null;
+      throw new Error(
+        detail?.error ?? `OvertChat returned HTTP ${response.status}.`,
+      );
     }
     this.reconnectAttempt = 0;
     const decoder = new TextDecoder();
@@ -125,7 +145,7 @@ export class ConnectorClient {
             if (!isHostConnectorCommand(command)) {
               throw new Error("OvertChat sent an invalid connector command.");
             }
-            await this.runtime.handle(command);
+            await this.daemon.handle(command);
           }
           newline = buffered.indexOf("\n");
         }
@@ -137,9 +157,9 @@ export class ConnectorClient {
     }
   }
 
-  private enqueue(event: HostConnectorEvent): void {
+  private enqueue(payload: HostConnectorEventPayload): void {
     if (this.stopped) return;
-    this.events.push(event);
+    this.journal.enqueue(payload);
     if (this.flushTimer || this.flushing) return;
     this.flushTimer = setTimeout(() => {
       this.flushTimer = undefined;
@@ -148,11 +168,13 @@ export class ConnectorClient {
   }
 
   private async flush(): Promise<void> {
-    if (this.stopped || this.flushing || this.events.length === 0) return;
+    if (this.stopped || this.flushing) return;
+    const events = this.journal.eventBatch();
+    if (events.length === 0) return;
     this.flushing = true;
-    const events = takeConnectorEventBatch(this.events);
     const body: HostConnectorEventBatch = {
       protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+      connectorEpoch: this.journal.connectorEpoch,
       events,
     };
     const abort = new AbortController();
@@ -166,6 +188,10 @@ export class ConnectorClient {
           headers: {
             Authorization: `Bearer ${this.config.token}`,
             "Content-Type": "application/json",
+            "X-OvertChat-Connector-Version": CONNECTOR_VERSION,
+            "X-OvertChat-Connector-Protocol": String(
+              HOST_CONNECTOR_PROTOCOL_VERSION,
+            ),
           },
           body: JSON.stringify(body),
         },
@@ -173,10 +199,17 @@ export class ConnectorClient {
       if (!response.ok) {
         throw new Error(`OvertChat returned HTTP ${response.status}.`);
       }
+      const ack = (await response.json()) as HostConnectorEventAck;
+      if (
+        ack.connectorEpoch !== this.journal.connectorEpoch ||
+        !Number.isSafeInteger(ack.acknowledgedSequence)
+      ) {
+        throw new Error("OvertChat returned an invalid connector acknowledgement.");
+      }
+      await this.journal.acknowledge(ack);
       this.eventRetryAttempt = 0;
     } catch (error) {
       if (this.stopped) return;
-      restoreConnectorEventBatch(this.events, events);
       console.error(
         `Unable to deliver connector events: ${
           error instanceof Error ? error.message : String(error)
@@ -191,7 +224,42 @@ export class ConnectorClient {
         this.eventRequestAbort = undefined;
       }
       this.flushing = false;
-      if (!this.stopped && this.events.length > 0) void this.flush();
+      if (!this.stopped && this.journal.eventBatch().length > 0) {
+        void this.flush();
+      }
     }
+  }
+
+  private async resolveImages(
+    images: readonly AgentPromptImage[],
+  ): Promise<ResolvedAgentImage[]> {
+    return Promise.all(
+      images.map(async (image) => {
+        const response = await fetch(
+          endpoint(
+            this.config.serverUrl,
+            `/api/host-connectors/uploads/${encodeURIComponent(image.uploadId)}`,
+          ),
+          {
+            headers: {
+              Authorization: `Bearer ${this.config.token}`,
+            },
+          },
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Unable to retrieve queued image ${image.filename} (HTTP ${response.status}).`,
+          );
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer());
+        if (bytes.byteLength > MAX_AGENT_IMAGE_BYTES) {
+          throw new Error(`Agent image ${image.filename} is too large.`);
+        }
+        return {
+          ...image,
+          data: Buffer.from(bytes).toString("base64"),
+        };
+      }),
+    );
   }
 }

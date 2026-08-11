@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
-import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { listHostConnectors } from "@/lib/db/hostConnectors";
 import { changeUserRole } from "@/lib/db/users";
 
 const bodySchema = z.object({
@@ -41,7 +42,11 @@ export async function PATCH(
   }
 
   if (result.status === "updated" && parsed.data.role === "user") {
-    await agentRuntimeRegistry.stopUser(id);
+    await Promise.allSettled(
+      listHostConnectors(id).map((connector) =>
+        hostConnectorBroker.request(connector.id, { type: "stop_all" }),
+      ),
+    );
   }
   return Response.json({ user: result.user });
 }

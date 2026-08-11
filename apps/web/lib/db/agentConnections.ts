@@ -6,6 +6,7 @@ import {
   agentHosts,
   agentSessions,
   agentWorkspaces,
+  user,
 } from "@/lib/db/schema";
 import type {
   AgentConnectionListItem,
@@ -13,7 +14,7 @@ import type {
   AgentProviderId,
   AgentSessionListItem,
   AgentTransportId,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 
 export type AgentHostRow = typeof agentHosts.$inferSelect;
@@ -130,6 +131,32 @@ export async function listAgentConnections(
     },
     workspaces: workspacesByConnection.get(connection.id) ?? [],
   }));
+}
+
+export async function listActiveAgentSessionIds(
+  connectorId: string,
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .innerJoin(
+      agentWorkspaces,
+      eq(agentSessions.workspaceId, agentWorkspaces.id),
+    )
+    .innerJoin(
+      agentConnections,
+      eq(agentWorkspaces.connectionId, agentConnections.id),
+    )
+    .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+    .innerJoin(user, eq(agentHosts.userId, user.id))
+    .where(
+      and(
+        eq(agentHosts.connectorId, connectorId),
+        eq(user.role, "admin"),
+        eq(user.banned, false),
+      ),
+    );
+  return rows.map((row) => row.id);
 }
 
 export async function getOwnedAgentConnection(
@@ -266,13 +293,14 @@ export async function createAgentWorkspace(
   connectionId: string,
   userId: string,
   input: { path: string; name: string },
+  workspaceId = crypto.randomUUID(),
 ): Promise<AgentWorkspaceRow | null> {
   const owned = await getOwnedAgentConnection(connectionId, userId);
   if (!owned) return null;
   const [row] = await db
     .insert(agentWorkspaces)
     .values({
-      id: crypto.randomUUID(),
+      id: workspaceId,
       connectionId,
       path: input.path,
       name: input.name,
@@ -362,12 +390,13 @@ export function syncAgentWorkspaceSessions(
 export async function upsertAgentSession(
   workspaceId: string,
   session: ProviderSessionMetadata,
+  sessionId = crypto.randomUUID(),
 ): Promise<AgentSessionRow> {
   const now = new Date();
   const [row] = await db
     .insert(agentSessions)
     .values({
-      id: crypto.randomUUID(),
+      id: sessionId,
       workspaceId,
       providerSessionId: session.providerSessionId,
       providerSessionPath: session.providerSessionPath,

@@ -3,8 +3,8 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { listAgentDirectories } from "@/lib/agents/runtime/filesystem";
-import { targetForStoredHost } from "@/lib/agents/runtime/target";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { daemonTarget } from "@/lib/agents/connector/descriptors";
 import { getOwnedAgentConnection } from "@/lib/db/agentConnections";
 
 export const maxDuration = 30;
@@ -32,9 +32,13 @@ export async function GET(
   }
 
   try {
-    const directory = await listAgentDirectories(
-      targetForStoredHost(owned.host, owned.connection.shellMode),
-      path,
+    const directory = await hostConnectorBroker.request(
+      owned.host.connectorId,
+      {
+        type: "list_directories",
+        target: daemonTarget(owned.host, owned.connection.shellMode),
+        ...(path ? { path } : {}),
+      },
     );
     return Response.json({ directory });
   } catch (error) {

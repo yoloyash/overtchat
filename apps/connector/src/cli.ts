@@ -65,8 +65,8 @@ async function pair(values: Map<string, string>): Promise<void> {
 
 async function run(): Promise<void> {
   const config = await readConnectorConfig();
-  const client = new ConnectorClient(config);
-  const stop = () => client.stop();
+  const client = await ConnectorClient.create(config);
+  const stop = () => void client.stop();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   console.log(`Connecting to ${config.serverUrl}`);

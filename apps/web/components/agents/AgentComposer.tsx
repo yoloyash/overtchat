@@ -20,19 +20,19 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { agentSlashCommandQuery } from "@/lib/agents/runtime/commands";
+import { agentSlashCommandQuery } from "@overtchat/agent-bridge";
 import type {
   AgentPromptImage,
   AgentQueuedMessage,
   AgentSessionStats,
   AgentSlashCommand,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import {
   AGENT_IMAGE_MEDIA_TYPES,
   MAX_AGENT_IMAGES,
   MAX_AGENT_IMAGE_BYTES,
   MAX_AGENT_IMAGE_TOTAL_BYTES,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import { getDataTransferFiles } from "@/lib/chat/attachments";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";

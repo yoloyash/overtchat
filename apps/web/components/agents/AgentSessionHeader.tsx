@@ -17,7 +17,7 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import type {
   AgentSessionStats,
   AgentWorkspaceGitStatus,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";

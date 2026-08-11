@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { normalizeServerUrl } from "./config.js";
+import {
+  connectorStatePath,
+  normalizeServerUrl,
+} from "./config.js";
 
 describe("connector server URLs", () => {
   it("accepts local HTTP and normalizes optional URL parts", () => {
@@ -23,6 +26,12 @@ describe("connector server URLs", () => {
   it("rejects unsupported URL protocols", () => {
     expect(() => normalizeServerUrl("file:///tmp/overtchat")).toThrow(
       "OvertChat URL must use HTTP or HTTPS.",
+    );
+  });
+
+  it("keeps each paired connector's state separate", () => {
+    expect(connectorStatePath("connector-1")).toMatch(
+      /connector-connector-1\.state\.json$/u,
     );
   });
 });

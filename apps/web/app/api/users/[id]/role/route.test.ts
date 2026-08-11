@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   changeUserRole: vi.fn(),
-  stopUser: vi.fn(),
+  daemonRequest: vi.fn(),
+  listConnectors: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -13,8 +14,11 @@ vi.mock("@/lib/auth/server", () => ({
 vi.mock("@/lib/db/users", () => ({
   changeUserRole: mocks.changeUserRole,
 }));
-vi.mock("@/lib/agents/runtime/registry", () => ({
-  agentRuntimeRegistry: { stopUser: mocks.stopUser },
+vi.mock("@/lib/agents/connector/broker", () => ({
+  hostConnectorBroker: { request: mocks.daemonRequest },
+}));
+vi.mock("@/lib/db/hostConnectors", () => ({
+  listHostConnectors: mocks.listConnectors,
 }));
 
 import { PATCH } from "./route";
@@ -44,6 +48,7 @@ describe("user role route", () => {
         role: "user",
       },
     });
+    mocks.listConnectors.mockReturnValue([{ id: "connector" }]);
   });
 
   it("requires an administrator", async () => {
@@ -64,7 +69,9 @@ describe("user role route", () => {
       "target",
       "user",
     );
-    expect(mocks.stopUser).toHaveBeenCalledWith("target");
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "stop_all",
+    });
   });
 
   it("surfaces role-change safeguards", async () => {
@@ -76,6 +83,6 @@ describe("user role route", () => {
     await expect(response.json()).resolves.toEqual({
       error: "At least one administrator is required.",
     });
-    expect(mocks.stopUser).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 });

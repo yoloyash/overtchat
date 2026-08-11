@@ -8,6 +8,7 @@ on:
       - ".github/workflows/connector-release.yml"
       - "apps/connector/**"
       - "packages/agent-bridge/**"
+      - "packages/agent-runtime/**"
       - "package.json"
       - "package-lock.json"
       - "scripts/install-connector.sh"

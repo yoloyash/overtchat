@@ -6,9 +6,9 @@ import {
 import {
   agentConnectionDraftSchema,
   type AgentConnectionListItem,
-} from "@/lib/agents/types";
-import { agentProviderAdapter } from "@/lib/agents/providers/registry";
-import { withAgentRuntimeStatuses } from "@/lib/agents/runtime/status";
+} from "@overtchat/agent-bridge";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { withAgentRuntimeStatuses } from "@/lib/agents/connector/status";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 import {
   createAgentConnection,
@@ -27,7 +27,6 @@ export async function GET(req: Request) {
   return Response.json({
     connections: withAgentRuntimeStatuses(
       await listAgentConnections(session.user.id),
-      session.user.id,
     ),
   });
 }
@@ -55,9 +54,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const probe = await agentProviderAdapter(
-      draft.provider,
-    ).probeConnection(draft);
+    const probe = await hostConnectorBroker.request<{
+      status: "ready";
+      version: string;
+      models: unknown[];
+      shellMode: "interactive" | "login";
+    }>(draft.connectorId, { type: "probe", draft });
     const owned = createAgentConnection({
       userId: session.user.id,
       host:
@@ -82,7 +84,6 @@ export async function POST(req: Request) {
     });
     const connections = withAgentRuntimeStatuses(
       await listAgentConnections(session.user.id),
-      session.user.id,
     );
     const connection = connections.find(
       (candidate) => candidate.id === owned.connection.id,

@@ -37,11 +37,11 @@ import {
   type AgentSshHostCandidate,
   type DetectedAgentInstallation,
   type HostConnectorListItem,
-} from "@/lib/agents/types";
+} from "@overtchat/agent-bridge";
 import {
   AGENT_PROVIDERS,
   agentProviderMetadata,
-} from "@/lib/agents/catalog";
+} from "@overtchat/agent-bridge";
 import {
   useAgentSshHosts,
   useCreateAgentConnection,

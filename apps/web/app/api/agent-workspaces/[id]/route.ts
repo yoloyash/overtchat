@@ -3,10 +3,12 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { agentRuntimeRegistry } from "@/lib/agents/runtime/registry";
-import { agentProviderAdapter } from "@/lib/agents/providers/registry";
-import { targetForStoredHost } from "@/lib/agents/runtime/target";
-import { isAgentProviderId } from "@/lib/agents/catalog";
+import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import {
+  daemonWorkspace,
+  parseProviderSessionMetadata,
+} from "@/lib/agents/connector/descriptors";
+import { isAgentProviderId } from "@overtchat/agent-bridge";
 import {
   deleteAgentWorkspace,
   getOwnedAgentWorkspace,
@@ -32,14 +34,17 @@ export async function POST(
     if (!isAgentProviderId(owned.connection.provider)) {
       throw new Error("This coding-agent provider is not supported.");
     }
-    const sessions = await agentProviderAdapter(
-      owned.connection.provider,
-    ).listWorkspaceSessions(
-      targetForStoredHost(owned.host, owned.connection.shellMode),
-      owned.connection.executable,
-      owned.workspace.path,
+    const sessions = await hostConnectorBroker.request<unknown[]>(
+      owned.host.connectorId,
+      {
+        type: "list_sessions",
+        workspace: daemonWorkspace(owned),
+      },
     );
-    const rows = syncAgentWorkspaceSessions(id, sessions);
+    const rows = syncAgentWorkspaceSessions(
+      id,
+      sessions.map(parseProviderSessionMetadata),
+    );
     return Response.json({
       sessions: rows.map((row) => ({
         id: row.id,
@@ -49,10 +54,7 @@ export async function POST(
         messageCount: row.messageCount,
         createdAt: row.providerCreatedAt?.getTime() ?? null,
         modifiedAt: row.providerModifiedAt?.getTime() ?? null,
-        runtimeStatus: agentRuntimeRegistry.runtimeStatusForSession(
-          row.id,
-          session.user.id,
-        ),
+        runtimeStatus: hostConnectorBroker.runtimeStatusForSession(row.id),
       })),
     });
   } catch (error) {
@@ -81,7 +83,14 @@ export async function DELETE(
     return Response.json({ error: accessError }, { status: 403 });
   }
   const { id } = await params;
-  await agentRuntimeRegistry.stopWorkspace(id, session.user.id);
+  const owned = await getOwnedAgentWorkspace(id, session.user.id);
+  if (!owned) return new Response("Not found", { status: 404 });
+  await hostConnectorBroker
+    .request(owned.host.connectorId, {
+      type: "stop_workspace",
+      workspaceId: id,
+    })
+    .catch(() => {});
   const deleted = await deleteAgentWorkspace(id, session.user.id);
   return deleted
     ? new Response(null, { status: 204 })

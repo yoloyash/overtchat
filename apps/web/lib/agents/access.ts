@@ -1,5 +1,5 @@
-import type { AgentProviderId } from "@/lib/agents/types";
-import { agentProviderMetadata } from "@/lib/agents/catalog";
+import type { AgentProviderId } from "@overtchat/agent-bridge";
+import { agentProviderMetadata } from "@overtchat/agent-bridge";
 
 export function connectionAccessError(
   role: string | null | undefined,

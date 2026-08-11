@@ -19,8 +19,8 @@ import type {
   AgentSessionListItem,
   AgentWorkspaceGitStatus,
   AgentWorkspaceListItem,
-} from "@/lib/agents/types";
-import { agentProviderMetadata } from "@/lib/agents/catalog";
+} from "@overtchat/agent-bridge";
+import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   AGENT_SESSION_PREVIEW_COUNT,
   agentConnectionHasRunningSession,

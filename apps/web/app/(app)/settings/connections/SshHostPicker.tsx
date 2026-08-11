@@ -8,7 +8,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { AgentSshHostCandidate } from "@/lib/agents/types";
+import type { AgentSshHostCandidate } from "@overtchat/agent-bridge";
 import { cn } from "@/lib/utils";
 
 export function SshHostPicker({

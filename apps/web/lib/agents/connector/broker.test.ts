@@ -1,268 +1,149 @@
 import { describe, expect, it, vi } from "vitest";
-import type { HostConnectorCommand } from "@overtchat/agent-bridge";
+import type {
+  AgentDaemonSessionDescriptor,
+  HostConnectorCommand,
+  HostConnectorEvent,
+} from "@overtchat/agent-bridge";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/db/agentConnections", () => ({
+  updateAgentSessionMetadata: vi.fn(),
+}));
 
 import { HostConnectorBroker } from "./broker";
 
-describe("Host Connector broker", () => {
-  it("bridges a virtual process from spawn through stdout and exit", async () => {
-    const broker = new HostConnectorBroker();
+const session: AgentDaemonSessionDescriptor = {
+  connectionId: "connection",
+  workspaceId: "workspace",
+  provider: "codex",
+  target: { transport: "local", shellMode: "interactive" },
+  executable: "codex",
+  cwd: "/workspace",
+  sessionId: "session",
+  providerSessionId: "thread",
+  providerSessionPath: "/thread.jsonl",
+};
+
+function response(
+  sequence: number,
+  requestId: string,
+  data: unknown,
+): HostConnectorEvent {
+  return {
+    sequence,
+    payload: { type: "response", requestId, success: true, data },
+  };
+}
+
+describe("host connector daemon broker", () => {
+  it("starts an exact connection epoch and resolves agent-level requests", async () => {
     const commands: HostConnectorCommand[] = [];
-    broker.register("connector", (command) => commands.push(command));
-
-    const processHandle = broker.spawn(
-      "connector",
-      { transport: "ssh", alias: "macbook" },
-      {
-        command: "omp",
-        args: ["--mode", "rpc"],
-        shellMode: "interactive",
-      },
-    );
-    const spawn = commands.find(
-      (
-        command,
-      ): command is Extract<HostConnectorCommand, { type: "spawn" }> =>
-        command.type === "spawn",
-    );
-    expect(spawn).toMatchObject({
-      target: { transport: "ssh", alias: "macbook" },
-      launch: {
-        command: "omp",
-        args: ["--mode", "rpc"],
-        shellMode: "interactive",
-      },
-    });
-
-    let stdout = "";
-    processHandle.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-    });
-    processHandle.stdin.write("hello");
-    expect(commands.at(-1)).toMatchObject({
-      type: "stdin",
-      processId: spawn!.processId,
-      data: Buffer.from("hello").toString("base64"),
-    });
-
-    broker.accept("connector", {
-      type: "stdout",
-      processId: spawn!.processId,
-      data: Buffer.from("world").toString("base64"),
-    });
-    broker.accept("connector", {
-      type: "exit",
-      processId: spawn!.processId,
-      code: 0,
-      signal: null,
-    });
-
-    await expect(processHandle.exit).resolves.toEqual({
-      code: 0,
-      signal: null,
-    });
-    expect(stdout).toBe("world");
-  });
-
-  it("chunks large stdin writes before sending them to the connector", async () => {
     const broker = new HostConnectorBroker();
-    const commands: HostConnectorCommand[] = [];
-    broker.register("connector", (command) => commands.push(command));
-    const processHandle = broker.spawn(
-      "connector",
-      { transport: "local" },
-      { command: "pi", shellMode: "interactive" },
-    );
-    const payload = Buffer.alloc(64 * 1024 + 17, 7);
+    broker.register("connector", ["session"], (command) => commands.push(command));
 
-    await new Promise<void>((resolve, reject) => {
-      processHandle.stdin.end(payload, (error?: Error | null) => {
-        if (error) reject(error);
-        else resolve();
-      });
+    expect(commands[0]).toMatchObject({
+      type: "sync",
+      activeSessionIds: ["session"],
     });
+    const pending = broker.request("connector", { type: "open_session", session });
+    const request = commands.at(-1);
+    expect(request).toMatchObject({
+      type: "request",
+      request: { type: "open_session" },
+    });
+    if (request?.type !== "request") throw new Error("missing request");
 
-    const stdinCommands = commands.filter(
-      (
-        command,
-      ): command is Extract<HostConnectorCommand, { type: "stdin" }> =>
-        command.type === "stdin",
-    );
-    expect(stdinCommands).toHaveLength(2);
     expect(
-      Buffer.concat(
-        stdinCommands.map((command) => Buffer.from(command.data, "base64")),
-      ),
-    ).toEqual(payload);
-    expect(commands.at(-1)).toMatchObject({ type: "stdin_end" });
+      broker.acceptBatch("connector", "daemon-epoch", [
+        response(1, request.requestId, { snapshot: "ready" }),
+      ]),
+    ).toEqual({ connectorEpoch: "daemon-epoch", acknowledgedSequence: 1 });
+    await expect(pending).resolves.toEqual({ snapshot: "ready" });
   });
 
-  it("synchronizes active process IDs when a channel reconnects", () => {
-    const broker = new HostConnectorBroker();
-    const first: HostConnectorCommand[] = [];
-    const unregister = broker.register("connector", (command) =>
-      first.push(command),
-    );
-    broker.spawn(
-      "connector",
-      { transport: "local" },
-      { command: "omp", shellMode: "interactive" },
-    );
-    const processId = (
-      first.find(
-        (
-          command,
-        ): command is Extract<HostConnectorCommand, { type: "spawn" }> =>
-          command.type === "spawn",
-      )!
-    ).processId;
-    unregister();
-
-    const second: HostConnectorCommand[] = [];
-    broker.register("connector", (command) => second.push(command));
-
-    expect(second[0]).toEqual({ type: "sync", processIds: [processId] });
-  });
-
-  it("fails live processes and requests when a connector stays offline", async () => {
-    vi.useFakeTimers();
-    try {
-      const broker = new HostConnectorBroker(1_000);
-      const commands: HostConnectorCommand[] = [];
-      const unregister = broker.register("connector", (command) =>
-        commands.push(command),
-      );
-      const processHandle = broker.spawn(
-        "connector",
-        { transport: "local" },
-        { command: "omp", shellMode: "interactive" },
-      );
-      const hosts = broker.listSshHosts("connector");
-      const processExit = expect(processHandle.exit).resolves.toMatchObject({
-        code: null,
-        error: expect.objectContaining({
-          message: expect.stringContaining("disconnected"),
-        }),
-      });
-      const requestFailure = expect(hosts).rejects.toThrow("disconnected");
-
-      unregister();
-      await vi.advanceTimersByTimeAsync(1_000);
-
-      await Promise.all([processExit, requestFailure]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("settles a process immediately when an offline kill cannot be sent", async () => {
-    const broker = new HostConnectorBroker();
+  it("acknowledges duplicate transport events without applying them twice", async () => {
     const commands: HostConnectorCommand[] = [];
-    const unregister = broker.register("connector", (command) =>
-      commands.push(command),
-    );
-    const processHandle = broker.spawn(
-      "connector",
-      { transport: "local" },
-      { command: "omp", shellMode: "interactive" },
-    );
-    unregister();
-
-    expect(processHandle.kill("SIGKILL")).toBe(false);
-    await expect(processHandle.exit).resolves.toMatchObject({
-      code: null,
-      error: expect.objectContaining({
-        message: "The OvertChat Host Connector is offline.",
-      }),
-    });
-
-    const reconnectCommands: HostConnectorCommand[] = [];
-    broker.register("connector", (command) => reconnectCommands.push(command));
-    expect(reconnectCommands[0]).toEqual({ type: "sync", processIds: [] });
-  });
-
-  it("settles a killed process when its exit event is lost", async () => {
-    vi.useFakeTimers();
-    try {
-      const broker = new HostConnectorBroker();
-      const commands: HostConnectorCommand[] = [];
-      broker.register("connector", (command) => commands.push(command));
-      const processHandle = broker.spawn(
-        "connector",
-        { transport: "local" },
-        { command: "omp", shellMode: "interactive" },
-      );
-      const processExit = expect(processHandle.exit).resolves.toMatchObject({
-        code: null,
-        signal: "SIGKILL",
-        error: expect.objectContaining({
-          message: expect.stringContaining("did not confirm process exit"),
-        }),
-      });
-
-      expect(processHandle.kill("SIGKILL")).toBe(true);
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      await processExit;
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("validates SSH host discovery responses", async () => {
     const broker = new HostConnectorBroker();
-    const commands: HostConnectorCommand[] = [];
-    broker.register("connector", (command) => commands.push(command));
+    broker.register("connector", [], (command) => commands.push(command));
+    const pending = broker.request("connector", { type: "list_ssh_hosts" });
+    const request = commands.at(-1);
+    if (request?.type !== "request") throw new Error("missing request");
+    const event = response(1, request.requestId, []);
 
-    const hostsPromise = broker.listSshHosts("connector");
-    const request = commands.find(
-      (
-        command,
-      ): command is Extract<HostConnectorCommand, { type: "request" }> =>
-        command.type === "request",
-    )!;
-    broker.accept("connector", {
-      type: "response",
-      requestId: request.requestId,
-      success: true,
-      data: [
-        {
-          alias: "macbook",
-          hostname: "100.64.0.5",
-          port: 22,
-          username: "yash",
+    broker.acceptBatch("connector", "daemon-epoch", [event]);
+    broker.acceptBatch("connector", "daemon-epoch", [event]);
+
+    await expect(pending).resolves.toEqual([]);
+    expect(
+      broker.acceptBatch("connector", "daemon-epoch", [event]),
+    ).toEqual({ connectorEpoch: "daemon-epoch", acknowledgedSequence: 1 });
+  });
+
+  it("tracks overlapping connector epochs independently", () => {
+    const broker = new HostConnectorBroker();
+
+    expect(
+      broker.acceptBatch("connector", "epoch-a", [
+        response(1, "request-a", null),
+      ]),
+    ).toEqual({ connectorEpoch: "epoch-a", acknowledgedSequence: 1 });
+    expect(
+      broker.acceptBatch("connector", "epoch-b", [
+        response(1, "request-b", null),
+      ]),
+    ).toEqual({ connectorEpoch: "epoch-b", acknowledgedSequence: 1 });
+    expect(
+      broker.acceptBatch("connector", "epoch-a", [
+        response(2, "request-a2", null),
+      ]),
+    ).toEqual({ connectorEpoch: "epoch-a", acknowledgedSequence: 2 });
+  });
+
+  it("deduplicates session timeline events by daemon epoch and sequence", async () => {
+    const commands: HostConnectorCommand[] = [];
+    const received: number[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register("connector", ["session"], (command) => commands.push(command));
+    const subscribed = broker.subscribeSession(
+      "connector",
+      session,
+      undefined,
+      (envelope) => received.push(envelope.sequence),
+      vi.fn(),
+    );
+    const request = commands.at(-1);
+    if (request?.type !== "request") throw new Error("missing request");
+    broker.acceptBatch("connector", "daemon-epoch", [
+      response(1, request.requestId, { subscribed: true }),
+    ]);
+    const unsubscribe = await subscribed;
+    const event: HostConnectorEvent = {
+      sequence: 2,
+      payload: {
+        type: "session_event",
+        subscriptionId:
+          request.request.type === "subscribe_session"
+            ? request.request.subscriptionId
+            : "missing",
+        sessionId: "session",
+        envelope: {
+          epoch: "runtime-epoch",
+          sequence: 1,
+          type: "runtime_event",
+          data: { type: "turn_start" },
         },
-      ],
-    });
-
-    await expect(hostsPromise).resolves.toEqual([
-      expect.objectContaining({ alias: "macbook" }),
+      },
+    };
+    broker.acceptBatch("connector", "daemon-epoch", [event]);
+    broker.acceptBatch("connector", "daemon-epoch", [event]);
+    broker.acceptBatch("connector", "daemon-epoch", [
+      {
+        ...event,
+        sequence: 3,
+      },
     ]);
 
-    const invalidPromise = broker.listSshHosts("connector");
-    const invalidRequest = commands.at(-1) as Extract<
-      HostConnectorCommand,
-      { type: "request" }
-    >;
-    broker.accept("connector", {
-      type: "response",
-      requestId: invalidRequest.requestId,
-      success: true,
-      data: [{ alias: "broken", port: "22" }],
-    });
-    await expect(invalidPromise).rejects.toThrow("invalid SSH host list");
-  });
-
-  it("rejects process creation while the connector is offline", () => {
-    const broker = new HostConnectorBroker();
-
-    expect(() =>
-      broker.spawn(
-        "offline",
-        { transport: "local" },
-        { command: "omp", shellMode: "interactive" },
-      ),
-    ).toThrow("Host Connector is offline");
+    expect(received).toEqual([1]);
+    unsubscribe();
   });
 });

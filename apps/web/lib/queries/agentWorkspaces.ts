@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { AgentWorkspaceGitStatus } from "@/lib/agents/types";
+import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 
 async function responseError(response: Response): Promise<Error> {

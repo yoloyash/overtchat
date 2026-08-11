@@ -1,36 +1,22 @@
 import "server-only";
-import { PassThrough, Writable } from "node:stream";
 import {
   isConnectorSshHost,
-  type ConnectorProcessLaunch,
+  type AgentDaemonRequest,
+  type AgentDaemonSessionDescriptor,
+  type AgentRuntimeEnvelope,
+  type AgentRuntimeStatus,
   type ConnectorSshHost,
-  type ConnectorTarget,
   type HostConnectorCommand,
   type HostConnectorEvent,
+  type HostConnectorEventAck,
+  type HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
+import { updateAgentSessionMetadata } from "@/lib/db/agentConnections";
 
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 180_000;
 const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
-const PROCESS_EXIT_GRACE_MS = 5_000;
-const STDIN_CHUNK_BYTES = 64 * 1024;
 
-export type ConnectorProcessExit = {
-  code: number | null;
-  signal: NodeJS.Signals | null;
-  error?: Error;
-};
-
-export type ConnectorProcess = {
-  stdin: Writable;
-  stdout: PassThrough;
-  stderr: PassThrough;
-  exit: Promise<ConnectorProcessExit>;
-  kill(signal?: NodeJS.Signals): boolean;
-};
-
-type Channel = {
-  send: (command: HostConnectorCommand) => void;
-};
+type Channel = { send: (command: HostConnectorCommand) => void };
 
 type PendingRequest = {
   connectorId: string;
@@ -39,17 +25,20 @@ type PendingRequest = {
   timeout: NodeJS.Timeout;
 };
 
-type ProcessEntry = {
+type SessionSubscription = {
   connectorId: string;
-  stdout: PassThrough;
-  stderr: PassThrough;
-  finish: (exit: ConnectorProcessExit) => void;
+  session: AgentDaemonSessionDescriptor;
+  after?: { epoch: string; sequence: number };
+  subscriber: (envelope: AgentRuntimeEnvelope) => void;
+  disconnect: (error: Error) => void;
 };
 
 export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
-  private readonly processes = new Map<string, ProcessEntry>();
   private readonly pending = new Map<string, PendingRequest>();
+  private readonly subscriptions = new Map<string, SessionSubscription>();
+  private readonly cursors = new Map<string, number>();
+  private readonly sessionStatuses = new Map<string, AgentRuntimeStatus>();
   private readonly disconnectTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
@@ -60,135 +49,116 @@ export class HostConnectorBroker {
     return this.channels.has(connectorId);
   }
 
+  runtimeStatusForSession(sessionId: string): AgentRuntimeStatus {
+    return this.sessionStatuses.get(sessionId) ?? "idle";
+  }
+
   register(
     connectorId: string,
+    activeSessionIds: string[],
     send: (command: HostConnectorCommand) => void,
   ): () => void {
     this.clearDisconnectTimer(connectorId);
     const channel = { send };
     this.channels.set(connectorId, channel);
-    try {
-      send({
-        type: "sync",
-        processIds: [...this.processes]
-          .filter(([, process]) => process.connectorId === connectorId)
-          .map(([id]) => id),
-      });
-    } catch (error) {
+    send({
+      type: "sync",
+      connectionEpoch: crypto.randomUUID(),
+      activeSessionIds,
+    });
+    void this.resubscribe(connectorId);
+    return () => {
+      if (this.channels.get(connectorId) !== channel) return;
       this.channels.delete(connectorId);
       this.scheduleDisconnect(connectorId);
-      throw error;
-    }
-    return () => {
-      if (this.channels.get(connectorId) === channel) {
-        this.channels.delete(connectorId);
-        this.scheduleDisconnect(connectorId);
-      }
     };
   }
 
-  spawn(
+  request<T = unknown>(
     connectorId: string,
-    target: ConnectorTarget,
-    launch: ConnectorProcessLaunch,
-  ): ConnectorProcess {
-    const processId = crypto.randomUUID();
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    let settled = false;
-    let killTimer: NodeJS.Timeout | undefined;
-    let settle: (exit: ConnectorProcessExit) => void = () => {};
-    const exit = new Promise<ConnectorProcessExit>((resolve) => {
-      settle = resolve;
+    request: AgentDaemonRequest,
+  ): Promise<T> {
+    const channel = this.channels.get(connectorId);
+    if (!channel) {
+      return Promise.reject(
+        new Error("The OvertChat Host Connector is offline."),
+      );
+    }
+    const requestId = crypto.randomUUID();
+    return new Promise<T>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.pending.delete(requestId);
+        reject(new Error("Timed out waiting for the Host Connector."));
+      }, REQUEST_TIMEOUT_MS);
+      timeout.unref();
+      this.pending.set(requestId, {
+        connectorId,
+        resolve: (value) => resolve(value as T),
+        reject,
+        timeout,
+      });
+      try {
+        channel.send({ type: "request", requestId, request });
+      } catch (error) {
+        clearTimeout(timeout);
+        this.pending.delete(requestId);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
     });
-    const finish = (result: ConnectorProcessExit) => {
-      if (settled) return;
-      settled = true;
-      if (killTimer) clearTimeout(killTimer);
-      this.processes.delete(processId);
-      stdout.end();
-      stderr.end();
-      settle(result);
-    };
-    const send = (command: HostConnectorCommand) => {
-      const channel = this.channels.get(connectorId);
-      if (!channel) throw new Error("The OvertChat Host Connector is offline.");
-      channel.send(command);
-    };
-    const stdin = new Writable({
-      write(chunk, _encoding, callback) {
-        try {
-          const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-          for (let offset = 0; offset < bytes.length; offset += STDIN_CHUNK_BYTES) {
-            send({
-              type: "stdin",
-              processId,
-              data: bytes
-                .subarray(offset, offset + STDIN_CHUNK_BYTES)
-                .toString("base64"),
-            });
-          }
-          callback();
-        } catch (error) {
-          callback(error instanceof Error ? error : new Error(String(error)));
-        }
-      },
-      final(callback) {
-        try {
-          send({ type: "stdin_end", processId });
-          callback();
-        } catch (error) {
-          callback(error instanceof Error ? error : new Error(String(error)));
-        }
-      },
-    });
-    this.processes.set(processId, {
+  }
+
+  async subscribeSession(
+    connectorId: string,
+    session: AgentDaemonSessionDescriptor,
+    after: { epoch: string; sequence: number } | undefined,
+    subscriber: (envelope: AgentRuntimeEnvelope) => void,
+    disconnect: (error: Error) => void,
+  ): Promise<() => void> {
+    const subscriptionId = crypto.randomUUID();
+    this.subscriptions.set(subscriptionId, {
       connectorId,
-      stdout,
-      stderr,
-      finish,
+      session,
+      after,
+      subscriber,
+      disconnect,
     });
     try {
-      send({ type: "spawn", processId, target, launch });
-    } catch (error) {
-      finish({
-        code: null,
-        signal: null,
-        error: error instanceof Error ? error : new Error(String(error)),
+      await this.request(connectorId, {
+        type: "subscribe_session",
+        subscriptionId,
+        session,
+        ...(after ? { after } : {}),
       });
+    } catch (error) {
+      this.subscriptions.delete(subscriptionId);
       throw error;
     }
+    return () => {
+      if (!this.subscriptions.delete(subscriptionId)) return;
+      void this.request(connectorId, {
+        type: "unsubscribe_session",
+        subscriptionId,
+      }).catch(() => {});
+    };
+  }
+
+  acceptBatch(
+    connectorId: string,
+    connectorEpoch: string,
+    events: readonly HostConnectorEvent[],
+  ): HostConnectorEventAck {
+    const cursorKey = `${connectorId}:${connectorEpoch}`;
+    let acknowledgedSequence = this.cursors.get(cursorKey) ?? 0;
+    for (const event of events) {
+      if (event.sequence <= acknowledgedSequence) continue;
+      if (event.sequence !== acknowledgedSequence + 1) break;
+      this.accept(connectorId, event.payload);
+      acknowledgedSequence = event.sequence;
+    }
+    this.cursors.set(cursorKey, acknowledgedSequence);
     return {
-      stdin,
-      stdout,
-      stderr,
-      exit,
-      kill: (signal = "SIGTERM") => {
-        if (settled) return false;
-        try {
-          send({ type: "kill", processId, signal });
-          if (killTimer) clearTimeout(killTimer);
-          killTimer = setTimeout(() => {
-            finish({
-              code: null,
-              signal,
-              error: new Error(
-                `The Host Connector did not confirm process exit after ${signal}.`,
-              ),
-            });
-          }, PROCESS_EXIT_GRACE_MS);
-          killTimer.unref();
-          return true;
-        } catch (error) {
-          finish({
-            code: null,
-            signal: null,
-            error:
-              error instanceof Error ? error : new Error(String(error)),
-          });
-          return false;
-        }
-      },
+      connectorEpoch,
+      acknowledgedSequence,
     };
   }
 
@@ -200,7 +170,7 @@ export class HostConnectorBroker {
     return value;
   }
 
-  accept(connectorId: string, event: HostConnectorEvent): void {
+  private accept(connectorId: string, event: HostConnectorEventPayload): void {
     if (event.type === "response") {
       const pending = this.pending.get(event.requestId);
       if (!pending || pending.connectorId !== connectorId) return;
@@ -210,19 +180,65 @@ export class HostConnectorBroker {
       else pending.reject(new Error(event.error));
       return;
     }
-    const process = this.processes.get(event.processId);
-    if (!process || process.connectorId !== connectorId) return;
-    if (event.type === "stdout" || event.type === "stderr") {
-      const stream = event.type === "stdout" ? process.stdout : process.stderr;
-      stream.write(Buffer.from(event.data, "base64"));
+    if (event.type === "session_metadata") {
+      const { providerModifiedAt, ...metadata } = event.patch;
+      void updateAgentSessionMetadata(event.sessionId, {
+        ...metadata,
+        ...(providerModifiedAt !== undefined
+          ? { providerModifiedAt: new Date(providerModifiedAt) }
+          : {}),
+      });
       return;
     }
-    if (event.type !== "exit") return;
-    process.finish({
-      code: event.code,
-      signal: event.signal,
-      ...(event.error ? { error: new Error(event.error) } : {}),
-    });
+    const subscription = this.subscriptions.get(event.subscriptionId);
+    if (
+      !subscription ||
+      subscription.connectorId !== connectorId ||
+      subscription.session.sessionId !== event.sessionId
+    ) {
+      return;
+    }
+    const cursor = subscription.after;
+    if (
+      cursor?.epoch === event.envelope.epoch &&
+      event.envelope.sequence <= cursor.sequence
+    ) {
+      return;
+    }
+    subscription.after = {
+      epoch: event.envelope.epoch,
+      sequence: event.envelope.sequence,
+    };
+    if (event.envelope.type === "snapshot") {
+      this.sessionStatuses.set(event.sessionId, event.envelope.data.status);
+    } else if (
+      event.envelope.data.type === "overtchat_status" &&
+      ["idle", "running", "exited"].includes(
+        String(event.envelope.data.status),
+      )
+    ) {
+      this.sessionStatuses.set(
+        event.sessionId,
+        event.envelope.data.status as AgentRuntimeStatus,
+      );
+    }
+    subscription.subscriber(event.envelope);
+  }
+
+  private async resubscribe(connectorId: string): Promise<void> {
+    const matching = [...this.subscriptions.entries()].filter(
+      ([, subscription]) => subscription.connectorId === connectorId,
+    );
+    await Promise.allSettled(
+      matching.map(([subscriptionId, subscription]) =>
+        this.request(connectorId, {
+          type: "subscribe_session",
+          subscriptionId,
+          session: subscription.session,
+          ...(subscription.after ? { after: subscription.after } : {}),
+        }),
+      ),
+    );
   }
 
   private clearDisconnectTimer(connectorId: string): void {
@@ -242,57 +258,21 @@ export class HostConnectorBroker {
         return;
       }
       this.disconnectTimers.delete(connectorId);
-      const error = new Error(
-        "The OvertChat Host Connector disconnected while the agent was running.",
-      );
-      for (const process of [...this.processes.values()]) {
-        if (process.connectorId !== connectorId) continue;
-        process.finish({ code: null, signal: null, error });
-      }
+      const error = new Error("The OvertChat Host Connector is offline.");
       for (const [requestId, request] of this.pending) {
         if (request.connectorId !== connectorId) continue;
         clearTimeout(request.timeout);
         this.pending.delete(requestId);
         request.reject(error);
       }
+      for (const [subscriptionId, subscription] of this.subscriptions) {
+        if (subscription.connectorId !== connectorId) continue;
+        this.subscriptions.delete(subscriptionId);
+        subscription.disconnect(error);
+      }
     }, this.disconnectGraceMs);
     timer.unref();
     this.disconnectTimers.set(connectorId, timer);
-  }
-
-  private request(
-    connectorId: string,
-    request: Extract<
-      HostConnectorCommand,
-      { type: "request" }
-    >["request"],
-  ): Promise<unknown> {
-    const channel = this.channels.get(connectorId);
-    if (!channel) {
-      return Promise.reject(
-        new Error("The OvertChat Host Connector is offline."),
-      );
-    }
-    const requestId = crypto.randomUUID();
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        this.pending.delete(requestId);
-        reject(new Error("Timed out waiting for the Host Connector."));
-      }, REQUEST_TIMEOUT_MS);
-      this.pending.set(requestId, {
-        connectorId,
-        resolve,
-        reject,
-        timeout,
-      });
-      try {
-        channel.send({ type: "request", requestId, request });
-      } catch (error) {
-        clearTimeout(timeout);
-        this.pending.delete(requestId);
-        reject(error instanceof Error ? error : new Error(String(error)));
-      }
-    });
   }
 }
 
