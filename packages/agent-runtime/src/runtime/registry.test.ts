@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   abort: vi.fn(),
   stop: vi.fn(),
   saveQueue: vi.fn(),
+  getState: vi.fn(),
+  getMessages: vi.fn(),
   eventSubscriber: null as ((event: AgentRuntimeEvent) => void) | null,
 }));
 
@@ -41,12 +43,8 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
         mocks.eventSubscriber = subscriber;
         return vi.fn();
       }),
-      getState: vi.fn().mockResolvedValue({
-        isStreaming: false,
-        sessionId: "provider-session",
-        sessionFile: "/sessions/provider-session.jsonl",
-      }),
-      getMessages: vi.fn().mockResolvedValue({ messages: [] }),
+      getState: mocks.getState,
+      getMessages: mocks.getMessages,
       getAvailableModels: vi.fn().mockResolvedValue([
         { provider: "openai", id: "gpt-5", name: "GPT-5", input: ["text"] },
       ]),
@@ -86,10 +84,25 @@ describe("agent runtime", () => {
     mocks.abort.mockResolvedValue({ interrupted: true });
     mocks.stop.mockResolvedValue(undefined);
     mocks.saveQueue.mockResolvedValue(undefined);
+    mocks.getState.mockResolvedValue({
+      isStreaming: false,
+      sessionId: "provider-session",
+      sessionFile: "/sessions/provider-session.jsonl",
+    });
+    mocks.getMessages.mockResolvedValue({ messages: [] });
     mocks.eventSubscriber = null;
   });
 
-  it("resubmits a journaled queue item with its original message identity", async () => {
+  it("removes a restored send already accepted by the provider", async () => {
+    mocks.getMessages.mockResolvedValueOnce({
+      messages: [
+        {
+          role: "user",
+          content: "Continue the task",
+          overtchatSubmissionId: "message-1",
+        },
+      ],
+    });
     const registry = new AgentRuntimeRegistry({
       resolveImages: async () => [],
       loadQueuedMessages: () => [
@@ -97,6 +110,398 @@ describe("agent runtime", () => {
           id: "message-1",
           message: "Continue the task",
           status: "sending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.saveQueue).toHaveBeenCalledWith("session", []);
+    });
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    await registry.stopAll();
+  });
+
+  it("marks an unconfirmed restored send as delivery-uncertain", async () => {
+    mocks.getState.mockResolvedValueOnce({
+      isStreaming: true,
+      sessionId: "provider-session",
+      sessionFile: "/sessions/provider-session.jsonl",
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-1",
+          message: "Continue the task",
+          status: "sending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await Promise.resolve();
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(mocks.saveQueue).toHaveBeenCalledWith("session", [
+      expect.objectContaining({ id: "message-1", status: "uncertain" }),
+    ]);
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      expect.objectContaining({ id: "message-1", status: "uncertain" }),
+    ]);
+    await registry.stopAll();
+  });
+
+  it("reconciles an in-flight restored send from provider history before draining", async () => {
+    mocks.getState
+      .mockResolvedValueOnce({
+        isStreaming: true,
+        sessionId: "provider-session",
+        sessionFile: "/sessions/provider-session.jsonl",
+      })
+      .mockResolvedValue({
+        isStreaming: false,
+        sessionId: "provider-session",
+        sessionFile: "/sessions/provider-session.jsonl",
+      });
+    mocks.getMessages
+      .mockResolvedValueOnce({ messages: [] })
+      .mockResolvedValue({
+        messages: [
+          {
+            role: "user",
+            content: "Continue the task",
+            overtchatSubmissionId: "message-1",
+          },
+        ],
+      });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-1",
+          message: "Continue the task",
+          status: "sending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().queuedMessages).toEqual([]);
+    });
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(mocks.saveQueue).toHaveBeenCalledWith("session", []);
+    await registry.stopAll();
+  });
+
+  it("does not infer acceptance or replay from matching text alone", async () => {
+    mocks.getMessages.mockResolvedValueOnce({
+      messages: [{ role: "user", content: "Continue the task" }],
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-1",
+          message: "Continue the task",
+          status: "sending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await Promise.resolve();
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(mocks.saveQueue).toHaveBeenCalledWith("session", [
+      expect.objectContaining({ id: "message-1", status: "uncertain" }),
+    ]);
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      expect.objectContaining({ id: "message-1", status: "uncertain" }),
+    ]);
+    await registry.stopAll();
+  });
+
+  it("keeps a repeated identical restored send uncertain and blocks later queue items", async () => {
+    mocks.getMessages.mockResolvedValueOnce({
+      messages: [{ role: "user", content: "Repeat this" }],
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-2",
+          message: "Repeat this",
+          status: "sending",
+        },
+        {
+          id: "message-3",
+          message: "This must remain behind the ambiguous send",
+          status: "pending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "pi",
+      target: { transport: "local" },
+      executable: "pi",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await Promise.resolve();
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(mocks.saveQueue).toHaveBeenCalledWith(
+      "session",
+      expect.arrayContaining([
+        expect.objectContaining({ id: "message-2", status: "uncertain" }),
+      ]),
+    );
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      expect.objectContaining({
+        id: "message-2",
+        status: "uncertain",
+      }),
+      expect.objectContaining({ id: "message-3", status: "pending" }),
+    ]);
+    await registry.stopAll();
+  });
+
+  it("lets users remove an uncertain restored send without replaying it", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-1",
+          message: "Continue the task",
+          status: "uncertain",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "pi",
+      target: { transport: "local" },
+      executable: "pi",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await runtime.command({
+      type: "remove_queued_message",
+      id: "message-1",
+    });
+
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    expect(mocks.saveQueue).toHaveBeenLastCalledWith("session", []);
+    await registry.stopAll();
+  });
+
+  it("clears an uncertain send when a later provider event proves its identity", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-1",
+          message: "Continue the task",
+          status: "uncertain",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    mocks.eventSubscriber?.({
+      type: "message_start",
+      message: {
+        role: "user",
+        content: "Continue the task",
+        overtchatSubmissionId: "message-1",
+      },
+    });
+
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().queuedMessages).toEqual([]);
+    });
+    expect(mocks.saveQueue).toHaveBeenLastCalledWith("session", []);
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it("does not infer delivery from later identical provider history", async () => {
+    mocks.getMessages.mockResolvedValueOnce({
+      messages: [
+        { role: "user", content: "Repeat this" },
+        { role: "user", content: "Repeat this" },
+      ],
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-2",
+          message: "Repeat this",
+          status: "sending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "omp",
+      target: { transport: "local" },
+      executable: "omp",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.saveQueue).toHaveBeenCalledWith("session", [
+        expect.objectContaining({ id: "message-2", status: "uncertain" }),
+      ]);
+    });
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      expect.objectContaining({ id: "message-2", status: "uncertain" }),
+    ]);
+    await registry.stopAll();
+  });
+
+  it("does not infer image-only acceptance from arbitrary history advancement", async () => {
+    mocks.getMessages.mockResolvedValueOnce({
+      messages: [{ role: "user", content: "An unrelated prompt" }],
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "image-message",
+          message: "",
+          images: [
+            {
+              uploadId: "11111111-1111-4111-8111-111111111111",
+              filename: "screen.png",
+              mediaType: "image/png",
+            },
+          ],
+          status: "sending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "pi",
+      target: { transport: "local" },
+      executable: "pi",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().queuedMessages).toEqual([
+        expect.objectContaining({
+          id: "image-message",
+          status: "uncertain",
+        }),
+      ]);
+    });
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it("persists the sending state before invoking the provider", async () => {
+    let releaseSave: (() => void) | undefined;
+    mocks.saveQueue.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseSave = resolve;
+        }),
+    );
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "message-1",
+          message: "Continue the task",
+          status: "pending",
         },
       ],
       saveQueuedMessages: mocks.saveQueue,
@@ -114,16 +519,48 @@ describe("agent runtime", () => {
       providerSessionPath: "/sessions/provider-session.jsonl",
     });
 
-    await vi.waitFor(() => {
-      expect(mocks.prompt).toHaveBeenCalledWith(
-        "Continue the task",
-        undefined,
-        { clientMessageId: "message-1" },
-      );
+    await vi.waitFor(() => expect(mocks.saveQueue).toHaveBeenCalledOnce());
+    expect(mocks.saveQueue).toHaveBeenCalledWith("session", [
+      expect.objectContaining({
+        id: "message-1",
+        status: "sending",
+      }),
+    ]);
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    releaseSave?.();
+    await vi.waitFor(() => expect(mocks.prompt).toHaveBeenCalledOnce());
+    await registry.stopAll();
+  });
+
+  it("surfaces queue persistence failure without invoking the provider", async () => {
+    mocks.saveQueue.mockRejectedValueOnce(new Error("disk full"));
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
     });
-    await vi.waitFor(() => {
-      expect(mocks.saveQueue).toHaveBeenLastCalledWith("session", []);
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
     });
+
+    await expect(
+      runtime.command(
+        { type: "queue", message: "Continue the task" },
+        "message-1",
+      ),
+    ).rejects.toThrow("disk full");
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(runtime.snapshot().error).toBe(
+      "Unable to persist queued messages: disk full",
+    );
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
     await registry.stopAll();
   });
 
@@ -181,7 +618,169 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
-  it("restores a queued message when steering rejects it", async () => {
+  it("marks a queued prompt uncertain when the provider call rejects", async () => {
+    mocks.prompt.mockRejectedValueOnce(new Error("transport disconnected"));
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadQueuedMessages: () => [
+        {
+          id: "queued-message",
+          message: "Continue the task",
+          status: "pending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "pi",
+      target: { transport: "local" },
+      executable: "pi",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await vi.waitFor(() => expect(mocks.prompt).toHaveBeenCalledOnce());
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().queuedMessages).toEqual([
+        expect.objectContaining({
+          id: "queued-message",
+          status: "uncertain",
+        }),
+      ]);
+    });
+    await Promise.resolve();
+    expect(mocks.prompt).toHaveBeenCalledOnce();
+
+    await runtime.command({
+      type: "remove_queued_message",
+      id: "queued-message",
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    await registry.stopAll();
+  });
+
+  it.each([
+    "an identical user message without a submission ID",
+    "a terminal event without a submission ID",
+  ])(
+    "keeps a queued prompt uncertain when %s precedes a transport rejection",
+    async (eventKind) => {
+      mocks.prompt.mockImplementationOnce(async () => {
+        if (eventKind.startsWith("an identical")) {
+          mocks.eventSubscriber?.({
+            type: "message_start",
+            message: {
+              id: "provider-message",
+              role: "user",
+              content: "Continue the task",
+            },
+          });
+        } else {
+          mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+        }
+        throw new Error("transport disconnected after ambiguous provider event");
+      });
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+        loadQueuedMessages: () => [
+          {
+            id: "queued-message",
+            message: "Continue the task",
+            status: "pending",
+          },
+        ],
+        saveQueuedMessages: mocks.saveQueue,
+      });
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider: "pi",
+        target: { transport: "local" },
+        executable: "pi",
+        cwd: "/workspace",
+        sessionId: "session",
+        providerSessionId: "provider-session",
+        providerSessionPath: "/sessions/provider-session.jsonl",
+      });
+
+      await vi.waitFor(() => {
+        expect(runtime.snapshot().queuedMessages).toEqual([
+          expect.objectContaining({
+            id: "queued-message",
+            status: "uncertain",
+          }),
+        ]);
+      });
+      expect(mocks.prompt).toHaveBeenCalledOnce();
+      expect(mocks.saveQueue).not.toHaveBeenCalledWith("session", []);
+
+      mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(mocks.prompt).toHaveBeenCalledOnce();
+      expect(runtime.snapshot().queuedMessages).toEqual([
+        expect.objectContaining({
+          id: "queued-message",
+          status: "uncertain",
+        }),
+      ]);
+      expect(mocks.saveQueue).not.toHaveBeenCalledWith("session", []);
+      await registry.stopAll();
+    },
+  );
+
+  it("keeps a queued prompt pending when preparation fails before provider invocation", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => {
+        throw new Error("attachment disappeared");
+      },
+      loadQueuedMessages: () => [
+        {
+          id: "queued-message",
+          message: "",
+          images: [
+            {
+              uploadId: "11111111-1111-4111-8111-111111111111",
+              filename: "screen.png",
+              mediaType: "image/png",
+            },
+          ],
+          status: "pending",
+        },
+      ],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "pi",
+      target: { transport: "local" },
+      executable: "pi",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await vi.waitFor(() => {
+      expect(mocks.saveQueue).toHaveBeenLastCalledWith("session", [
+        expect.objectContaining({
+          id: "queued-message",
+          status: "pending",
+        }),
+      ]);
+    });
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    expect(runtime.snapshot().queuedMessages).toEqual([
+      expect.objectContaining({ id: "queued-message", status: "pending" }),
+    ]);
+    await registry.stopAll();
+  });
+
+  it("marks a queued steer uncertain when the provider call rejects", async () => {
     const registry = new AgentRuntimeRegistry({
       resolveImages: async () => [],
     });
@@ -216,7 +815,7 @@ describe("agent runtime", () => {
     expect(runtime.snapshot().queuedMessages).toEqual([
       expect.objectContaining({
         id: "queued-message",
-        status: "pending",
+        status: "uncertain",
       }),
     ]);
     expect(
@@ -230,6 +829,11 @@ describe("agent runtime", () => {
               "queued-message",
         ),
     ).toBe(false);
+    await runtime.command({
+      type: "remove_queued_message",
+      id: "queued-message",
+    });
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
     await registry.stopAll();
   });
 
@@ -628,6 +1232,117 @@ describe("agent runtime", () => {
       }),
     ]);
     expect(runtime.snapshot().error).toBeUndefined();
+    await registry.stopAll();
+  });
+
+  it("does not consume a private sequence when another subscriber joins", async () => {
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+    const first: number[] = [];
+    const second: number[] = [];
+    const unsubscribeFirst = runtime.subscribe((event) => {
+      first.push(event.sequence);
+    });
+    mocks.eventSubscriber?.({
+      type: "overtchat_status",
+      status: "running",
+      startedAt: 1,
+    });
+    const unsubscribeSecond = runtime.subscribe((event) => {
+      second.push(event.sequence);
+    });
+    mocks.eventSubscriber?.({
+      type: "overtchat_status",
+      status: "idle",
+      startedAt: null,
+    });
+
+    expect(first).toEqual([1, 2]);
+    expect(second).toEqual([1, 2]);
+    unsubscribeFirst();
+    unsubscribeSecond();
+    await registry.stopAll();
+  });
+
+  it("stamps provider events once before updating state and publishing", async () => {
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+    const observed: Array<Record<string, unknown>> = [];
+    runtime.observe((envelope) => {
+      if (envelope.type === "runtime_event") observed.push(envelope.data);
+    });
+    const providerEvent: AgentRuntimeEvent = {
+      type: "command_output",
+      text: "Current model: GPT-5.6",
+    };
+
+    mocks.eventSubscriber?.(providerEvent);
+
+    const recordedAt = observed[0]?.overtchatRecordedAt;
+    expect(recordedAt).toEqual(expect.any(Number));
+    expect(runtime.snapshot().messages).toEqual([
+      expect.objectContaining({
+        role: "custom",
+        content: "Current model: GPT-5.6",
+        timestamp: recordedAt,
+      }),
+    ]);
+    expect(providerEvent).not.toHaveProperty("overtchatRecordedAt");
+    await registry.stopAll();
+  });
+
+  it("resets synchronization when the cursor is from another epoch or ahead", async () => {
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+    mocks.eventSubscriber?.({
+      type: "overtchat_status",
+      status: "running",
+      startedAt: 1,
+    });
+    const current = runtime.sync();
+    expect(current.reset).toBe(true);
+    expect(runtime.sync({ epoch: "old", sequence: 0 }).reset).toBe(true);
+    expect(
+      runtime.sync({
+        epoch: current.cursor.epoch,
+        sequence: current.cursor.sequence + 1,
+      }).reset,
+    ).toBe(true);
+    expect(runtime.sync(current.cursor)).toEqual({
+      reset: false,
+      cursor: current.cursor,
+      events: [],
+    });
     await registry.stopAll();
   });
 });

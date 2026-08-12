@@ -3,6 +3,7 @@
 
 # Generated setup commands use immutable connector versions.
 /install/connector/0.2.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.2.0/install-connector.sh 302
+/install/connector/0.3.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.3.0/install-connector.sh 302
 
 # Friendly alias for the current connector release.
-/install-connector.sh /install/connector/0.2.0 302
+/install-connector.sh /install/connector/0.3.0 302

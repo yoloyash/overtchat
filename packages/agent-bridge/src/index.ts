@@ -2,7 +2,9 @@ import type {
   AgentConnectionDraft,
   AgentDiscoveryTarget,
   AgentProviderId,
+  AgentRuntimeCursor,
   AgentRuntimeEnvelope,
+  AgentSessionSync,
   AgentSessionCommand,
   ConnectorShellMode,
 } from "./agents";
@@ -15,8 +17,26 @@ import {
 } from "./agents";
 
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.2.0";
+/**
+ * Protocol 1 was accidentally reused for two incompatible connector designs.
+ * Release 0.2.0 is the compatibility baseline for the current agent-daemon
+ * wire shape and remains stable even when the connector build version changes.
+ */
+export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.2.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.3.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
+
+export const HOST_CONNECTOR_CAPABILITIES = [
+  "session-sync-v1",
+  "command-wal-v1",
+] as const;
+export type HostConnectorCapability =
+  (typeof HOST_CONNECTOR_CAPABILITIES)[number];
+
+export type HostConnectorServerInfo = {
+  protocolVersion: 1;
+  capabilities: string[];
+};
 
 export * from "./agents";
 export * from "./catalog";
@@ -70,7 +90,11 @@ export type AgentDaemonRequest =
       sessionId: string;
       workspace: AgentDaemonWorkspaceDescriptor;
     }
-  | { type: "open_session"; session: AgentDaemonSessionDescriptor }
+  | {
+      type: "open_session";
+      session: AgentDaemonSessionDescriptor;
+      after?: AgentRuntimeCursor;
+    }
   | {
       type: "session_command";
       commandId: string;
@@ -95,6 +119,7 @@ export type HostConnectorCommand =
       type: "sync";
       connectionEpoch: string;
       activeSessionIds: string[];
+      serverInfo?: HostConnectorServerInfo;
     }
   | {
       type: "request";
@@ -147,6 +172,16 @@ export type HostConnectorEventAck = {
   connectorEpoch: string;
   acknowledgedSequence: number;
 };
+
+export function parseHostConnectorCapabilities(
+  value: string | null | undefined,
+): HostConnectorCapability[] {
+  if (!value) return [];
+  const known = new Set<string>(HOST_CONNECTOR_CAPABILITIES);
+  return [...new Set(value.split(",").map((item) => item.trim()))].filter(
+    (item): item is HostConnectorCapability => known.has(item),
+  );
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -261,7 +296,10 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
         isAgentDaemonWorkspaceDescriptor(value.workspace)
       );
     case "open_session":
-      return isAgentDaemonSessionDescriptor(value.session);
+      return (
+        isAgentDaemonSessionDescriptor(value.session) &&
+        (value.after === undefined || isAgentRuntimeCursor(value.after))
+      );
     case "session_command":
       return (
         isNonEmptyString(value.commandId) &&
@@ -274,11 +312,7 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
       return (
         isNonEmptyString(value.subscriptionId) &&
         isAgentDaemonSessionDescriptor(value.session) &&
-        (value.after === undefined ||
-          (isRecord(value.after) &&
-            isNonEmptyString(value.after.epoch) &&
-            Number.isSafeInteger(value.after.sequence) &&
-            Number(value.after.sequence) >= 0))
+        (value.after === undefined || isAgentRuntimeCursor(value.after))
       );
     case "unsubscribe_session":
       return isNonEmptyString(value.subscriptionId);
@@ -304,7 +338,15 @@ export function isHostConnectorCommand(
       return (
         isNonEmptyString(value.connectionEpoch) &&
         Array.isArray(value.activeSessionIds) &&
-        value.activeSessionIds.every(isNonEmptyString)
+        value.activeSessionIds.every(isNonEmptyString) &&
+        (value.serverInfo === undefined ||
+          (isRecord(value.serverInfo) &&
+            value.serverInfo.protocolVersion ===
+              HOST_CONNECTOR_PROTOCOL_VERSION &&
+            Array.isArray(value.serverInfo.capabilities) &&
+            value.serverInfo.capabilities.every(
+              (capability) => typeof capability === "string",
+            )))
       );
     case "request":
       return (
@@ -314,6 +356,71 @@ export function isHostConnectorCommand(
     default:
       return false;
   }
+}
+
+export function isAgentRuntimeCursor(
+  value: unknown,
+): value is AgentRuntimeCursor {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.epoch) &&
+    Number.isSafeInteger(value.sequence) &&
+    Number(value.sequence) >= 0
+  );
+}
+
+export function isAgentRuntimeEnvelope(
+  value: unknown,
+): value is AgentRuntimeEnvelope {
+  if (
+    !isRecord(value) ||
+    !isNonEmptyString(value.epoch) ||
+    !Number.isSafeInteger(value.sequence) ||
+    Number(value.sequence) < 1 ||
+    !["snapshot", "runtime_event"].includes(String(value.type)) ||
+    !isRecord(value.data)
+  ) {
+    return false;
+  }
+  return value.type === "snapshot"
+    ? isNonEmptyString(value.data.sessionId) &&
+        ["idle", "running", "exited"].includes(String(value.data.status))
+    : isNonEmptyString(value.data.type);
+}
+
+export function isAgentSessionSync(value: unknown): value is AgentSessionSync {
+  if (
+    !isRecord(value) ||
+    typeof value.reset !== "boolean" ||
+    !isAgentRuntimeCursor(value.cursor)
+  ) {
+    return false;
+  }
+  if (value.reset) {
+    return (
+      isRecord(value.snapshot) &&
+      isNonEmptyString(value.snapshot.sessionId) &&
+      ["idle", "running", "exited"].includes(String(value.snapshot.status))
+    );
+  }
+  const cursor = value.cursor;
+  const events = value.events;
+  if (
+    !Array.isArray(events) ||
+    !events.every(isAgentRuntimeEnvelope) ||
+    events.some((event) => event.epoch !== cursor.epoch)
+  ) {
+    return false;
+  }
+  return (
+    events.every(
+      (event, index) =>
+        event.sequence <= cursor.sequence &&
+        (index === 0 ||
+          event.sequence === events[index - 1]!.sequence + 1),
+    ) &&
+    (events.at(-1)?.sequence ?? cursor.sequence) === cursor.sequence
+  );
 }
 
 export function isConnectorSshHost(value: unknown): value is ConnectorSshHost {
@@ -350,27 +457,13 @@ export function isHostConnectorEvent(
     );
   }
   if (payload.type === "session_event") {
-    if (
-      !(
+    return (
       isNonEmptyString(payload.subscriptionId) &&
       isNonEmptyString(payload.sessionId) &&
-      isRecord(payload.envelope) &&
-      isNonEmptyString(payload.envelope.epoch) &&
-      Number.isSafeInteger(payload.envelope.sequence) &&
-      Number(payload.envelope.sequence) >= 1 &&
-      ["snapshot", "runtime_event"].includes(String(payload.envelope.type)) &&
-      "data" in payload.envelope
-      ) ||
-      !isRecord(payload.envelope.data)
-    ) {
-      return false;
-    }
-    return payload.envelope.type === "snapshot"
-      ? payload.envelope.data.sessionId === payload.sessionId &&
-          ["idle", "running", "exited"].includes(
-            String(payload.envelope.data.status),
-          )
-      : isNonEmptyString(payload.envelope.data.type);
+      isAgentRuntimeEnvelope(payload.envelope) &&
+      (payload.envelope.type !== "snapshot" ||
+        payload.envelope.data.sessionId === payload.sessionId)
+    );
   }
   if (payload.type === "session_metadata") {
     if (!isNonEmptyString(payload.sessionId) || !isRecord(payload.patch)) {

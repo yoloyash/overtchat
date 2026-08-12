@@ -3,8 +3,14 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { agentSessionCommandSchema } from "@overtchat/agent-bridge";
+import {
+  agentSessionCommandSchema,
+  isAgentSessionSync,
+  type AgentRuntimeSnapshot,
+  type AgentSessionSync,
+} from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import { parseAgentRuntimeCursor } from "@/lib/agents/sessionReplica";
 import {
   daemonSession,
   daemonWorkspace,
@@ -51,13 +57,41 @@ export async function GET(
   const authorized = await authorize(req, id);
   if ("error" in authorized) return authorized.error;
   try {
+    const after = parseAgentRuntimeCursor(
+      new URL(req.url).searchParams.get("after"),
+    );
     const result = await hostConnectorBroker.request<{
-      snapshot: unknown;
+      snapshot: AgentRuntimeSnapshot;
+      sync?: unknown;
     }>(authorized.owned.host.connectorId, {
       type: "open_session",
       session: daemonSession(authorized.owned),
+      ...(after ? { after } : {}),
     });
-    return Response.json({ snapshot: result.snapshot });
+    if (result.snapshot?.sessionId !== id) {
+      throw new Error("The Host Connector opened a different session.");
+    }
+    let sync: AgentSessionSync | undefined;
+    if (result.sync !== undefined) {
+      if (!isAgentSessionSync(result.sync)) {
+        throw new Error("The Host Connector returned an invalid session sync.");
+      }
+      if (
+        (result.sync.reset && result.sync.snapshot.sessionId !== id) ||
+        (!result.sync.reset &&
+          result.sync.events.some(
+            (event) =>
+              event.type === "snapshot" && event.data.sessionId !== id,
+          ))
+      ) {
+        throw new Error("The Host Connector synchronized a different session.");
+      }
+      sync = result.sync;
+    }
+    return Response.json({
+      snapshot: result.snapshot,
+      ...(sync ? { sync } : {}),
+    });
   } catch (error) {
     return Response.json(
       {

@@ -82,6 +82,7 @@ export function ConnectionsPanel({
   const [addOpen, setAddOpen] = useState(initialAddOpen);
   const [pairing, setPairing] = useState<HostConnectorPairing | null>(null);
   const [commandCopied, setCommandCopied] = useState(false);
+  const [upgradeCopied, setUpgradeCopied] = useState(false);
   const [workspaceConnection, setWorkspaceConnection] =
     useState<AgentConnectionListItem | null>(null);
   const [pendingDetach, setPendingDetach] = useState<PendingDetach | null>(null);
@@ -186,6 +187,12 @@ export function ConnectionsPanel({
     if (!pairing) return;
     await navigator.clipboard.writeText(pairing.command);
     setCommandCopied(true);
+  }
+
+  async function copyUpgradeCommand() {
+    if (!connector?.upgrade) return;
+    await navigator.clipboard.writeText(connector.upgrade.command);
+    setUpgradeCopied(true);
   }
 
   function setAddDialogOpen(open: boolean) {
@@ -344,6 +351,34 @@ export function ConnectionsPanel({
               )}
               Set up
             </Button>
+          </div>
+        )}
+        {connector?.upgrade && (
+          <div className="border-t px-4 py-4">
+            <p className="text-sm font-medium">
+              Host Connector {connector.upgrade.version} is available
+            </p>
+            <p className="mb-3 mt-1 text-xs text-muted-foreground">
+              Run this on the connector host. It updates the binary and restarts
+              the service without changing the existing pairing or settings.
+            </p>
+            <div className="flex items-center gap-2">
+              <code
+                aria-label="Host Connector upgrade command"
+                className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted px-3 py-2 text-xs"
+              >
+                {connector.upgrade.command}
+              </code>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => void copyUpgradeCommand()}
+                aria-label="Copy connector upgrade command"
+                title="Copy connector upgrade command"
+              >
+                {upgradeCopied ? <Check /> : <Clipboard />}
+              </Button>
+            </div>
           </div>
         )}
         {pairing && !connector && (

@@ -1,7 +1,8 @@
 import {
-  HOST_CONNECTOR_RELEASE_VERSION,
   HOST_CONNECTOR_PROTOCOL_VERSION,
+  HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
   isHostConnectorProtocolVersion,
+  parseHostConnectorCapabilities,
   type HostConnectorCommand,
 } from "@overtchat/agent-bridge";
 import { authenticateHostConnector } from "@/lib/agents/connector/auth";
@@ -21,21 +22,27 @@ export async function GET(request: Request) {
   const connectorVersion = request.headers.get(
     "x-overtchat-connector-version",
   );
+  const connectorBuildVersion = request.headers
+    .get("x-overtchat-connector-build-version")
+    ?.trim();
   if (
     !isHostConnectorProtocolVersion(protocol) ||
-    connectorVersion !== HOST_CONNECTOR_RELEASE_VERSION
+    connectorVersion !== HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE
   ) {
     return Response.json(
       {
-        error: `Connector ${connectorVersion ?? "unknown"} does not match this server. Reinstall OvertChat Connector ${HOST_CONNECTOR_RELEASE_VERSION} (protocol ${HOST_CONNECTOR_PROTOCOL_VERSION}).`,
+        error: `This server requires the Host Connector protocol ${HOST_CONNECTOR_PROTOCOL_VERSION} agent-daemon wire shape.`,
+        code: "unsupported_connector_protocol",
+        supportedProtocolVersions: [HOST_CONNECTOR_PROTOCOL_VERSION],
+        compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
       },
       { status: 409 },
     );
   }
-  touchHostConnector(
-    connector.id,
-    connectorVersion,
+  const capabilities = parseHostConnectorCapabilities(
+    request.headers.get("x-overtchat-connector-capabilities"),
   );
+  touchHostConnector(connector.id, connectorBuildVersion || connectorVersion);
   const activeSessionIds = await listActiveAgentSessionIds(connector.id);
 
   let close = () => {};
@@ -51,6 +58,7 @@ export async function GET(request: Request) {
         connector.id,
         activeSessionIds,
         send,
+        capabilities,
       );
       const keepAlive = setInterval(() => {
         if (!closed) {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  connectorLockPath,
   connectorStatePath,
+  connectorTimelinePath,
   normalizeServerUrl,
 } from "./config.js";
 
@@ -32,6 +34,12 @@ describe("connector server URLs", () => {
   it("keeps each paired connector's state separate", () => {
     expect(connectorStatePath("connector-1")).toMatch(
       /connector-connector-1\.state\.json$/u,
+    );
+    expect(connectorTimelinePath("connector-1")).toMatch(
+      /connector-connector-1\.timelines$/u,
+    );
+    expect(connectorLockPath("connector-1")).toMatch(
+      /connector-connector-1\.lock$/u,
     );
   });
 });

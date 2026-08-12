@@ -47,6 +47,12 @@ docker compose up -d --build
 
 Compose only recreates the container if the image changed. Migrations run automatically on boot. Data in the `overtchat-data` volume persists across rebuilds.
 
+The Host Connector updates independently from the Docker app and does not need
+to be reinstalled after routine server updates. If **Settings → Connections**
+offers a newer connector, run the displayed upgrade command on the connector
+host. It preserves the existing pairing and configuration, replaces the binary,
+and restarts the user service.
+
 ## Pointing at your LLM
 
 The app container makes the upstream LLM calls, so the base URL you set in **Settings → API endpoint** needs to be reachable **from inside the container**, not from your browser.

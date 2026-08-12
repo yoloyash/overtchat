@@ -1,6 +1,7 @@
 import {
   HOST_CONNECTOR_EVENT_BATCH_LIMIT,
-  HOST_CONNECTOR_RELEASE_VERSION,
+  HOST_CONNECTOR_PROTOCOL_VERSION,
+  HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
   isHostConnectorEvent,
   isHostConnectorProtocolVersion,
   type HostConnectorEventBatch,
@@ -12,15 +13,21 @@ import { touchHostConnector } from "@/lib/db/hostConnectors";
 export async function POST(request: Request) {
   const connector = authenticateHostConnector(request);
   if (!connector) return new Response("Unauthorized", { status: 401 });
+  const protocol = Number(
+    request.headers.get("x-overtchat-connector-protocol"),
+  );
   if (
     request.headers.get("x-overtchat-connector-version") !==
-      HOST_CONNECTOR_RELEASE_VERSION ||
-    !isHostConnectorProtocolVersion(
-      Number(request.headers.get("x-overtchat-connector-protocol")),
-    )
+      HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE ||
+    !isHostConnectorProtocolVersion(protocol)
   ) {
     return Response.json(
-      { error: "The Host Connector release does not match this server." },
+      {
+        error: `This server requires the Host Connector protocol ${HOST_CONNECTOR_PROTOCOL_VERSION} agent-daemon wire shape.`,
+        code: "unsupported_connector_protocol",
+        supportedProtocolVersions: [HOST_CONNECTOR_PROTOCOL_VERSION],
+        compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+      },
       { status: 409 },
     );
   }
@@ -33,16 +40,35 @@ export async function POST(request: Request) {
     typeof batch.connectorEpoch !== "string" ||
     batch.connectorEpoch.length === 0 ||
     !Array.isArray(batch.events) ||
+    batch.events.length === 0 ||
     batch.events.length > HOST_CONNECTOR_EVENT_BATCH_LIMIT ||
     !batch.events.every(isHostConnectorEvent)
   ) {
     return Response.json({ error: "Invalid connector event batch." }, { status: 400 });
   }
-  const ack = hostConnectorBroker.acceptBatch(
-    connector.id,
-    batch.connectorEpoch,
-    batch.events,
-  );
-  touchHostConnector(connector.id);
-  return Response.json(ack);
+  try {
+    const ack = await hostConnectorBroker.acceptBatch(
+      connector.id,
+      batch.connectorEpoch,
+      batch.events,
+    );
+    const connectorBuildVersion = request.headers
+      .get("x-overtchat-connector-build-version")
+      ?.trim();
+    touchHostConnector(
+      connector.id,
+      connectorBuildVersion || HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+    );
+    return Response.json(ack);
+  } catch (error) {
+    return Response.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Invalid connector event batch.",
+      },
+      { status: 400 },
+    );
+  }
 }
