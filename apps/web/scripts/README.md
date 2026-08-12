@@ -25,15 +25,23 @@ npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
 
 The full baseline run requires `GEMINI_API_KEY`, `AWS_BEARER_TOKEN`, and
 llama.cpp on `127.0.0.1:9876`. Native OpenAI and Anthropic targets are also
-included when `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are present. Select a
-comma-separated subset with `CACHE_SMOKE_TARGETS`; unrelated credentials and
-servers are then optional. `CACHE_SMOKE_CORPUS_WORDS` reduces or enlarges the
-stable synthetic prefix. The llama.cpp target sends `id_slot: 0` by default so
-multi-slot servers still produce an unambiguous cache signal; override it with
+included when `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` are present. DeepSeek is
+included when `DEEPSEEK_API_KEY` is present. Select a comma-separated subset
+with `CACHE_SMOKE_TARGETS`; unrelated credentials and servers are then
+optional. `CACHE_SMOKE_CORPUS_WORDS` reduces or enlarges the stable synthetic
+prefix. The llama.cpp target sends `id_slot: 0` by default so multi-slot
+servers still produce an unambiguous cache signal; override it with
 `CACHE_SMOKE_LLAMA_SLOT`.
 
 ```bash
 CACHE_SMOKE_TARGETS='llama.cpp/local' \
 CACHE_SMOKE_CORPUS_WORDS=120 \
+npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
+```
+
+For a live DeepSeek-only run:
+
+```bash
+CACHE_SMOKE_TARGETS='deepseek/deepseek-v4-flash' \
 npx tsx --env-file=../../.env scripts/provider-cache-smoke.ts
 ```

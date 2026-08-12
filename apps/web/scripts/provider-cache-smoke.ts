@@ -99,6 +99,7 @@ interface Target {
   cacheExpectations?: CacheExpectations;
   expectedSlotId?: number;
   providerOptions?: ProviderOptions;
+  forcedToolChoice?: NormalizedToolChoice;
 }
 
 class WireRecorder {
@@ -444,6 +445,31 @@ async function createTargets(
     }
   }
 
+  {
+    const label = "deepseek/deepseek-v4-flash";
+    if (selectedWhenConfigured(label, "DEEPSEEK_API_KEY")) {
+      const recorder = new WireRecorder("openai-chat");
+      targets.push({
+        label,
+        model: createOpenAICompatible({
+          name: "deepseek",
+          baseURL: "https://api.deepseek.com",
+          apiKey: requiredEnv("DEEPSEEK_API_KEY"),
+          includeUsage: true,
+          fetch: recorder.fetch,
+          transformRequestBody: (body) => {
+            if (body.tool_choice !== "required") return body;
+            const { tool_choice: _unsupported, ...compatible } = body;
+            void _unsupported;
+            return compatible;
+          },
+        }).chatModel("deepseek-v4-flash"),
+        recorder,
+        forcedToolChoice: "unspecified",
+      });
+    }
+  }
+
   const llamaLabel = "llama.cpp/local";
   if (selected(llamaLabel)) {
     const llamaHealth = await fetch("http://127.0.0.1:9876/health");
@@ -597,9 +623,12 @@ function assertTarget(target: Target, results: RunResult[]) {
           `${target.label}/${run.name}: forced tool call had no automatic follow-up step`,
         );
       }
-      if (result.wireRequests[0]?.toolChoice !== "required") {
+      if (
+        result.wireRequests[0]?.toolChoice !==
+        (target.forcedToolChoice ?? "required")
+      ) {
         throw new Error(
-          `${target.label}/${run.name}: first step was not forced`,
+          `${target.label}/${run.name}: first step used an unexpected tool choice`,
         );
       }
       const laterNonAuto = result.wireRequests

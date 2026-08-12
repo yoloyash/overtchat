@@ -15,6 +15,9 @@ interface TransportConfig {
   baseUrl: string;
   apiKey: string | null | undefined;
   model: string;
+  transformRequestBody?: (
+    body: Record<string, unknown>,
+  ) => Record<string, unknown>;
 }
 
 export function createOpenAIResponsesModel(
@@ -40,6 +43,9 @@ export function createOpenAICompatibleChatModel(
     // numerator.
     includeUsage: true,
     convertUsage: convertOpenAICompatibleUsage,
+    ...(config.transformRequestBody
+      ? { transformRequestBody: config.transformRequestBody }
+      : {}),
   }).chatModel(config.model);
 }
 
