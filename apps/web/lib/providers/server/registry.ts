@@ -10,6 +10,7 @@ import {
 import { anthropicAdapter } from "@/lib/providers/server/adapters/anthropic";
 import { bedrockAdapter } from "@/lib/providers/server/adapters/bedrock";
 import { customAdapter } from "@/lib/providers/server/adapters/custom";
+import { deepSeekAdapter } from "@/lib/providers/server/adapters/deepseek";
 import { googleAdapter } from "@/lib/providers/server/adapters/google";
 import { llamaCppAdapter } from "@/lib/providers/server/adapters/llamacpp";
 import { openAIAdapter } from "@/lib/providers/server/adapters/openai";
@@ -29,6 +30,7 @@ const PROVIDER_REGISTRY: Record<ProviderId, ProviderAdapter> = {
   openai: openAIAdapter,
   anthropic: anthropicAdapter,
   google: googleAdapter,
+  deepseek: deepSeekAdapter,
   bedrock: bedrockAdapter,
   vllm: vllmAdapter,
   llamacpp: llamaCppAdapter,

@@ -24,6 +24,7 @@ const PROVIDERS = [
   ["openai", "openai"],
   ["anthropic", "anthropic"],
   ["google", "google"],
+  ["deepseek", "deepseek"],
   ["bedrock", "amazon-bedrock"],
 ] as const;
 

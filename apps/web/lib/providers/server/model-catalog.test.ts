@@ -21,6 +21,9 @@ describe("vendored model catalog", () => {
       1_048_576,
     );
     expect(
+      catalogContextWindowFor("deepseek", "deepseek-v4-flash"),
+    ).toBe(1_000_000);
+    expect(
       catalogContextWindowFor(
         "bedrock",
         "us.anthropic.claude-sonnet-5",
@@ -80,6 +83,13 @@ describe("vendored model catalog", () => {
       cacheRead: 0.25,
       cacheWrite: 2.5,
       tiered: true,
+    });
+    expect(catalogPricingFor("deepseek", "deepseek-v4-flash")).toEqual({
+      input: 0.14,
+      output: 0.28,
+      cacheRead: 0.0028,
+      cacheWrite: 0.14,
+      tiered: false,
     });
     expect(
       catalogPricingFor("custom", "private-model"),

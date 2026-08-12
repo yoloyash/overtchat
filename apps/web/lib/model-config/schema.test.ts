@@ -51,6 +51,26 @@ describe("provider configuration", () => {
     }
   });
 
+  it("accepts the DeepSeek preset with automatic routing and credentials", () => {
+    expect(
+      ProviderConnectionSchema.safeParse({
+        providerId: "deepseek",
+        apiFormat: "auto",
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "secret",
+      }),
+    ).toMatchObject({ success: true });
+
+    expect(
+      ProviderConnectionSchema.safeParse({
+        providerId: "deepseek",
+        apiFormat: "auto",
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "",
+      }).success,
+    ).toBe(false);
+  });
+
   it("rejects protocol overrides for providers that own their routing", () => {
     const result = ProviderConnectionSchema.safeParse({
       providerId: "openai",

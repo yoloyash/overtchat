@@ -261,6 +261,18 @@ describe("provider registry", () => {
     },
   );
 
+  it("uses the shared OpenAI-compatible transport for DeepSeek", () => {
+    const configured = createConfiguredLanguageModel({
+      ...baseConfig,
+      providerId: "deepseek",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+    });
+
+    expect(configured.providerOptionsKey).toBe("deepseek");
+    expect(configured.promptCacheStrategy).toBeUndefined();
+  });
+
   it("rejects malformed endpoints and missing registered-provider credentials", () => {
     expect(() =>
       validateProviderConnection({
@@ -276,6 +288,13 @@ describe("provider registry", () => {
         apiKey: "",
       }),
     ).toThrow("requires an API key");
+    expect(() =>
+      validateProviderConnection({
+        ...baseConfig,
+        providerId: "deepseek",
+        apiKey: "",
+      }),
+    ).toThrow("DeepSeek requires an API key");
   });
 
   it("runs Bedrock endpoint and model-family validation before construction", () => {
