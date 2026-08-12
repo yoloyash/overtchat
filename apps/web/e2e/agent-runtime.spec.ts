@@ -528,6 +528,9 @@ test("shows durable turn activity without changing completed tool status", async
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
+            ...(command.type === "show_usage"
+              ? { usage: { planType: "plus", windows: [] } }
+              : {}),
             ...queueResult,
           }),
         });
@@ -838,6 +841,14 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByLabel("Active turn message actions"),
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Attach images" })).toBeVisible();
+  await composer.fill("/usage");
+  await composer.press("Enter");
+  await expect(page.getByRole("dialog", { name: "Codex usage" })).toBeVisible();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "show_usage",
+  });
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(composer).toBeEnabled();
   await composer.evaluate(async (element) => {
     const canvas = document.createElement("canvas");
     canvas.width = 96;

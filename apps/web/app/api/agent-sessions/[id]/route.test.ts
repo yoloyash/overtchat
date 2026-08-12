@@ -260,6 +260,29 @@ describe("agent session route", () => {
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 
+  it("returns account usage from the connector read", async () => {
+    const usage = { planType: "plus", windows: [] };
+    mocks.daemonRequest.mockResolvedValue({ commandResult: usage });
+
+    const response = await POST(
+      request("POST", { type: "show_usage" }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
+      usage,
+    });
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "session_command",
+      commandId: expect.any(String),
+      session: sessionDescriptor,
+      command: { type: "show_usage" },
+    });
+    expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
+  });
+
   it("rejects delivery modes that bypass the connector-owned queue", async () => {
     const steer = await POST(
       request("POST", {

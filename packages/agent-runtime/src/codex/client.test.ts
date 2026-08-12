@@ -41,6 +41,7 @@ class FakeCodexServer {
   readonly responses: Array<{ id: string | number; result: unknown }> = [];
   resumeError: Error | null = null;
   forkError: Error | null = null;
+  compactError: Error | null = null;
   rateLimitsError: Error | null = null;
   usageError: Error | null = null;
   collaborationModes: unknown[] = [];
@@ -247,6 +248,9 @@ class FakeCodexServer {
         reasoningEffort: "high",
       };
     }
+    if (method === "thread/compact/start" && this.compactError) {
+      throw this.compactError;
+    }
     if (method === "thread/resume") {
       if (this.resumeError) throw this.resumeError;
       return {
@@ -363,6 +367,7 @@ describe("CodexRuntimeClient", () => {
     server.responses.length = 0;
     server.resumeError = null;
     server.forkError = null;
+    server.compactError = null;
     server.rateLimitsError = null;
     server.usageError = null;
     server.collaborationModes = [];
@@ -1680,7 +1685,7 @@ describe("CodexRuntimeClient", () => {
     expect(settled).toBe(true);
   });
 
-  it("waits for the compaction turn to complete", async () => {
+  it("acknowledges compaction start without waiting for the turn", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },
       { executable: "codex", cwd: "/workspace" },
@@ -1689,12 +1694,7 @@ describe("CodexRuntimeClient", () => {
     client.onEvent((event) => events.push(event));
     await client.getState();
 
-    let settled = false;
-    const compact = client.compact().then(() => {
-      settled = true;
-    });
-    await Promise.resolve();
-    expect(settled).toBe(false);
+    await expect(client.compact()).resolves.toEqual({});
     await expect(client.getState()).resolves.toMatchObject({
       isCompacting: true,
     });
@@ -1723,9 +1723,30 @@ describe("CodexRuntimeClient", () => {
         items: [{ id: "compact-item", type: "contextCompaction" }],
       },
     });
-    await compact;
+    await vi.waitFor(async () => {
+      await expect(client.getState()).resolves.toMatchObject({
+        isCompacting: false,
+      });
+    });
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "compaction_start" }),
+        expect.objectContaining({ type: "compaction_end" }),
+      ]),
+    );
+  });
 
-    expect(settled).toBe(true);
+  it("ends the compaction lifecycle when the start request is rejected", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    server.compactError = new Error("Compaction is unavailable");
+
+    await expect(client.compact()).rejects.toThrow("Compaction is unavailable");
     await expect(client.getState()).resolves.toMatchObject({
       isCompacting: false,
     });

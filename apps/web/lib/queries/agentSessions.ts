@@ -441,3 +441,23 @@ export function useAgentSessionCommand(id: string) {
     },
   });
 }
+
+export function useAgentSessionUsage(id: string) {
+  return useMutation({
+    mutationFn: async (): Promise<AgentUsageSnapshot> => {
+      const response = await fetch(`/api/agent-sessions/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "show_usage" }),
+      });
+      if (!response.ok) throw await responseError(response);
+      const result = (await response.json()) as {
+        usage?: AgentUsageSnapshot;
+      };
+      if (!result.usage) {
+        throw new Error("The Host Connector did not return account usage.");
+      }
+      return result.usage;
+    },
+  });
+}

@@ -35,6 +35,13 @@ type PendingRequest = {
   timeout: NodeJS.Timeout;
 };
 
+function isLedgerProtectedCommand(request: AgentDaemonRequest): boolean {
+  return (
+    request.type === "session_command" &&
+    request.command.type !== "show_usage"
+  );
+}
+
 type SessionSubscription = {
   connectorId: string;
   session: AgentDaemonSessionDescriptor;
@@ -108,13 +115,15 @@ export class HostConnectorBroker {
       );
     }
     const requestId = crypto.randomUUID();
-    const replaySafe = channel.capabilities.has("command-wal-v1");
+    const replaySafe =
+      isLedgerProtectedCommand(request) &&
+      channel.capabilities.has("command-wal-v1");
     return new Promise<T>((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pending.delete(requestId);
         reject(
           new Error(
-            request.type === "session_command" && replaySafe
+            replaySafe
               ? "Timed out waiting for the Host Connector. The command outcome is unknown; inspect the session before retrying."
               : "Timed out waiting for the Host Connector.",
           ),
@@ -159,7 +168,7 @@ export class HostConnectorBroker {
         clearTimeout(pending.timeout);
         this.pending.delete(requestId);
         pending.reject(
-          pending.request.type === "session_command"
+          isLedgerProtectedCommand(pending.request)
             ? commandOutcomeUnknown
             : replaced,
         );
@@ -540,8 +549,7 @@ export class HostConnectorBroker {
       for (const [requestId, request] of this.pending) {
         if (request.connectorId !== connectorId) continue;
         if (
-          request.request.type === "session_command" &&
-          request.replaySafe
+          isLedgerProtectedCommand(request.request) && request.replaySafe
         ) {
           continue;
         }

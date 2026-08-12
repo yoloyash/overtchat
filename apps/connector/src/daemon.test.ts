@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   configureProcessSpawner: vi.fn(),
   create: vi.fn(),
   getOrStart: vi.fn(),
+  get: vi.fn(),
   stopAll: vi.fn(),
   stopSession: vi.fn(),
   stopWorkspace: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
       }
       create = mocks.create;
       getOrStart = mocks.getOrStart;
+      get = mocks.get;
       stopAll = mocks.stopAll;
       stopSession = mocks.stopSession;
       stopWorkspace = mocks.stopWorkspace;
@@ -189,6 +191,7 @@ beforeEach(() => {
     },
   });
   mocks.getOrStart.mockResolvedValue(runtime());
+  mocks.get.mockReturnValue(null);
   mocks.stopAll.mockResolvedValue(undefined);
   mocks.stopSession.mockResolvedValue(undefined);
   mocks.stopWorkspace.mockResolvedValue(undefined);
@@ -205,6 +208,92 @@ afterEach(async () => {
 });
 
 describe("connector daemon command identity", () => {
+  it("reads usage without entering the durable provider-command ledger", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const usage = { planType: "plus", windows: [] };
+    mocks.command.mockResolvedValueOnce(usage);
+    mocks.get.mockReturnValueOnce(runtime());
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "usage-request",
+      request: {
+        type: "session_command",
+        commandId: "usage-command",
+        session,
+        command: { type: "show_usage" },
+      },
+    });
+
+    expect(mocks.command).toHaveBeenCalledWith({ type: "show_usage" });
+    expect(mocks.getOrStart).not.toHaveBeenCalled();
+    expect(journal.commandEntry("usage-command")).toBeUndefined();
+    expect(events).toContainEqual({
+      type: "response",
+      requestId: "usage-request",
+      success: true,
+      data: { commandResult: usage },
+    });
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("reads usage concurrently with an active provider command", async () => {
+    const { journal, timelines } = await openJournal();
+    const finishCommand = deferred<unknown>();
+    const usage = { planType: "plus", windows: [] };
+    mocks.get.mockReturnValue(runtime());
+    mocks.command.mockImplementation((input: { type?: string }) =>
+      input.type === "show_usage"
+        ? Promise.resolve(usage)
+        : finishCommand.promise,
+    );
+    const events: HostConnectorEventPayload[] = [];
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    const runningCommand = daemon.handle(command("provider-command"));
+    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalledOnce());
+    await daemon.handle({
+      type: "request",
+      requestId: "usage-request",
+      request: {
+        type: "session_command",
+        commandId: "usage-command",
+        session,
+        command: { type: "show_usage" },
+      },
+    });
+
+    expect(events).toContainEqual({
+      type: "response",
+      requestId: "usage-request",
+      success: true,
+      data: { commandResult: usage },
+    });
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ requestId: "provider-command" }),
+    );
+
+    finishCommand.resolve({ queued: true, id: "message-1" });
+    await runningCommand;
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("executes simultaneous deliveries of one command only once", async () => {
     const { journal, timelines } = await openJournal();
     const events: HostConnectorEventPayload[] = [];

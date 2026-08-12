@@ -754,12 +754,7 @@ export class AgentSessionRuntime {
             ),
           );
       case "compact":
-        return this.client
-          .compact(command.customInstructions)
-          .then(async (value) => {
-            await this.refresh();
-            return value;
-          });
+        return this.client.compact(command.customInstructions);
       case "set_auto_compaction":
         return this.client
           .setAutoCompaction(command.enabled)

@@ -4,6 +4,18 @@ import { describe, expect, it, vi } from "vitest";
 import { codexProviderAdapter } from "./codex";
 
 describe("codexProviderAdapter", () => {
+  it("marks compaction as working before its turn notification arrives", () => {
+    const classifier = codexProviderAdapter.createEventClassifier();
+    expect(classifier.classify({ type: "compaction_start" })).toEqual({
+      started: true,
+      terminal: false,
+    });
+    expect(classifier.classify({ type: "compaction_end" })).toEqual({
+      started: false,
+      terminal: true,
+    });
+  });
+
   it("normalizes /usage without sending it to the model", () => {
     expect(
       codexProviderAdapter.normalizeCommand(

@@ -1155,21 +1155,22 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.compactionWaiter = { ...completion, turnId: null };
     this.isCompacting = true;
     this.emit({ type: "compaction_start" });
+    void completion.promise.catch((error) => {
+      if (!this.finishCompaction(completion)) return;
+      this.emit({
+        type: "rpc_error",
+        command: "compact",
+        error: error.message,
+      });
+    });
     try {
-      const response = await this.server.request("thread/compact/start", {
+      return await this.server.request("thread/compact/start", {
         threadId: this.thread!.id,
       });
-      await completion.promise;
-      return response;
     } catch (error) {
       completion.cancel();
+      this.finishCompaction(completion);
       throw error;
-    } finally {
-      if (this.compactionWaiter?.promise === completion.promise) {
-        this.compactionWaiter = null;
-      }
-      this.isCompacting = false;
-      this.emit({ type: "compaction_end" });
     }
   }
 
@@ -1849,20 +1850,28 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         (this.compactionWaiter?.turnId === null &&
           turn.items.some((item) => item.type === "contextCompaction"));
       if (isCompactionTurn && this.compactionWaiter) {
+        const compaction = this.compactionWaiter;
         if (turn.status === "completed") {
-          this.compactionWaiter.resolve(turn);
+          compaction.resolve(turn);
         } else {
-          this.compactionWaiter.reject(
-            new Error(
-              turn.status === "failed"
-                ? stringOf(recordOf(turn.error), "message") ??
-                    "Codex compaction failed."
-                : "Codex compaction was interrupted.",
-            ),
+          const error = new Error(
+            turn.status === "failed"
+              ? stringOf(recordOf(turn.error), "message") ??
+                  "Codex compaction failed."
+              : "Codex compaction was interrupted.",
           );
+          compaction.reject(error);
+          if (this.finishCompaction(compaction)) {
+            this.emit({
+              type: "rpc_error",
+              command: "compact",
+              error: error.message,
+            });
+          }
         }
+        this.finishCompaction(compaction);
       }
-      if (turn.status === "failed") {
+      if (turn.status === "failed" && !isCompactionTurn) {
         const message =
           stringOf(recordOf(turn.error), "message") ?? "Codex turn failed.";
         this.emit({ type: "rpc_error", command: "prompt", error: message });
@@ -2814,9 +2823,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       for (const waiter of waiters) waiter.reject(error);
     }
     this.turnCompletionWaiters.clear();
-    this.compactionWaiter?.reject(error);
+    const compaction = this.compactionWaiter;
+    compaction?.reject(error);
+    if (compaction) this.finishCompaction(compaction);
+  }
+
+  private finishCompaction(
+    completion: Pick<CompletionWaiter<CodexTurn>, "promise">,
+  ): boolean {
+    if (this.compactionWaiter?.promise !== completion.promise) return false;
     this.compactionWaiter = null;
     this.isCompacting = false;
+    this.emit({ type: "compaction_end" });
+    return true;
   }
 }
 

@@ -145,6 +145,37 @@ describe("host connector daemon broker", () => {
     await expect(pending).resolves.toEqual({ queuedMessages: [] });
   });
 
+  it("does not replay a read-only usage request across connector replacement", async () => {
+    const replacementCommands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register(
+      "connector",
+      [],
+      () => {},
+      ["command-wal-v1"],
+    );
+    const pending = broker.request("connector", {
+      type: "session_command",
+      commandId: "usage-command",
+      session,
+      command: { type: "show_usage" },
+    });
+    const rejected = expect(pending).rejects.toThrow(
+      "reconnected before the request completed",
+    );
+
+    broker.register(
+      "connector",
+      [],
+      (command) => replacementCommands.push(command),
+      ["command-wal-v1"],
+    );
+
+    await rejected;
+    expect(replacementCommands).toHaveLength(1);
+    expect(replacementCommands[0]?.type).toBe("sync");
+  });
+
   it("rejects a pending session command when the replacement lacks a WAL", async () => {
     const firstCommands: HostConnectorCommand[] = [];
     const replacementCommands: HostConnectorCommand[] = [];

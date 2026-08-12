@@ -27,14 +27,14 @@ import type {
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import {
-  buildAgentPromptCommand,
-  normalizeAgentSessionCommand,
   agentProviderMetadata,
 } from "@overtchat/agent-bridge";
 import {
   useAgentSession,
   useAgentSessionCommand,
+  useAgentSessionUsage,
 } from "@/lib/queries/agentSessions";
+import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
 import { motionClasses } from "@/lib/motion";
 import { AgentComposer } from "./AgentComposer";
 import {
@@ -142,9 +142,12 @@ export function AgentSessionView({
   const router = useRouter();
   const session = useAgentSession(sessionId);
   const command = useAgentSessionCommand(sessionId);
+  const usageCommand = useAgentSessionUsage(sessionId);
   const [renameOpen, setRenameOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
   const [usage, setUsage] = useState<AgentUsageSnapshot | null>(null);
+  const [usageOpen, setUsageOpen] = useState(false);
+  const [usageError, setUsageError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const snapshot = session.data;
@@ -165,7 +168,6 @@ export function AgentSessionView({
     setDialogError("");
     try {
       const result = await command.mutateAsync(input);
-      if (result.usage) setUsage(result.usage);
       if (
         input.type === "edit_message" ||
         input.type === "fork_message"
@@ -210,24 +212,31 @@ export function AgentSessionView({
     }
   }
 
+  async function showUsage(): Promise<boolean> {
+    if (usageCommand.isPending) return false;
+    setUsage(null);
+    setUsageError("");
+    setUsageOpen(true);
+    try {
+      setUsage(await usageCommand.mutateAsync());
+      return true;
+    } catch (cause) {
+      setUsageError(
+        cause instanceof Error
+          ? cause.message
+          : "Codex account usage could not be loaded.",
+      );
+      return false;
+    }
+  }
+
   async function submit(
     message: string,
     images: AgentPromptImage[],
   ): Promise<boolean> {
     let input: AgentSessionCommand;
     try {
-      const normalized = normalizeAgentSessionCommand(
-        buildAgentPromptCommand(message, images),
-        snapshot?.state ?? {},
-      );
-      input =
-        normalized.type !== "prompt" || snapshot?.status !== "running"
-          ? normalized
-          : {
-              type: "queue",
-              message,
-              ...(images.length > 0 ? { images } : {}),
-            };
+      input = commandForAgentSessionSubmit(snapshot!, message, images);
     } catch (cause) {
       toast.error({
         title: `${providerLabel} command failed`,
@@ -239,9 +248,11 @@ export function AgentSessionView({
       return false;
     }
 
+    if (input.type === "show_usage") return showUsage();
+
     const toastTitle =
       input.type === "compact"
-        ? "Context compacted"
+        ? "Compaction started"
         : input.type === "set_session_name"
           ? "Session renamed"
           : input.type === "set_auto_compaction"
@@ -517,7 +528,7 @@ export function AgentSessionView({
               type: "compact",
               ...(customInstructions ? { customInstructions } : {}),
             },
-            { closeCompact: true, toastTitle: "Context compacted" },
+            { closeCompact: true, toastTitle: "Compaction started" },
           )
         }
       />
@@ -535,10 +546,16 @@ export function AgentSessionView({
         }
       />
       <AgentUsageDialog
-        open={Boolean(usage)}
+        open={usageOpen}
         usage={usage}
+        pending={usageCommand.isPending}
+        error={usageError}
         onOpenChange={(open) => {
-          if (!open) setUsage(null);
+          setUsageOpen(open);
+          if (!open) {
+            setUsage(null);
+            setUsageError("");
+          }
         }}
       />
     </div>
