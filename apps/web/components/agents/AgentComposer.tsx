@@ -444,6 +444,7 @@ export function AgentComposer({
         >
           {queuedMessages.map((queuedMessage) => {
             const sending = queuedMessage.status === "sending";
+            const uncertain = queuedMessage.status === "uncertain";
             const imageCount = queuedMessage.images?.length ?? 0;
             return (
               <article
@@ -469,7 +470,11 @@ export function AgentComposer({
                       `${imageCount} attached ${imageCount === 1 ? "image" : "images"}`}
                   </p>
                   <p className="mt-0.5 text-[10px] font-medium text-muted-foreground">
-                    {sending ? "Sending" : "Queued"}
+                    {uncertain
+                      ? "Delivery unknown — inspect the session before resending"
+                      : sending
+                        ? "Sending"
+                        : "Queued"}
                     {imageCount > 0
                       ? ` · ${imageCount} ${imageCount === 1 ? "image" : "images"}`
                       : ""}
@@ -499,7 +504,7 @@ export function AgentComposer({
                     >
                       <Pencil />
                     </Button>
-                    {supportsSteer && running && (
+                    {supportsSteer && running && !uncertain && (
                       <Button
                         type="button"
                         variant="ghost"

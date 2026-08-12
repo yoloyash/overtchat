@@ -129,6 +129,30 @@ describe("agent session route", () => {
     });
   });
 
+  it("requests and returns an authoritative sync after the browser cursor", async () => {
+    const sync = {
+      reset: true,
+      cursor: { epoch: "new-runtime", sequence: 11 },
+      snapshot,
+    };
+    mocks.daemonRequest.mockResolvedValue({ snapshot, sync });
+
+    const response = await GET(
+      new Request(
+        "http://server.test/api/agent-sessions/session?after=old-runtime%3A7",
+      ),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ snapshot, sync });
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
+      type: "open_session",
+      session: sessionDescriptor,
+      after: { epoch: "old-runtime", sequence: 7 },
+    });
+  });
+
   it("forwards submissions with the browser message identity intact", async () => {
     const response = await POST(
       request("POST", {

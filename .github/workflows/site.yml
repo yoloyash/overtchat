@@ -63,6 +63,26 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build -w apps/site --
 
+      - name: Verify public connector installer
+        if: github.event_name != 'pull_request'
+        run: |
+          connector_version=$(node -p "require('./apps/connector/package.json').version")
+          installer_url="https://github.com/yoloyash/overtchat/releases/download/connector-v$connector_version/install-connector.sh"
+          expected_redirect="/install/connector/$connector_version $installer_url 302"
+
+          grep -Fx "$expected_redirect" apps/site/public/_redirects
+          grep -Fx "/install-connector.sh /install/connector/$connector_version 302" \
+            apps/site/public/_redirects
+
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
+          curl --proto '=https' --tlsv1.2 \
+            --fail --silent --show-error --location \
+            --retry 10 --retry-delay 3 --retry-all-errors --retry-max-time 120 \
+            --output "$verification_directory/install-connector.sh" \
+            "$installer_url"
+          cmp scripts/install-connector.sh "$verification_directory/install-connector.sh"
+
       - name: Deploy site to Cloudflare
         if: github.event_name != 'pull_request'
         env:

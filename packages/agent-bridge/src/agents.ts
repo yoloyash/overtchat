@@ -151,6 +151,10 @@ export type HostConnectorListItem = {
   version: string | null;
   lastSeenAt: number | null;
   online: boolean;
+  upgrade: {
+    version: string;
+    command: string;
+  } | null;
 };
 
 export type HostConnectorPairing = {
@@ -245,7 +249,7 @@ export type AgentQueuedMessage = {
   id: string;
   message: string;
   images?: AgentPromptImage[];
-  status: "pending" | "sending";
+  status: "pending" | "sending" | "uncertain";
 };
 
 export type AgentInteractionValue =
@@ -472,4 +476,27 @@ export type AgentRuntimeEnvelope =
         type: string;
         [key: string]: unknown;
       };
+    };
+
+export type AgentRuntimeCursor = {
+  epoch: string;
+  sequence: number;
+};
+
+/**
+ * An authoritative point-in-time reconciliation result owned by the Host
+ * Connector. Reset snapshots are deliberately not runtime envelopes: reading
+ * current state must not consume a sequence number that other subscribers can
+ * never observe.
+ */
+export type AgentSessionSync =
+  | {
+      reset: true;
+      cursor: AgentRuntimeCursor;
+      snapshot: AgentRuntimeSnapshot;
+    }
+  | {
+      reset: false;
+      cursor: AgentRuntimeCursor;
+      events: AgentRuntimeEnvelope[];
     };

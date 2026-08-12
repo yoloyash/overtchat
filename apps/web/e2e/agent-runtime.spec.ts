@@ -304,6 +304,93 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
   };
 }
 
+test("requires inspection before retrying an uncertain queued message", async ({
+  page,
+}) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Uncertain Queue E2E Admin");
+  await page
+    .locator("#email")
+    .fill("uncertain-queue-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+
+  const snapshot = runtimeSnapshot(Date.now() - 3_000);
+  snapshot.queuedMessages = [
+    {
+      id: "uncertain-message",
+      message: "Check whether this was delivered",
+      status: "uncertain",
+    },
+  ];
+  const submittedCommands: Array<Record<string, unknown>> = [];
+  await page.route(
+    new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`),
+    async (route) => {
+      if (route.request().method() === "POST") {
+        submittedCommands.push(
+          route.request().postDataJSON() as Record<string, unknown>,
+        );
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({ accepted: true, queuedMessages: [] }),
+        });
+        return;
+      }
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({ snapshot }),
+      });
+    },
+  );
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+
+  await page.goto(`/agents/${SESSION_ID}`);
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  const uncertainQueueItem = page
+    .locator('section[aria-label="Pending messages"] article')
+    .filter({ hasText: "Check whether this was delivered" });
+  await expect(uncertainQueueItem).toContainText(
+    "Delivery unknown — inspect the session before resending",
+  );
+  await expect(
+    uncertainQueueItem.getByRole("button", { name: "Edit queued message" }),
+  ).toBeVisible();
+  await expect(
+    uncertainQueueItem.getByRole("button", { name: "Delete queued message" }),
+  ).toBeVisible();
+  await expect(
+    uncertainQueueItem.getByRole("button", {
+      name: "Steer with queued message",
+    }),
+  ).toHaveCount(0);
+
+  await uncertainQueueItem
+    .getByRole("button", { name: "Edit queued message" })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "remove_queued_message",
+    id: "uncertain-message",
+  });
+  await expect(composer).toHaveValue("Check whether this was delivered");
+  await expect(uncertainQueueItem).toHaveCount(0);
+});
+
 test("shows durable turn activity without changing completed tool status", async ({
   page,
 }, testInfo) => {
@@ -321,7 +408,14 @@ test("shows durable turn activity without changing completed tool status", async
   } = runtimeSnapshot(startedAt);
   let retryRequested = false;
   let interactionResponse: Record<string, unknown> | null = null;
+  let runtimeAvailable = true;
   const submittedCommands: Array<Record<string, unknown>> = [];
+  await page.exposeFunction(
+    "__setAgentRuntimeAvailable",
+    (available: boolean) => {
+      runtimeAvailable = available;
+    },
+  );
   await page.route("**/api/uploads", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -347,7 +441,7 @@ test("shows durable turn activity without changing completed tool status", async
     });
   });
   await page.route(
-    new RegExp(`/api/agent-sessions/${SESSION_ID}$`),
+    new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`),
     async (route) => {
       if (route.request().method() === "POST") {
         const command = route.request().postDataJSON() as {
@@ -439,9 +533,32 @@ test("shows durable turn activity without changing completed tool status", async
         });
         return;
       }
+      if (!runtimeAvailable) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Runtime test connector unavailable" }),
+        });
+        return;
+      }
+      const after = new URL(route.request().url()).searchParams.get("after");
+      const separator = after?.lastIndexOf(":") ?? -1;
+      const sequence = Number(after?.slice(separator + 1));
+      const cursor =
+        after &&
+        separator > 0 &&
+        Number.isSafeInteger(sequence) &&
+        sequence >= 0
+          ? { epoch: after.slice(0, separator), sequence }
+          : null;
       await route.fulfill({
         contentType: "application/json",
-        body: JSON.stringify({ snapshot }),
+        body: JSON.stringify({
+          snapshot,
+          ...(cursor
+            ? { sync: { reset: true, cursor, snapshot } }
+            : {}),
+        }),
       });
     },
   );
@@ -491,12 +608,18 @@ test("shows durable turn activity without changing completed tool status", async
     };
     type RuntimeControls = {
       emit: (envelope: RuntimeEnvelope) => void;
-      disconnect: () => void;
-      reconnect: () => void;
+      disconnect: () => Promise<void>;
+      reconnect: () => Promise<void>;
       connected: () => boolean;
     };
+    const setRuntimeAvailable = (
+      window as unknown as {
+        __setAgentRuntimeAvailable: (available: boolean) => Promise<void>;
+      }
+    ).__setAgentRuntimeAvailable;
 
     const sources: FakeEventSource[] = [];
+    let online = true;
     class FakeEventSource extends EventTarget {
       onopen: ((event: Event) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
@@ -504,7 +627,11 @@ test("shows durable turn activity without changing completed tool status", async
       constructor() {
         super();
         sources.push(this);
-        window.setTimeout(() => this.onopen?.(new Event("open")), 0);
+        window.setTimeout(() => {
+          if (online && sources.includes(this)) {
+            this.onopen?.(new Event("open"));
+          }
+        }, 0);
       }
 
       close() {
@@ -523,11 +650,19 @@ test("shows durable turn activity without changing completed tool status", async
           );
         }
       },
-      disconnect() {
-        for (const source of sources) source.onerror?.(new Event("error"));
+      async disconnect() {
+        online = false;
+        await setRuntimeAvailable(false);
+        for (const source of [...sources]) {
+          source.onerror?.(new Event("error"));
+        }
       },
-      reconnect() {
-        for (const source of sources) source.onopen?.(new Event("open"));
+      async reconnect() {
+        await setRuntimeAvailable(true);
+        online = true;
+        for (const source of [...sources]) {
+          source.onopen?.(new Event("open"));
+        }
       },
       connected() {
         return sources.length > 0;
@@ -870,12 +1005,12 @@ test("shows durable turn activity without changing completed tool status", async
   });
   await expect(genericActivity).toContainText("Compacting");
 
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const controls = (
       window as unknown as {
         __agentRuntimeControls: {
           emit: (envelope: unknown) => void;
-          disconnect: () => void;
+          disconnect: () => Promise<void>;
         };
       }
     ).__agentRuntimeControls;
@@ -885,7 +1020,7 @@ test("shows durable turn activity without changing completed tool status", async
       type: "runtime_event",
       data: { type: "compaction_end", reason: "auto" },
     });
-    controls.disconnect();
+    await controls.disconnect();
   });
   await expect(genericActivity).toContainText("Reconnecting");
   await page.setViewportSize({ width: 390, height: 844 });
@@ -921,16 +1056,32 @@ test("shows durable turn activity without changing completed tool status", async
   });
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
 
+  await page.evaluate(async () => {
+    const controls = (
+      window as unknown as {
+        __agentRuntimeControls: {
+          reconnect: () => Promise<void>;
+        };
+      }
+    ).__agentRuntimeControls;
+    await controls.reconnect();
+  });
+  await page.waitForFunction(
+    () =>
+      (
+        window as unknown as {
+          __agentRuntimeControls: { connected: () => boolean };
+        }
+      ).__agentRuntimeControls.connected(),
+  );
   await page.evaluate(() => {
     const controls = (
       window as unknown as {
         __agentRuntimeControls: {
-          reconnect: () => void;
           emit: (envelope: unknown) => void;
         };
       }
     ).__agentRuntimeControls;
-    controls.reconnect();
     controls.emit({
       epoch: "runtime-test",
       sequence: 4,

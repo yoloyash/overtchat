@@ -4,11 +4,13 @@ import type {
   AgentProviderSessionMetadata,
   AgentProviderId,
   AgentQueuedMessage,
+  AgentRuntimeCursor,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentRuntimeStatus,
   AgentSlashCommand,
   AgentSessionCommand,
+  AgentSessionSync,
   AgentSessionStats,
   AgentThinkingLevel,
 } from "@overtchat/agent-bridge";
@@ -87,6 +89,10 @@ export type AgentRuntimeRegistryOptions = {
   saveQueuedMessages?: (
     sessionId: string,
     messages: readonly AgentQueuedMessage[],
+  ) => void | Promise<void>;
+  runtimeExited?: (
+    sessionId: string,
+    runtime: AgentSessionRuntime,
   ) => void | Promise<void>;
 };
 
@@ -191,11 +197,46 @@ function messageSubmissionId(message: unknown): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
+function reconcileRestoredQueuedMessages(
+  queuedMessages: readonly AgentQueuedMessage[],
+  providerMessages: readonly unknown[],
+): { messages: AgentQueuedMessage[]; changed: boolean } {
+  const acceptedIds = new Set(
+    providerMessages.flatMap((message) => {
+      const id = messageSubmissionId(message);
+      return id ? [id] : [];
+    }),
+  );
+  let changed = false;
+  const messages = queuedMessages.flatMap((message) => {
+    if (message.status === "sending" || message.status === "uncertain") {
+      if (acceptedIds.has(message.id)) {
+        changed = true;
+        return [];
+      }
+    }
+    if (message.status === "sending") {
+      changed = true;
+      return [
+        {
+          ...message,
+          status: "uncertain" as const,
+          ...(message.images ? { images: [...message.images] } : {}),
+        },
+      ];
+    }
+    return [
+      {
+        ...message,
+        ...(message.images ? { images: [...message.images] } : {}),
+      },
+    ];
+  });
+  return { messages, changed };
+}
+
 function eventUserMessages(event: AgentRuntimeEvent): unknown[] {
-  if (
-    event.type === "overtchat_turn_update" &&
-    Array.isArray(event.messages)
-  ) {
+  if (Array.isArray(event.messages)) {
     return event.messages.filter((message) => messageRole(message) === "user");
   }
   return ["message_start", "message_update", "message_end"].includes(
@@ -207,6 +248,8 @@ function eventUserMessages(event: AgentRuntimeEvent): unknown[] {
 
 export class AgentSessionRuntime {
   private readonly subscribers = new Set<Subscriber>();
+  private readonly observers = new Set<Subscriber>();
+  private leaseCount = 0;
   private readonly replay: AgentRuntimeEnvelope[] = [];
   private readonly epoch = crypto.randomUUID();
   private sequence = 0;
@@ -228,6 +271,7 @@ export class AgentSessionRuntime {
     PendingSubmission
   >();
   private queueDrainPromise: Promise<void> | null = null;
+  private queuePersistenceTail: Promise<void> = Promise.resolve();
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
@@ -267,34 +311,57 @@ export class AgentSessionRuntime {
     this.thinkingLevels = initial.thinkingLevels;
     this.commands = initial.commands;
     this.stats = initial.stats;
-    this.queuedMessages = initialQueuedMessages.map((message) => ({
-      ...message,
-      status: "pending",
-      ...(message.images ? { images: [...message.images] } : {}),
-    }));
     this.status = initial.state.isStreaming === true ? "running" : "idle";
+    const restoredQueue = reconcileRestoredQueuedMessages(
+      initialQueuedMessages,
+      initial.messages,
+    );
+    this.queuedMessages = restoredQueue.messages;
     this.activeTurnStartedAt =
       this.status === "running" ? Date.now() : null;
     this.scheduleIdleStop();
-    if (this.queuedMessages.length > 0 && this.status === "idle") {
-      queueMicrotask(() => void this.drainQueuedMessage());
+    if (
+      restoredQueue.changed ||
+      (this.queuedMessages.length > 0 && this.status === "idle")
+    ) {
+      queueMicrotask(() => {
+        const ready = restoredQueue.changed
+          ? this.publishQueueUpdate()
+          : Promise.resolve();
+        void ready
+          .then(() => {
+            if (this.status === "idle") return this.drainQueuedMessage();
+          })
+          .catch(() => {});
+      });
     }
 
     client.onEvent((event) => {
+      event = {
+        ...event,
+        // Give reducer-created rows one identity before this event touches
+        // either the runtime projection or the connector timeline. Stamping
+        // later at persistence would make a subsequent snapshot look like a
+        // distinct command-output/tool row and duplicate it.
+        overtchatRecordedAt:
+          typeof event.overtchatRecordedAt === "number" &&
+          Number.isFinite(event.overtchatRecordedAt)
+            ? event.overtchatRecordedAt
+            : Date.now(),
+      };
       let settleRejectedPrompt = false;
       const classification = this.eventClassifier.classify(event);
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
-      for (const userMessage of eventUserMessages(event)) {
-        const text = messageText(userMessage);
+      const userMessages = eventUserMessages(event);
+      for (const userMessage of userMessages) {
         const submissionId = messageSubmissionId(userMessage);
         const submission = submissionId
           ? this.pendingSubmissions.get(submissionId)
-          : [...this.pendingSubmissions.values()].find(
-              (candidate) => candidate.message.trim() === text,
-            );
+          : undefined;
         if (submission) submission.providerAcknowledged = true;
       }
+      this.acknowledgeQueuedMessages(userMessages);
       if (event.type === "process_exit") {
         this.stopped = true;
         this.turnGeneration += 1;
@@ -436,9 +503,6 @@ export class AgentSessionRuntime {
       }
       if (classification.terminal) {
         this.promptAwaitingStart = false;
-        for (const submission of this.pendingSubmissions.values()) {
-          submission.providerAcknowledged = true;
-        }
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
         this.clearPendingInteraction();
@@ -479,25 +543,91 @@ export class AgentSessionRuntime {
 
   subscribe(
     subscriber: Subscriber,
-    after?: { epoch: string; sequence: number },
+    after?: AgentRuntimeCursor,
   ): () => void {
     this.clearIdleStop();
     this.subscribers.add(subscriber);
-    const replay =
-      after?.epoch === this.epoch
-        ? this.replay.filter(
-            (envelope) => envelope.sequence > after.sequence,
-          )
-        : [];
-    if (replay.length > 0) {
-      for (const envelope of replay) subscriber(envelope);
+    const sync = this.sync(after);
+    if (sync.reset) {
+      // Compatibility delivery for servers that predate session-sync-v1. A
+      // read-only snapshot uses the current head instead of consuming a
+      // private sequence number and creating invisible gaps for other tabs.
+      if (sync.cursor.sequence > 0) {
+        subscriber({
+          ...sync.cursor,
+          type: "snapshot",
+          data: sync.snapshot,
+        });
+      }
     } else {
-      subscriber(this.envelope("snapshot", this.snapshot()));
+      for (const envelope of sync.events) subscriber(envelope);
     }
     return () => {
       this.subscribers.delete(subscriber);
-      if (this.subscribers.size === 0) this.scheduleIdleStop();
+      if (this.subscribers.size === 0 && this.leaseCount === 0) {
+        this.scheduleIdleStop();
+      }
     };
+  }
+
+  /** Passive connector capture; unlike a UI subscriber it does not affect the
+   * runtime's idle lifetime or synthesize initial delivery. */
+  observe(subscriber: Subscriber): () => void {
+    this.observers.add(subscriber);
+    return () => this.observers.delete(subscriber);
+  }
+
+  /** Hold the provider runtime open while an external durable-timeline
+   * subscriber is attached. The connector owns delivery, but the runtime still
+   * needs the same idle-lifetime semantics as a legacy direct subscriber. */
+  acquireLease(): () => void {
+    this.clearIdleStop();
+    this.leaseCount += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.leaseCount -= 1;
+      if (this.subscribers.size === 0 && this.leaseCount === 0) {
+        this.scheduleIdleStop();
+      }
+    };
+  }
+
+  sync(after?: AgentRuntimeCursor): AgentSessionSync {
+    const cursor = { epoch: this.epoch, sequence: this.sequence };
+    const reset = (): AgentSessionSync => ({
+      reset: true,
+      cursor,
+      snapshot: this.snapshot(),
+    });
+    if (
+      !after ||
+      after.epoch !== this.epoch ||
+      after.sequence > this.sequence
+    ) {
+      return reset();
+    }
+    if (after.sequence === this.sequence) {
+      return { reset: false, cursor, events: [] };
+    }
+    const firstRetainedSequence = this.replay[0]?.sequence;
+    if (
+      firstRetainedSequence === undefined ||
+      after.sequence < firstRetainedSequence - 1
+    ) {
+      return reset();
+    }
+    const events = this.replay.filter(
+      (envelope) => envelope.sequence > after.sequence,
+    );
+    if (
+      events[0]?.sequence !== after.sequence + 1 ||
+      events.at(-1)?.sequence !== this.sequence
+    ) {
+      return reset();
+    }
+    return { reset: false, cursor, events };
   }
 
   normalizeCommand(command: AgentSessionCommand): AgentSessionCommand {
@@ -716,9 +846,9 @@ export class AgentSessionRuntime {
     this.refreshPromise = (async () => {
       const [state, messageData, stats, thinkingLevels, commands] =
         await Promise.all([
-        this.client.getState(),
-        this.client.getMessages(),
-        this.client.getSessionStats().catch(() => emptyStats()),
+          this.client.getState(),
+          this.client.getMessages(),
+          this.client.getSessionStats().catch(() => emptyStats()),
           this.client
             .getAvailableThinkingLevels()
             .catch(() => this.thinkingLevels),
@@ -730,6 +860,14 @@ export class AgentSessionRuntime {
       this.thinkingLevels = thinkingLevels;
       this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
+      const reconciledQueue = reconcileRestoredQueuedMessages(
+        this.queuedMessages,
+        this.messages,
+      );
+      if (reconciledQueue.changed) {
+        this.queuedMessages = reconciledQueue.messages;
+        await this.publishQueueUpdate();
+      }
       this.activeTurnStartedAt =
         this.status === "running"
           ? (this.activeTurnStartedAt ?? Date.now())
@@ -759,6 +897,7 @@ export class AgentSessionRuntime {
     try {
       await this.client.stop();
     } finally {
+      await this.flushQueuePersistence();
       if (this.status !== "exited") {
         this.status = "exited";
         this.activeTurnStartedAt = null;
@@ -777,7 +916,7 @@ export class AgentSessionRuntime {
     this.clearIdleStop();
     this.idleStopTimer = setTimeout(() => {
       this.idleStopTimer = undefined;
-      if (this.subscribers.size > 0) return;
+      if (this.subscribers.size > 0 || this.leaseCount > 0) return;
       if (this.status === "running") {
         this.scheduleIdleStop();
         return;
@@ -791,6 +930,14 @@ export class AgentSessionRuntime {
     if (!this.idleStopTimer) return;
     clearTimeout(this.idleStopTimer);
     this.idleStopTimer = undefined;
+  }
+
+  private async flushQueuePersistence(): Promise<void> {
+    while (true) {
+      const tail = this.queuePersistenceTail;
+      await tail.catch(() => {});
+      if (tail === this.queuePersistenceTail) return;
+    }
   }
 
   private clearPendingInteraction(): void {
@@ -846,6 +993,7 @@ export class AgentSessionRuntime {
     message: string,
     imageRefs: AgentPromptImage[],
     submissionId = `prompt:${++this.nextSubmissionId}`,
+    onProviderInvoke?: () => void,
   ): Promise<unknown> {
     const images =
       imageRefs.length > 0
@@ -869,6 +1017,7 @@ export class AgentSessionRuntime {
     this.publishStatus();
     this.publishSubmission(submission.id, submission.message, images);
     try {
+      onProviderInvoke?.();
       const result =
         images.length > 0
           ? await this.client.prompt(message, images, {
@@ -919,6 +1068,7 @@ export class AgentSessionRuntime {
     message: string,
     imageRefs: AgentPromptImage[],
     submissionId = `steer:${++this.nextSubmissionId}`,
+    onProviderInvoke?: () => void,
   ): Promise<unknown> {
     if (!message && imageRefs.length === 0) {
       return Promise.reject(new Error("Enter a message or attach an image."));
@@ -957,6 +1107,7 @@ export class AgentSessionRuntime {
       };
       this.pendingSubmissions.set(submission.id, submission);
       this.publishSubmission(submission.id, submission.message, images);
+      onProviderInvoke?.();
       const request =
         images.length > 0
           ? this.client.steer(message, images, {
@@ -1186,7 +1337,7 @@ export class AgentSessionRuntime {
     return null;
   }
 
-  private enqueueMessage(
+  private async enqueueMessage(
     message: string,
     images: AgentPromptImage[],
     clientMessageId?: string,
@@ -1196,14 +1347,16 @@ export class AgentSessionRuntime {
     }
     const imageInputError = this.imageInputError(images);
     if (imageInputError) return Promise.reject(imageInputError);
+    const previousQueuedMessages = this.queuedMessages;
     const queuedMessage = this.addQueuedMessage(
       message,
       images,
       "pending",
       clientMessageId,
     );
+    await this.persistQueueChange(previousQueuedMessages, true);
     if (this.status === "idle") void this.drainQueuedMessage();
-    return Promise.resolve({ queued: true, id: queuedMessage.id });
+    return { queued: true, id: queuedMessage.id };
   }
 
   private addQueuedMessage(
@@ -1219,42 +1372,50 @@ export class AgentSessionRuntime {
       status,
     };
     this.queuedMessages = [...this.queuedMessages, queuedMessage];
-    this.publishQueueUpdate();
     return queuedMessage;
   }
 
-  private removeQueuedMessage(id: string): Promise<void> {
+  private async removeQueuedMessage(id: string): Promise<void> {
     const message = this.queuedMessages.find((item) => item.id === id);
-    if (!message || message.status !== "pending") {
-      return Promise.reject(
-        new Error("That queued message is no longer editable."),
-      );
+    if (
+      !message ||
+      (message.status !== "pending" && message.status !== "uncertain")
+    ) {
+      throw new Error("That queued message is no longer editable.");
     }
-    this.deleteQueuedMessage(id);
-    return Promise.resolve();
+    await this.deleteQueuedMessage(id, true);
   }
 
-  private steerQueuedMessage(id: string): Promise<unknown> {
+  private async steerQueuedMessage(id: string): Promise<unknown> {
     const message = this.queuedMessages.find((item) => item.id === id);
     if (!message || message.status !== "pending") {
-      return Promise.reject(
-        new Error("That queued message is no longer pending."),
-      );
+      throw new Error("That queued message is no longer pending.");
     }
-    this.updateQueuedMessageStatus(id, "sending");
-    return this.submitSteer(
-      message.message,
-      message.images ?? [],
-      message.id,
-    )
-      .then((result) => {
-        this.deleteQueuedMessage(message.id);
-        return result;
-      })
-      .catch((error) => {
-        this.updateQueuedMessageStatus(message.id, "pending");
-        throw error;
-      });
+    await this.updateQueuedMessageStatus(id, "sending");
+    let result: unknown;
+    let providerInvoked = false;
+    try {
+      result = await this.submitSteer(
+        message.message,
+        message.images ?? [],
+        message.id,
+        () => {
+          providerInvoked = true;
+        },
+      );
+    } catch (error) {
+      await this.updateQueuedMessageStatus(
+        message.id,
+        providerInvoked ? "uncertain" : "pending",
+        false,
+      );
+      throw error;
+    }
+    // A persistence failure here must not turn an accepted provider action
+    // back into a replayable queue entry. A stable provider submission ID can
+    // clear it later; otherwise restart recovery exposes it as uncertain.
+    await this.deleteQueuedMessage(message.id);
+    return result;
   }
 
   private drainQueuedMessage(): Promise<void> {
@@ -1262,7 +1423,11 @@ export class AgentSessionRuntime {
     if (
       this.status !== "idle" ||
       this.abortPromise ||
-      this.settlePromise
+      this.settlePromise ||
+      this.queuedMessages.some(
+        (message) =>
+          message.status === "sending" || message.status === "uncertain",
+      )
     ) {
       return Promise.resolve();
     }
@@ -1270,18 +1435,33 @@ export class AgentSessionRuntime {
       (item) => item.status === "pending",
     );
     if (!message) return Promise.resolve();
-    this.updateQueuedMessageStatus(message.id, "sending");
-    const operation = this.startPrompt(
-      message.message,
-      message.images ?? [],
-      message.id,
-    )
-      .then(() => {
-        this.deleteQueuedMessage(message.id);
-      })
-      .catch(() => {
-        this.updateQueuedMessageStatus(message.id, "pending");
-      });
+    const operation = (async () => {
+      try {
+        // Commit the at-most-once boundary before asking the provider to act.
+        await this.updateQueuedMessageStatus(message.id, "sending");
+      } catch {
+        return;
+      }
+      let providerInvoked = false;
+      try {
+        await this.startPrompt(
+          message.message,
+          message.images ?? [],
+          message.id,
+          () => {
+            providerInvoked = true;
+          },
+        );
+      } catch {
+        await this.updateQueuedMessageStatus(
+          message.id,
+          providerInvoked ? "uncertain" : "pending",
+          false,
+        ).catch(() => {});
+        return;
+      }
+      await this.deleteQueuedMessage(message.id).catch(() => {});
+    })();
     const settled = operation.finally(() => {
       if (this.queueDrainPromise === settled) {
         this.queueDrainPromise = null;
@@ -1294,21 +1474,65 @@ export class AgentSessionRuntime {
   private updateQueuedMessageStatus(
     id: string,
     status: AgentQueuedMessage["status"],
-  ): void {
+    rollbackOnFailure = true,
+  ): Promise<void> {
+    const previousQueuedMessages = this.queuedMessages;
     let changed = false;
     this.queuedMessages = this.queuedMessages.map((message) => {
       if (message.id !== id || message.status === status) return message;
       changed = true;
       return { ...message, status };
     });
-    if (changed) this.publishQueueUpdate();
+    return changed
+      ? this.persistQueueChange(previousQueuedMessages, rollbackOnFailure)
+      : Promise.resolve();
   }
 
-  private deleteQueuedMessage(id: string): void {
+  private deleteQueuedMessage(
+    id: string,
+    rollbackOnFailure = false,
+  ): Promise<void> {
+    const previousQueuedMessages = this.queuedMessages;
     const next = this.queuedMessages.filter((message) => message.id !== id);
-    if (next.length === this.queuedMessages.length) return;
+    if (next.length === this.queuedMessages.length) return Promise.resolve();
     this.queuedMessages = next;
-    this.publishQueueUpdate();
+    return this.persistQueueChange(previousQueuedMessages, rollbackOnFailure);
+  }
+
+  private async persistQueueChange(
+    previousQueuedMessages: AgentQueuedMessage[],
+    rollbackOnFailure: boolean,
+  ): Promise<void> {
+    const nextQueuedMessages = this.queuedMessages;
+    try {
+      await this.publishQueueUpdate();
+    } catch (error) {
+      if (rollbackOnFailure && this.queuedMessages === nextQueuedMessages) {
+        this.queuedMessages = previousQueuedMessages;
+      }
+      throw error;
+    }
+  }
+
+  private acknowledgeQueuedMessages(userMessages: readonly unknown[]): void {
+    const acknowledged = new Set<string>();
+    for (const userMessage of userMessages) {
+      const submissionId = messageSubmissionId(userMessage);
+      if (
+        submissionId &&
+        this.queuedMessages.some(
+          (message) =>
+            (message.status === "sending" ||
+              message.status === "uncertain") &&
+            message.id === submissionId,
+        )
+      ) {
+        acknowledged.add(submissionId);
+      }
+    }
+    for (const id of acknowledged) {
+      void this.deleteQueuedMessage(id).catch(() => {});
+    }
   }
 
   private publishSubmission(
@@ -1350,14 +1574,33 @@ export class AgentSessionRuntime {
     this.publish({ type: "runtime_event", data: event });
   }
 
-  private publishQueueUpdate(): void {
-    void this.saveQueuedMessages(this.dbSessionId, this.queuedMessages);
-    this.publish({
-      type: "runtime_event",
-      data: {
-        type: "overtchat_queue_update",
-        queuedMessages: this.queuedMessages,
-      },
+  private publishQueueUpdate(): Promise<void> {
+    const queuedMessages = this.queuedMessages.map((message) => ({
+      ...message,
+      ...(message.images ? { images: [...message.images] } : {}),
+    }));
+    const operation = this.queuePersistenceTail.then(() =>
+      this.saveQueuedMessages(this.dbSessionId, queuedMessages),
+    );
+    this.queuePersistenceTail = operation.catch((error) => {
+      this.error = `Unable to persist queued messages: ${errorMessage(error)}`;
+      this.publish({
+        type: "runtime_event",
+        data: {
+          type: "rpc_error",
+          command: "queue",
+          error: this.error,
+        },
+      });
+    });
+    return operation.then(() => {
+      this.publish({
+        type: "runtime_event",
+        data: {
+          type: "overtchat_queue_update",
+          queuedMessages,
+        },
+      });
     });
   }
 
@@ -1383,6 +1626,7 @@ export class AgentSessionRuntime {
     this.replay.push(sequenced);
     if (this.replay.length > MAX_REPLAY_EVENTS) this.replay.shift();
     for (const subscriber of this.subscribers) subscriber(sequenced);
+    for (const observer of this.observers) observer(sequenced);
   }
 
   private envelope(
@@ -1566,6 +1810,7 @@ export class AgentRuntimeRegistry {
         if (this.runtimes.get(sessionId) === runtime) {
           this.runtimes.delete(sessionId);
         }
+        void this.options.runtimeExited?.(sessionId, runtime);
       },
     );
     this.runtimes.set(sessionId, runtime);

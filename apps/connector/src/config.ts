@@ -26,6 +26,26 @@ export function connectorStatePath(connectorId: string): string {
   );
 }
 
+export function connectorTimelinePath(connectorId: string): string {
+  return (
+    process.env.OVERTCHAT_CONNECTOR_TIMELINES ??
+    path.join(
+      path.dirname(connectorConfigPath()),
+      `connector-${connectorId}.timelines`,
+    )
+  );
+}
+
+export function connectorLockPath(connectorId: string): string {
+  return (
+    process.env.OVERTCHAT_CONNECTOR_LOCK ??
+    path.join(
+      path.dirname(connectorConfigPath()),
+      `connector-${connectorId}.lock`,
+    )
+  );
+}
+
 export async function readConnectorConfig(): Promise<ConnectorConfig> {
   const file = connectorConfigPath();
   let parsed: unknown;

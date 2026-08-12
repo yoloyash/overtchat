@@ -80,9 +80,68 @@ describe("Host Connectors route", () => {
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
       command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.2.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
+        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
+  });
+
+  it("offers an in-place upgrade command for an older connector", async () => {
+    mocks.listConnectors.mockReturnValue([
+      {
+        id: "connector",
+        name: "Home server",
+        version: "0.2.0",
+        lastSeenAt: new Date(12_000),
+      },
+    ]);
+    mocks.isOnline.mockReturnValue(true);
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      connectors: [
+        {
+          id: "connector",
+          name: "Home server",
+          version: "0.2.0",
+          lastSeenAt: 12_000,
+          online: true,
+          upgrade: {
+            version: "0.3.0",
+            command:
+              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.0 | sh -s -- --upgrade",
+          },
+        },
+      ],
+    });
+  });
+
+  it("does not offer a reinstall or downgrade for a current or newer connector", async () => {
+    mocks.listConnectors.mockReturnValue([
+      {
+        id: "current",
+        name: "Current",
+        version: "0.3.0",
+        lastSeenAt: null,
+      },
+      {
+        id: "newer",
+        name: "Newer",
+        version: "0.4.0",
+        lastSeenAt: null,
+      },
+    ]);
+
+    const response = await GET(request());
+    const data = (await response.json()) as {
+      connectors: Array<{ upgrade: unknown }>;
+    };
+
+    expect(data.connectors.map((connector) => connector.upgrade)).toEqual([
+      null,
+      null,
+    ]);
   });
 
   it("stops active runtimes before deleting an owned connector", async () => {

@@ -21,16 +21,41 @@ function connectorServerUrl(): string {
   );
 }
 
+function connectorInstallerUrl(): string {
+  return `https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION}`;
+}
+
 function installCommand(pairCode: string): string {
-  const installUrl = `https://overtchat.com/install/connector/${HOST_CONNECTOR_RELEASE_VERSION}`;
   return [
     "curl --proto '=https' --tlsv1.2 -fsSL ",
-    installUrl,
+    connectorInstallerUrl(),
     " | sh -s -- --server ",
     shellQuote(connectorServerUrl()),
     " --pair-code ",
     shellQuote(pairCode),
   ].join("");
+}
+
+function upgradeCommand(): string {
+  return [
+    "curl --proto '=https' --tlsv1.2 -fsSL ",
+    connectorInstallerUrl(),
+    " | sh -s -- --upgrade",
+  ].join("");
+}
+
+function connectorNeedsUpgrade(version: string | null): boolean {
+  if (version === HOST_CONNECTOR_RELEASE_VERSION) return false;
+  const current = /^(\d+)\.(\d+)\.(\d+)$/u.exec(
+    HOST_CONNECTOR_RELEASE_VERSION,
+  );
+  const installed = version ? /^(\d+)\.(\d+)\.(\d+)$/u.exec(version) : null;
+  if (!current || !installed) return true;
+  for (let index = 1; index <= 3; index += 1) {
+    const difference = Number(installed[index]) - Number(current[index]);
+    if (difference !== 0) return difference < 0;
+  }
+  return false;
 }
 
 async function adminUser(request: Request) {
@@ -53,13 +78,22 @@ async function adminUser(request: Request) {
 export async function GET(request: Request) {
   const result = await adminUser(request);
   if (!result.ok) return result.error;
-  const connectors = listHostConnectors(result.user.id).map((connector) => ({
-    id: connector.id,
-    name: connector.name,
-    version: connector.version,
-    lastSeenAt: connector.lastSeenAt?.getTime() ?? null,
-    online: hostConnectorBroker.isOnline(connector.id),
-  }));
+  const connectors = listHostConnectors(result.user.id).map((connector) => {
+    const needsUpgrade = connectorNeedsUpgrade(connector.version);
+    return {
+      id: connector.id,
+      name: connector.name,
+      version: connector.version,
+      lastSeenAt: connector.lastSeenAt?.getTime() ?? null,
+      online: hostConnectorBroker.isOnline(connector.id),
+      upgrade: needsUpgrade
+        ? {
+            version: HOST_CONNECTOR_RELEASE_VERSION,
+            command: upgradeCommand(),
+          }
+        : null,
+    };
+  });
   return Response.json({ connectors });
 }
 

@@ -21,6 +21,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: connector-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   build:
     outputs:
@@ -94,7 +98,7 @@ jobs:
           name: host-connector-release
           path: release
 
-      - name: Publish release assets
+      - name: Validate release tag
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -102,8 +106,75 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           test "$TAG" = "connector-v$VERSION"
-          gh release view "$TAG" >/dev/null 2>&1 ||
+
+      - name: Create or resume draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-draft; then
+            test "$(cat release-draft)" = "true" || {
+              echo "Release $TAG is already published and immutable." >&2
+              exit 1
+            }
+          else
             gh release create "$TAG" \
+              --draft \
               --title "OvertChat Host Connector v$VERSION" \
-              --generate-notes
+              --generate-notes \
+              --latest=false \
+              --verify-tag
+          fi
+
+      - name: Upload assets to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
           gh release upload "$TAG" release/* --clobber
+
+      - name: Verify draft release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+
+          expected_assets=$(printf '%s\n' \
+            connector-checksums.txt \
+            install-connector.sh \
+            overtchat-connector-linux-amd64 \
+            overtchat-connector-linux-arm64)
+          actual_assets=$(gh release view "$TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort)
+          test "$actual_assets" = "$expected_assets"
+
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
+          gh release download "$TAG" --dir "$verification_directory" \
+            --pattern connector-checksums.txt \
+            --pattern install-connector.sh \
+            --pattern overtchat-connector-linux-amd64 \
+            --pattern overtchat-connector-linux-arm64
+
+          for asset in \
+            connector-checksums.txt \
+            install-connector.sh \
+            overtchat-connector-linux-amd64 \
+            overtchat-connector-linux-arm64; do
+            cmp "release/$asset" "$verification_directory/$asset"
+          done
+          (cd "$verification_directory" && sha256sum --check connector-checksums.txt)
+
+      - name: Publish verified release without changing Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
+          gh release edit "$TAG" --draft=false --latest=false

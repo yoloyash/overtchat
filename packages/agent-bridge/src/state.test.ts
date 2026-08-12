@@ -3,7 +3,10 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
 } from "./agents.js";
-import { applyAgentRuntimeEnvelope } from "./state.js";
+import {
+  applyAgentRuntimeEnvelope,
+  reconcileAgentRuntimeSnapshot,
+} from "./state.js";
 
 function snapshot(): AgentRuntimeSnapshot {
   return {
@@ -45,6 +48,172 @@ function event(
 }
 
 describe("agent runtime event reducer", () => {
+  it("uses a connector-recorded timestamp for replay-derived state", () => {
+    const started = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "agent_start",
+        overtchatRecordedAt: 1_234,
+      }),
+    )!;
+    const output = applyAgentRuntimeEnvelope(
+      started,
+      event({
+        type: "command_output",
+        text: "Current model: GPT-5.6",
+        overtchatRecordedAt: 2_345,
+      }),
+    )!;
+    const tool = applyAgentRuntimeEnvelope(
+      output,
+      event({
+        type: "tool_execution_update",
+        toolCallId: "call",
+        toolName: "bash",
+        partialResult: { content: [{ type: "text", text: "partial" }] },
+        overtchatRecordedAt: 3_456,
+      }),
+    )!;
+
+    expect(tool.activeTurn).toEqual({ startedAt: 1_234 });
+    expect(tool.messages.at(-2)).toMatchObject({ timestamp: 2_345 });
+    expect(tool.messages.at(-1)).toMatchObject({ timestamp: 3_456 });
+  });
+
+  it("reconciles resumed provider history without dropping connector-only messages", () => {
+    const durable = {
+      ...snapshot(),
+      status: "exited" as const,
+      error: "Connector stopped",
+      messages: [
+        {
+          role: "user",
+          content: "queued prompt",
+          overtchatSubmissionId: "submission-1",
+        },
+        {
+          role: "assistant",
+          content: "old partial",
+          overtchatTurnId: "turn-1",
+        },
+        { role: "custom", content: "connector command output" },
+      ],
+    };
+    const fresh = {
+      ...snapshot(),
+      status: "running" as const,
+      activeTurn: { startedAt: 42 },
+      state: { isStreaming: true },
+      messages: [
+        {
+          id: "provider-user",
+          role: "user",
+          content: "queued prompt",
+          overtchatSubmissionId: "submission-1",
+          overtchatTurnId: "turn-1",
+        },
+        {
+          id: "provider-assistant",
+          role: "assistant",
+          content: "complete",
+          overtchatTurnId: "turn-1",
+        },
+      ],
+    };
+
+    const reconciled = reconcileAgentRuntimeSnapshot(durable, fresh);
+
+    expect(reconciled).toMatchObject({
+      status: "running",
+      activeTurn: { startedAt: 42 },
+      state: { isStreaming: true },
+      messages: [
+        expect.objectContaining({ id: "provider-user" }),
+        expect.objectContaining({ id: "provider-assistant" }),
+        { role: "custom", content: "connector command output" },
+      ],
+    });
+    expect(reconciled).not.toHaveProperty("error");
+  });
+
+  it("treats plain resumed provider history as authoritative", () => {
+    const providerMessages = [
+      { role: "user", content: "Hello" },
+      { role: "assistant", content: "Hello back" },
+    ];
+    const durable = { ...snapshot(), messages: [...providerMessages] };
+    const fresh = { ...snapshot(), messages: [...providerMessages] };
+
+    const once = reconcileAgentRuntimeSnapshot(durable, fresh);
+    const twice = reconcileAgentRuntimeSnapshot(once, fresh);
+
+    expect(once.messages).toEqual(providerMessages);
+    expect(twice.messages).toEqual(providerMessages);
+  });
+
+  it("drops an optimistic row once an uncertain provider snapshot is available", () => {
+    const durable = {
+      ...snapshot(),
+      messages: [
+        {
+          role: "user",
+          content: "Run tests",
+          overtchatSubmissionId: "submission-1",
+        },
+      ],
+    };
+    const providerMessage = { role: "user", content: "Run tests" };
+    const reconciled = reconcileAgentRuntimeSnapshot(durable, {
+      ...snapshot(),
+      messages: [providerMessage],
+      queuedMessages: [
+        {
+          id: "submission-1",
+          message: "Run tests",
+          status: "uncertain",
+        },
+      ],
+    });
+
+    expect(reconciled.messages).toEqual([providerMessage]);
+    expect(reconciled.queuedMessages).toEqual([
+      {
+        id: "submission-1",
+        message: "Run tests",
+        status: "uncertain",
+      },
+    ]);
+  });
+
+  it("uses tool-call identity when fresh history completes durable output", () => {
+    const durable = {
+      ...snapshot(),
+      messages: [
+        {
+          role: "toolResult",
+          toolCallId: "call-1",
+          content: "partial",
+          timestamp: 100,
+          overtchatPartial: true,
+        },
+      ],
+    };
+    const completed = {
+      role: "toolResult",
+      toolCallId: "call-1",
+      content: "complete",
+      timestamp: 200,
+      overtchatPartial: false,
+    };
+
+    const reconciled = reconcileAgentRuntimeSnapshot(durable, {
+      ...snapshot(),
+      messages: [completed],
+    });
+
+    expect(reconciled.messages).toEqual([completed]);
+  });
+
   it("replaces the active assistant message as text streams", () => {
     const first = applyAgentRuntimeEnvelope(
       snapshot(),
@@ -460,6 +629,30 @@ describe("agent runtime event reducer", () => {
         }),
       ),
     ).toBe(current);
+  });
+
+  it("preserves delivery-uncertain queue updates", () => {
+    const updated = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "overtchat_queue_update",
+        queuedMessages: [
+          {
+            id: "queued:1",
+            message: "Then summarize",
+            status: "uncertain",
+          },
+        ],
+      }),
+    )!;
+
+    expect(updated.queuedMessages).toEqual([
+      {
+        id: "queued:1",
+        message: "Then summarize",
+        status: "uncertain",
+      },
+    ]);
   });
 
   it("reconciles an accepted submission with the provider user message", () => {

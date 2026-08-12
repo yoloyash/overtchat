@@ -86,7 +86,7 @@ async function startHostConnector(
   );
   await page.keyboard.press("Escape");
   const command = await page.getByLabel("Host Connector install command").textContent();
-  expect(command).toContain("https://overtchat.com/install/connector/0.2.0");
+  expect(command).toContain("https://overtchat.com/install/connector/0.3.0");
   expect(command).toContain("--server 'http://127.0.0.1:4718'");
   const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
   if (!pairCode) throw new Error("The Host Connector pairing code was missing.");
@@ -275,6 +275,51 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
         document.documentElement.clientWidth,
     ),
   ).toBe(true);
+});
+
+test("shows the no-re-pair upgrade command for an older connector", async ({
+  page,
+}) => {
+  const upgradeCommand =
+    "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.0 | sh -s -- --upgrade";
+  await page.route("**/api/host-connectors", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        connectors: [
+          {
+            id: "older-connector",
+            name: "Home server",
+            version: "0.2.0",
+            lastSeenAt: Date.now(),
+            online: true,
+            upgrade: { version: "0.3.0", command: upgradeCommand },
+          },
+        ],
+      }),
+    });
+  });
+  await page.goto("/signup");
+  await page.locator("#name").fill("Connector Upgrade Admin");
+  await page.locator("#email").fill("connector-upgrade@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+
+  await page.goto("/settings/connections");
+
+  await expect(
+    page.getByText("Host Connector 0.3.0 is available", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Host Connector upgrade command")).toHaveText(
+    upgradeCommand,
+  );
+  await expect(
+    page.getByRole("button", { name: "Copy connector upgrade command" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/without changing the existing pairing or settings/u),
+  ).toBeVisible();
 });
 
 test("shows the Add agent flow after setup", async ({ page }, testInfo) => {

@@ -66,11 +66,28 @@ async function pair(values: Map<string, string>): Promise<void> {
 async function run(): Promise<void> {
   const config = await readConnectorConfig();
   const client = await ConnectorClient.create(config);
-  const stop = () => void client.stop();
+  const stop = () => {
+    void client.stop().catch((error) => {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    });
+  };
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
   console.log(`Connecting to ${config.serverUrl}`);
-  return client.run();
+  try {
+    await client.run();
+  } finally {
+    await client.stop();
+    process.removeListener("SIGINT", stop);
+    process.removeListener("SIGTERM", stop);
+  }
+}
+
+async function preflight(): Promise<void> {
+  const config = await readConnectorConfig();
+  const client = await ConnectorClient.create(config);
+  await client.stop();
 }
 
 async function main(): Promise<void> {
@@ -88,6 +105,12 @@ async function main(): Promise<void> {
     }
     case "run":
       await run();
+      return;
+    case "preflight":
+      if (parsed.values.size > 0) {
+        throw new Error("The preflight command does not accept arguments.");
+      }
+      await preflight();
       return;
     default:
       throw new Error(
