@@ -136,7 +136,7 @@ describe.sequential("connector client compatibility", () => {
     expect(headers.get("x-overtchat-connector-version")).toBe(
       HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
     );
-    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.3.0");
+    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.3.1");
     expect(headers.get("x-overtchat-connector-protocol")).toBe(
       String(HOST_CONNECTOR_PROTOCOL_VERSION),
     );

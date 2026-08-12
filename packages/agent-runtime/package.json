@@ -15,12 +15,10 @@
   },
   "dependencies": {
     "@overtchat/agent-bridge": "*",
-    "ws": "^8.21.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22",
-    "@types/ws": "^8.18.1",
     "typescript": "~6.0.3",
     "vitest": "^4.1.6"
   }

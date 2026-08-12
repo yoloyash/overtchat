@@ -1,5 +1,3 @@
-import { Duplex, PassThrough, Writable } from "node:stream";
-import WebSocket from "ws";
 import type { AgentProcess, HostTarget } from "@overtchat/agent-runtime/runtime/process";
 import { spawnOnHost } from "@overtchat/agent-runtime/runtime/process";
 import {
@@ -10,7 +8,8 @@ import {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const INITIALIZE_TIMEOUT_MS = 60_000;
 const MAX_STDERR_CHARS = 64 * 1024;
-const PROXY_HANDSHAKE_TIMEOUT_MS = 5_000;
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 1_000;
+const FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 
 type CodexAppServerOptions = {
   enableGoals?: boolean;
@@ -53,134 +52,21 @@ function errorText(error: JsonRpcError | undefined, fallback: string): string {
   return [error.message || fallback, detail].filter(Boolean).join(" ");
 }
 
-class AgentProcessDuplex extends Duplex {
-  constructor(private readonly process: AgentProcess) {
-    super();
-    process.stdout.on("data", (chunk) => this.push(chunk));
-    process.stdout.on("end", () => this.push(null));
-    process.stdout.on("error", (error) => this.destroy(error));
-    void process.exit.then((exit) => {
-      if (!this.destroyed) {
-        this.destroy(
-          exit.error ??
-            new Error(
-              `Codex app-server proxy exited (code=${exit.code ?? "unknown"}, signal=${exit.signal ?? "none"}).`,
-            ),
-        );
-      }
-    });
-  }
-
-  _read(): void {}
-
-  _write(
-    chunk: Buffer,
-    encoding: BufferEncoding,
-    callback: (error?: Error | null) => void,
-  ): void {
-    this.process.stdin.write(chunk, encoding, callback);
-  }
-
-  _final(callback: (error?: Error | null) => void): void {
-    this.process.stdin.end(callback);
-  }
-
-  setNoDelay(): this {
-    return this;
-  }
-
-  setTimeout(): this {
-    return this;
-  }
-}
-
-function spawnCodexProxy(
+function spawnCodexAppServer(
   target: HostTarget,
   executable: string,
   cwd?: string,
   options: CodexAppServerOptions = {},
 ): AgentProcess {
-  const proxy = spawnOnHost(target, {
+  return spawnOnHost(target, {
     command: executable,
     args: [
       "app-server",
-      "proxy",
       ...(options.enableGoals ? ["--enable", "goals"] : []),
+      "--stdio",
     ],
     cwd,
   });
-  const transport = new AgentProcessDuplex(proxy);
-  const stdout = new PassThrough();
-  let inputBuffer = "";
-  const websocket = new WebSocket("ws://localhost/rpc", {
-    createConnection: () => {
-      process.nextTick(() => transport.emit("connect"));
-      return transport;
-    },
-    handshakeTimeout: PROXY_HANDSHAKE_TIMEOUT_MS,
-    perMessageDeflate: false,
-  });
-  const ready = new Promise<void>((resolve, reject) => {
-    websocket.once("open", resolve);
-    websocket.once("error", reject);
-  });
-  websocket.on("message", (data, isBinary) => {
-    if (isBinary) return;
-    stdout.write(`${data.toString()}\n`);
-  });
-  websocket.on("close", () => stdout.end());
-  websocket.on("error", () => {
-    proxy.kill("SIGTERM");
-  });
-
-  const stdin = new Writable({
-    write(chunk, _encoding, callback) {
-      inputBuffer += chunk.toString();
-      const lines: string[] = [];
-      for (;;) {
-        const newline = inputBuffer.indexOf("\n");
-        if (newline < 0) break;
-        const line = inputBuffer.slice(0, newline);
-        inputBuffer = inputBuffer.slice(newline + 1);
-        if (line) lines.push(line);
-      }
-      void ready.then(
-        async () => {
-          for (const line of lines) {
-            await new Promise<void>((resolve, reject) => {
-              websocket.send(line, (error) =>
-                error ? reject(error) : resolve(),
-              );
-            });
-          }
-          callback();
-        },
-        (error) =>
-          callback(error instanceof Error ? error : new Error(String(error))),
-      );
-    },
-    final(callback) {
-      void ready.then(
-        () => {
-          websocket.close();
-          callback();
-        },
-        () => callback(),
-      );
-    },
-  });
-
-  return {
-    stdin,
-    stdout,
-    stderr: proxy.stderr,
-    exit: proxy.exit,
-    kill(signal = "SIGTERM") {
-      if (signal === "SIGKILL") websocket.terminate();
-      else websocket.close();
-      return proxy.kill(signal);
-    },
-  };
 }
 
 export class CodexAppServer {
@@ -195,21 +81,14 @@ export class CodexAppServer {
   private nextRequestId = 0;
   private stderr = "";
   private closed = false;
+  private stopping = false;
+  private terminationHandled = false;
   private readonly initialized: Promise<void>;
 
   constructor(private readonly process: AgentProcess) {
     process.stdin.on("error", (error) => {
-      if (this.closed) return;
-      this.closed = true;
-      this.rejectPending(error);
-      this.emitNotification({
-        method: "overtchat/processExit",
-        params: {
-          code: null,
-          signal: null,
-          error: error.message,
-        },
-      });
+      if (this.stopping) return;
+      this.handleUnexpectedTermination(error, null, null);
       process.kill("SIGKILL");
     });
     process.stdout.on("data", (chunk) => {
@@ -218,27 +97,31 @@ export class CodexAppServer {
     process.stdout.on("end", () => {
       for (const line of this.decoder.end()) this.handleLine(line);
     });
+    process.stdout.on("error", (error) => {
+      if (this.stopping) return;
+      this.handleUnexpectedTermination(error, null, null);
+      process.kill("SIGKILL");
+    });
     process.stderr.on("data", (chunk) => {
       this.stderr = `${this.stderr}${chunk.toString()}`.slice(
         -MAX_STDERR_CHARS,
       );
     });
+    process.stderr.on("error", (error) => {
+      if (this.stopping) return;
+      this.handleUnexpectedTermination(error, null, null);
+      process.kill("SIGKILL");
+    });
     void process.exit.then((exit) => {
-      this.closed = true;
       const detail = exit.error?.message ?? this.stderr.trim();
-      const error = new Error(
-        detail ||
-          `Codex app-server exited (code=${exit.code ?? "unknown"}, signal=${exit.signal ?? "none"}).`,
+      this.handleUnexpectedTermination(
+        new Error(
+          detail ||
+            `Codex app-server exited (code=${exit.code ?? "unknown"}, signal=${exit.signal ?? "none"}).`,
+        ),
+        exit.code,
+        exit.signal,
       );
-      this.rejectPending(error);
-      this.emitNotification({
-        method: "overtchat/processExit",
-        params: {
-          code: exit.code,
-          signal: exit.signal,
-          error: error.message,
-        },
-      });
     });
     this.initialized = this.initialize();
     void this.initialized.catch(() => {});
@@ -285,21 +168,18 @@ export class CodexAppServer {
 
   async stop(): Promise<void> {
     if (this.closed) return;
+    this.stopping = true;
     this.closed = true;
     this.rejectPending(new Error("The Codex app-server was stopped."));
-    this.process.stdin.end();
+    try {
+      this.process.stdin.end();
+    } catch {
+      // The process may already have closed its input while we were stopping.
+    }
     this.process.kill("SIGTERM");
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    await Promise.race([
-      this.process.exit,
-      new Promise<void>((resolve) => {
-        forceKillTimer = setTimeout(() => {
-          this.process.kill("SIGKILL");
-          resolve();
-        }, 1_000);
-      }),
-    ]);
-    if (forceKillTimer) clearTimeout(forceKillTimer);
+    if (await this.waitForExit(GRACEFUL_SHUTDOWN_TIMEOUT_MS)) return;
+    this.process.kill("SIGKILL");
+    await this.waitForExit(FORCE_SHUTDOWN_TIMEOUT_MS);
   }
 
   getStderr(): string {
@@ -407,7 +287,22 @@ export class CodexAppServer {
         this.respondError(record.id, -32601, "Request is not supported.");
         return;
       }
-      for (const subscriber of this.requestSubscribers) subscriber(request);
+      for (const subscriber of this.requestSubscribers) {
+        try {
+          subscriber(request);
+        } catch (error) {
+          try {
+            this.respondError(
+              record.id,
+              -32603,
+              error instanceof Error ? error.message : "Request handler failed.",
+            );
+          } catch {
+            // The process may have exited while the handler was running.
+          }
+          return;
+        }
+      }
       return;
     }
     this.emitNotification({
@@ -437,7 +332,42 @@ export class CodexAppServer {
 
   private emitNotification(notification: CodexAppServerNotification): void {
     for (const subscriber of this.notificationSubscribers) {
-      subscriber(notification);
+      try {
+        subscriber(notification);
+      } catch {
+        // A consumer failure must not escape the provider process boundary.
+      }
+    }
+  }
+
+  private handleUnexpectedTermination(
+    error: Error,
+    code: number | null,
+    signal: NodeJS.Signals | null,
+  ): void {
+    if (this.terminationHandled) return;
+    this.terminationHandled = true;
+    this.closed = true;
+    if (this.stopping) return;
+    this.rejectPending(error);
+    this.emitNotification({
+      method: "overtchat/processExit",
+      params: { code, signal, error: error.message },
+    });
+  }
+
+  private async waitForExit(timeoutMs: number): Promise<boolean> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      return await Promise.race([
+        this.process.exit.then(() => true),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(false), timeoutMs);
+          timer.unref();
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   }
 
@@ -466,26 +396,14 @@ export async function startCodexAppServer(
   cwd?: string,
   options: CodexAppServerOptions = {},
 ): Promise<CodexAppServer> {
-  const proxyServer = new CodexAppServer(
-    spawnCodexProxy(target, executable, cwd, options),
+  const server = new CodexAppServer(
+    spawnCodexAppServer(target, executable, cwd, options),
   );
   try {
-    await proxyServer.ready();
-    return proxyServer;
-  } catch {
-    await proxyServer.stop().catch(() => {});
+    await server.ready();
+    return server;
+  } catch (error) {
+    await server.stop().catch(() => {});
+    throw error;
   }
-  const standaloneServer = new CodexAppServer(
-    spawnOnHost(target, {
-      command: executable,
-      args: [
-        "app-server",
-        ...(options.enableGoals ? ["--enable", "goals"] : []),
-        "--stdio",
-      ],
-      cwd,
-    }),
-  );
-  await standaloneServer.ready();
-  return standaloneServer;
 }
