@@ -178,3 +178,16 @@ jobs:
         run: |
           test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = "true"
           gh release edit "$TAG" --draft=false --latest=false
+
+  deploy-site:
+    if: github.event_name != 'pull_request'
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Deploy site after the connector is public
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run site.yml --ref main
