@@ -4,6 +4,7 @@ export const PROVIDER_IDS = [
   "openai",
   "anthropic",
   "google",
+  "deepseek",
   "bedrock",
   "vllm",
   "llamacpp",
@@ -60,6 +61,15 @@ export const PROVIDERS: Record<ProviderId, ProviderDefinition> = {
     defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
     defaultApiFormat: "auto",
     modelPlaceholder: "gemini-2.5-flash",
+    requiresApiKey: true,
+  },
+  deepseek: {
+    id: "deepseek",
+    label: "DeepSeek",
+    iconId: "deepseek",
+    defaultBaseUrl: "https://api.deepseek.com",
+    defaultApiFormat: "auto",
+    modelPlaceholder: "deepseek-v4-flash",
     requiresApiKey: true,
   },
   bedrock: {

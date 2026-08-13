@@ -19,6 +19,13 @@ describe("provider catalog", () => {
   it("keeps API formats separate from provider identity", () => {
     expect(PROVIDERS.openai.defaultApiFormat).toBe("auto");
     expect(PROVIDERS.bedrock.defaultApiFormat).toBe("auto");
+    expect(PROVIDERS.deepseek).toMatchObject({
+      iconId: "deepseek",
+      defaultApiFormat: "auto",
+      defaultBaseUrl: "https://api.deepseek.com",
+      modelPlaceholder: "deepseek-v4-flash",
+      requiresApiKey: true,
+    });
     expect(PROVIDERS.vllm).toMatchObject({
       defaultApiFormat: "auto",
       defaultBaseUrl: "http://localhost:8000/v1",
