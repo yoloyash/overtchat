@@ -59,6 +59,26 @@ describe("commandForAgentSessionSubmit", () => {
     ).toEqual({ type: "queue", message: "Continue with the tests" });
   });
 
+  it("keeps Plan and Fast toggles out of the queue while Codex is working", () => {
+    const working = snapshot({
+      status: "running",
+      state: {
+        collaborationMode: "default",
+        collaborationModes: ["default", "plan"],
+        fastModeAvailable: true,
+        fastModeEnabled: false,
+      },
+    });
+    expect(commandForAgentSessionSubmit(working, "/plan", [])).toEqual({
+      type: "set_collaboration_mode",
+      mode: "plan",
+    });
+    expect(commandForAgentSessionSubmit(working, "/fast", [])).toEqual({
+      type: "set_fast_mode",
+      enabled: true,
+    });
+  });
+
   it("does not intercept usage for providers that do not advertise it", () => {
     expect(
       commandForAgentSessionSubmit(

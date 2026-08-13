@@ -47,6 +47,8 @@ class FakeCodexServer {
   collaborationModes: unknown[] = [];
   goalSupported = false;
   goal: Record<string, unknown> | null = null;
+  threadAccess: Record<string, unknown> = {};
+  config: Record<string, unknown> | null = null;
   readonly threadReads = new Map<string, Record<string, unknown>>();
   private notification: Listener<{ method: string; params?: unknown }> =
     () => {};
@@ -91,6 +93,9 @@ class FakeCodexServer {
     }
     if (method === "collaborationMode/list") {
       return { data: this.collaborationModes };
+    }
+    if (method === "config/read") {
+      return this.config ? { config: this.config } : {};
     }
     if (method === "thread/goal/get") {
       if (!this.goalSupported) throw new Error("Method not found");
@@ -195,6 +200,7 @@ class FakeCodexServer {
         },
         model: "gpt-5.6",
         reasoningEffort: "high",
+        ...this.threadAccess,
       };
     }
     if (method === "thread/fork") {
@@ -373,6 +379,8 @@ describe("CodexRuntimeClient", () => {
     server.collaborationModes = [];
     server.goalSupported = false;
     server.goal = null;
+    server.threadAccess = {};
+    server.config = null;
     server.threadReads.clear();
     server.respondError.mockClear();
     mocks.startCodexAppServer.mockResolvedValue(server);
@@ -395,6 +403,11 @@ describe("CodexRuntimeClient", () => {
     );
 
     await expect(client.getCommands()).resolves.toEqual([
+      {
+        name: "fast",
+        description: "Enable Fast mode",
+        source: "builtin",
+      },
       {
         name: "prompts:review",
         description: "Review a path",
@@ -426,6 +439,13 @@ describe("CodexRuntimeClient", () => {
         ],
       },
     });
+    const inheritedTurn = server.requests.at(-1)?.params as Record<
+      string,
+      unknown
+    >;
+    expect(inheritedTurn).not.toHaveProperty("approvalPolicy");
+    expect(inheritedTurn).not.toHaveProperty("sandboxPolicy");
+    expect(inheritedTurn).not.toHaveProperty("approvalsReviewer");
 
     await client.prompt('/prompts:review "src/a b.ts"');
     expect(server.requests.at(-1)).toMatchObject({
@@ -517,8 +537,13 @@ describe("CodexRuntimeClient", () => {
     });
   });
 
-  it("supports native goals, Code/Plan modes, and Fast turns", async () => {
+  it("supports native goals, Code/Plan modes, Fast turns, and access modes", async () => {
     server.goalSupported = true;
+    server.threadAccess = {
+      approvalPolicy: "untrusted",
+      approvalsReviewer: "user",
+      sandbox: { type: "readOnly", networkAccess: false },
+    };
     server.collaborationModes = [
       {
         name: "Code",
@@ -547,6 +572,8 @@ describe("CodexRuntimeClient", () => {
       collaborationModes: ["default", "plan"],
       fastModeEnabled: false,
       fastModeAvailable: true,
+      accessMode: "inherit",
+      accessModes: ["inherit", "default", "auto-review", "full-access"],
       goalsSupported: true,
       goal: null,
     });
@@ -564,17 +591,44 @@ describe("CodexRuntimeClient", () => {
     });
     await expect(client.getCommands()).resolves.toContainEqual({
       name: "plan",
-      description: "Toggle Plan mode",
+      description: "Enable Plan mode",
+      source: "builtin",
+    });
+    await expect(client.getCommands()).resolves.toContainEqual({
+      name: "fast",
+      description: "Enable Fast mode",
       source: "builtin",
     });
 
     await client.setCollaborationMode("plan");
     await client.setFastMode(true);
+    await client.setAccessMode("auto-review");
+    await expect(client.getCommands()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "plan",
+          description: "Disable Plan mode",
+        }),
+        expect.objectContaining({
+          name: "fast",
+          description: "Disable Fast mode",
+        }),
+      ]),
+    );
     await client.prompt("Design the change");
     expect(server.requests.at(-1)).toMatchObject({
       method: "turn/start",
       params: {
         serviceTier: "fast",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          writableRoots: [],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
         collaborationMode: {
           mode: "plan",
           settings: {
@@ -583,6 +637,28 @@ describe("CodexRuntimeClient", () => {
             developer_instructions: null,
           },
         },
+      },
+    });
+
+    await client.setAccessMode("full-access");
+    await client.prompt("Apply the approved change");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "dangerFullAccess" },
+      },
+    });
+
+    await client.setAccessMode("inherit");
+    await client.prompt("Use my Codex defaults again");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        approvalPolicy: "untrusted",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "readOnly", networkAccess: false },
       },
     });
 
@@ -609,6 +685,91 @@ describe("CodexRuntimeClient", () => {
     });
     await client.updateGoal("clear");
     await expect(client.getState()).resolves.toMatchObject({ goal: null });
+  });
+
+  it("only advertises Auto-review on supported Codex versions", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        detectedVersion: "0.114.0",
+      },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      accessModes: ["inherit", "default", "full-access"],
+    });
+    await expect(client.setAccessMode("auto-review")).rejects.toThrow(
+      "does not provide Auto-review",
+    );
+  });
+
+  it("restores the effective access mode reported by Codex", async () => {
+    server.threadAccess = {
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandbox: { type: "dangerFullAccess" },
+    };
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        detectedVersion: "0.147.0",
+      },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      accessMode: "full-access",
+    });
+  });
+
+  it("restores Codex configuration when leaving an explicit access mode", async () => {
+    server.config = {
+      approval_policy: "on-request",
+      approvals_reviewer: "user",
+      sandbox_mode: "workspace-write",
+      sandbox_workspace_write: {
+        writable_roots: [],
+        network_access: false,
+        exclude_tmpdir_env_var: false,
+        exclude_slash_tmp: false,
+      },
+    };
+    server.threadAccess = {
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandbox: { type: "dangerFullAccess" },
+    };
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      {
+        executable: "codex",
+        cwd: "/workspace",
+        detectedVersion: "0.147.0",
+      },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      accessMode: "full-access",
+    });
+    await client.setAccessMode("inherit");
+    await client.prompt("Use my configured permissions");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: {
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+          writableRoots: [],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+      },
+    });
   });
 
   it("keeps plans, terminal input, and child activity after sparse completion", async () => {

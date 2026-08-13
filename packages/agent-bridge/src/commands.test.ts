@@ -129,6 +129,28 @@ describe("agent slash commands", () => {
       type: "set_auto_compaction",
       enabled: false,
     });
+    expect(
+      normalizeAgentSessionCommand(
+        { type: "prompt", message: "/plan" },
+        {
+          collaborationMode: "default",
+          collaborationModes: ["default", "plan"],
+        },
+      ),
+    ).toEqual({ type: "set_collaboration_mode", mode: "plan" });
+    expect(
+      normalizeAgentSessionCommand(
+        { type: "prompt", message: "/fast" },
+        { fastModeAvailable: true, fastModeEnabled: false },
+      ),
+    ).toEqual({ type: "set_fast_mode", enabled: true });
+  });
+
+  it("only intercepts provider modes when the runtime advertises them", () => {
+    const plan = { type: "prompt" as const, message: "/plan" };
+    const fast = { type: "prompt" as const, message: "/fast" };
+    expect(normalizeAgentSessionCommand(plan, {})).toBe(plan);
+    expect(normalizeAgentSessionCommand(fast, {})).toBe(fast);
   });
 
   it("leaves Pi-discovered commands on the prompt path", () => {

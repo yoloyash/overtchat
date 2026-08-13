@@ -104,6 +104,24 @@ export function normalizeAgentSessionCommand(
   if (!invocation) return command;
 
   switch (invocation.name) {
+    case "plan": {
+      const modes = Array.isArray(state.collaborationModes)
+        ? state.collaborationModes
+        : [];
+      if (!modes.includes("default") || !modes.includes("plan")) return command;
+      if (invocation.arguments) throw new Error("Usage: /plan");
+      return {
+        type: "set_collaboration_mode",
+        mode: state.collaborationMode === "plan" ? "default" : "plan",
+      };
+    }
+    case "fast":
+      if (state.fastModeAvailable !== true) return command;
+      if (invocation.arguments) throw new Error("Usage: /fast");
+      return {
+        type: "set_fast_mode",
+        enabled: state.fastModeEnabled !== true,
+      };
     case "compact":
       return compactCommand(invocation.arguments);
     case "autocompact":
