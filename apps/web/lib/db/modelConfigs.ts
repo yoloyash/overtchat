@@ -44,6 +44,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     providerOptions: row.providerOptions,
     toolCallingEnabled: row.toolCallingEnabled,
     enabled: row.enabled,
+    taskModel: row.taskModel,
     sortOrder: row.sortOrder,
   };
 }
@@ -64,6 +65,54 @@ export async function getModelConfig(
     .where(eq(modelConfigs.id, id))
     .limit(1);
   return row ?? null;
+}
+
+export function getTaskModelConfig(): ModelConfigRow | null {
+  return (
+    db
+      .select()
+      .from(modelConfigs)
+      .where(eq(modelConfigs.taskModel, true))
+      .limit(1)
+      .get() ?? null
+  );
+}
+
+export type SetTaskModelResult =
+  | { status: "updated"; modelConfig: ModelConfigRow | null }
+  | { status: "not_found" };
+
+export function setTaskModelConfig(
+  id: string | null,
+): SetTaskModelResult {
+  return db.transaction((tx) => {
+    const target = id
+      ? tx
+          .select()
+          .from(modelConfigs)
+          .where(eq(modelConfigs.id, id))
+          .limit(1)
+          .get()
+      : null;
+    if (id && !target) return { status: "not_found" };
+
+    tx.update(modelConfigs)
+      .set({ taskModel: false, updatedAt: new Date() })
+      .where(eq(modelConfigs.taskModel, true))
+      .run();
+
+    if (!target) return { status: "updated", modelConfig: null };
+
+    const updated = tx
+      .update(modelConfigs)
+      .set({ taskModel: true, updatedAt: new Date() })
+      .where(eq(modelConfigs.id, target.id))
+      .returning()
+      .get();
+    return updated
+      ? { status: "updated", modelConfig: updated }
+      : { status: "not_found" };
+  });
 }
 
 export async function createModelConfig(

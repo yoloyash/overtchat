@@ -33,7 +33,10 @@ import {
   type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import {
+  getModelConfig,
+  getTaskModelConfig,
+} from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
@@ -293,10 +296,11 @@ async function handlePost(req: Request): Promise<Response> {
       messageId === undefined &&
       userMessageCount === 1
     ) {
+      const titleModelConfig = getTaskModelConfig() ?? modelConfig;
       titlePromise = generateChatTitle({
         chatId,
         userId,
-        modelConfig,
+        modelConfig: titleModelConfig,
         userParts: last.parts,
       });
     }

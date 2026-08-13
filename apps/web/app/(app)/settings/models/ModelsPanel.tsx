@@ -6,6 +6,14 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
@@ -15,19 +23,25 @@ import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import {
   useAdminModelConfigs,
   useDeleteModelConfig,
+  useSetTaskModel,
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { cn } from "@/lib/utils";
 import {
   SettingsNotice,
   SettingsPageHeader,
+  SettingsRow,
+  SettingsSection,
 } from "../_components/SettingsRows";
 import { HealthBadge } from "./HealthBadge";
 import { motionClasses } from "@/lib/motion";
 
+const ACTIVE_CHAT_MODEL = "__active-chat-model__";
+
 export function ModelsPanel() {
   const { data: models = [] } = useAdminModelConfigs();
   const deleteMut = useDeleteModelConfig();
+  const taskModelMut = useSetTaskModel();
   const updateMut = useUpdateModelConfig();
 
   const [query, setQuery] = useState("");
@@ -36,6 +50,7 @@ export function ModelsPanel() {
   );
   const [deleteError, setDeleteError] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const taskModel = models.find((model) => model.taskModel) ?? null;
 
   const filteredModels = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -50,6 +65,7 @@ export function ModelsPanel() {
         host,
         provider.label,
         m.enabled ? "enabled" : "disabled",
+        m.taskModel ? "task" : "",
       ]
         .join(" ")
         .toLowerCase()
@@ -107,11 +123,25 @@ export function ModelsPanel() {
     }
   }
 
+  async function selectTaskModel(value: string | null) {
+    if (!value) return;
+    const modelConfigId = value === ACTIVE_CHAT_MODEL ? null : value;
+    if (modelConfigId === (taskModel?.id ?? null)) return;
+    try {
+      await taskModelMut.mutateAsync(modelConfigId);
+    } catch (err) {
+      toast.error({
+        title: "Failed to update task model",
+        description: getErrorMessage(err, "The task model was not changed."),
+      });
+    }
+  }
+
   return (
     <div className="@container max-w-4xl space-y-6">
       <SettingsPageHeader
         title="Models"
-        description="Manage the models available in chat."
+        description="Manage models used in chat and background tasks."
         action={
           models.length > 0 ? (
             <Button render={<Link href="/settings/models/new" />} size="sm">
@@ -120,6 +150,57 @@ export function ModelsPanel() {
           ) : undefined
         }
       />
+
+      {models.length > 0 && (
+        <SettingsSection
+          title="Background tasks"
+          description="Choose how lightweight model work is handled across this server."
+        >
+          <SettingsRow
+            title="Task model"
+            description="Used to generate chat titles. A fast, inexpensive, non-reasoning model works best."
+            align="center"
+            controlAlign="end"
+          >
+            <Select
+              value={taskModel?.id ?? ACTIVE_CHAT_MODEL}
+              onValueChange={(value) => void selectTaskModel(value)}
+              disabled={taskModelMut.isPending}
+            >
+              <SelectTrigger
+                aria-label="Task model"
+                className="w-full @2xl:w-72"
+              >
+                <SelectValue>
+                  {taskModel ? taskModel.label : "Same as chat model"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ACTIVE_CHAT_MODEL}>
+                  Same as chat model
+                </SelectItem>
+                <SelectSeparator />
+                {models.map((model) => {
+                  const provider = getProvider(model.providerId);
+                  const iconId =
+                    modelIconForModel(model.model) ?? provider.iconId;
+                  return (
+                    <SelectItem key={model.id} value={model.id}>
+                      <ModelBrandIcon iconId={iconId} className="size-4" />
+                      <span>{model.label}</span>
+                      {!model.enabled && (
+                        <span className="text-xs text-muted-foreground">
+                          Not in chat
+                        </span>
+                      )}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsSection>
+      )}
 
       {models.length > 0 && (
         <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-center @2xl:justify-between">
@@ -180,7 +261,15 @@ export function ModelsPanel() {
                       <span className="min-w-0 truncate text-sm font-medium text-foreground">
                         {m.label}
                       </span>
-                      <HealthBadge id={m.id} enabled={m.enabled} />
+                      {m.taskModel && (
+                        <span className="rounded-full border bg-accent/50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                          Task
+                        </span>
+                      )}
+                      <HealthBadge
+                        id={m.id}
+                        enabled={m.enabled || m.taskModel}
+                      />
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <span>{provider.label}</span>
@@ -275,6 +364,8 @@ export function ModelsPanel() {
                 {pendingDelete?.label}
               </span>{" "}
               will be removed from chat. Existing chats keep their messages.
+              {pendingDelete?.taskModel &&
+                " Background tasks will return to using the active chat model."}
             </AlertDialog.Description>
             {deleteError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">

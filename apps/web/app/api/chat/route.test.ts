@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     getChatMessage: vi.fn(),
     inlineUploads: vi.fn(),
     getModelConfig: vi.fn(),
+    getTaskModelConfig: vi.fn(),
     getProject: vi.fn(),
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
@@ -103,6 +104,7 @@ vi.mock("@/lib/db/chatTurns", () => ({
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
+  getTaskModelConfig: mocks.getTaskModelConfig,
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
 vi.mock("@/lib/title", () => ({
@@ -204,6 +206,7 @@ describe("chat route setup boundary", () => {
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
+    mocks.getTaskModelConfig.mockReturnValue(null);
     mocks.getChat.mockResolvedValue(null);
     mocks.getProject.mockResolvedValue(null);
     mocks.getChatMessage.mockResolvedValue(null);
@@ -759,11 +762,31 @@ describe("chat route setup boundary", () => {
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user",
+        modelConfig,
         userParts: messages[0].parts,
       }),
     );
     expect(messages).toEqual(originalMessages);
     expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
+  });
+
+  it("uses a dedicated task model for title generation even when hidden from chat", async () => {
+    const taskModelConfig = {
+      ...modelConfig,
+      id: "task-model",
+      label: "Fast task model",
+      model: "fast-model",
+      enabled: false,
+      taskModel: true,
+    };
+    mocks.getTaskModelConfig.mockReturnValue(taskModelConfig);
+
+    await POST(request());
+
+    expect(mocks.getTaskModelConfig).toHaveBeenCalledOnce();
+    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+      expect.objectContaining({ modelConfig: taskModelConfig }),
+    );
   });
 
   it("emits provider cache token details in finish metadata", async () => {

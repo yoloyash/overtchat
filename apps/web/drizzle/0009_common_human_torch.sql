@@ -1,0 +1,2 @@
+ALTER TABLE `model_configs` ADD `task_model` integer DEFAULT false NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `model_configs_taskModel_idx` ON `model_configs` (`task_model`) WHERE "model_configs"."task_model" = true;

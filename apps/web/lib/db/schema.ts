@@ -574,38 +574,49 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
   }),
 }));
 
-export const modelConfigs = sqliteTable("model_configs", {
-  id: text("id").primaryKey(),
-  label: text("label").notNull(),
-  providerId: text("provider_id", { enum: PROVIDER_IDS })
-    .default("custom")
-    .notNull(),
-  apiFormat: text("api_format", { enum: API_FORMAT_IDS })
-    .default("openai-chat")
-    .notNull(),
-  baseUrl: text("base_url").notNull(),
-  apiKey: text("api_key"),
-  model: text("model").notNull(),
-  pricing: text("pricing", { mode: "json" }).$type<ModelPricing>(),
-  contextWindow: integer("context_window"),
-  discoveredContextWindow: integer("discovered_context_window"),
-  discoveredCapabilities: text("discovered_capabilities", {
-    mode: "json",
-  }).$type<ModelCapabilities>(),
-  systemPrompt: text("system_prompt"),
-  providerOptions: text("provider_options", { mode: "json" }).$type<
-    Record<string, unknown>
-  >(),
-  toolCallingEnabled: integer("tool_calling_enabled", { mode: "boolean" })
-    .default(true)
-    .notNull(),
-  enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
-  sortOrder: integer("sort_order").default(0).notNull(),
-  createdAt: integer("created_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
-    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+export const modelConfigs = sqliteTable(
+  "model_configs",
+  {
+    id: text("id").primaryKey(),
+    label: text("label").notNull(),
+    providerId: text("provider_id", { enum: PROVIDER_IDS })
+      .default("custom")
+      .notNull(),
+    apiFormat: text("api_format", { enum: API_FORMAT_IDS })
+      .default("openai-chat")
+      .notNull(),
+    baseUrl: text("base_url").notNull(),
+    apiKey: text("api_key"),
+    model: text("model").notNull(),
+    pricing: text("pricing", { mode: "json" }).$type<ModelPricing>(),
+    contextWindow: integer("context_window"),
+    discoveredContextWindow: integer("discovered_context_window"),
+    discoveredCapabilities: text("discovered_capabilities", {
+      mode: "json",
+    }).$type<ModelCapabilities>(),
+    systemPrompt: text("system_prompt"),
+    providerOptions: text("provider_options", { mode: "json" }).$type<
+      Record<string, unknown>
+    >(),
+    toolCallingEnabled: integer("tool_calling_enabled", { mode: "boolean" })
+      .default(true)
+      .notNull(),
+    enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
+    taskModel: integer("task_model", { mode: "boolean" })
+      .default(false)
+      .notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("model_configs_taskModel_idx")
+      .on(table.taskModel)
+      .where(sql`${table.taskModel} = true`),
+  ],
+);
