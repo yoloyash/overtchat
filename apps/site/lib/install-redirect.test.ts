@@ -296,7 +296,7 @@ describe("Host Connector installer redirect", () => {
     } = createUpgradeFixture("stable");
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Host Connector upgraded to 0.3.1");
+    expect(result.stdout).toContain("Host Connector upgraded to 0.3.2");
     expect(readFileSync(installPath, "utf8")).toBe(newConnector);
     expect(existsSync(`${installPath}.previous`)).toBe(false);
     expect(readFileSync(systemctlCalls, "utf8")).toContain(
