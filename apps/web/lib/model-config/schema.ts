@@ -47,6 +47,7 @@ export interface AdminModelConfig {
   providerOptions: Record<string, unknown> | null;
   toolCallingEnabled: boolean;
   enabled: boolean;
+  taskModel: boolean;
   sortOrder: number;
 }
 

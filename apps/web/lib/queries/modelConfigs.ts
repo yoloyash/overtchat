@@ -89,6 +89,34 @@ export function useDeleteModelConfig() {
   });
 }
 
+export function useSetTaskModel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (modelConfigId: string | null) => {
+      const r = await fetch("/api/model-configs/task-model", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelConfigId }),
+      });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+    },
+    onSuccess: (_data, modelConfigId) => {
+      qc.setQueryData<AdminModelConfig[]>(
+        modelConfigKeys.adminList(),
+        (current) =>
+          current?.map((model) => ({
+            ...model,
+            taskModel: model.id === modelConfigId,
+          })),
+      );
+      invalidateAll(qc);
+    },
+  });
+}
+
 export type ModelHealth =
   | { ok: true; elapsedMs: number }
   | { ok: false; error: string; elapsedMs: number };
