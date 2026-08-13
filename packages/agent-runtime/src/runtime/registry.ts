@@ -484,6 +484,12 @@ export class AgentSessionRuntime {
           ...(typeof event.fastModeAvailable === "boolean"
             ? { fastModeAvailable: event.fastModeAvailable }
             : {}),
+          ...(typeof event.accessMode === "string"
+            ? { accessMode: event.accessMode }
+            : {}),
+          ...(Array.isArray(event.accessModes)
+            ? { accessModes: event.accessModes }
+            : {}),
           ...(typeof event.goalsSupported === "boolean"
             ? { goalsSupported: event.goalsSupported }
             : {}),
@@ -710,6 +716,18 @@ export class AgentSessionRuntime {
           );
         }
         return this.client.setFastMode(command.enabled).then(async (value) => {
+          await this.refresh();
+          return value;
+        });
+      case "set_access_mode":
+        if (!this.client.setAccessMode) {
+          return Promise.reject(
+            new Error(
+              `${agentProviderMetadata(this.provider).label} does not provide access modes.`,
+            ),
+          );
+        }
+        return this.client.setAccessMode(command.mode).then(async (value) => {
           await this.refresh();
           return value;
         });

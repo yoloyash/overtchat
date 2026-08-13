@@ -102,6 +102,8 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       collaborationModes: ["default", "plan"],
       fastModeEnabled: false,
       fastModeAvailable: true,
+      accessMode: "inherit",
+      accessModes: ["inherit", "default", "auto-review", "full-access"],
       goalsSupported: true,
       goal: {
         objective: "Finish Codex parity",
@@ -274,7 +276,12 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
     commands: [
       {
         name: "plan",
-        description: "Toggle Plan mode",
+        description: "Enable Plan mode",
+        source: "builtin",
+      },
+      {
+        name: "fast",
+        description: "Enable Fast mode",
         source: "builtin",
       },
     ],
@@ -477,6 +484,9 @@ test("shows durable turn activity without changing completed tool status", async
         }
         if (command.type === "set_fast_mode") {
           snapshot.state.fastModeEnabled = command.enabled;
+        }
+        if (command.type === "set_access_mode") {
+          snapshot.state.accessMode = command.mode;
         }
         if (command.type === "update_goal") {
           if (command.action === "clear") {
@@ -715,11 +725,42 @@ test("shows durable turn activity without changing completed tool status", async
     agentComposer.getByRole("button", {
       name: "Model and effort: GPT-5.6, High",
     }),
-  ).toBeDisabled();
+  ).toBeEnabled();
   await expect(agentComposer.getByRole("button", { name: "Plan mode" })).toHaveCount(0);
   await expect(
     agentComposer.getByRole("button", { name: "Fast", exact: true }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
+  const permissionsControl = agentComposer.getByRole("button", {
+    name: "Permissions: Codex default",
+  });
+  await expect(permissionsControl).toBeEnabled();
+  await permissionsControl.click();
+  await page
+    .getByRole("menu", { name: "Permissions" })
+    .getByRole("menuitem", { name: /Default permissions/u })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_access_mode",
+    mode: "default",
+  });
+  const defaultPermissionsControl = agentComposer.getByRole("button", {
+    name: "Permissions: Default permissions",
+  });
+  await defaultPermissionsControl.click();
+  await page
+    .getByRole("menu", { name: "Permissions" })
+    .getByRole("menuitem", { name: /Full access/u })
+    .click();
+  const fullAccessDialog = page.getByRole("alertdialog", {
+    name: "Enable Full access?",
+  });
+  await fullAccessDialog
+    .getByRole("button", { name: "Enable Full access" })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_access_mode",
+    mode: "full-access",
+  });
   await expect(
     agentComposer.getByRole("button", {
       name: /Usage: 42% context used/u,
@@ -1148,8 +1189,8 @@ test("shows durable turn activity without changing completed tool status", async
   ).toBeVisible();
   await page.keyboard.press("Enter");
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "prompt",
-    message: "/plan",
+    type: "set_collaboration_mode",
+    mode: "plan",
   });
   await page.evaluate((model) => {
     const controls = (
@@ -1171,6 +1212,8 @@ test("shows durable turn activity without changing completed tool status", async
         collaborationModes: ["default", "plan"],
         fastModeEnabled: false,
         fastModeAvailable: true,
+        accessMode: "default",
+        accessModes: ["inherit", "default", "auto-review", "full-access"],
       },
     });
   }, imageModel);
@@ -1222,13 +1265,31 @@ test("shows durable turn activity without changing completed tool status", async
     provider: "codex",
     modelId: "gpt-5.6-mini",
   });
-  await agentComposer
-    .getByRole("button", { name: "Fast", exact: true })
-    .click();
+  await expect(
+    agentComposer.getByRole("button", { name: "Fast", exact: true }),
+  ).toHaveCount(0);
+  await composer.fill("/fast");
+  await expect(
+    page
+      .getByRole("listbox", { name: "Codex commands" })
+      .getByRole("option", { name: /Enable Fast mode/u }),
+  ).toBeVisible();
+  await page.keyboard.press("Enter");
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
     type: "set_fast_mode",
     enabled: true,
   });
+  const fastModeControl = agentComposer.getByRole("button", {
+    name: "Fast",
+    exact: true,
+  });
+  await expect(fastModeControl).toBeVisible();
+  await fastModeControl.click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "set_fast_mode",
+    enabled: false,
+  });
+  await expect(fastModeControl).toHaveCount(0);
   await page.getByRole("button", { name: "Pause goal" }).click();
   await expect(page.getByRole("button", { name: "Resume goal" })).toBeVisible();
   await page.getByRole("button", { name: "Resume goal" }).click();

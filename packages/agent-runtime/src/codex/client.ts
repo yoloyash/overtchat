@@ -1,4 +1,5 @@
 import type {
+  AgentAccessMode,
   AgentCollaborationMode,
   AgentGoal,
   AgentGoalStatus,
@@ -67,6 +68,7 @@ const MAX_SUBAGENT_HISTORY_THREADS = 100;
 const MAX_PENDING_SUBAGENT_THREADS = 32;
 const MAX_PENDING_SUBAGENT_NOTIFICATIONS = 50;
 const CODEX_GOALS_MIN_VERSION = [0, 128, 0] as const;
+const CODEX_AUTO_REVIEW_MIN_VERSION = [0, 115, 0] as const;
 
 type CodexCollaborationPreset = {
   name: string;
@@ -298,14 +300,70 @@ function codexModelSupportsFastMode(modelId: string): boolean {
 }
 
 function codexVersionSupportsGoals(version: string | null | undefined): boolean {
+  return codexVersionAtLeast(version, CODEX_GOALS_MIN_VERSION);
+}
+
+function codexVersionAtLeast(
+  version: string | null | undefined,
+  minimum: readonly [number, number, number],
+): boolean {
   const match = version?.match(/(\d+)\.(\d+)\.(\d+)/u);
   if (!match) return false;
   const parsed = [Number(match[1]), Number(match[2]), Number(match[3])];
-  for (let index = 0; index < CODEX_GOALS_MIN_VERSION.length; index += 1) {
-    if (parsed[index] > CODEX_GOALS_MIN_VERSION[index]) return true;
-    if (parsed[index] < CODEX_GOALS_MIN_VERSION[index]) return false;
+  for (let index = 0; index < minimum.length; index += 1) {
+    if (parsed[index] > minimum[index]) return true;
+    if (parsed[index] < minimum[index]) return false;
   }
   return true;
+}
+
+function accessModeFromThreadConfiguration(
+  threadResponse: UnknownRecord,
+): AgentAccessMode {
+  const approvalPolicy = stringOf(threadResponse, "approvalPolicy");
+  const approvalsReviewer = stringOf(threadResponse, "approvalsReviewer");
+  const sandbox = recordOf(threadResponse.sandbox);
+  const sandboxType = stringOf(sandbox, "type");
+  if (approvalPolicy === "never" && sandboxType === "dangerFullAccess") {
+    return "full-access";
+  }
+  if (approvalPolicy === "on-request" && sandboxType === "workspaceWrite") {
+    return approvalsReviewer === "auto_review" ? "auto-review" : "default";
+  }
+  return "inherit";
+}
+
+function accessOverridesFromConfig(value: unknown): Record<string, unknown> | null {
+  const config = recordOf(recordOf(value)?.config);
+  if (!config) return null;
+  const approvalPolicy = config.approval_policy;
+  const approvalsReviewer = stringOf(config, "approvals_reviewer");
+  const sandboxMode = stringOf(config, "sandbox_mode");
+  const workspaceWrite = recordOf(config.sandbox_workspace_write);
+  const sandboxPolicy =
+    sandboxMode === "danger-full-access"
+      ? { type: "dangerFullAccess" }
+      : sandboxMode === "read-only"
+        ? { type: "readOnly", networkAccess: false }
+        : sandboxMode === "workspace-write"
+          ? {
+              type: "workspaceWrite",
+              writableRoots: Array.isArray(workspaceWrite?.writable_roots)
+                ? workspaceWrite.writable_roots
+                : [],
+              networkAccess: workspaceWrite?.network_access === true,
+              excludeTmpdirEnvVar:
+                workspaceWrite?.exclude_tmpdir_env_var === true,
+              excludeSlashTmp: workspaceWrite?.exclude_slash_tmp === true,
+            }
+          : null;
+  return {
+    ...(approvalPolicy !== undefined
+      ? { approvalPolicy }
+      : {}),
+    ...(approvalsReviewer ? { approvalsReviewer } : {}),
+    ...(sandboxPolicy ? { sandboxPolicy } : {}),
+  };
 }
 
 function parseGoal(value: unknown): AgentGoal | null {
@@ -863,6 +921,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private collaborationModes: CodexCollaborationPreset[] = [];
   private selectedCollaborationMode: AgentCollaborationMode = "default";
   private fastModeEnabled = false;
+  private selectedAccessMode: AgentAccessMode = "inherit";
+  private inheritedAccessOverrides: Record<string, unknown> = {};
+  private configuredAccessOverrides: Record<string, unknown> | null = null;
   private goalsSupported = false;
   private goal: AgentGoal | null = null;
   private modelResponse: unknown = { data: [] };
@@ -915,6 +976,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       collaborationModes: this.availableCollaborationModes(),
       fastModeEnabled: this.fastModeEnabled,
       fastModeAvailable: codexModelSupportsFastMode(this.selectedModel),
+      accessMode: this.selectedAccessMode,
+      accessModes: this.availableAccessModes(),
       goalsSupported: this.goalsSupported,
       goal: this.goal,
       ...(this.readOnly
@@ -984,6 +1047,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         ...(this.resolvedCollaborationMode()
           ? { collaborationMode: this.resolvedCollaborationMode() }
           : {}),
+        ...this.accessOverrides(),
       });
       const turn = parseCodexTurn(response.turn);
       this.rememberUserInput(turn.id, input);
@@ -1104,6 +1168,21 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.fastModeEnabled = enabled;
     this.emitConfig();
     return { fastModeEnabled: enabled };
+  }
+
+  async setAccessMode(mode: AgentAccessMode): Promise<unknown> {
+    await this.readyPromise;
+    this.assertInteractive();
+    if (!this.availableAccessModes().includes(mode)) {
+      throw new Error(
+        mode === "auto-review"
+          ? "This Codex installation does not provide Auto-review."
+          : `Codex access mode ${mode} is not available.`,
+      );
+    }
+    this.selectedAccessMode = mode;
+    this.emitConfig();
+    return { accessMode: mode };
   }
 
   async updateGoal(
@@ -1408,6 +1487,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private async openThread(): Promise<void> {
     await this.server.ready();
     const modelPromise = this.server.request("model/list", { limit: 200 });
+    const configPromise = this.server.request("config/read", {}).catch(() => null);
     const collaborationModePromise = this.server
       .request("collaborationMode/list", {})
       .catch(() => null);
@@ -1444,6 +1524,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       hydratedThread = threadResponse;
     }
     this.modelResponse = await modelPromise;
+    this.configuredAccessOverrides = accessOverridesFromConfig(
+      await configPromise,
+    );
     this.loadCollaborationModes(await collaborationModePromise);
     this.hydrateThread(hydratedThread);
     this.applyThreadConfiguration(threadResponse);
@@ -1467,6 +1550,28 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   private applyThreadConfiguration(threadResponse: UnknownRecord): void {
+    const inheritedSandbox = recordOf(threadResponse.sandbox);
+    const effectiveAccessOverrides = {
+      ...(threadResponse.approvalPolicy !== undefined
+        ? { approvalPolicy: threadResponse.approvalPolicy }
+        : {}),
+      ...(typeof threadResponse.approvalsReviewer === "string"
+        ? { approvalsReviewer: threadResponse.approvalsReviewer }
+        : {}),
+      ...(inheritedSandbox ? { sandboxPolicy: inheritedSandbox } : {}),
+    };
+    this.inheritedAccessOverrides =
+      this.configuredAccessOverrides ?? effectiveAccessOverrides;
+    const inheritedAccessMode = accessModeFromThreadConfiguration(threadResponse);
+    const effectiveMatchesConfigured =
+      this.configuredAccessOverrides !== null &&
+      JSON.stringify(effectiveAccessOverrides) ===
+        JSON.stringify(this.configuredAccessOverrides);
+    this.selectedAccessMode = effectiveMatchesConfigured
+      ? "inherit"
+      : this.availableAccessModes().includes(inheritedAccessMode)
+      ? inheritedAccessMode
+      : "inherit";
     this.selectedModel =
       stringOf(threadResponse, "model") ??
       parseCodexModels(this.modelResponse)[0]?.id ??
@@ -2493,7 +2598,21 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         ? [
             {
               name: "plan",
-              description: "Toggle Plan mode",
+              description:
+                this.selectedCollaborationMode === "plan"
+                  ? "Disable Plan mode"
+                  : "Enable Plan mode",
+              source: "builtin" as const,
+            },
+          ]
+        : []),
+      ...(codexModelSupportsFastMode(this.selectedModel)
+        ? [
+            {
+              name: "fast",
+              description: this.fastModeEnabled
+                ? "Disable Fast mode"
+                : "Enable Fast mode",
               source: "builtin" as const,
             },
           ]
@@ -2747,12 +2866,53 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       collaborationModes: this.availableCollaborationModes(),
       fastModeEnabled: this.fastModeEnabled,
       fastModeAvailable: codexModelSupportsFastMode(this.selectedModel),
+      accessMode: this.selectedAccessMode,
+      accessModes: this.availableAccessModes(),
       goalsSupported: this.goalsSupported,
       goal: this.goal,
       ...(this.selectedThinking
         ? { thinkingLevel: this.selectedThinking }
         : {}),
     });
+  }
+
+  private availableAccessModes(): AgentAccessMode[] {
+    return [
+      "inherit",
+      "default",
+      ...(codexVersionAtLeast(
+        this.launch.detectedVersion,
+        CODEX_AUTO_REVIEW_MIN_VERSION,
+      )
+        ? (["auto-review"] as const)
+        : []),
+      "full-access",
+    ];
+  }
+
+  private accessOverrides(): Record<string, unknown> {
+    if (this.selectedAccessMode === "inherit") {
+      return this.inheritedAccessOverrides;
+    }
+    if (this.selectedAccessMode === "full-access") {
+      return {
+        approvalPolicy: "never",
+        approvalsReviewer: "user",
+        sandboxPolicy: { type: "dangerFullAccess" },
+      };
+    }
+    return {
+      approvalPolicy: "on-request",
+      approvalsReviewer:
+        this.selectedAccessMode === "auto-review" ? "auto_review" : "user",
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: [],
+        networkAccess: false,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      },
+    };
   }
 
   private emit(event: AgentRuntimeEvent): void {

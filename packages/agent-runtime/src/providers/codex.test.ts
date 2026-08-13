@@ -108,4 +108,28 @@ describe("codexProviderAdapter", () => {
       ),
     ).toThrow("does not provide Plan mode");
   });
+
+  it("toggles supported Fast mode out of band", () => {
+    expect(
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/fast" },
+        { fastModeAvailable: true, fastModeEnabled: false },
+      ),
+    ).toEqual({ type: "set_fast_mode", enabled: true });
+    expect(
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/fast" },
+        { fastModeAvailable: true, fastModeEnabled: true },
+      ),
+    ).toEqual({ type: "set_fast_mode", enabled: false });
+  });
+
+  it("rejects /fast when Fast mode is unavailable", () => {
+    expect(() =>
+      codexProviderAdapter.normalizeCommand(
+        { type: "prompt", message: "/fast" },
+        { fastModeAvailable: false },
+      ),
+    ).toThrow("does not provide Fast mode");
+  });
 });
