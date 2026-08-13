@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
+import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { getAuthClient } from "@/lib/auth/client";
 import { useChatSession } from "@/lib/chat/session";
 import { groupByDate, type DateBucket } from "@/lib/dateGroups";
@@ -668,16 +669,15 @@ function ChatRow({
   onDelete: (item: ChatListItem) => void;
 }) {
   const { colors, radii, fonts } = useTheme();
-  const anchorRef = useRef<View>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const menu = useMeasuredPopoverAnchor();
 
   return (
-    <View ref={anchorRef} collapsable={false}>
+    <View ref={menu.anchorRef} collapsable={false}>
       <Pressable
         onPress={() => onTap(item)}
         onLongPress={() => {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-          setMenuOpen(true);
+          menu.open();
         }}
         delayLongPress={300}
         style={({ pressed }) => [
@@ -707,9 +707,9 @@ function ChatRow({
         </Text>
       </Pressable>
       <ChatRowMenu
-        from={anchorRef}
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
+        from={menu.anchorRect}
+        visible={menu.visible}
+        onClose={menu.close}
         onSelect={(action) => {
           if (action === "rename") onRename(item);
           else if (action === "move") onMove(item);

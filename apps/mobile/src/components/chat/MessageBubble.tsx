@@ -4,6 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { buildSourceLookup } from "@/lib/chat/citations";
 import { groupMessageParts } from "@/lib/chat/parts";
 import { textOf } from "@/lib/chat/text";
@@ -38,8 +39,7 @@ export function MessageBubble({
 }) {
   const { colors, radii, fonts } = useTheme();
   const [copied, setCopied] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const anchorRef = useRef<View>(null);
+  const menu = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -77,11 +77,11 @@ export function MessageBubble({
     function openUserMenu() {
       if (actions.length === 0) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-      setMenuOpen(true);
+      menu.open();
     }
 
     return (
-      <View style={styles.userRow}>
+      <View ref={menu.anchorRef} collapsable={false} style={styles.userRow}>
         {fileParts.length > 0 && !editing ? (
           <View style={styles.attachmentsRow}>
             {fileParts.map((part, i) => (
@@ -93,7 +93,7 @@ export function MessageBubble({
             ))}
           </View>
         ) : null}
-        <View ref={anchorRef} collapsable={false}>
+        <View>
           {editing ? (
             <EditBubble
               initialText={text}
@@ -127,12 +127,12 @@ export function MessageBubble({
           ) : null}
         </View>
         <MessageMenu
-          from={anchorRef}
-          visible={menuOpen}
+          from={menu.anchorRect}
+          visible={menu.visible}
           actions={actions}
           placement="top"
           onSelect={onMenuSelect}
-          onClose={() => setMenuOpen(false)}
+          onClose={menu.close}
         />
       </View>
     );
@@ -152,11 +152,11 @@ export function MessageBubble({
   function openAssistantMenu() {
     if (assistantActions.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    setMenuOpen(true);
+    menu.open();
   }
 
   return (
-    <View ref={anchorRef} collapsable={false} style={styles.assistantRow}>
+    <View ref={menu.anchorRef} collapsable={false} style={styles.assistantRow}>
       <Pressable
         onLongPress={openAssistantMenu}
         delayLongPress={300}
@@ -208,12 +208,12 @@ export function MessageBubble({
         ) : null}
       </Pressable>
       <MessageMenu
-        from={anchorRef}
-        visible={menuOpen}
+        from={menu.anchorRect}
+        visible={menu.visible}
         actions={assistantActions}
         placement="bottom"
         onSelect={onAssistantMenuSelect}
-        onClose={() => setMenuOpen(false)}
+        onClose={menu.close}
       />
     </View>
   );

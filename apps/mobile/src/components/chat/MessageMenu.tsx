@@ -1,8 +1,10 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import type { Component, RefObject } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Popover, { PopoverPlacement } from "react-native-popover-view";
+import Popover, {
+  PopoverPlacement,
+  type Rect,
+} from "react-native-popover-view";
 import { useTheme } from "@/lib/theme";
 
 export type MessageAction = "copy" | "edit" | "regenerate";
@@ -24,7 +26,7 @@ export function MessageMenu({
   onSelect,
   onClose,
 }: {
-  from: RefObject<Component | null>;
+  from: Rect | null;
   visible: boolean;
   actions: MessageAction[];
   placement: "top" | "bottom";
@@ -35,7 +37,7 @@ export function MessageMenu({
 
   return (
     <Popover
-      from={from as RefObject<Component>}
+      from={from ?? undefined}
       isVisible={visible}
       onRequestClose={onClose}
       placement={
