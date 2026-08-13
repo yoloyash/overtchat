@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
   ArrowLeft,
@@ -9,12 +10,16 @@ import {
   ChevronDown,
   ChevronRight,
   ListTodo,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
   X,
   Zap,
 } from "lucide-react";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { Button } from "@/components/ui/button";
 import type {
+  AgentAccessMode,
   AgentCollaborationMode,
   AgentModel,
   AgentThinkingLevel,
@@ -33,11 +38,14 @@ export interface AgentComposerControlsProps {
   collaborationModes: AgentCollaborationMode[];
   fastModeEnabled: boolean;
   fastModeAvailable: boolean;
+  accessMode: AgentAccessMode;
+  accessModes: AgentAccessMode[];
   disabled: boolean;
   onSelectModel: (model: AgentModel) => void;
   onSelectThinking: (level: AgentThinkingLevel) => void;
   onSelectCollaborationMode: (mode: AgentCollaborationMode) => void;
   onToggleFastMode: (enabled: boolean) => void;
+  onSelectAccessMode: (mode: AgentAccessMode) => void;
   onMenuOpenChange?: (open: boolean) => void;
 }
 
@@ -53,8 +61,9 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
     (props.thinkingLevels.length > 1 && props.thinkingLevel !== null);
   const hasControls =
     hasModelOrEffort ||
+    props.accessModes.length > 0 ||
     props.collaborationMode === "plan" ||
-    props.fastModeAvailable;
+    props.fastModeEnabled;
 
   if (!hasControls) return null;
 
@@ -64,6 +73,7 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
       className="flex min-w-0 items-center gap-0.5"
     >
       {hasModelOrEffort && <ModelEffortControl {...props} />}
+      {props.accessModes.length > 0 && <AccessModeControl {...props} />}
       {props.collaborationMode === "plan" && (
         <PlanModeControl
           disabled={props.disabled}
@@ -71,23 +81,178 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
           onOpenChange={props.onMenuOpenChange}
         />
       )}
-      {props.fastModeAvailable && (
+      {props.fastModeEnabled && props.fastModeAvailable && (
         <Button
           type="button"
-          variant={props.fastModeEnabled ? "secondary" : "ghost"}
+          variant="secondary"
           size="sm"
           className="h-7 px-2"
           aria-pressed={props.fastModeEnabled}
           aria-label="Fast"
           title="Fast mode uses priority inference at higher usage"
           disabled={props.disabled}
-          onClick={() => props.onToggleFastMode(!props.fastModeEnabled)}
+          onClick={() => props.onToggleFastMode(false)}
         >
           <Zap className="size-3.5" />
           <span className="hidden @xl:inline">Fast</span>
         </Button>
       )}
     </div>
+  );
+}
+
+const accessModeMetadata: Record<
+  AgentAccessMode,
+  { label: string; description: string }
+> = {
+  inherit: {
+    label: "Codex default",
+    description: "Use the permissions from your Codex configuration",
+  },
+  default: {
+    label: "Default permissions",
+    description: "Workspace writes; ask before broader access",
+  },
+  "auto-review": {
+    label: "Auto-review",
+    description: "Codex reviews approval requests automatically",
+  },
+  "full-access": {
+    label: "Full access",
+    description: "No sandbox or approval prompts",
+  },
+};
+
+function AccessModeControl(props: AgentComposerControlsProps) {
+  const [fullAccessOpen, setFullAccessOpen] = useState(false);
+  const selected = accessModeMetadata[props.accessMode];
+  const dangerous = props.accessMode === "full-access";
+
+  function select(mode: AgentAccessMode) {
+    if (mode === props.accessMode) return;
+    if (mode === "full-access") {
+      setFullAccessOpen(true);
+      return;
+    }
+    props.onSelectAccessMode(mode);
+  }
+
+  return (
+    <>
+      <Menu.Root onOpenChange={props.onMenuOpenChange}>
+        <Menu.Trigger
+          render={
+            <Button
+              type="button"
+              variant={dangerous ? "destructive" : "ghost"}
+              size="sm"
+              className="h-7 min-w-0 max-w-40 gap-1.5 px-2"
+              aria-label={`Permissions: ${selected.label}`}
+              data-testid="agent-access-mode-trigger"
+              disabled={props.disabled}
+            />
+          }
+        >
+          {dangerous ? (
+            <ShieldAlert className="size-3.5" />
+          ) : props.accessMode === "inherit" ? (
+            <Shield className="size-3.5" />
+          ) : (
+            <ShieldCheck className="size-3.5" />
+          )}
+          <span className="hidden truncate @xl:inline">{selected.label}</span>
+          <ChevronDown className="hidden @xl:block" />
+        </Menu.Trigger>
+        <Menu.Portal>
+          <Menu.Positioner side="top" align="start" sideOffset={6}>
+            <Menu.Popup
+              aria-label="Permissions"
+              className={cn(
+                "z-50 w-80 max-w-[calc(100vw-1rem)] rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                motionClasses.popup,
+              )}
+            >
+              {props.accessModes.map((mode) => {
+                const metadata = accessModeMetadata[mode];
+                const isDangerous = mode === "full-access";
+                return (
+                  <Menu.Item
+                    key={mode}
+                    onClick={() => select(mode)}
+                    className={cn(
+                      choiceItemClassName,
+                      isDangerous &&
+                        "text-destructive data-[highlighted]:text-destructive",
+                    )}
+                  >
+                    {isDangerous ? (
+                      <ShieldAlert className="size-4 shrink-0" />
+                    ) : mode === "inherit" ? (
+                      <Shield className="size-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ShieldCheck className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium">{metadata.label}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {metadata.description}
+                      </span>
+                    </span>
+                    <span className="flex size-4 shrink-0 items-center justify-center">
+                      {mode === props.accessMode && (
+                        <Check className="size-3.5" />
+                      )}
+                    </span>
+                  </Menu.Item>
+                );
+              })}
+            </Menu.Popup>
+          </Menu.Positioner>
+        </Menu.Portal>
+      </Menu.Root>
+
+      <AlertDialog.Root open={fullAccessOpen} onOpenChange={setFullAccessOpen}>
+        <AlertDialog.Portal>
+          <AlertDialog.Backdrop
+            className={cn(
+              "fixed inset-0 z-50 bg-black/40",
+              motionClasses.overlay,
+            )}
+          />
+          <AlertDialog.Popup
+            className={cn(
+              "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-5 text-card-foreground shadow-lg outline-none",
+              motionClasses.dialog,
+            )}
+          >
+            <AlertDialog.Title className="text-base font-semibold tracking-tight">
+              Enable Full access?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+              Codex will be able to run commands and modify files without
+              sandbox restrictions or approval prompts.
+            </AlertDialog.Description>
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Close
+                render={<Button variant="ghost" size="sm" />}
+              >
+                Cancel
+              </AlertDialog.Close>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  setFullAccessOpen(false);
+                  props.onSelectAccessMode("full-access");
+                }}
+              >
+                Enable Full access
+              </Button>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </>
   );
 }
 

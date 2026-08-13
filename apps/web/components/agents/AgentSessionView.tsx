@@ -17,6 +17,7 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import { AGENT_GOAL_STATUSES } from "@overtchat/agent-bridge";
 import type {
+  AgentAccessMode,
   AgentCollaborationMode,
   AgentGoal,
   AgentPromptImage,
@@ -95,6 +96,27 @@ function currentCollaborationMode(
   snapshot: AgentRuntimeSnapshot,
 ): AgentCollaborationMode {
   return snapshot.state.collaborationMode === "plan" ? "plan" : "default";
+}
+
+function accessModes(snapshot: AgentRuntimeSnapshot): AgentAccessMode[] {
+  const value = snapshot.state.accessModes;
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (mode): mode is AgentAccessMode =>
+      mode === "inherit" ||
+      mode === "default" ||
+      mode === "auto-review" ||
+      mode === "full-access",
+  );
+}
+
+function currentAccessMode(snapshot: AgentRuntimeSnapshot): AgentAccessMode {
+  const mode = snapshot.state.accessMode;
+  return mode === "default" ||
+    mode === "auto-review" ||
+    mode === "full-access"
+    ? mode
+    : "inherit";
 }
 
 function currentGoal(snapshot: AgentRuntimeSnapshot): AgentGoal | null {
@@ -304,6 +326,8 @@ export function AgentSessionView({
   const collaborationMode = currentCollaborationMode(snapshot);
   const fastModeEnabled = snapshot.state.fastModeEnabled === true;
   const fastModeAvailable = snapshot.state.fastModeAvailable === true;
+  const availableAccessModes = accessModes(snapshot);
+  const accessMode = currentAccessMode(snapshot);
   const goal = currentGoal(snapshot);
   const runtimeError =
     snapshot.error ??
@@ -328,8 +352,7 @@ export function AgentSessionView({
         : null;
   const composerDisabled =
     exited || Boolean(readOnly) || Boolean(snapshot.pendingInteraction);
-  const controlsDisabled =
-    composerDisabled || running || command.isPending;
+  const controlsDisabled = composerDisabled || command.isPending;
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -461,6 +484,8 @@ export function AgentSessionView({
               collaborationModes: availableCollaborationModes,
               fastModeEnabled,
               fastModeAvailable,
+              accessMode,
+              accessModes: availableAccessModes,
               disabled: controlsDisabled,
               onSelectModel: (selected) =>
                 void run({
@@ -474,6 +499,8 @@ export function AgentSessionView({
                 void run({ type: "set_collaboration_mode", mode }),
               onToggleFastMode: (enabled) =>
                 void run({ type: "set_fast_mode", enabled }),
+              onSelectAccessMode: (mode) =>
+                void run({ type: "set_access_mode", mode }),
               onMenuOpenChange: setComposerMenuOpen,
             }}
             contextUsage={snapshot.stats.contextUsage}

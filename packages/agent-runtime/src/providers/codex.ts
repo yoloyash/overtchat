@@ -102,6 +102,23 @@ function normalizeCommand(
   if (
     command.type === "prompt" &&
     !command.images?.length &&
+    /^\/fast(?:[^\S\n]+([^\n]*))?$/iu.test(command.message.trim())
+  ) {
+    const argumentsText =
+      /^\/fast(?:[^\S\n]+([^\n]*))?$/iu.exec(command.message.trim())?.[1]?.trim() ??
+      "";
+    if (argumentsText) throw new Error("Usage: /fast");
+    if (state.fastModeAvailable !== true) {
+      throw new Error("This Codex model does not provide Fast mode.");
+    }
+    return {
+      type: "set_fast_mode",
+      enabled: state.fastModeEnabled !== true,
+    };
+  }
+  if (
+    command.type === "prompt" &&
+    !command.images?.length &&
     /^\/usage(?:\s*)$/iu.test(command.message)
   ) {
     return { type: "show_usage" };

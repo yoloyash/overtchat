@@ -414,6 +414,7 @@ export function useAgentSessionCommand(id: string) {
         command.type === "set_thinking_level" ||
         command.type === "set_collaboration_mode" ||
         command.type === "set_fast_mode" ||
+        command.type === "set_access_mode" ||
         command.type === "update_goal" ||
         command.type === "implement_plan" ||
         command.type === "compact" ||
