@@ -86,7 +86,7 @@ async function startHostConnector(
   );
   await page.keyboard.press("Escape");
   const command = await page.getByLabel("Host Connector install command").textContent();
-  expect(command).toContain("https://overtchat.com/install/connector/0.3.1");
+  expect(command).toContain("https://overtchat.com/install/connector/0.3.2");
   expect(command).toContain("--server 'http://127.0.0.1:4718'");
   const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
   if (!pairCode) throw new Error("The Host Connector pairing code was missing.");
@@ -281,7 +281,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
   page,
 }) => {
   const upgradeCommand =
-    "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.1 | sh -s -- --upgrade";
+    "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.2 | sh -s -- --upgrade";
   await page.route("**/api/host-connectors", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -293,7 +293,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
             version: "0.2.0",
             lastSeenAt: Date.now(),
             online: true,
-            upgrade: { version: "0.3.1", command: upgradeCommand },
+            upgrade: { version: "0.3.2", command: upgradeCommand },
           },
         ],
       }),
@@ -309,7 +309,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
   await page.goto("/settings/connections");
 
   await expect(
-    page.getByText("Host Connector 0.3.1 is available", { exact: true }),
+    page.getByText("Host Connector 0.3.2 is available", { exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("Host Connector upgrade command")).toHaveText(
     upgradeCommand,
