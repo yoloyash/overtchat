@@ -172,6 +172,10 @@ export function AgentSessionView({
   const [usageError, setUsageError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const [restoredDraft, setRestoredDraft] = useState<{
+    revision: number;
+    text: string;
+  } | null>(null);
   const snapshot = session.data;
 
   useEffect(() => {
@@ -197,10 +201,18 @@ export function AgentSessionView({
         if (!result.sessionId) {
           throw new Error(`${providerLabel} did not return the forked session.`);
         }
-        if (result.draft !== undefined) {
+        const draft = result.draft;
+        if (draft !== undefined) {
+          if (result.sessionId === sessionId) {
+            setRestoredDraft((current) => ({
+              revision: (current?.revision ?? 0) + 1,
+              text: draft,
+            }));
+            return true;
+          }
           window.sessionStorage.setItem(
             forkDraftKey(result.sessionId),
-            result.draft,
+            draft,
           );
         }
         router.push(`/agents/${result.sessionId}`);
@@ -516,6 +528,7 @@ export function AgentSessionView({
               run({ type: "steer_queued_message", id })
             }
             restoreDraftKey={forkDraftKey(sessionId)}
+            restoredDraft={restoredDraft}
           />
         </div>
       </div>

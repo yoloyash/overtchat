@@ -645,6 +645,10 @@ describe("host connector daemon broker", () => {
     expect(subscription.sync).toEqual(initialSync);
     expect(subscription.authoritative).toBe(true);
     expect(broker.runtimeStatusForSession("session")).toBe("running");
+    broker.replaceSessionProviderSession("connector", "session", {
+      providerSessionId: "edited-thread",
+      providerSessionPath: "/edited-thread.jsonl",
+    });
     unregister();
 
     broker.register(
@@ -673,6 +677,10 @@ describe("host connector daemon broker", () => {
     if (reconnect.request.type !== "subscribe_session") {
       throw new Error("missing reconnect subscription");
     }
+    expect(reconnect.request.session).toMatchObject({
+      providerSessionId: "edited-thread",
+      providerSessionPath: "/edited-thread.jsonl",
+    });
     await broker.acceptBatch("connector", "transport", [
       {
         sequence: 2,

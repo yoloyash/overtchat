@@ -73,6 +73,28 @@ export class HostConnectorBroker {
     return this.sessionStatuses.get(sessionId) ?? "idle";
   }
 
+  replaceSessionProviderSession(
+    connectorId: string,
+    sessionId: string,
+    providerSession: Pick<
+      AgentDaemonSessionDescriptor,
+      "providerSessionId" | "providerSessionPath"
+    >,
+  ): void {
+    for (const subscription of this.subscriptions.values()) {
+      if (
+        subscription.connectorId !== connectorId ||
+        subscription.session.sessionId !== sessionId
+      ) {
+        continue;
+      }
+      subscription.session = {
+        ...subscription.session,
+        ...providerSession,
+      };
+    }
+  }
+
   register(
     connectorId: string,
     activeSessionIds: string[],

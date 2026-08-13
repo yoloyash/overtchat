@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   prompt: vi.fn(),
   steer: vi.fn(),
   abort: vi.fn(),
+  forkSession: vi.fn(),
   stop: vi.fn(),
   saveQueue: vi.fn(),
   getState: vi.fn(),
@@ -54,6 +55,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
       prompt: mocks.prompt,
       steer: mocks.steer,
       abort: mocks.abort,
+      forkSession: mocks.forkSession,
       stop: mocks.stop,
     }),
     sessionIdentity: () => ({
@@ -84,6 +86,17 @@ describe("agent runtime", () => {
     mocks.prompt.mockResolvedValue({ accepted: true });
     mocks.steer.mockResolvedValue({ accepted: true });
     mocks.abort.mockResolvedValue({ interrupted: true });
+    mocks.forkSession.mockResolvedValue({
+      session: {
+        providerSessionId: "forked-provider-session",
+        providerSessionPath: "/sessions/forked-provider-session.jsonl",
+        name: null,
+        firstMessage: null,
+        messageCount: 0,
+        createdAt: null,
+        modifiedAt: null,
+      },
+    });
     mocks.stop.mockResolvedValue(undefined);
     mocks.saveQueue.mockResolvedValue(undefined);
     mocks.getState.mockResolvedValue({
@@ -93,6 +106,72 @@ describe("agent runtime", () => {
     });
     mocks.getMessages.mockResolvedValue({ messages: [] });
     mocks.eventSubscriber = null;
+  });
+
+  it("refreshes the existing runtime after adopting an edited provider session", async () => {
+    mocks.getState
+      .mockResolvedValueOnce({
+        isStreaming: false,
+        sessionId: "provider-session",
+        sessionFile: "/sessions/provider-session.jsonl",
+      })
+      .mockResolvedValueOnce({
+        isStreaming: false,
+        sessionId: "edited-provider-session",
+        sessionFile: "/sessions/edited-provider-session.jsonl",
+      });
+    mocks.getMessages
+      .mockResolvedValueOnce({
+        messages: [{ id: "source-user", role: "user", content: "Original" }],
+      })
+      .mockResolvedValueOnce({ messages: [] });
+    mocks.forkSession.mockResolvedValueOnce({
+      session: {
+        providerSessionId: "edited-provider-session",
+        providerSessionPath: "/sessions/edited-provider-session.jsonl",
+        name: null,
+        firstMessage: null,
+        messageCount: 0,
+        createdAt: null,
+        modifiedAt: null,
+      },
+      draft: "Original",
+      replacesCurrentSession: true,
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      sessionId: "session",
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    await expect(
+      registry.fork(runtime, {
+        type: "edit_message",
+        messageId: "source-user",
+      }),
+    ).resolves.toMatchObject({
+      replacesCurrentSession: true,
+      draft: "Original",
+    });
+
+    expect(runtime.snapshot()).toMatchObject({
+      sessionId: "session",
+      state: {
+        sessionId: "edited-provider-session",
+        sessionFile: "/sessions/edited-provider-session.jsonl",
+      },
+      messages: [],
+    });
   });
 
   it("removes a restored send already accepted by the provider", async () => {

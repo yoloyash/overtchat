@@ -35,6 +35,8 @@ type ResolveImages = (
 
 type TimelineCapture = {
   runtime: AgentSessionRuntime;
+  providerSessionId: string;
+  providerSessionPath: string;
   ready: Promise<void>;
   initialized: boolean;
   buffered: AgentRuntimeEnvelope[];
@@ -356,6 +358,7 @@ export class ConnectorDaemon {
           await this.attachTimeline(
             result.runtime,
             result.session.providerSessionId,
+            result.session.providerSessionPath,
           );
           await this.assertRuntimeAccepted(request.sessionId);
           return result;
@@ -491,10 +494,23 @@ export class ConnectorDaemon {
     const runtime = await this.registry.getOrStart(
       sessionDescriptor(descriptor),
     );
+    const capture = this.captures.get(descriptor.sessionId);
+    const attachedDescriptor =
+      capture?.runtime === runtime
+        ? {
+            ...descriptor,
+            providerSessionId: capture.providerSessionId,
+            providerSessionPath: capture.providerSessionPath,
+          }
+        : descriptor;
     await this.assertRuntimeAccepted(descriptor.sessionId);
-    await this.journal.recordSession(descriptor);
+    await this.journal.recordSession(attachedDescriptor);
     await this.assertRuntimeAccepted(descriptor.sessionId);
-    await this.attachTimeline(runtime, descriptor.providerSessionId);
+    await this.attachTimeline(
+      runtime,
+      attachedDescriptor.providerSessionId,
+      attachedDescriptor.providerSessionPath,
+    );
     await this.assertRuntimeAccepted(descriptor.sessionId);
     return runtime;
   }
@@ -537,6 +553,21 @@ export class ConnectorDaemon {
                   queuedMessages: runtime.snapshot().queuedMessages,
                 },
               }));
+        if ("fork" in data && data.fork.replacesCurrentSession) {
+          const descriptor = {
+            ...request.session,
+            providerSessionId: data.fork.session.providerSessionId,
+            providerSessionPath: data.fork.session.providerSessionPath,
+          };
+          this.assertStoresAvailable();
+          await this.journal.recordSession(descriptor);
+          this.assertStoresAvailable();
+          await this.attachTimeline(
+            runtime,
+            descriptor.providerSessionId,
+            descriptor.providerSessionPath,
+          );
+        }
         this.assertStoresAvailable();
         await this.flushCapture(request.session.sessionId);
         this.assertStoresAvailable();
@@ -623,17 +654,29 @@ export class ConnectorDaemon {
   private async attachTimeline(
     runtime: AgentSessionRuntime,
     providerSessionId: string,
+    providerSessionPath: string,
   ): Promise<void> {
     const sessionId = runtime.dbSessionId;
     const existing = this.captures.get(sessionId);
     if (existing?.runtime === runtime) {
       await this.flushCapture(sessionId);
+      if (existing.providerSessionId !== providerSessionId) {
+        await this.timelines.openSession(
+          sessionId,
+          providerSessionId,
+          runtime.snapshot(),
+        );
+        existing.providerSessionId = providerSessionId;
+        existing.providerSessionPath = providerSessionPath;
+      }
       return;
     }
     if (existing) await this.finishCapture(sessionId, false);
 
     const capture: TimelineCapture = {
       runtime,
+      providerSessionId,
+      providerSessionPath,
       ready: Promise.resolve(),
       initialized: false,
       buffered: [],

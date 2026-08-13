@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentSession: vi.fn(),
+  replaceAgentSessionProviderSession: vi.fn(),
   updateAgentSessionMetadata: vi.fn(),
   upsertAgentSession: vi.fn(),
   daemonRequest: vi.fn(),
+  replaceBrokerSession: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -14,11 +16,15 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentSession: mocks.getOwnedAgentSession,
+  replaceAgentSessionProviderSession: mocks.replaceAgentSessionProviderSession,
   updateAgentSessionMetadata: mocks.updateAgentSessionMetadata,
   upsertAgentSession: mocks.upsertAgentSession,
 }));
 vi.mock("@/lib/agents/connector/broker", () => ({
-  hostConnectorBroker: { request: mocks.daemonRequest },
+  hostConnectorBroker: {
+    request: mocks.daemonRequest,
+    replaceSessionProviderSession: mocks.replaceBrokerSession,
+  },
 }));
 
 import { GET, POST } from "./route";
@@ -281,6 +287,85 @@ describe("agent session route", () => {
       command: { type: "show_usage" },
     });
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
+  });
+
+  it("keeps the OvertChat session id when an edit replaces its provider thread", async () => {
+    const providerSession = {
+      providerSessionId: "edited-provider-session",
+      providerSessionPath: "/sessions/edited-provider-session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    };
+    mocks.daemonRequest.mockResolvedValue({
+      fork: {
+        session: providerSession,
+        draft: "Rewrite this prompt",
+        replacesCurrentSession: true,
+      },
+    });
+
+    const response = await POST(
+      request("POST", {
+        type: "edit_message",
+        messageId: "turn-1:user:0",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
+      sessionId: "session",
+      draft: "Rewrite this prompt",
+    });
+    expect(mocks.replaceAgentSessionProviderSession).toHaveBeenCalledWith(
+      "session",
+      providerSession,
+    );
+    expect(mocks.replaceBrokerSession).toHaveBeenCalledWith(
+      "connector",
+      "session",
+      providerSession,
+    );
+    expect(mocks.upsertAgentSession).not.toHaveBeenCalled();
+  });
+
+  it("creates a separate OvertChat session for an explicit conversation fork", async () => {
+    const providerSession = {
+      providerSessionId: "forked-provider-session",
+      providerSessionPath: "/sessions/forked-provider-session.jsonl",
+      name: null,
+      firstMessage: "Original prompt",
+      messageCount: 2,
+      createdAt: null,
+      modifiedAt: null,
+    };
+    mocks.daemonRequest.mockResolvedValue({
+      fork: { session: providerSession },
+    });
+    mocks.upsertAgentSession.mockResolvedValueOnce({ id: "forked-session" });
+
+    const response = await POST(
+      request("POST", {
+        type: "fork_message",
+        messageId: "turn-1:assistant",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      accepted: true,
+      sessionId: "forked-session",
+    });
+    expect(mocks.upsertAgentSession).toHaveBeenCalledWith(
+      "workspace",
+      providerSession,
+    );
+    expect(mocks.replaceAgentSessionProviderSession).not.toHaveBeenCalled();
   });
 
   it("rejects delivery modes that bypass the connector-owned queue", async () => {

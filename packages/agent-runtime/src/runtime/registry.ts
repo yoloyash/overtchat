@@ -845,7 +845,9 @@ export class AgentSessionRuntime {
         `${agentProviderMetadata(this.provider).label} does not support conversation forks.`,
       );
     }
-    return this.client.forkSession(messageId, mode);
+    const result = await this.client.forkSession(messageId, mode);
+    if (result.replacesCurrentSession) await this.refresh();
+    return result;
   }
 
   async discardForkedSession(

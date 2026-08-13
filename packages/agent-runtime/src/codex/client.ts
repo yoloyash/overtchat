@@ -1402,6 +1402,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       throw new Error("Wait for the current Codex turn to finish first.");
     }
 
+    const sourceThreadId = this.thread!.id;
     const turns = this.orderedTurns();
     let response: UnknownRecord;
     let draft: string | undefined;
@@ -1459,8 +1460,28 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     }
 
     const thread = parseCodexThread(response.thread);
-    if (thread.id === this.thread!.id) {
+    if (thread.id === sourceThreadId) {
       throw new Error("Codex did not create a new thread.");
+    }
+    if (mode === "edit") {
+      this.hydrateThread(response);
+      this.applyThreadConfiguration(response);
+      this.readOnly = false;
+      this.threadSubscribed = true;
+      await this.hydrateSubagentHistories();
+      await this.loadGoal();
+      await this.server
+        .request(
+          "thread/unsubscribe",
+          { threadId: sourceThreadId },
+          5_000,
+        )
+        .catch(() => {});
+      return {
+        session: codexSessionMetadata(thread),
+        draft,
+        replacesCurrentSession: true,
+      };
     }
     await this.server.request(
       "thread/unsubscribe",
@@ -1469,7 +1490,6 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     );
     return {
       session: codexSessionMetadata(thread),
-      ...(draft !== undefined ? { draft } : {}),
     };
   }
 

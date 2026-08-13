@@ -51,6 +51,7 @@ export type AgentSessionLaunch = {
 export type AgentSessionForkResult = {
   session: AgentProviderSessionMetadata;
   draft?: string;
+  replacesCurrentSession?: boolean;
 };
 
 export type ResolvedAgentImage = AgentPromptImage & {

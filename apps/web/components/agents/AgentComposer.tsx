@@ -79,6 +79,7 @@ export function AgentComposer({
   onDeleteQueued,
   onSteerQueued,
   restoreDraftKey,
+  restoredDraft,
 }: {
   providerLabel: string;
   commands: AgentSlashCommand[];
@@ -100,6 +101,7 @@ export function AgentComposer({
   onDeleteQueued: (id: string) => Promise<boolean>;
   onSteerQueued: (id: string) => Promise<boolean>;
   restoreDraftKey?: string;
+  restoredDraft?: { revision: number; text: string } | null;
 }) {
   const [input, setInput] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -153,6 +155,23 @@ export function AgentComposer({
       if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
     };
   }, [restoreDraftKey]);
+
+  useEffect(() => {
+    if (!restoredDraft) return;
+    let focusFrame: number | undefined;
+    const restoreFrame = requestAnimationFrame(() => {
+      setInput((current) => current || restoredDraft.text);
+      focusFrame = requestAnimationFrame(() => {
+        const element = textareaRef.current;
+        element?.focus({ preventScroll: true });
+        element?.setSelectionRange(element.value.length, element.value.length);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(restoreFrame);
+      if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
+    };
+  }, [restoredDraft]);
 
   const query = agentSlashCommandQuery(input);
   const filteredCommands = useMemo(() => {

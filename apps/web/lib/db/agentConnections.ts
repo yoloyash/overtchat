@@ -428,6 +428,27 @@ export async function upsertAgentSession(
   return row;
 }
 
+export async function replaceAgentSessionProviderSession(
+  id: string,
+  session: ProviderSessionMetadata,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .update(agentSessions)
+    .set({
+      providerSessionId: session.providerSessionId,
+      providerSessionPath: session.providerSessionPath,
+      name: session.name,
+      firstMessage: session.firstMessage,
+      messageCount: session.messageCount,
+      providerCreatedAt: session.createdAt,
+      providerModifiedAt: session.modifiedAt,
+      lastSyncedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(agentSessions.id, id));
+}
+
 export async function updateAgentSessionMetadata(
   id: string,
   patch: {
