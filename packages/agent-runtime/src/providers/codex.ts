@@ -48,8 +48,10 @@ class CodexEventClassifier implements AgentRuntimeEventClassifier {
 
   classify(event: AgentRuntimeEvent) {
     return {
-      started: event.type === "turn_start",
-      terminal: event.type === "turn_end",
+      started:
+        event.type === "turn_start" || event.type === "compaction_start",
+      terminal:
+        event.type === "turn_end" || event.type === "compaction_end",
     };
   }
 }

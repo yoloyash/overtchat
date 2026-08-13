@@ -17,6 +17,7 @@ import {
 import {
   useAgentSession,
   useAgentSessionCommand,
+  useAgentSessionUsage,
 } from "./agentSessions";
 import { agentSessionKeys } from "./keys";
 import type { AgentSessionReplica } from "@/lib/agents/sessionReplica";
@@ -103,6 +104,24 @@ function CommandProbe({
     onReady(command.mutateAsync);
   }, [command.mutateAsync, onReady]);
   return null;
+}
+
+function UsageProbe({
+  onReady,
+}: {
+  onReady: (load: () => Promise<unknown>) => void;
+}) {
+  const usage = useAgentSessionUsage("session");
+  const command = useAgentSessionCommand("session");
+  useEffect(() => {
+    onReady(usage.mutateAsync);
+  }, [onReady, usage.mutateAsync]);
+  return (
+    <div data-testid="pending-state">
+      {usage.isPending ? "usage-pending" : "usage-idle"}:
+      {command.isPending ? "command-pending" : "command-idle"}
+    </div>
+  );
 }
 
 describe("useAgentSession", () => {
@@ -348,5 +367,51 @@ describe("useAgentSession", () => {
       bodies[1]?.clientMessageId,
     );
     expect(bodies[0]?.images).toEqual(unchanged.images);
+  });
+
+  it("loads usage without occupying the session command mutation", async () => {
+    let finishRequest!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockReturnValue(
+        new Promise<Response>((resolve) => {
+          finishRequest = resolve;
+        }),
+      ),
+    );
+    let loadUsage: () => Promise<unknown> = () =>
+      Promise.reject(new Error("Usage is not ready."));
+
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={queryClient}>
+          <UsageProbe
+            onReady={(load) => {
+              loadUsage = load;
+            }}
+          />
+        </QueryClientProvider>,
+      );
+    });
+
+    let loading!: Promise<unknown>;
+    await act(async () => {
+      loading = loadUsage();
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(container.textContent).toBe("usage-pending:command-idle");
+
+    await act(async () => {
+      finishRequest(
+        Response.json({
+          accepted: true,
+          usage: { planType: "plus", windows: [] },
+        }),
+      );
+      await loading;
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(container.textContent).toBe("usage-idle:command-idle");
   });
 });

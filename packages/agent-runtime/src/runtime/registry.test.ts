@@ -63,8 +63,10 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     }),
     createEventClassifier: () => ({
       classify: (event: AgentRuntimeEvent) => ({
-        started: event.type === "agent_start",
-        terminal: event.type === "agent_end",
+        started:
+          event.type === "agent_start" || event.type === "compaction_start",
+        terminal:
+          event.type === "agent_end" || event.type === "compaction_end",
       }),
       reset: vi.fn(),
     }),
@@ -615,6 +617,56 @@ describe("agent runtime", () => {
       { clientMessageId: "queued-second" },
     ]);
     expect(runtime.snapshot().queuedMessages).toEqual([]);
+    await registry.stopAll();
+  });
+
+  it("holds queued prompts until compaction finishes", async () => {
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+    });
+
+    mocks.eventSubscriber?.({ type: "compaction_start" });
+    await runtime.command(
+      { type: "queue", message: "Continue after compaction" },
+      "after-compaction",
+    );
+
+    expect(runtime.snapshot()).toMatchObject({
+      status: "running",
+      state: { isCompacting: true },
+      queuedMessages: [
+        {
+          id: "after-compaction",
+          message: "Continue after compaction",
+          status: "pending",
+        },
+      ],
+    });
+    expect(mocks.prompt).not.toHaveBeenCalled();
+
+    mocks.eventSubscriber?.({ type: "compaction_end" });
+    await vi.waitFor(() => {
+      expect(mocks.prompt).toHaveBeenCalledWith(
+        "Continue after compaction",
+        undefined,
+        { clientMessageId: "after-compaction" },
+      );
+    });
+    await vi.waitFor(() => {
+      expect(runtime.snapshot().queuedMessages).toEqual([]);
+    });
     await registry.stopAll();
   });
 

@@ -381,6 +381,14 @@ export class ConnectorDaemon {
         };
       }
       case "session_command":
+        if (request.command.type === "show_usage") {
+          const runtime =
+            this.registry.get(request.session.sessionId) ??
+            (await this.open(request.session));
+          return {
+            commandResult: await runtime.command({ type: "show_usage" }),
+          };
+        }
         return this.runCommand(request);
       case "subscribe_session": {
         const previous = this.subscriptions.get(request.subscriptionId);
