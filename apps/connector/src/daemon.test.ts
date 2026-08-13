@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   getOrStart: vi.fn(),
   get: vi.fn(),
+  fork: vi.fn(),
   stopAll: vi.fn(),
   stopSession: vi.fn(),
   stopWorkspace: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
       create = mocks.create;
       getOrStart = mocks.getOrStart;
       get = mocks.get;
+      fork = mocks.fork;
       stopAll = mocks.stopAll;
       stopSession = mocks.stopSession;
       stopWorkspace = mocks.stopWorkspace;
@@ -192,6 +194,17 @@ beforeEach(() => {
   });
   mocks.getOrStart.mockResolvedValue(runtime());
   mocks.get.mockReturnValue(null);
+  mocks.fork.mockResolvedValue({
+    session: {
+      providerSessionId: "forked-provider-session",
+      providerSessionPath: "/sessions/forked-provider-session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: new Date(1_000),
+      modifiedAt: new Date(2_000),
+    },
+  });
   mocks.stopAll.mockResolvedValue(undefined);
   mocks.stopSession.mockResolvedValue(undefined);
   mocks.stopWorkspace.mockResolvedValue(undefined);
@@ -322,6 +335,88 @@ describe("connector daemon command identity", () => {
         success: true,
       }),
     ]);
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("journals an adopted provider thread and resets the existing timeline", async () => {
+    const { file, journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const openTimeline = vi.spyOn(timelines, "openSession");
+    const activeRuntime = runtime();
+    mocks.getOrStart.mockResolvedValue(activeRuntime);
+    mocks.fork.mockResolvedValueOnce({
+      session: {
+        providerSessionId: "edited-provider-session",
+        providerSessionPath: "/sessions/edited-provider-session.jsonl",
+        name: null,
+        firstMessage: null,
+        messageCount: 0,
+        createdAt: new Date(1_000),
+        modifiedAt: new Date(2_000),
+      },
+      draft: "Rewrite this prompt",
+      replacesCurrentSession: true,
+    });
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "edit-request",
+      request: {
+        type: "session_command",
+        commandId: "edit-command",
+        session,
+        command: {
+          type: "edit_message",
+          messageId: "turn-1:user:0",
+        },
+      },
+    });
+
+    expect(mocks.fork).toHaveBeenCalledWith(activeRuntime, {
+      type: "edit_message",
+      messageId: "turn-1:user:0",
+    });
+    expect(openTimeline).toHaveBeenLastCalledWith(
+      "session",
+      "edited-provider-session",
+      mocks.snapshot(),
+    );
+    await daemon.handle({
+      type: "request",
+      requestId: "stale-open-request",
+      request: { type: "open_session", session },
+    });
+    expect(openTimeline).toHaveBeenCalledTimes(2);
+    const persisted = JSON.parse(await readFile(file, "utf8")) as {
+      sessions: Record<
+        string,
+        { descriptor: AgentDaemonSessionDescriptor }
+      >;
+    };
+    expect(persisted.sessions.session?.descriptor).toMatchObject({
+      sessionId: "session",
+      providerSessionId: "edited-provider-session",
+      providerSessionPath: "/sessions/edited-provider-session.jsonl",
+    });
+    expect(events).toContainEqual({
+      type: "response",
+      requestId: "edit-request",
+      success: true,
+      data: {
+        fork: expect.objectContaining({
+          replacesCurrentSession: true,
+          draft: "Rewrite this prompt",
+        }),
+      },
+    });
+    await daemon.stop();
     await timelines.close();
     await journal.close();
   });

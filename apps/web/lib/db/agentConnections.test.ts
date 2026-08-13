@@ -233,6 +233,47 @@ describe("agent connection persistence", () => {
     });
   });
 
+  it("replaces a session's provider identity without changing its OvertChat id", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const original = await repository.upsertAgentSession(workspace!.id, {
+      providerSessionId: "source-thread",
+      providerSessionPath: "/codex/source-thread.jsonl",
+      name: "Original thread",
+      firstMessage: "Original prompt",
+      messageCount: 4,
+      createdAt: new Date(1_000),
+      modifiedAt: new Date(2_000),
+    });
+
+    await repository.replaceAgentSessionProviderSession(original.id, {
+      providerSessionId: "edited-thread",
+      providerSessionPath: "/codex/edited-thread.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: new Date(3_000),
+      modifiedAt: new Date(4_000),
+    });
+
+    await expect(
+      repository.getOwnedAgentSession(original.id, "alice"),
+    ).resolves.toMatchObject({
+      agentSession: {
+        id: original.id,
+        providerSessionId: "edited-thread",
+        providerSessionPath: "/codex/edited-thread.jsonl",
+        name: null,
+        firstMessage: null,
+        messageCount: 0,
+      },
+    });
+  });
+
   it("enforces ownership through every level and cascades only local rows", async () => {
     const owned = createAliceConnection();
     const workspace = await repository.createAgentWorkspace(

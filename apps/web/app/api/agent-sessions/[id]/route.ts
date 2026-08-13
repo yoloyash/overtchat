@@ -18,6 +18,7 @@ import {
 } from "@/lib/agents/connector/descriptors";
 import {
   getOwnedAgentSession,
+  replaceAgentSessionProviderSession,
   type OwnedAgentSession,
   updateAgentSessionMetadata,
   upsertAgentSession,
@@ -151,7 +152,11 @@ export async function POST(
     const result = await hostConnectorBroker.request<{
       commandResult?: unknown;
       snapshot?: { queuedMessages?: unknown[] };
-      fork?: { session: unknown; draft?: string };
+      fork?: {
+        session: unknown;
+        draft?: string;
+        replacesCurrentSession?: boolean;
+      };
     }>(authorized.owned.host.connectorId, {
       type: "session_command",
       commandId: clientMessageId ?? crypto.randomUUID(),
@@ -160,9 +165,27 @@ export async function POST(
       command,
     });
     if (result.fork) {
+      const providerSession = parseProviderSessionMetadata(
+        result.fork.session,
+      );
+      if (result.fork.replacesCurrentSession) {
+        hostConnectorBroker.replaceSessionProviderSession(
+          authorized.owned.host.connectorId,
+          id,
+          providerSession,
+        );
+        await replaceAgentSessionProviderSession(id, providerSession);
+        return Response.json({
+          accepted: true,
+          sessionId: id,
+          ...(result.fork.draft !== undefined
+            ? { draft: result.fork.draft }
+            : {}),
+        });
+      }
       const row = await upsertAgentSession(
         authorized.owned.workspace.id,
-        parseProviderSessionMetadata(result.fork.session),
+        providerSession,
       );
       return Response.json({
         accepted: true,

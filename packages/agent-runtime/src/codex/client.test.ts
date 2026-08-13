@@ -2265,6 +2265,7 @@ describe("CodexRuntimeClient", () => {
         modifiedAt: new Date(4_000),
       },
       draft: "Resume this thread",
+      replacesCurrentSession: true,
     });
     expect(server.requests).toContainEqual({
       method: "thread/fork",
@@ -2278,24 +2279,27 @@ describe("CodexRuntimeClient", () => {
     });
     expect(server.requests).toContainEqual({
       method: "thread/unsubscribe",
-      params: { threadId: "thread-fork" },
+      params: { threadId: "thread-1" },
     });
-    await expect(client.getMessages()).resolves.toMatchObject({
-      messages: expect.arrayContaining([
-        expect.objectContaining({ id: "turn-history:user:0", role: "user" }),
-        expect.objectContaining({
-          id: "commentary-history",
-          role: "assistant",
-        }),
-        expect.objectContaining({
-          id: "assistant-history",
-          role: "assistant",
-        }),
-        expect.objectContaining({
-          id: "turn-history:footer",
-          role: "turnFooter",
-        }),
-      ]),
+    await expect(client.getState()).resolves.toMatchObject({
+      sessionId: "thread-fork",
+      sessionFile: "/tmp/thread-fork.jsonl",
+    });
+    await expect(client.getMessages()).resolves.toEqual({ messages: [] });
+
+    await client.prompt("Replace the first message");
+    expect(server.requests).toContainEqual({
+      method: "turn/start",
+      params: expect.objectContaining({
+        threadId: "thread-fork",
+        input: [
+          {
+            type: "text",
+            text: "Replace the first message",
+            text_elements: [],
+          },
+        ],
+      }),
     });
   });
 

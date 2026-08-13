@@ -110,7 +110,10 @@ export function AgentMessageList({
   );
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden">
+    <div
+      className="relative min-h-0 flex-1 overflow-hidden"
+      data-testid="agent-message-list"
+    >
       <div
         ref={scrollRef}
         className="h-full overflow-y-auto overscroll-contain"

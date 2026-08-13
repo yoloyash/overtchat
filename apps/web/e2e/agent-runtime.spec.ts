@@ -117,6 +117,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
     },
     messages: [
       {
+        id: "turn-1:user:0",
         role: "user",
         content: "Inspect the runtime",
         timestamp: 1,
@@ -538,6 +539,12 @@ test("shows durable turn activity without changing completed tool status", async
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
+            ...(command.type === "edit_message"
+              ? {
+                  sessionId: SESSION_ID,
+                  draft: "Inspect the runtime",
+                }
+              : {}),
             ...(command.type === "show_usage"
               ? { usage: { planType: "plus", windows: [] } }
               : {}),
@@ -1146,6 +1153,18 @@ test("shows durable turn activity without changing completed tool status", async
   snapshot.status = "idle";
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
+  const sessionUrl = page.url();
+  await page
+    .getByRole("button", { name: "Edit from this message" })
+    .click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "edit_message",
+    messageId: "turn-1:user:0",
+  });
+  await expect(composer).toHaveValue("Inspect the runtime");
+  await expect(page).toHaveURL(sessionUrl);
+  await expect(composer).toBeFocused();
+  await composer.fill("");
   const modelEffortControl = agentComposer.getByRole("button", {
     name: "Model and effort: GPT-5.6, High",
   });

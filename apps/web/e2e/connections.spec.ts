@@ -773,7 +773,7 @@ test("connect local Oh My Pi and use its native commands", async ({
 test("connect local Codex and resume a native thread", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   test.skip(
     process.env.RUN_CODEX_E2E !== "1",
     "Set RUN_CODEX_E2E=1 on a machine with Codex installed and signed in.",
@@ -864,33 +864,6 @@ test("connect local Codex and resume a native thread", async ({
 
   const sourceUrl = page.url();
   await page
-    .getByRole("button", { name: "Edit from this message" })
-    .click();
-  await page.waitForURL(
-    (url) =>
-      url.pathname.startsWith("/agents/") && url.href !== sourceUrl,
-    { timeout: 30_000 },
-  );
-  await expect(composer).toHaveValue(prompt, { timeout: 30_000 });
-  await expect(composer).toBeFocused();
-  await expect
-    .poll(() =>
-      composer.evaluate((element) => {
-        const textarea = element as HTMLTextAreaElement;
-        return [textarea.selectionStart, textarea.selectionEnd];
-      }),
-    )
-    .toEqual([prompt.length, prompt.length]);
-
-  await page.goto(sourceUrl);
-  await expect(
-    page.locator("main").getByText(prompt, { exact: true }),
-  ).toBeVisible({ timeout: 60_000 });
-  await expect(
-    page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
-  ).toBeVisible({ timeout: 60_000 });
-
-  await page
     .getByRole("button", { name: "Fork from this response" })
     .click();
   await page.waitForURL(
@@ -930,6 +903,39 @@ test("connect local Codex and resume a native thread", async ({
     path: testInfo.outputPath("codex-forked-session-mobile.png"),
     fullPage: true,
   });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(sourceUrl);
+  await page
+    .getByRole("button", { name: "Edit from this message" })
+    .click();
+  await expect(composer).toHaveValue(prompt, { timeout: 30_000 });
+  await expect(page).toHaveURL(sourceUrl);
+  await expect(composer).toBeFocused();
+  await expect
+    .poll(() =>
+      composer.evaluate((element) => {
+        const textarea = element as HTMLTextAreaElement;
+        return [textarea.selectionStart, textarea.selectionEnd];
+      }),
+    )
+    .toEqual([prompt.length, prompt.length]);
+  await expect(
+    page.getByRole("region", { name: "Read-only Codex session" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByTestId("agent-message-list").getByText(prompt, { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page
+      .getByTestId("agent-message-list")
+      .getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
+  ).toHaveCount(0);
+  await composer.press("Enter");
+  await expect(
+    page.getByText("OVERTCHAT_CODEX_E2E_OK", { exact: true }),
+  ).toBeVisible({ timeout: 150_000 });
+  await expect(composer).toBeEnabled({ timeout: 30_000 });
   expect(browserErrors).toEqual([]);
 });
 
