@@ -26,12 +26,16 @@ const Database = require("better-sqlite3");
     } finally {
       sourceDatabase.close();
     }
-    fs.chmodSync(destination, 0o600);
     const snapshot = new Database(destination, {
-      readonly: true,
       fileMustExist: true,
     });
     try {
+      const journalMode = snapshot.pragma("journal_mode = DELETE", {
+        simple: true,
+      });
+      if (journalMode !== "delete") {
+        throw new Error("Snapshot could not be made self-contained.");
+      }
       const integrity = snapshot.pragma("integrity_check");
       if (
         !Array.isArray(integrity) ||
@@ -43,8 +47,13 @@ const Database = require("better-sqlite3");
     } finally {
       snapshot.close();
     }
+    fs.rmSync(destination + "-wal", { force: true });
+    fs.rmSync(destination + "-shm", { force: true });
+    fs.chmodSync(destination, 0o600);
   } catch (error) {
     fs.rmSync(destination, { force: true });
+    fs.rmSync(destination + "-wal", { force: true });
+    fs.rmSync(destination + "-shm", { force: true });
     throw error;
   }
 })().catch((error) => {

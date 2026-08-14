@@ -73,6 +73,7 @@ describe("pre-migration snapshots", () => {
     expect(args).toContain("no-new-privileges:true");
     expect(args).toContain("ghcr.io/yoloyash/overtchat-app:0.14.0");
     expect(args.at(-1)).toContain("sourceDatabase.backup(destination)");
+    expect(args.at(-1)).toContain('snapshot.pragma("journal_mode = DELETE"');
     expect(args.at(-1)).toContain('snapshot.pragma("integrity_check")');
   });
 
