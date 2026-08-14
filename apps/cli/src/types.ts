@@ -74,6 +74,11 @@ export type ExistingInstallation = {
   publicUrl: string;
   environment: Map<string, string>;
   searxngConfigPath?: string;
+  bundledServices: {
+    search: boolean;
+    tts: boolean;
+    stt: boolean;
+  };
   sttAccelerator?: "cpu" | "gpu";
   sttGpuUuid?: string;
 };

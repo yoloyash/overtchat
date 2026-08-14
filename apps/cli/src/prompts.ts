@@ -10,6 +10,7 @@ import {
 } from "@clack/prompts";
 import { commandExists } from "./process.js";
 import type {
+  ExistingInstallation,
   Gpu,
   InstallationConfig,
   SearchProvider,
@@ -167,6 +168,38 @@ function gpuLabel(gpu: Gpu): string {
   return `GPU ${gpu.index} — ${gpu.name}, ${memoryGiB} GB`;
 }
 
+export function existingInstallationSummary(
+  existing: ExistingInstallation,
+): string {
+  const storage =
+    existing.dataMountType === "volume"
+      ? `Docker volume ${existing.dataVolume}`
+      : `Bind mount ${existing.dataVolume}`;
+  const services = [
+    ...(existing.bundledServices.search ? ["SearXNG"] : []),
+    ...(existing.bundledServices.tts ? ["Kokoro"] : []),
+    ...(existing.bundledServices.stt
+      ? [
+          existing.sttAccelerator === "gpu"
+            ? "Parakeet (NVIDIA)"
+            : "Parakeet (CPU)",
+        ]
+      : []),
+  ];
+  return [
+    `Version: ${existing.appVersion ?? "unknown"}`,
+    `Address: ${existing.publicUrl}`,
+    `Published port: ${existing.bindAddress}:${existing.appPort}`,
+    `Data: ${storage}`,
+    ...(existing.composeWorkingDir
+      ? [`Compose directory: ${existing.composeWorkingDir}`]
+      : []),
+    `Bundled services: ${services.length > 0 ? services.join(", ") : "none detected"}`,
+    "",
+    "This storage will be reused. A verified SQLite snapshot will be created before the app is replaced or migrations run.",
+  ].join("\n");
+}
+
 async function promptStt(
   current: InstallationConfig["stt"],
   gpus: Gpu[],
@@ -288,8 +321,24 @@ async function detectedAgents(): Promise<string[]> {
 export async function promptInstallationConfig(
   initial: InstallationConfig,
   gpus: Gpu[],
+  existing?: ExistingInstallation,
 ): Promise<InstallationConfig> {
   intro("OvertChat setup");
+  if (existing) {
+    note(existingInstallationSummary(existing), "Existing installation found");
+    const adopt = chosen(
+      await confirm({
+        message: "Adopt this installation and preserve its data?",
+        initialValue: true,
+        active: "Continue",
+        inactive: "Cancel",
+      }),
+    );
+    if (!adopt) {
+      cancel("Setup cancelled. Nothing was changed.");
+      process.exit(0);
+    }
+  }
   const search = await promptSearch(initial.search);
   const tts = await promptTts(initial.tts);
   const stt = await promptStt(initial.stt, gpus);

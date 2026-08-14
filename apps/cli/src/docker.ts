@@ -327,6 +327,7 @@ async function stoppedComposeInstallation(
   const project = volume?.Labels?.["com.docker.compose.project"] || "overtchat";
   const redis = await inspectContainer(docker, "overtchat-redis");
   const searxng = await inspectContainer(docker, "overtchat-searxng");
+  const kokoro = await inspectContainer(docker, "overtchat-kokoro");
   const sttGpu = await inspectContainer(docker, "overtchat-stt-gpu");
   const sttCpu = sttGpu
     ? null
@@ -345,6 +346,11 @@ async function stoppedComposeInstallation(
     searxngConfigPath: searxng?.Mounts?.find(
       (mount) => mount.Destination === "/etc/searxng",
     )?.Source,
+    bundledServices: {
+      search: Boolean(searxng),
+      tts: Boolean(kokoro),
+      stt: Boolean(sttGpu ?? sttCpu),
+    },
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
   };
@@ -380,6 +386,7 @@ export async function detectExistingInstallation(
   }
 
   const searxng = await inspectContainer(docker, "overtchat-searxng");
+  const kokoro = await inspectContainer(docker, "overtchat-kokoro");
   const searxngConfigPath = searxng?.Mounts?.find(
     (mount) => mount.Destination === "/etc/searxng",
   )?.Source;
@@ -402,6 +409,11 @@ export async function detectExistingInstallation(
       environment.get("BETTER_AUTH_URL") || `http://localhost:${appPort}`,
     environment,
     searxngConfigPath,
+    bundledServices: {
+      search: Boolean(searxng),
+      tts: Boolean(kokoro),
+      stt: Boolean(sttGpu ?? sttCpu),
+    },
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
   };

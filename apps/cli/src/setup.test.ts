@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { syncCapabilities } from "./setup.js";
+import { installationNeedsAdoption, syncCapabilities } from "./setup.js";
+import type { ExistingInstallation } from "./types.js";
 import type { InstallationConfig } from "./types.js";
 
 function config(): InstallationConfig {
@@ -42,6 +43,55 @@ function config(): InstallationConfig {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+function existingInstallation(
+  composeWorkingDir: string | undefined,
+): ExistingInstallation {
+  return {
+    containerName: "overtchat-app",
+    appVersion: "0.13.9",
+    appImage: "ghcr.io/yoloyash/overtchat-app:0.13.9",
+    composeProject: "overtchat",
+    composeWorkingDir,
+    dataMountType: "volume",
+    dataVolume: "overtchat_overtchat-data",
+    appPort: 4718,
+    bindAddress: "0.0.0.0",
+    publicUrl: "http://localhost:4718",
+    environment: new Map(),
+    bundledServices: { search: true, tts: true, stt: true },
+    sttAccelerator: "cpu",
+  };
+}
+
+describe("installation adoption", () => {
+  it("adopts stacks outside the managed directory", () => {
+    expect(
+      installationNeedsAdoption(
+        existingInstallation("/home/yash/dev/overtchat"),
+        "/home/yash/.local/share/overtchat",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not re-adopt a stack already owned by the manager", () => {
+    expect(
+      installationNeedsAdoption(
+        existingInstallation("/home/yash/.local/share/overtchat"),
+        "/home/yash/.local/share/overtchat",
+      ),
+    ).toBe(false);
+  });
+
+  it("fails safe when the prior Compose directory is unknown", () => {
+    expect(
+      installationNeedsAdoption(
+        existingInstallation(undefined),
+        "/home/yash/.local/share/overtchat",
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("capability synchronization", () => {

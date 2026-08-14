@@ -1,6 +1,6 @@
 import { cp, mkdir, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { confirm, isCancel, outro, spinner } from "@clack/prompts";
+import { confirm, isCancel, note, outro, spinner } from "@clack/prompts";
 import {
   defaultInstallationConfig,
   initialSecrets,
@@ -30,7 +30,8 @@ import { primaryLanAddress } from "./network.js";
 import { runtimePaths } from "./paths.js";
 import { requireSuccessful } from "./process.js";
 import { promptInstallationConfig } from "./prompts.js";
-import type { InstallationConfig } from "./types.js";
+import { createPreMigrationSnapshot } from "./snapshot.js";
+import type { ExistingInstallation, InstallationConfig } from "./types.js";
 
 export type SetupOptions = {
   dryRun: boolean;
@@ -235,6 +236,18 @@ export async function syncCapabilities(
   }
 }
 
+export function installationNeedsAdoption(
+  existing: ExistingInstallation | null,
+  managedStackDirectory: string,
+): existing is ExistingInstallation {
+  if (!existing) return false;
+  if (!existing.composeWorkingDir) return true;
+  return (
+    path.resolve(existing.composeWorkingDir) !==
+    path.resolve(managedStackDirectory)
+  );
+}
+
 export async function setup(options: SetupOptions): Promise<void> {
   if (process.platform !== "linux") {
     throw new Error("The managed OvertChat installer currently supports Linux.");
@@ -267,6 +280,7 @@ export async function setup(options: SetupOptions): Promise<void> {
   const paths = runtimePaths();
   const existing = await detectExistingInstallation(docker);
   const saved = await readInstallationConfig(paths);
+  const adopting = installationNeedsAdoption(existing, paths.stackDirectory);
   const previousSecrets = await readInstallationSecrets(paths);
   let config = saved ?? defaultInstallationConfig(existing);
   if (saved) {
@@ -297,7 +311,11 @@ export async function setup(options: SetupOptions): Promise<void> {
         "Interactive setup needs a terminal. Re-run with --defaults for an unattended test install.",
       );
     }
-    config = await promptInstallationConfig(config, gpus);
+    config = await promptInstallationConfig(
+      config,
+      gpus,
+      adopting ? existing ?? undefined : undefined,
+    );
   } else if (gpus.length > 0 && config.stt.provider === "bundled") {
     const gpu = [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
     config.stt = {
@@ -366,8 +384,12 @@ export async function setup(options: SetupOptions): Promise<void> {
     return;
   }
 
-  const progress = spinner();
-  progress.start(existing ? "Adopting the existing OvertChat installation" : "Preparing OvertChat data");
+  const preparation = spinner();
+  preparation.start(
+    adopting
+      ? "Preparing the existing OvertChat installation"
+      : "Preparing OvertChat data",
+  );
   if (config.dataMountType === "volume") {
     const volume = await runDocker(docker, ["volume", "inspect", config.dataVolume]);
     if (volume.exitCode !== 0) {
@@ -375,14 +397,14 @@ export async function setup(options: SetupOptions): Promise<void> {
     }
   }
   if (options.development) {
-    progress.message("Building the OvertChat app from this worktree");
+    preparation.message("Building the OvertChat app from this worktree");
     await requireDocker(
       docker,
       ["build", "--tag", config.appImage, sourceDirectory],
       { inherit: true },
     );
     if (config.agents.installed) {
-      progress.message("Building Agent Connections from this worktree");
+      preparation.message("Building Agent Connections from this worktree");
       await requireSuccessful(
         "npm",
         ["run", "build", "-w", "apps/connector", "--"],
@@ -396,17 +418,31 @@ export async function setup(options: SetupOptions): Promise<void> {
         "overtchat-connector.mjs",
       );
     }
-    progress.message("Downloading the selected service images");
+    preparation.message("Downloading the selected service images");
     await requireDocker(
       docker,
       [...composeArgs, "pull", "--ignore-pull-failures"],
       { inherit: true },
     );
   } else {
-    progress.message("Downloading the selected OvertChat components");
+    preparation.message("Downloading the selected OvertChat components");
     await requireDocker(docker, [...composeArgs, "pull"], { inherit: true });
   }
-  progress.message("Starting OvertChat");
+  const snapshot = adopting && existing
+    ? await (async () => {
+        preparation.message("Creating and verifying a SQLite safety snapshot");
+        return await createPreMigrationSnapshot(docker, existing, config);
+      })()
+    : null;
+  preparation.stop(
+    snapshot ? "Existing data snapshot created" : "OvertChat components ready",
+  );
+  if (snapshot) {
+    note(snapshot.displayPath, "Pre-migration snapshot");
+  }
+
+  const progress = spinner();
+  progress.start("Starting OvertChat");
   await requireDocker(docker, [...composeArgs, "up", "-d"], { inherit: true });
   progress.message("Waiting for OvertChat to become ready");
   await waitForApp(`http://127.0.0.1:${config.appPort}`);

@@ -22,6 +22,7 @@ function existing(
     appPort: 9000,
     bindAddress: "127.0.0.1",
     publicUrl: "https://chat.example.com",
+    bundledServices: { search: false, tts: false, stt: false },
     environment: new Map([
       ["BETTER_AUTH_SECRET", "existing-auth-secret"],
       ["EXTRA_TRUSTED_ORIGINS", "https://mobile.example.com"],
