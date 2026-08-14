@@ -11,6 +11,7 @@ import { renderStackEnvironment } from "./compose.js";
 import {
   detectDockerCommand,
   dockerComposeAvailable,
+  reconcileManagedSidecars,
   requireDocker,
 } from "./docker.js";
 import { runtimePaths } from "./paths.js";
@@ -20,7 +21,11 @@ import {
   latestReleaseManifest,
   updateCliIfNeeded,
 } from "./release.js";
-import { prepareFiles, waitForApp } from "./setup.js";
+import {
+  prepareFiles,
+  showSidecarReconciliation,
+  waitForApp,
+} from "./setup.js";
 
 export async function update(): Promise<void> {
   const paths = runtimePaths();
@@ -115,8 +120,11 @@ export async function update(): Promise<void> {
       await installManagedConnector(nextConfig, secrets.managementSecret);
     }
     await writeInstallationConfig(paths, nextConfig);
+    progress.message("Reconciling bundled services");
+    const reconciliation = await reconcileManagedSidecars(docker, nextConfig);
     progress.stop("OvertChat is up to date");
     progressActive = false;
+    showSidecarReconciliation(reconciliation);
     outro(`Open: ${nextConfig.publicUrl}`);
   } catch (error) {
     if (progressActive) progress.stop("OvertChat update failed", 1);
