@@ -132,8 +132,10 @@ export const hostConnectors = sqliteTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
-      .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    managed: integer("managed", { mode: "boolean" })
+      .default(false)
+      .notNull(),
     name: text("name").notNull(),
     tokenHash: text("token_hash").notNull(),
     version: text("version"),
@@ -620,3 +622,22 @@ export const modelConfigs = sqliteTable(
       .where(sql`${table.taskModel} = true`),
   ],
 );
+
+export const serverCapabilities = sqliteTable("server_capabilities", {
+  id: text("id", { enum: ["search", "tts", "stt"] }).primaryKey(),
+  provider: text("provider").notNull(),
+  bundledInstalled: integer("bundled_installed", { mode: "boolean" })
+    .default(false)
+    .notNull(),
+  baseUrl: text("base_url"),
+  apiKey: text("api_key"),
+  model: text("model"),
+  voice: text("voice"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});

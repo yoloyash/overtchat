@@ -7,6 +7,7 @@ import {
   Cpu,
   Database,
   KeyRound,
+  ServerCog,
   Settings2,
   UserRound,
   Users,
@@ -33,6 +34,11 @@ const USER_ITEMS: Item[] = [
 ];
 
 const ADMIN_ITEMS: Item[] = [
+  {
+    href: "/settings/services",
+    label: "Services",
+    icon: ServerCog,
+  },
   {
     href: "/settings/connections",
     label: "Connections",

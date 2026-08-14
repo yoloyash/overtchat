@@ -294,7 +294,7 @@ export function ConnectionsPanel({
                   : "Host Connector"}
               </p>
             </div>
-            {!connector.online && (
+            {!connector.online && !connector.managed && (
               <Button
                 variant="outline"
                 size="sm"
@@ -309,22 +309,24 @@ export function ConnectionsPanel({
                 Pair again
               </Button>
             )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              disabled={deleteConnectorMutation.isPending}
-              onClick={() => {
-                setDetachError("");
-                setPendingDetach({ type: "connector", connector });
-              }}
-              aria-label="Remove Host Connector"
-              title="Remove Host Connector"
-            >
-              <Trash2 />
-            </Button>
+            {!connector.managed && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={deleteConnectorMutation.isPending}
+                onClick={() => {
+                  setDetachError("");
+                  setPendingDetach({ type: "connector", connector });
+                }}
+                aria-label="Remove Host Connector"
+                title="Remove Host Connector"
+              >
+                <Trash2 />
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="flex items-center justify-between gap-3 px-4 py-4">
+          <div className="flex items-center gap-3 px-4 py-4">
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
                 <Server className="size-4" />
@@ -334,23 +336,10 @@ export function ConnectionsPanel({
                   OvertChat host
                 </span>
                 <span className="block text-xs text-muted-foreground">
-                  Local agents and SSH
+                  Not installed on this server. Run: overtchat setup
                 </span>
               </span>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={pairingMutation.isPending}
-              onClick={() => void createPairing()}
-            >
-              {pairingMutation.isPending ? (
-                <Loader2 className="animate-spin motion-reduce:animate-none" />
-              ) : (
-                <Link2 />
-              )}
-              Set up
-            </Button>
           </div>
         )}
         {connector?.upgrade && (

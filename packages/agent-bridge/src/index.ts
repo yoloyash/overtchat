@@ -23,7 +23,7 @@ export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
  * wire shape and remains stable even when the connector build version changes.
  */
 export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.2.0";
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.3.4";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.4.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [

@@ -36,28 +36,31 @@ If you want every feature in the world — image generation, a code interpreter,
 ## Quick start
 
 ```bash
-git clone https://github.com/yoloyash/overtchat
-cd overtchat
-cp .env.example .env
-echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
-echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
-docker compose up -d --build
+curl -fsSL https://overtchat.com/install | sh
 ```
 
-Open [http://localhost:4718](http://localhost:4718), sign up, the setup wizard takes you the rest of the way.
+The guided terminal setup detects Docker, offers to install it when missing,
+and lets you choose web search, text-to-speech, speech-to-text (including a
+specific NVIDIA GPU), and Agent Connections. It generates the secrets and
+Compose configuration itself. Open the URL it prints; the first signup becomes
+the admin, then the existing model setup gets you chatting.
 
-- **LAN access:** set `BETTER_AUTH_URL=http://<your-lan-ip>:4718` in `.env`, then `docker compose up -d`.
-- **Internet access:** uncomment the `cloudflared` block in `compose.yml` and paste a tunnel token.
+- Re-run `overtchat setup` to add an optional local service later.
+- Run `overtchat update` to update the manager, app, selected sidecars, database
+  migrations, and the managed Agent Connector together.
+- Existing standard Docker Compose installations are adopted in place; the
+  current data volume or bind mount is preserved.
 
-Already run SearXNG or Kokoro elsewhere? You can point overtchat at them; see [deploy docs](docs/deploy.md#reusing-sidecars).
+Prefer to manage Compose by hand or deploy from source? The legacy/manual flow
+remains supported in the [deploy docs](docs/deploy.md#manual-compose-installation).
 
 ## Agent Connections (Beta)
 
 Run Codex, Pi, and Oh My Pi from the browser on local or SSH-connected machines.
-Setup is one generated command under **Settings → Connections** and does not
-upload SSH keys or config. Server updates leave the connector alone; if the
-connector itself needs an update, the same page shows a one-line command that
-keeps its pairing.
+Choose **Agent Connections → Yes** during `overtchat setup`. The installer
+provisions the connector internally and prints the normal OvertChat sign-in URL;
+there is no pairing code to copy. `overtchat update` keeps the connector in sync.
+Existing manually paired connectors continue to work.
 
 ## Mobile
 
@@ -83,14 +86,11 @@ Native chat with streaming replies, the model picker, projects, full-text search
 
 ## Speech-to-text (optional)
 
-Off by default — the mic button in the composer is greyed out until you bring up the Parakeet sidecar:
-
-```bash
-docker compose --profile stt up -d        # CPU (~670 MB model, ~2 GB RAM)
-docker compose --profile stt-gpu up -d    # NVIDIA GPU (requires NVIDIA Container Toolkit)
-```
-
-Multilingual (25 languages, auto-detected). All processing stays on your machine. Model downloads on first start (~10 s) and is cached in a Docker volume.
+Choose bundled Parakeet during `overtchat setup`, then select Auto, a specific
+NVIDIA GPU, or CPU. If you skip it initially, run `overtchat setup` later; the
+admin settings will show that the local provider is not installed until then.
+Multilingual audio processing stays on your machine and the model is cached in
+a Docker volume.
 
 ## Privacy
 
@@ -100,7 +100,8 @@ The Android client can send crash diagnostics to Sentry. These may include techn
 
 ## Requirements
 
-- Docker + Docker Compose v2
+- Linux on x86-64 or arm64 for the managed installer
+- Docker + Docker Compose v2 (the installer can install Docker on supported systems)
 - ~1 GB RAM free for the app stack (Kokoro TTS pulls ~100 MB on first boot)
 - An LLM endpoint (API key or self-hosted)
 

@@ -92,10 +92,46 @@ jobs:
           cmp scripts/install-connector.sh "$verification_directory/install-connector.sh"
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve public managed installer
+        id: managed-installer
+        if: github.event_name != 'pull_request'
+        run: |
+          cli_version=$(node -p "require('./apps/site/public/install-manifest.json').cliVersion")
+          app_version=$(node -p "require('./apps/site/public/install-manifest.json').appVersion")
+          grep -F "cli_version=\"$cli_version\"" apps/site/public/install
+
+          release_url="https://github.com/yoloyash/overtchat/releases/download/cli-v$cli_version"
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
+          ready=true
+          for asset in overtchat-checksums.txt overtchat-linux-amd64 overtchat-linux-arm64; do
+            curl --proto '=https' --tlsv1.2 \
+              --fail --silent --show-error --location \
+              --retry 10 --retry-delay 3 --retry-all-errors --retry-max-time 120 \
+              --output "$verification_directory/$asset" \
+              "$release_url/$asset" || ready=false
+          done
+          if [ "$ready" = "true" ]; then
+            (cd "$verification_directory" && sha256sum --check overtchat-checksums.txt) || ready=false
+          fi
+          docker manifest inspect \
+            "ghcr.io/yoloyash/overtchat-app:$app_version" >/dev/null || ready=false
+
+          if [ "$ready" != "true" ]; then
+            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+              echo "The managed OvertChat release is not public yet; deferring site deployment."
+              echo "ready=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            exit 1
+          fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
       - name: Deploy site to Cloudflare
         if: >-
           github.event_name != 'pull_request' &&
-          steps.connector-installer.outputs.ready == 'true'
+          steps.connector-installer.outputs.ready == 'true' &&
+          steps.managed-installer.outputs.ready == 'true'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

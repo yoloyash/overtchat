@@ -16,6 +16,9 @@
     "@overtchat/connector#build": {
       "outputs": ["dist/**"]
     },
+    "@overtchat/cli#build": {
+      "outputs": ["dist/**"]
+    },
     "lint": {
       "dependsOn": ["^lint"]
     },

@@ -17,8 +17,66 @@ type ParsedArgs = {
   values: Map<string, string>;
 };
 
+async function readStdinJson(): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += bytes.length;
+    if (total > 16 * 1024) {
+      throw new Error("Managed connector configuration is too large.");
+    }
+    chunks.push(bytes);
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new Error("Managed connector configuration must be valid JSON.");
+  }
+}
+
+function managedConfig(value: unknown): {
+  serverUrl: string;
+  connectorId: string;
+  token: string;
+} {
+  if (!value || typeof value !== "object") {
+    throw new Error("Managed connector configuration is invalid.");
+  }
+  const server = Reflect.get(value, "serverUrl");
+  const connectorId = Reflect.get(value, "connectorId");
+  const token = Reflect.get(value, "token");
+  if (
+    typeof server !== "string" ||
+    typeof connectorId !== "string" ||
+    !/^[A-Za-z0-9_-]{1,128}$/u.test(connectorId) ||
+    typeof token !== "string" ||
+    !token.startsWith(`oct_${connectorId}.`)
+  ) {
+    throw new Error("Managed connector configuration is invalid.");
+  }
+  return {
+    serverUrl: normalizeServerUrl(server),
+    connectorId,
+    token,
+  };
+}
+
+async function installManaged(): Promise<void> {
+  await assertUserServiceAvailable();
+  const config = managedConfig(await readStdinJson());
+  await writeConnectorConfig(config);
+  const unitPath = await installUserService();
+  console.log(`Managed service installed at ${unitPath}`);
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
-  const command = argv[0] && !argv[0].startsWith("-") ? argv[0] : "run";
+  const command =
+    argv[0] === "--version" || argv[0] === "-v"
+      ? "version"
+      : argv[0] && !argv[0].startsWith("-")
+        ? argv[0]
+        : "run";
   const rest = command === "run" && argv[0]?.startsWith("-") ? argv : argv.slice(1);
   const values = new Map<string, string>();
   for (let index = 0; index < rest.length; index++) {
@@ -103,6 +161,12 @@ async function main(): Promise<void> {
       console.log(`Service installed at ${unitPath}`);
       return;
     }
+    case "install-managed":
+      if (parsed.values.size > 0) {
+        throw new Error("The install-managed command reads configuration from stdin.");
+      }
+      await installManaged();
+      return;
     case "run":
       await run();
       return;
@@ -112,9 +176,15 @@ async function main(): Promise<void> {
       }
       await preflight();
       return;
+    case "version":
+      if (parsed.values.size > 0) {
+        throw new Error("The version command does not accept arguments.");
+      }
+      console.log(CONNECTOR_VERSION);
+      return;
     default:
       throw new Error(
-        "Usage: overtchat-connector <install|pair|run> --server URL --pair-code CODE",
+        "Usage: overtchat-connector <install|install-managed|pair|preflight|run|version>",
       );
   }
 }

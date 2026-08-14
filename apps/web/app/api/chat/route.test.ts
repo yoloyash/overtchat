@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
     inlineUploads: vi.fn(),
     getModelConfig: vi.fn(),
     getTaskModelConfig: vi.fn(),
+    getServerCapability: vi.fn(),
     getProject: vi.fn(),
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
@@ -105,6 +106,9 @@ vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
   getTaskModelConfig: mocks.getTaskModelConfig,
+}));
+vi.mock("@/lib/db/serverCapabilities", () => ({
+  getServerCapability: mocks.getServerCapability,
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
 vi.mock("@/lib/title", () => ({
@@ -207,6 +211,7 @@ describe("chat route setup boundary", () => {
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
     mocks.getTaskModelConfig.mockReturnValue(null);
+    mocks.getServerCapability.mockReturnValue({ provider: "bundled" });
     mocks.getChat.mockResolvedValue(null);
     mocks.getProject.mockResolvedValue(null);
     mocks.getChatMessage.mockResolvedValue(null);

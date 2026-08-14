@@ -1,0 +1,64 @@
+#!/bin/sh
+set -eu
+
+repository="yoloyash/overtchat"
+cli_version="0.1.0"
+
+say() {
+  printf '%s\n' "$*"
+}
+
+fail() {
+  printf 'OvertChat install failed: %s\n' "$*" >&2
+  exit 1
+}
+
+[ "$(uname -s)" = "Linux" ] || fail "the managed installer currently supports Linux"
+
+case "$(uname -m)" in
+  x86_64|amd64) architecture="amd64" ;;
+  aarch64|arm64) architecture="arm64" ;;
+  *) fail "unsupported CPU architecture: $(uname -m)" ;;
+esac
+
+for command in curl sha256sum awk install mktemp; do
+  command -v "$command" >/dev/null 2>&1 || fail "required command not found: $command"
+done
+
+asset="overtchat-linux-$architecture"
+release_url="https://github.com/$repository/releases/download/cli-v$cli_version"
+temporary_directory=$(mktemp -d)
+trap 'rm -rf "$temporary_directory"' EXIT HUP INT TERM
+
+say "Downloading OvertChat $cli_version..."
+curl --proto '=https' --tlsv1.2 -fsSLo "$temporary_directory/$asset" \
+  "$release_url/$asset"
+curl --proto '=https' --tlsv1.2 -fsSLo "$temporary_directory/checksums.txt" \
+  "$release_url/overtchat-checksums.txt"
+
+expected=$(
+  awk -v asset="$asset" '$2 == asset || $2 == "*" asset { print $1; exit }' \
+    "$temporary_directory/checksums.txt"
+)
+[ -n "$expected" ] || fail "the release checksum for $asset is missing"
+actual=$(sha256sum "$temporary_directory/$asset" | awk '{ print $1 }')
+[ "$actual" = "$expected" ] || fail "the downloaded binary failed checksum verification"
+
+install_directory="${HOME:?}/.local/bin"
+install_path="$install_directory/overtchat"
+mkdir -p "$install_directory"
+install -m 0755 "$temporary_directory/$asset" "$install_path"
+
+say "Installed the overtchat command at $install_path"
+case ":$PATH:" in
+  *":$install_directory:"*) ;;
+  *)
+    say "Add $install_directory to PATH to run overtchat from any shell."
+    ;;
+esac
+
+if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  exec "$install_path" setup </dev/tty >/dev/tty
+fi
+
+say "Run $install_path setup in an interactive terminal to finish."

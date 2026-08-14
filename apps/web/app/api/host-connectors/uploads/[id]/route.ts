@@ -8,6 +8,7 @@ export async function GET(
 ) {
   const connector = authenticateHostConnector(request);
   if (!connector) return new Response("Unauthorized", { status: 401 });
+  if (!connector.userId) return new Response("Connector not claimed", { status: 403 });
   const { id } = await params;
   const upload = await getUpload(id, connector.userId);
   if (!upload || upload.category !== "image") {
