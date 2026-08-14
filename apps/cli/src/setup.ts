@@ -23,8 +23,10 @@ import {
   installDockerEngine,
   installNvidiaContainerToolkit,
   nvidiaContainerRuntimeAvailable,
+  reconcileManagedSidecars,
   requireDocker,
   runDocker,
+  type SidecarReconciliation,
 } from "./docker.js";
 import { primaryLanAddress } from "./network.js";
 import { runtimePaths } from "./paths.js";
@@ -233,6 +235,20 @@ export async function syncCapabilities(
         detail ? `: ${detail}` : ""
       }`,
     );
+  }
+}
+
+export function showSidecarReconciliation(
+  reconciliation: SidecarReconciliation,
+): void {
+  if (reconciliation.removed.length > 0) {
+    note(
+      `Removed unused containers: ${reconciliation.removed.join(", ")}\nImages and service data were preserved.`,
+      "Bundled service cleanup",
+    );
+  }
+  if (reconciliation.warnings.length > 0) {
+    note(reconciliation.warnings.join("\n"), "Bundled service cleanup warning");
   }
 }
 
@@ -453,7 +469,11 @@ export async function setup(options: SetupOptions): Promise<void> {
     await installManagedConnector(config, secrets.managementSecret);
   }
   await writeInstallationConfig(paths, config);
+  progress.message("Reconciling bundled services");
+  const reconciliation = await reconcileManagedSidecars(docker, config);
   progress.stop("OvertChat is ready");
+
+  showSidecarReconciliation(reconciliation);
 
   outro(`Open: ${config.publicUrl}`);
 }

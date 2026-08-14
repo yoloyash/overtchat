@@ -1,4 +1,8 @@
-import type { ExistingInstallation, Gpu } from "./types.js";
+import type {
+  ExistingInstallation,
+  Gpu,
+  InstallationConfig,
+} from "./types.js";
 import { APP_IMAGE } from "./constants.js";
 import { commandExists, requireSuccessful, runCommand } from "./process.js";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -268,6 +272,103 @@ export async function requireDocker(
     [...docker.prefix, ...args],
     options,
   );
+}
+
+type ManagedSidecar = {
+  containerName: string;
+  label: string;
+  selected: boolean;
+  service: string;
+};
+
+export type SidecarReconciliation = {
+  removed: string[];
+  warnings: string[];
+};
+
+/**
+ * Removes containers left behind when a managed Compose profile is no longer
+ * selected. Docker Compose intentionally leaves inactive-profile containers
+ * alone, so verify both Compose labels before touching an exact container name.
+ */
+export async function reconcileManagedSidecars(
+  docker: DockerCommand,
+  config: InstallationConfig,
+): Promise<SidecarReconciliation> {
+  const sidecars: ManagedSidecar[] = [
+    {
+      containerName: "overtchat-searxng",
+      label: "SearXNG",
+      selected: config.search.bundledInstalled,
+      service: "searxng",
+    },
+    {
+      containerName: "overtchat-kokoro",
+      label: "Kokoro",
+      selected: config.tts.bundledInstalled,
+      service: "kokoro",
+    },
+    {
+      containerName: "overtchat-stt-cpu",
+      label: "Parakeet (CPU)",
+      selected:
+        config.stt.bundledInstalled && config.stt.accelerator === "cpu",
+      service: "stt-cpu",
+    },
+    {
+      containerName: "overtchat-stt-gpu",
+      label: "Parakeet (NVIDIA)",
+      selected:
+        config.stt.bundledInstalled && config.stt.accelerator !== "cpu",
+      service: "stt-gpu",
+    },
+  ];
+  const result: SidecarReconciliation = { removed: [], warnings: [] };
+
+  for (const sidecar of sidecars) {
+    if (sidecar.selected) continue;
+    let container: DockerInspect | null;
+    try {
+      container = await inspectContainer(docker, sidecar.containerName);
+    } catch (error) {
+      result.warnings.push(
+        `Could not inspect ${sidecar.label}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      continue;
+    }
+    if (!container) continue;
+    const labels = container.Config?.Labels;
+    const inspectedName = (container.Name ?? "").replace(/^\//u, "");
+    if (
+      inspectedName !== sidecar.containerName ||
+      labels?.["com.docker.compose.project"] !== config.composeProject ||
+      labels?.["com.docker.compose.service"] !== sidecar.service
+    ) {
+      continue;
+    }
+    try {
+      const removal = await runDocker(docker, [
+        "container",
+        "rm",
+        "--force",
+        sidecar.containerName,
+      ]);
+      if (removal.exitCode === 0) {
+        result.removed.push(sidecar.label);
+      } else {
+        const detail = removal.stderr.trim() || removal.stdout.trim();
+        result.warnings.push(
+          `Could not remove ${sidecar.label}${detail ? `: ${detail}` : "."}`,
+        );
+      }
+    } catch (error) {
+      result.warnings.push(
+        `Could not remove ${sidecar.label}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  return result;
 }
 
 function environmentMap(values: string[] | undefined): Map<string, string> {
