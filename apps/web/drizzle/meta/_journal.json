@@ -71,6 +71,13 @@
       "when": 1786653947672,
       "tag": "0009_common_human_torch",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1786682215506,
+      "tag": "0010_deep_nico_minoru",
+      "breakpoints": true
     }
   ]
 }

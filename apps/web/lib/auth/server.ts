@@ -7,6 +7,7 @@ import { APIError } from "better-auth/api";
 import { count } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
+import { claimManagedHostConnector } from "@/lib/db/hostConnectors";
 
 const extraTrustedOrigins =
   process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
@@ -37,6 +38,11 @@ export const auth = betterAuth({
           const sessionUser = ctx?.context?.session?.user;
           if (sessionUser?.role === "admin") return { data };
           throw new APIError("BAD_REQUEST", { message: "Signup is closed." });
+        },
+        after: async (createdUser) => {
+          if (createdUser.role === "admin") {
+            claimManagedHostConnector(createdUser.id);
+          }
         },
       },
     },

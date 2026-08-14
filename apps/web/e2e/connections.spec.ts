@@ -59,37 +59,28 @@ async function startHostConnector(
   ).toBeVisible();
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Agents" }),
-  ).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Set up" }).click();
-  await expect(
-    page.getByText("Install Host Connector", { exact: true }),
-  ).toBeVisible();
-  await expect(
     page.getByText(
-      "Run this command in a terminal on the computer running OvertChat.",
+      "Not installed on this server. Run: overtchat setup",
       { exact: true },
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: "About Host Connector" }).click();
   await expect(
-    page.getByText(
-      /Lets OvertChat use agent binaries and SSH hosts available on this server/,
-    ),
-  ).toBeVisible();
+    page.getByRole("button", { name: "Set up" }),
+  ).toHaveCount(0);
   await expect(
-    page.getByRole("link", { name: "View installer source" }),
-  ).toHaveAttribute(
-    "href",
-    "https://github.com/yoloyash/overtchat/blob/main/scripts/install-connector.sh",
-  );
-  await page.keyboard.press("Escape");
-  const command = await page.getByLabel("Host Connector install command").textContent();
-  expect(command).toContain("https://overtchat.com/install/connector/0.3.4");
-  expect(command).toContain("--server 'http://127.0.0.1:4718'");
-  const pairCode = /--pair-code '([^']+)'/u.exec(command ?? "")?.[1];
-  if (!pairCode) throw new Error("The Host Connector pairing code was missing.");
+    page.getByRole("heading", { name: "Agents" }),
+  ).toHaveCount(0);
+
+  // Managed setup is the only user-facing installation path. Provision an
+  // unmanaged connector through the authenticated API solely as an E2E fixture
+  // so the connector transport and agent flows below remain covered.
+  const { pairCode } = await page.evaluate(async () => {
+    const response = await fetch("/api/host-connectors", { method: "POST" });
+    if (!response.ok) {
+      throw new Error(`Could not create connector fixture: ${response.status}`);
+    }
+    return (await response.json()) as { pairCode: string };
+  });
 
   const server = new URL(page.url()).origin;
   const configPath = testInfo.outputPath("host-connector.json");
@@ -233,39 +224,26 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   ).toBeVisible();
   await expect(page.getByText("Not set up", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Agents" }),
-  ).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Set up" }).click();
-  await expect(
-    page.getByText("Install Host Connector", { exact: true }),
-  ).toBeVisible();
-  await expect(
     page.getByText(
-      "Run this command in a terminal on the computer running OvertChat.",
+      "Not installed on this server. Run: overtchat setup",
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
-    page.getByText("Waiting for connection…", { exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "About Host Connector" }).click();
+    page.getByRole("button", { name: "Set up" }),
+  ).toHaveCount(0);
   await expect(
-    page.getByText(
-      /Lets OvertChat use agent binaries and SSH hosts available on this server/,
-    ),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "View installer source" }),
-  ).toBeVisible();
+    page.getByRole("heading", { name: "Agents" }),
+  ).toHaveCount(0);
+
   await page.screenshot({
-    path: testInfo.outputPath("agent-access-setup-desktop.png"),
+    path: testInfo.outputPath("agent-access-uninstalled-desktop.png"),
     fullPage: true,
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({
-    path: testInfo.outputPath("agent-access-setup-mobile.png"),
+    path: testInfo.outputPath("agent-access-uninstalled-mobile.png"),
     fullPage: true,
   });
   expect(

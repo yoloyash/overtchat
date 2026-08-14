@@ -22,6 +22,7 @@ playwright/.cache/
 /build
 /dist
 /apps/connector/dist/
+/apps/cli/dist/
 
 # data (dev SQLite DB only; anchored so it can't match source dirs like settings/data/)
 /apps/web/data/

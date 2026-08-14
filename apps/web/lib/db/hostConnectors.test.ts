@@ -16,11 +16,22 @@ const raw = new Database(databasePath);
 raw.pragma("foreign_keys = ON");
 raw.exec(`
   CREATE TABLE user (
-    id TEXT PRIMARY KEY NOT NULL
+    id TEXT PRIMARY KEY NOT NULL,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    email_verified INTEGER NOT NULL DEFAULT false,
+    image TEXT,
+    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    role TEXT,
+    banned INTEGER DEFAULT false,
+    ban_reason TEXT,
+    ban_expires INTEGER
   );
   CREATE TABLE host_connectors (
     id TEXT PRIMARY KEY NOT NULL,
-    user_id TEXT NOT NULL,
+    user_id TEXT,
+    managed INTEGER NOT NULL DEFAULT false,
     name TEXT NOT NULL,
     token_hash TEXT NOT NULL,
     version TEXT,
@@ -54,7 +65,9 @@ beforeEach(() => {
     DELETE FROM host_connector_pairings;
     DELETE FROM host_connectors;
     DELETE FROM user;
-    INSERT INTO user (id) VALUES ('alice'), ('bob');
+    INSERT INTO user (id, name, email, role, created_at) VALUES
+      ('alice', 'Alice', 'alice@example.com', 'admin', 1),
+      ('bob', 'Bob', 'bob@example.com', 'user', 2);
   `);
 });
 
@@ -131,5 +144,58 @@ describe("Host Connector pairing", () => {
         version: null,
       }),
     ).toBeNull();
+  });
+});
+
+describe("managed Host Connector", () => {
+  it("can be provisioned before signup and claimed by the first admin", () => {
+    raw.exec("DELETE FROM user");
+    const provisioned = repository.provisionManagedHostConnector({
+      name: "Setup host",
+      version: "0.4.0",
+    });
+
+    expect(provisioned.connector).toMatchObject({
+      userId: null,
+      managed: true,
+      name: "Setup host",
+    });
+    raw.prepare(
+      "INSERT INTO user (id, name, email, role, created_at) VALUES (?, ?, ?, ?, ?)",
+    ).run("owner", "Owner", "owner@example.com", "admin", 1);
+    repository.claimManagedHostConnector("owner");
+
+    expect(repository.getManagedHostConnector()).toMatchObject({
+      id: provisioned.connector.id,
+      userId: "owner",
+      managed: true,
+    });
+    expect(repository.authenticateHostConnectorToken(provisioned.token))
+      .toMatchObject({ id: provisioned.connector.id });
+  });
+
+  it("adopts an existing admin connector and rotates its credentials", () => {
+    const pairing = repository.createHostConnectorPairing("alice");
+    const legacy = repository.consumeHostConnectorPairing({
+      pairCode: pairing.pairCode,
+      name: "Legacy host",
+      version: "0.3.4",
+    })!;
+    const managed = repository.provisionManagedHostConnector({
+      name: "Managed host",
+      version: "0.4.0",
+    });
+
+    expect(managed.connector).toMatchObject({
+      id: legacy.connector.id,
+      userId: "alice",
+      managed: true,
+      name: "Managed host",
+      version: "0.4.0",
+    });
+    expect(repository.authenticateHostConnectorToken(legacy.token)).toBeNull();
+    expect(repository.authenticateHostConnectorToken(managed.token))
+      .toMatchObject({ id: legacy.connector.id });
+    expect(repository.listHostConnectors("alice")).toHaveLength(1);
   });
 });

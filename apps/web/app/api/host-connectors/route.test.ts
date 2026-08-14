@@ -80,9 +80,32 @@ describe("Host Connectors route", () => {
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
       command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.4 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
+        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.4.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
+  });
+
+  it("keeps managed connectors under overtchat setup", async () => {
+    const managed = {
+      id: "managed",
+      name: "Managed host",
+      managed: true,
+      version: "0.4.0",
+      lastSeenAt: null,
+    };
+    mocks.listConnectors.mockReturnValue([managed]);
+    mocks.getOwnedConnector.mockReturnValue(managed);
+
+    const pairResponse = await POST(request("POST"));
+    const deleteResponse = await DELETE(
+      request("DELETE", "?id=managed"),
+    );
+
+    expect(pairResponse.status).toBe(409);
+    expect(deleteResponse.status).toBe(409);
+    expect(mocks.createPairing).not.toHaveBeenCalled();
+    expect(mocks.daemonRequest).not.toHaveBeenCalled();
+    expect(mocks.deleteConnector).not.toHaveBeenCalled();
   });
 
   it("offers an in-place upgrade command for an older connector", async () => {
@@ -90,6 +113,7 @@ describe("Host Connectors route", () => {
       {
         id: "connector",
         name: "Home server",
+        managed: false,
         version: "0.2.0",
         lastSeenAt: new Date(12_000),
       },
@@ -104,13 +128,14 @@ describe("Host Connectors route", () => {
         {
           id: "connector",
           name: "Home server",
+          managed: false,
           version: "0.2.0",
           lastSeenAt: 12_000,
           online: true,
           upgrade: {
-            version: "0.3.4",
+            version: "0.4.0",
             command:
-              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.3.4 | sh -s -- --upgrade",
+              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.4.0 | sh -s -- --upgrade",
           },
         },
       ],
@@ -122,13 +147,15 @@ describe("Host Connectors route", () => {
       {
         id: "current",
         name: "Current",
-        version: "0.3.4",
+        managed: false,
+        version: "0.4.0",
         lastSeenAt: null,
       },
       {
         id: "newer",
         name: "Newer",
-        version: "0.4.0",
+        managed: false,
+        version: "0.5.0",
         lastSeenAt: null,
       },
     ]);

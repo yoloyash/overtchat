@@ -83,10 +83,11 @@ export async function GET(request: Request) {
     return {
       id: connector.id,
       name: connector.name,
+      managed: connector.managed,
       version: connector.version,
       lastSeenAt: connector.lastSeenAt?.getTime() ?? null,
       online: hostConnectorBroker.isOnline(connector.id),
-      upgrade: needsUpgrade
+      upgrade: needsUpgrade && !connector.managed
         ? {
             version: HOST_CONNECTOR_RELEASE_VERSION,
             command: upgradeCommand(),
@@ -100,6 +101,15 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const result = await adminUser(request);
   if (!result.ok) return result.error;
+  if (listHostConnectors(result.user.id).some((connector) => connector.managed)) {
+    return Response.json(
+      {
+        error: "Agent Connections are managed by overtchat setup.",
+        code: "managed_connector",
+      },
+      { status: 409 },
+    );
+  }
   const pairing = createHostConnectorPairing(result.user.id);
   return Response.json({
     pairCode: pairing.pairCode,
@@ -113,8 +123,18 @@ export async function DELETE(request: Request) {
   if (!result.ok) return result.error;
   const id = new URL(request.url).searchParams.get("id");
   if (!id) return new Response("Missing connector id", { status: 400 });
-  if (!getOwnedHostConnector(id, result.user.id)) {
+  const connector = getOwnedHostConnector(id, result.user.id);
+  if (!connector) {
     return new Response("Not found", { status: 404 });
+  }
+  if (connector.managed) {
+    return Response.json(
+      {
+        error: "Agent Connections are managed by overtchat setup.",
+        code: "managed_connector",
+      },
+      { status: 409 },
+    );
   }
   await hostConnectorBroker.request(id, { type: "stop_all" }).catch(() => {});
   return deleteHostConnector(id, result.user.id)

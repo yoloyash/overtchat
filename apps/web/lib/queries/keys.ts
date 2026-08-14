@@ -52,6 +52,11 @@ export const modelConfigKeys = {
   health: (id: string) => [...modelConfigKeys.all(), "health", id] as const,
 };
 
+export const serverCapabilityKeys = {
+  all: () => ["serverCapabilities"] as const,
+  list: () => [...serverCapabilityKeys.all(), "list"] as const,
+};
+
 export const userKeys = {
   all: () => ["users"] as const,
   list: () => [...userKeys.all(), "list"] as const,

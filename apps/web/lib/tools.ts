@@ -1,6 +1,5 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { searxngSearch, fetchReadable } from "./web";
 
 export const webTools = {
   web_search: tool({
@@ -10,7 +9,10 @@ export const webTools = {
       query: z.string(),
       limit: z.number().int().min(1).max(10).default(5),
     }),
-    execute: async ({ query, limit }) => searxngSearch(query, limit),
+    execute: async ({ query, limit }) => {
+      const { searxngSearch } = await import("./web");
+      return searxngSearch(query, limit);
+    },
   }),
 
   fetch_url: tool({
@@ -19,7 +21,10 @@ export const webTools = {
     inputSchema: z.object({
       url: z.string().url(),
     }),
-    execute: async ({ url }) => fetchReadable(url),
+    execute: async ({ url }) => {
+      const { fetchReadable } = await import("./web");
+      return fetchReadable(url);
+    },
   }),
 };
 

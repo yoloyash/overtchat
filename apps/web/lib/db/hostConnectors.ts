@@ -4,16 +4,29 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   hostConnectorPairings,
   hostConnectors,
+  user,
 } from "@/lib/db/schema";
 
 const PAIRING_TTL_MS = 10 * 60_000;
 
 export type HostConnectorRow = typeof hostConnectors.$inferSelect;
+
+function installationOwnerUserId(): string | null {
+  return (
+    db
+      .select({ id: user.id })
+      .from(user)
+      .where(eq(user.role, "admin"))
+      .orderBy(asc(user.createdAt))
+      .limit(1)
+      .get()?.id ?? null
+  );
+}
 
 function hashSecret(value: string): string {
   return createHash("sha256").update(value).digest("base64url");
@@ -75,6 +88,83 @@ export function createHostConnectorPairing(userId: string): {
       .run();
   });
   return { pairCode: pair.value, expiresAt };
+}
+
+export function provisionManagedHostConnector(input: {
+  name: string;
+  version: string | null;
+}): { connector: HostConnectorRow; token: string } {
+  const token = credential("oct");
+  const installationOwner = installationOwnerUserId();
+  return db.transaction((tx) => {
+    const managed = tx
+      .select()
+      .from(hostConnectors)
+      .where(eq(hostConnectors.managed, true))
+      .limit(1)
+      .get();
+    const ownerConnector = installationOwner
+      ? tx
+          .select()
+          .from(hostConnectors)
+          .where(eq(hostConnectors.userId, installationOwner))
+          .limit(1)
+          .get()
+      : null;
+    const existing = managed ?? ownerConnector;
+    const ownerUserId = existing?.userId ?? installationOwner;
+    const connector = existing
+      ? tx
+          .update(hostConnectors)
+          .set({
+            userId: ownerUserId,
+            managed: true,
+            name: input.name,
+            tokenHash: token.secretHash,
+            version: input.version,
+            updatedAt: new Date(),
+          })
+          .where(eq(hostConnectors.id, existing.id))
+          .returning()
+          .get()
+      : tx
+          .insert(hostConnectors)
+          .values({
+            id: token.id,
+            userId: ownerUserId,
+            managed: true,
+            name: input.name,
+            tokenHash: token.secretHash,
+            version: input.version,
+          })
+          .returning()
+          .get();
+    if (!connector) throw new Error("Failed to provision the Host Connector.");
+    return {
+      connector,
+      token: existing
+        ? `oct_${existing.id}.${token.secret}`
+        : token.value,
+    };
+  });
+}
+
+export function claimManagedHostConnector(userId: string): void {
+  db.update(hostConnectors)
+    .set({ userId, updatedAt: new Date() })
+    .where(and(eq(hostConnectors.managed, true), isNull(hostConnectors.userId)))
+    .run();
+}
+
+export function getManagedHostConnector(): HostConnectorRow | null {
+  return (
+    db
+      .select()
+      .from(hostConnectors)
+      .where(eq(hostConnectors.managed, true))
+      .limit(1)
+      .get() ?? null
+  );
 }
 
 export function consumeHostConnectorPairing(input: {

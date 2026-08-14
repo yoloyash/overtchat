@@ -1,11 +1,12 @@
+import "server-only";
 import { lookup } from "node:dns/promises";
 import ipaddr from "ipaddr.js";
+import { getServerCapability } from "@/lib/db/serverCapabilities";
 import type { WebSearchResult, FetchedPage } from "./web-client";
 
 export type { WebSearchResult, FetchedPage } from "./web-client";
 export { cleanDomain, faviconUrl } from "./web-client";
 
-const SEARXNG_URL = process.env.SEARXNG_URL ?? "http://localhost:8088";
 const MAX_CONTENT_CHARS = 8_000;
 const MAX_FETCH_BYTES = 5 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
@@ -15,7 +16,19 @@ export async function searxngSearch(
   query: string,
   limit = 5,
 ): Promise<WebSearchResult[]> {
-  const u = new URL("/search", SEARXNG_URL);
+  const capability = getServerCapability("search");
+  if (capability.provider === "disabled") {
+    throw new Error("Web search is disabled on this server.");
+  }
+  if (capability.provider === "brave") {
+    return braveSearch(query, limit, capability.apiKey);
+  }
+  const baseUrl =
+    capability.provider === "bundled"
+      ? "http://searxng:8080"
+      : capability.baseUrl || process.env.SEARXNG_URL;
+  if (!baseUrl) throw new Error("SearXNG is not configured.");
+  const u = new URL("/search", baseUrl);
   u.searchParams.set("q", query);
   u.searchParams.set("format", "json");
   u.searchParams.set("safesearch", "1");
@@ -32,6 +45,36 @@ export async function searxngSearch(
     link: r.url,
     title: r.title ?? r.url,
     snippet: r.content ?? "",
+  }));
+}
+
+async function braveSearch(
+  query: string,
+  limit: number,
+  apiKey: string | null,
+): Promise<WebSearchResult[]> {
+  if (!apiKey) throw new Error("The Brave Search API key is not configured.");
+  const url = new URL("https://api.search.brave.com/res/v1/web/search");
+  url.searchParams.set("q", query);
+  url.searchParams.set("count", String(limit));
+  url.searchParams.set("safesearch", "moderate");
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "X-Subscription-Token": apiKey,
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`brave search: ${response.status}`);
+  const body = (await response.json()) as {
+    web?: {
+      results?: Array<{ url: string; title?: string; description?: string }>;
+    };
+  };
+  return (body.web?.results ?? []).slice(0, limit).map((result) => ({
+    link: result.url,
+    title: result.title ?? result.url,
+    snippet: result.description ?? "",
   }));
 }
 

@@ -53,7 +53,7 @@ export async function readConnectorConfig(): Promise<ConnectorConfig> {
     parsed = JSON.parse(await readFile(file, "utf8"));
   } catch {
     throw new Error(
-      `OvertChat Connector is not paired. Run overtchat-connector install --server <url> --pair-code <code>.`,
+      "OvertChat Connector is not configured. Run overtchat setup.",
     );
   }
   if (

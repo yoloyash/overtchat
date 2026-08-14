@@ -11,7 +11,7 @@ export function dictationErrorMessage(
       return "Audio recording isn't supported on this device.";
     case "stt_unavailable":
       return isAdmin || err.role === "admin"
-        ? "Speech-to-text isn't running. Start it with: docker compose --profile stt up -d (or --profile stt-gpu for NVIDIA GPU)."
+        ? "Speech-to-text isn't configured on this server. Run: overtchat setup"
         : "Speech-to-text isn't enabled. Ask the admin to enable it.";
     case "empty":
       return "No speech detected. Try again.";

@@ -38,12 +38,7 @@ export const metadata: Metadata = createPageMetadata({
   absoluteTitle: true,
 });
 
-const quickStart = `git clone https://github.com/yoloyash/overtchat
-cd overtchat
-cp .env.example .env
-echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
-echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
-docker compose up -d --build`;
+const quickStart = "curl -fsSL https://overtchat.com/install | sh";
 
 const steps: Array<{
   number: string;
@@ -53,12 +48,12 @@ const steps: Array<{
   {
     number: "01",
     title: "Start your server",
-    body: "Run one Docker Compose command. OvertChat brings the app, SQLite database, resume buffer, web search, and text-to-speech.",
+    body: "Run one install command. The guided setup detects Docker and lets you choose local or API-backed search, speech, and coding-agent connections.",
   },
   {
     number: "02",
     title: "Connect your models",
-    body: "Add a hosted provider or an OpenAI-compatible local endpoint. The setup wizard checks the connection before you begin.",
+    body: "Create the first admin account, then add a hosted provider or an OpenAI-compatible local endpoint. OvertChat checks the connection before you begin.",
   },
   {
     number: "03",

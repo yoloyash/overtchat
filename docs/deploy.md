@@ -1,30 +1,45 @@
 # Deploy
 
-Single-compose, self-hosted, LAN-only. Assumes Docker + Docker Compose v2 on the target machine.
+The managed installer runs OvertChat on the current Linux machine with Docker
+Compose. It supports x86-64 and arm64.
 
 ## One-time setup
 
 ```bash
-git clone <repo>
-cd overtchat
-cp .env.example .env
-echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
-echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
+curl -fsSL https://overtchat.com/install | sh
 ```
 
-Edit `.env`:
+The terminal wizard configures web search, TTS, STT, and optional Agent
+Connections. Docker is detected automatically and can be installed when it is
+missing. For local STT, the wizard detects NVIDIA GPUs by stable UUID and lets
+you select Auto, a specific device, or CPU.
 
-- `BETTER_AUTH_URL` — the URL the browser will hit (scheme + host + port). For LAN access from other devices, set it to your host's LAN IP, e.g. `http://192.168.1.50:4718`.
+Open the printed URL. The first user to sign up becomes the admin. Model setup
+continues in the web app.
 
-Then:
+The managed files live under `~/.config/overtchat` and
+`~/.local/share/overtchat`. Re-run setup whenever you want to install an
+optional bundled service that was skipped initially:
 
 ```bash
-docker compose up -d --build
+overtchat setup
 ```
 
-First boot takes ~30s because the Kokoro TTS container downloads its model. Subsequent boots are fast.
+Provider selection can also be changed later in **Admin Settings → Services**.
+Bundled services must first be installed with `overtchat setup`.
 
-Open the URL. First user signs up → becomes admin. Add more users from `/settings/users`.
+## Existing Compose installations
+
+Running `overtchat setup` on a machine that already has the standard
+`overtchat-app` container adopts it in place. The installer preserves the
+current `/app/data` Docker volume or bind mount, public port, auth secret, and
+standard SearXNG configuration. If the containers were removed with
+`docker compose down`, it can recover a single standard Compose data volume by
+its Docker labels.
+
+The old Compose commands remain supported. If more than one candidate data
+volume exists or the installation uses unrelated container names, start the
+specific old stack first or continue managing that custom layout manually.
 
 ## Development
 
@@ -41,17 +56,32 @@ Open [http://localhost:4717](http://localhost:4717). Add `searxng` or `kokoro` t
 ## Deploying updates
 
 ```bash
-git pull
+overtchat update
+```
+
+This updates the management CLI, app image, selected local sidecars, and managed
+Agent Connector as one coordinated release. Database migrations run
+automatically when the app starts; the existing data mount is not replaced.
+
+Legacy manually paired connectors still update through the command shown in
+**Settings → Connections**.
+
+## Manual Compose installation
+
+For source development, custom orchestration, or non-Linux hosts, clone the
+repository and use the original Compose flow:
+
+```bash
+git clone https://github.com/yoloyash/overtchat
+cd overtchat
+cp .env.example .env
+echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
+echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
 docker compose up -d --build
 ```
 
-Compose only recreates the container if the image changed. Migrations run automatically on boot. Data in the `overtchat-data` volume persists across rebuilds.
-
-The Host Connector updates independently from the Docker app and does not need
-to be reinstalled after routine server updates. If **Settings → Connections**
-offers a newer connector, run the displayed upgrade command on the connector
-host. It preserves the existing pairing and configuration, replaces the binary,
-and restarts the user service.
+Set `BETTER_AUTH_URL` in `.env` to the URL browsers will use. Manual installs
+update with `git pull && docker compose up -d --build`.
 
 ## Pointing at your LLM
 

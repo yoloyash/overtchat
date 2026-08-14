@@ -25,6 +25,7 @@ import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
 import { ChatRequestError, parseChatRequest } from "@/lib/chat/request";
 import { getChat } from "@/lib/db/chats";
+import { getServerCapability } from "@/lib/db/serverCapabilities";
 import {
   clearActiveStreamId,
   commitChatTurn,
@@ -185,7 +186,10 @@ async function handlePost(req: Request): Promise<Response> {
       ? withOpenAIPromptCacheKey(providerOptions, promptCacheKeyForChat(chatId))
       : providerOptions;
   const toolCallingEnabled = modelConfig.toolCallingEnabled !== false;
-  const webToolsEnabled = toolCallingEnabled && webSearchEnabled;
+  const webSearchAvailable =
+    getServerCapability("search").provider !== "disabled";
+  const webToolsEnabled =
+    toolCallingEnabled && webSearchEnabled && webSearchAvailable;
   const systemParts = [
     modelConfig.systemPrompt,
     projectSystemPrompt(project),

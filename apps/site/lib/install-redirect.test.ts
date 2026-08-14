@@ -285,6 +285,12 @@ describe("Host Connector installer redirect", () => {
   });
 
   it("atomically upgrades and preserves the previous executable", () => {
+    const packageMetadata = JSON.parse(
+      readFileSync(
+        path.resolve(process.cwd(), "../connector/package.json"),
+        "utf8",
+      ),
+    ) as { version: string };
     const {
       configContents,
       configPath,
@@ -296,7 +302,9 @@ describe("Host Connector installer redirect", () => {
     } = createUpgradeFixture("stable");
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Host Connector upgraded to 0.3.4");
+    expect(result.stdout).toContain(
+      `Host Connector upgraded to ${packageMetadata.version}`,
+    );
     expect(readFileSync(installPath, "utf8")).toBe(newConnector);
     expect(existsSync(`${installPath}.previous`)).toBe(false);
     expect(readFileSync(systemctlCalls, "utf8")).toContain(

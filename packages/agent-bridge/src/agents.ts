@@ -148,6 +148,7 @@ export type AgentConnectionListItem = {
 export type HostConnectorListItem = {
   id: string;
   name: string;
+  managed: boolean;
   version: string | null;
   lastSeenAt: number | null;
   online: boolean;
