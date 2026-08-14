@@ -43,75 +43,83 @@ export async function update(): Promise<void> {
     );
   }
   const progress = spinner();
+  let progressActive = true;
   progress.start("Checking for OvertChat updates");
-  const manifest = await latestReleaseManifest();
-  const updatedExecutable = await updateCliIfNeeded(manifest);
-  if (updatedExecutable) {
-    progress.stop("OvertChat manager updated");
-    await requireSuccessful(updatedExecutable, ["update"], { inherit: true });
-    return;
-  }
+  try {
+    const manifest = await latestReleaseManifest();
+    const updatedExecutable = await updateCliIfNeeded(manifest);
+    if (updatedExecutable) {
+      progress.stop("OvertChat manager updated");
+      progressActive = false;
+      await requireSuccessful(updatedExecutable, ["update"], { inherit: true });
+      return;
+    }
 
-  const appVersion =
-    compareVersions(manifest.appVersion, config.appVersion) > 0
-      ? manifest.appVersion
-      : config.appVersion;
-  const connectorVersion =
-    compareVersions(manifest.connectorVersion, config.connectorVersion) > 0
-      ? manifest.connectorVersion
-      : config.connectorVersion;
-  const sttVersion =
-    compareVersions(manifest.sttVersion, config.sttVersion) > 0
-      ? manifest.sttVersion
-      : config.sttVersion;
-  const nextConfig = {
-    ...config,
-    appVersion,
-    appImage: config.appImage === "overtchat-app:setup-dev"
-      ? config.appImage
-      : `${APP_IMAGE}:${appVersion}`,
-    connectorVersion,
-    sttVersion,
-  };
-  await prepareFiles(nextConfig, undefined);
-  await writeSecretsFile(
-    paths,
-    renderStackEnvironment(nextConfig, {
-      betterAuthSecret: secrets.betterAuthSecret,
-      managementSecret: secrets.managementSecret,
-      searxngSecret: secrets.searxngSecret,
-    }, paths),
-  );
-  const composeArgs = [
-    "compose",
-    "--env-file",
-    paths.secretsFile,
-    "-f",
-    paths.composeFile,
-  ];
-  progress.message("Downloading installed components");
-  await requireDocker(
-    docker,
-    [
-      ...composeArgs,
-      "pull",
-      ...(nextConfig.appImage === "overtchat-app:setup-dev"
-        ? ["--ignore-pull-failures"]
-        : []),
-    ],
-    { inherit: true },
-  );
-  progress.message("Applying updates and database migrations");
-  await requireDocker(docker, [...composeArgs, "up", "-d"], {
-    inherit: true,
-  });
-  progress.message("Waiting for OvertChat and database migrations");
-  await waitForApp(`http://127.0.0.1:${nextConfig.appPort}`);
-  if (nextConfig.agents.installed) {
-    progress.message("Updating Agent Connections");
-    await installManagedConnector(nextConfig, secrets.managementSecret);
+    const appVersion =
+      compareVersions(manifest.appVersion, config.appVersion) > 0
+        ? manifest.appVersion
+        : config.appVersion;
+    const connectorVersion =
+      compareVersions(manifest.connectorVersion, config.connectorVersion) > 0
+        ? manifest.connectorVersion
+        : config.connectorVersion;
+    const sttVersion =
+      compareVersions(manifest.sttVersion, config.sttVersion) > 0
+        ? manifest.sttVersion
+        : config.sttVersion;
+    const nextConfig = {
+      ...config,
+      appVersion,
+      appImage: config.appImage === "overtchat-app:setup-dev"
+        ? config.appImage
+        : `${APP_IMAGE}:${appVersion}`,
+      connectorVersion,
+      sttVersion,
+    };
+    await prepareFiles(nextConfig, undefined);
+    await writeSecretsFile(
+      paths,
+      renderStackEnvironment(nextConfig, {
+        betterAuthSecret: secrets.betterAuthSecret,
+        managementSecret: secrets.managementSecret,
+        searxngSecret: secrets.searxngSecret,
+      }, paths),
+    );
+    const composeArgs = [
+      "compose",
+      "--env-file",
+      paths.secretsFile,
+      "-f",
+      paths.composeFile,
+    ];
+    progress.message("Downloading installed components");
+    await requireDocker(
+      docker,
+      [
+        ...composeArgs,
+        "pull",
+        ...(nextConfig.appImage === "overtchat-app:setup-dev"
+          ? ["--ignore-pull-failures"]
+          : []),
+      ],
+      { inherit: true },
+    );
+    progress.message("Applying updates and database migrations");
+    await requireDocker(docker, [...composeArgs, "up", "-d"], {
+      inherit: true,
+    });
+    progress.message("Waiting for OvertChat and database migrations");
+    await waitForApp(`http://127.0.0.1:${nextConfig.appPort}`);
+    if (nextConfig.agents.installed) {
+      progress.message("Updating Agent Connections");
+      await installManagedConnector(nextConfig, secrets.managementSecret);
+    }
+    await writeInstallationConfig(paths, nextConfig);
+    progress.stop("OvertChat is up to date");
+    progressActive = false;
+    outro(`Open: ${nextConfig.publicUrl}`);
+  } catch (error) {
+    if (progressActive) progress.stop("OvertChat update failed", 1);
+    throw error;
   }
-  await writeInstallationConfig(paths, nextConfig);
-  progress.stop("OvertChat is up to date");
-  outro(`Open: ${nextConfig.publicUrl}`);
 }
