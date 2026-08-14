@@ -1,37 +1,22 @@
 <p align="center">
-  <img src=".github/assets/banner.png" alt="overtchat banner" width="600" />
+  <img src=".github/assets/banner.png" alt="overtchat" width="600" />
 </p>
 
 <p align="center">
-  A lightweight self-hosted client for AI chat and coding agents that "just works".
+  <strong>A self-hosted client for vLLM, llama.cpp, and coding agents.</strong>
 </p>
 
 <p align="center">
   <a href="https://overtchat.com/"><img src="https://img.shields.io/badge/Website-overtchat-0D9488" alt="Project website" valign="middle"></a>&nbsp; • &nbsp;
+  <a href="https://github.com/yoloyash/overtchat/releases"><img src="https://img.shields.io/github/v/release/yoloyash/overtchat?label=release" alt="Latest release" valign="middle"></a>&nbsp; • &nbsp;
   <a href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"><img src="https://img.shields.io/badge/Android-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Android on Google Play" valign="middle"></a>&nbsp; • &nbsp;
-  <a href="https://overtchat.com/privacy/"><img src="https://img.shields.io/badge/Privacy-No_Usage_Analytics-teal?color=0D9488" alt="Privacy Policy" valign="middle"></a>&nbsp; • &nbsp;
-  <a href=".github/actions/repo-tokens/README.md"><img src=".github/badges/tokens.svg" alt="source tokens" valign="middle"></a>
+  <a href="https://overtchat.com/privacy/"><img src="https://img.shields.io/badge/Privacy-No_Usage_Analytics-teal?color=0D9488" alt="Privacy policy" valign="middle"></a>&nbsp; • &nbsp;
+  <a href=".github/actions/repo-tokens/README.md"><img src=".github/badges/tokens.svg" alt="Source tokens" valign="middle"></a>
 </p>
 
-https://github.com/user-attachments/assets/8d135eac-ae55-40eb-934c-e0d88395bb5b
-
-## Why I built overtchat
-
-[Open WebUI](https://github.com/open-webui/open-webui) is an impressive project, but every time I tried to actually live in it something got in the way. The browser tab would peg CPU and balloon past a gig on long replies — the streaming pipeline re-broadcasts the entire growing message body on every token, so a long chat is O(N²) in bytes ([#23733](https://github.com/open-webui/open-webui/issues/23733), still open). Pasting any sizeable chunk of text would freeze the page for seconds ([#12087](https://github.com/open-webui/open-webui/issues/12087), still open). The v0.9 release line shipped a run of migration regressions where you'd `docker pull` and then have to `docker exec` into the container and hand-edit alembic scripts before the app would boot.
-
-And underneath all that, the UI just feels heavy. Settings pages full of toggles for features I'd never use. Web search that wants its own API key. TTS that wants its own setup. A hundred surfaces in front of a single text box.
-
-I wanted a chat app I could open and use. So I wrote one.
-
-## What's different, concretely
-
-- **One process, one SQLite file, one tiny Redis.** A Next.js app, a SQLite file for everything that matters, and a tiny Redis container (~13 MB idle, capped at 64 MB) that exists only so a reload mid-reply doesn't drop your tokens. No Postgres, no Celery, no separate API service. Schema migrations are one Drizzle command on container boot.
-- **600 MB Docker image vs Open WebUI's 1.7 GB** (compressed, amd64, pulled from `ghcr.io` on 2026-05-20). About a third the size on disk, fewer layers.
-- **No plugin runtime, no pipelines, no functions framework.** Tools are two AI SDK definitions in [`apps/web/lib/tools.ts`](apps/web/lib/tools.ts): `web_search` (SearXNG) and `fetch_url` (Defuddle → markdown). That's the whole extensibility surface.
-- **No RAG, no embeddings, no vector DB.** Chat search is SQLite FTS5 + BM25, populated by triggers ([`apps/web/lib/db/search.ts`](apps/web/lib/db/search.ts)). Web search results go straight into context as JSON.
-- **Provider-aware without a plugin runtime.** OpenAI, Anthropic, Google Gemini, DeepSeek, and Amazon Bedrock use first-class presets through a small registry; vLLM, llama.cpp, and SGLang have ready-to-edit local presets; custom endpoints explicitly choose Chat Completions, Responses, or Messages. Provider details stay out of the chat pipeline.
-
-If you want every feature in the world — image generation, a code interpreter, knowledge graphs, a plugin marketplace — use Open WebUI or LibreChat. If you want a chat app that opens in under a second and stays out of your way, this is that.
+<p align="center">
+  <img src=".github/assets/chat.png" alt="OvertChat running a conversation with a Gemini model" width="100%" />
+</p>
 
 ## Quick start
 
@@ -39,79 +24,66 @@ If you want every feature in the world — image generation, a code interpreter,
 curl -fsSL https://overtchat.com/install | sh
 ```
 
-The guided terminal setup detects Docker, offers to install it when missing,
-and lets you choose web search, text-to-speech, speech-to-text (including a
-specific NVIDIA GPU), and Agent Connections. It generates the secrets and
-Compose configuration itself. Open the URL it prints; the first signup becomes
-the admin, then the existing model setup gets you chatting.
+The guided installer handles Docker, configuration, and secrets, then gives
+you a URL to open. The first signup becomes the admin.
 
-- Re-run `overtchat setup` to add an optional local service later.
-- Run `overtchat update` to update the manager, app, selected sidecars, database
-  migrations, and the managed Agent Connector together.
-- Existing standard Docker Compose installations are adopted in place; the
-  current data volume or bind mount is preserved.
+- `overtchat setup` — add or change optional services
+- `overtchat status` — check the installation
+- `overtchat update` — update the app and everything it manages
 
-Prefer to manage Compose by hand or deploy from source? The legacy/manual flow
-remains supported in the [deploy docs](docs/deploy.md#manual-compose-installation).
+Prefer to manage Compose yourself or deploy from source? See the
+[deployment guide](docs/deploy.md#manual-compose-installation).
 
-## Agent Connections (Beta)
+## Built for your stack
 
-Run Codex, Pi, and Oh My Pi from the browser on local or SSH-connected machines.
-Choose **Agent Connections → Yes** during `overtchat setup`. The installer
-provisions the connector internally and prints the normal OvertChat sign-in URL;
-there is no pairing code to copy. `overtchat update` keeps the connector in sync.
-Existing manually paired connectors continue to work.
+| Local inference | Included locally | Coding agents |
+| --- | --- | --- |
+| vLLM · llama.cpp · SGLang | SearXNG · Kokoro TTS · Parakeet STT | Codex · Pi · Oh My Pi |
+
+First-class setup and model discovery for local inference servers, plus hosted
+providers and custom endpoints. The installer can also wire up local search,
+playback, and dictation—no extra integrations or API keys to stitch together.
+
+## When you need more than chat
+
+Connect your coding agents on your server or over SSH. Start or resume
+sessions, follow plans and tool calls as they happen, review changes, and steer
+the agent without living in a terminal.
+
+<p align="center">
+  <img src=".github/assets/agent-connections.png" alt="OvertChat controlling a Codex coding-agent session" width="100%" />
+</p>
+
+## A focused alternative to Open WebUI
+
+[Open WebUI](https://github.com/open-webui/open-webui) is an impressive project
+with a huge feature surface. OvertChat is deliberately more focused: a fast
+chat experience, practical built-ins, and coding-agent control without turning
+your server into a platform to maintain.
+
+- **Fast by default.** A clean interface that stays out of the conversation.
+- **Simple to run.** Guided setup, one-command updates, and portable data.
+
+If you want a large plugin ecosystem, image generation, knowledge graphs, or a
+code interpreter, Open WebUI or LibreChat may be a better fit. If you want a
+focused self-hosted home for chat and coding agents, that is what OvertChat is
+built for.
 
 ## Mobile
 
 <a href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"><img src="https://img.shields.io/badge/Get_it_on-Google_Play-22C55E?logo=googleplay&logoColor=white" alt="Get it on Google Play"></a>
 
-The Android app is a **thin client for your own server** — there is no overtchat cloud to sign up for. On first launch it asks for the URL of an instance you control; your account, chats, and files stay on that server. Requests go to it and nowhere else.
+Connect the native Android app to your OvertChat server and take your chats
+with you. Your history, projects, files, web search, and voice tools come along.
 
-Native chat with streaming replies, the model picker, projects, full-text search over your history, image and document uploads, web search with citations, text-to-speech, and dictation.
+[Download from Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile)
+or [sideload the app](docs/android.md#sideload-apk).
 
-- **Android:** [Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile), or [sideload the APK](docs/android.md#sideload-apk) attached to any `mobile-v*` release.
-- **iOS:** internal/TestFlight only, no timeline for a store release.
+## Documentation
 
-## What's in the box
-
-- Multi-user auth, first signup becomes admin
-- Persistent chat history, auto-titled, full-text searchable
-- File uploads — images, PDFs, Word, Excel, CSV, source code
-- Projects with per-project system prompts
-- Automatic web search via bundled SearXNG, plus a one-message Search action and a persistent hard-disable under Settings → Tools. No API key.
-- Text-to-speech via bundled Kokoro. No setup.
-- Speech-to-text via Parakeet TDT v3 (opt-in, CPU or NVIDIA GPU)
-- Chat export (JSON / Markdown)
-
-## Speech-to-text (optional)
-
-Choose bundled Parakeet during `overtchat setup`, then select Auto, a specific
-NVIDIA GPU, or CPU. If you skip it initially, run `overtchat setup` later; the
-admin settings will show that the local provider is not installed until then.
-Multilingual audio processing stays on your machine and the model is cached in
-a Docker volume.
-
-## Privacy
-
-No usage analytics, no advertising. The server sends model requests only to endpoints you configure and sends web searches through its configured SearXNG instance. Stored application data lives in a single SQLite file you can copy, back up, or delete.
-
-The Android client can send crash diagnostics to Sentry. These may include technical request metadata; the app does not intentionally attach chat content, attachments, or credentials. Details are in the [privacy policy](https://overtchat.com/privacy/).
-
-## Requirements
-
-- Linux on x86-64 or arm64 for the managed installer
-- Docker + Docker Compose v2 (the installer can install Docker on supported systems)
-- ~1 GB RAM free for the app stack (Kokoro TTS pulls ~100 MB on first boot)
-- An LLM endpoint (API key or self-hosted)
-
-## Stack
-
-Next.js 16 · Vercel AI SDK v7 · Better Auth · Drizzle + SQLite · Redis (resume buffer) · base-ui · Tailwind · SearXNG · Kokoro TTS
-
-## More
-
-- [docs/deploy.md](docs/deploy.md) — updates, backup, troubleshooting
+- [Deployment, updates, backup, and troubleshooting](docs/deploy.md)
+- [Android installation](docs/android.md)
+- [Privacy policy](https://overtchat.com/privacy/)
 
 ## License
 
