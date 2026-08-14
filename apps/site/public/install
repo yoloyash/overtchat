@@ -57,7 +57,7 @@ case ":$PATH:" in
     ;;
 esac
 
-if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+if ( : </dev/tty >/dev/tty ) 2>/dev/null; then
   exec "$install_path" setup </dev/tty >/dev/tty
 fi
 
