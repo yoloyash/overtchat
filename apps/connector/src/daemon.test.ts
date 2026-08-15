@@ -547,6 +547,64 @@ describe("connector daemon command identity", () => {
     await journal.close();
   });
 
+  it("publishes runtime status without a detail-view subscription", async () => {
+    const { journal, timelines } = await openJournal();
+    const emitted: HostConnectorEventPayload[] = [];
+    let observer: ((event: AgentRuntimeEnvelope) => void) | undefined;
+    mocks.observe.mockImplementation((value) => {
+      observer = value;
+      return () => {};
+    });
+    const daemon = new ConnectorDaemon(
+      (event) => emitted.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    await daemon.handle({
+      type: "sync",
+      connectionEpoch: "connection-1",
+      activeSessionIds: ["session"],
+      serverInfo: {
+        protocolVersion: 1,
+        capabilities: ["session-status-v1"],
+      },
+    });
+    await daemon.handle({
+      type: "request",
+      requestId: "open",
+      request: { type: "open_session", session },
+    });
+
+    expect(emitted).toContainEqual({
+      type: "session_status",
+      sessionId: "session",
+      status: "running",
+    });
+    emitted.length = 0;
+    observer?.({
+      epoch: "runtime-ephemeral",
+      sequence: 1,
+      type: "runtime_event",
+      data: { type: "overtchat_status", status: "idle" },
+    });
+    await timelines.flush("session");
+
+    await vi.waitFor(() => {
+      expect(emitted).toContainEqual({
+        type: "session_status",
+        sessionId: "session",
+        status: "idle",
+      });
+    });
+    expect(emitted).not.toContainEqual(
+      expect.objectContaining({ type: "session_event" }),
+    );
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("coalesces consecutive growing turn projections into one durable update", async () => {
     const { journal, timelines } = await openJournal();
     const emitted: HostConnectorEventPayload[] = [];

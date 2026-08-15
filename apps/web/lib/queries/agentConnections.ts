@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AddAgentWorkspaceInput,
@@ -9,6 +10,7 @@ import type {
   AgentDiscoveryTarget,
   AgentDirectoryListing,
   AgentReadyConnectionProbe,
+  AgentRuntimeStatus,
   AgentSshHostCandidate,
   AgentWorkspaceListItem,
   DetectedAgentInstallation,
@@ -16,7 +18,10 @@ import type {
   HostConnectorPairing,
 } from "@overtchat/agent-bridge";
 import { agentConnectionKeys } from "@/lib/queries/keys";
-import { agentConnectionHasRunningSession } from "@/lib/agents/sidebar";
+import {
+  agentConnectionHasRunningSession,
+  withAgentSessionRuntimeStatus,
+} from "@/lib/agents/sidebar";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -43,6 +48,58 @@ export function useAgentConnections() {
         ? 2_000
         : false,
   });
+}
+
+export function useAgentConnectionRuntimeStatuses(
+  connections: AgentConnectionListItem[],
+) {
+  const queryClient = useQueryClient();
+  const sessionFingerprint = connections
+    .flatMap((connection) =>
+      connection.workspaces.flatMap((workspace) =>
+        workspace.sessions.map((session) => session.id),
+      ),
+    )
+    .sort()
+    .join("\n");
+
+  useEffect(() => {
+    if (!sessionFingerprint) return;
+    const source = new EventSource("/api/agent-connections/statuses");
+    const receiveStatus = (event: Event) => {
+      let value: unknown;
+      try {
+        value = JSON.parse((event as MessageEvent<string>).data);
+      } catch {
+        return;
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      const sessionId = Reflect.get(value, "sessionId");
+      const runtimeStatus = Reflect.get(value, "runtimeStatus");
+      if (
+        typeof sessionId !== "string" ||
+        !["idle", "running", "exited"].includes(String(runtimeStatus))
+      ) {
+        return;
+      }
+      queryClient.setQueryData<AgentConnectionListItem[]>(
+        agentConnectionKeys.list(),
+        (current) =>
+          current
+            ? withAgentSessionRuntimeStatus(
+                current,
+                sessionId,
+                runtimeStatus as AgentRuntimeStatus,
+              )
+            : current,
+      );
+    };
+    source.addEventListener("status", receiveStatus);
+    return () => {
+      source.removeEventListener("status", receiveStatus);
+      source.close();
+    };
+  }, [queryClient, sessionFingerprint]);
 }
 
 export function useHostConnectors() {

@@ -190,6 +190,48 @@ describe.sequential("connector client compatibility", () => {
     await running;
   });
 
+  it("delivers session status through the durable event outbox", async () => {
+    const batches: HostConnectorEventBatch[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith("/channel")) return emptyChannel();
+        const batch = JSON.parse(String(init?.body)) as HostConnectorEventBatch;
+        batches.push(batch);
+        return Response.json({
+          connectorEpoch: batch.connectorEpoch,
+          acknowledgedSequence: batch.events.at(-1)!.sequence,
+        });
+      }),
+    );
+    const client = await ConnectorClient.create(await config());
+    const running = client.run();
+    const enqueue = Reflect.get(client, "enqueue") as (
+      value: HostConnectorEventPayload,
+    ) => void;
+    enqueue.call(client, {
+      type: "session_status",
+      sessionId: "session",
+      status: "running",
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        batches.flatMap((batch) => batch.events).some(
+          (event) =>
+            event.payload.type === "session_status" &&
+            event.payload.sessionId === "session" &&
+            event.payload.status === "running",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      Reflect.get(client, "liveEvents") as HostConnectorEventPayload[],
+    ).toHaveLength(0);
+    await client.stop();
+    await running;
+  });
+
   it("terminates the connector loop after an unrecoverable timeline failure", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => emptyChannel()));
     const client = await ConnectorClient.create(await config());

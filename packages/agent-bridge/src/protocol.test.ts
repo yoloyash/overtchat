@@ -3,6 +3,7 @@ import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
   isHostConnectorCommand,
+  isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
 
@@ -42,5 +43,28 @@ describe("Host Connector protocol compatibility", () => {
         activeSessionIds: [],
       }),
     ).toBe(true);
+  });
+
+  it("accepts provider-independent session status events", () => {
+    expect(
+      isHostConnectorEvent({
+        sequence: 1,
+        payload: {
+          type: "session_status",
+          sessionId: "session",
+          status: "running",
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorEvent({
+        sequence: 1,
+        payload: {
+          type: "session_status",
+          sessionId: "session",
+          status: "working",
+        },
+      }),
+    ).toBe(false);
   });
 });

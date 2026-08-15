@@ -4,6 +4,7 @@ import type {
   AgentProviderId,
   AgentRuntimeCursor,
   AgentRuntimeEnvelope,
+  AgentRuntimeStatus,
   AgentSessionSync,
   AgentSessionCommand,
   ConnectorShellMode,
@@ -29,6 +30,7 @@ export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
+  "session-status-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -155,6 +157,11 @@ export type HostConnectorEventPayload =
         messageCount?: number;
         providerModifiedAt?: number;
       };
+    }
+  | {
+      type: "session_status";
+      sessionId: string;
+      status: AgentRuntimeStatus;
     };
 
 export type HostConnectorEvent = {
@@ -489,6 +496,12 @@ export function isHostConnectorEvent(
       (payload.patch.providerModifiedAt === undefined ||
         (typeof payload.patch.providerModifiedAt === "number" &&
           Number.isFinite(payload.patch.providerModifiedAt)))
+    );
+  }
+  if (payload.type === "session_status") {
+    return (
+      isNonEmptyString(payload.sessionId) &&
+      ["idle", "running", "exited"].includes(String(payload.status))
     );
   }
   return false;

@@ -54,11 +54,18 @@ type SessionSubscription = {
   replayBuffer: AgentRuntimeEnvelope[] | null;
 };
 
+type SessionStatusSubscription = {
+  sessionIds: Set<string>;
+  subscriber: (sessionId: string, status: AgentRuntimeStatus) => void;
+};
+
 export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly sessionStatuses = new Map<string, AgentRuntimeStatus>();
+  private readonly sessionConnectorIds = new Map<string, string>();
+  private readonly statusSubscriptions = new Set<SessionStatusSubscription>();
   private readonly disconnectTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
@@ -71,6 +78,23 @@ export class HostConnectorBroker {
 
   runtimeStatusForSession(sessionId: string): AgentRuntimeStatus {
     return this.sessionStatuses.get(sessionId) ?? "idle";
+  }
+
+  subscribeSessionStatuses(
+    sessionIds: Iterable<string>,
+    subscriber: (sessionId: string, status: AgentRuntimeStatus) => void,
+  ): () => void {
+    const subscription = {
+      sessionIds: new Set(sessionIds),
+      subscriber,
+    };
+    this.statusSubscriptions.add(subscription);
+    for (const sessionId of subscription.sessionIds) {
+      subscriber(sessionId, this.runtimeStatusForSession(sessionId));
+    }
+    return () => {
+      this.statusSubscriptions.delete(subscription);
+    };
   }
 
   replaceSessionProviderSession(
@@ -108,6 +132,9 @@ export class HostConnectorBroker {
     );
     const channel = { send, capabilities };
     this.channels.set(connectorId, channel);
+    for (const sessionId of activeSessionIds) {
+      this.sessionConnectorIds.set(sessionId, connectorId);
+    }
     send({
       type: "sync",
       connectionEpoch: crypto.randomUUID(),
@@ -262,7 +289,7 @@ export class HostConnectorBroker {
       sync = this.readSessionSync(connectorId, session, after, result?.sync);
       if (sync) {
         subscription.after = sync.cursor;
-        this.projectSessionSyncStatus(session.sessionId, sync);
+        this.projectSessionSyncStatus(connectorId, session.sessionId, sync);
       }
       subscription.initialized = true;
     } catch (error) {
@@ -329,6 +356,10 @@ export class HostConnectorBroker {
       this.pending.delete(event.requestId);
       if (event.success) pending.resolve(event.data);
       else pending.reject(new Error(event.error));
+      return;
+    }
+    if (event.type === "session_status") {
+      this.setSessionStatus(connectorId, event.sessionId, event.status);
       return;
     }
     if (event.type === "session_metadata") {
@@ -402,7 +433,11 @@ export class HostConnectorBroker {
           );
           if (sync) {
             subscription.after = sync.cursor;
-            this.projectSessionSyncStatus(subscription.session.sessionId, sync);
+            this.projectSessionSyncStatus(
+              connectorId,
+              subscription.session.sessionId,
+              sync,
+            );
             subscription.synchronize(sync);
           }
           subscription.replayBuffer = null;
@@ -456,37 +491,59 @@ export class HostConnectorBroker {
         sequence: envelope.sequence,
       };
     }
-    this.projectEnvelopeStatus(subscription.session.sessionId, envelope);
+    this.projectEnvelopeStatus(
+      subscription.connectorId,
+      subscription.session.sessionId,
+      envelope,
+    );
     subscription.subscriber(envelope);
   }
 
   private projectSessionSyncStatus(
+    connectorId: string,
     sessionId: string,
     sync: AgentSessionSync,
   ): void {
     if (sync.reset) {
-      this.sessionStatuses.set(sessionId, sync.snapshot.status);
+      this.setSessionStatus(connectorId, sessionId, sync.snapshot.status);
       return;
     }
     for (const envelope of sync.events) {
-      this.projectEnvelopeStatus(sessionId, envelope);
+      this.projectEnvelopeStatus(connectorId, sessionId, envelope);
     }
   }
 
   private projectEnvelopeStatus(
+    connectorId: string,
     sessionId: string,
     envelope: AgentRuntimeEnvelope,
   ): void {
     if (envelope.type === "snapshot") {
-      this.sessionStatuses.set(sessionId, envelope.data.status);
+      this.setSessionStatus(connectorId, sessionId, envelope.data.status);
     } else if (
       envelope.data.type === "overtchat_status" &&
       ["idle", "running", "exited"].includes(String(envelope.data.status))
     ) {
-      this.sessionStatuses.set(
+      this.setSessionStatus(
+        connectorId,
         sessionId,
         envelope.data.status as AgentRuntimeStatus,
       );
+    }
+  }
+
+  private setSessionStatus(
+    connectorId: string,
+    sessionId: string,
+    status: AgentRuntimeStatus,
+  ): void {
+    this.sessionConnectorIds.set(sessionId, connectorId);
+    if (this.sessionStatuses.get(sessionId) === status) return;
+    this.sessionStatuses.set(sessionId, status);
+    for (const subscription of this.statusSubscriptions) {
+      if (subscription.sessionIds.has(sessionId)) {
+        subscription.subscriber(sessionId, status);
+      }
     }
   }
 
@@ -583,6 +640,10 @@ export class HostConnectorBroker {
         if (subscription.connectorId !== connectorId) continue;
         this.subscriptions.delete(subscriptionId);
         subscription.disconnect(error);
+      }
+      for (const [sessionId, ownerConnectorId] of this.sessionConnectorIds) {
+        if (ownerConnectorId !== connectorId) continue;
+        this.setSessionStatus(connectorId, sessionId, "exited");
       }
     }, this.disconnectGraceMs);
     timer.unref();

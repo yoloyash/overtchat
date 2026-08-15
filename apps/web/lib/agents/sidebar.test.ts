@@ -8,6 +8,7 @@ import {
   agentConnectionHasRunningSession,
   agentWorkspaceHasRunningSession,
   visibleAgentSessions,
+  withAgentSessionRuntimeStatus,
 } from "./sidebar";
 
 function sessions(count: number): AgentSessionListItem[] {
@@ -82,5 +83,46 @@ describe("agent sessions in the sidebar", () => {
       true,
     );
     expect(agentConnectionHasRunningSession(connection)).toBe(true);
+  });
+
+  it("projects live status into the matching session with structural sharing", () => {
+    const all = sessions(2);
+    const connection: AgentConnectionListItem = {
+      id: "connection",
+      provider: "codex",
+      executable: "codex",
+      detectedVersion: null,
+      lastValidatedAt: null,
+      host: {
+        id: "host",
+        connectorId: "connector",
+        name: "This machine",
+        transport: "local",
+        sshAlias: null,
+      },
+      workspaces: [
+        {
+          id: "workspace",
+          path: "/workspace",
+          name: "workspace",
+          sessions: all,
+        },
+      ],
+    };
+
+    const connections = [connection];
+    const running = withAgentSessionRuntimeStatus(
+      connections,
+      "session-1",
+      "running",
+    );
+    expect(running).not.toBe(connections);
+    expect(running[0]!.workspaces[0]!.sessions[0]).toBe(all[0]);
+    expect(running[0]!.workspaces[0]!.sessions[1]!.runtimeStatus).toBe(
+      "running",
+    );
+    expect(
+      withAgentSessionRuntimeStatus(running, "missing", "idle"),
+    ).toBe(running);
   });
 });

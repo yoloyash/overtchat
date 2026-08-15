@@ -62,6 +62,50 @@ function response(
 }
 
 describe("host connector daemon broker", () => {
+  it("projects provider-independent status without a detail subscription", async () => {
+    const listener = vi.fn();
+    const broker = new HostConnectorBroker(0);
+    const unsubscribe = broker.subscribeSessionStatuses(["session"], listener);
+    const disconnect = broker.register(
+      "connector",
+      ["session"],
+      vi.fn(),
+      ["session-status-v1"],
+    );
+
+    expect(listener).toHaveBeenCalledWith("session", "idle");
+    await broker.acceptBatch("connector", "daemon-epoch", [
+      {
+        sequence: 1,
+        payload: {
+          type: "session_status",
+          sessionId: "session",
+          status: "running",
+        },
+      },
+    ]);
+
+    expect(broker.runtimeStatusForSession("session")).toBe("running");
+    expect(listener).toHaveBeenLastCalledWith("session", "running");
+    disconnect();
+    await vi.waitFor(() => {
+      expect(broker.runtimeStatusForSession("session")).toBe("exited");
+    });
+    expect(listener).toHaveBeenLastCalledWith("session", "exited");
+    unsubscribe();
+    await broker.acceptBatch("connector", "daemon-epoch", [
+      {
+        sequence: 2,
+        payload: {
+          type: "session_status",
+          sessionId: "session",
+          status: "idle",
+        },
+      },
+    ]);
+    expect(listener).toHaveBeenCalledTimes(3);
+  });
+
   it("starts an exact connection epoch and resolves agent-level requests", async () => {
     const commands: HostConnectorCommand[] = [];
     const broker = new HostConnectorBroker();
