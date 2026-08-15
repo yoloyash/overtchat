@@ -828,7 +828,7 @@ test("shows durable turn activity without changing completed tool status", async
   ).toHaveCount(1);
   await expect(
     page.locator('[data-activity-sequence="middle"]'),
-  ).toHaveCount(2);
+  ).toHaveCount(1);
   await expect(
     page.locator('[data-activity-sequence="last"]'),
   ).toHaveCount(1);
@@ -854,25 +854,36 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(page.getByTestId("agent-goal-bar")).toContainText(
     "Finish Codex parity",
   );
+  const toolSummaries = page.locator('[data-agent-tool-summary="true"]');
+  await expect(toolSummaries).toHaveCount(2);
+  const completedCommandSummary = page.getByRole("button", {
+    name: "Ran 1 command, completed",
+  });
+  await expect(completedCommandSummary).toBeVisible();
   const liveActivity = page.getByRole("button", {
-    name: "Search: runtimeStatus, running",
+    name: "Edited 1 file and searched 1 time, running",
   });
   await expect(liveActivity).toBeVisible();
+  const completedCommand = page.getByRole("button", {
+    name: "Terminal: printf done, completed",
+  });
+  const completedEdit = page.getByRole("button", {
+    name: "Edit: apps/web/runtime.ts, completed",
+  });
+  await expect(completedCommand).not.toBeVisible();
+  await expect(completedEdit).not.toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-collapsed-desktop.png"),
     fullPage: true,
   });
-  const completedCommand = page.getByRole("button", {
-    name: "Terminal: printf done, completed",
-  });
+  await completedCommandSummary.click();
   await expect(completedCommand).toBeVisible();
   await completedCommand.click();
   await expect(page.getByText("$ printf done", { exact: true })).toBeVisible();
   await expect(page.getByText("done", { exact: true })).toBeVisible();
   await expect(page.getByText("› y", { exact: true })).toBeVisible();
-  const completedEdit = page.getByRole("button", {
-    name: "Edit: apps/web/runtime.ts, completed",
-  });
+  await liveActivity.click();
+  await expect(completedEdit).toBeVisible();
   await completedEdit.click();
   await expect(page.getByText("Changes", { exact: true }).first()).toBeVisible();
   await expect(

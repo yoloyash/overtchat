@@ -61,7 +61,7 @@ function projectedTools(messages: unknown[]) {
 }
 
 describe("projectAgentTranscript", () => {
-  it("projects reasoning and tools as distinct ordered activity rows", () => {
+  it("keeps reasoning distinct while grouping consecutive tool activity", () => {
     const projected = projectAgentTranscript([
       { role: "user", content: "Remove the old image", timestamp: 1 },
       assistant(
@@ -93,16 +93,16 @@ describe("projectAgentTranscript", () => {
       "message",
       "activity",
       "activity",
-      "activity",
       "assistant_text",
     ]);
-    expect(projected.slice(1, 4)).toEqual([
+    expect(projected.slice(1, 3)).toEqual([
       expect.objectContaining({
         type: "activity",
         entries: [expect.objectContaining({ type: "thinking" })],
       }),
       expect.objectContaining({
         type: "activity",
+        key: "activity:tool:inspect",
         entries: [
           expect.objectContaining({
             type: "tool",
@@ -112,11 +112,6 @@ describe("projectAgentTranscript", () => {
               hasResult: true,
             }),
           }),
-        ],
-      }),
-      expect.objectContaining({
-        type: "activity",
-        entries: [
           expect.objectContaining({
             type: "tool",
             tool: expect.objectContaining({
@@ -150,6 +145,37 @@ describe("projectAgentTranscript", () => {
       "assistant_text",
       "activity",
     ]);
+  });
+
+  it("uses reasoning and subagent activity as tool-group boundaries", () => {
+    const projected = projectAgentTranscript([
+      assistant([call("first", "bash", { command: "one" })], 1),
+      result("first", "bash", "one"),
+      assistant(
+        [
+          { type: "thinking", thinking: "I should delegate this." },
+          {
+            type: "subagent",
+            id: "child",
+            action: "spawnAgent",
+            status: "completed",
+            receivers: [],
+            events: [],
+          },
+        ],
+        2,
+      ),
+      assistant([call("second", "bash", { command: "two" })], 3),
+      result("second", "bash", "two"),
+    ]);
+
+    expect(
+      projected.map((item) =>
+        item.type === "activity"
+          ? item.entries.map((entry) => entry.type)
+          : item.type,
+      ),
+    ).toEqual([["tool"], ["thinking"], ["subagent"], ["tool"]]);
   });
 
   it("keeps commentary inline and puts timing on the turn footer", () => {
@@ -446,13 +472,13 @@ describe("agent activity presentation", () => {
         false,
       ),
     ).toEqual({
-      label: "Ran 1 command, read 1 file, and edited 1 file",
+      label: "Edited 1 file, ran 1 command, and read 1 file",
       secondary: null,
       status: "completed",
     });
   });
 
-  it("shows the current command while a single tool is running", () => {
+  it("keeps a single running tool in the aggregate summary", () => {
     const shell = {
       ...tool("shell", "bash", { command: "npm test" }),
       hasResult: false,
@@ -463,8 +489,8 @@ describe("agent activity presentation", () => {
         true,
       ),
     ).toEqual({
-      label: "Running command",
-      secondary: "npm test",
+      label: "Ran 1 command",
+      secondary: null,
       status: "running",
     });
   });
@@ -478,13 +504,13 @@ describe("agent activity presentation", () => {
         true,
       ),
     ).toEqual({
-      label: "Ran command",
-      secondary: "npm test",
+      label: "Ran 1 command",
+      secondary: null,
       status: "completed",
     });
   });
 
-  it("names the latest running action instead of showing a generic tool count", () => {
+  it("keeps the aggregate summary stable while its latest tool runs", () => {
     const shell = tool("shell", "bash", { command: "npm test" });
     const search = {
       ...tool("search", "grep", {
@@ -503,9 +529,31 @@ describe("agent activity presentation", () => {
         true,
       ),
     ).toEqual({
-      label: "Searching",
-      secondary: "runtimeStatus",
+      label: "Ran 1 command and searched 1 time",
+      secondary: null,
       status: "running",
+    });
+  });
+
+  it("counts unique read and edited paths like the collapsed overview", () => {
+    const firstRead = tool("read-1", "read", { path: "src/app.ts" });
+    const secondRead = tool("read-2", "read", { path: "src/app.ts" });
+    const edit = tool("edit", "apply_patch", { path: "src/app.ts" });
+    const write = tool("write", "write", { path: "src/app.ts" });
+
+    expect(
+      describeAgentActivity(
+        [firstRead, secondRead, edit, write].map((entry) => ({
+          type: "tool" as const,
+          id: entry.id,
+          tool: entry,
+        })),
+        false,
+      ),
+    ).toEqual({
+      label: "Edited 1 file and read 1 file",
+      secondary: null,
+      status: "completed",
     });
   });
 

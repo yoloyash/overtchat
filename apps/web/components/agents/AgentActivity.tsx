@@ -119,17 +119,6 @@ export function AgentActivityGroup({
   const hasError = presentation.status === "failed";
   const [open, setOpen] = useState(hasError);
   const singleEntry = entries.length === 1 ? entries[0] : null;
-  if (singleEntry?.type === "tool") {
-    return (
-      <div
-        className="text-xs"
-        data-testid="agent-activity-group"
-        data-activity-sequence={sequencePosition}
-      >
-        <ToolActivityStep tool={singleEntry.tool} active={active} showIcon />
-      </div>
-    );
-  }
   if (singleEntry?.type === "subagent") {
     return (
       <div
@@ -142,38 +131,38 @@ export function AgentActivityGroup({
     );
   }
 
+  const toolSummary = entries.every((entry) => entry.type === "tool");
   const live = active && presentation.status === "running";
   const hasDetailedSteps = entries.some(
     (entry) =>
       entry.type === "tool" ||
       entry.type === "subagent",
   );
-  const completedCount = entries.filter(
-    (entry) =>
-      entry.type === "tool" &&
-      agentToolStatus(entry.tool, active) === "completed",
-  ).length;
-  const progress =
-    live && completedCount > 0 ? `${completedCount} completed` : null;
-  const headerLabel =
-    open && live && hasDetailedSteps ? "Activity" : presentation.label;
-  const headerSecondary =
-    open && live && hasDetailedSteps ? null : presentation.secondary;
 
   return (
     <div
       className="text-xs"
       data-testid="agent-activity-group"
       data-activity-sequence={sequencePosition}
+      data-agent-tool-summary={toolSummary ? "true" : undefined}
     >
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
+        aria-label={
+          toolSummary
+            ? `${presentation.label}, ${presentation.status}`
+            : undefined
+        }
         className="group flex min-h-7 w-full items-center gap-2 rounded-md py-0.5 pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
       >
         <DisclosureLeadIcon open={open}>
-          <ActivityIcon entries={entries} status={presentation.status} />
+          <ActivityIcon
+            entries={entries}
+            status={presentation.status}
+            toolSummary={toolSummary}
+          />
         </DisclosureLeadIcon>
         <span className="min-w-0 flex flex-1 items-baseline gap-2">
           <span
@@ -182,50 +171,35 @@ export function AgentActivityGroup({
               live && !open && motionClasses.shimmer,
             )}
           >
-            {headerLabel}
+            {presentation.label}
           </span>
-          {headerSecondary && (
+          {presentation.secondary && (
             <span className="min-w-0 truncate font-mono text-[11px]">
-              {headerSecondary}
+              {presentation.secondary}
             </span>
           )}
         </span>
-        {progress && (
-          <span className="hidden shrink-0 tabular-nums text-[11px] sm:inline">
-            {progress}
-          </span>
-        )}
       </button>
 
-      <div
-        className={cn(
-          "grid",
-          motionClasses.collapse,
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        )}
-      >
-        <div className="overflow-hidden">
-          <div
-            className={cn(
-              "relative mt-1 ml-2 pl-5",
-              hasDetailedSteps && "border-l border-border/70",
-            )}
-            data-testid="agent-activity-details"
-          >
-            {entries.map((entry, index) => (
-              <ActivityStep
-                key={entry.id}
-                entry={entry}
-                active={active}
-                last={index === entries.length - 1}
-                showDetailedStep={
-                  hasDetailedSteps || entries.length > 1
-                }
-              />
-            ))}
-          </div>
+      {open && (
+        <div
+          className={cn(
+            "relative mt-1 ml-2 max-h-[25rem] overflow-y-auto pl-5",
+            hasDetailedSteps && "border-l border-border/70",
+          )}
+          data-testid="agent-activity-details"
+        >
+          {entries.map((entry, index) => (
+            <ActivityStep
+              key={entry.id}
+              entry={entry}
+              active={active}
+              last={index === entries.length - 1}
+              showDetailedStep={hasDetailedSteps || entries.length > 1}
+            />
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -749,26 +723,31 @@ function DisclosureLeadIcon({
 function ActivityIcon({
   entries,
   status,
+  toolSummary,
 }: {
   entries: AgentActivityEntry[];
   status: AgentToolStatus;
+  toolSummary: boolean;
 }) {
-  if (status === "running") {
-    return (
-      <Loader2
-        className={cn(
-          "size-3.5 shrink-0 text-muted-foreground",
-          motionClasses.spinner,
-        )}
-      />
-    );
-  }
   if (status === "failed" || status === "stopped") {
     return (
       <CircleAlert
         className={cn(
           "size-3.5 shrink-0",
           status === "failed" ? "text-destructive" : "text-muted-foreground",
+        )}
+      />
+    );
+  }
+  if (toolSummary) {
+    return <Wrench className="size-3.5 shrink-0 text-muted-foreground" />;
+  }
+  if (status === "running") {
+    return (
+      <Loader2
+        className={cn(
+          "size-3.5 shrink-0 text-muted-foreground",
+          motionClasses.spinner,
         )}
       />
     );
