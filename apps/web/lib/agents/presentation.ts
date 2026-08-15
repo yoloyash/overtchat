@@ -119,6 +119,29 @@ export type AgentActivityPresentation = {
   status: AgentToolStatus;
 };
 
+export type AgentActivitySequencePosition =
+  | "single"
+  | "first"
+  | "middle"
+  | "last";
+
+/**
+ * Activity stays individually addressable, but adjacent activity rows form one
+ * visual sequence. Any conversational or turn-level item is a hard boundary.
+ */
+export function agentActivitySequencePosition(
+  items: readonly AgentTranscriptItem[],
+  index: number,
+): AgentActivitySequencePosition | null {
+  if (items[index]?.type !== "activity") return null;
+  const hasPrevious = items[index - 1]?.type === "activity";
+  const hasNext = items[index + 1]?.type === "activity";
+  if (hasPrevious && hasNext) return "middle";
+  if (hasPrevious) return "last";
+  if (hasNext) return "first";
+  return "single";
+}
+
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)

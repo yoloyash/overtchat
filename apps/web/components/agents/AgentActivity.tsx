@@ -5,7 +5,6 @@ import {
   Brain,
   ChevronRight,
   CircleAlert,
-  CircleCheck,
   CircleX,
   FilePenLine,
   FileText,
@@ -22,6 +21,7 @@ import {
   describeAgentActivity,
   describeAgentTool,
   type AgentActivityEntry,
+  type AgentActivitySequencePosition,
   type AgentToolActivity,
   type AgentToolCategory,
   type AgentToolStatus,
@@ -109,9 +109,11 @@ export function AgentRunIndicator({
 export function AgentActivityGroup({
   entries,
   active,
+  sequencePosition,
 }: {
   entries: AgentActivityEntry[];
   active: boolean;
+  sequencePosition: AgentActivitySequencePosition;
 }) {
   const presentation = describeAgentActivity(entries, active);
   const hasError = presentation.status === "failed";
@@ -119,14 +121,22 @@ export function AgentActivityGroup({
   const singleEntry = entries.length === 1 ? entries[0] : null;
   if (singleEntry?.type === "tool") {
     return (
-      <div className="text-xs" data-testid="agent-activity-group">
+      <div
+        className="text-xs"
+        data-testid="agent-activity-group"
+        data-activity-sequence={sequencePosition}
+      >
         <ToolActivityStep tool={singleEntry.tool} active={active} showIcon />
       </div>
     );
   }
   if (singleEntry?.type === "subagent") {
     return (
-      <div className="text-xs" data-testid="agent-activity-group">
+      <div
+        className="text-xs"
+        data-testid="agent-activity-group"
+        data-activity-sequence={sequencePosition}
+      >
         <SubagentActivityStep activity={singleEntry.activity} showIcon />
       </div>
     );
@@ -151,18 +161,24 @@ export function AgentActivityGroup({
     open && live && hasDetailedSteps ? null : presentation.secondary;
 
   return (
-    <div className="text-xs" data-testid="agent-activity-group">
+    <div
+      className="text-xs"
+      data-testid="agent-activity-group"
+      data-activity-sequence={sequencePosition}
+    >
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         aria-expanded={open}
-        className="group flex min-h-8 w-full items-center gap-2 rounded-md py-1 pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
+        className="group flex min-h-7 w-full items-center gap-2 rounded-md py-0.5 pr-1 text-left text-muted-foreground motion-colors hover:text-foreground"
       >
-        <ActivityIcon entries={entries} status={presentation.status} />
+        <DisclosureLeadIcon open={open}>
+          <ActivityIcon entries={entries} status={presentation.status} />
+        </DisclosureLeadIcon>
         <span className="min-w-0 flex flex-1 items-baseline gap-2">
           <span
             className={cn(
-              "shrink-0 font-medium text-foreground",
+              "shrink-0 font-normal motion-colors group-hover:text-foreground",
               live && !open && motionClasses.shimmer,
             )}
           >
@@ -179,12 +195,6 @@ export function AgentActivityGroup({
             {progress}
           </span>
         )}
-        <ChevronRight
-          className={cn(
-            "size-3.5 shrink-0 opacity-60 motion-transform",
-            open && "rotate-90",
-          )}
-        />
       </button>
 
       <div
@@ -320,14 +330,16 @@ function SubagentActivityStep({
         disabled={!canOpen}
         aria-expanded={canOpen ? open : undefined}
         className={cn(
-          "flex min-h-5 w-full items-start gap-2 text-left",
+          "group flex min-h-6 w-full items-start gap-2 rounded-md py-0.5 text-left text-muted-foreground motion-colors",
           canOpen && "cursor-pointer hover:text-foreground",
         )}
       >
         {showIcon && (
-          <Users className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+          <DisclosureLeadIcon open={open} interactive={canOpen}>
+            <Users className="size-3.5 text-muted-foreground" />
+          </DisclosureLeadIcon>
         )}
-        <span className="min-w-0 flex-1 font-medium text-foreground">
+        <span className="min-w-0 flex-1 font-normal text-muted-foreground motion-colors group-hover:text-foreground">
           {label}
         </span>
         {running ? (
@@ -337,10 +349,8 @@ function SubagentActivityStep({
               motionClasses.spinner,
             )}
           />
-        ) : (
-          <CircleCheck className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-        )}
-        {canOpen && (
+        ) : null}
+        {canOpen && !showIcon && (
           <ChevronRight
             className={cn(
               "mt-0.5 size-3 shrink-0 text-muted-foreground/60 motion-transform",
@@ -442,18 +452,20 @@ function ToolActivityStep({
         aria-expanded={canOpen ? open : undefined}
         aria-label={`${presentation.label}${presentation.summary ? `: ${presentation.summary}` : ""}, ${status}`}
         className={cn(
-          "flex min-h-5 w-full items-start gap-2 text-left",
+          "group flex min-h-6 w-full items-start gap-2 rounded-md py-0.5 text-left text-muted-foreground motion-colors",
           canOpen && "cursor-pointer hover:text-foreground",
         )}
       >
         {showIcon && (
-          <ToolCategoryIcon
-            category={presentation.category}
-            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
-          />
+          <DisclosureLeadIcon open={open} interactive={canOpen}>
+            <ToolCategoryIcon
+              category={presentation.category}
+              className="size-3.5 text-muted-foreground"
+            />
+          </DisclosureLeadIcon>
         )}
         <span className="min-w-0 flex flex-1 items-baseline gap-2">
-          <span className="shrink-0 font-medium text-foreground">
+          <span className="shrink-0 font-normal motion-colors group-hover:text-foreground">
             {toolStepLabel(presentation.category, status)}
           </span>
           {presentation.summary && (
@@ -463,7 +475,7 @@ function ToolActivityStep({
           )}
         </span>
         <ToolStatusIcon status={status} />
-        {canOpen && (
+        {canOpen && !showIcon && (
           <ChevronRight
             className={cn(
               "mt-0.5 size-3 shrink-0 text-muted-foreground/60 motion-transform",
@@ -701,6 +713,39 @@ function ToolCategoryIcon({
   }
 }
 
+function DisclosureLeadIcon({
+  children,
+  open,
+  interactive = true,
+}: {
+  children: ReactNode;
+  open: boolean;
+  interactive?: boolean;
+}) {
+  return (
+    <span className="relative mt-0.5 flex size-3.5 shrink-0 items-center justify-center">
+      <span
+        className={cn(
+          "flex items-center justify-center",
+          interactive &&
+            "group-hover:invisible group-focus-visible:invisible",
+          interactive && open && "invisible",
+        )}
+      >
+        {children}
+      </span>
+      {interactive && (
+        <ChevronRight
+          className={cn(
+            "absolute hidden size-3.5 text-foreground/70 motion-transform group-hover:block group-focus-visible:block",
+            open && "block rotate-90",
+          )}
+        />
+      )}
+    </span>
+  );
+}
+
 function ActivityIcon({
   entries,
   status,
@@ -760,7 +805,7 @@ function ToolStatusIcon({ status }: { status: AgentToolStatus }) {
     case "running":
       return <Loader2 className={className} />;
     case "completed":
-      return <CircleCheck className={className} />;
+      return null;
     case "failed":
       return <CircleAlert className={className} />;
     case "stopped":

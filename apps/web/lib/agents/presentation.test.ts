@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  agentActivitySequencePosition,
   agentToolStatus,
   describeAgentActivity,
   describeAgentTool,
@@ -359,6 +360,25 @@ describe("projectAgentTranscript", () => {
         { step: "Implement", status: "pending" },
       ],
     });
+  });
+});
+
+describe("agent activity sequences", () => {
+  it("positions adjacent activity without crossing conversational boundaries", () => {
+    const projected = projectAgentTranscript([
+      assistant([{ type: "thinking", thinking: "First thought" }], 1),
+      assistant([call("read", "read", { path: "a.ts" })], 2),
+      result("read", "read", "contents"),
+      assistant([{ type: "text", text: "Visible update" }], 3),
+      assistant([call("test", "bash", { command: "npm test" })], 4),
+      result("test", "bash", "passed"),
+    ]);
+
+    expect(
+      projected.map((item, index) =>
+        agentActivitySequencePosition(projected, index),
+      ),
+    ).toEqual(["first", "last", null, "single"]);
   });
 });
 
