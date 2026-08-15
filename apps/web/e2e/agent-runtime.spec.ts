@@ -819,8 +819,19 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(sessionActivity).toBeVisible();
 
   const genericActivity = page.getByTestId("agent-run-activity");
-  await expect(genericActivity).toBeVisible();
-  await expect(genericActivity).toContainText(/\d+s/u);
+  await expect(genericActivity).toHaveCount(0);
+  await expect(
+    page.locator('[data-activity-sequence="single"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-activity-sequence="first"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-activity-sequence="middle"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-activity-sequence="last"]'),
+  ).toHaveCount(1);
   await expect(
     page.getByText("I'm auditing the release state before merging anything."),
   ).toBeVisible();
@@ -843,25 +854,36 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(page.getByTestId("agent-goal-bar")).toContainText(
     "Finish Codex parity",
   );
+  const toolSummaries = page.locator('[data-agent-tool-summary="true"]');
+  await expect(toolSummaries).toHaveCount(2);
+  const completedCommandSummary = page.getByRole("button", {
+    name: "Ran 1 command, completed",
+  });
+  await expect(completedCommandSummary).toBeVisible();
   const liveActivity = page.getByRole("button", {
-    name: "Search: runtimeStatus, running",
+    name: "Edited 1 file and searched 1 time, running",
   });
   await expect(liveActivity).toBeVisible();
+  const completedCommand = page.getByRole("button", {
+    name: "Terminal: printf done, completed",
+  });
+  const completedEdit = page.getByRole("button", {
+    name: "Edit: apps/web/runtime.ts, completed",
+  });
+  await expect(completedCommand).not.toBeVisible();
+  await expect(completedEdit).not.toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-collapsed-desktop.png"),
     fullPage: true,
   });
-  const completedCommand = page.getByRole("button", {
-    name: "Terminal: printf done, completed",
-  });
+  await completedCommandSummary.click();
   await expect(completedCommand).toBeVisible();
   await completedCommand.click();
   await expect(page.getByText("$ printf done", { exact: true })).toBeVisible();
   await expect(page.getByText("done", { exact: true })).toBeVisible();
   await expect(page.getByText("› y", { exact: true })).toBeVisible();
-  const completedEdit = page.getByRole("button", {
-    name: "Edit: apps/web/runtime.ts, completed",
-  });
+  await liveActivity.click();
+  await expect(completedEdit).toBeVisible();
   await completedEdit.click();
   await expect(page.getByText("Changes", { exact: true }).first()).toBeVisible();
   await expect(
@@ -1040,7 +1062,7 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("button", { name: "Stopping Codex" }),
   ).toBeVisible();
-  await expect(genericActivity).toContainText("Working", { timeout: 2_000 });
+  await expect(genericActivity).toHaveCount(0, { timeout: 2_000 });
   await expect(page.getByRole("button", { name: "Stop Codex" })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-desktop.png"),

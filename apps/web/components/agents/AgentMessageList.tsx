@@ -24,8 +24,11 @@ import {
   STREAMDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
 import {
+  agentActivitySequencePosition,
+  describeAgentActivity,
   presentAgentError,
   projectAgentTranscript,
+  type AgentActivitySequencePosition,
   type AgentErrorPresentation,
   type AgentTranscriptItem,
 } from "@/lib/agents/presentation";
@@ -108,6 +111,12 @@ export function AgentMessageList({
     () => projectAgentTranscript(messages),
     [messages],
   );
+  const trailingItem = transcript.at(-1);
+  const activityAlreadyVisible =
+    activity === "working" &&
+    streaming &&
+    trailingItem?.type === "activity" &&
+    describeAgentActivity(trailingItem.entries, true).status === "running";
 
   return (
     <div
@@ -134,6 +143,10 @@ export function AgentMessageList({
             <div className="flex flex-col">
               {transcript.map((item, index) => {
                 const previous = transcript[index - 1];
+                const sequencePosition = agentActivitySequencePosition(
+                  transcript,
+                  index,
+                );
                 const compact =
                   previous &&
                   (item.type === "activity" ||
@@ -144,9 +157,9 @@ export function AgentMessageList({
                     key={item.key}
                     className={cn(
                       index > 0 && (compact ? "mt-3" : "mt-6"),
-                      item.type === "activity" &&
-                        previous?.type === "activity" &&
-                        "mt-1",
+                      (sequencePosition === "middle" ||
+                        sequencePosition === "last") &&
+                        "mt-0",
                       item.type === "turn_footer" && "mt-2",
                     )}
                   >
@@ -159,11 +172,12 @@ export function AgentMessageList({
                       onEditMessage={onEditMessage}
                       onForkMessage={onForkMessage}
                       onImplementPlan={onImplementPlan}
+                      activitySequencePosition={sequencePosition}
                     />
                   </div>
                 );
               })}
-              {activity && (
+              {activity && !activityAlreadyVisible && (
                 <AgentRunIndicator
                   activity={activity}
                   startedAt={activityStartedAt}
@@ -205,6 +219,7 @@ function AgentTranscriptRow({
   onEditMessage,
   onForkMessage,
   onImplementPlan,
+  activitySequencePosition,
 }: {
   item: AgentTranscriptItem;
   active: boolean;
@@ -214,6 +229,7 @@ function AgentTranscriptRow({
   onEditMessage: (messageId: string) => void;
   onForkMessage: (messageId: string) => void;
   onImplementPlan: (plan: string) => void;
+  activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
   if (item.type === "message") {
     return (
@@ -264,7 +280,13 @@ function AgentTranscriptRow({
       />
     );
   }
-  return <AgentActivityGroup entries={item.entries} active={active} />;
+  return (
+    <AgentActivityGroup
+      entries={item.entries}
+      active={active}
+      sequencePosition={activitySequencePosition ?? "single"}
+    />
+  );
 }
 
 function AgentTurnFooter({
