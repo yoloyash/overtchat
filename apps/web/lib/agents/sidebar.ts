@@ -1,5 +1,6 @@
 import type {
   AgentConnectionListItem,
+  AgentSessionDirectoryEntry,
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
@@ -22,6 +23,40 @@ export function agentConnectionHasRunningSession(
   connection: AgentConnectionListItem,
 ): boolean {
   return connection.workspaces.some(agentWorkspaceHasRunningSession);
+}
+
+export function withAgentSessionDirectory(
+  connections: AgentConnectionListItem[],
+  sessions: readonly AgentSessionDirectoryEntry[],
+): AgentConnectionListItem[] {
+  const runtimeStatuses = new Map(
+    sessions.map((session) => [session.sessionId, session.runtimeStatus]),
+  );
+  let changed = false;
+  const next = connections.map((connection) => {
+    let connectionChanged = false;
+    const workspaces = connection.workspaces.map((workspace) => {
+      let workspaceChanged = false;
+      const workspaceSessions = workspace.sessions.map((session) => {
+        const runtimeStatus = runtimeStatuses.get(session.id);
+        if (
+          runtimeStatus === undefined ||
+          runtimeStatus === session.runtimeStatus
+        ) {
+          return session;
+        }
+        changed = true;
+        connectionChanged = true;
+        workspaceChanged = true;
+        return { ...session, runtimeStatus };
+      });
+      return workspaceChanged
+        ? { ...workspace, sessions: workspaceSessions }
+        : workspace;
+    });
+    return connectionChanged ? { ...connection, workspaces } : connection;
+  });
+  return changed ? next : connections;
 }
 
 export function visibleAgentSessions(

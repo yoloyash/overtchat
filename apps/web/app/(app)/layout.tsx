@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { listChats } from "@/lib/db/chats";
 import { listProjects } from "@/lib/db/projects";
 import { listAgentConnections } from "@/lib/db/agentConnections";
-import { withAgentRuntimeStatuses } from "@/lib/agents/connector/status";
+import { withConnectorSessionDirectory } from "@/lib/agents/connector/directory";
 import { AppShell } from "@/components/AppShell";
 import { Sidebar } from "@/components/Sidebar";
 import { getQueryClient } from "@/lib/queryClient";
@@ -57,7 +57,7 @@ export default async function AppLayout({
       ? qc.prefetchQuery({
           queryKey: agentConnectionKeys.list(),
           queryFn: async (): Promise<AgentConnectionListItem[]> =>
-            withAgentRuntimeStatuses(
+            withConnectorSessionDirectory(
               await listAgentConnections(session.user.id),
             ),
         })

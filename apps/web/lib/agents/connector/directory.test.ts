@@ -12,7 +12,7 @@ vi.mock("@/lib/agents/connector/broker", () => ({
   },
 }));
 
-import { withAgentRuntimeStatuses } from "./status";
+import { withConnectorSessionDirectory } from "./directory";
 
 const connections: AgentConnectionListItem[] = [
   {
@@ -50,14 +50,14 @@ const connections: AgentConnectionListItem[] = [
   },
 ];
 
-describe("agent connection runtime statuses", () => {
+describe("connector session directory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.runtimeStatusForSession.mockReturnValue("running");
   });
 
   it("overlays connector-projected status without mutating database data", () => {
-    const result = withAgentRuntimeStatuses(connections);
+    const result = withConnectorSessionDirectory(connections);
 
     expect(result[0]!.workspaces[0]!.sessions[0]!.runtimeStatus).toBe(
       "running",

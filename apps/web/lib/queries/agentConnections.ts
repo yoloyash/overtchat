@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AddAgentWorkspaceInput,
@@ -9,14 +10,19 @@ import type {
   AgentDiscoveryTarget,
   AgentDirectoryListing,
   AgentReadyConnectionProbe,
+  AgentSessionDirectoryEntry,
   AgentSshHostCandidate,
   AgentWorkspaceListItem,
   DetectedAgentInstallation,
   HostConnectorListItem,
   HostConnectorPairing,
 } from "@overtchat/agent-bridge";
+import { isAgentSessionDirectoryEntry } from "@overtchat/agent-bridge";
 import { agentConnectionKeys } from "@/lib/queries/keys";
-import { agentConnectionHasRunningSession } from "@/lib/agents/sidebar";
+import {
+  agentConnectionHasRunningSession,
+  withAgentSessionDirectory,
+} from "@/lib/agents/sidebar";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -43,6 +49,63 @@ export function useAgentConnections() {
         ? 2_000
         : false,
   });
+}
+
+export function useAgentConnectionSessionDirectory(
+  connections: AgentConnectionListItem[],
+) {
+  const queryClient = useQueryClient();
+  const sessionFingerprint = connections
+    .flatMap((connection) =>
+      connection.workspaces.flatMap((workspace) =>
+        workspace.sessions.map((session) => session.id),
+      ),
+    )
+    .sort()
+    .join("\n");
+
+  useEffect(() => {
+    if (!sessionFingerprint) return;
+    const source = new EventSource("/api/agent-connections/events");
+    const parseEvent = (event: Event): unknown => {
+      try {
+        return JSON.parse((event as MessageEvent<string>).data);
+      } catch {
+        return null;
+      }
+    };
+    const applySessions = (sessions: AgentSessionDirectoryEntry[]) => {
+      queryClient.setQueryData<AgentConnectionListItem[]>(
+        agentConnectionKeys.list(),
+        (current) =>
+          current ? withAgentSessionDirectory(current, sessions) : current,
+      );
+    };
+    const receiveSnapshot = (event: Event) => {
+      const value = parseEvent(event);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      const sessions = Reflect.get(value, "sessions");
+      if (
+        !Array.isArray(sessions) ||
+        !sessions.every(isAgentSessionDirectoryEntry)
+      ) {
+        return;
+      }
+      applySessions(sessions);
+    };
+    const receiveUpdate = (event: Event) => {
+      const value = parseEvent(event);
+      if (!isAgentSessionDirectoryEntry(value)) return;
+      applySessions([value]);
+    };
+    source.addEventListener("snapshot", receiveSnapshot);
+    source.addEventListener("update", receiveUpdate);
+    return () => {
+      source.removeEventListener("snapshot", receiveSnapshot);
+      source.removeEventListener("update", receiveUpdate);
+      source.close();
+    };
+  }, [queryClient, sessionFingerprint]);
 }
 
 export function useHostConnectors() {

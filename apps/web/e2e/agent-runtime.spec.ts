@@ -641,11 +641,13 @@ test("shows durable turn activity without changing completed tool status", async
     const sources: FakeEventSource[] = [];
     let online = true;
     class FakeEventSource extends EventTarget {
+      readonly url: string;
       onopen: ((event: Event) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
 
-      constructor() {
+      constructor(url: string | URL) {
         super();
+        this.url = String(url);
         sources.push(this);
         window.setTimeout(() => {
           if (online && sources.includes(this)) {
@@ -659,10 +661,16 @@ test("shows durable turn activity without changing completed tool status", async
         if (index >= 0) sources.splice(index, 1);
       }
     }
+    const runtimeSources = () =>
+      sources.filter(
+        (source) =>
+          source.url.includes("/api/agent-sessions/") &&
+          source.url.includes("/events"),
+      );
 
     const controls: RuntimeControls = {
       emit(envelope) {
-        for (const source of sources) {
+        for (const source of runtimeSources()) {
           source.dispatchEvent(
             new MessageEvent("runtime", {
               data: JSON.stringify(envelope),
@@ -673,19 +681,19 @@ test("shows durable turn activity without changing completed tool status", async
       async disconnect() {
         online = false;
         await setRuntimeAvailable(false);
-        for (const source of [...sources]) {
+        for (const source of runtimeSources()) {
           source.onerror?.(new Event("error"));
         }
       },
       async reconnect() {
         await setRuntimeAvailable(true);
         online = true;
-        for (const source of [...sources]) {
+        for (const source of runtimeSources()) {
           source.onopen?.(new Event("open"));
         }
       },
       connected() {
-        return sources.length > 0;
+        return runtimeSources().length > 0;
       },
     };
     Object.assign(window, {

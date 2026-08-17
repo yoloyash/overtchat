@@ -53,6 +53,30 @@ npm run dev
 
 Open [http://localhost:4717](http://localhost:4717). Add `searxng` or `kokoro` to the Compose command when working on search or text-to-speech.
 
+For a complete managed build from the current worktree, including the Host
+Connector, run:
+
+```bash
+npm run dev -w apps/cli -- setup --development
+```
+
+This uses the same managed provisioning path as `overtchat setup`: the CLI
+requests connector credentials through the app's internal management endpoint
+and installs the user service. It does not create or consume a pairing code in
+Settings.
+
+To debug the connector TypeScript process after it has been provisioned, stop
+the installed service so the two processes do not compete for the same
+identity, then run the source process:
+
+```bash
+systemctl --user stop overtchat-connector.service
+npm run dev -w apps/connector
+```
+
+The source process reads `~/.config/overtchat/connector.json`; its `run`
+command does not accept `--server`. Restart the installed service when done.
+
 ## Deploying updates
 
 ```bash
@@ -63,8 +87,8 @@ This updates the management CLI, app image, selected local sidecars, and managed
 Agent Connector as one coordinated release. Database migrations run
 automatically when the app starts; the existing data mount is not replaced.
 
-Legacy manually paired connectors still update through the command shown in
-**Settings → Connections**.
+Running `overtchat setup` adopts an older manually paired connector, rotates
+its credentials, and brings it under managed updates.
 
 ## Manual Compose installation
 

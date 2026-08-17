@@ -62,6 +62,60 @@ function response(
 }
 
 describe("host connector daemon broker", () => {
+  it("projects the global session directory without a detail subscription", async () => {
+    const listener = vi.fn();
+    const broker = new HostConnectorBroker(0);
+    const unsubscribe = broker.subscribeSessionDirectory(["session"], listener);
+    const disconnect = broker.register(
+      "connector",
+      ["session"],
+      vi.fn(),
+    );
+
+    expect(listener).toHaveBeenCalledWith({
+      type: "snapshot",
+      sessions: [{ sessionId: "session", runtimeStatus: "idle" }],
+    });
+    await broker.acceptBatch("connector", "daemon-epoch", [
+      {
+        sequence: 1,
+        payload: {
+          type: "session_directory",
+          sessions: [
+            { sessionId: "session", runtimeStatus: "running" },
+            { sessionId: "unowned", runtimeStatus: "running" },
+          ],
+        },
+      },
+    ]);
+
+    expect(broker.runtimeStatusForSession("session")).toBe("running");
+    expect(broker.runtimeStatusForSession("unowned")).toBe("idle");
+    expect(listener).toHaveBeenLastCalledWith({
+      type: "update",
+      session: { sessionId: "session", runtimeStatus: "running" },
+    });
+    disconnect();
+    await vi.waitFor(() => {
+      expect(broker.runtimeStatusForSession("session")).toBe("exited");
+    });
+    expect(listener).toHaveBeenLastCalledWith({
+      type: "update",
+      session: { sessionId: "session", runtimeStatus: "exited" },
+    });
+    unsubscribe();
+    await broker.acceptBatch("connector", "daemon-epoch", [
+      {
+        sequence: 2,
+        payload: {
+          type: "session_update",
+          session: { sessionId: "session", runtimeStatus: "idle" },
+        },
+      },
+    ]);
+    expect(listener).toHaveBeenCalledTimes(3);
+  });
+
   it("starts an exact connection epoch and resolves agent-level requests", async () => {
     const commands: HostConnectorCommand[] = [];
     const broker = new HostConnectorBroker();
@@ -644,7 +698,6 @@ describe("host connector daemon broker", () => {
     const subscription = await subscribed;
     expect(subscription.sync).toEqual(initialSync);
     expect(subscription.authoritative).toBe(true);
-    expect(broker.runtimeStatusForSession("session")).toBe("running");
     broker.replaceSessionProviderSession("connector", "session", {
       providerSessionId: "edited-thread",
       providerSessionPath: "/edited-thread.jsonl",
@@ -724,7 +777,6 @@ describe("host connector daemon broker", () => {
     ]);
     await vi.waitFor(() => expect(synchronize).toHaveBeenCalledWith(reconnectSync));
     expect(order).toEqual(["sync:7", "runtime:8"]);
-    expect(broker.runtimeStatusForSession("session")).toBe("exited");
     subscription.unsubscribe();
   });
 

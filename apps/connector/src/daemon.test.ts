@@ -323,7 +323,7 @@ describe("connector daemon command identity", () => {
     ]);
 
     expect(mocks.command).toHaveBeenCalledTimes(1);
-    expect(events).toEqual([
+    expect(events.filter((event) => event.type === "response")).toEqual([
       expect.objectContaining({
         type: "response",
         requestId: "request-1",
@@ -542,6 +542,66 @@ describe("connector daemon command identity", () => {
         }),
       ]);
     });
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
+  it("publishes a session-directory snapshot and updates without a detail subscription", async () => {
+    const { journal, timelines } = await openJournal();
+    const emitted: HostConnectorEventPayload[] = [];
+    let observer: ((event: AgentRuntimeEnvelope) => void) | undefined;
+    mocks.observe.mockImplementation((value) => {
+      observer = value;
+      return () => {};
+    });
+    const daemon = new ConnectorDaemon(
+      (event) => emitted.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    await daemon.handle({
+      type: "sync",
+      connectionEpoch: "connection-1",
+      activeSessionIds: ["session"],
+      serverInfo: {
+        protocolVersion: 1,
+        capabilities: [],
+      },
+    });
+    expect(emitted).toContainEqual({
+      type: "session_directory",
+      sessions: [{ sessionId: "session", runtimeStatus: "idle" }],
+    });
+    await daemon.handle({
+      type: "request",
+      requestId: "open",
+      request: { type: "open_session", session },
+    });
+
+    expect(emitted).toContainEqual({
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running" },
+    });
+    emitted.length = 0;
+    observer?.({
+      epoch: "runtime-ephemeral",
+      sequence: 1,
+      type: "runtime_event",
+      data: { type: "overtchat_status", status: "idle" },
+    });
+    await timelines.flush("session");
+
+    await vi.waitFor(() => {
+      expect(emitted).toContainEqual({
+        type: "session_update",
+        session: { sessionId: "session", runtimeStatus: "idle" },
+      });
+    });
+    expect(emitted).not.toContainEqual(
+      expect.objectContaining({ type: "session_event" }),
+    );
     await daemon.stop();
     await timelines.close();
     await journal.close();

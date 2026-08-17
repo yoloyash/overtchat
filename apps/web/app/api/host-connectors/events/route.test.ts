@@ -197,7 +197,7 @@ describe("Host Connector event route", () => {
     expect(mocks.acceptBatch).not.toHaveBeenCalled();
   });
 
-  it("rejects the incompatible pre-agent-daemon wire shape", async () => {
+  it("rejects an outdated connector release with an update instruction", async () => {
     const response = await POST(
       request(
         {
@@ -221,6 +221,7 @@ describe("Host Connector event route", () => {
 
     expect(response.status).toBe(409);
     await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("overtchat update"),
       code: "unsupported_connector_protocol",
       compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
     });

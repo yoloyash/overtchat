@@ -4,6 +4,7 @@ import type {
   AgentProviderId,
   AgentRuntimeCursor,
   AgentRuntimeEnvelope,
+  AgentRuntimeStatus,
   AgentSessionSync,
   AgentSessionCommand,
   ConnectorShellMode,
@@ -19,11 +20,11 @@ import {
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
 /**
  * Protocol 1 was accidentally reused for two incompatible connector designs.
- * Release 0.2.0 is the compatibility baseline for the current agent-daemon
+ * Release 0.5.0 is the compatibility baseline for the current agent-daemon
  * wire shape and remains stable even when the connector build version changes.
  */
-export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.2.0";
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.4.0";
+export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.5.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.5.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
@@ -72,6 +73,11 @@ export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
   sessionId: string;
   providerSessionId: string;
   providerSessionPath: string;
+};
+
+export type AgentSessionDirectoryEntry = {
+  sessionId: string;
+  runtimeStatus: AgentRuntimeStatus;
 };
 
 export type AgentDaemonRequest =
@@ -155,7 +161,9 @@ export type HostConnectorEventPayload =
         messageCount?: number;
         providerModifiedAt?: number;
       };
-    };
+    }
+  | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
+  | { type: "session_update"; session: AgentSessionDirectoryEntry };
 
 export type HostConnectorEvent = {
   sequence: number;
@@ -388,6 +396,16 @@ export function isAgentRuntimeEnvelope(
     : isNonEmptyString(value.data.type);
 }
 
+export function isAgentSessionDirectoryEntry(
+  value: unknown,
+): value is AgentSessionDirectoryEntry {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.sessionId) &&
+    ["idle", "running", "exited"].includes(String(value.runtimeStatus))
+  );
+}
+
 export function isAgentSessionSync(value: unknown): value is AgentSessionSync {
   if (
     !isRecord(value) ||
@@ -490,6 +508,17 @@ export function isHostConnectorEvent(
         (typeof payload.patch.providerModifiedAt === "number" &&
           Number.isFinite(payload.patch.providerModifiedAt)))
     );
+  }
+  if (payload.type === "session_directory") {
+    return (
+      Array.isArray(payload.sessions) &&
+      payload.sessions.every(isAgentSessionDirectoryEntry) &&
+      new Set(payload.sessions.map((session) => session.sessionId)).size ===
+        payload.sessions.length
+    );
+  }
+  if (payload.type === "session_update") {
+    return isAgentSessionDirectoryEntry(payload.session);
   }
   return false;
 }

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   createAgentConnection: vi.fn(),
   daemonRequest: vi.fn(),
   getOwnedHostConnector: vi.fn(),
-  withAgentRuntimeStatuses: vi.fn(),
+  withConnectorSessionDirectory: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -23,8 +23,8 @@ vi.mock("@/lib/agents/connector/broker", () => ({
 vi.mock("@/lib/db/hostConnectors", () => ({
   getOwnedHostConnector: mocks.getOwnedHostConnector,
 }));
-vi.mock("@/lib/agents/connector/status", () => ({
-  withAgentRuntimeStatuses: mocks.withAgentRuntimeStatuses,
+vi.mock("@/lib/agents/connector/directory", () => ({
+  withConnectorSessionDirectory: mocks.withConnectorSessionDirectory,
 }));
 
 import { GET, POST } from "./route";
@@ -49,7 +49,7 @@ describe("Agent Connections route", () => {
     });
     mocks.listAgentConnections.mockResolvedValue([]);
     mocks.getOwnedHostConnector.mockReturnValue({ id: "connector" });
-    mocks.withAgentRuntimeStatuses.mockImplementation(
+    mocks.withConnectorSessionDirectory.mockImplementation(
       (connections) => connections,
     );
   });
@@ -60,7 +60,7 @@ describe("Agent Connections route", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({ connections: [] });
     expect(mocks.listAgentConnections).toHaveBeenCalledWith("admin");
-    expect(mocks.withAgentRuntimeStatuses).toHaveBeenCalledWith([]);
+    expect(mocks.withConnectorSessionDirectory).toHaveBeenCalledWith([]);
   });
 
   it("does not expose connections to non-admin users", async () => {

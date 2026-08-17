@@ -21,7 +21,10 @@ import { SidebarConnections } from "@/components/SidebarConnections";
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
-import { useAgentConnections } from "@/lib/queries/agentConnections";
+import {
+  useAgentConnectionSessionDirectory,
+  useAgentConnections,
+} from "@/lib/queries/agentConnections";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { cn } from "@/lib/utils";
 
@@ -149,6 +152,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
 function AdminConnections() {
   const { data: connections = [] } = useAgentConnections();
+  useAgentConnectionSessionDirectory(connections);
   const { closeMobile } = useSidebar();
 
   return (

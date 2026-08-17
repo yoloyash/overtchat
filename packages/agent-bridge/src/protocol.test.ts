@@ -3,12 +3,13 @@ import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
   isHostConnectorCommand,
+  isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
 
 describe("Host Connector protocol compatibility", () => {
-  it("keeps the agent-daemon v1 compatibility token independent of builds", () => {
-    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.2.0");
+  it("rejects connector builds from the previous v1 wire shape", () => {
+    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.5.0");
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {
@@ -42,5 +43,40 @@ describe("Host Connector protocol compatibility", () => {
         activeSessionIds: [],
       }),
     ).toBe(true);
+  });
+
+  it("accepts a session-directory snapshot and provider-independent upserts", () => {
+    expect(
+      isHostConnectorEvent({
+        sequence: 1,
+        payload: {
+          type: "session_directory",
+          sessions: [
+            { sessionId: "session", runtimeStatus: "running" },
+          ],
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorEvent({
+        sequence: 2,
+        payload: {
+          type: "session_update",
+          session: { sessionId: "session", runtimeStatus: "idle" },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorEvent({
+        sequence: 3,
+        payload: {
+          type: "session_directory",
+          sessions: [
+            { sessionId: "session", runtimeStatus: "idle" },
+            { sessionId: "session", runtimeStatus: "running" },
+          ],
+        },
+      }),
+    ).toBe(false);
   });
 });

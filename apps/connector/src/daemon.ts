@@ -6,6 +6,7 @@ import type {
   AgentDaemonWorkspaceDescriptor,
   AgentPromptImage,
   AgentRuntimeEnvelope,
+  AgentRuntimeStatus,
   HostConnectorCommand,
   HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
@@ -123,6 +124,10 @@ export class ConnectorDaemon {
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
+  private readonly publishedSessions = new Map<
+    string,
+    AgentRuntimeStatus
+  >();
   private readonly sessionTails = new Map<string, Promise<void>>();
   private readonly activeRequests = new Set<Promise<void>>();
   private readonly shutdownAbort = new AbortController();
@@ -294,6 +299,7 @@ export class ConnectorDaemon {
     }
     if (this.connectionEpoch !== connectionEpoch) {
       this.connectionEpoch = connectionEpoch;
+      this.publishedSessions.clear();
       for (const subscription of this.subscriptions.values()) {
         this.closeSubscription(subscription);
       }
@@ -312,6 +318,7 @@ export class ConnectorDaemon {
     );
     this.assertAccepting();
     await this.journal.retainSessions(active);
+    this.publishSessionDirectory(active);
   }
 
   private async handleRequest(request: AgentDaemonRequest): Promise<unknown> {
@@ -698,6 +705,7 @@ export class ConnectorDaemon {
       await capture.ready;
       this.assertAccepting();
       capture.initialized = true;
+      this.publishSessionStatus(sessionId, runtime.snapshot().status);
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -733,7 +741,12 @@ export class ConnectorDaemon {
   ): void {
     let operation: Promise<AgentRuntimeEnvelope | null>;
     try {
-      operation = this.timelines.commit(sessionId, envelope);
+      operation = this.timelines.commit(sessionId, envelope).then((committed) => {
+        if (committed) {
+          this.publishEnvelopeStatus(sessionId, committed);
+        }
+        return committed;
+      });
     } catch (error) {
       this.recordCaptureFailure(sessionId, capture, error);
       return;
@@ -745,6 +758,50 @@ export class ConnectorDaemon {
         return null;
       })
       .finally(() => capture.pending.delete(operation));
+  }
+
+  private publishEnvelopeStatus(
+    sessionId: string,
+    envelope: AgentRuntimeEnvelope,
+  ): void {
+    if (envelope.type === "snapshot") {
+      this.publishSessionStatus(sessionId, envelope.data.status);
+      return;
+    }
+    if (
+      envelope.data.type === "overtchat_status" &&
+      ["idle", "running", "exited"].includes(String(envelope.data.status))
+    ) {
+      this.publishSessionStatus(
+        sessionId,
+        envelope.data.status as AgentRuntimeStatus,
+      );
+    }
+  }
+
+  private publishSessionStatus(
+    sessionId: string,
+    status: AgentRuntimeStatus,
+  ): void {
+    if (this.publishedSessions.get(sessionId) === status) return;
+    this.publishedSessions.set(sessionId, status);
+    this.emit({
+      type: "session_update",
+      session: { sessionId, runtimeStatus: status },
+    });
+  }
+
+  private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
+    const sessions = [...sessionIds].map((sessionId) => ({
+      sessionId,
+      runtimeStatus:
+        this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
+    }));
+    this.publishedSessions.clear();
+    for (const session of sessions) {
+      this.publishedSessions.set(session.sessionId, session.runtimeStatus);
+    }
+    this.emit({ type: "session_directory", sessions });
   }
 
   private recordCaptureFailure(
