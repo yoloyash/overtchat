@@ -168,6 +168,11 @@ async function main(): Promise<void> {
       await installManaged();
       return;
     case "run":
+      if (parsed.values.size > 0) {
+        throw new Error(
+          "The run command does not accept options; it uses the provisioned connector configuration.",
+        );
+      }
       await run();
       return;
     case "preflight":
