@@ -51,12 +51,17 @@ jobs:
         id: version
         run: |
           version=$(node -p "require('./apps/cli/package.json').version")
+          grep -F "export const CLI_VERSION = \"$version\"" apps/cli/src/constants.ts
           grep -F "cli_version=\"$version\"" apps/site/public/install
           test "$(node -p "require('./apps/site/public/install-manifest.json').cliVersion")" = "$version"
+          connector_version=$(node -p "require('./apps/connector/package.json').version")
           test "$(node -p "require('./apps/site/public/install-manifest.json').connectorVersion")" = \
-            "$(node -p "require('./apps/connector/package.json').version")"
+            "$connector_version"
+          grep -F "export const CONNECTOR_VERSION = \"$connector_version\"" \
+            apps/cli/src/constants.ts
           app_version=$(node -p "require('./apps/site/public/install-manifest.json').appVersion")
           test "$(sed -n 's/.*${APP_VERSION:-\([^}]*\)}.*/\1/p' compose.yml)" = "$app_version"
+          grep -F "export const APP_VERSION = \"$app_version\"" apps/cli/src/constants.ts
           stt_version=$(node -p "require('./apps/site/public/install-manifest.json').sttVersion")
           grep -F "export const STT_VERSION = \"$stt_version\"" apps/cli/src/constants.ts
           echo "version=$version" >> "$GITHUB_OUTPUT"
