@@ -1,18 +1,19 @@
-import type { AgentRuntimeStatus } from "@overtchat/agent-bridge";
 import { auth } from "@/lib/auth/server";
 import { connectionAccessError } from "@/lib/agents/access";
-import { hostConnectorBroker } from "@/lib/agents/connector/broker";
+import {
+  hostConnectorBroker,
+  type AgentSessionDirectoryEvent,
+} from "@/lib/agents/connector/broker";
 import { listAgentConnections } from "@/lib/db/agentConnections";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-function encodeStatus(
-  sessionId: string,
-  runtimeStatus: AgentRuntimeStatus,
-): Uint8Array {
+function encodeEvent(event: AgentSessionDirectoryEvent): Uint8Array {
+  const data =
+    event.type === "snapshot" ? { sessions: event.sessions } : event.session;
   return new TextEncoder().encode(
-    `event: status\ndata: ${JSON.stringify({ sessionId, runtimeStatus })}\n\n`,
+    `event: ${event.type}\ndata: ${JSON.stringify(data)}\n\n`,
   );
 }
 
@@ -57,18 +58,18 @@ export async function GET(req: Request) {
           finish();
         }
       }, 15_000);
-      const stopStatuses = hostConnectorBroker.subscribeSessionStatuses(
+      const stopDirectory = hostConnectorBroker.subscribeSessionDirectory(
         sessionIds,
-        (sessionId, runtimeStatus) => {
+        (event) => {
           if (closed) return;
           try {
-            controller.enqueue(encodeStatus(sessionId, runtimeStatus));
+            controller.enqueue(encodeEvent(event));
           } catch {
             finish();
           }
         },
       );
-      unsubscribe = stopStatuses;
+      unsubscribe = stopDirectory;
       if (closed) unsubscribe();
       req.signal.addEventListener("abort", finish, { once: true });
       if (req.signal.aborted) finish();

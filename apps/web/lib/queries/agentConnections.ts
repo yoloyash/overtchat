@@ -10,17 +10,18 @@ import type {
   AgentDiscoveryTarget,
   AgentDirectoryListing,
   AgentReadyConnectionProbe,
-  AgentRuntimeStatus,
+  AgentSessionDirectoryEntry,
   AgentSshHostCandidate,
   AgentWorkspaceListItem,
   DetectedAgentInstallation,
   HostConnectorListItem,
   HostConnectorPairing,
 } from "@overtchat/agent-bridge";
+import { isAgentSessionDirectoryEntry } from "@overtchat/agent-bridge";
 import { agentConnectionKeys } from "@/lib/queries/keys";
 import {
   agentConnectionHasRunningSession,
-  withAgentSessionRuntimeStatus,
+  withAgentSessionDirectory,
 } from "@/lib/agents/sidebar";
 
 async function responseError(response: Response): Promise<Error> {
@@ -50,7 +51,7 @@ export function useAgentConnections() {
   });
 }
 
-export function useAgentConnectionRuntimeStatuses(
+export function useAgentConnectionSessionDirectory(
   connections: AgentConnectionListItem[],
 ) {
   const queryClient = useQueryClient();
@@ -65,38 +66,43 @@ export function useAgentConnectionRuntimeStatuses(
 
   useEffect(() => {
     if (!sessionFingerprint) return;
-    const source = new EventSource("/api/agent-connections/statuses");
-    const receiveStatus = (event: Event) => {
-      let value: unknown;
+    const source = new EventSource("/api/agent-connections/events");
+    const parseEvent = (event: Event): unknown => {
       try {
-        value = JSON.parse((event as MessageEvent<string>).data);
+        return JSON.parse((event as MessageEvent<string>).data);
       } catch {
-        return;
+        return null;
       }
-      if (!value || typeof value !== "object" || Array.isArray(value)) return;
-      const sessionId = Reflect.get(value, "sessionId");
-      const runtimeStatus = Reflect.get(value, "runtimeStatus");
-      if (
-        typeof sessionId !== "string" ||
-        !["idle", "running", "exited"].includes(String(runtimeStatus))
-      ) {
-        return;
-      }
+    };
+    const applySessions = (sessions: AgentSessionDirectoryEntry[]) => {
       queryClient.setQueryData<AgentConnectionListItem[]>(
         agentConnectionKeys.list(),
         (current) =>
-          current
-            ? withAgentSessionRuntimeStatus(
-                current,
-                sessionId,
-                runtimeStatus as AgentRuntimeStatus,
-              )
-            : current,
+          current ? withAgentSessionDirectory(current, sessions) : current,
       );
     };
-    source.addEventListener("status", receiveStatus);
+    const receiveSnapshot = (event: Event) => {
+      const value = parseEvent(event);
+      if (!value || typeof value !== "object" || Array.isArray(value)) return;
+      const sessions = Reflect.get(value, "sessions");
+      if (
+        !Array.isArray(sessions) ||
+        !sessions.every(isAgentSessionDirectoryEntry)
+      ) {
+        return;
+      }
+      applySessions(sessions);
+    };
+    const receiveUpdate = (event: Event) => {
+      const value = parseEvent(event);
+      if (!isAgentSessionDirectoryEntry(value)) return;
+      applySessions([value]);
+    };
+    source.addEventListener("snapshot", receiveSnapshot);
+    source.addEventListener("update", receiveUpdate);
     return () => {
-      source.removeEventListener("status", receiveStatus);
+      source.removeEventListener("snapshot", receiveSnapshot);
+      source.removeEventListener("update", receiveUpdate);
       source.close();
     };
   }, [queryClient, sessionFingerprint]);

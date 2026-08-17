@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
 import { listAgentConnections } from "@/lib/db/agentConnections";
-import { withAgentRuntimeStatuses } from "@/lib/agents/connector/status";
+import { withConnectorSessionDirectory } from "@/lib/agents/connector/directory";
 import { getQueryClient } from "@/lib/queryClient";
 import { agentConnectionKeys } from "@/lib/queries/keys";
 import { ConnectionsPanel } from "./ConnectionsPanel";
@@ -23,7 +23,7 @@ export default async function Page({
   await queryClient.prefetchQuery({
     queryKey: agentConnectionKeys.list(),
     queryFn: async () =>
-      withAgentRuntimeStatuses(
+      withConnectorSessionDirectory(
         await listAgentConnections(session.user.id),
       ),
   });

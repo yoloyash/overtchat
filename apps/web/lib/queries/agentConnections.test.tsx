@@ -5,7 +5,7 @@ import { parseHTML } from "linkedom";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  useAgentConnectionRuntimeStatuses,
+  useAgentConnectionSessionDirectory,
   useAgentConnections,
 } from "./agentConnections";
 import { agentConnectionKeys } from "./keys";
@@ -77,11 +77,11 @@ class FakeEventSource {
 
 function Probe() {
   const query = useAgentConnections();
-  useAgentConnectionRuntimeStatuses(query.data ?? []);
+  useAgentConnectionSessionDirectory(query.data ?? []);
   return <div>{query.data?.[0]?.workspaces[0]?.sessions[0]?.runtimeStatus}</div>;
 }
 
-describe("agent connection runtime statuses", () => {
+describe("agent connection session directory", () => {
   let container: HTMLElement;
   let root: Root;
   let queryClient: QueryClient;
@@ -142,7 +142,7 @@ describe("agent connection runtime statuses", () => {
     originalGlobals.clear();
   });
 
-  it("updates idle and running sidebar state from the global status stream", async () => {
+  it("applies the global snapshot and later session upserts", async () => {
     await act(async () => {
       root.render(
         <QueryClientProvider client={queryClient}>
@@ -154,12 +154,25 @@ describe("agent connection runtime statuses", () => {
     expect(container.textContent).toBe("idle");
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(FakeEventSource.instances[0]!.url).toBe(
-      "/api/agent-connections/statuses",
+      "/api/agent-connections/events",
     );
 
     await act(async () => {
       FakeEventSource.instances[0]!.emit(
-        "status",
+        "snapshot",
+        JSON.stringify({
+          sessions: [
+            { sessionId: "session", runtimeStatus: "exited" },
+          ],
+        }),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toBe("exited");
+
+    await act(async () => {
+      FakeEventSource.instances[0]!.emit(
+        "update",
         JSON.stringify({
           sessionId: "session",
           runtimeStatus: "running",

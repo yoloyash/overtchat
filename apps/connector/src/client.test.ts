@@ -136,7 +136,7 @@ describe.sequential("connector client compatibility", () => {
     expect(headers.get("x-overtchat-connector-version")).toBe(
       HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
     );
-    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.4.0");
+    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.5.0");
     expect(headers.get("x-overtchat-connector-protocol")).toBe(
       String(HOST_CONNECTOR_PROTOCOL_VERSION),
     );
@@ -190,7 +190,7 @@ describe.sequential("connector client compatibility", () => {
     await running;
   });
 
-  it("delivers session status through the durable event outbox", async () => {
+  it("delivers session-directory upserts through the event outbox", async () => {
     const batches: HostConnectorEventBatch[] = [];
     vi.stubGlobal(
       "fetch",
@@ -210,18 +210,17 @@ describe.sequential("connector client compatibility", () => {
       value: HostConnectorEventPayload,
     ) => void;
     enqueue.call(client, {
-      type: "session_status",
-      sessionId: "session",
-      status: "running",
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running" },
     });
 
     await vi.waitFor(() =>
       expect(
         batches.flatMap((batch) => batch.events).some(
           (event) =>
-            event.payload.type === "session_status" &&
-            event.payload.sessionId === "session" &&
-            event.payload.status === "running",
+            event.payload.type === "session_update" &&
+            event.payload.session.sessionId === "session" &&
+            event.payload.session.runtimeStatus === "running",
         ),
       ).toBe(true),
     );

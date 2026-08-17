@@ -20,17 +20,16 @@ import {
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
 /**
  * Protocol 1 was accidentally reused for two incompatible connector designs.
- * Release 0.2.0 is the compatibility baseline for the current agent-daemon
+ * Release 0.5.0 is the compatibility baseline for the current agent-daemon
  * wire shape and remains stable even when the connector build version changes.
  */
-export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.2.0";
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.4.0";
+export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.5.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.5.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
-  "session-status-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -74,6 +73,11 @@ export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
   sessionId: string;
   providerSessionId: string;
   providerSessionPath: string;
+};
+
+export type AgentSessionDirectoryEntry = {
+  sessionId: string;
+  runtimeStatus: AgentRuntimeStatus;
 };
 
 export type AgentDaemonRequest =
@@ -158,11 +162,8 @@ export type HostConnectorEventPayload =
         providerModifiedAt?: number;
       };
     }
-  | {
-      type: "session_status";
-      sessionId: string;
-      status: AgentRuntimeStatus;
-    };
+  | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
+  | { type: "session_update"; session: AgentSessionDirectoryEntry };
 
 export type HostConnectorEvent = {
   sequence: number;
@@ -395,6 +396,16 @@ export function isAgentRuntimeEnvelope(
     : isNonEmptyString(value.data.type);
 }
 
+export function isAgentSessionDirectoryEntry(
+  value: unknown,
+): value is AgentSessionDirectoryEntry {
+  return (
+    isRecord(value) &&
+    isNonEmptyString(value.sessionId) &&
+    ["idle", "running", "exited"].includes(String(value.runtimeStatus))
+  );
+}
+
 export function isAgentSessionSync(value: unknown): value is AgentSessionSync {
   if (
     !isRecord(value) ||
@@ -498,11 +509,16 @@ export function isHostConnectorEvent(
           Number.isFinite(payload.patch.providerModifiedAt)))
     );
   }
-  if (payload.type === "session_status") {
+  if (payload.type === "session_directory") {
     return (
-      isNonEmptyString(payload.sessionId) &&
-      ["idle", "running", "exited"].includes(String(payload.status))
+      Array.isArray(payload.sessions) &&
+      payload.sessions.every(isAgentSessionDirectoryEntry) &&
+      new Set(payload.sessions.map((session) => session.sessionId)).size ===
+        payload.sessions.length
     );
+  }
+  if (payload.type === "session_update") {
+    return isAgentSessionDirectoryEntry(payload.session);
   }
   return false;
 }

@@ -2,7 +2,7 @@ import "server-only";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "./broker";
 
-export function withAgentRuntimeStatuses(
+export function withConnectorSessionDirectory(
   connections: AgentConnectionListItem[],
 ): AgentConnectionListItem[] {
   return connections.map((connection) => ({

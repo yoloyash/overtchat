@@ -117,6 +117,7 @@ describe("Host Connector command channel", () => {
     const wrongRelease = await GET(request("0.1.0"));
     expect(wrongRelease.status).toBe(409);
     await expect(wrongRelease.json()).resolves.toMatchObject({
+      error: expect.stringContaining("overtchat update"),
       code: "unsupported_connector_protocol",
       compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
     });

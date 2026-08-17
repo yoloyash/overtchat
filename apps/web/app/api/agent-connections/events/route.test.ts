@@ -1,10 +1,14 @@
-import type { AgentRuntimeStatus } from "@overtchat/agent-bridge";
+import type { AgentSessionDirectoryEntry } from "@overtchat/agent-bridge";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+type DirectoryEvent =
+  | { type: "snapshot"; sessions: AgentSessionDirectoryEntry[] }
+  | { type: "update"; session: AgentSessionDirectoryEntry };
 
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listAgentConnections: vi.fn(),
-  subscribeSessionStatuses: vi.fn(),
+  subscribeSessionDirectory: vi.fn(),
   unsubscribe: vi.fn(),
 }));
 
@@ -17,16 +21,14 @@ vi.mock("@/lib/db/agentConnections", () => ({
 }));
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
-    subscribeSessionStatuses: mocks.subscribeSessionStatuses,
+    subscribeSessionDirectory: mocks.subscribeSessionDirectory,
   },
 }));
 
 import { GET } from "./route";
 
-describe("agent connection status stream", () => {
-  let listener:
-    | ((sessionId: string, status: AgentRuntimeStatus) => void)
-    | undefined;
+describe("agent connection session-directory stream", () => {
+  let listener: ((event: DirectoryEvent) => void) | undefined;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -42,40 +44,55 @@ describe("agent connection status stream", () => {
         ],
       },
     ]);
-    mocks.subscribeSessionStatuses.mockImplementation(
+    mocks.subscribeSessionDirectory.mockImplementation(
       (
         _sessionIds: string[],
-        subscriber: (sessionId: string, status: AgentRuntimeStatus) => void,
+        subscriber: (event: DirectoryEvent) => void,
       ) => {
         listener = subscriber;
-        subscriber("session", "idle");
+        subscriber({
+          type: "snapshot",
+          sessions: [
+            { sessionId: "session", runtimeStatus: "idle" },
+            { sessionId: "other-session", runtimeStatus: "exited" },
+          ],
+        });
         return mocks.unsubscribe;
       },
     );
   });
 
-  it("streams authorized session status transitions and cleans up", async () => {
+  it("streams an authorized snapshot and session upserts, then cleans up", async () => {
     const response = await GET(
-      new Request("http://server.test/api/agent-connections/statuses"),
+      new Request("http://server.test/api/agent-connections/events"),
     );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toContain(
       "text/event-stream",
     );
-    expect(mocks.subscribeSessionStatuses).toHaveBeenCalledWith(
+    expect(mocks.subscribeSessionDirectory).toHaveBeenCalledWith(
       ["session", "other-session"],
       expect.any(Function),
     );
     const reader = response.body!.getReader();
     const initial = new TextDecoder().decode((await reader.read()).value);
-    expect(initial).toContain("event: status");
+    expect(initial).toContain("event: snapshot");
     expect(initial).toContain(
-      JSON.stringify({ sessionId: "session", runtimeStatus: "idle" }),
+      JSON.stringify({
+        sessions: [
+          { sessionId: "session", runtimeStatus: "idle" },
+          { sessionId: "other-session", runtimeStatus: "exited" },
+        ],
+      }),
     );
 
-    listener?.("session", "running");
+    listener?.({
+      type: "update",
+      session: { sessionId: "session", runtimeStatus: "running" },
+    });
     const running = new TextDecoder().decode((await reader.read()).value);
+    expect(running).toContain("event: update");
     expect(running).toContain(
       JSON.stringify({ sessionId: "session", runtimeStatus: "running" }),
     );
@@ -83,17 +100,17 @@ describe("agent connection status stream", () => {
     expect(mocks.unsubscribe).toHaveBeenCalledOnce();
   });
 
-  it("does not expose statuses to non-admin users", async () => {
+  it("does not expose the directory to non-admin users", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "member", role: "user" },
     });
 
     const response = await GET(
-      new Request("http://server.test/api/agent-connections/statuses"),
+      new Request("http://server.test/api/agent-connections/events"),
     );
 
     expect(response.status).toBe(403);
     expect(mocks.listAgentConnections).not.toHaveBeenCalled();
-    expect(mocks.subscribeSessionStatuses).not.toHaveBeenCalled();
+    expect(mocks.subscribeSessionDirectory).not.toHaveBeenCalled();
   });
 });

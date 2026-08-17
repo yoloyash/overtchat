@@ -323,7 +323,7 @@ describe("connector daemon command identity", () => {
     ]);
 
     expect(mocks.command).toHaveBeenCalledTimes(1);
-    expect(events).toEqual([
+    expect(events.filter((event) => event.type === "response")).toEqual([
       expect.objectContaining({
         type: "response",
         requestId: "request-1",
@@ -547,7 +547,7 @@ describe("connector daemon command identity", () => {
     await journal.close();
   });
 
-  it("publishes runtime status without a detail-view subscription", async () => {
+  it("publishes a session-directory snapshot and updates without a detail subscription", async () => {
     const { journal, timelines } = await openJournal();
     const emitted: HostConnectorEventPayload[] = [];
     let observer: ((event: AgentRuntimeEnvelope) => void) | undefined;
@@ -567,8 +567,12 @@ describe("connector daemon command identity", () => {
       activeSessionIds: ["session"],
       serverInfo: {
         protocolVersion: 1,
-        capabilities: ["session-status-v1"],
+        capabilities: [],
       },
+    });
+    expect(emitted).toContainEqual({
+      type: "session_directory",
+      sessions: [{ sessionId: "session", runtimeStatus: "idle" }],
     });
     await daemon.handle({
       type: "request",
@@ -577,9 +581,8 @@ describe("connector daemon command identity", () => {
     });
 
     expect(emitted).toContainEqual({
-      type: "session_status",
-      sessionId: "session",
-      status: "running",
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running" },
     });
     emitted.length = 0;
     observer?.({
@@ -592,9 +595,8 @@ describe("connector daemon command identity", () => {
 
     await vi.waitFor(() => {
       expect(emitted).toContainEqual({
-        type: "session_status",
-        sessionId: "session",
-        status: "idle",
+        type: "session_update",
+        session: { sessionId: "session", runtimeStatus: "idle" },
       });
     });
     expect(emitted).not.toContainEqual(

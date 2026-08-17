@@ -8,7 +8,7 @@ import {
   type AgentConnectionListItem,
 } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import { withAgentRuntimeStatuses } from "@/lib/agents/connector/status";
+import { withConnectorSessionDirectory } from "@/lib/agents/connector/directory";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 import {
   createAgentConnection,
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     return Response.json({ error: accessError }, { status: 403 });
   }
   return Response.json({
-    connections: withAgentRuntimeStatuses(
+    connections: withConnectorSessionDirectory(
       await listAgentConnections(session.user.id),
     ),
   });
@@ -82,7 +82,7 @@ export async function POST(req: Request) {
         detectedVersion: probe.version,
       },
     });
-    const connections = withAgentRuntimeStatuses(
+    const connections = withConnectorSessionDirectory(
       await listAgentConnections(session.user.id),
     );
     const connection = connections.find(

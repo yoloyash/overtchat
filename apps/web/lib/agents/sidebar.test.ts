@@ -8,7 +8,7 @@ import {
   agentConnectionHasRunningSession,
   agentWorkspaceHasRunningSession,
   visibleAgentSessions,
-  withAgentSessionRuntimeStatus,
+  withAgentSessionDirectory,
 } from "./sidebar";
 
 function sessions(count: number): AgentSessionListItem[] {
@@ -111,18 +111,28 @@ describe("agent sessions in the sidebar", () => {
     };
 
     const connections = [connection];
-    const running = withAgentSessionRuntimeStatus(
-      connections,
-      "session-1",
-      "running",
-    );
+    const running = withAgentSessionDirectory(connections, [
+      { sessionId: "session-1", runtimeStatus: "running" },
+    ]);
     expect(running).not.toBe(connections);
     expect(running[0]!.workspaces[0]!.sessions[0]).toBe(all[0]);
     expect(running[0]!.workspaces[0]!.sessions[1]!.runtimeStatus).toBe(
       "running",
     );
     expect(
-      withAgentSessionRuntimeStatus(running, "missing", "idle"),
+      withAgentSessionDirectory(running, [
+        { sessionId: "missing", runtimeStatus: "idle" },
+      ]),
     ).toBe(running);
+
+    const snapshot = withAgentSessionDirectory(running, [
+      { sessionId: "session-0", runtimeStatus: "exited" },
+      { sessionId: "session-1", runtimeStatus: "idle" },
+    ]);
+    expect(
+      snapshot[0]!.workspaces[0]!.sessions.map(
+        (session) => session.runtimeStatus,
+      ),
+    ).toEqual(["exited", "idle"]);
   });
 });

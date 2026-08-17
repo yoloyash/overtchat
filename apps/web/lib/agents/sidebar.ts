@@ -1,6 +1,6 @@
 import type {
   AgentConnectionListItem,
-  AgentRuntimeStatus,
+  AgentSessionDirectoryEntry,
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
@@ -25,20 +25,23 @@ export function agentConnectionHasRunningSession(
   return connection.workspaces.some(agentWorkspaceHasRunningSession);
 }
 
-export function withAgentSessionRuntimeStatus(
+export function withAgentSessionDirectory(
   connections: AgentConnectionListItem[],
-  sessionId: string,
-  runtimeStatus: AgentRuntimeStatus,
+  sessions: readonly AgentSessionDirectoryEntry[],
 ): AgentConnectionListItem[] {
+  const runtimeStatuses = new Map(
+    sessions.map((session) => [session.sessionId, session.runtimeStatus]),
+  );
   let changed = false;
   const next = connections.map((connection) => {
     let connectionChanged = false;
     const workspaces = connection.workspaces.map((workspace) => {
       let workspaceChanged = false;
-      const sessions = workspace.sessions.map((session) => {
+      const workspaceSessions = workspace.sessions.map((session) => {
+        const runtimeStatus = runtimeStatuses.get(session.id);
         if (
-          session.id !== sessionId ||
-          session.runtimeStatus === runtimeStatus
+          runtimeStatus === undefined ||
+          runtimeStatus === session.runtimeStatus
         ) {
           return session;
         }
@@ -47,7 +50,9 @@ export function withAgentSessionRuntimeStatus(
         workspaceChanged = true;
         return { ...session, runtimeStatus };
       });
-      return workspaceChanged ? { ...workspace, sessions } : workspace;
+      return workspaceChanged
+        ? { ...workspace, sessions: workspaceSessions }
+        : workspace;
     });
     return connectionChanged ? { ...connection, workspaces } : connection;
   });

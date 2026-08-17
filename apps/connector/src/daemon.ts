@@ -124,7 +124,7 @@ export class ConnectorDaemon {
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
-  private readonly publishedSessionStatuses = new Map<
+  private readonly publishedSessions = new Map<
     string,
     AgentRuntimeStatus
   >();
@@ -299,7 +299,7 @@ export class ConnectorDaemon {
     }
     if (this.connectionEpoch !== connectionEpoch) {
       this.connectionEpoch = connectionEpoch;
-      this.publishedSessionStatuses.clear();
+      this.publishedSessions.clear();
       for (const subscription of this.subscriptions.values()) {
         this.closeSubscription(subscription);
       }
@@ -318,10 +318,7 @@ export class ConnectorDaemon {
     );
     this.assertAccepting();
     await this.journal.retainSessions(active);
-    for (const [sessionId, capture] of this.captures) {
-      if (!active.has(sessionId)) continue;
-      this.publishSessionStatus(sessionId, capture.runtime.snapshot().status);
-    }
+    this.publishSessionDirectory(active);
   }
 
   private async handleRequest(request: AgentDaemonRequest): Promise<unknown> {
@@ -786,10 +783,25 @@ export class ConnectorDaemon {
     sessionId: string,
     status: AgentRuntimeStatus,
   ): void {
-    if (!this.serverCapabilities.has("session-status-v1")) return;
-    if (this.publishedSessionStatuses.get(sessionId) === status) return;
-    this.publishedSessionStatuses.set(sessionId, status);
-    this.emit({ type: "session_status", sessionId, status });
+    if (this.publishedSessions.get(sessionId) === status) return;
+    this.publishedSessions.set(sessionId, status);
+    this.emit({
+      type: "session_update",
+      session: { sessionId, runtimeStatus: status },
+    });
+  }
+
+  private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
+    const sessions = [...sessionIds].map((sessionId) => ({
+      sessionId,
+      runtimeStatus:
+        this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
+    }));
+    this.publishedSessions.clear();
+    for (const session of sessions) {
+      this.publishedSessions.set(session.sessionId, session.runtimeStatus);
+    }
+    this.emit({ type: "session_directory", sessions });
   }
 
   private recordCaptureFailure(
