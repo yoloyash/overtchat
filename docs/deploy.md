@@ -43,31 +43,69 @@ specific old stack first or continue managing that custom layout manually.
 
 ## Development
 
-Run the app on the host and Redis in Docker:
+Install dependencies, then start the local web app, Redis, and Host Connector:
 
 ```bash
 npm install
-docker compose -f compose.yml -f compose.dev.yml up -d redis
 npm run dev
 ```
 
-Open [http://localhost:4717](http://localhost:4717). Add `searxng` or `kokoro` to the Compose command when working on search or text-to-speech.
+Open [http://localhost:4717](http://localhost:4717). The development command
+starts an isolated `overtchat-dev` Redis container, waits for Next.js, provisions
+a development connector through the internal management API, and runs the
+connector directly from TypeScript. Stop the web app and connector with
+Ctrl-C. Next.js and the connector run directly on the host; Docker supplies
+Redis only. Redis stays available between runs; stop it with
+`npm run dev:down`.
 
-For a complete managed build from the current worktree, including the Host
-Connector, run:
+Generated credentials, journals, timelines, and locks live under the ignored
+`.overtchat-dev/` directory. Development never reads or changes the installed
+connector in `~/.config/overtchat`, its binary, or its systemd service. When a
+development database creates a different connector identity, the old runtime
+state is moved to a timestamped backup instead of being reused.
+
+Safe localhost defaults are tracked in `apps/web/.env.development`.
+Machine-specific URLs and trusted origins still belong in the ignored
+`apps/web/.env.local` file. The tracked development environment also clears a
+container-only `REDIS_URL`; the full root command supplies its local Redis URL
+explicitly.
+
+Use the narrower commands when the complete stack is not needed:
 
 ```bash
-npm run dev -w apps/cli -- setup --development
+npm run dev:web       # Next.js only, without Redis or Agent Connections
+npm run dev:mobile    # Expo in its own terminal
+npm run dev:site      # marketing site on port 4719
+```
+
+Production always includes Redis so the root development command does too.
+Running the web workspace alone intentionally exercises the supported fallback
+where ordinary streaming works but disconnected streams cannot be resumed.
+
+To use non-default local ports, set `OVERTCHAT_DEV_PORT` or
+`OVERTCHAT_DEV_REDIS_PORT`. Search, text-to-speech, and speech-to-text remain
+explicit integrations rather than processes hidden inside the default command.
+
+If an incompatible source change makes the disposable connector journal
+unreadable, `npm run dev:reset-connector` moves the connector directory to a
+timestamped backup. The next `npm run dev` provisions fresh local state.
+
+For a complete managed build from the current worktree, including the Host
+Connector and user systemd service, run:
+
+```bash
+npm run dev:managed
 ```
 
 This uses the same managed provisioning path as `overtchat setup`: the CLI
 requests connector credentials through the app's internal management endpoint
-and installs the user service. It does not create or consume a pairing code in
-Settings.
+and installs the user service. This command is for testing the production
+installer from source, not for the normal hot-reload development loop. It does
+not create or consume a pairing code in Settings.
 
-To debug the connector TypeScript process after it has been provisioned, stop
-the installed service so the two processes do not compete for the same
-identity, then run the source process:
+To debug an installed connector specifically, stop its service so two
+processes do not compete for the same production identity, then run the source
+process:
 
 ```bash
 systemctl --user stop overtchat-connector.service

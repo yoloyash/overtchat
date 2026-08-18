@@ -1,23 +1,26 @@
-# Exposes containerized dependencies to `npm run dev` on the host.
-# This file is only used when explicitly passed with `-f`:
-#   docker compose -f compose.yml -f compose.dev.yml up -d redis
+# Isolated infrastructure for the default source-development loop. Keep the
+# Redis image aligned with compose.yml.
+name: overtchat-dev
+
 services:
   redis:
+    image: redis:8-alpine@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+    container_name: overtchat-dev-redis
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 64mb
+      - --maxmemory-policy
+      - allkeys-lru
     ports:
-      - "127.0.0.1:6379:6379"
-
-  searxng:
-    ports:
-      - "127.0.0.1:8088:8080"
-
-  kokoro:
-    ports:
-      - "127.0.0.1:8880:8880"
-
-  stt-cpu:
-    ports:
-      - "127.0.0.1:5092:5092"
-
-  stt-gpu:
-    ports:
-      - "127.0.0.1:5092:5092"
+      - "127.0.0.1:${OVERTCHAT_DEV_REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 3s
+      retries: 5

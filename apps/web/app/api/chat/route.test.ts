@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
     agentStreamArgs: [] as Array<Record<string, unknown>>,
     uiStreamOptions: undefined as Record<string, unknown> | undefined,
     responseOptions: undefined as Record<string, unknown> | undefined,
+    responseStream: undefined as ReadableStream<string> | undefined,
     webTools,
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
@@ -206,6 +207,7 @@ describe("chat route setup boundary", () => {
     mocks.agentStreamArgs.length = 0;
     mocks.uiStreamOptions = undefined;
     mocks.responseOptions = undefined;
+    mocks.responseStream = undefined;
 
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
@@ -248,6 +250,13 @@ describe("chat route setup boundary", () => {
     mocks.createUIMessageStreamResponse.mockImplementation(
       (options: Record<string, unknown>) => {
         mocks.responseOptions = options;
+        const consumeSseStream = options.consumeSseStream as
+          | ((event: { stream: ReadableStream<string> }) => Promise<void>)
+          | undefined;
+        if (consumeSseStream) {
+          mocks.responseStream = new ReadableStream<string>();
+          void consumeSseStream({ stream: mocks.responseStream });
+        }
         return new Response("stream", {
           status: 200,
           headers: options.headers as Headers,
@@ -517,17 +526,37 @@ describe("chat route setup boundary", () => {
 
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
-    const consumeSseStream = mocks.responseOptions?.consumeSseStream as (event: {
-      stream: ReadableStream<string>;
-    }) => Promise<void>;
-    const stream = new ReadableStream<string>();
-    await consumeSseStream({ stream });
 
     expect(createNewResumableStream).toHaveBeenCalledWith(
       claim.streamId,
       expect.any(Function),
     );
-    expect(createNewResumableStream.mock.calls[0][1]()).toBe(stream);
+    expect(createNewResumableStream.mock.calls[0][1]()).toBe(
+      mocks.responseStream,
+    );
+  });
+
+  it("registers the resumable stream before returning the response", async () => {
+    let markReady = () => {};
+    const ready = new Promise<void>((resolve) => {
+      markReady = resolve;
+    });
+    const createNewResumableStream = vi.fn().mockReturnValue(ready);
+    mocks.getStreamContext.mockReturnValue({ createNewResumableStream });
+
+    let didReturn = false;
+    const responsePromise = POST(request()).then((response) => {
+      didReturn = true;
+      return response;
+    });
+
+    await vi.waitFor(() => {
+      expect(createNewResumableStream).toHaveBeenCalledOnce();
+    });
+    expect(didReturn).toBe(false);
+
+    markReady();
+    await expect(responsePromise).resolves.toHaveProperty("status", 200);
   });
 
   it("blocks a second request while the claimed stream is active", async () => {
