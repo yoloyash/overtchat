@@ -82,7 +82,7 @@ services:
   #   docker compose --profile stt-gpu up -d    (NVIDIA GPU, requires NVIDIA Container Toolkit)
   # Both services are reachable from `app` as `http://stt:5092`.
   stt-cpu:
-    image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.0}
+    image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.1}
     build:
       context: ./stt
       dockerfile: Dockerfile.cpu
@@ -96,7 +96,7 @@ services:
       - overtchat-stt-models:/models
 
   stt-gpu:
-    image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.0}
+    image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.1}
     build:
       context: ./stt
       dockerfile: Dockerfile.gpu

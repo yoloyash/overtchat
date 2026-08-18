@@ -1,30 +1,33 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
-ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HOME=/models \
-    HF_HUB_CACHE=/models \
-    HF_HUB_DISABLE_SYMLINKS_WARNING=1
+ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg ca-certificates curl \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends ffmpeg ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && apt-get clean
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --upgrade pip \
- && pip install -r requirements.txt \
- && pip install "onnx-asr[cpu,hub]>=0.11"
+RUN pip install --no-cache-dir --upgrade pip \
+ && grep -v '^onnxruntime-gpu' requirements.txt > /tmp/requirements.cpu.txt \
+ && pip install --no-cache-dir -r /tmp/requirements.cpu.txt \
+ && pip install --no-cache-dir onnxruntime==1.23.2
 
 COPY main.py .
 
 RUN mkdir -p /models
 
+ENV HF_HOME=/models \
+    HF_HUB_CACHE=/models \
+    HF_HUB_DISABLE_SYMLINKS_WARNING=true \
+    PYTHONUNBUFFERED=1 \
+    PARAKEET_USE_GPU=false
+
 EXPOSE 5092
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
-  CMD curl -fsS http://localhost:5092/health || exit 1
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5092/healthz')" || exit 1
 
 CMD ["python", "main.py"]
