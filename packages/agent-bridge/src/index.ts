@@ -20,11 +20,11 @@ import {
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
 /**
  * Protocol 1 was accidentally reused for two incompatible connector designs.
- * Release 0.5.0 is the compatibility baseline for the current agent-daemon
+ * Release 0.6.0 is the compatibility baseline for the current agent-daemon
  * wire shape and remains stable even when the connector build version changes.
  */
-export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.5.0";
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.5.0";
+export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.6.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.6.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
