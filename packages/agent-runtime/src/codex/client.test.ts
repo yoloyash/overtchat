@@ -574,6 +574,85 @@ describe("CodexRuntimeClient", () => {
       .toMatchObject({ params: { model: "default-model" } });
   });
 
+  it.each([
+    {
+      source: "saved configuration",
+      savedConfig: { model: "gpt-5.6", modelReasoningEffort: "xhigh" },
+      config: { model_reasoning_effort: "high" },
+      expected: "xhigh",
+    },
+    {
+      source: "resolved configuration",
+      savedConfig: null,
+      config: { model: "gpt-5.6", model_reasoning_effort: "low" },
+      expected: "low",
+    },
+  ])("preserves reasoning from Codex $source", async ({
+    savedConfig,
+    config,
+    expected,
+  }) => {
+    server.savedConfig = savedConfig;
+    server.config = config;
+
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+
+    await expect(client.getState()).resolves.toMatchObject({
+      model: { provider: "codex", id: "gpt-5.6" },
+      thinkingLevel: expected,
+    });
+    await expect(client.getAvailableThinkingLevels()).resolves.toContain(
+      expected,
+    );
+    await client.prompt("Keep my configured reasoning");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: { model: "gpt-5.6", effort: expected },
+    });
+  });
+
+  it("switches to the selected model's default reasoning", async () => {
+    server.models = [
+      {
+        id: "gpt-5.6",
+        displayName: "GPT-5.6",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "low" },
+          { reasoningEffort: "high" },
+        ],
+        defaultReasoningEffort: "high",
+      },
+      {
+        id: "gpt-5.6-mini",
+        displayName: "GPT-5.6 Mini",
+        supportedReasoningEfforts: [
+          { reasoningEffort: "low" },
+          { reasoningEffort: "medium" },
+        ],
+        defaultReasoningEffort: "medium",
+      },
+    ];
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+
+    await client.setModel("codex", "gpt-5.6-mini");
+    await expect(client.getState()).resolves.toMatchObject({
+      model: { provider: "codex", id: "gpt-5.6-mini" },
+      thinkingLevel: "medium",
+    });
+    await client.prompt("Use the new model defaults");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start",
+      params: { model: "gpt-5.6-mini", effort: "medium" },
+    });
+  });
+
   it("supports native goals, Code/Plan modes, Fast turns, and access modes", async () => {
     server.goalSupported = true;
     server.threadAccess = {

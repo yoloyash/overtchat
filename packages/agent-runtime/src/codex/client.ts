@@ -71,6 +71,14 @@ const CODEX_GOALS_MIN_VERSION = [0, 128, 0] as const;
 const CODEX_AUTO_REVIEW_MIN_VERSION = [0, 115, 0] as const;
 
 type CodexModeId = "auto" | "auto-review" | "full-access";
+const CODEX_THINKING_LEVELS: readonly AgentThinkingLevel[] = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
 
 const CODEX_MODES: AgentMode[] = [
   {
@@ -355,8 +363,28 @@ function modeFromThreadConfiguration(
   return "auto";
 }
 
-function configuredModel(value: unknown): string | null {
-  return stringOf(recordOf(recordOf(value)?.config), "model");
+type CodexConfiguredDefaults = {
+  model: string | null;
+  thinkingLevel: AgentThinkingLevel | null;
+};
+
+function configuredDefaults(
+  savedValue: unknown,
+  resolvedValue: unknown,
+): CodexConfiguredDefaults {
+  const saved = recordOf(recordOf(savedValue)?.config);
+  const resolved = recordOf(recordOf(resolvedValue)?.config);
+  const savedThinking = stringOf(saved, "modelReasoningEffort");
+  const resolvedThinking = stringOf(resolved, "model_reasoning_effort");
+  const thinkingLevel = savedThinking ?? resolvedThinking;
+  return {
+    model: stringOf(saved, "model") ?? stringOf(resolved, "model"),
+    thinkingLevel:
+      thinkingLevel &&
+      CODEX_THINKING_LEVELS.includes(thinkingLevel as AgentThinkingLevel)
+        ? (thinkingLevel as AgentThinkingLevel)
+        : null,
+  };
 }
 
 function defaultModelFromList(value: unknown): string | null {
@@ -1049,7 +1077,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
 
   async getAvailableThinkingLevels(): Promise<AgentThinkingLevel[]> {
     await this.readyPromise;
-    return codexThinkingLevels(this.modelResponse, this.selectedModel);
+    const levels = codexThinkingLevels(this.modelResponse, this.selectedModel);
+    return this.selectedThinking && !levels.includes(this.selectedThinking)
+      ? [...levels, this.selectedThinking]
+      : levels;
   }
 
   async getCommands(): Promise<AgentSlashCommand[]> {
@@ -1161,6 +1192,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       throw new Error(`Codex model ${modelId} is not available.`);
     }
     this.selectedModel = modelId;
+    this.selectedThinking = codexDefaultThinkingLevel(
+      this.modelResponse,
+      modelId,
+    );
     if (!codexModelSupportsFastMode(modelId)) this.fastModeEnabled = false;
     this.emitConfig();
     return { model: modelId };
@@ -1564,6 +1599,18 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const collaborationModePromise = this.server
       .request("collaborationMode/list", {})
       .catch(() => null);
+    this.modelResponse = await modelPromise;
+    const savedConfig = await savedConfigPromise;
+    const resolvedConfig = await configPromise;
+    const defaults = configuredDefaults(savedConfig, resolvedConfig);
+    this.selectedModel =
+      defaults.model ??
+      defaultModelFromList(this.modelResponse) ??
+      parseCodexModels(this.modelResponse)[0]?.id ??
+      "";
+    this.selectedThinking =
+      defaults.thinkingLevel ??
+      codexDefaultThinkingLevel(this.modelResponse, this.selectedModel);
     let threadResponse: UnknownRecord;
     let hydratedThread: UnknownRecord;
     if (this.launch.resume) {
@@ -1586,15 +1633,6 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         includeTurns: true,
       });
     } else {
-      this.modelResponse = await modelPromise;
-      const savedConfig = await savedConfigPromise;
-      const config = await configPromise;
-      this.selectedModel =
-        configuredModel(savedConfig) ??
-        configuredModel(config) ??
-        defaultModelFromList(this.modelResponse) ??
-        parseCodexModels(this.modelResponse)[0]?.id ??
-        "";
       threadResponse = await this.server.request<UnknownRecord>(
         "thread/start",
         {
@@ -1606,13 +1644,12 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       this.threadSubscribed = true;
       hydratedThread = threadResponse;
     }
-    this.modelResponse = await modelPromise;
     this.configuredAccessOverrides = accessOverridesFromConfig(
-      await configPromise,
+      resolvedConfig,
     );
     this.loadCollaborationModes(await collaborationModePromise);
     this.hydrateThread(hydratedThread);
-    this.applyThreadConfiguration(threadResponse);
+    this.applyThreadConfiguration(threadResponse, !this.launch.resume);
     await this.hydrateSubagentHistories();
     await this.loadGoal();
   }
@@ -1632,7 +1669,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     }
   }
 
-  private applyThreadConfiguration(threadResponse: UnknownRecord): void {
+  private applyThreadConfiguration(
+    threadResponse: UnknownRecord,
+    preserveResolvedDefaults = false,
+  ): void {
     const inheritedSandbox = recordOf(threadResponse.sandbox);
     const effectiveAccessOverrides = {
       ...(threadResponse.approvalPolicy !== undefined
@@ -1646,20 +1686,26 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.inheritedAccessOverrides =
       this.configuredAccessOverrides ?? effectiveAccessOverrides;
     this.selectedMode = modeFromThreadConfiguration(threadResponse);
-    this.selectedModel =
-      stringOf(threadResponse, "model") ||
-      this.selectedModel ||
-      parseCodexModels(this.modelResponse)[0]?.id ||
-      "";
+    const configuredModel = this.selectedModel;
+    if (!preserveResolvedDefaults) {
+      this.selectedModel =
+        stringOf(threadResponse, "model") || configuredModel || "";
+    }
     const effort = stringOf(threadResponse, "reasoningEffort");
     if (
+      !preserveResolvedDefaults &&
       effort &&
-      codexThinkingLevels(this.modelResponse, this.selectedModel).includes(
-        effort as AgentThinkingLevel,
-      )
+      CODEX_THINKING_LEVELS.includes(effort as AgentThinkingLevel)
     ) {
       this.selectedThinking = effort as AgentThinkingLevel;
-    } else {
+    } else if (
+      !preserveResolvedDefaults &&
+      (this.selectedModel !== configuredModel ||
+        !this.selectedThinking ||
+        !codexThinkingLevels(this.modelResponse, this.selectedModel).includes(
+          this.selectedThinking,
+        ))
+    ) {
       this.selectedThinking = codexDefaultThinkingLevel(
         this.modelResponse,
         this.selectedModel,
