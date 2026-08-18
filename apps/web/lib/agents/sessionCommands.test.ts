@@ -14,7 +14,6 @@ function snapshot(
     state: {},
     messages: [],
     models: [],
-    thinkingLevels: [],
     commands: [],
     stats: {
       sessionFile: null,

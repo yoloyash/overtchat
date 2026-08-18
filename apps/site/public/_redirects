@@ -11,6 +11,7 @@
 /install/connector/0.4.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.4.0/install-connector.sh 302
 /install/connector/0.5.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.5.0/install-connector.sh 302
 /install/connector/0.6.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.6.0/install-connector.sh 302
+/install/connector/0.7.0 https://github.com/yoloyash/overtchat/releases/download/connector-v0.7.0/install-connector.sh 302
 
 # Friendly alias for the current connector release.
-/install-connector.sh /install/connector/0.6.0 302
+/install-connector.sh /install/connector/0.7.0 302

@@ -5,6 +5,7 @@ import {
 } from "@/lib/agents/access";
 import {
   agentSessionCommandSchema,
+  isAgentProviderNotice,
   isAgentSessionSync,
   type AgentRuntimeSnapshot,
   type AgentSessionSync,
@@ -128,19 +129,23 @@ export async function POST(
   try {
     const command = parsed.data;
     if (command.type === "new_session") {
+      const launchConfig = daemonSession(authorized.owned).launchConfig;
       const sessionId = crypto.randomUUID();
       const created = await hostConnectorBroker.request<{
         session: unknown;
+        launchConfig: unknown;
         snapshot: unknown;
       }>(authorized.owned.host.connectorId, {
         type: "create_session",
         sessionId,
         workspace: daemonWorkspace(authorized.owned),
+        launchConfig,
       });
       const row = await upsertAgentSession(
         authorized.owned.workspace.id,
         parseProviderSessionMetadata(created.session),
         sessionId,
+        launchConfig,
       );
       return Response.json({
         accepted: true,
@@ -219,6 +224,9 @@ export async function POST(
     return Response.json({
       accepted: true,
       queuedMessages: result.snapshot?.queuedMessages,
+      ...(isAgentProviderNotice(result.commandResult)
+        ? { notice: result.commandResult }
+        : {}),
       ...(command.type === "show_usage"
         ? { usage: result.commandResult }
         : {}),

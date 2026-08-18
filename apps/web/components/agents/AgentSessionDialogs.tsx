@@ -458,6 +458,11 @@ function InteractionDialogContent({
     cancelled?: boolean;
   }) => void;
 }) {
+  const toolApproval = request.approvalKind === "tool";
+  const approveValue =
+    typeof request.approveValue === "string" ? request.approveValue : "Approve";
+  const denyValue =
+    typeof request.denyValue === "string" ? request.denyValue : "Deny";
   const options = Array.isArray(request.options)
     ? request.options.filter(
         (option): option is string => typeof option === "string",
@@ -503,7 +508,9 @@ function InteractionDialogContent({
     <Dialog.Root
       open
       onOpenChange={(next) => {
-        if (!next && !pending) onRespond({ cancelled: true });
+        if (!next && !pending) {
+          onRespond(toolApproval ? { value: denyValue } : { cancelled: true });
+        }
       }}
     >
       <Dialog.Portal>
@@ -517,8 +524,13 @@ function InteractionDialogContent({
               {request.message}
             </Dialog.Description>
           )}
+          {toolApproval && toolApprovalDetail(request.toolDetail) && (
+            <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-3 font-mono text-xs">
+              {toolApprovalDetail(request.toolDetail)}
+            </pre>
+          )}
           <form onSubmit={submit} className="mt-5 space-y-4">
-            {request.method === "select" && (
+            {request.method === "select" && !toolApproval && (
               <RadioGroup
                 value={value}
                 onValueChange={setValue}
@@ -594,7 +606,28 @@ function InteractionDialogContent({
             )}
             {error && <DialogError>{error}</DialogError>}
             <DialogActions>
-              {request.method === "confirm" ? (
+              {toolApproval ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => onRespond({ value: denyValue })}
+                  >
+                    Deny
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => onRespond({ value: approveValue })}
+                  >
+                    {pending && <PendingIcon />}
+                    Approve
+                  </Button>
+                </>
+              ) : request.method === "confirm" ? (
                 <>
                   <Button
                     type="button"
@@ -642,6 +675,25 @@ function InteractionDialogContent({
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+function toolApprovalDetail(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const detail = value as Record<string, unknown>;
+  if (detail.type === "shell" && typeof detail.command === "string") {
+    return detail.command;
+  }
+  if (detail.type === "edit" && typeof detail.filePath === "string") {
+    return detail.filePath;
+  }
+  if (
+    detail.type === "write" &&
+    typeof detail.filePath === "string" &&
+    typeof detail.content === "string"
+  ) {
+    return `${detail.filePath}\n\n${detail.content}`;
+  }
+  return null;
 }
 
 type InteractionFormField = {

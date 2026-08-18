@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   ChevronDown,
@@ -29,11 +29,10 @@ import {
   visibleAgentSessions,
 } from "@/lib/agents/sidebar";
 import { useSidebar } from "@/components/sidebar-context";
-import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
-import { useCreateAgentSession } from "@/lib/queries/agentConnections";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
+import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
 
 export function SidebarConnections({
   connections,
@@ -100,6 +99,7 @@ function ConnectionNode({
             <WorkspaceNode
               key={workspace.id}
               workspace={workspace}
+              provider={connection.provider}
               providerLabel={provider.label}
             />
           ))}
@@ -111,15 +111,15 @@ function ConnectionNode({
 
 function WorkspaceNode({
   workspace,
+  provider,
   providerLabel,
 }: {
   workspace: AgentWorkspaceListItem;
+  provider: AgentConnectionListItem["provider"];
   providerLabel: string;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const { closeMobile } = useSidebar();
-  const createSession = useCreateAgentSession();
+  const [createOpen, setCreateOpen] = useState(false);
   const hasActiveSession = workspace.sessions.some(
     (session) => pathname === `/agents/${session.id}`,
   );
@@ -141,21 +141,6 @@ function WorkspaceNode({
   );
   const hiddenSessionCount =
     workspace.sessions.length - visibleSessions.length;
-
-  async function startSession() {
-    try {
-      const id = await createSession.mutateAsync(workspace.id);
-      closeMobile();
-      setOpen(true);
-      router.push(`/agents/${id}`);
-    } catch (cause) {
-      toast.error({
-        title: `Failed to start ${providerLabel}`,
-        description:
-          cause instanceof Error ? cause.message : "A new session could not be started.",
-      });
-    }
-  }
 
   return (
     <li>
@@ -189,17 +174,12 @@ function WorkspaceNode({
         </button>
         <button
           type="button"
-          onClick={() => void startSession()}
-          disabled={createSession.isPending}
+          onClick={() => setCreateOpen(true)}
           aria-label={`New session in ${workspace.name}`}
           title={`New session in ${workspace.name}`}
           className="mr-0.5 rounded p-1 text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50 max-md:p-2"
         >
-          {createSession.isPending ? (
-            <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
-          ) : (
-            <Plus className="size-3.5" />
-          )}
+          <Plus className="size-3.5" />
         </button>
       </div>
       {open && (
@@ -230,6 +210,16 @@ function WorkspaceNode({
           )}
         </ul>
       )}
+      <NewAgentSessionDialog
+        open={createOpen}
+        onOpenChange={(next) => {
+          setCreateOpen(next);
+          if (!next) setOpen(true);
+        }}
+        workspace={workspace}
+        provider={provider}
+        providerLabel={providerLabel}
+      />
     </li>
   );
 }

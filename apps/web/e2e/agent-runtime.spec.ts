@@ -17,7 +17,7 @@ const TEST_PNG = Buffer.from(
 
 const imageModel: AgentRuntimeSnapshot["models"][number] = {
   id: "gpt-5.6",
-  name: "GPT-5.6",
+  label: "GPT-5.6",
   provider: "codex",
   api: "codex-app-server",
   baseUrl: "",
@@ -36,7 +36,7 @@ const imageModel: AgentRuntimeSnapshot["models"][number] = {
 const textModel: AgentRuntimeSnapshot["models"][number] = {
   ...imageModel,
   id: "gpt-5.6-mini",
-  name: "GPT-5.6 Mini",
+  label: "GPT-5.6 Mini",
   input: ["text"],
 };
 
@@ -290,7 +290,6 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       },
     ],
     models: [imageModel, textModel],
-    thinkingLevels: ["low", "high"],
     commands: [
       {
         name: "plan",

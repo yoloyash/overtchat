@@ -7,6 +7,7 @@ import type {
   AgentRuntimeStatus,
   AgentSessionSync,
   AgentSessionCommand,
+  AgentSessionLaunchConfig,
   ConnectorShellMode,
 } from "./agents";
 import {
@@ -15,16 +16,17 @@ import {
   agentConnectionDraftSchema,
   agentDiscoveryTargetSchema,
   agentSessionCommandSchema,
+  agentSessionLaunchConfigSchema,
 } from "./agents";
 
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
 /**
  * Protocol 1 was accidentally reused for two incompatible connector designs.
- * Release 0.6.0 is the compatibility baseline for the current agent-daemon
+ * Release 0.7.0 is the compatibility baseline for the current agent-daemon
  * wire shape and remains stable even when the connector build version changes.
  */
-export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.6.0";
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.6.0";
+export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.7.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.7.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
@@ -73,6 +75,7 @@ export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
   sessionId: string;
   providerSessionId: string;
   providerSessionPath: string;
+  launchConfig: AgentSessionLaunchConfig;
 };
 
 export type AgentSessionDirectoryEntry = {
@@ -88,6 +91,10 @@ export type AgentDaemonRequest =
       type: "list_sessions";
       workspace: AgentDaemonWorkspaceDescriptor;
     }
+  | {
+      type: "get_catalog";
+      workspace: AgentDaemonWorkspaceDescriptor;
+    }
   | { type: "list_directories"; target: AgentDaemonTarget; path?: string }
   | { type: "probe_workspace"; target: AgentDaemonTarget; path: string }
   | { type: "git_status"; target: AgentDaemonTarget; path: string }
@@ -95,6 +102,7 @@ export type AgentDaemonRequest =
       type: "create_session";
       sessionId: string;
       workspace: AgentDaemonWorkspaceDescriptor;
+      launchConfig: AgentSessionLaunchConfig;
     }
   | {
       type: "open_session";
@@ -160,6 +168,7 @@ export type HostConnectorEventPayload =
         firstMessage?: string | null;
         messageCount?: number;
         providerModifiedAt?: number;
+        launchConfig?: AgentSessionLaunchConfig;
       };
     }
   | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
@@ -274,7 +283,10 @@ export function isAgentDaemonSessionDescriptor(
     isAgentDaemonWorkspaceDescriptor(value) &&
     isNonEmptyString(Reflect.get(value, "sessionId")) &&
     isNonEmptyString(Reflect.get(value, "providerSessionId")) &&
-    isNonEmptyString(Reflect.get(value, "providerSessionPath"))
+    isNonEmptyString(Reflect.get(value, "providerSessionPath")) &&
+    agentSessionLaunchConfigSchema.safeParse(
+      Reflect.get(value, "launchConfig"),
+    ).success
   );
 }
 
@@ -289,6 +301,8 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
       return agentConnectionDraftSchema.safeParse(value.draft).success;
     case "list_sessions":
       return isAgentDaemonWorkspaceDescriptor(value.workspace);
+    case "get_catalog":
+      return isAgentDaemonWorkspaceDescriptor(value.workspace);
     case "list_directories":
       return (
         isAgentDaemonTarget(value.target) &&
@@ -301,7 +315,8 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
     case "create_session":
       return (
         isNonEmptyString(value.sessionId) &&
-        isAgentDaemonWorkspaceDescriptor(value.workspace)
+        isAgentDaemonWorkspaceDescriptor(value.workspace) &&
+        agentSessionLaunchConfigSchema.safeParse(value.launchConfig).success
       );
     case "open_session":
       return (
@@ -492,6 +507,7 @@ export function isHostConnectorEvent(
       "firstMessage",
       "messageCount",
       "providerModifiedAt",
+      "launchConfig",
     ]);
     return (
       Object.keys(payload.patch).every((key) => allowed.has(key)) &&
@@ -506,7 +522,9 @@ export function isHostConnectorEvent(
           Number(payload.patch.messageCount) >= 0)) &&
       (payload.patch.providerModifiedAt === undefined ||
         (typeof payload.patch.providerModifiedAt === "number" &&
-          Number.isFinite(payload.patch.providerModifiedAt)))
+          Number.isFinite(payload.patch.providerModifiedAt))) &&
+      (payload.patch.launchConfig === undefined ||
+        agentSessionLaunchConfigSchema.safeParse(payload.patch.launchConfig).success)
     );
   }
   if (payload.type === "session_directory") {

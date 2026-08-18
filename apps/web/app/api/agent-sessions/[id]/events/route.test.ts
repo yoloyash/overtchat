@@ -53,6 +53,7 @@ const sessionDescriptor = {
   sessionId: "session",
   providerSessionId: "provider-session",
   providerSessionPath: "/sessions/provider-session.jsonl",
+  launchConfig: {},
 };
 
 const context = { params: Promise.resolve({ id: "session" }) };

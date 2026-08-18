@@ -28,7 +28,7 @@ describe("Codex protocol parsing", () => {
     expect(parseCodexModels(response)).toEqual([
       expect.objectContaining({
         id: "gpt-5.6",
-        name: "GPT-5.6",
+        label: "GPT-5.6",
         provider: "codex",
         input: ["text", "image"],
         contextWindow: null,

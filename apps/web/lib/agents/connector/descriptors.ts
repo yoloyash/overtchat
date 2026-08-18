@@ -5,6 +5,7 @@ import type {
   AgentDaemonWorkspaceDescriptor,
   AgentProviderSessionMetadata,
   AgentProviderId,
+  AgentSessionLaunchConfig,
   ConnectorShellMode,
 } from "@overtchat/agent-bridge";
 import type {
@@ -48,6 +49,15 @@ export function daemonSession(
     sessionId: owned.agentSession.id,
     providerSessionId: owned.agentSession.providerSessionId,
     providerSessionPath: owned.agentSession.providerSessionPath,
+    launchConfig: {
+      ...(owned.agentSession.model
+        ? { model: owned.agentSession.model }
+        : {}),
+      ...(owned.agentSession.thinkingOptionId
+        ? { thinkingOptionId: owned.agentSession.thinkingOptionId }
+        : {}),
+      ...(owned.agentSession.modeId ? { modeId: owned.agentSession.modeId } : {}),
+    } as AgentSessionLaunchConfig,
   };
 }
 

@@ -21,6 +21,7 @@ import type {
   AgentCollaborationMode,
   AgentMode,
   AgentModel,
+  AgentSelectOption,
   AgentThinkingLevel,
 } from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
@@ -32,7 +33,7 @@ export interface AgentComposerControlsProps {
   models: AgentModel[];
   currentModel: { provider: string; id: string } | null;
   thinkingLevel: AgentThinkingLevel | null;
-  thinkingLevels: AgentThinkingLevel[];
+  thinkingOptions: AgentSelectOption[];
   collaborationMode: AgentCollaborationMode;
   collaborationModes: AgentCollaborationMode[];
   fastModeEnabled: boolean;
@@ -57,7 +58,7 @@ const choiceItemClassName =
 export function AgentComposerControls(props: AgentComposerControlsProps) {
   const hasModelOrEffort =
     props.models.length > 0 ||
-    (props.thinkingLevels.length > 1 && props.thinkingLevel !== null);
+    (props.thinkingOptions.length > 1 && props.thinkingLevel !== null);
   const hasControls =
     hasModelOrEffort ||
     props.modes.length > 0 ||
@@ -241,7 +242,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
       model.id === props.currentModel.id,
   );
   const modelLabel =
-    selectedModel?.name ?? props.currentModel?.id ?? props.providerLabel;
+    selectedModel?.label ?? props.currentModel?.id ?? props.providerLabel;
   const effortLabel = props.thinkingLevel
     ? thinkingLabel(props.thinkingLevel)
     : null;
@@ -249,7 +250,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
     ? `Model and effort: ${modelLabel}, ${effortLabel}`
     : `Model: ${modelLabel}`;
   const showEffort =
-    props.thinkingLevels.length > 1 && props.thinkingLevel !== null;
+    props.thinkingOptions.length > 1 && props.thinkingLevel !== null;
 
   return (
     <Menu.Root
@@ -348,9 +349,9 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
                         className="size-4"
                       />
                       <span className="min-w-0 flex-1">
-                        <span className="block truncate">{model.name}</span>
+                        <span className="block truncate">{model.label}</span>
                         <span className="block truncate text-xs text-muted-foreground">
-                          {model.provider} / {model.id}
+                          {model.description ?? model.id}
                         </span>
                       </span>
                       <span className="flex size-4 shrink-0 items-center justify-center">
@@ -365,16 +366,16 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
               <>
                 <BackItem label="Effort" onClick={() => setPanel("root")} />
                 <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-                {props.thinkingLevels.map((level) => (
+                {props.thinkingOptions.map((option) => (
                   <Menu.Item
-                    key={level}
-                    onClick={() => props.onSelectThinking(level)}
+                    key={option.id}
+                    onClick={() => props.onSelectThinking(option.id)}
                     className={choiceItemClassName}
                   >
                     <BrainCircuit className="size-4 text-muted-foreground" />
-                    <span className="flex-1">{thinkingLabel(level)}</span>
+                    <span className="flex-1">{option.label}</span>
                     <span className="flex size-4 shrink-0 items-center justify-center">
-                      {level === props.thinkingLevel && (
+                      {option.id === props.thinkingLevel && (
                         <Check className="size-3.5" />
                       )}
                     </span>

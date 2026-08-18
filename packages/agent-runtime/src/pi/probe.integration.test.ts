@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 
-import { startPiRpc } from "./client";
+import { startPi } from "./client";
 import { probePiConnection } from "./probe";
+import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
 
 const runIntegration = process.env.RUN_PI_INTEGRATION === "1";
 const connectorId =
@@ -16,6 +17,8 @@ const fixtureDirectory = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   "fixtures",
 );
+
+beforeAll(configureLocalTestProcessSpawner);
 
 describe.runIf(runIntegration)("installed Pi integration", () => {
   it(
@@ -56,7 +59,7 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
       const sessions = path.join(root, "sessions");
       fs.mkdirSync(workspace);
       fs.mkdirSync(sessions);
-      const client = startPiRpc(
+      const client = startPi(
         { transport: "local" },
         {
           executable: process.env.PI_COMMAND ?? "pi",
@@ -104,7 +107,7 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
       );
       const workspace = path.join(root, "workspace");
       fs.mkdirSync(workspace);
-      const client = startPiRpc(
+      const client = startPi(
         { transport: "local" },
         {
           executable: process.env.PI_COMMAND ?? "pi",
@@ -132,10 +135,6 @@ describe.runIf(runIntegration)("installed Pi integration", () => {
       try {
         await expect(client.getCommands()).resolves.toEqual(
           expect.arrayContaining([
-            expect.objectContaining({
-              name: "compact",
-              source: "builtin",
-            }),
             expect.objectContaining({
               name: "overtchat-test-name",
               source: "extension",

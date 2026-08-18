@@ -71,6 +71,9 @@ raw.exec(`
     workspace_id TEXT NOT NULL,
     provider_session_id TEXT NOT NULL,
     provider_session_path TEXT NOT NULL,
+    model TEXT,
+    thinking_option_id TEXT,
+    mode_id TEXT,
     name TEXT,
     first_message TEXT,
     message_count INTEGER NOT NULL DEFAULT 0,
@@ -200,6 +203,11 @@ describe("agent connection persistence", () => {
         messageCount: 1,
         createdAt: null,
         modifiedAt: new Date(1_000),
+        launchConfig: {
+          model: "openai/old-model",
+          thinkingOptionId: "low",
+          modeId: "full",
+        },
       },
       {
         providerSessionId: "remove",
@@ -221,6 +229,10 @@ describe("agent connection persistence", () => {
         messageCount: 3,
         createdAt: null,
         modifiedAt: new Date(2_000),
+        launchConfig: {
+          model: "openai/new-model",
+          thinkingOptionId: "high",
+        },
       },
     ]);
 
@@ -230,6 +242,9 @@ describe("agent connection persistence", () => {
       providerSessionPath: "/remote/keep.jsonl",
       name: "New name",
       messageCount: 3,
+      model: "openai/new-model",
+      thinkingOptionId: "high",
+      modeId: "full",
     });
   });
 
