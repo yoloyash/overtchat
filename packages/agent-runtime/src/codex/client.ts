@@ -80,7 +80,7 @@ const CODEX_THINKING_LEVELS: readonly AgentThinkingLevel[] = [
   "max",
 ];
 
-const CODEX_MODES: AgentMode[] = [
+export const CODEX_MODES: AgentMode[] = [
   {
     id: "auto",
     label: "Default Permissions",
@@ -1184,7 +1184,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     }
   }
 
-  async setModel(_provider: string, modelId: string): Promise<unknown> {
+  async setModel(modelId: string): Promise<unknown> {
     await this.readyPromise;
     this.assertInteractive();
     const models = parseCodexModels(this.modelResponse);
@@ -1604,11 +1604,13 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     const resolvedConfig = await configPromise;
     const defaults = configuredDefaults(savedConfig, resolvedConfig);
     this.selectedModel =
+      this.launch.model ??
       defaults.model ??
       defaultModelFromList(this.modelResponse) ??
       parseCodexModels(this.modelResponse)[0]?.id ??
       "";
     this.selectedThinking =
+      (this.launch.thinkingOptionId as AgentThinkingLevel | undefined) ??
       defaults.thinkingLevel ??
       codexDefaultThinkingLevel(this.modelResponse, this.selectedModel);
     let threadResponse: UnknownRecord;
@@ -1650,6 +1652,13 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     this.loadCollaborationModes(await collaborationModePromise);
     this.hydrateThread(hydratedThread);
     this.applyThreadConfiguration(threadResponse, !this.launch.resume);
+    if (
+      this.launch.modeId &&
+      this.availableModes().some((mode) => mode.id === this.launch.modeId)
+    ) {
+      this.selectedMode = this.launch.modeId as CodexModeId;
+      this.hasModeOverride = true;
+    }
     await this.hydrateSubagentHistories();
     await this.loadGoal();
   }

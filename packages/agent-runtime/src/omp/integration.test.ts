@@ -1,12 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 
-import { startPiRpc } from "./client";
-import { probeAgentConnection } from "./probe";
-import { listAgentWorkspaceSessions } from "./sessions";
+import { startOmp } from "./client";
+import { probeOmpConnection } from "./probe";
+import { listOmpWorkspaceSessions } from "./sessions";
+import { configureLocalTestProcessSpawner } from "../runtime/local-process.test-helper";
 
 const runIntegration = process.env.RUN_OMP_INTEGRATION === "1";
 const executable = process.env.OMP_COMMAND ?? "omp";
@@ -14,11 +15,13 @@ const connectorId =
   process.env.OVERTCHAT_TEST_CONNECTOR_ID ??
   "11111111-1111-4111-8111-111111111111";
 
+beforeAll(configureLocalTestProcessSpawner);
+
 describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
   it(
     "probes OMP, controls a session, and discovers its native history",
     async () => {
-      const probe = await probeAgentConnection({
+      const probe = await probeOmpConnection({
         connectorId,
         provider: "omp",
         name: "Local Oh My Pi",
@@ -41,10 +44,9 @@ describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
       fs.mkdirSync(agentDirectory);
       const previousAgentDirectory = process.env.PI_CODING_AGENT_DIR;
       process.env.PI_CODING_AGENT_DIR = agentDirectory;
-      const client = startPiRpc(
+      const client = startOmp(
         { transport: "local" },
         {
-          provider: "omp",
           executable,
           cwd: workspace,
           env: { PI_CODING_AGENT_DIR: agentDirectory },
@@ -70,13 +72,9 @@ describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
         await client.setSessionName("OvertChat OMP integration");
         await expect(client.getCommands()).resolves.toEqual(
           expect.arrayContaining([
-            expect.objectContaining({ name: "new" }),
             expect.objectContaining({ name: "compact" }),
             expect.objectContaining({ name: "security" }),
           ]),
-        );
-        await expect(client.getAvailableThinkingLevels()).resolves.toContain(
-          "xhigh",
         );
         await client.prompt("/model");
         await vi.waitFor(() => {
@@ -127,8 +125,7 @@ describe.runIf(runIntegration)("installed Oh My Pi integration", () => {
           ].join("\n"),
         );
         await expect(
-          listAgentWorkspaceSessions(
-            "omp",
+          listOmpWorkspaceSessions(
             { transport: "local" },
             workspace,
           ),

@@ -110,11 +110,24 @@ export function parseCodexModels(value: unknown): AgentModel[] {
     const modalities = Array.isArray(model.inputModalities)
       ? model.inputModalities
       : [];
+    const thinkingOptions = codexThinkingLevels(value, id).map((level) => ({
+      id: level,
+      label: level === "xhigh" ? "XHigh" : `${level[0]!.toUpperCase()}${level.slice(1)}`,
+      ...(level === codexDefaultThinkingLevel(value, id)
+        ? { isDefault: true }
+        : {}),
+    }));
+    const defaultThinkingOptionId = codexDefaultThinkingLevel(value, id);
     return [
       {
+        provider: "codex" as const,
         id,
-        name: stringOf(model, "displayName") ?? id,
-        provider: "codex",
+        label: stringOf(model, "displayName") ?? id,
+        ...(stringOf(model, "description")
+          ? { description: stringOf(model, "description")! }
+          : {}),
+        ...(model.isDefault === true ? { isDefault: true } : {}),
+        metadata: { provider: "codex", modelId: id },
         api: "codex-app-server",
         baseUrl: "",
         reasoning:
@@ -126,6 +139,10 @@ export function parseCodexModels(value: unknown): AgentModel[] {
         ],
         contextWindow: null,
         maxTokens: null,
+        ...(thinkingOptions.length ? { thinkingOptions } : {}),
+        ...(defaultThinkingOptionId
+          ? { defaultThinkingOptionId }
+          : {}),
         cost: {
           input: 0,
           output: 0,

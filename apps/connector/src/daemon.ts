@@ -10,7 +10,10 @@ import type {
   HostConnectorCommand,
   HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
-import { parseHostConnectorCapabilities } from "@overtchat/agent-bridge";
+import {
+  isAgentProviderNotice,
+  parseHostConnectorCapabilities,
+} from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
   agentProviderAdapter,
@@ -147,8 +150,14 @@ export class ConnectorDaemon {
     configureProcessSpawner(this.processHost.spawn);
     this.registry = new AgentRuntimeRegistry({
       resolveImages,
-      updateSessionMetadata: (sessionId, patch) => {
+      updateSessionMetadata: async (sessionId, patch) => {
         const { providerModifiedAt, ...metadata } = patch;
+        if (patch.launchConfig) {
+          await this.journal.updateSessionLaunchConfig(
+            sessionId,
+            patch.launchConfig,
+          );
+        }
         this.emit({
           type: "session_metadata",
           sessionId,
@@ -339,6 +348,17 @@ export class ConnectorDaemon {
           workspace.cwd,
         );
       }
+      case "get_catalog": {
+        const workspace = workspaceDescriptor(request.workspace);
+        return agentProviderAdapter(workspace.provider).fetchCatalog(
+          workspace.target,
+          {
+            executable: workspace.executable,
+            cwd: workspace.cwd,
+            detectedVersion: workspace.detectedVersion,
+          },
+        );
+      }
       case "list_directories":
         return listAgentDirectories(hostTarget(request.target), request.path);
       case "probe_workspace":
@@ -353,6 +373,7 @@ export class ConnectorDaemon {
           const result = await this.registry.create(
             request.sessionId,
             workspaceDescriptor(request.workspace),
+            request.launchConfig,
           );
           await this.assertRuntimeAccepted(request.sessionId);
           await this.journal.recordSession({
@@ -360,6 +381,7 @@ export class ConnectorDaemon {
             sessionId: request.sessionId,
             providerSessionId: result.session.providerSessionId,
             providerSessionPath: result.session.providerSessionPath,
+            launchConfig: result.launchConfig,
           });
           await this.assertRuntimeAccepted(request.sessionId);
           await this.attachTimeline(
@@ -374,6 +396,7 @@ export class ConnectorDaemon {
         const sync = await this.timelines.sync(request.sessionId);
         return {
           session: created.session,
+          launchConfig: created.launchConfig,
           snapshot: sync.reset ? sync.snapshot : created.runtime.snapshot(),
           ...(this.serverCapabilities.has("session-sync-v1") ? { sync } : {}),
         };
@@ -555,7 +578,10 @@ export class ConnectorDaemon {
             : await this.awaitProviderAction(
                 runtime.command(normalized, request.clientMessageId),
               ).then((commandResult) => ({
-                ...(normalized.type === "show_usage" ? { commandResult } : {}),
+                ...(normalized.type === "show_usage" ||
+                isAgentProviderNotice(commandResult)
+                  ? { commandResult }
+                  : {}),
                 snapshot: {
                   queuedMessages: runtime.snapshot().queuedMessages,
                 },

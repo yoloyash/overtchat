@@ -10,7 +10,9 @@ import type {
   AgentDiscoveryTarget,
   AgentDirectoryListing,
   AgentReadyConnectionProbe,
+  AgentProviderCatalog,
   AgentSessionDirectoryEntry,
+  AgentSessionLaunchConfig,
   AgentSshHostCandidate,
   AgentWorkspaceListItem,
   DetectedAgentInstallation,
@@ -348,10 +350,20 @@ export function useDeleteAgentWorkspace() {
 export function useCreateAgentSession() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (workspaceId: string): Promise<string> => {
+    mutationFn: async ({
+      workspaceId,
+      launchConfig,
+    }: {
+      workspaceId: string;
+      launchConfig: AgentSessionLaunchConfig;
+    }): Promise<string> => {
       const response = await fetch(
         `/api/agent-workspaces/${workspaceId}/sessions`,
-        { method: "POST" },
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(launchConfig),
+        },
       );
       if (!response.ok) throw await responseError(response);
       const data = (await response.json()) as { session: { id: string } };
@@ -359,5 +371,21 @@ export function useCreateAgentSession() {
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
+  });
+}
+
+export function useAgentWorkspaceCatalog(
+  workspaceId: string | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: agentConnectionKeys.catalog(workspaceId ?? ""),
+    queryFn: async (): Promise<AgentProviderCatalog> => {
+      const response = await fetch(`/api/agent-workspaces/${workspaceId}/catalog`);
+      if (!response.ok) throw await responseError(response);
+      return (await response.json()) as AgentProviderCatalog;
+    },
+    enabled: enabled && Boolean(workspaceId),
+    staleTime: 30_000,
   });
 }

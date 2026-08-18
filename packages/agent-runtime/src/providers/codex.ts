@@ -17,6 +17,7 @@ import {
   probeCodexConnection,
   probeCodexTarget,
 } from "@overtchat/agent-runtime/codex/probe";
+import { CODEX_MODES } from "@overtchat/agent-runtime/codex/client";
 import { listCodexWorkspaceSessions } from "@overtchat/agent-runtime/codex/sessions";
 
 const CODEX_COMMANDS: readonly AgentSlashCommand[] = [
@@ -167,6 +168,12 @@ export const codexProviderAdapter: AgentProviderAdapter = {
     probeCodexConnection({ ...draft, provider: "codex" }),
   probeTarget: probeCodexTarget,
   listWorkspaceSessions: listCodexWorkspaceSessions,
+  fetchCatalog: async (target, launch) => ({
+    provider: "codex",
+    models: (await probeCodexTarget(target, launch.executable)).models,
+    modes: CODEX_MODES,
+    defaultModeId: "auto",
+  }),
   sessionIdentity,
   createEventClassifier: () => new CodexEventClassifier(),
   commandsFromEvent: (event) =>

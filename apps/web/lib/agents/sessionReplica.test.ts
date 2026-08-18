@@ -24,7 +24,6 @@ function snapshot(status: AgentRuntimeSnapshot["status"] = "idle") {
     state: {},
     messages: [],
     models: [],
-    thinkingLevels: [],
     commands: [],
     stats: {
       sessionFile: null,

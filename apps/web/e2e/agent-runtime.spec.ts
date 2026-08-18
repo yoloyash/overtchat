@@ -17,11 +17,16 @@ const TEST_PNG = Buffer.from(
 
 const imageModel: AgentRuntimeSnapshot["models"][number] = {
   id: "gpt-5.6",
-  name: "GPT-5.6",
+  label: "GPT-5.6",
   provider: "codex",
   api: "codex-app-server",
   baseUrl: "",
   reasoning: true,
+  thinkingOptions: [
+    { id: "low", label: "Low" },
+    { id: "high", label: "High", isDefault: true },
+  ],
+  defaultThinkingOptionId: "high",
   input: ["text", "image"],
   contextWindow: 100_000,
   maxTokens: 10_000,
@@ -36,7 +41,7 @@ const imageModel: AgentRuntimeSnapshot["models"][number] = {
 const textModel: AgentRuntimeSnapshot["models"][number] = {
   ...imageModel,
   id: "gpt-5.6-mini",
-  name: "GPT-5.6 Mini",
+  label: "GPT-5.6 Mini",
   input: ["text"],
 };
 
@@ -290,7 +295,6 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       },
     ],
     models: [imageModel, textModel],
-    thinkingLevels: ["low", "high"],
     commands: [
       {
         name: "plan",
@@ -492,9 +496,7 @@ test("shows durable turn activity without changing completed tool status", async
         }
         if (command.type === "set_model") {
           snapshot.state.model = snapshot.models.find(
-            (model) =>
-              model.provider === command.provider &&
-              model.id === command.modelId,
+            (model) => model.id === command.modelId,
           );
         }
         if (command.type === "set_thinking_level") {
@@ -1346,7 +1348,6 @@ test("shows durable turn activity without changing completed tool status", async
     .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
     type: "set_model",
-    provider: "codex",
     modelId: "gpt-5.6-mini",
   });
   await expect(

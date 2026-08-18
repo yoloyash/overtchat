@@ -3,7 +3,6 @@ import {
   parsePiCommands,
   parsePiModels,
   parsePiSessionStats,
-  parsePiThinkingLevels,
 } from "./protocol";
 
 describe("Pi RPC response parsing", () => {
@@ -34,15 +33,21 @@ describe("Pi RPC response parsing", () => {
       }),
     ).toEqual([
       {
-        id: "gpt-5.6",
-        name: "GPT-5.6",
-        provider: "openai",
+        id: "openai/gpt-5.6",
+        label: "GPT-5.6",
+        provider: "pi",
+        description: "openai/gpt-5.6",
+        metadata: { provider: "openai", modelId: "gpt-5.6" },
         api: "openai-responses",
         baseUrl: "https://api.openai.com/v1",
         reasoning: true,
         input: ["text", "image"],
         contextWindow: 400_000,
         maxTokens: 128_000,
+        thinkingOptions: expect.arrayContaining([
+          expect.objectContaining({ id: "medium", isDefault: true }),
+        ]),
+        defaultThinkingOptionId: "medium",
         cost: {
           input: 1.25,
           output: 10,
@@ -53,62 +58,24 @@ describe("Pi RPC response parsing", () => {
     ]);
   });
 
-  it("filters incomplete OMP models and falls back to their context limit", () => {
+  it("keeps older sparse Pi model records selectable", () => {
     expect(
-      parsePiModels(
-        {
-          models: [
-            {
-              id: "usable",
-              name: "Usable",
-              provider: "openai",
-              api: "openai-responses",
-              baseUrl: "https://api.openai.com/v1",
-              reasoning: true,
-              input: ["text"],
-              contextWindow: 128_000,
-              maxTokens: null,
-              cost: {
-                input: 1,
-                output: 2,
-                cacheRead: 0.1,
-                cacheWrite: 0,
-              },
-            },
-            {
-              id: "incomplete",
-              name: "Incomplete",
-              provider: "openai",
-              api: "openai-responses",
-              baseUrl: "https://api.openai.com/v1",
-              reasoning: false,
-              input: ["text"],
-              contextWindow: null,
-              maxTokens: null,
-              cost: {
-                input: 0,
-                output: 0,
-                cacheRead: 0,
-                cacheWrite: 0,
-              },
-            },
-          ],
-        },
-        "omp",
-      ),
+      parsePiModels({
+        models: [{ id: "local/model", provider: "custom" }],
+      }),
     ).toEqual([
       expect.objectContaining({
-        id: "usable",
-        contextWindow: 128_000,
-        maxTokens: 128_000,
+        id: "custom/local/model",
+        label: "model",
+        reasoning: false,
+        contextWindow: null,
+        maxTokens: null,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
       }),
     ]);
   });
 
-  it("parses Pi's dynamic thinking levels and discovered commands", () => {
-    expect(
-      parsePiThinkingLevels({ levels: ["off", "medium", "xhigh", "max"] }),
-    ).toEqual(["off", "medium", "xhigh", "max"]);
+  it("parses discovered commands", () => {
     expect(
       parsePiCommands({
         commands: [
@@ -205,11 +172,5 @@ describe("Pi RPC response parsing", () => {
       cost: 0,
       tokens: { total: 0 },
     });
-  });
-
-  it("rejects unknown thinking levels instead of guessing support", () => {
-    expect(() =>
-      parsePiThinkingLevels({ levels: ["off", "ultra"] }),
-    ).toThrow();
   });
 });

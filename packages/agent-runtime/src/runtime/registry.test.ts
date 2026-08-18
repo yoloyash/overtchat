@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => ({
   saveQueue: vi.fn(),
   getState: vi.fn(),
   getMessages: vi.fn(),
+  setModel: vi.fn(),
+  setThinkingLevel: vi.fn(),
+  setMode: vi.fn(),
+  fetchCatalog: vi.fn(),
+  launches: [] as Array<Record<string, unknown>>,
   eventSubscriber: null as ((event: AgentRuntimeEvent) => void) | null,
 }));
 
@@ -39,7 +44,10 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     probeConnection: vi.fn(),
     probeTarget: vi.fn(),
     listWorkspaceSessions: vi.fn(),
-    startSession: () => ({
+    fetchCatalog: mocks.fetchCatalog,
+    startSession: (_target: unknown, launch: Record<string, unknown>) => {
+      mocks.launches.push(launch);
+      return {
       onEvent: vi.fn((subscriber: (event: AgentRuntimeEvent) => void) => {
         mocks.eventSubscriber = subscriber;
         return vi.fn();
@@ -50,14 +58,17 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
         { provider: "openai", id: "gpt-5", name: "GPT-5", input: ["text"] },
       ]),
       getSessionStats: vi.fn().mockResolvedValue(stats),
-      getAvailableThinkingLevels: vi.fn().mockResolvedValue([]),
       getCommands: vi.fn().mockResolvedValue([]),
       prompt: mocks.prompt,
       steer: mocks.steer,
       abort: mocks.abort,
+      setModel: mocks.setModel,
+      setThinkingLevel: mocks.setThinkingLevel,
+      setMode: mocks.setMode,
       forkSession: mocks.forkSession,
       stop: mocks.stop,
-    }),
+      };
+    },
     sessionIdentity: () => ({
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
@@ -86,6 +97,35 @@ describe("agent runtime", () => {
     mocks.prompt.mockResolvedValue({ accepted: true });
     mocks.steer.mockResolvedValue({ accepted: true });
     mocks.abort.mockResolvedValue({ interrupted: true });
+    mocks.setModel.mockResolvedValue(undefined);
+    mocks.setThinkingLevel.mockResolvedValue(undefined);
+    mocks.setMode.mockResolvedValue(undefined);
+    mocks.fetchCatalog.mockResolvedValue({
+      provider: "codex",
+      models: [
+        {
+          provider: "codex",
+          id: "default-model",
+          label: "Default model",
+          isDefault: true,
+          api: "",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: null,
+          maxTokens: null,
+          thinkingOptions: [
+            { id: "low", label: "Low" },
+            { id: "high", label: "High", isDefault: true },
+          ],
+          defaultThinkingOptionId: "high",
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      modes: [{ id: "auto", label: "Auto", description: "Configured" }],
+      defaultModeId: "auto",
+    });
+    mocks.launches.length = 0;
     mocks.forkSession.mockResolvedValue({
       session: {
         providerSessionId: "forked-provider-session",
@@ -152,6 +192,7 @@ describe("agent runtime", () => {
       cwd: "/workspace",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await expect(
@@ -206,6 +247,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await vi.waitFor(() => {
@@ -244,6 +286,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await Promise.resolve();
@@ -301,6 +344,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
@@ -338,6 +382,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await Promise.resolve();
@@ -382,6 +427,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await Promise.resolve();
@@ -424,6 +470,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command({
@@ -459,6 +506,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     mocks.eventSubscriber?.({
@@ -507,6 +555,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await vi.waitFor(() => {
@@ -554,6 +603,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await vi.waitFor(() => {
@@ -598,6 +648,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await vi.waitFor(() => expect(mocks.saveQueue).toHaveBeenCalledOnce());
@@ -629,6 +680,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await expect(
@@ -659,6 +711,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -714,6 +767,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     mocks.eventSubscriber?.({ type: "compaction_start" });
@@ -772,6 +826,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await vi.waitFor(() => expect(mocks.prompt).toHaveBeenCalledOnce());
@@ -836,6 +891,7 @@ describe("agent runtime", () => {
         sessionId: "session",
         providerSessionId: "provider-session",
         providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
       });
 
       await vi.waitFor(() => {
@@ -894,6 +950,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await vi.waitFor(() => {
@@ -925,6 +982,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -982,6 +1040,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -1012,6 +1071,7 @@ describe("agent runtime", () => {
         sessionId: `session-${provider}`,
         providerSessionId: "provider-session",
         providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
       });
 
       await runtime.command(
@@ -1064,6 +1124,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -1109,6 +1170,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await expect(
@@ -1143,6 +1205,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await expect(
@@ -1193,6 +1256,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -1235,6 +1299,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -1335,6 +1400,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
 
     await runtime.command(
@@ -1378,6 +1444,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
     const first: number[] = [];
     const second: number[] = [];
@@ -1417,6 +1484,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
     const observed: Array<Record<string, unknown>> = [];
     runtime.observe((envelope) => {
@@ -1454,6 +1522,7 @@ describe("agent runtime", () => {
       sessionId: "session",
       providerSessionId: "provider-session",
       providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
     });
     mocks.eventSubscriber?.({
       type: "overtchat_status",
@@ -1473,6 +1542,57 @@ describe("agent runtime", () => {
       reset: false,
       cursor: current.cursor,
       events: [],
+    });
+    await registry.stopAll();
+  });
+
+  it("resolves provider defaults into an explicit launch tuple", async () => {
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const created = await registry.create("session", {
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+    });
+
+    expect(created.launchConfig).toEqual({
+      model: "default-model",
+      thinkingOptionId: "high",
+      modeId: "auto",
+    });
+    expect(mocks.launches).toContainEqual(
+      expect.objectContaining(created.launchConfig),
+    );
+    await registry.stopAll();
+  });
+
+  it("persists live model, thinking, and mode selections into resume metadata", async () => {
+    const updateSessionMetadata = vi.fn();
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      updateSessionMetadata,
+    });
+    const { runtime } = await registry.create("session", {
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+    });
+
+    await runtime.command({ type: "set_model", modelId: "other/model" });
+    await runtime.command({ type: "set_thinking_level", level: "low" });
+    await runtime.command({ type: "set_mode", modeId: "manual" });
+
+    expect(updateSessionMetadata).toHaveBeenLastCalledWith("session", {
+      launchConfig: {
+        model: "other/model",
+        thinkingOptionId: "low",
+        modeId: "manual",
+      },
     });
     await registry.stopAll();
   });

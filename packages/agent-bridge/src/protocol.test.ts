@@ -6,10 +6,11 @@ import {
   isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
+import { agentProviderCatalogSchema } from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
   it("rejects connector builds from the previous v1 wire shape", () => {
-    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.6.0");
+    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.7.0");
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {
@@ -77,6 +78,35 @@ describe("Host Connector protocol compatibility", () => {
           ],
         },
       }),
+    ).toBe(false);
+  });
+
+  it("validates provider catalogs at the connector boundary", () => {
+    const catalog = {
+      provider: "omp",
+      models: [
+        {
+          provider: "omp",
+          id: "openai/gpt-5",
+          label: "GPT-5",
+          api: "openai-responses",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: null,
+          maxTokens: null,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      modes: [{ id: "full", label: "Full Access", description: "Yolo" }],
+      defaultModeId: "full",
+    };
+    expect(agentProviderCatalogSchema.safeParse(catalog).success).toBe(true);
+    expect(
+      agentProviderCatalogSchema.safeParse({
+        ...catalog,
+        models: [{ ...catalog.models[0], provider: "pi" }],
+      }).success,
     ).toBe(false);
   });
 });

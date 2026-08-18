@@ -73,6 +73,7 @@ const session: AgentDaemonSessionDescriptor = {
   sessionId: "session",
   providerSessionId: "provider-session",
   providerSessionPath: "/sessions/provider-session.jsonl",
+  launchConfig: {},
 };
 
 const workspace = {
@@ -155,7 +156,6 @@ beforeEach(() => {
     state: { isStreaming: true },
     messages: [],
     models: [],
-    thinkingLevels: [],
     commands: [],
     stats: {
       sessionFile: null,
@@ -874,7 +874,12 @@ describe("connector daemon command identity", () => {
     const handling = daemon.handle({
       type: "request",
       requestId: "create",
-      request: { type: "create_session", sessionId: "session", workspace },
+      request: {
+        type: "create_session",
+        sessionId: "session",
+        workspace,
+        launchConfig: {},
+      },
     });
     await vi.waitFor(() => expect(mocks.create).toHaveBeenCalledOnce());
 

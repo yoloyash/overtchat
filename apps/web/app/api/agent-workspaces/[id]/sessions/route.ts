@@ -12,7 +12,10 @@ import {
   getOwnedAgentWorkspace,
   upsertAgentSession,
 } from "@/lib/db/agentConnections";
-import { isAgentProviderId } from "@overtchat/agent-bridge";
+import {
+  agentSessionLaunchConfigSchema,
+  isAgentProviderId,
+} from "@overtchat/agent-bridge";
 
 export const maxDuration = 150;
 
@@ -31,24 +34,33 @@ export async function POST(
   if (!owned) return new Response("Not found", { status: 404 });
 
   try {
+    const body = await req.json().catch(() => ({}));
+    const launchConfig = agentSessionLaunchConfigSchema.parse(body);
     const sessionId = crypto.randomUUID();
     const created = await hostConnectorBroker.request<{
       session: unknown;
+      launchConfig: unknown;
       snapshot: unknown;
     }>(owned.host.connectorId, {
       type: "create_session",
       sessionId,
       workspace: daemonWorkspace(owned),
+      launchConfig,
     });
+    const resolvedLaunchConfig = agentSessionLaunchConfigSchema.parse(
+      created.launchConfig,
+    );
     const row = await upsertAgentSession(
       owned.workspace.id,
       parseProviderSessionMetadata(created.session),
       sessionId,
+      resolvedLaunchConfig,
     );
     return Response.json(
       {
         session: {
           id: row.id,
+          launchConfig: resolvedLaunchConfig,
           snapshot: created.snapshot,
         },
       },

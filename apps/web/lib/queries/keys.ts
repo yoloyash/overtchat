@@ -31,6 +31,8 @@ export const agentConnectionKeys = {
     ] as const,
   directories: (id: string, path: string) =>
     [...agentConnectionKeys.all(), "directories", id, path] as const,
+  catalog: (workspaceId: string) =>
+    [...agentConnectionKeys.all(), "catalog", workspaceId] as const,
 };
 
 export const agentSessionKeys = {

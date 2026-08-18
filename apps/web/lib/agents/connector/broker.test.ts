@@ -23,6 +23,7 @@ const session: AgentDaemonSessionDescriptor = {
   sessionId: "session",
   providerSessionId: "thread",
   providerSessionPath: "/thread.jsonl",
+  launchConfig: {},
 };
 
 const runtimeSnapshot: AgentRuntimeSnapshot = {
@@ -34,7 +35,6 @@ const runtimeSnapshot: AgentRuntimeSnapshot = {
   state: {},
   messages: [],
   models: [],
-  thinkingLevels: [],
   commands: [],
   stats: {
     sessionFile: null,
@@ -395,6 +395,7 @@ describe("host connector daemon broker", () => {
       type: "create_session",
       sessionId: "new-session",
       workspace: session,
+      launchConfig: {},
     });
     const readRejected = expect(read).rejects.toThrow(
       "reconnected before the request completed",

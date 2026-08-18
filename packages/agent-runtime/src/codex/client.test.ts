@@ -641,7 +641,7 @@ describe("CodexRuntimeClient", () => {
     );
     await client.getState();
 
-    await client.setModel("codex", "gpt-5.6-mini");
+    await client.setModel("gpt-5.6-mini");
     await expect(client.getState()).resolves.toMatchObject({
       model: { provider: "codex", id: "gpt-5.6-mini" },
       thinkingLevel: "medium",
