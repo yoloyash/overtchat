@@ -1,5 +1,5 @@
-export const CLI_VERSION = "0.1.4";
-export const APP_VERSION = "0.14.3";
+export const CLI_VERSION = "0.1.5";
+export const APP_VERSION = "0.14.4";
 export const CONNECTOR_VERSION = "0.7.0";
 export const STT_VERSION = "0.1.1";
 
