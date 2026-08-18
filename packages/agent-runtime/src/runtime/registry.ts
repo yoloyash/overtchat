@@ -484,11 +484,11 @@ export class AgentSessionRuntime {
           ...(typeof event.fastModeAvailable === "boolean"
             ? { fastModeAvailable: event.fastModeAvailable }
             : {}),
-          ...(typeof event.accessMode === "string"
-            ? { accessMode: event.accessMode }
+          ...(typeof event.modeId === "string"
+            ? { modeId: event.modeId }
             : {}),
-          ...(Array.isArray(event.accessModes)
-            ? { accessModes: event.accessModes }
+          ...(Array.isArray(event.modes)
+            ? { modes: event.modes }
             : {}),
           ...(typeof event.goalsSupported === "boolean"
             ? { goalsSupported: event.goalsSupported }
@@ -719,15 +719,15 @@ export class AgentSessionRuntime {
           await this.refresh();
           return value;
         });
-      case "set_access_mode":
-        if (!this.client.setAccessMode) {
+      case "set_mode":
+        if (!this.client.setMode) {
           return Promise.reject(
             new Error(
-              `${agentProviderMetadata(this.provider).label} does not provide access modes.`,
+              `${agentProviderMetadata(this.provider).label} does not provide modes.`,
             ),
           );
         }
-        return this.client.setAccessMode(command.mode).then(async (value) => {
+        return this.client.setMode(command.modeId).then(async (value) => {
           await this.refresh();
           return value;
         });

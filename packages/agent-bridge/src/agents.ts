@@ -271,13 +271,12 @@ export const AGENT_COLLABORATION_MODES = ["default", "plan"] as const;
 export type AgentCollaborationMode =
   (typeof AGENT_COLLABORATION_MODES)[number];
 
-export const AGENT_ACCESS_MODES = [
-  "inherit",
-  "default",
-  "auto-review",
-  "full-access",
-] as const;
-export type AgentAccessMode = (typeof AGENT_ACCESS_MODES)[number];
+export type AgentMode = {
+  id: string;
+  label: string;
+  description: string;
+  dangerous?: boolean;
+};
 
 export const AGENT_GOAL_STATUSES = [
   "active",
@@ -365,8 +364,8 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     enabled: z.boolean(),
   }),
   z.object({
-    type: z.literal("set_access_mode"),
-    mode: z.enum(AGENT_ACCESS_MODES),
+    type: z.literal("set_mode"),
+    modeId: z.string().trim().min(1).max(120),
   }),
   z.object({
     type: z.literal("update_goal"),

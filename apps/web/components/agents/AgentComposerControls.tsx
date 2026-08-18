@@ -10,7 +10,6 @@ import {
   ChevronDown,
   ChevronRight,
   ListTodo,
-  Shield,
   ShieldAlert,
   ShieldCheck,
   X,
@@ -19,8 +18,8 @@ import {
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { Button } from "@/components/ui/button";
 import type {
-  AgentAccessMode,
   AgentCollaborationMode,
+  AgentMode,
   AgentModel,
   AgentThinkingLevel,
 } from "@overtchat/agent-bridge";
@@ -38,14 +37,14 @@ export interface AgentComposerControlsProps {
   collaborationModes: AgentCollaborationMode[];
   fastModeEnabled: boolean;
   fastModeAvailable: boolean;
-  accessMode: AgentAccessMode;
-  accessModes: AgentAccessMode[];
+  modeId: string;
+  modes: AgentMode[];
   disabled: boolean;
   onSelectModel: (model: AgentModel) => void;
   onSelectThinking: (level: AgentThinkingLevel) => void;
   onSelectCollaborationMode: (mode: AgentCollaborationMode) => void;
   onToggleFastMode: (enabled: boolean) => void;
-  onSelectAccessMode: (mode: AgentAccessMode) => void;
+  onSelectMode: (modeId: string) => void;
   onMenuOpenChange?: (open: boolean) => void;
 }
 
@@ -61,7 +60,7 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
     (props.thinkingLevels.length > 1 && props.thinkingLevel !== null);
   const hasControls =
     hasModelOrEffort ||
-    props.accessModes.length > 0 ||
+    props.modes.length > 0 ||
     props.collaborationMode === "plan" ||
     props.fastModeEnabled;
 
@@ -73,7 +72,7 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
       className="flex min-w-0 items-center gap-0.5"
     >
       {hasModelOrEffort && <ModelEffortControl {...props} />}
-      {props.accessModes.length > 0 && <AccessModeControl {...props} />}
+      {props.modes.length > 0 && <ModeControl {...props} />}
       {props.collaborationMode === "plan" && (
         <PlanModeControl
           disabled={props.disabled}
@@ -101,40 +100,20 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
   );
 }
 
-const accessModeMetadata: Record<
-  AgentAccessMode,
-  { label: string; description: string }
-> = {
-  inherit: {
-    label: "Codex default",
-    description: "Use the permissions from your Codex configuration",
-  },
-  default: {
-    label: "Default permissions",
-    description: "Workspace writes; ask before broader access",
-  },
-  "auto-review": {
-    label: "Auto-review",
-    description: "Codex reviews approval requests automatically",
-  },
-  "full-access": {
-    label: "Full access",
-    description: "No sandbox or approval prompts",
-  },
-};
-
-function AccessModeControl(props: AgentComposerControlsProps) {
+function ModeControl(props: AgentComposerControlsProps) {
   const [fullAccessOpen, setFullAccessOpen] = useState(false);
-  const selected = accessModeMetadata[props.accessMode];
-  const dangerous = props.accessMode === "full-access";
+  const selected =
+    props.modes.find((mode) => mode.id === props.modeId) ?? props.modes[0];
+  if (!selected) return null;
+  const dangerous = selected.dangerous === true;
 
-  function select(mode: AgentAccessMode) {
-    if (mode === props.accessMode) return;
-    if (mode === "full-access") {
+  function select(mode: AgentMode) {
+    if (mode.id === props.modeId) return;
+    if (mode.dangerous) {
       setFullAccessOpen(true);
       return;
     }
-    props.onSelectAccessMode(mode);
+    props.onSelectMode(mode.id);
   }
 
   return (
@@ -155,8 +134,6 @@ function AccessModeControl(props: AgentComposerControlsProps) {
         >
           {dangerous ? (
             <ShieldAlert className="size-3.5" />
-          ) : props.accessMode === "inherit" ? (
-            <Shield className="size-3.5" />
           ) : (
             <ShieldCheck className="size-3.5" />
           )}
@@ -172,12 +149,11 @@ function AccessModeControl(props: AgentComposerControlsProps) {
                 motionClasses.popup,
               )}
             >
-              {props.accessModes.map((mode) => {
-                const metadata = accessModeMetadata[mode];
-                const isDangerous = mode === "full-access";
+              {props.modes.map((mode) => {
+                const isDangerous = mode.dangerous === true;
                 return (
                   <Menu.Item
-                    key={mode}
+                    key={mode.id}
                     onClick={() => select(mode)}
                     className={cn(
                       choiceItemClassName,
@@ -187,19 +163,17 @@ function AccessModeControl(props: AgentComposerControlsProps) {
                   >
                     {isDangerous ? (
                       <ShieldAlert className="size-4 shrink-0" />
-                    ) : mode === "inherit" ? (
-                      <Shield className="size-4 shrink-0 text-muted-foreground" />
                     ) : (
                       <ShieldCheck className="size-4 shrink-0 text-muted-foreground" />
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block font-medium">{metadata.label}</span>
+                      <span className="block font-medium">{mode.label}</span>
                       <span className="block text-xs text-muted-foreground">
-                        {metadata.description}
+                        {mode.description}
                       </span>
                     </span>
                     <span className="flex size-4 shrink-0 items-center justify-center">
-                      {mode === props.accessMode && (
+                      {mode.id === props.modeId && (
                         <Check className="size-3.5" />
                       )}
                     </span>
@@ -243,7 +217,10 @@ function AccessModeControl(props: AgentComposerControlsProps) {
                 size="sm"
                 onClick={() => {
                   setFullAccessOpen(false);
-                  props.onSelectAccessMode("full-access");
+                  const dangerousMode = props.modes.find(
+                    (mode) => mode.dangerous,
+                  );
+                  if (dangerousMode) props.onSelectMode(dangerousMode.id);
                 }}
               >
                 Enable Full access

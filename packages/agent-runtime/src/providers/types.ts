@@ -1,5 +1,4 @@
 import type {
-  AgentAccessMode,
   AgentCollaborationMode,
   AgentConnectionDraft,
   AgentGoal,
@@ -85,7 +84,7 @@ export interface AgentRuntimeClient {
   setThinkingLevel(level: string): Promise<unknown>;
   setCollaborationMode?(mode: AgentCollaborationMode): Promise<unknown>;
   setFastMode?(enabled: boolean): Promise<unknown>;
-  setAccessMode?(mode: AgentAccessMode): Promise<unknown>;
+  setMode?(modeId: string): Promise<unknown>;
   updateGoal?(
     action: "set" | "pause" | "resume" | "clear",
     objective?: string,

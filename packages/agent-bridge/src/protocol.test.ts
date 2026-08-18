@@ -9,7 +9,7 @@ import {
 
 describe("Host Connector protocol compatibility", () => {
   it("rejects connector builds from the previous v1 wire shape", () => {
-    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.5.0");
+    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.6.0");
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {
