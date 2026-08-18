@@ -42,7 +42,12 @@ CLAUDE.md
 AGENTS.md
 /scripts/*
 !/scripts/install-connector.sh
+!/scripts/dev.mjs
+!/scripts/dev.test.mjs
 /apps/web/scripts/seed.ts
+
+# generated local-development credentials and Host Connector runtime state
+/.overtchat-dev/
 
 # debug
 npm-debug.log*

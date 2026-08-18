@@ -476,22 +476,35 @@ async function handlePost(req: Request): Promise<Response> {
         }
       },
     });
-    return createUIMessageStreamResponse({
+    let resumableSetup: Promise<void> | undefined;
+    const response = createUIMessageStreamResponse({
       stream: uiStream,
       headers: streamHeaders,
       consumeSseStream: streamContext
-        ? async ({ stream }) => {
-            try {
-              await streamContext.createNewResumableStream(
+        ? ({ stream }) => {
+            resumableSetup = streamContext
+              .createNewResumableStream(
                 streamId,
                 () => stream,
-              );
-            } catch (error) {
-              console.warn("[resumable-stream] failed to buffer stream", error);
-            }
+              )
+              .then(() => undefined)
+              .catch((error: unknown) => {
+                console.warn(
+                  "[resumable-stream] failed to buffer stream",
+                  error,
+                );
+              });
+            return resumableSetup;
           }
         : undefined,
     });
+
+    // createUIMessageStreamResponse invokes consumeSseStream synchronously.
+    // Wait until Redis has registered the stream before exposing the response;
+    // otherwise an immediate reload can observe active_stream_id first and get
+    // a false 204 from the resume endpoint.
+    if (resumableSetup) await resumableSetup;
+    return response;
   } catch (error) {
     controller?.abort();
     if (controller) cancelRegistry.unregister(streamId);
