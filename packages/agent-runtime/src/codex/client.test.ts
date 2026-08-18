@@ -49,6 +49,8 @@ class FakeCodexServer {
   goal: Record<string, unknown> | null = null;
   threadAccess: Record<string, unknown> = {};
   config: Record<string, unknown> | null = null;
+  savedConfig: Record<string, unknown> | null = null;
+  models: Record<string, unknown>[] | null = null;
   readonly threadReads = new Map<string, Record<string, unknown>>();
   private notification: Listener<{ method: string; params?: unknown }> =
     () => {};
@@ -75,7 +77,7 @@ class FakeCodexServer {
     this.requests.push({ method, params });
     if (method === "model/list") {
       return {
-        data: [
+        data: this.models ?? [
           {
             id: "gpt-5.6",
             model: "gpt-5.6",
@@ -96,6 +98,9 @@ class FakeCodexServer {
     }
     if (method === "config/read") {
       return this.config ? { config: this.config } : {};
+    }
+    if (method === "getUserSavedConfig") {
+      return this.savedConfig ? { config: this.savedConfig } : {};
     }
     if (method === "thread/goal/get") {
       if (!this.goalSupported) throw new Error("Method not found");
@@ -381,6 +386,8 @@ describe("CodexRuntimeClient", () => {
     server.goal = null;
     server.threadAccess = {};
     server.config = null;
+    server.savedConfig = null;
+    server.models = null;
     server.threadReads.clear();
     server.respondError.mockClear();
     mocks.startCodexAppServer.mockResolvedValue(server);
@@ -537,6 +544,36 @@ describe("CodexRuntimeClient", () => {
     });
   });
 
+  it("starts new threads with the model from Codex saved configuration", async () => {
+    server.savedConfig = { model: "gpt-5.6-saved" };
+    server.config = { model: "gpt-5.6-config" };
+
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+
+    expect(server.requests.find((request) => request.method === "thread/start"))
+      .toMatchObject({ params: { model: "gpt-5.6-saved" } });
+  });
+
+  it("uses model/list isDefault when Codex has no configured model", async () => {
+    server.models = [
+      { id: "first-model", displayName: "First" },
+      { id: "default-model", displayName: "Default", isDefault: true },
+    ];
+
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+
+    expect(server.requests.find((request) => request.method === "thread/start"))
+      .toMatchObject({ params: { model: "default-model" } });
+  });
+
   it("supports native goals, Code/Plan modes, Fast turns, and access modes", async () => {
     server.goalSupported = true;
     server.threadAccess = {
@@ -572,8 +609,12 @@ describe("CodexRuntimeClient", () => {
       collaborationModes: ["default", "plan"],
       fastModeEnabled: false,
       fastModeAvailable: true,
-      accessMode: "inherit",
-      accessModes: ["inherit", "default", "auto-review", "full-access"],
+      modeId: "auto",
+      modes: [
+        expect.objectContaining({ id: "auto", label: "Default Permissions" }),
+        expect.objectContaining({ id: "auto-review", label: "Auto-review" }),
+        expect.objectContaining({ id: "full-access", label: "Full Access" }),
+      ],
       goalsSupported: true,
       goal: null,
     });
@@ -602,7 +643,7 @@ describe("CodexRuntimeClient", () => {
 
     await client.setCollaborationMode("plan");
     await client.setFastMode(true);
-    await client.setAccessMode("auto-review");
+    await client.setMode("auto-review");
     await expect(client.getCommands()).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -640,7 +681,7 @@ describe("CodexRuntimeClient", () => {
       },
     });
 
-    await client.setAccessMode("full-access");
+    await client.setMode("full-access");
     await client.prompt("Apply the approved change");
     expect(server.requests.at(-1)).toMatchObject({
       method: "turn/start",
@@ -651,14 +692,14 @@ describe("CodexRuntimeClient", () => {
       },
     });
 
-    await client.setAccessMode("inherit");
-    await client.prompt("Use my Codex defaults again");
+    await client.setMode("auto");
+    await client.prompt("Use default permissions again");
     expect(server.requests.at(-1)).toMatchObject({
       method: "turn/start",
       params: {
-        approvalPolicy: "untrusted",
+        approvalPolicy: "on-request",
         approvalsReviewer: "user",
-        sandboxPolicy: { type: "readOnly", networkAccess: false },
+        sandboxPolicy: expect.objectContaining({ type: "workspaceWrite" }),
       },
     });
 
@@ -698,9 +739,12 @@ describe("CodexRuntimeClient", () => {
     );
 
     await expect(client.getState()).resolves.toMatchObject({
-      accessModes: ["inherit", "default", "full-access"],
+      modes: [
+        expect.objectContaining({ id: "auto" }),
+        expect.objectContaining({ id: "full-access" }),
+      ],
     });
-    await expect(client.setAccessMode("auto-review")).rejects.toThrow(
+    await expect(client.setMode("auto-review")).rejects.toThrow(
       "does not provide Auto-review",
     );
   });
@@ -721,18 +765,18 @@ describe("CodexRuntimeClient", () => {
     );
 
     await expect(client.getState()).resolves.toMatchObject({
-      accessMode: "full-access",
+      modeId: "full-access",
     });
   });
 
-  it("restores Codex configuration when leaving an explicit access mode", async () => {
+  it("preserves Codex workspace-write configuration in Default Permissions", async () => {
     server.config = {
       approval_policy: "on-request",
       approvals_reviewer: "user",
       sandbox_mode: "workspace-write",
       sandbox_workspace_write: {
-        writable_roots: [],
-        network_access: false,
+        writable_roots: ["/var/cache/npm"],
+        network_access: true,
         exclude_tmpdir_env_var: false,
         exclude_slash_tmp: false,
       },
@@ -752,9 +796,9 @@ describe("CodexRuntimeClient", () => {
     );
 
     await expect(client.getState()).resolves.toMatchObject({
-      accessMode: "full-access",
+      modeId: "full-access",
     });
-    await client.setAccessMode("inherit");
+    await client.setMode("auto");
     await client.prompt("Use my configured permissions");
     expect(server.requests.at(-1)).toMatchObject({
       method: "turn/start",
@@ -763,8 +807,8 @@ describe("CodexRuntimeClient", () => {
         approvalsReviewer: "user",
         sandboxPolicy: {
           type: "workspaceWrite",
-          writableRoots: [],
-          networkAccess: false,
+          writableRoots: ["/var/cache/npm"],
+          networkAccess: true,
           excludeTmpdirEnvVar: false,
           excludeSlashTmp: false,
         },

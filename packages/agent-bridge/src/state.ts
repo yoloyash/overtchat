@@ -525,11 +525,11 @@ export function applyAgentRuntimeEnvelope(
         ...(typeof event.fastModeAvailable === "boolean"
           ? { fastModeAvailable: event.fastModeAvailable }
           : {}),
-        ...(typeof event.accessMode === "string"
-          ? { accessMode: event.accessMode }
+        ...(typeof event.modeId === "string"
+          ? { modeId: event.modeId }
           : {}),
-        ...(Array.isArray(event.accessModes)
-          ? { accessModes: event.accessModes }
+        ...(Array.isArray(event.modes)
+          ? { modes: event.modes }
           : {}),
         ...(typeof event.goalsSupported === "boolean"
           ? { goalsSupported: event.goalsSupported }

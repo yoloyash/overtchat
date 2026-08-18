@@ -1,9 +1,9 @@
 import type {
-  AgentAccessMode,
   AgentCollaborationMode,
   AgentGoal,
   AgentGoalStatus,
   AgentInteractionValue,
+  AgentMode,
   AgentModel,
   AgentSessionStats,
   AgentSlashCommand,
@@ -69,6 +69,28 @@ const MAX_PENDING_SUBAGENT_THREADS = 32;
 const MAX_PENDING_SUBAGENT_NOTIFICATIONS = 50;
 const CODEX_GOALS_MIN_VERSION = [0, 128, 0] as const;
 const CODEX_AUTO_REVIEW_MIN_VERSION = [0, 115, 0] as const;
+
+type CodexModeId = "auto" | "auto-review" | "full-access";
+
+const CODEX_MODES: AgentMode[] = [
+  {
+    id: "auto",
+    label: "Default Permissions",
+    description: "Edit files and run commands with Codex's default approval flow.",
+  },
+  {
+    id: "auto-review",
+    label: "Auto-review",
+    description:
+      "Same workspace-write permissions as Default, but eligible `on-request` approvals are routed through the auto-reviewer subagent.",
+  },
+  {
+    id: "full-access",
+    label: "Full Access",
+    description: "Edit files, run commands, and access the network without additional prompts.",
+    dangerous: true,
+  },
+];
 
 type CodexCollaborationPreset = {
   name: string;
@@ -317,9 +339,9 @@ function codexVersionAtLeast(
   return true;
 }
 
-function accessModeFromThreadConfiguration(
+function modeFromThreadConfiguration(
   threadResponse: UnknownRecord,
-): AgentAccessMode {
+): CodexModeId {
   const approvalPolicy = stringOf(threadResponse, "approvalPolicy");
   const approvalsReviewer = stringOf(threadResponse, "approvalsReviewer");
   const sandbox = recordOf(threadResponse.sandbox);
@@ -328,9 +350,24 @@ function accessModeFromThreadConfiguration(
     return "full-access";
   }
   if (approvalPolicy === "on-request" && sandboxType === "workspaceWrite") {
-    return approvalsReviewer === "auto_review" ? "auto-review" : "default";
+    return approvalsReviewer === "auto_review" ? "auto-review" : "auto";
   }
-  return "inherit";
+  return "auto";
+}
+
+function configuredModel(value: unknown): string | null {
+  return stringOf(recordOf(recordOf(value)?.config), "model");
+}
+
+function defaultModelFromList(value: unknown): string | null {
+  const response = recordOf(value);
+  if (!Array.isArray(response?.data)) return null;
+  const model = response.data
+    .map(recordOf)
+    .find((candidate) => candidate?.isDefault === true);
+  return model
+    ? stringOf(model, "model") ?? stringOf(model, "id")
+    : null;
 }
 
 function accessOverridesFromConfig(value: unknown): Record<string, unknown> | null {
@@ -921,7 +958,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private collaborationModes: CodexCollaborationPreset[] = [];
   private selectedCollaborationMode: AgentCollaborationMode = "default";
   private fastModeEnabled = false;
-  private selectedAccessMode: AgentAccessMode = "inherit";
+  private selectedMode: CodexModeId = "auto";
+  private hasModeOverride = false;
   private inheritedAccessOverrides: Record<string, unknown> = {};
   private configuredAccessOverrides: Record<string, unknown> | null = null;
   private goalsSupported = false;
@@ -976,8 +1014,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       collaborationModes: this.availableCollaborationModes(),
       fastModeEnabled: this.fastModeEnabled,
       fastModeAvailable: codexModelSupportsFastMode(this.selectedModel),
-      accessMode: this.selectedAccessMode,
-      accessModes: this.availableAccessModes(),
+      modeId: this.selectedMode,
+      modes: this.availableModes(),
       goalsSupported: this.goalsSupported,
       goal: this.goal,
       ...(this.readOnly
@@ -1170,19 +1208,31 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     return { fastModeEnabled: enabled };
   }
 
-  async setAccessMode(mode: AgentAccessMode): Promise<unknown> {
+  async setMode(modeId: string): Promise<unknown> {
     await this.readyPromise;
     this.assertInteractive();
-    if (!this.availableAccessModes().includes(mode)) {
+    const mode = modeId as CodexModeId;
+    if (!this.availableModes().some((candidate) => candidate.id === mode)) {
       throw new Error(
         mode === "auto-review"
           ? "This Codex installation does not provide Auto-review."
-          : `Codex access mode ${mode} is not available.`,
+          : `Codex mode ${mode} is not available.`,
       );
     }
-    this.selectedAccessMode = mode;
+    this.selectedMode = mode;
+    this.hasModeOverride = true;
     this.emitConfig();
-    return { accessMode: mode };
+    return {
+      modeId: mode,
+      ...(this.activeTurnId
+        ? {
+            notice: {
+              type: "warning",
+              message: "Permission mode applies next turn",
+            },
+          }
+        : {}),
+    };
   }
 
   async updateGoal(
@@ -1508,6 +1558,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     await this.server.ready();
     const modelPromise = this.server.request("model/list", { limit: 200 });
     const configPromise = this.server.request("config/read", {}).catch(() => null);
+    const savedConfigPromise = this.server
+      .request("getUserSavedConfig", {})
+      .catch(() => null);
     const collaborationModePromise = this.server
       .request("collaborationMode/list", {})
       .catch(() => null);
@@ -1533,10 +1586,20 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         includeTurns: true,
       });
     } else {
+      this.modelResponse = await modelPromise;
+      const savedConfig = await savedConfigPromise;
+      const config = await configPromise;
+      this.selectedModel =
+        configuredModel(savedConfig) ??
+        configuredModel(config) ??
+        defaultModelFromList(this.modelResponse) ??
+        parseCodexModels(this.modelResponse)[0]?.id ??
+        "";
       threadResponse = await this.server.request<UnknownRecord>(
         "thread/start",
         {
           cwd: this.launch.cwd,
+          model: this.selectedModel || null,
           ephemeral: false,
         },
       );
@@ -1582,19 +1645,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     };
     this.inheritedAccessOverrides =
       this.configuredAccessOverrides ?? effectiveAccessOverrides;
-    const inheritedAccessMode = accessModeFromThreadConfiguration(threadResponse);
-    const effectiveMatchesConfigured =
-      this.configuredAccessOverrides !== null &&
-      JSON.stringify(effectiveAccessOverrides) ===
-        JSON.stringify(this.configuredAccessOverrides);
-    this.selectedAccessMode = effectiveMatchesConfigured
-      ? "inherit"
-      : this.availableAccessModes().includes(inheritedAccessMode)
-      ? inheritedAccessMode
-      : "inherit";
+    this.selectedMode = modeFromThreadConfiguration(threadResponse);
     this.selectedModel =
-      stringOf(threadResponse, "model") ??
-      parseCodexModels(this.modelResponse)[0]?.id ??
+      stringOf(threadResponse, "model") ||
+      this.selectedModel ||
+      parseCodexModels(this.modelResponse)[0]?.id ||
       "";
     const effort = stringOf(threadResponse, "reasoningEffort");
     if (
@@ -2886,8 +2941,8 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       collaborationModes: this.availableCollaborationModes(),
       fastModeEnabled: this.fastModeEnabled,
       fastModeAvailable: codexModelSupportsFastMode(this.selectedModel),
-      accessMode: this.selectedAccessMode,
-      accessModes: this.availableAccessModes(),
+      modeId: this.selectedMode,
+      modes: this.availableModes(),
       goalsSupported: this.goalsSupported,
       goal: this.goal,
       ...(this.selectedThinking
@@ -2896,42 +2951,41 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     });
   }
 
-  private availableAccessModes(): AgentAccessMode[] {
-    return [
-      "inherit",
-      "default",
-      ...(codexVersionAtLeast(
-        this.launch.detectedVersion,
-        CODEX_AUTO_REVIEW_MIN_VERSION,
-      )
-        ? (["auto-review"] as const)
-        : []),
-      "full-access",
-    ];
+  private availableModes(): AgentMode[] {
+    return CODEX_MODES.filter(
+      (mode) =>
+        mode.id !== "auto-review" ||
+        codexVersionAtLeast(
+          this.launch.detectedVersion,
+          CODEX_AUTO_REVIEW_MIN_VERSION,
+        ),
+    );
   }
 
   private accessOverrides(): Record<string, unknown> {
-    if (this.selectedAccessMode === "inherit") {
-      return this.inheritedAccessOverrides;
-    }
-    if (this.selectedAccessMode === "full-access") {
+    if (!this.hasModeOverride) return {};
+    if (this.selectedMode === "full-access") {
       return {
         approvalPolicy: "never",
         approvalsReviewer: "user",
         sandboxPolicy: { type: "dangerFullAccess" },
       };
     }
+    const resolvedSandbox = recordOf(this.inheritedAccessOverrides.sandboxPolicy);
     return {
       approvalPolicy: "on-request",
       approvalsReviewer:
-        this.selectedAccessMode === "auto-review" ? "auto_review" : "user",
-      sandboxPolicy: {
-        type: "workspaceWrite",
-        writableRoots: [],
-        networkAccess: false,
-        excludeTmpdirEnvVar: false,
-        excludeSlashTmp: false,
-      },
+        this.selectedMode === "auto-review" ? "auto_review" : "user",
+      sandboxPolicy:
+        stringOf(resolvedSandbox, "type") === "workspaceWrite"
+          ? resolvedSandbox
+          : {
+              type: "workspaceWrite",
+              writableRoots: [],
+              networkAccess: false,
+              excludeTmpdirEnvVar: false,
+              excludeSlashTmp: false,
+            },
     };
   }
 

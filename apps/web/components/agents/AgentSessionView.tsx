@@ -17,9 +17,9 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import { AGENT_GOAL_STATUSES } from "@overtchat/agent-bridge";
 import type {
-  AgentAccessMode,
   AgentCollaborationMode,
   AgentGoal,
+  AgentMode,
   AgentPromptImage,
   AgentProviderId,
   AgentRuntimeSnapshot,
@@ -98,25 +98,28 @@ function currentCollaborationMode(
   return snapshot.state.collaborationMode === "plan" ? "plan" : "default";
 }
 
-function accessModes(snapshot: AgentRuntimeSnapshot): AgentAccessMode[] {
-  const value = snapshot.state.accessModes;
+function agentModes(snapshot: AgentRuntimeSnapshot): AgentMode[] {
+  const value = snapshot.state.modes;
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (mode): mode is AgentAccessMode =>
-      mode === "inherit" ||
-      mode === "default" ||
-      mode === "auto-review" ||
-      mode === "full-access",
-  );
+  return value.flatMap((value) => {
+    const mode = recordOf(value);
+    return typeof mode?.id === "string" &&
+      typeof mode.label === "string" &&
+      typeof mode.description === "string"
+      ? [{
+          id: mode.id,
+          label: mode.label,
+          description: mode.description,
+          ...(mode.dangerous === true ? { dangerous: true } : {}),
+        }]
+      : [];
+  });
 }
 
-function currentAccessMode(snapshot: AgentRuntimeSnapshot): AgentAccessMode {
-  const mode = snapshot.state.accessMode;
-  return mode === "default" ||
-    mode === "auto-review" ||
-    mode === "full-access"
-    ? mode
-    : "inherit";
+function currentModeId(snapshot: AgentRuntimeSnapshot): string {
+  return typeof snapshot.state.modeId === "string"
+    ? snapshot.state.modeId
+    : "";
 }
 
 function currentGoal(snapshot: AgentRuntimeSnapshot): AgentGoal | null {
@@ -338,8 +341,8 @@ export function AgentSessionView({
   const collaborationMode = currentCollaborationMode(snapshot);
   const fastModeEnabled = snapshot.state.fastModeEnabled === true;
   const fastModeAvailable = snapshot.state.fastModeAvailable === true;
-  const availableAccessModes = accessModes(snapshot);
-  const accessMode = currentAccessMode(snapshot);
+  const availableModes = agentModes(snapshot);
+  const modeId = currentModeId(snapshot);
   const goal = currentGoal(snapshot);
   const runtimeError =
     snapshot.error ??
@@ -496,8 +499,8 @@ export function AgentSessionView({
               collaborationModes: availableCollaborationModes,
               fastModeEnabled,
               fastModeAvailable,
-              accessMode,
-              accessModes: availableAccessModes,
+              modeId,
+              modes: availableModes,
               disabled: controlsDisabled,
               onSelectModel: (selected) =>
                 void run({
@@ -511,8 +514,12 @@ export function AgentSessionView({
                 void run({ type: "set_collaboration_mode", mode }),
               onToggleFastMode: (enabled) =>
                 void run({ type: "set_fast_mode", enabled }),
-              onSelectAccessMode: (mode) =>
-                void run({ type: "set_access_mode", mode }),
+              onSelectMode: (selectedModeId) => {
+                if (running) {
+                  toast.success("Permission mode applies next turn");
+                }
+                void run({ type: "set_mode", modeId: selectedModeId });
+              },
               onMenuOpenChange: setComposerMenuOpen,
             }}
             contextUsage={snapshot.stats.contextUsage}

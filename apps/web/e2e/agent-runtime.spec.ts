@@ -102,8 +102,25 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       collaborationModes: ["default", "plan"],
       fastModeEnabled: false,
       fastModeAvailable: true,
-      accessMode: "inherit",
-      accessModes: ["inherit", "default", "auto-review", "full-access"],
+      modeId: "auto",
+      modes: [
+        {
+          id: "auto",
+          label: "Default Permissions",
+          description: "Edit files and run commands with Codex's default approval flow.",
+        },
+        {
+          id: "auto-review",
+          label: "Auto-review",
+          description: "Route eligible approvals through Codex's auto-reviewer.",
+        },
+        {
+          id: "full-access",
+          label: "Full Access",
+          description: "Run without additional prompts.",
+          dangerous: true,
+        },
+      ],
       goalsSupported: true,
       goal: {
         objective: "Finish Codex parity",
@@ -486,8 +503,8 @@ test("shows durable turn activity without changing completed tool status", async
         if (command.type === "set_fast_mode") {
           snapshot.state.fastModeEnabled = command.enabled;
         }
-        if (command.type === "set_access_mode") {
-          snapshot.state.accessMode = command.mode;
+        if (command.type === "set_mode") {
+          snapshot.state.modeId = command.modeId;
         }
         if (command.type === "update_goal") {
           if (command.action === "clear") {
@@ -746,20 +763,21 @@ test("shows durable turn activity without changing completed tool status", async
     agentComposer.getByRole("button", { name: "Fast", exact: true }),
   ).toHaveCount(0);
   const permissionsControl = agentComposer.getByRole("button", {
-    name: "Permissions: Codex default",
+    name: "Permissions: Default Permissions",
   });
   await expect(permissionsControl).toBeEnabled();
   await permissionsControl.click();
   await page
     .getByRole("menu", { name: "Permissions" })
-    .getByRole("menuitem", { name: /Default permissions/u })
+    .getByRole("menuitem", { name: /Auto-review/u })
     .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "set_access_mode",
-    mode: "default",
+    type: "set_mode",
+    modeId: "auto-review",
   });
+  await expect(page.getByText("Permission mode applies next turn")).toBeVisible();
   const defaultPermissionsControl = agentComposer.getByRole("button", {
-    name: "Permissions: Default permissions",
+    name: "Permissions: Auto-review",
   });
   await defaultPermissionsControl.click();
   await page
@@ -773,8 +791,8 @@ test("shows durable turn activity without changing completed tool status", async
     .getByRole("button", { name: "Enable Full access" })
     .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "set_access_mode",
-    mode: "full-access",
+    type: "set_mode",
+    modeId: "full-access",
   });
   await expect(
     agentComposer.getByRole("button", {
@@ -1261,8 +1279,25 @@ test("shows durable turn activity without changing completed tool status", async
         collaborationModes: ["default", "plan"],
         fastModeEnabled: false,
         fastModeAvailable: true,
-        accessMode: "default",
-        accessModes: ["inherit", "default", "auto-review", "full-access"],
+        modeId: "auto",
+        modes: [
+          {
+            id: "auto",
+            label: "Default Permissions",
+            description: "Use Codex's default approval flow.",
+          },
+          {
+            id: "auto-review",
+            label: "Auto-review",
+            description: "Route eligible approvals through Codex's auto-reviewer.",
+          },
+          {
+            id: "full-access",
+            label: "Full Access",
+            description: "Run without additional prompts.",
+            dangerous: true,
+          },
+        ],
       },
     });
   }, imageModel);
