@@ -782,7 +782,7 @@ test("shows durable turn activity without changing completed tool status", async
   await defaultPermissionsControl.click();
   await page
     .getByRole("menu", { name: "Permissions" })
-    .getByRole("menuitem", { name: /Full access/u })
+    .getByRole("menuitem", { name: /Full Access/u })
     .click();
   const fullAccessDialog = page.getByRole("alertdialog", {
     name: "Enable Full access?",
