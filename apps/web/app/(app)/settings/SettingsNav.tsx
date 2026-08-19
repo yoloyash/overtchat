@@ -110,7 +110,8 @@ function Section({
 }
 
 function NavLink({ item, pathname }: { item: Item; pathname: string }) {
-  const active = pathname === item.href;
+  const active =
+    pathname === item.href || pathname.startsWith(`${item.href}/`);
   const Icon = item.icon;
   return (
     <Link

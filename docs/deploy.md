@@ -152,6 +152,22 @@ The app container makes the upstream LLM calls, so the base URL you set in **Set
 - **LLM running on the host (not in docker):** use `http://host.docker.internal:<port>/v1`. Baked into `compose.yml` via `extra_hosts`, works on Linux / macOS / Windows.
 - **Public provider (OpenAI / Groq / etc.):** use the provider's base URL + API key.
 
+## MCP servers
+
+Admins can add STDIO or Streamable HTTP MCP servers under **Settings → Tools**.
+STDIO commands run inside the app container, which includes Node.js, npm, and
+npx:
+
+```text
+Command: npx
+Arguments: -y, @example/mcp-server@1.0.0
+```
+
+MCP addresses are resolved from inside the container. Use
+`host.docker.internal` for the Docker host or a Compose service name for a
+container on the same network. Downloads launched through npm use the separate
+`overtchat-npm-cache` volume.
+
 ## Reusing sidecars
 
 SearXNG and Kokoro are bundled by default. To point the app at existing services, set container-reachable URLs in `.env`:

@@ -151,6 +151,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
 ${appDataMount}
+      - overtchat-npm-cache:/app/npm-cache
     depends_on:
       redis:
         condition: service_healthy
@@ -233,7 +234,8 @@ ${appDataMount}
               capabilities: [gpu]
 
 volumes:
-${appDataVolume}  overtchat-stt-models:
+${appDataVolume}  overtchat-npm-cache:
+  overtchat-stt-models:
     name: overtchat-stt-models
 `;
 }

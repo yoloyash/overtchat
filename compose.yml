@@ -19,6 +19,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - overtchat-data:/app/data
+      - overtchat-npm-cache:/app/npm-cache
     depends_on:
       searxng:
         condition: service_healthy
@@ -133,4 +134,5 @@ services:
 
 volumes:
   overtchat-data:
+  overtchat-npm-cache:
   overtchat-stt-models:

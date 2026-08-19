@@ -93,6 +93,8 @@ describe("managed Compose configuration", () => {
     expect(compose).toContain("profiles: [stt-cpu]");
     expect(compose).toContain("profiles: [stt-gpu]");
     expect(compose).toContain('device_ids: ["${STT_GPU_DEVICE_ID}"]');
+    expect(compose).toContain("- overtchat-npm-cache:/app/npm-cache");
+    expect(compose).toContain("\n  overtchat-npm-cache:\n");
     expect(compose).toContain("external: true");
     expect(compose).not.toContain("BRAVE_SEARCH_API_KEY");
     expect(compose).not.toContain("TTS_API_KEY");
@@ -109,6 +111,7 @@ describe("managed Compose configuration", () => {
 
     expect(compose).toContain("type: bind");
     expect(compose).toContain("source: ${OVERTCHAT_DATA_SOURCE}");
+    expect(compose).toContain("- overtchat-npm-cache:/app/npm-cache");
     expect(compose).not.toContain("external: true");
   });
 });

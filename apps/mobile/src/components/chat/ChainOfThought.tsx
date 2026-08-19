@@ -20,14 +20,20 @@ import {
   faviconUrl,
   type FetchUrlPart,
   isToolSettled,
+  parseMcpToolName,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
+import type { DynamicToolUIPart } from "ai";
 import { useTheme } from "@/lib/theme";
 import { MarkdownBody } from "./MarkdownBody";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
-export type ActivityPart = WebSearchPart | FetchUrlPart | ReasoningPart;
+export type ActivityPart =
+  | WebSearchPart
+  | FetchUrlPart
+  | DynamicToolUIPart
+  | ReasoningPart;
 
 function isWebSearch(p: ActivityPart): p is WebSearchPart {
   return p.type === "tool-web_search";
@@ -37,6 +43,9 @@ function isFetchUrl(p: ActivityPart): p is FetchUrlPart {
 }
 function isReasoning(p: ActivityPart): p is ReasoningPart {
   return p.type === "reasoning";
+}
+function isMcpTool(p: ActivityPart): p is DynamicToolUIPart {
+  return p.type === "dynamic-tool" && parseMcpToolName(p.toolName) !== null;
 }
 
 /**
@@ -80,10 +89,14 @@ export function ChainOfThought({
     }
   }, [active]);
 
-  const hasTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const hasTools = parts.some(
+    (p) => isWebSearch(p) || isFetchUrl(p) || isMcpTool(p),
+  );
   const lastTool = [...parts]
     .reverse()
-    .find((part) => isWebSearch(part) || isFetchUrl(part));
+    .find(
+      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+    );
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
@@ -220,13 +233,15 @@ function ShimmerLabel({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part)) &&
+    (isWebSearch(part) || isFetchUrl(part) || isMcpTool(part)) &&
     part.state === "output-error"
         ? "failed"
       : isWebSearch(part)
           ? "search"
           : isFetchUrl(part)
             ? "globe"
+            : isMcpTool(part)
+              ? "tool"
             : "brain";
 
   return (
@@ -237,6 +252,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isMcpTool(part) ? (
+          <McpStep part={part} />
         ) : isReasoning(part) ? (
           <ThinkingContent content={part.text} />
         ) : null}
@@ -245,7 +262,7 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   );
 }
 
-type RailIcon = "search" | "globe" | "brain" | "failed";
+type RailIcon = "search" | "globe" | "tool" | "brain" | "failed";
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
 function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
@@ -259,6 +276,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <Ionicons name="search" size={11} color={colors.mutedForeground} />
         ) : icon === "globe" ? (
           <Ionicons name="globe-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "tool" ? (
+          <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
           <MaterialCommunityIcons name="brain" size={11} color={colors.mutedForeground} />
         )}
@@ -268,6 +287,102 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
       ) : null}
     </View>
   );
+}
+
+function McpStep({ part }: { part: DynamicToolUIPart }) {
+  const { colors, fonts } = useTheme();
+  const parsed = parseMcpToolName(part.toolName);
+  const title = part.title ?? parsed?.toolName ?? part.toolName;
+  const server = parsed?.serverName ?? "MCP";
+  const running = !["output-available", "output-error", "output-denied"].includes(
+    part.state,
+  );
+
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {server} · {title}
+        </Text>
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {running ? "Running" : part.state === "output-error" ? "Failed" : "Done"}
+        </Text>
+      </View>
+      {part.state === "output-error" ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : (
+        <ToolValue label="Input" value={part.input} />
+      )}
+      {part.state === "output-available" ? (
+        <ToolValue label="Output" value={part.output} />
+      ) : null}
+    </View>
+  );
+}
+
+function ToolValue({ label, value }: { label: string; value: unknown }) {
+  const { colors, fonts } = useTheme();
+  if (value === undefined) return null;
+  const text = formatToolValue(value);
+  if (!text) return null;
+  return (
+    <View
+      style={[
+        styles.toolValue,
+        { borderColor: colors.border, backgroundColor: colors.muted },
+      ]}
+    >
+      <Text
+        style={[
+          styles.toolValueLabel,
+          { color: colors.mutedForeground, fontFamily: fonts.sansMedium },
+        ]}
+      >
+        {label.toUpperCase()}
+      </Text>
+      <Text
+        selectable
+        style={[
+          styles.toolValueText,
+          { color: colors.foreground, fontFamily: fonts.sansRegular },
+        ]}
+      >
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+function formatToolValue(value: unknown): string {
+  let text: string;
+  if (typeof value === "string") {
+    text = value;
+  } else {
+    try {
+      text = JSON.stringify(value, null, 2);
+    } catch {
+      text = String(value);
+    }
+  }
+  return text.length > 20_000 ? `${text.slice(0, 20_000)}\n…` : text;
 }
 
 /** A reasoning part's markdown, rendered as muted text inside a step. */
@@ -515,13 +630,21 @@ function activeLabel(last: ActivityPart | undefined): string {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
+  if (isMcpTool(last)) {
+    const parsed = parseMcpToolName(last.toolName);
+    return parsed
+      ? `Running ${parsed.serverName} · ${parsed.toolName}`
+      : "Running MCP tool…";
+  }
   return "Thinking";
 }
 
 function settledLabel(parts: ActivityPart[], duration: number): string {
   const lastTool = [...parts]
     .reverse()
-    .find((part) => isWebSearch(part) || isFetchUrl(part));
+    .find(
+      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+    );
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
     if (lastTool.state === "output-available") return "Searched the web";
@@ -531,6 +654,15 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
     if (lastTool.state === "output-error") return "Page fetch failed";
     if (lastTool.state === "output-available") return "Searched the web";
     return "Page fetch did not complete";
+  }
+  if (lastTool && isMcpTool(lastTool)) {
+    const parsed = parseMcpToolName(lastTool.toolName);
+    const label = parsed
+      ? `${parsed.serverName} · ${parsed.toolName}`
+      : "MCP tool";
+    if (lastTool.state === "output-error") return `${label} failed`;
+    if (lastTool.state === "output-available") return `Used ${label}`;
+    return `${label} did not complete`;
   }
   return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
 }
@@ -572,6 +704,15 @@ const styles = StyleSheet.create({
   stepTitle: { flexShrink: 1, fontSize: 13 },
   metaText: { fontSize: 12 },
   errorText: { fontSize: 12 },
+  toolValue: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    gap: 4,
+  },
+  toolValueLabel: { fontSize: 9, letterSpacing: 0.5 },
+  toolValueText: { fontSize: 11, lineHeight: 16 },
 
   resultList: {
     borderWidth: StyleSheet.hairlineWidth,

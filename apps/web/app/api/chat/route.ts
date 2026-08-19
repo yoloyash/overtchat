@@ -6,6 +6,7 @@ import {
   toUIMessageStream,
   type LanguageModelUsage,
   type TextStreamPart,
+  type ToolSet,
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
@@ -39,6 +40,8 @@ import {
   getTaskModelConfig,
 } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
+import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
+import { acquireMcpBinding } from "@/lib/mcp/manager";
 import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
@@ -205,6 +208,14 @@ async function handlePost(req: Request): Promise<Response> {
         )
       : { role: "system" as const, content: system }
     : undefined;
+  const mcpServers = toolCallingEnabled
+    ? await listEffectiveMcpServers(userId, session.user.role)
+    : [];
+  const mcpBinding =
+    mcpServers.length > 0
+      ? await acquireMcpBinding({ userId, chatId }, mcpServers)
+      : null;
+  const mcpTools = mcpBinding?.tools ?? {};
 
   const last = messages[messages.length - 1];
   const userMessageCount = messages.filter(
@@ -235,6 +246,7 @@ async function handlePost(req: Request): Promise<Response> {
         streamClaimed = true;
       } else if (commitResult === "stream-active") {
         cancelRegistry.unregister(streamId);
+        await mcpBinding?.release();
         return withCors(
           req,
           new Response("Stream already in progress for this chat", {
@@ -243,6 +255,7 @@ async function handlePost(req: Request): Promise<Response> {
         );
       } else if (commitResult === "history-conflict") {
         cancelRegistry.unregister(streamId);
+        await mcpBinding?.release();
         return withCors(
           req,
           new Response("Chat history changed; refresh and try again", {
@@ -251,10 +264,12 @@ async function handlePost(req: Request): Promise<Response> {
         );
       } else {
         cancelRegistry.unregister(streamId);
+        await mcpBinding?.release();
         return withCors(req, new Response("Not found", { status: 404 }));
       }
     } catch (error) {
       cancelRegistry.unregister(streamId);
+      await mcpBinding?.release();
       throw error;
     }
   }
@@ -269,15 +284,31 @@ async function handlePost(req: Request): Promise<Response> {
 
   try {
     const abortSignal = controller?.signal ?? req.signal;
-    const result = webToolsEnabled
-      ? await new ToolLoopAgent<never, typeof chatTools>({
+    const hasMcpTools = Object.keys(mcpTools).length > 0;
+    const agentTools: ToolSet = hasMcpTools
+      ? webToolsEnabled
+        ? { ...chatTools, ...mcpTools }
+        : mcpTools
+      : webToolsEnabled
+        ? chatTools
+        : {};
+    const agentToolNames = Object.keys(agentTools);
+    const toolsEnabled = agentToolNames.length > 0;
+    const toolOrder = [
+      ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
+      ...agentToolNames.filter(
+        (name) => !CHAT_TOOL_ORDER.includes(name as keyof typeof chatTools),
+      ),
+    ];
+    const result = toolsEnabled
+      ? await new ToolLoopAgent<never, ToolSet>({
           model,
           instructions,
-          tools: chatTools,
-          toolOrder: CHAT_TOOL_ORDER,
+          tools: agentTools,
+          toolOrder,
           stopWhen: isStepCount(50),
           toolChoice: "auto",
-          prepareStep: forceSearch
+          prepareStep: forceSearch && webToolsEnabled
             ? ({ stepNumber }) =>
                 stepNumber === 0
                   ? {
@@ -313,7 +344,7 @@ async function handlePost(req: Request): Promise<Response> {
     const streamHeaders = corsHeaders(req);
     streamHeaders.set("Content-Encoding", "none");
     const observedStream = observeChatStream(
-      result.stream as ReadableStream<TextStreamPart<typeof chatTools>>,
+      result.stream as ReadableStream<TextStreamPart<ToolSet>>,
       {
         onFirstToken() {
           firstTokenAt ??= Date.now();
@@ -342,11 +373,14 @@ async function handlePost(req: Request): Promise<Response> {
             console.error("[chat-stream]", error);
           }
         },
+        onDone() {
+          void mcpBinding?.release();
+        },
       },
     );
     const uiStream = toUIMessageStream({
       stream: observedStream,
-      tools: webToolsEnabled ? chatTools : undefined,
+      tools: toolsEnabled ? agentTools : undefined,
       sendReasoning: true,
       originalMessages: messages,
       generateMessageId: () => crypto.randomUUID(),
@@ -506,6 +540,7 @@ async function handlePost(req: Request): Promise<Response> {
     if (resumableSetup) await resumableSetup;
     return response;
   } catch (error) {
+    await mcpBinding?.release();
     controller?.abort();
     if (controller) cancelRegistry.unregister(streamId);
     if (streamClaimed) {
@@ -520,20 +555,22 @@ async function handlePost(req: Request): Promise<Response> {
 }
 
 function observeChatStream(
-  stream: ReadableStream<TextStreamPart<typeof chatTools>>,
+  stream: ReadableStream<TextStreamPart<ToolSet>>,
   callbacks: {
     onFirstToken(): void;
     onFinishStep(usage: LanguageModelUsage): void;
     onError(error: unknown): void;
+    onDone(): void;
   },
-): ReadableStream<TextStreamPart<typeof chatTools>> {
+): ReadableStream<TextStreamPart<ToolSet>> {
   const reader = stream.getReader();
 
-  return new ReadableStream<TextStreamPart<typeof chatTools>>({
+  return new ReadableStream<TextStreamPart<ToolSet>>({
     async pull(controller) {
       try {
         const { done, value: part } = await reader.read();
         if (done) {
+          callbacks.onDone();
           controller.close();
           return;
         }
@@ -551,10 +588,12 @@ function observeChatStream(
         controller.enqueue(part);
       } catch (error) {
         callbacks.onError(error);
+        callbacks.onDone();
         controller.error(error);
       }
     },
     cancel(reason) {
+      callbacks.onDone();
       return reader.cancel(reason);
     },
   });
