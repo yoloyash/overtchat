@@ -2,7 +2,7 @@
 set -eu
 
 repository="yoloyash/overtchat"
-cli_version="0.1.5"
+cli_version="0.1.6"
 
 say() {
   printf '%s\n' "$*"
