@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth/server";
 import { deleteChat, renameChat } from "@/lib/db/chats";
+import { closeChatMcpRuntime } from "@/lib/mcp/manager";
 import { moveChatToProject } from "@/lib/db/projects";
 
 type PatchBody = {
@@ -36,5 +37,6 @@ export async function DELETE(
 
   const { id } = await params;
   await deleteChat(id, session.user.id);
+  await closeChatMcpRuntime({ chatId: id, userId: session.user.id });
   return new Response(null, { status: 204 });
 }

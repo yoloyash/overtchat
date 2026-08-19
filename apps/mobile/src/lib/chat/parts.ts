@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { isMcpToolName } from "@overtchat/shared";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -9,7 +10,10 @@ const ACTIVITY_TYPES = new Set([
 ]);
 
 export function isActivityPart(part: AnyPart): boolean {
-  return ACTIVITY_TYPES.has(part.type);
+  return (
+    ACTIVITY_TYPES.has(part.type) ||
+    (part.type === "dynamic-tool" && isMcpToolName(part.toolName))
+  );
 }
 
 export type Segment =

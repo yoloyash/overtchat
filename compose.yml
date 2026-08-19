@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.14.4}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.15.0}
     build: .
     container_name: overtchat-app
     restart: unless-stopped
@@ -19,6 +19,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - overtchat-data:/app/data
+      - overtchat-npm-cache:/app/npm-cache
     depends_on:
       searxng:
         condition: service_healthy
@@ -133,4 +134,5 @@ services:
 
 volumes:
   overtchat-data:
+  overtchat-npm-cache:
   overtchat-stt-models:

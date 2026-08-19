@@ -26,16 +26,17 @@ RUN DATABASE_URL=:memory: \
 
 FROM base AS runner
 RUN groupadd --system --gid 1001 nodejs \
- && useradd --system --uid 1001 --gid nodejs nextjs
+ && useradd --system --create-home --home-dir /home/nextjs --uid 1001 --gid nodejs nextjs
 
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/drizzle ./apps/web/drizzle
 
-RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
+RUN mkdir -p /app/data /app/npm-cache \
+ && chown -R nextjs:nodejs /app/data /app/npm-cache
 
 USER nextjs
-ENV HOSTNAME=0.0.0.0 PORT=4717 DATABASE_URL=/app/data/chat.db MIGRATIONS_FOLDER=/app/apps/web/drizzle
+ENV HOSTNAME=0.0.0.0 PORT=4717 DATABASE_URL=/app/data/chat.db MIGRATIONS_FOLDER=/app/apps/web/drizzle NPM_CONFIG_CACHE=/app/npm-cache
 EXPOSE 4717
 
 CMD ["node", "apps/web/server.js"]

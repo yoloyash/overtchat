@@ -6,4 +6,5 @@ export * from "./tools";
 export * from "./tool-preferences";
 export * from "./citations";
 export * from "./search";
+export * from "./mcp";
 export * from "./theme/tokens";

@@ -7,6 +7,7 @@ import {
   CircleAlert,
   Globe,
   Loader2,
+  Wrench,
   type LucideIcon,
   Search,
 } from "lucide-react";
@@ -19,10 +20,16 @@ import {
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
+import { parseMcpToolName } from "@overtchat/shared";
+import type { DynamicToolUIPart } from "ai";
 import { ThinkingContent } from "./ThinkingContent";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
-export type ActivityPart = WebSearchPart | FetchUrlPart | ReasoningPart;
+export type ActivityPart =
+  | WebSearchPart
+  | FetchUrlPart
+  | DynamicToolUIPart
+  | ReasoningPart;
 
 function isWebSearch(p: ActivityPart): p is WebSearchPart {
   return p.type === "tool-web_search";
@@ -32,6 +39,9 @@ function isFetchUrl(p: ActivityPart): p is FetchUrlPart {
 }
 function isReasoning(p: ActivityPart): p is ReasoningPart {
   return p.type === "reasoning";
+}
+function isMcpTool(p: ActivityPart): p is DynamicToolUIPart {
+  return p.type === "dynamic-tool" && parseMcpToolName(p.toolName) !== null;
 }
 
 /**
@@ -74,10 +84,14 @@ export function ChainOfThought({
     }
   }, [active]);
 
-  const hasTools = parts.some((p) => isWebSearch(p) || isFetchUrl(p));
+  const hasTools = parts.some(
+    (p) => isWebSearch(p) || isFetchUrl(p) || isMcpTool(p),
+  );
   const lastTool = [...parts]
     .reverse()
-    .find((part) => isWebSearch(part) || isFetchUrl(part));
+    .find(
+      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+    );
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
 
@@ -141,13 +155,15 @@ export function ChainOfThought({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part)) &&
+    (isWebSearch(part) || isFetchUrl(part) || isMcpTool(part)) &&
     part.state === "output-error"
       ? CircleAlert
       : isWebSearch(part)
         ? Search
         : isFetchUrl(part)
           ? Globe
+          : isMcpTool(part)
+            ? Wrench
           : Brain;
 
   return (
@@ -158,12 +174,74 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isMcpTool(part) ? (
+          <McpStep part={part} />
         ) : isReasoning(part) ? (
           <ThinkingContent content={part.text} />
         ) : null}
       </div>
     </div>
   );
+}
+
+function McpStep({ part }: { part: DynamicToolUIPart }) {
+  const parsed = parseMcpToolName(part.toolName);
+  const title = part.title ?? parsed?.toolName ?? part.toolName;
+  const server = parsed?.serverName ?? "MCP";
+  const running = !["output-available", "output-error", "output-denied"].includes(
+    part.state,
+  );
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-medium text-foreground">
+          {server} · {title}
+        </span>
+        <span className="shrink-0 text-muted-foreground">
+          {running ? "Running" : part.state === "output-error" ? "Failed" : "Done"}
+        </span>
+      </div>
+      {part.state === "output-error" ? (
+        <p className="text-destructive">{part.errorText}</p>
+      ) : (
+        <ToolValue label="Input" value={part.input} />
+      )}
+      {part.state === "output-available" && (
+        <ToolValue label="Output" value={part.output} />
+      )}
+    </div>
+  );
+}
+
+function ToolValue({ label, value }: { label: string; value: unknown }) {
+  if (value === undefined) return null;
+  const text = formatToolValue(value);
+  if (!text) return null;
+  return (
+    <div className="rounded-lg border bg-background/40 px-2.5 py-2">
+      <p className="mb-1 text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+        {label}
+      </p>
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-foreground">
+        {text}
+      </pre>
+    </div>
+  );
+}
+
+function formatToolValue(value: unknown): string {
+  let text: string;
+  if (typeof value === "string") {
+    text = value;
+  } else {
+    try {
+      text = JSON.stringify(value, null, 2);
+    } catch {
+      text = String(value);
+    }
+  }
+  return text.length > 20_000 ? `${text.slice(0, 20_000)}\n…` : text;
 }
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
@@ -320,13 +398,21 @@ function activeLabel(last: ActivityPart | undefined): string {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
+  if (isMcpTool(last)) {
+    const parsed = parseMcpToolName(last.toolName);
+    return parsed
+      ? `Running ${parsed.serverName} · ${parsed.toolName}`
+      : "Running MCP tool…";
+  }
   return "Thinking";
 }
 
 function settledLabel(parts: ActivityPart[], duration: number): string {
   const lastTool = [...parts]
     .reverse()
-    .find((part) => isWebSearch(part) || isFetchUrl(part));
+    .find(
+      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+    );
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
     if (lastTool.state === "output-available") return "Searched the web";
@@ -336,6 +422,15 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
     if (lastTool.state === "output-error") return "Page fetch failed";
     if (lastTool.state === "output-available") return "Searched the web";
     return "Page fetch did not complete";
+  }
+  if (lastTool && isMcpTool(lastTool)) {
+    const parsed = parseMcpToolName(lastTool.toolName);
+    const label = parsed
+      ? `${parsed.serverName} · ${parsed.toolName}`
+      : "MCP tool";
+    if (lastTool.state === "output-error") return `${label} failed`;
+    if (lastTool.state === "output-available") return `Used ${label}`;
+    return `${label} did not complete`;
   }
   return duration > 0 ? `Thought for ${duration}s` : "Thoughts";
 }

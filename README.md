@@ -41,8 +41,9 @@ Prefer to manage Compose yourself or deploy from source? See the
 | vLLM · llama.cpp · SGLang | SearXNG · Kokoro TTS · Parakeet STT | Codex · Pi · Oh My Pi |
 
 First-class setup and model discovery for local inference servers, plus hosted
-providers and custom endpoints. The installer can also wire up local search,
-playback, and dictation—no extra integrations or API keys to stitch together.
+providers, custom endpoints, and MCP servers. The installer can also wire up
+local search, playback, and dictation—no extra integrations or API keys to
+stitch together.
 
 ## When you need more than chat
 

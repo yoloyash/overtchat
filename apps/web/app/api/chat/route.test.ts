@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => {
     getModelConfig: vi.fn(),
     getTaskModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
+    listEffectiveMcpServers: vi.fn(),
+    acquireMcpBinding: vi.fn(),
+    releaseMcpBinding: vi.fn(),
     getProject: vi.fn(),
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
@@ -110,6 +113,12 @@ vi.mock("@/lib/db/modelConfigs", () => ({
 }));
 vi.mock("@/lib/db/serverCapabilities", () => ({
   getServerCapability: mocks.getServerCapability,
+}));
+vi.mock("@/lib/db/mcpServers", () => ({
+  listEffectiveMcpServers: mocks.listEffectiveMcpServers,
+}));
+vi.mock("@/lib/mcp/manager", () => ({
+  acquireMcpBinding: mocks.acquireMcpBinding,
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
 vi.mock("@/lib/title", () => ({
@@ -214,6 +223,12 @@ describe("chat route setup boundary", () => {
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
     mocks.getTaskModelConfig.mockReturnValue(null);
     mocks.getServerCapability.mockReturnValue({ provider: "bundled" });
+    mocks.listEffectiveMcpServers.mockResolvedValue([]);
+    mocks.releaseMcpBinding.mockResolvedValue(undefined);
+    mocks.acquireMcpBinding.mockResolvedValue({
+      tools: {},
+      release: mocks.releaseMcpBinding,
+    });
     mocks.getChat.mockResolvedValue(null);
     mocks.getProject.mockResolvedValue(null);
     mocks.getChatMessage.mockResolvedValue(null);
@@ -308,6 +323,21 @@ describe("chat route setup boundary", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "exp://mobile",
     );
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.cancelRegister).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("does not mutate chat when MCP preparation fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.listEffectiveMcpServers.mockResolvedValue([{ id: "reference" }]);
+    mocks.acquireMcpBinding.mockRejectedValue(
+      new Error("MCP configuration failed"),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
     expect(mocks.cancelRegister).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
@@ -641,6 +671,68 @@ describe("chat route setup boundary", () => {
     expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
       expect.objectContaining({ tools: undefined }),
     );
+  });
+
+  it("uses persistent MCP tools without web tools", async () => {
+    const mcpTool = { description: "MCP echo" };
+    const mcpTools = {
+      mcp__reference__abc1234__echo__def12: mcpTool,
+    };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+      forceSearch: true,
+    });
+    mocks.listEffectiveMcpServers.mockResolvedValue([{ id: "reference" }]);
+    mocks.acquireMcpBinding.mockResolvedValue({
+      tools: mcpTools,
+      release: mocks.releaseMcpBinding,
+    });
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mcpTools,
+        toolOrder: Object.keys(mcpTools),
+        toolChoice: "auto",
+      }),
+    );
+    expect(mocks.agentSettings[0]?.prepareStep).toBeUndefined();
+    expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: mcpTools }),
+    );
+    expect(mocks.acquireMcpBinding).toHaveBeenCalledWith(
+      { userId: "user", chatId: "chat" },
+      [{ id: "reference" }],
+    );
+    const observed = mocks.uiStreamOptions?.stream as
+      | ReadableStream<unknown>
+      | undefined;
+    await observed?.pipeTo(new WritableStream());
+    expect(mocks.releaseMcpBinding).toHaveBeenCalledOnce();
+  });
+
+  it("releases an MCP binding when the atomic chat claim fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.listEffectiveMcpServers.mockResolvedValue([{ id: "reference" }]);
+    mocks.commitChatTurn.mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(mocks.releaseMcpBinding).toHaveBeenCalledOnce();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 
   it("labels project context between model and web instructions", async () => {
