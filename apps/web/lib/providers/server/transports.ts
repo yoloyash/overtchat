@@ -9,12 +9,15 @@ import {
   type LanguageModelV4,
   type LanguageModelV4Usage,
 } from "@ai-sdk/provider";
+import { wrapLanguageModel } from "ai";
+import { openAICompatibleToolImagesMiddleware } from "@/lib/providers/server/openai-compatible-tool-images";
 
 interface TransportConfig {
   providerName: string;
   baseUrl: string;
   apiKey: string | null | undefined;
   model: string;
+  supportsImageInput?: boolean;
   transformRequestBody?: (
     body: Record<string, unknown>,
   ) => Record<string, unknown>;
@@ -33,7 +36,7 @@ export function createOpenAIResponsesModel(
 export function createOpenAICompatibleChatModel(
   config: TransportConfig,
 ): LanguageModelV4 {
-  return createOpenAICompatible({
+  const model = createOpenAICompatible({
     name: config.providerName,
     baseURL: config.baseUrl,
     apiKey: credential(config.apiKey),
@@ -47,6 +50,13 @@ export function createOpenAICompatibleChatModel(
       ? { transformRequestBody: config.transformRequestBody }
       : {}),
   }).chatModel(config.model);
+
+  return wrapLanguageModel({
+    model,
+    middleware: openAICompatibleToolImagesMiddleware({
+      supportsImageInput: config.supportsImageInput,
+    }),
+  });
 }
 
 export function convertOpenAICompatibleUsage(

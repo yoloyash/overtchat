@@ -6,6 +6,8 @@ import { and, eq, lt, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import { db } from "@/lib/db/client";
 import { messages, uploads } from "@/lib/db/schema";
+import { MAX_BYTES_IMAGE } from "@/lib/extract";
+import { assertFetchedImageContent } from "@/lib/image-content";
 
 type Part = UIMessagePart<UIDataTypes, UITools>;
 
@@ -49,6 +51,61 @@ export async function getUpload(
 const UPLOAD_URL_PREFIX = "/api/uploads/";
 
 const ORPHAN_GRACE_MS = 24 * 60 * 60 * 1000;
+
+export async function storeFetchedImage(input: {
+  userId: string;
+  filename: string;
+  mediaType: string;
+  data: Uint8Array;
+}): Promise<{ uploadUrl: string }> {
+  if (input.data.byteLength > MAX_BYTES_IMAGE) {
+    throw new Error("Fetched image exceeds the upload size limit.");
+  }
+  assertFetchedImageContent(input.data, input.mediaType);
+
+  const id = crypto.randomUUID();
+  await fsp.writeFile(uploadPath(id), input.data);
+  try {
+    await createUpload({
+      id,
+      userId: input.userId,
+      filename: input.filename,
+      mediaType: input.mediaType,
+      category: "image",
+      size: input.data.byteLength,
+      pageCount: null,
+      extractedText: null,
+      truncated: false,
+    });
+  } catch (error) {
+    await fsp.rm(uploadPath(id), { force: true });
+    throw error;
+  }
+  return { uploadUrl: `${UPLOAD_URL_PREFIX}${id}` };
+}
+
+export async function readFetchedImage(
+  uploadUrl: string,
+  userId: string,
+): Promise<{ data: Uint8Array; filename: string; mediaType: string } | null> {
+  if (!uploadUrl.startsWith(UPLOAD_URL_PREFIX)) return null;
+  const id = uploadUrl.slice(UPLOAD_URL_PREFIX.length);
+  if (!id || id.includes("/")) return null;
+
+  const row = await getUpload(id, userId);
+  if (!row || row.category !== "image") return null;
+  try {
+    const data = await fsp.readFile(uploadPath(id));
+    assertFetchedImageContent(data, row.mediaType);
+    return {
+      data,
+      filename: row.filename,
+      mediaType: row.mediaType,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Deletes upload rows (and their disk bytes) older than 24h that no message

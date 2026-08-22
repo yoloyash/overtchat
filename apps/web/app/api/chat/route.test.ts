@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
     modelIconForModel: vi.fn(),
     catalogEntryFor: vi.fn(),
     catalogPricingFor: vi.fn(),
+    resolveModelCapabilities: vi.fn(),
     resolveModelContextWindow: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
     cancelRegister: vi.fn(),
@@ -37,6 +38,7 @@ const mocks = vi.hoisted(() => {
     getStreamContext: vi.fn(),
     currentDateSystemPrompt: vi.fn(),
     convertToModelMessages: vi.fn(),
+    createWebTools: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -46,7 +48,6 @@ const mocks = vi.hoisted(() => {
     uiStreamOptions: undefined as Record<string, unknown> | undefined,
     responseOptions: undefined as Record<string, unknown> | undefined,
     responseStream: undefined as ReadableStream<string> | undefined,
-    webTools,
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
@@ -72,8 +73,7 @@ vi.mock("ai", () => ({
   toUIMessageStream: mocks.toUIMessageStream,
 }));
 vi.mock("@/lib/tools", () => ({
-  chatTools: mocks.chatTools,
-  webTools: mocks.webTools,
+  createWebTools: mocks.createWebTools,
   CHAT_TOOL_ORDER: mocks.toolOrder,
   WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
@@ -135,6 +135,7 @@ vi.mock("@/lib/providers/server/model-catalog", () => ({
   catalogEntryFor: mocks.catalogEntryFor,
   catalogPricingFor: mocks.catalogPricingFor,
   resolveModelContextWindow: mocks.resolveModelContextWindow,
+  resolveModelCapabilities: mocks.resolveModelCapabilities,
 }));
 vi.mock("@/lib/streams/cancel-registry", () => ({
   register: mocks.cancelRegister,
@@ -237,6 +238,8 @@ describe("chat route setup boundary", () => {
       providerOptions: undefined,
       promptCacheStrategy: undefined,
     });
+    mocks.resolveModelCapabilities.mockReturnValue(undefined);
+    mocks.createWebTools.mockReturnValue(mocks.chatTools);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -644,6 +647,29 @@ describe("chat route setup boundary", () => {
     );
     expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toBe(
       mocks.chatTools,
+    );
+    expect(mocks.createWebTools).toHaveBeenCalledWith({
+      userId: "user",
+      supportsImageInput: true,
+    });
+    expect(mocks.convertToModelMessages).toHaveBeenCalledWith(messages, {
+      tools: mocks.chatTools,
+    });
+  });
+
+  it("marks fetched images unavailable to an explicitly text-only model", async () => {
+    mocks.resolveModelCapabilities.mockReturnValue({
+      inputModalities: ["text"],
+    });
+
+    await POST(request());
+
+    expect(mocks.createWebTools).toHaveBeenCalledWith({
+      userId: "user",
+      supportsImageInput: false,
+    });
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ supportsImageInput: false }),
     );
   });
 

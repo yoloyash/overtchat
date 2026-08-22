@@ -12,6 +12,7 @@ export const deepSeekAdapter: ProviderAdapter = {
         baseUrl: config.baseUrl,
         apiKey: config.apiKey,
         model: config.model,
+        supportsImageInput: config.supportsImageInput,
         transformRequestBody: prepareDeepSeekRequest,
       }),
       providerOptionsKey: "deepseek",
