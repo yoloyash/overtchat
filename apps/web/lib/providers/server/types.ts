@@ -15,6 +15,7 @@ export interface ProviderModelConfig extends ProviderConnection {
   providerOptions: Record<string, unknown> | null | undefined;
   /** App capability policy; provider adapters do not infer this from model IDs. */
   toolCallingEnabled?: boolean;
+  supportsImageInput?: boolean;
 }
 
 export interface ResolvedLanguageModel {

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  chatModel: vi.fn(() => ({ specificationVersion: "v4" })),
+  chatModel: vi.fn(),
   createOpenAICompatible: vi.fn(),
 }));
 
@@ -18,6 +18,7 @@ import {
 describe("OpenAI-compatible transport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.chatModel.mockReturnValue({ specificationVersion: "v4" });
     mocks.createOpenAICompatible.mockReturnValue({
       chatModel: mocks.chatModel,
     });
@@ -39,6 +40,78 @@ describe("OpenAI-compatible transport", () => {
       convertUsage: expect.any(Function),
     });
     expect(mocks.chatModel).toHaveBeenCalledWith("solar-open2-250b");
+  });
+
+  it("applies tool-result image promotion at the provider boundary", async () => {
+    const doGenerate = vi.fn().mockResolvedValue({});
+    mocks.chatModel.mockReturnValue({
+      specificationVersion: "v4",
+      provider: "custom.openai-compatible",
+      modelId: "vision-model",
+      supportedUrls: {},
+      doGenerate,
+      doStream: vi.fn(),
+    });
+    const model = createOpenAICompatibleChatModel({
+      providerName: "custom.openai-compatible",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: "nerdtastic",
+      model: "vision-model",
+      supportsImageInput: true,
+    });
+
+    await model.doGenerate({
+      prompt: [
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "fetch_url",
+              output: {
+                type: "content",
+                value: [
+                  { type: "text", text: "Fetched image." },
+                  {
+                    type: "file",
+                    mediaType: "image/jpeg",
+                    data: { type: "data", data: "base64-image" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(doGenerate).toHaveBeenCalledWith({
+      prompt: [
+        {
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: "call-1",
+              toolName: "fetch_url",
+              output: { type: "text", value: "Fetched image." },
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Attached image(s) from tool result:" },
+            {
+              type: "file",
+              mediaType: "image/jpeg",
+              data: { type: "data", data: "base64-image" },
+            },
+          ],
+        },
+      ],
+    });
   });
 
   it("normalizes DeepSeek cache hits without treating misses as writes", () => {

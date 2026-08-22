@@ -18,7 +18,7 @@ import {
 } from "@/lib/chat/prompt-cache";
 import {
   CHAT_TOOL_ORDER,
-  chatTools,
+  createWebTools,
   WEB_TOOL_NAMES,
   WEB_SEARCH_CITATION_PROMPT,
 } from "@/lib/tools";
@@ -50,7 +50,10 @@ import {
   sumEstimatedGenerationCosts,
   type EstimatedGenerationCost,
 } from "@/lib/providers/server/model-cost";
-import { resolveModelContextWindow } from "@/lib/providers/server/model-catalog";
+import {
+  resolveModelCapabilities,
+  resolveModelContextWindow,
+} from "@/lib/providers/server/model-catalog";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
@@ -155,6 +158,14 @@ async function handlePost(req: Request): Promise<Response> {
   // Everything above and through message conversion is read-only. A saved
   // configuration, missing upload, or malformed message therefore cannot
   // truncate an edit/regenerate branch or persist a partial turn.
+  const modelCapabilities = resolveModelCapabilities(
+    modelConfig.discoveredCapabilities,
+    modelConfig.providerId,
+    modelConfig.model,
+  );
+  const supportsImageInput = modelCapabilities?.inputModalities
+    ? modelCapabilities.inputModalities.includes("image")
+    : modelCapabilities?.attachment !== false;
   const { model, providerOptions, promptCacheStrategy } =
     createConfiguredLanguageModel({
       providerId: modelConfig.providerId,
@@ -164,9 +175,13 @@ async function handlePost(req: Request): Promise<Response> {
       model: modelConfig.model,
       providerOptions: modelConfig.providerOptions,
       toolCallingEnabled: modelConfig.toolCallingEnabled,
+      supportsImageInput,
     });
+  const chatTools = createWebTools({ userId, supportsImageInput });
   const inlined = await inlineUploads(messages, userId);
-  const convertedMessages = await convertToModelMessages(inlined);
+  const convertedMessages = await convertToModelMessages(inlined, {
+    tools: chatTools,
+  });
   const modelMessages =
     promptCacheStrategy?.kind === "anthropic"
       ? markAnthropicConversationCacheBoundary(
@@ -297,7 +312,7 @@ async function handlePost(req: Request): Promise<Response> {
     const toolOrder = [
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
       ...agentToolNames.filter(
-        (name) => !CHAT_TOOL_ORDER.includes(name as keyof typeof chatTools),
+        (name) => !(CHAT_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
     const result = toolsEnabled

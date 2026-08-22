@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import {
+  type FetchedImage,
   type FetchUrlPart,
   isToolSettled,
   type WebSearchPart,
@@ -324,6 +325,34 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
     );
   }
 
+  if (isFetchedImage(page)) {
+    return (
+      <a
+        href={page.url}
+        target="_blank"
+        rel="noreferrer"
+        className="flex items-center gap-2.5 rounded-lg border bg-background/40 p-2 motion-colors hover:bg-accent/60"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={page.uploadUrl}
+          alt=""
+          loading="lazy"
+          className="size-12 shrink-0 rounded-md bg-muted object-cover"
+        />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-medium text-foreground">
+            {page.filename}
+          </span>
+          <span className="block truncate text-muted-foreground">
+            {cleanDomain(page.url)}
+          </span>
+        </span>
+        <span className="shrink-0 text-muted-foreground">Image</span>
+      </a>
+    );
+  }
+
   return (
     <a
       href={page?.url ?? url ?? "#"}
@@ -345,6 +374,13 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
         </span>
       )}
     </a>
+  );
+}
+
+function isFetchedImage(value: unknown): value is FetchedImage {
+  return (
+    Boolean(value && typeof value === "object") &&
+    (value as Partial<FetchedImage>).kind === "image"
   );
 }
 
@@ -420,7 +456,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool?.type === "tool-fetch_url") {
     if (lastTool.state === "output-error") return "Page fetch failed";
-    if (lastTool.state === "output-available") return "Searched the web";
+    if (lastTool.state === "output-available") {
+      return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
+    }
     return "Page fetch did not complete";
   }
   if (lastTool && isMcpTool(lastTool)) {

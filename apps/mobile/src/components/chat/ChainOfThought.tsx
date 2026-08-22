@@ -18,6 +18,7 @@ import {
 import {
   cleanDomain,
   faviconUrl,
+  type FetchedImage,
   type FetchUrlPart,
   isToolSettled,
   parseMcpToolName,
@@ -25,6 +26,7 @@ import {
   type WebSearchResult,
 } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
+import { getApiBase, getAuthCookie } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { MarkdownBody } from "./MarkdownBody";
 
@@ -552,6 +554,60 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
     );
   }
 
+  if (isFetchedImage(page)) {
+    const cookie = getAuthCookie();
+    const source = {
+      uri: `${getApiBase()}${page.uploadUrl}`,
+      headers: cookie ? { Cookie: cookie } : undefined,
+    };
+    return (
+      <Pressable
+        onPress={() => Linking.openURL(page.url).catch(() => {})}
+        style={({ pressed }) => [
+          styles.fetchRow,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.muted,
+            opacity: pressed ? 0.7 : 1,
+          },
+        ]}
+      >
+        <Image source={source} style={styles.fetchedImage} />
+        <View style={styles.fetchedImageText}>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.resultTitle,
+              { color: colors.foreground, fontFamily: fonts.sansRegular },
+            ]}
+          >
+            {page.filename}
+          </Text>
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.resultDomain,
+              {
+                color: colors.mutedForeground,
+                fontFamily: fonts.sansRegular,
+              },
+            ]}
+          >
+            {cleanDomain(page.url)}
+          </Text>
+        </View>
+        <Text
+          style={[
+            styles.resultDomain,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          Image
+        </Text>
+      </Pressable>
+    );
+  }
+
   return (
     <Pressable
       onPress={() => Linking.openURL(page?.url ?? url ?? "").catch(() => {})}
@@ -585,6 +641,13 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
         </Text>
       ) : null}
     </Pressable>
+  );
+}
+
+function isFetchedImage(value: unknown): value is FetchedImage {
+  return (
+    Boolean(value && typeof value === "object") &&
+    (value as Partial<FetchedImage>).kind === "image"
   );
 }
 
@@ -652,7 +715,9 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   }
   if (lastTool?.type === "tool-fetch_url") {
     if (lastTool.state === "output-error") return "Page fetch failed";
-    if (lastTool.state === "output-available") return "Searched the web";
+    if (lastTool.state === "output-available") {
+      return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
+    }
     return "Page fetch did not complete";
   }
   if (lastTool && isMcpTool(lastTool)) {
@@ -745,4 +810,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   favicon: { width: 16, height: 16, borderRadius: 4 },
+  fetchedImage: { width: 48, height: 48, borderRadius: 6 },
+  fetchedImageText: { flex: 1, minWidth: 0 },
 });

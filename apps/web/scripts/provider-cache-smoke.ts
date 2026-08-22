@@ -18,7 +18,7 @@ import {
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   CHAT_TOOL_ORDER,
-  chatTools,
+  createWebTools,
   WEB_SEARCH_CITATION_PROMPT,
   WEB_TOOL_NAMES,
 } from "@/lib/tools";
@@ -224,6 +224,11 @@ class WireRecorder {
     };
   }
 }
+
+const chatTools = createWebTools({
+  userId: "provider-cache-smoke",
+  supportsImageInput: true,
+});
 
 const smokeTools = {
   web_search: {
