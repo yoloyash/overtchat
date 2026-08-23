@@ -7,14 +7,12 @@ import type {
   RuntimePaths,
 } from "./types.js";
 import {
-  APP_VERSION,
   APP_IMAGE,
-  CONNECTOR_VERSION,
   DEFAULT_APP_PORT,
   DEFAULT_COMPOSE_PROJECT,
   DEFAULT_DATA_VOLUME,
-  STT_VERSION,
 } from "./constants.js";
+import { compareVersions, type ReleaseManifest } from "./release.js";
 
 export type InstallationSecrets = {
   betterAuthSecret: string;
@@ -31,36 +29,33 @@ function environmentFlag(value: string | undefined): boolean | undefined {
   return /^(1|true|yes)$/iu.test(value.trim());
 }
 
-function newerVersion(left: string | undefined, right: string): boolean {
-  if (!left || !/^\d+\.\d+\.\d+$/u.test(left)) return false;
-  const leftParts = left.split(".").map(Number);
-  const rightParts = right.split(".").map(Number);
-  return leftParts.some((value, index) => {
-    const previousEqual = leftParts
-      .slice(0, index)
-      .every((part, partIndex) => part === rightParts[partIndex]);
-    return previousEqual && value > (rightParts[index] ?? 0);
-  });
-}
-
 export function defaultInstallationConfig(
   existing: ExistingInstallation | null,
+  manifest: ReleaseManifest,
 ): InstallationConfig {
   const environment = existing?.environment;
   const searchUrl = environment?.get("SEARXNG_URL");
   const ttsUrl = environment?.get("KOKORO_URL");
   const sttUrl = environment?.get("STT_URL");
-  const preserveNewerApp = newerVersion(existing?.appVersion, APP_VERSION);
-  const appVersion = preserveNewerApp ? existing!.appVersion! : APP_VERSION;
+  const preserveNewerApp =
+    existing?.appVersion !== undefined &&
+    /^\d+\.\d+\.\d+$/u.test(existing.appVersion) &&
+    compareVersions(existing.appVersion, manifest.appVersion) > 0;
+  const appVersion = preserveNewerApp
+    ? existing.appVersion!
+    : manifest.appVersion;
   const appImage = preserveNewerApp
     ? existing!.appImage!
-    : `${APP_IMAGE}:${APP_VERSION}`;
+    : `${APP_IMAGE}:${manifest.appVersion}`;
   return {
     format: 1,
     appVersion,
     appImage,
-    connectorVersion: CONNECTOR_VERSION,
-    sttVersion: STT_VERSION,
+    connectorVersion: manifest.connectorVersion,
+    sttVersion: manifest.sttVersion,
+    redisImage: manifest.redisImage,
+    searxngImage: manifest.searxngImage,
+    kokoroImage: manifest.kokoroImage,
     appPort: existing?.appPort ?? DEFAULT_APP_PORT,
     bindAddress: existing?.bindAddress ?? "0.0.0.0",
     publicUrl:

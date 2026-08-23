@@ -90,6 +90,12 @@ vi.mock("./setup.js", () => ({
 
 import { update } from "./update.js";
 
+const releaseImages = {
+  redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
+  searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
+  kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
+};
+
 function config(
   overrides: Partial<InstallationConfig> = {},
 ): InstallationConfig {
@@ -99,6 +105,7 @@ function config(
     appImage: "ghcr.io/yoloyash/overtchat-app:0.14.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    ...releaseImages,
     appPort: 4718,
     bindAddress: "127.0.0.1",
     publicUrl: "https://chat.example.com",
@@ -133,6 +140,7 @@ beforeEach(() => {
     appVersion: "0.14.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    ...releaseImages,
   });
   mocks.updateCliIfNeeded.mockResolvedValue(null);
   mocks.renderStackEnvironment.mockReturnValue("rendered environment\n");
@@ -244,6 +252,7 @@ describe("managed updates", () => {
       appVersion: "0.14.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      ...releaseImages,
     });
 
     await update();
@@ -254,6 +263,7 @@ describe("managed updates", () => {
       appImage: "ghcr.io/yoloyash/overtchat-app:0.14.0",
       connectorVersion: "0.5.0",
       sttVersion: "0.1.0",
+      ...releaseImages,
     };
     expect(mocks.prepareFiles).toHaveBeenCalledWith(expected, undefined);
     expect(mocks.installManagedConnector).toHaveBeenCalledWith(
@@ -301,6 +311,7 @@ describe("managed updates", () => {
       appVersion: "0.14.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      ...releaseImages,
     });
     mocks.requireDocker.mockRejectedValueOnce(new Error("pull failed"));
 

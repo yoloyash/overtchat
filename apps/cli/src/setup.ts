@@ -1,4 +1,4 @@
-import { cp, mkdir, stat, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { confirm, isCancel, note, outro, spinner } from "@clack/prompts";
 import {
@@ -32,6 +32,11 @@ import { primaryLanAddress } from "./network.js";
 import { runtimePaths } from "./paths.js";
 import { requireSuccessful } from "./process.js";
 import { promptInstallationConfig } from "./prompts.js";
+import {
+  applyReleaseManifest,
+  parseReleaseManifest,
+  type ReleaseManifest,
+} from "./release.js";
 import { createPreMigrationSnapshot } from "./snapshot.js";
 import type { ExistingInstallation, InstallationConfig } from "./types.js";
 
@@ -264,9 +269,36 @@ export function installationNeedsAdoption(
   );
 }
 
-export async function setup(options: SetupOptions): Promise<void> {
+async function developmentReleaseManifest(
+  sourceDirectory: string,
+): Promise<ReleaseManifest> {
+  const manifestPath = path.join(
+    sourceDirectory,
+    "apps",
+    "site",
+    "public",
+    "install-manifest.json",
+  );
+  return parseReleaseManifest(
+    JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
+  );
+}
+
+export async function setup(
+  options: SetupOptions,
+  productionManifest?: ReleaseManifest,
+): Promise<void> {
   if (process.platform !== "linux") {
     throw new Error("The managed OvertChat installer currently supports Linux.");
+  }
+  const sourceDirectory = path.resolve(
+    process.env.OVERTCHAT_SOURCE_DIR || process.env.INIT_CWD || process.cwd(),
+  );
+  const manifest = options.development
+    ? await developmentReleaseManifest(sourceDirectory)
+    : productionManifest;
+  if (!manifest) {
+    throw new Error("A release manifest is required for production setup.");
   }
   let docker = await detectDockerCommand();
   if (!docker) {
@@ -298,16 +330,14 @@ export async function setup(options: SetupOptions): Promise<void> {
   const saved = await readInstallationConfig(paths);
   const adopting = installationNeedsAdoption(existing, paths.stackDirectory);
   const previousSecrets = await readInstallationSecrets(paths);
-  let config = saved ?? defaultInstallationConfig(existing);
+  let config = saved ?? defaultInstallationConfig(existing, manifest);
+  config = applyReleaseManifest(config, manifest);
   if (saved) {
     config = mergeRunningCapabilities(
       config,
       await runningCapabilities(config, previousSecrets.managementSecret),
     );
   }
-  const sourceDirectory = path.resolve(
-    process.env.OVERTCHAT_SOURCE_DIR || process.env.INIT_CWD || process.cwd(),
-  );
   if (options.development) {
     if (!(await exists(path.join(sourceDirectory, "Dockerfile")))) {
       throw new Error(
