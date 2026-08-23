@@ -7,7 +7,10 @@ npm-debug.log*
 apps/web/data
 apps/connector
 apps/mobile
-apps/site
+apps/site/*
+!apps/site/public
+apps/site/public/*
+!apps/site/public/install-manifest.json
 scripts
 **/test-results
 **/playwright-report
