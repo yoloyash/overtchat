@@ -18,9 +18,6 @@ on:
       - "package.json"
       - "package-lock.json"
       - "wrangler.jsonc"
-  release:
-    types: [published, edited, deleted]
-  workflow_dispatch:
 
 permissions: {}
 
@@ -37,7 +34,6 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.event_name == 'release' && 'main' || github.sha }}
           persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -62,80 +58,3 @@ jobs:
           NEXT_PUBLIC_SITE_ORIGIN: https://overtchat.com
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build -w apps/site --
-
-      - name: Resolve public connector installer
-        id: connector-installer
-        if: github.event_name != 'pull_request'
-        run: |
-          connector_version=$(node -p "require('./apps/connector/package.json').version")
-          installer_url="https://github.com/yoloyash/overtchat/releases/download/connector-v$connector_version/install-connector.sh"
-          expected_redirect="/install/connector/$connector_version $installer_url 302"
-
-          grep -Fx "$expected_redirect" apps/site/public/_redirects
-          grep -Fx "/install-connector.sh /install/connector/$connector_version 302" \
-            apps/site/public/_redirects
-
-          verification_directory=$(mktemp -d)
-          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
-          if ! curl --proto '=https' --tlsv1.2 \
-              --fail --silent --show-error --location \
-              --retry 10 --retry-delay 3 --retry-all-errors --retry-max-time 120 \
-              --output "$verification_directory/install-connector.sh" \
-              "$installer_url"; then
-            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-              echo "Connector v$connector_version is not public yet; deferring site deployment."
-              echo "ready=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            exit 1
-          fi
-          cmp scripts/install-connector.sh "$verification_directory/install-connector.sh"
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve public managed installer
-        id: managed-installer
-        if: github.event_name != 'pull_request'
-        run: |
-          cli_version=$(node -p "require('./apps/site/public/install-manifest.json').cliVersion")
-          app_version=$(node -p "require('./apps/site/public/install-manifest.json').appVersion")
-          grep -F "cli_version=\"$cli_version\"" apps/site/public/install
-
-          release_url="https://github.com/yoloyash/overtchat/releases/download/cli-v$cli_version"
-          verification_directory=$(mktemp -d)
-          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
-          ready=true
-          for asset in overtchat-checksums.txt overtchat-linux-amd64 overtchat-linux-arm64; do
-            curl --proto '=https' --tlsv1.2 \
-              --fail --silent --show-error --location \
-              --retry 10 --retry-delay 3 --retry-all-errors --retry-max-time 120 \
-              --output "$verification_directory/$asset" \
-              "$release_url/$asset" || ready=false
-          done
-          if [ "$ready" = "true" ]; then
-            (cd "$verification_directory" && sha256sum --check overtchat-checksums.txt) || ready=false
-          fi
-          docker manifest inspect \
-            "ghcr.io/yoloyash/overtchat-app:$app_version" >/dev/null || ready=false
-
-          if [ "$ready" != "true" ]; then
-            if [ "$GITHUB_EVENT_NAME" = "push" ]; then
-              echo "The managed OvertChat release is not public yet; deferring site deployment."
-              echo "ready=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            exit 1
-          fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy site to Cloudflare
-        if: >-
-          github.event_name != 'pull_request' &&
-          steps.connector-installer.outputs.ready == 'true' &&
-          steps.managed-installer.outputs.ready == 'true'
-        env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          test -n "$CLOUDFLARE_ACCOUNT_ID"
-          test -n "$CLOUDFLARE_API_TOKEN"
-          npm run site:deploy

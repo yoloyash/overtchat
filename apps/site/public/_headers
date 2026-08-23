@@ -1,0 +1,5 @@
+/install-manifest.json
+  Cache-Control: no-cache
+
+/install
+  Cache-Control: no-cache
