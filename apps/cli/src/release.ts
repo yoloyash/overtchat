@@ -11,10 +11,12 @@ import {
 import path from "node:path";
 import {
   CLI_VERSION,
+  APP_IMAGE,
   CONNECTOR_REPOSITORY,
   RELEASE_MANIFEST_URL,
 } from "./constants.js";
 import { runCommand } from "./process.js";
+import type { InstallationConfig } from "./types.js";
 
 export type ReleaseManifest = {
   format: 1;
@@ -22,6 +24,9 @@ export type ReleaseManifest = {
   appVersion: string;
   connectorVersion: string;
   sttVersion: string;
+  redisImage: string;
+  searxngImage: string;
+  kokoroImage: string;
 };
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
@@ -39,8 +44,55 @@ export function compareVersions(left: string, right: string): number {
   return 0;
 }
 
+export function applyReleaseManifest(
+  config: InstallationConfig,
+  manifest: ReleaseManifest,
+): InstallationConfig {
+  const appVersion =
+    compareVersions(manifest.appVersion, config.appVersion) > 0
+      ? manifest.appVersion
+      : config.appVersion;
+  const connectorVersion =
+    compareVersions(manifest.connectorVersion, config.connectorVersion) > 0
+      ? manifest.connectorVersion
+      : config.connectorVersion;
+  const sttVersion =
+    compareVersions(manifest.sttVersion, config.sttVersion) > 0
+      ? manifest.sttVersion
+      : config.sttVersion;
+
+  return {
+    ...config,
+    appVersion,
+    appImage:
+      config.appImage === "overtchat-app:setup-dev"
+        ? config.appImage
+        : `${APP_IMAGE}:${appVersion}`,
+    connectorVersion,
+    sttVersion,
+    redisImage: manifest.redisImage,
+    searxngImage: manifest.searxngImage,
+    kokoroImage: manifest.kokoroImage,
+  };
+}
+
 function assertVersion(value: unknown, field: string): asserts value is string {
   if (typeof value !== "string" || !VERSION_PATTERN.test(value)) {
+    throw new Error(`The release manifest has an invalid ${field}.`);
+  }
+}
+
+function assertDigestImage(
+  value: unknown,
+  field: string,
+  repository: string,
+): asserts value is string {
+  const prefix = `${repository}@sha256:`;
+  if (
+    typeof value !== "string" ||
+    !value.startsWith(prefix) ||
+    !/^[a-f0-9]{64}$/u.test(value.slice(prefix.length))
+  ) {
     throw new Error(`The release manifest has an invalid ${field}.`);
   }
 }
@@ -53,16 +105,29 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   const appVersion = Reflect.get(value, "appVersion");
   const connectorVersion = Reflect.get(value, "connectorVersion");
   const sttVersion = Reflect.get(value, "sttVersion");
+  const redisImage = Reflect.get(value, "redisImage");
+  const searxngImage = Reflect.get(value, "searxngImage");
+  const kokoroImage = Reflect.get(value, "kokoroImage");
   assertVersion(cliVersion, "CLI version");
   assertVersion(appVersion, "app version");
   assertVersion(connectorVersion, "connector version");
   assertVersion(sttVersion, "STT version");
+  assertDigestImage(redisImage, "Redis image", "docker.io/library/redis");
+  assertDigestImage(searxngImage, "SearXNG image", "docker.io/searxng/searxng");
+  assertDigestImage(
+    kokoroImage,
+    "Kokoro image",
+    "ghcr.io/remsky/kokoro-fastapi-cpu",
+  );
   return {
     format: 1,
     cliVersion,
     appVersion,
     connectorVersion,
     sttVersion,
+    redisImage,
+    searxngImage,
+    kokoroImage,
   };
 }
 

@@ -46,6 +46,9 @@ export type InstallationConfig = {
   appImage: string;
   connectorVersion: string;
   sttVersion: string;
+  redisImage: string;
+  searxngImage: string;
+  kokoroImage: string;
   appPort: number;
   bindAddress: string;
   publicUrl: string;

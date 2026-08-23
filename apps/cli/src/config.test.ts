@@ -8,7 +8,19 @@ import {
   readInstallationConfig,
   writeInstallationConfig,
 } from "./config.js";
+import type { ReleaseManifest } from "./release.js";
 import type { ExistingInstallation, RuntimePaths } from "./types.js";
+
+const manifest: ReleaseManifest = {
+  format: 1,
+  cliVersion: "1.0.0",
+  appVersion: "2.0.0",
+  connectorVersion: "3.0.0",
+  sttVersion: "4.0.0",
+  redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
+  searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
+  kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
+};
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -39,9 +51,21 @@ function existing(
 }
 
 describe("existing installation adoption", () => {
+  it("uses the release manifest for a fresh installation", () => {
+    expect(defaultInstallationConfig(null, manifest)).toMatchObject({
+      appVersion: "2.0.0",
+      appImage: "ghcr.io/yoloyash/overtchat-app:2.0.0",
+      connectorVersion: "3.0.0",
+      sttVersion: "4.0.0",
+      redisImage: manifest.redisImage,
+      searxngImage: manifest.searxngImage,
+      kokoroImage: manifest.kokoroImage,
+    });
+  });
+
   it("preserves network, storage, secrets, and external providers", () => {
     const detected = existing();
-    const config = defaultInstallationConfig(detected);
+    const config = defaultInstallationConfig(detected, manifest);
 
     expect(config).toMatchObject({
       composeProject: "homechat",
@@ -73,6 +97,7 @@ describe("existing installation adoption", () => {
         appVersion: "9.1.0",
         appImage: "ghcr.io/yoloyash/overtchat-app:9.1.0",
       }),
+      manifest,
     );
 
     expect(config.appVersion).toBe("9.1.0");
@@ -82,9 +107,9 @@ describe("existing installation adoption", () => {
   it("preserves an explicit update-check opt-out", () => {
     vi.stubEnv("DISABLE_UPDATE_CHECK", "true");
 
-    expect(defaultInstallationConfig(existing()).disableUpdateCheck).toBe(
-      true,
-    );
+    expect(
+      defaultInstallationConfig(existing(), manifest).disableUpdateCheck,
+    ).toBe(true);
   });
 });
 
@@ -108,7 +133,7 @@ describe("managed installation state", () => {
       ),
     };
     try {
-      const config = defaultInstallationConfig(null);
+      const config = defaultInstallationConfig(null, manifest);
       config.search.apiKey = "brave-secret";
       config.tts.apiKey = "tts-secret";
       config.stt.apiKey = "stt-secret";

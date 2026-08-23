@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { installationNeedsAdoption, syncCapabilities } from "./setup.js";
+import { installationNeedsAdoption, setup, syncCapabilities } from "./setup.js";
 import type { ExistingInstallation } from "./types.js";
 import type { InstallationConfig } from "./types.js";
 
@@ -10,6 +10,9 @@ function config(): InstallationConfig {
     appImage: "ghcr.io/example/overtchat:1.2.3",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
+    redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
+    searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
+    kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
     appPort: 4718,
     bindAddress: "0.0.0.0",
     publicUrl: "http://localhost:4718",
@@ -66,6 +69,12 @@ function existingInstallation(
 }
 
 describe("installation adoption", () => {
+  it("requires a validated manifest before production setup", async () => {
+    await expect(
+      setup({ dryRun: true, defaults: true, development: false }),
+    ).rejects.toThrow("A release manifest is required for production setup.");
+  });
+
   it("adopts stacks outside the managed directory", () => {
     expect(
       installationNeedsAdoption(

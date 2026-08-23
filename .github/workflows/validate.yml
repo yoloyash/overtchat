@@ -36,6 +36,13 @@ jobs:
 
       - run: npm ci
 
+      - name: Validate GitHub Actions workflows
+        run: >-
+          docker run --rm --user 0:0
+          -v "$GITHUB_WORKSPACE:/repo:ro" -w /repo
+          rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+          -color
+
       - name: Check dependency resolution
         run: npm run deps:check
 

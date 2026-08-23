@@ -1,0 +1,279 @@
+name: Promote stable release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/scripts/assert-image-platforms.mjs"
+      - ".github/workflows/promote-release.yml"
+      - "apps/site/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "package-lock.json"
+      - "wrangler.jsonc"
+  release:
+    types: [published, edited, deleted]
+  workflow_dispatch:
+    inputs:
+      require_complete:
+        description: Fail instead of deferring when candidate artifacts are missing
+        required: false
+        default: true
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: stable-release-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event_name == 'release' && 'main' || github.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+
+      - run: npm ci
+
+      - name: Resolve candidate manifest
+        id: manifest
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const manifest = require("./apps/site/public/install-manifest.json");
+          const version = /^\d+\.\d+\.\d+$/;
+          if (manifest.format !== 1) throw new Error("Unsupported release manifest format.");
+          for (const field of ["cliVersion", "appVersion", "connectorVersion", "sttVersion"]) {
+            if (typeof manifest[field] !== "string" || !version.test(manifest[field])) {
+              throw new Error(`Invalid ${field} in release manifest.`);
+            }
+          }
+          const images = {
+            redisImage: "docker.io/library/redis",
+            searxngImage: "docker.io/searxng/searxng",
+            kokoroImage: "ghcr.io/remsky/kokoro-fastapi-cpu",
+          };
+          for (const [field, repository] of Object.entries(images)) {
+            const prefix = `${repository}@sha256:`;
+            if (typeof manifest[field] !== "string" ||
+                !manifest[field].startsWith(prefix) ||
+                !/^[a-f0-9]{64}$/.test(manifest[field].slice(prefix.length))) {
+              throw new Error(`Invalid ${field} in release manifest.`);
+            }
+          }
+          const compose = fs.readFileSync("compose.yml", "utf8");
+          for (const field of Object.keys(images)) {
+            if (!compose.includes(`image: ${manifest[field]}`)) {
+              throw new Error(`compose.yml does not select manifest ${field}.`);
+            }
+          }
+          const managedDefaults = [
+            `ghcr.io/yoloyash/overtchat-app:\${APP_VERSION:-${manifest.appVersion}}`,
+            `ghcr.io/yoloyash/overtchat-stt-cpu:\${STT_VERSION:-${manifest.sttVersion}}`,
+            `ghcr.io/yoloyash/overtchat-stt-gpu:\${STT_VERSION:-${manifest.sttVersion}}`,
+          ];
+          for (const image of managedDefaults) {
+            if (!compose.includes(`image: ${image}`)) {
+              throw new Error(`compose.yml does not select ${image}.`);
+            }
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, [
+            `cli=${manifest.cliVersion}`,
+            `app=${manifest.appVersion}`,
+            `connector=${manifest.connectorVersion}`,
+            `stt=${manifest.sttVersion}`,
+            `redis_image=${manifest.redisImage}`,
+            `searxng_image=${manifest.searxngImage}`,
+            `kokoro_image=${manifest.kokoroImage}`,
+            "",
+          ].join("\n"));
+          NODE
+
+      - name: Verify CLI release
+        id: cli
+        continue-on-error: >-
+          ${{ github.event_name == 'push' ||
+              (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CLI_VERSION: ${{ steps.manifest.outputs.cli }}
+        run: |
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
+          downloaded=false
+          for _ in {1..10}; do
+            if gh release download "cli-v$CLI_VERSION" \
+                --repo "$GITHUB_REPOSITORY" \
+                --dir "$verification_directory" \
+                --clobber \
+                --pattern overtchat-checksums.txt \
+                --pattern overtchat-linux-amd64 \
+                --pattern overtchat-linux-arm64; then
+              downloaded=true
+              break
+            fi
+            sleep 3
+          done
+          test "$downloaded" = "true"
+          grep -Eq '[[:space:]]\*?overtchat-linux-amd64$' \
+            "$verification_directory/overtchat-checksums.txt"
+          grep -Eq '[[:space:]]\*?overtchat-linux-arm64$' \
+            "$verification_directory/overtchat-checksums.txt"
+          (cd "$verification_directory" && sha256sum --check overtchat-checksums.txt)
+          grep -F "cli_version=\"$CLI_VERSION\"" apps/site/public/install
+
+      - name: Verify connector release
+        id: connector
+        continue-on-error: >-
+          ${{ github.event_name == 'push' ||
+              (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONNECTOR_VERSION: ${{ steps.manifest.outputs.connector }}
+        run: |
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
+          downloaded=false
+          for _ in {1..10}; do
+            if gh release download "connector-v$CONNECTOR_VERSION" \
+                --repo "$GITHUB_REPOSITORY" \
+                --dir "$verification_directory" \
+                --clobber \
+                --pattern connector-checksums.txt \
+                --pattern install-connector.sh \
+                --pattern overtchat-connector-linux-amd64 \
+                --pattern overtchat-connector-linux-arm64; then
+              downloaded=true
+              break
+            fi
+            sleep 3
+          done
+          test "$downloaded" = "true"
+          grep -Eq '[[:space:]]\*?overtchat-connector-linux-amd64$' \
+            "$verification_directory/connector-checksums.txt"
+          grep -Eq '[[:space:]]\*?overtchat-connector-linux-arm64$' \
+            "$verification_directory/connector-checksums.txt"
+          (cd "$verification_directory" && sha256sum --check connector-checksums.txt)
+          cmp scripts/install-connector.sh "$verification_directory/install-connector.sh"
+          installer_url="https://github.com/$GITHUB_REPOSITORY/releases/download/connector-v$CONNECTOR_VERSION/install-connector.sh"
+          grep -Fx "/install/connector/$CONNECTOR_VERSION $installer_url 302" \
+            apps/site/public/_redirects
+          grep -Fx "/install-connector.sh /install/connector/$CONNECTOR_VERSION 302" \
+            apps/site/public/_redirects
+
+      - name: Verify container images
+        id: images
+        continue-on-error: >-
+          ${{ github.event_name == 'push' ||
+              (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
+        env:
+          APP_VERSION: ${{ steps.manifest.outputs.app }}
+          STT_VERSION: ${{ steps.manifest.outputs.stt }}
+          REDIS_IMAGE: ${{ steps.manifest.outputs.redis_image }}
+          SEARXNG_IMAGE: ${{ steps.manifest.outputs.searxng_image }}
+          KOKORO_IMAGE: ${{ steps.manifest.outputs.kokoro_image }}
+        run: |
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
+
+          inspect_image() {
+            image=$1
+            output=$2
+            for _ in {1..10}; do
+              if docker manifest inspect --verbose "$image" > "$output"; then
+                return 0
+              fi
+              sleep 3
+            done
+            return 1
+          }
+
+          inspect_image "ghcr.io/yoloyash/overtchat-app:$APP_VERSION" \
+            "$verification_directory/app.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/app.json" linux/amd64 linux/arm64
+
+          inspect_image "ghcr.io/yoloyash/overtchat-stt-cpu:$STT_VERSION" \
+            "$verification_directory/stt-cpu.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/stt-cpu.json" linux/amd64 linux/arm64
+
+          inspect_image "ghcr.io/yoloyash/overtchat-stt-gpu:$STT_VERSION" \
+            "$verification_directory/stt-gpu.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/stt-gpu.json" linux/amd64
+
+          inspect_image "$REDIS_IMAGE" "$verification_directory/redis.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/redis.json" linux/amd64 linux/arm64
+
+          inspect_image "$SEARXNG_IMAGE" "$verification_directory/searxng.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/searxng.json" linux/amd64 linux/arm64
+
+          inspect_image "$KOKORO_IMAGE" "$verification_directory/kokoro.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/kokoro.json" linux/amd64 linux/arm64
+
+      - name: Require a complete candidate release
+        id: readiness
+        if: always()
+        env:
+          CLI_RESULT: ${{ steps.cli.outcome }}
+          CONNECTOR_RESULT: ${{ steps.connector.outcome }}
+          IMAGE_RESULT: ${{ steps.images.outcome }}
+        run: |
+          if [ "$CLI_RESULT" = "success" ] && \
+             [ "$CONNECTOR_RESULT" = "success" ] && \
+             [ "$IMAGE_RESULT" = "success" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = "push" ] || \
+             { [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && \
+               [ "${{ inputs.require_complete }}" != "true" ]; }; then
+            echo "Candidate artifacts are not all public; deferring promotion."
+            exit 0
+          fi
+          echo "Candidate release is incomplete; refusing promotion." >&2
+          exit 1
+
+      - name: Validate project site
+        if: steps.readiness.outputs.ready == 'true'
+        run: |
+          npm run lint -w apps/site --
+          npm run test -w apps/site --
+
+      - name: Build project site
+        if: steps.readiness.outputs.ready == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEXT_PUBLIC_SITE_ORIGIN: https://overtchat.com
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build -w apps/site --
+
+      - name: Deploy stable release
+        if: steps.readiness.outputs.ready == 'true'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          test -n "$CLOUDFLARE_ACCOUNT_ID"
+          test -n "$CLOUDFLARE_API_TOKEN"
+          npm run site:deploy

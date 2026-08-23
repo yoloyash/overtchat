@@ -1,0 +1,90 @@
+name: Resolve immutable GHCR image
+description: Build only when a versioned image is confirmed absent; otherwise verify its provenance.
+
+inputs:
+  image:
+    description: Full ghcr.io image reference with a version tag
+    required: true
+  revision:
+    description: Expected OCI source revision
+    required: true
+  version:
+    description: Expected OCI component version
+    required: true
+  platforms:
+    description: Space-separated required platforms
+    required: true
+  registry-username:
+    description: GHCR username
+    required: true
+  registry-token:
+    description: GHCR token
+    required: true
+
+outputs:
+  should_build:
+    description: Whether the versioned image is confirmed absent
+    value: ${{ steps.resolve.outputs.should_build }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        REVISION: ${{ inputs.revision }}
+        VERSION: ${{ inputs.version }}
+        PLATFORMS: ${{ inputs.platforms }}
+        GHCR_USERNAME: ${{ inputs.registry-username }}
+        GHCR_TOKEN: ${{ inputs.registry-token }}
+      run: |
+        repository="${IMAGE#ghcr.io/}"
+        tag="${repository##*:}"
+        repository="${repository%:*}"
+        bearer=$(
+          curl --silent --show-error --fail-with-body \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            --user "$GHCR_USERNAME:$GHCR_TOKEN" \
+            --get \
+            --data-urlencode "service=ghcr.io" \
+            --data-urlencode "scope=repository:$repository:pull" \
+            https://ghcr.io/token |
+            node -p 'JSON.parse(require("node:fs").readFileSync(0, "utf8")).token'
+        )
+        manifest_status=$(
+          curl --silent --show-error --output /dev/null \
+            --write-out '%{http_code}' \
+            --retry 3 --retry-all-errors --retry-delay 2 \
+            --header "Authorization: Bearer $bearer" \
+            --header 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/$repository/manifests/$tag"
+        )
+
+        if [ "$manifest_status" = "404" ]; then
+          echo "should_build=true" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        if [ "$manifest_status" != "200" ]; then
+          echo "GHCR returned HTTP $manifest_status while checking $IMAGE; refusing to overwrite the tag." >&2
+          exit 1
+        fi
+
+        inspection=$(mktemp)
+        trap 'rm -f "$inspection"' EXIT HUP INT TERM
+        inspected=false
+        for _ in 1 2 3; do
+          if docker buildx imagetools inspect "$IMAGE" \
+              --format '{{json .}}' > "$inspection"; then
+            inspected=true
+            break
+          fi
+          sleep 3
+        done
+        test "$inspected" = "true"
+        read -r -a required_platforms <<< "$PLATFORMS"
+        node .github/scripts/assert-owned-image.mjs \
+          "$inspection" "$REVISION" "$VERSION" \
+          "https://github.com/$GITHUB_REPOSITORY" \
+          "${required_platforms[@]}"
+        echo "should_build=false" >> "$GITHUB_OUTPUT"

@@ -5,6 +5,12 @@ on:
     tags: ["mobile-v*"]
   workflow_dispatch:
 
+permissions: {}
+
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-android:
     runs-on: self-hosted
@@ -17,11 +23,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
           cache: npm
@@ -59,6 +65,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         # `env:exec` runs this through `sh`, so keep it POSIX.
         run: |
+          # shellcheck disable=SC2016
           npx eas-cli@20 env:exec production '
             if [ -z "$EXPO_PUBLIC_SENTRY_DSN" ]; then
               echo "::error::EXPO_PUBLIC_SENTRY_DSN is not readable in the production environment. It must have plain-text visibility; local builds cannot read secret variables."
@@ -102,7 +109,7 @@ jobs:
             --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
 
       - name: Upload signed Android artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: overtchat-mobile-${{ steps.version.outputs.version }}
           path: |
@@ -121,10 +128,10 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Download signed Android artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: overtchat-mobile-${{ needs.build-android.outputs.version }}
           path: dist/mobile
@@ -150,7 +157,7 @@ jobs:
 
       - name: Upload smoke-test diagnostics
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: overtchat-mobile-smoke-diagnostics-${{ needs.build-android.outputs.version }}
           path: dist/mobile/smoke-diagnostics/
@@ -167,9 +174,9 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
           cache: npm
@@ -179,7 +186,7 @@ jobs:
         run: npm ci
 
       - name: Download verified Android artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: overtchat-mobile-${{ needs.build-android.outputs.version }}
           path: dist/mobile
@@ -201,5 +208,5 @@ jobs:
           APK="dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.apk"
 
           gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --draft --title "$TAG" --notes "Draft - fill in notes before publishing."
+            gh release create "$TAG" --draft --latest=false --title "$TAG" --notes "Draft - fill in notes before publishing."
           gh release upload "$TAG" "$APK" --clobber

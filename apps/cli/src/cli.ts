@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 import { CLI_VERSION } from "./constants.js";
+import { requireSuccessful } from "./process.js";
+import {
+  latestReleaseManifest,
+  updateCliIfNeeded,
+} from "./release.js";
 import { setup } from "./setup.js";
 import { status } from "./status.js";
 import { update } from "./update.js";
@@ -22,11 +27,24 @@ async function main(): Promise<void> {
       const supported = new Set(["--dry-run", "--defaults", "--development"]);
       const unexpected = args.find((argument) => !supported.has(argument));
       if (unexpected) throw new Error(`Unknown setup option: ${unexpected}`);
-      await setup({
+      const options = {
         dryRun: args.includes("--dry-run"),
         defaults: args.includes("--defaults"),
         development: args.includes("--development"),
-      });
+      };
+      if (options.development) {
+        await setup(options);
+        return;
+      }
+      const manifest = await latestReleaseManifest();
+      const updatedExecutable = await updateCliIfNeeded(manifest);
+      if (updatedExecutable) {
+        await requireSuccessful(updatedExecutable, ["setup", ...args], {
+          inherit: true,
+        });
+        return;
+      }
+      await setup(options, manifest);
       return;
     }
     case "update":

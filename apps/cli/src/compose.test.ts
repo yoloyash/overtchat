@@ -20,6 +20,9 @@ function config(): InstallationConfig {
     appImage: "ghcr.io/example/overtchat:1.2.3",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
+    redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
+    searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
+    kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
     appPort: 4718,
     bindAddress: "0.0.0.0",
     publicUrl: "http://192.168.1.10:4718",
@@ -76,6 +79,9 @@ describe("managed Compose configuration", () => {
     );
     expect(environment).toContain('DISABLE_UPDATE_CHECK="false"');
     expect(environment).toContain('STT_GPU_DEVICE_ID="GPU-abc"');
+    expect(environment).toContain(`OVERTCHAT_REDIS_IMAGE="${config().redisImage}"`);
+    expect(environment).toContain(`OVERTCHAT_SEARXNG_IMAGE="${config().searxngImage}"`);
+    expect(environment).toContain(`OVERTCHAT_KOKORO_IMAGE="${config().kokoroImage}"`);
     expect(environment).toContain(
       'OVERTCHAT_DATA_SOURCE="existing_overtchat-data"',
     );
@@ -93,6 +99,9 @@ describe("managed Compose configuration", () => {
     expect(compose).toContain("profiles: [tts-bundled]");
     expect(compose).toContain("profiles: [stt-cpu]");
     expect(compose).toContain("profiles: [stt-gpu]");
+    expect(compose).toContain("image: ${OVERTCHAT_REDIS_IMAGE}");
+    expect(compose).toContain("image: ${OVERTCHAT_SEARXNG_IMAGE}");
+    expect(compose).toContain("image: ${OVERTCHAT_KOKORO_IMAGE}");
     expect(compose).toContain('device_ids: ["${STT_GPU_DEVICE_ID}"]');
     expect(compose).toContain(
       "DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}",
