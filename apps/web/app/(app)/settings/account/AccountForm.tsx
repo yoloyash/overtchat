@@ -42,7 +42,7 @@ export function AccountForm({ email }: { email: string }) {
   return (
     <div className="max-w-3xl space-y-8">
       <SettingsPageHeader
-        title="Account"
+        title="Security"
         description={
           <>
             Signed in as <span className="text-foreground">{email}</span>.
