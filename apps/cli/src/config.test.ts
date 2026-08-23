@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   defaultInstallationConfig,
   initialSecrets,
@@ -9,6 +9,10 @@ import {
   writeInstallationConfig,
 } from "./config.js";
 import type { ExistingInstallation, RuntimePaths } from "./types.js";
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 function existing(
   overrides: Partial<ExistingInstallation> = {},
@@ -74,6 +78,14 @@ describe("existing installation adoption", () => {
     expect(config.appVersion).toBe("9.1.0");
     expect(config.appImage).toBe("ghcr.io/yoloyash/overtchat-app:9.1.0");
   });
+
+  it("preserves an explicit update-check opt-out", () => {
+    vi.stubEnv("DISABLE_UPDATE_CHECK", "true");
+
+    expect(defaultInstallationConfig(existing()).disableUpdateCheck).toBe(
+      true,
+    );
+  });
 });
 
 describe("managed installation state", () => {
@@ -108,10 +120,12 @@ describe("managed installation state", () => {
       expect(contents).not.toContain("tts-secret");
       expect(contents).not.toContain("stt-secret");
       expect(contents).not.toContain("apiKey");
+      vi.stubEnv("DISABLE_UPDATE_CHECK", "true");
       const loaded = await readInstallationConfig(paths);
       expect(loaded?.search.apiKey).toBeUndefined();
       expect(loaded?.tts.apiKey).toBeUndefined();
       expect(loaded?.stt.apiKey).toBeUndefined();
+      expect(loaded?.disableUpdateCheck).toBe(true);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

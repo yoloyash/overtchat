@@ -81,7 +81,7 @@ test("interactive surfaces remain usable with reduced motion", async ({ page }) 
     await page.goto("/");
     await page.getByText("Motion Admin").click();
     await page.getByRole("menuitem", { name: "Settings" }).click();
-    await page.waitForURL("**/settings");
+    await page.waitForURL("**/settings/general");
 
     await page.getByRole("link", { name: /Users/ }).click();
     await page.waitForURL("**/settings/users");

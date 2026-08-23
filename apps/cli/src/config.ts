@@ -26,6 +26,11 @@ function generatedSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+function environmentFlag(value: string | undefined): boolean | undefined {
+  if (value === undefined) return undefined;
+  return /^(1|true|yes)$/iu.test(value.trim());
+}
+
 function newerVersion(left: string | undefined, right: string): boolean {
   if (!left || !/^\d+\.\d+\.\d+$/u.test(left)) return false;
   const leftParts = left.split(".").map(Number);
@@ -69,6 +74,10 @@ export function defaultInstallationConfig(
     connectorServerUrl:
       existing?.environment.get("HOST_CONNECTOR_URL") ??
       `http://127.0.0.1:${existing?.appPort ?? DEFAULT_APP_PORT}`,
+    disableUpdateCheck:
+      environmentFlag(process.env.DISABLE_UPDATE_CHECK) ??
+      environmentFlag(existing?.environment.get("DISABLE_UPDATE_CHECK")) ??
+      false,
     composeProject: existing?.composeProject ?? DEFAULT_COMPOSE_PROJECT,
     dataMountType: existing?.dataMountType ?? "volume",
     dataVolume: existing?.dataVolume ?? DEFAULT_DATA_VOLUME,
@@ -125,6 +134,10 @@ export async function readInstallationConfig(
       extraTrustedOrigins: config.extraTrustedOrigins ?? [],
       connectorServerUrl:
         config.connectorServerUrl ?? `http://127.0.0.1:${config.appPort}`,
+      disableUpdateCheck:
+        environmentFlag(process.env.DISABLE_UPDATE_CHECK) ??
+        config.disableUpdateCheck ??
+        false,
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

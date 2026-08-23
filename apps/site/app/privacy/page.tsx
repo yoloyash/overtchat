@@ -19,7 +19,7 @@ export default function PrivacyPage() {
         <header className="legal-header">
           <p className="eyebrow">Legal</p>
           <h1 className="page-title">Privacy Policy</h1>
-          <p className="legal-updated">Last updated 23 July 2026</p>
+          <p className="legal-updated">Last updated 22 August 2026</p>
           <p className="page-lede">
             OvertChat is an open-source chat client that connects to a server you
             choose. The short version: we do not operate a hosted chat service,
@@ -158,6 +158,25 @@ export default function PrivacyPage() {
               <a href="https://sentry.io/security/">security information</a>. If
               you would prefer no crash reports leave your device, you can build
               the app from source without the Sentry DSN configured.
+            </p>
+          </section>
+
+          <section>
+            <h2>Server version checks</h2>
+            <p>
+              When an administrator opens the account menu, an OvertChat server
+              may request the public release manifest from overtchat.com to
+              determine whether a newer server version is available. The result
+              is cached for 12 hours. The request does not include an instance
+              identifier, account information, server configuration, chat data,
+              or the installed version.
+            </p>
+            <p>
+              Cloudflare processes ordinary request data such as the server IP
+              address and request time when delivering the manifest. Server
+              operators can disable version checks by setting the documented
+              {" "}
+              <code>DISABLE_UPDATE_CHECK</code> environment variable.
             </p>
           </section>
 

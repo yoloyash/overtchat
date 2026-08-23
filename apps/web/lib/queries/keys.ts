@@ -83,3 +83,8 @@ export const searchKeys = {
   all: () => ["search"] as const,
   byQuery: (q: string) => [...searchKeys.all(), q] as const,
 };
+
+export const appUpdateKeys = {
+  all: () => ["appUpdate"] as const,
+  status: () => [...appUpdateKeys.all(), "status"] as const,
+};
