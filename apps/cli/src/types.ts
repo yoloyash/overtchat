@@ -51,6 +51,7 @@ export type InstallationConfig = {
   publicUrl: string;
   extraTrustedOrigins: string[];
   connectorServerUrl: string;
+  disableUpdateCheck?: boolean;
   composeProject: string;
   dataMountType: "volume" | "bind";
   dataVolume: string;

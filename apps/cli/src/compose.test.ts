@@ -74,6 +74,7 @@ describe("managed Compose configuration", () => {
     expect(environment).toContain(
       'HOST_CONNECTOR_URL="http://192.168.1.10:4718"',
     );
+    expect(environment).toContain('DISABLE_UPDATE_CHECK="false"');
     expect(environment).toContain('STT_GPU_DEVICE_ID="GPU-abc"');
     expect(environment).toContain(
       'OVERTCHAT_DATA_SOURCE="existing_overtchat-data"',
@@ -93,6 +94,9 @@ describe("managed Compose configuration", () => {
     expect(compose).toContain("profiles: [stt-cpu]");
     expect(compose).toContain("profiles: [stt-gpu]");
     expect(compose).toContain('device_ids: ["${STT_GPU_DEVICE_ID}"]');
+    expect(compose).toContain(
+      "DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}",
+    );
     expect(compose).toContain("- overtchat-npm-cache:/app/npm-cache");
     expect(compose).toContain("\n  overtchat-npm-cache:\n");
     expect(compose).toContain("external: true");

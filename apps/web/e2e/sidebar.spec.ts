@@ -24,12 +24,38 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   test.setTimeout(60_000);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 1280, height: 720 });
+  await page.route("**/api/app-update", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        currentVersion: "0.16.0",
+        latestVersion: "99.0.0",
+        updateAvailable: true,
+      }),
+    });
+  });
   await page.goto("/signup");
   await page.locator("#name").fill("Sidebar Admin");
   await page.locator("#email").fill("sidebar-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
+
+  await page.getByText("Sidebar Admin", { exact: true }).click();
+  await expect(page.getByRole("menuitem", { name: "Profile" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Administration" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Update available v99.0.0" }),
+  ).toHaveAttribute("href", "https://overtchat.com/releases/");
+  await expect(page.getByRole("menuitem", { name: "Privacy" })).toHaveAttribute(
+    "href",
+    "https://overtchat.com/privacy/",
+  );
+  await expect(page.getByText(/^OvertChat v\d+\.\d+\.\d+$/)).toBeVisible();
+  await page.keyboard.press("Escape");
 
   const desktopSidebar = page.locator("[data-desktop-sidebar]");
   const desktopPanel = page.locator("[data-desktop-sidebar-panel]");
@@ -64,6 +90,23 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await page.waitForURL("**/projects/**");
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/settings/general");
+  const settingsPicker = page.getByRole("combobox", {
+    name: "Settings page",
+  });
+  await expect(settingsPicker).toContainText("General");
+  await settingsPicker.click();
+  const settingsOptions = page.getByRole("listbox");
+  await expect(
+    settingsOptions.getByText("Preferences", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    settingsOptions.getByText("Administration", { exact: true }),
+  ).toBeVisible();
+  await settingsOptions.getByRole("option", { name: "Security" }).click();
+  await page.waitForURL("**/settings/account");
+  await expect(page.getByRole("heading", { name: "Security" })).toBeVisible();
+
   await page.getByRole("button", { name: "Open sidebar" }).click();
   expect(await getTransitionProperties(page)).toContain("translate");
   const drawer = page.getByRole("dialog", { name: "Navigation" });

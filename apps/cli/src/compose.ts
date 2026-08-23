@@ -52,6 +52,7 @@ export function renderStackEnvironment(
     ["BETTER_AUTH_URL", config.publicUrl],
     ["EXTRA_TRUSTED_ORIGINS", trustedOrigins.join(",")],
     ["HOST_CONNECTOR_URL", config.connectorServerUrl],
+    ["DISABLE_UPDATE_CHECK", String(config.disableUpdateCheck ?? false)],
     ["BETTER_AUTH_SECRET", secrets.betterAuthSecret],
     ["OVERTCHAT_MANAGEMENT_SECRET", secrets.managementSecret],
     ["SEARXNG_SECRET", secrets.searxngSecret],
@@ -134,6 +135,7 @@ services:
       BETTER_AUTH_URL: \${BETTER_AUTH_URL}
       EXTRA_TRUSTED_ORIGINS: \${EXTRA_TRUSTED_ORIGINS:-}
       HOST_CONNECTOR_URL: \${HOST_CONNECTOR_URL}
+      DISABLE_UPDATE_CHECK: \${DISABLE_UPDATE_CHECK:-false}
       OVERTCHAT_MANAGEMENT_SECRET: \${OVERTCHAT_MANAGEMENT_SECRET}
       OVERTCHAT_INSTALLED_CAPABILITIES: \${OVERTCHAT_INSTALLED_CAPABILITIES:-}
       WEB_SEARCH_PROVIDER: \${WEB_SEARCH_PROVIDER}
