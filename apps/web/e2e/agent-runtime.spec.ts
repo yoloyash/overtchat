@@ -810,8 +810,10 @@ test("shows durable turn activity without changing completed tool status", async
     '[data-testid="sidebar-workspace-git-status-workspace"]:visible',
   );
   await expect(sidebarGitStatus).toContainText("feature/runtime-status");
-  await expect(sidebarGitStatus).toContainText("+8");
-  await expect(sidebarGitStatus).toContainText("-3");
+  await expect(sidebarGitStatus).toHaveAttribute(
+    "title",
+    "feature/runtime-status · 2 changed files · +8 −3",
+  );
   await page.getByRole("button", { name: "Session actions" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Copy workspace path" }),
@@ -834,16 +836,6 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(sessionActivity).toHaveCount(0);
 
   await page.getByRole("button", { name: "Expand Runtime test" }).click();
-  await expect(sessionActivity).toBeVisible();
-  await page.getByRole("button", { name: "Collapse This machine" }).click();
-  await expect(
-    page.getByRole("status", {
-      name: "This machine has running sessions",
-    }),
-  ).toBeVisible();
-  await expect(sessionActivity).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Expand This machine" }).click();
   await expect(sessionActivity).toBeVisible();
 
   const genericActivity = page.getByTestId("agent-run-activity");

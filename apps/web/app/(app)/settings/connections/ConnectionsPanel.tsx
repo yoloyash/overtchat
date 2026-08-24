@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Popover } from "@base-ui/react/popover";
 import {
@@ -10,7 +10,6 @@ import {
   Clipboard,
   ExternalLink,
   Folder,
-  FolderPlus,
   Info,
   Link2,
   Loader2,
@@ -30,11 +29,14 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import type {
   AgentConnectionListItem,
-  AgentWorkspaceListItem,
   HostConnectorListItem,
   HostConnectorPairing,
 } from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import {
+  groupAgentWorkspaces,
+  type AgentWorkspaceGroup,
+} from "@/lib/agents/workspaces";
 import {
   useAgentConnections,
   useDeleteAgentConnection,
@@ -42,7 +44,6 @@ import {
   useDeleteAgentWorkspace,
   useCreateHostConnectorPairing,
   useHostConnectors,
-  useRefreshAgentWorkspace,
   useTestAgentConnection,
 } from "@/lib/queries/agentConnections";
 import { motionClasses } from "@/lib/motion";
@@ -52,17 +53,12 @@ import {
   SettingsPageHeader,
   SettingsSection,
 } from "../_components/SettingsRows";
-import { AddConnectionDialog } from "./AddConnectionDialog";
-import { AddWorkspaceDialog } from "./AddWorkspaceDialog";
+import { AddAgentWorkspaceDialog } from "./AddAgentWorkspaceDialog";
 
 type PendingDetach =
   | { type: "connection"; connection: AgentConnectionListItem }
   | { type: "connector"; connector: HostConnectorListItem }
-  | {
-      type: "workspace";
-      connection: AgentConnectionListItem;
-      workspace: AgentWorkspaceListItem;
-    };
+  | { type: "workspace-group"; group: AgentWorkspaceGroup };
 
 export function ConnectionsPanel({
   initialAddOpen = false,
@@ -73,8 +69,15 @@ export function ConnectionsPanel({
   const { data: connections = [], error: listError } = useAgentConnections();
   const { data: connectors = [], error: connectorError } = useHostConnectors();
   const connector = connectors[0];
+  const workspaceGroups = useMemo(
+    () => groupAgentWorkspaces(connections),
+    [connections],
+  );
+  const unassignedConnections = useMemo(
+    () => connections.filter((connection) => connection.workspaces.length === 0),
+    [connections],
+  );
   const testMutation = useTestAgentConnection();
-  const refreshMutation = useRefreshAgentWorkspace();
   const deleteConnectionMutation = useDeleteAgentConnection();
   const deleteWorkspaceMutation = useDeleteAgentWorkspace();
   const pairingMutation = useCreateHostConnectorPairing();
@@ -83,8 +86,6 @@ export function ConnectionsPanel({
   const [pairing, setPairing] = useState<HostConnectorPairing | null>(null);
   const [commandCopied, setCommandCopied] = useState(false);
   const [upgradeCopied, setUpgradeCopied] = useState(false);
-  const [workspaceConnection, setWorkspaceConnection] =
-    useState<AgentConnectionListItem | null>(null);
   const [pendingDetach, setPendingDetach] = useState<PendingDetach | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const [detachError, setDetachError] = useState("");
@@ -111,25 +112,6 @@ export function ConnectionsPanel({
     }
   }
 
-  async function refreshWorkspace(workspace: AgentWorkspaceListItem) {
-    setActionId(workspace.id);
-    try {
-      await refreshMutation.mutateAsync(workspace.id);
-      toast.success({
-        title: "Sessions refreshed",
-        description: workspace.name,
-      });
-    } catch (cause) {
-      toast.error({
-        title: "Refresh failed",
-        description:
-          cause instanceof Error ? cause.message : "The workspace could not be refreshed.",
-      });
-    } finally {
-      setActionId(null);
-    }
-  }
-
   async function confirmDetach() {
     if (!pendingDetach) return;
     setDetachError("");
@@ -149,12 +131,16 @@ export function ConnectionsPanel({
         setPairing(null);
         toast.success({ title: "Host Connector removed" });
       } else {
-        await deleteWorkspaceMutation.mutateAsync(
-          pendingDetach.workspace.id,
-        );
+        for (const { connection, workspace } of pendingDetach.group.targets) {
+          if (connection.workspaces.length === 1) {
+            await deleteConnectionMutation.mutateAsync(connection.id);
+          } else {
+            await deleteWorkspaceMutation.mutateAsync(workspace.id);
+          }
+        }
         toast.success({
-          title: "Workspace detached",
-          description: pendingDetach.workspace.name,
+          title: "Workspace removed",
+          description: pendingDetach.group.name,
         });
       }
       setPendingDetach(null);
@@ -207,13 +193,13 @@ export function ConnectionsPanel({
       <SettingsPageHeader
         title={
           <span className="inline-flex items-center gap-2">
-            Connections
+            Agents
             <BetaBadge className="text-[10px]" />
           </span>
         }
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <span>Use OvertChat as a web interface for coding agents.</span>
+            <span>Run coding agents in project folders on this server or over SSH.</span>
             <span
               className="inline-flex items-center gap-1"
               aria-label="Supported agents: Pi, Oh My Pi, and Codex. Claude Code coming soon."
@@ -254,16 +240,16 @@ export function ConnectionsPanel({
           </span>
         }
         action={
-          connector?.online && connections.length > 0 ? (
+          connector?.online && workspaceGroups.length > 0 ? (
             <Button size="sm" onClick={() => setAddOpen(true)}>
-              <Plus /> Add agent
+              <Plus /> Add workspace
             </Button>
           ) : undefined
         }
       />
 
       <SettingsSection
-        title="Agent access"
+        title="Agent host"
         description={
           connector
             ? `${connector.name} · ${connector.online ? "Online" : "Offline"}`
@@ -406,11 +392,11 @@ export function ConnectionsPanel({
 
       {connector && (
         <SettingsSection
-          title="Agents"
+          title="Agent workspaces"
           description={
-            connections.length > 0
-              ? `${connections.length} agent${
-                  connections.length === 1 ? "" : "s"
+            workspaceGroups.length > 0
+              ? `${workspaceGroups.length} workspace${
+                  workspaceGroups.length === 1 ? "" : "s"
                 } available`
               : undefined
           }
@@ -421,11 +407,11 @@ export function ConnectionsPanel({
                 ? listError.message
                 : "Agents could not be loaded."}
             </SettingsNotice>
-          ) : connections.length === 0 ? (
+          ) : workspaceGroups.length === 0 ? (
             <div className="px-4 py-10 text-center">
-              <TerminalSquare className="mx-auto size-5 text-muted-foreground" />
+              <Folder className="mx-auto size-5 text-muted-foreground" />
               <p className="mt-3 text-sm text-muted-foreground">
-                No agents added
+                No agent workspaces added
               </p>
               {connector.online && (
                 <Button
@@ -433,51 +419,63 @@ export function ConnectionsPanel({
                   className="mt-4"
                   onClick={() => setAddOpen(true)}
                 >
-                  <Plus /> Add agent
+                  <Plus /> Add workspace
                 </Button>
               )}
             </div>
           ) : (
-            connections.map((connection) => (
-              <ConnectionRow
-                key={connection.id}
-                connection={connection}
+            workspaceGroups.map((group) => (
+              <WorkspaceGroupRow
+                key={group.key}
+                group={group}
                 actionId={actionId}
-                onTest={() => void testConnection(connection)}
-                onAddWorkspace={() => setWorkspaceConnection(connection)}
-                onRefreshWorkspace={(workspace) =>
-                  void refreshWorkspace(workspace)
-                }
-                onDetachWorkspace={(workspace) => {
+                onTest={(connection) => void testConnection(connection)}
+                onRemoveWorkspace={() => {
                   setDetachError("");
                   setPendingDetach({
-                    type: "workspace",
-                    connection,
-                    workspace,
+                    type: "workspace-group",
+                    group,
                   });
-                }}
-                onDetach={() => {
-                  setDetachError("");
-                  setPendingDetach({ type: "connection", connection });
                 }}
               />
             ))
+          )}
+          {unassignedConnections.length > 0 && (
+            <div className="border-t px-4 py-3">
+              <p className="text-xs font-medium text-muted-foreground">
+                Unassigned agent installations
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                These are not shown in the sidebar. Add a workspace to reuse one,
+                or remove it.
+              </p>
+              <div className="mt-2 space-y-1">
+                {unassignedConnections.map((connection) => (
+                  <UnassignedConnectionRow
+                    key={connection.id}
+                    connection={connection}
+                    actionId={actionId}
+                    onTest={() => void testConnection(connection)}
+                    onRemove={() => {
+                      setDetachError("");
+                      setPendingDetach({ type: "connection", connection });
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
           )}
         </SettingsSection>
       )}
 
       {connector && (
-        <AddConnectionDialog
+        <AddAgentWorkspaceDialog
           connector={connector}
           connections={connections}
           open={addOpen}
           onOpenChange={setAddDialogOpen}
         />
       )}
-      <AddWorkspaceDialog
-        connection={workspaceConnection}
-        onClose={() => setWorkspaceConnection(null)}
-      />
 
       <AlertDialog.Root
         open={pendingDetach !== null}
@@ -499,8 +497,8 @@ export function ConnectionsPanel({
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              {pendingDetach?.type === "workspace"
-                ? "Detach workspace?"
+              {pendingDetach?.type === "workspace-group"
+                ? "Remove workspace?"
                 : pendingDetach?.type === "connector"
                   ? "Remove Host Connector?"
                   : "Remove agent?"}
@@ -514,18 +512,22 @@ export function ConnectionsPanel({
                   and every agent that uses it will be removed from OvertChat.
                   Files and native agent sessions remain on their machines.
                 </>
+              ) : pendingDetach?.type === "workspace-group" ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    {pendingDetach.group.name}
+                  </span>{" "}
+                  and its agent chats will be removed from OvertChat. Files and
+                  native agent sessions remain on the host.
+                </>
               ) : (
                 <>
                   <span className="font-medium text-foreground">
-                    {pendingDetach?.type === "workspace"
-                      ? pendingDetach.workspace.name
-                      : pendingDetach?.connection.host.name}
+                    {pendingDetach?.connection.host.name}
                   </span>{" "}
                   will be removed from OvertChat. Files and native{" "}
                   {pendingDetach
-                    ? agentProviderMetadata(
-                        pendingDetach.connection.provider,
-                      ).label
+                    ? agentProviderMetadata(pendingDetach.connection.provider).label
                     : "agent"}{" "}
                   sessions remain on the host.
                 </>
@@ -553,7 +555,7 @@ export function ConnectionsPanel({
                 {detaching && (
                   <Loader2 className="animate-spin motion-reduce:animate-none" />
                 )}
-                {pendingDetach?.type === "workspace" ? "Detach" : "Remove"}
+                Remove
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -616,144 +618,161 @@ function HostConnectorInfo() {
   );
 }
 
-function ConnectionRow({
-  connection,
+function WorkspaceGroupRow({
+  group,
   actionId,
   onTest,
-  onAddWorkspace,
-  onRefreshWorkspace,
-  onDetachWorkspace,
-  onDetach,
+  onRemoveWorkspace,
 }: {
-  connection: AgentConnectionListItem;
+  group: AgentWorkspaceGroup;
   actionId: string | null;
-  onTest: () => void;
-  onAddWorkspace: () => void;
-  onRefreshWorkspace: (workspace: AgentWorkspaceListItem) => void;
-  onDetachWorkspace: (workspace: AgentWorkspaceListItem) => void;
-  onDetach: () => void;
+  onTest: (connection: AgentConnectionListItem) => void;
+  onRemoveWorkspace: () => void;
 }) {
-  const HostIcon = connection.host.transport === "local" ? Server : Wifi;
-  const provider = agentProviderMetadata(connection.provider);
+  const HostIcon = group.host.transport === "local" ? Server : Wifi;
   const hostDetail =
-    connection.host.transport === "local"
+    group.host.transport === "local"
       ? "This server"
-      : `ssh ${connection.host.sshAlias}`;
+      : `ssh ${group.host.sshAlias}`;
+  const sessionCount = group.sessions.length;
 
   return (
-    <div className="py-4">
-      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
-            <HostIcon className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-sm font-medium">{connection.host.name}</span>
-              <span className="text-xs text-muted-foreground">
-                {provider.label}
-              </span>
-            </div>
-            <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground">
-              {hostDetail}
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {connection.detectedVersion
-                ? `${provider.label} ${connection.detectedVersion}`
-                : "Not tested"}
-            </p>
-          </div>
+    <div className="px-4 py-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
+          <Folder className="size-4" />
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 @xl:justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={actionId !== null}
-            onClick={onTest}
-          >
-            <RefreshCw
-              className={cn(
-                actionId === connection.id &&
-                  "animate-spin motion-reduce:animate-none",
-              )}
-            />
-            Test
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onAddWorkspace}
-          >
-            <FolderPlus /> Add workspace
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Remove ${provider.label} from ${connection.host.name}`}
-            title={`Remove ${provider.label}`}
-            onClick={onDetach}
-          >
-            <Trash2 />
-          </Button>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <span className="text-sm font-medium">{group.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {group.targets.length} agent{group.targets.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground" title={group.path}>
+            {group.path}
+          </p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <HostIcon className="size-3" /> {hostDetail}
+            </span>
+            <span>
+              {sessionCount} session{sessionCount === 1 ? "" : "s"}
+            </span>
+          </p>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Remove workspace ${group.name}`}
+          title="Remove workspace"
+          onClick={onRemoveWorkspace}
+        >
+          <Trash2 />
+        </Button>
       </div>
 
-      {connection.workspaces.length > 0 && (
-        <div className="mt-4 ml-4 border-l pl-4">
-          {connection.workspaces.map((workspace) => (
+      <div className="mt-4 ml-4 border-l pl-4">
+        {group.targets.map(({ connection, workspace }) => {
+          const provider = agentProviderMetadata(connection.provider);
+          return (
             <div
               key={workspace.id}
-              className="flex flex-col gap-2 border-b py-3 first:pt-0 last:border-0 last:pb-0 sm:flex-row sm:items-center"
+              className="flex flex-col gap-2 border-b py-3 first:pt-0 last:border-0 last:pb-0 @xl:flex-row @xl:items-center"
             >
-              <Folder className="size-4 shrink-0 text-muted-foreground" />
+              <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">{workspace.name}</p>
-                <p
-                  className="truncate font-mono text-xs text-muted-foreground"
-                  title={workspace.path}
-                >
-                  {workspace.path}
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <p className="text-sm font-medium">{provider.label}</p>
+                  <span className="text-xs text-muted-foreground">
+                    {connection.detectedVersion ?? "Not tested"}
+                  </span>
+                </div>
+                <p className="truncate font-mono text-xs text-muted-foreground" title={connection.executable}>
+                  {connection.executable}
                 </p>
               </div>
               <span className="text-xs text-muted-foreground">
                 {workspace.sessions.length} session
                 {workspace.sessions.length === 1 ? "" : "s"}
               </span>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 @xl:justify-end">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
                   disabled={actionId !== null}
-                  aria-label={`Refresh ${workspace.name}`}
-                  title={`Refresh ${workspace.name}`}
-                  onClick={() => onRefreshWorkspace(workspace)}
+                  aria-label={`Test ${provider.label} in ${group.name}`}
+                  title="Test agent"
+                  onClick={() => onTest(connection)}
                 >
                   <RefreshCw
                     className={cn(
-                      actionId === workspace.id &&
+                      actionId === connection.id &&
                         "animate-spin motion-reduce:animate-none",
                     )}
                   />
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Detach ${workspace.name}`}
-                  title={`Detach ${workspace.name}`}
-                  onClick={() => onDetachWorkspace(workspace)}
-                >
-                  <Trash2 />
-                </Button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function UnassignedConnectionRow({
+  connection,
+  actionId,
+  onTest,
+  onRemove,
+}: {
+  connection: AgentConnectionListItem;
+  actionId: string | null;
+  onTest: () => void;
+  onRemove: () => void;
+}) {
+  const HostIcon = connection.host.transport === "local" ? Server : Wifi;
+  const provider = agentProviderMetadata(connection.provider);
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted/20 px-2 py-2">
+      <HostIcon className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          {provider.label} · {connection.host.name}
+        </p>
+        <p className="truncate font-mono text-xs text-muted-foreground">
+          {connection.executable}
+        </p>
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        disabled={actionId !== null}
+        aria-label={`Test ${provider.label}`}
+        title="Test agent"
+        onClick={onTest}
+      >
+        <RefreshCw
+          className={cn(
+            actionId === connection.id &&
+              "animate-spin motion-reduce:animate-none",
+          )}
+        />
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Remove ${provider.label}`}
+        title={`Remove ${provider.label}`}
+        onClick={onRemove}
+      >
+        <Trash2 />
+      </Button>
     </div>
   );
 }

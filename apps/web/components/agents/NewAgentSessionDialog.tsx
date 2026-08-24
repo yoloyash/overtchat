@@ -1,8 +1,12 @@
 "use client";
 
+import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
+import codexIcon from "@/assets/agent-providers/codex.png";
+import ompIcon from "@/assets/agent-providers/omp.svg";
+import piIcon from "@/assets/agent-providers/pi.svg";
 import type {
   AgentModel,
   AgentProviderId,
@@ -50,22 +54,44 @@ function defaultThinking(model: AgentModel | null): string {
   );
 }
 
+const PROVIDER_ICONS: Record<
+  AgentProviderId,
+  { icon: StaticImageData; darkSurface?: boolean }
+> = {
+  pi: { icon: piIcon },
+  omp: { icon: ompIcon, darkSurface: true },
+  codex: { icon: codexIcon, darkSurface: true },
+};
+
 export function NewAgentSessionDialog({
   open,
   onOpenChange,
-  workspace,
-  provider,
-  providerLabel,
+  targets,
+  machineLabel,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  workspace: AgentWorkspaceListItem;
-  provider: AgentProviderId;
-  providerLabel: string;
+  targets: Array<{
+    workspace: AgentWorkspaceListItem;
+    provider: AgentProviderId;
+    providerLabel: string;
+  }>;
+  machineLabel: string;
 }) {
   const router = useRouter();
   const { closeMobile } = useSidebar();
-  const catalog = useAgentWorkspaceCatalog(workspace.id, open);
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
+  const selectedTarget =
+    targets.length === 1
+      ? targets[0]
+      : targets.find((target) => target.workspace.id === selectedWorkspaceId);
+  const workspace = selectedTarget?.workspace ?? targets[0]!.workspace;
+  const provider = selectedTarget?.provider;
+  const providerLabel = selectedTarget?.providerLabel;
+  const catalog = useAgentWorkspaceCatalog(
+    selectedTarget?.workspace.id ?? null,
+    open && selectedTarget !== undefined,
+  );
   const createSession = useCreateAgentSession();
   const [storedPreferences, setPreferences] = useLocalStorage<unknown>(
     AGENT_CREATE_PREFERENCES_KEY,
@@ -78,7 +104,9 @@ export function NewAgentSessionDialog({
   const [modelId, setModelId] = useState("");
   const [thinkingOptionId, setThinkingOptionId] = useState<AgentThinkingLevel | "">("");
   const [modeId, setModeId] = useState("");
-  const providerPreferences = preferences.providerPreferences?.[provider];
+  const providerPreferences = provider
+    ? preferences.providerPreferences?.[provider]
+    : undefined;
   const selectedModel = useMemo(
     () => {
       const models = catalog.data?.models ?? [];
@@ -116,6 +144,7 @@ export function NewAgentSessionDialog({
   function updateProviderPreferences(
     update: Parameters<typeof mergeAgentProviderPreferences>[0]["updates"],
   ) {
+    if (!provider) return;
     setPreferences(
       mergeAgentProviderPreferences({ preferences, provider, updates: update }),
     );
@@ -137,7 +166,7 @@ export function NewAgentSessionDialog({
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!effectiveModelId) return;
+    if (!selectedTarget || !provider || !effectiveModelId) return;
     const launchConfig: AgentSessionLaunchConfig = {
       model: effectiveModelId,
       ...(effectiveThinkingOptionId
@@ -164,15 +193,15 @@ export function NewAgentSessionDialog({
     );
     try {
       const id = await createSession.mutateAsync({
-        workspaceId: workspace.id,
+        workspaceId: selectedTarget.workspace.id,
         launchConfig,
       });
-      onOpenChange(false);
+      closeDialog();
       closeMobile();
       router.push(`/agents/${id}`);
     } catch (cause) {
       toast.error({
-        title: `Failed to start ${providerLabel}`,
+        title: `Failed to start ${providerLabel ?? "agent"}`,
         description:
           cause instanceof Error
             ? cause.message
@@ -184,11 +213,29 @@ export function NewAgentSessionDialog({
   const loading = catalog.isFetching && !catalog.data;
   const error = catalog.error instanceof Error ? catalog.error.message : null;
 
+  function selectAgent(workspaceId: string) {
+    setSelectedWorkspaceId(workspaceId);
+    setModelId("");
+    setThinkingOptionId("");
+    setModeId("");
+  }
+
+  function closeDialog() {
+    setSelectedWorkspaceId("");
+    setModelId("");
+    setThinkingOptionId("");
+    setModeId("");
+    createSession.reset();
+    onOpenChange(false);
+  }
+
   return (
     <Dialog.Root
       open={open}
       onOpenChange={(next) => {
-        if (!createSession.isPending) onOpenChange(next);
+        if (createSession.isPending) return;
+        if (next) onOpenChange(true);
+        else closeDialog();
       }}
     >
       <Dialog.Portal>
@@ -202,27 +249,82 @@ export function NewAgentSessionDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            New {providerLabel} session
+            New session in {workspace.name}
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            Choose how {providerLabel} starts in {workspace.name}.
+            <span className="font-mono">{workspace.path}</span>
+            <span aria-hidden="true"> · </span>
+            {machineLabel}
           </Dialog.Description>
 
-          {loading ? (
-            <div className="flex min-h-48 items-center justify-center">
-              <Loader2 className={cn("size-5 text-muted-foreground", motionClasses.spinner)} />
+          <form onSubmit={submit} className="mt-5 space-y-4">
+            <div className="space-y-2">
+              <Label>{targets.length > 1 ? "Choose an agent" : "Agent"}</Label>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {targets.map((target) => {
+                  const selected = target.workspace.id === selectedTarget?.workspace.id;
+                  const icon = PROVIDER_ICONS[target.provider];
+                  return (
+                    <button
+                      key={target.workspace.id}
+                      type="button"
+                      aria-pressed={selected}
+                      aria-label={`Select ${target.providerLabel}`}
+                      onClick={() => selectAgent(target.workspace.id)}
+                      className={cn(
+                        "flex min-h-16 items-center gap-3 rounded-lg border p-3 text-left outline-none motion-colors hover:bg-muted/30 focus-visible:ring-3 focus-visible:ring-ring/50",
+                        selected && "border-primary bg-primary/5 ring-1 ring-primary",
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "flex size-9 shrink-0 items-center justify-center rounded-md border bg-background",
+                          icon.darkSurface && "bg-zinc-950",
+                        )}
+                      >
+                        <Image
+                          src={icon.icon}
+                          alt=""
+                          className="size-5 object-contain"
+                        />
+                      </span>
+                      <span className="min-w-0 flex-1 text-sm font-medium">
+                        {target.providerLabel}
+                      </span>
+                      {selected && <Check className="size-4 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          ) : error ? (
-            <div className="mt-5 space-y-4">
-              <p className="text-sm text-destructive">{error}</p>
-              <div className="flex justify-end">
-                <Button type="button" variant="outline" size="sm" onClick={() => void catalog.refetch()}>
+
+            {!selectedTarget ? (
+              <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+                Choose an agent to configure this session.
+              </p>
+            ) : loading ? (
+              <div className="flex min-h-40 items-center justify-center rounded-lg border">
+                <Loader2
+                  className={cn(
+                    "size-5 text-muted-foreground",
+                    motionClasses.spinner,
+                  )}
+                />
+              </div>
+            ) : error ? (
+              <div className="space-y-4 rounded-lg border p-4">
+                <p className="text-sm text-destructive">{error}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void catalog.refetch()}
+                >
                   Try again
                 </Button>
               </div>
-            </div>
-          ) : (
-            <form onSubmit={submit} className="mt-5 space-y-4">
+            ) : (
+              <div className="space-y-4 border-t pt-4">
               <div className="space-y-1.5">
                 <Label htmlFor={`agent-model-${workspace.id}`}>Model</Label>
                 <Select value={effectiveModelId} onValueChange={selectModel}>
@@ -307,17 +409,32 @@ export function NewAgentSessionDialog({
                   </Select>
                 </div>
               )}
-
-              <div className="flex items-center justify-end gap-2 border-t pt-4">
-                <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" size="sm" disabled={!effectiveModelId || createSession.isPending}>
-                  {createSession.isPending ? "Starting…" : "Start session"}
-                </Button>
               </div>
-            </form>
-          )}
+            )}
+
+            <div className="flex items-center justify-end gap-2 border-t pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={createSession.isPending}
+                onClick={closeDialog}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                disabled={
+                  !selectedTarget ||
+                  !effectiveModelId ||
+                  createSession.isPending
+                }
+              >
+                {createSession.isPending ? "Starting…" : "Start session"}
+              </Button>
+            </div>
+          </form>
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
