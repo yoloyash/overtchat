@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AgentQueuedMessage,
+  AgentProviderNotice,
   AgentRuntimeSnapshot,
   AgentSessionSync,
   AgentSessionCommand,
@@ -340,6 +341,7 @@ export function useAgentSessionCommand(id: string) {
       draft?: string;
       queuedMessages?: AgentQueuedMessage[];
       usage?: AgentUsageSnapshot;
+      notice?: AgentProviderNotice;
     }> => {
       const needsIdentity =
         (command.type === "prompt" ||
@@ -383,6 +385,7 @@ export function useAgentSessionCommand(id: string) {
         draft?: string;
         queuedMessages?: AgentQueuedMessage[];
         usage?: AgentUsageSnapshot;
+        notice?: AgentProviderNotice;
       };
       if (
         fingerprint &&
@@ -414,7 +417,7 @@ export function useAgentSessionCommand(id: string) {
         command.type === "set_thinking_level" ||
         command.type === "set_collaboration_mode" ||
         command.type === "set_fast_mode" ||
-        command.type === "set_access_mode" ||
+        command.type === "set_mode" ||
         command.type === "update_goal" ||
         command.type === "implement_plan" ||
         command.type === "compact" ||

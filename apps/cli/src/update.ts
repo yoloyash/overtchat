@@ -6,21 +6,25 @@ import {
   writeSecretsFile,
 } from "./config.js";
 import { installManagedConnector } from "./connector.js";
-import { APP_IMAGE } from "./constants.js";
 import { renderStackEnvironment } from "./compose.js";
 import {
   detectDockerCommand,
   dockerComposeAvailable,
+  reconcileManagedSidecars,
   requireDocker,
 } from "./docker.js";
 import { runtimePaths } from "./paths.js";
 import { requireSuccessful } from "./process.js";
 import {
-  compareVersions,
+  applyReleaseManifest,
   latestReleaseManifest,
   updateCliIfNeeded,
 } from "./release.js";
-import { prepareFiles, waitForApp } from "./setup.js";
+import {
+  prepareFiles,
+  showSidecarReconciliation,
+  waitForApp,
+} from "./setup.js";
 
 export async function update(): Promise<void> {
   const paths = runtimePaths();
@@ -55,27 +59,7 @@ export async function update(): Promise<void> {
       return;
     }
 
-    const appVersion =
-      compareVersions(manifest.appVersion, config.appVersion) > 0
-        ? manifest.appVersion
-        : config.appVersion;
-    const connectorVersion =
-      compareVersions(manifest.connectorVersion, config.connectorVersion) > 0
-        ? manifest.connectorVersion
-        : config.connectorVersion;
-    const sttVersion =
-      compareVersions(manifest.sttVersion, config.sttVersion) > 0
-        ? manifest.sttVersion
-        : config.sttVersion;
-    const nextConfig = {
-      ...config,
-      appVersion,
-      appImage: config.appImage === "overtchat-app:setup-dev"
-        ? config.appImage
-        : `${APP_IMAGE}:${appVersion}`,
-      connectorVersion,
-      sttVersion,
-    };
+    const nextConfig = applyReleaseManifest(config, manifest);
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(
       paths,
@@ -115,8 +99,11 @@ export async function update(): Promise<void> {
       await installManagedConnector(nextConfig, secrets.managementSecret);
     }
     await writeInstallationConfig(paths, nextConfig);
+    progress.message("Reconciling bundled services");
+    const reconciliation = await reconcileManagedSidecars(docker, nextConfig);
     progress.stop("OvertChat is up to date");
     progressActive = false;
+    showSidecarReconciliation(reconciliation);
     outro(`Open: ${nextConfig.publicUrl}`);
   } catch (error) {
     if (progressActive) progress.stop("OvertChat update failed", 1);

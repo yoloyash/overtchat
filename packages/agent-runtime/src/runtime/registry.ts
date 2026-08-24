@@ -10,6 +10,7 @@ import type {
   AgentRuntimeStatus,
   AgentSlashCommand,
   AgentSessionCommand,
+  AgentSessionLaunchConfig,
   AgentSessionSync,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -19,6 +20,7 @@ import {
   applyAgentRuntimeStateEvent,
   agentProviderMetadata,
   isAgentProviderId,
+  isAgentProviderNotice,
 } from "@overtchat/agent-bridge";
 import { agentProviderAdapter } from "@overtchat/agent-runtime/providers/registry";
 import type {
@@ -68,6 +70,7 @@ export type AgentSessionDescriptor = AgentWorkspaceDescriptor & {
   sessionId: string;
   providerSessionId: string;
   providerSessionPath: string;
+  launchConfig: AgentSessionLaunchConfig;
 };
 
 export type AgentRuntimeMetadataPatch = {
@@ -75,6 +78,7 @@ export type AgentRuntimeMetadataPatch = {
   firstMessage?: string | null;
   messageCount?: number;
   providerModifiedAt?: Date;
+  launchConfig?: AgentSessionLaunchConfig;
 };
 
 export type AgentRuntimeRegistryOptions = {
@@ -258,7 +262,6 @@ export class AgentSessionRuntime {
   private state: Record<string, unknown>;
   private messages: unknown[];
   private models: AgentModel[];
-  private thinkingLevels: AgentThinkingLevel[];
   private commands: AgentSlashCommand[];
   private stats: AgentSessionStats;
   private queuedMessages: AgentQueuedMessage[];
@@ -294,6 +297,7 @@ export class AgentSessionRuntime {
     private readonly adapter: AgentProviderAdapter,
     private readonly client: AgentRuntimeClient,
     initial: AgentRuntimeInitialState,
+    private launchConfig: AgentSessionLaunchConfig,
     private readonly resolveImages: AgentRuntimeRegistryOptions["resolveImages"],
     private readonly updateSessionMetadata: NonNullable<
       AgentRuntimeRegistryOptions["updateSessionMetadata"]
@@ -308,7 +312,6 @@ export class AgentSessionRuntime {
     this.state = initial.state;
     this.messages = initial.messages;
     this.models = initial.models;
-    this.thinkingLevels = initial.thinkingLevels;
     this.commands = initial.commands;
     this.stats = initial.stats;
     this.status = initial.state.isStreaming === true ? "running" : "idle";
@@ -484,11 +487,11 @@ export class AgentSessionRuntime {
           ...(typeof event.fastModeAvailable === "boolean"
             ? { fastModeAvailable: event.fastModeAvailable }
             : {}),
-          ...(typeof event.accessMode === "string"
-            ? { accessMode: event.accessMode }
+          ...(typeof event.modeId === "string"
+            ? { modeId: event.modeId }
             : {}),
-          ...(Array.isArray(event.accessModes)
-            ? { accessModes: event.accessModes }
+          ...(Array.isArray(event.modes)
+            ? { modes: event.modes }
             : {}),
           ...(typeof event.goalsSupported === "boolean"
             ? { goalsSupported: event.goalsSupported }
@@ -535,7 +538,6 @@ export class AgentSessionRuntime {
       state: this.state,
       messages: this.messages,
       models: this.models,
-      thinkingLevels: this.thinkingLevels,
       commands: this.commands,
       stats: this.stats,
       queuedMessages: this.queuedMessages,
@@ -683,14 +685,16 @@ export class AgentSessionRuntime {
         return this.steerQueuedMessage(command.id);
       case "set_model":
         return this.client
-          .setModel(command.provider, command.modelId)
+          .setModel(command.modelId)
           .then(async (value) => {
             await this.refresh();
+            await this.persistModelLaunchConfig(command.modelId);
             return value;
           });
       case "set_thinking_level":
         return this.client.setThinkingLevel(command.level).then(async (value) => {
           await this.refresh();
+          await this.persistLaunchConfig({ thinkingOptionId: command.level });
           return value;
         });
       case "set_collaboration_mode":
@@ -719,16 +723,18 @@ export class AgentSessionRuntime {
           await this.refresh();
           return value;
         });
-      case "set_access_mode":
-        if (!this.client.setAccessMode) {
+      case "set_mode":
+        if (!this.client.setMode) {
           return Promise.reject(
             new Error(
-              `${agentProviderMetadata(this.provider).label} does not provide access modes.`,
+              `${agentProviderMetadata(this.provider).label} does not provide modes.`,
             ),
           );
         }
-        return this.client.setAccessMode(command.mode).then(async (value) => {
+        return this.client.setMode(command.modeId).then(async (value) => {
+          if (isAgentProviderNotice(value)) return value;
           await this.refresh();
+          await this.persistLaunchConfig({ modeId: command.modeId });
           return value;
         });
       case "update_goal":
@@ -830,6 +836,37 @@ export class AgentSessionRuntime {
     }
   }
 
+  private async persistLaunchConfig(
+    patch: Partial<AgentSessionLaunchConfig>,
+  ): Promise<void> {
+    this.launchConfig = { ...this.launchConfig, ...patch };
+    await this.updateSessionMetadata(this.dbSessionId, {
+      launchConfig: this.launchConfig,
+    });
+  }
+
+  private async persistModelLaunchConfig(modelId: string): Promise<void> {
+    const model = this.models.find((candidate) => candidate.id === modelId);
+    const stateThinking = this.state.thinkingLevel;
+    const thinkingOptionId =
+      typeof stateThinking === "string" &&
+      model?.thinkingOptions?.some((option) => option.id === stateThinking)
+        ? (stateThinking as AgentThinkingLevel)
+        : (model?.defaultThinkingOptionId ??
+          model?.thinkingOptions?.find((option) => option.isDefault)?.id ??
+          model?.thinkingOptions?.[0]?.id);
+    const { thinkingOptionId: _previousThinking, ...previous } =
+      this.launchConfig;
+    this.launchConfig = {
+      ...previous,
+      model: modelId,
+      ...(thinkingOptionId ? { thinkingOptionId } : {}),
+    };
+    await this.updateSessionMetadata(this.dbSessionId, {
+      launchConfig: this.launchConfig,
+    });
+  }
+
   async forkSession(
     messageId: string,
     mode: "edit" | "fork",
@@ -859,20 +896,16 @@ export class AgentSessionRuntime {
   async refresh(): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
-      const [state, messageData, stats, thinkingLevels, commands] =
+      const [state, messageData, stats, commands] =
         await Promise.all([
           this.client.getState(),
           this.client.getMessages(),
           this.client.getSessionStats().catch(() => emptyStats()),
-          this.client
-            .getAvailableThinkingLevels()
-            .catch(() => this.thinkingLevels),
           this.client.getCommands().catch(() => this.commands),
         ]);
       this.state = state;
       this.messages = messageData.messages;
       this.stats = stats;
-      this.thinkingLevels = thinkingLevels;
       this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
       const reconciledQueue = reconcileRestoredQueuedMessages(
@@ -1694,15 +1727,23 @@ export class AgentRuntimeRegistry {
   async create(
     sessionId: string,
     descriptor: AgentWorkspaceDescriptor,
+    requestedConfig: AgentSessionLaunchConfig = {},
   ): Promise<{
     runtime: AgentSessionRuntime;
     session: AgentProviderSessionMetadata;
+    launchConfig: AgentSessionLaunchConfig;
   }> {
     const adapter = this.adapterFor(descriptor.provider);
+    const launchConfig = await this.resolveLaunchConfig(
+      adapter,
+      descriptor,
+      requestedConfig,
+    );
     const client = adapter.startSession(descriptor.target, {
       executable: descriptor.executable,
       cwd: descriptor.cwd,
       detectedVersion: descriptor.detectedVersion,
+      ...launchConfig,
     });
     try {
       const initial = await this.loadInitial(adapter, client);
@@ -1722,8 +1763,9 @@ export class AgentRuntimeRegistry {
         adapter,
         client,
         initial,
+        launchConfig,
       );
-      return { runtime, session };
+      return { runtime, session, launchConfig };
     } catch (error) {
       await client.stop();
       throw error;
@@ -1775,6 +1817,7 @@ export class AgentRuntimeRegistry {
       executable: descriptor.executable,
       cwd: descriptor.cwd,
       detectedVersion: descriptor.detectedVersion,
+      ...descriptor.launchConfig,
       resume: {
         providerSessionId: descriptor.providerSessionId,
         providerSessionPath: descriptor.providerSessionPath,
@@ -1796,6 +1839,7 @@ export class AgentRuntimeRegistry {
         adapter,
         client,
         initial,
+        descriptor.launchConfig,
       );
     } catch (error) {
       await client.stop();
@@ -1809,6 +1853,7 @@ export class AgentRuntimeRegistry {
     adapter: AgentProviderAdapter,
     client: AgentRuntimeClient,
     initial: AgentRuntimeInitialState,
+    launchConfig: AgentSessionLaunchConfig,
   ): AgentSessionRuntime {
     const runtime = new AgentSessionRuntime(
       sessionId,
@@ -1817,6 +1862,7 @@ export class AgentRuntimeRegistry {
       adapter,
       client,
       initial,
+      launchConfig,
       this.options.resolveImages,
       this.options.updateSessionMetadata ?? (() => {}),
       this.options.saveQueuedMessages ?? (() => {}),
@@ -1836,13 +1882,12 @@ export class AgentRuntimeRegistry {
     adapter: AgentProviderAdapter,
     client: AgentRuntimeClient,
   ): Promise<AgentRuntimeInitialState> {
-    const [state, messageData, models, stats, thinkingLevels, commands] =
+    const [state, messageData, models, stats, commands] =
       await Promise.all([
         client.getState(),
         client.getMessages(),
         client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
         client.getSessionStats().catch(() => emptyStats()),
-        client.getAvailableThinkingLevels().catch(() => []),
         client
           .getCommands()
           .then((commands) => adapter.mergeCommands(commands))
@@ -1853,8 +1898,51 @@ export class AgentRuntimeRegistry {
       messages: messageData.messages,
       models,
       stats,
-      thinkingLevels,
       commands,
+    };
+  }
+
+  private async resolveLaunchConfig(
+    adapter: AgentProviderAdapter,
+    descriptor: AgentWorkspaceDescriptor,
+    requested: AgentSessionLaunchConfig,
+  ): Promise<AgentSessionLaunchConfig> {
+    const catalog = await adapter.fetchCatalog(descriptor.target, {
+      executable: descriptor.executable,
+      cwd: descriptor.cwd,
+      detectedVersion: descriptor.detectedVersion,
+    });
+    const model = requested.model
+      ? catalog.models.find((candidate) => candidate.id === requested.model)
+      : catalog.models.find((candidate) => candidate.isDefault) ??
+        catalog.models[0];
+    if (requested.model && !model) {
+      throw new Error(
+        `${agentProviderMetadata(adapter.provider).label} model "${requested.model}" is not available.`,
+      );
+    }
+    const thinkingOptions = model?.thinkingOptions ?? [];
+    const thinkingOptionId = requested.thinkingOptionId
+      ? thinkingOptions.find((option) => option.id === requested.thinkingOptionId)
+          ?.id
+      : model?.defaultThinkingOptionId ??
+        thinkingOptions.find((option) => option.isDefault)?.id ??
+        thinkingOptions[0]?.id;
+    if (requested.thinkingOptionId && !thinkingOptionId) {
+      throw new Error(
+        `${model?.label ?? "The selected model"} does not support ${requested.thinkingOptionId} reasoning.`,
+      );
+    }
+    const modeId = requested.modeId ?? catalog.defaultModeId ?? undefined;
+    if (modeId && !catalog.modes.some((mode) => mode.id === modeId)) {
+      throw new Error(
+        `${agentProviderMetadata(adapter.provider).label} mode "${modeId}" is not available.`,
+      );
+    }
+    return {
+      ...(model ? { model: model.id } : {}),
+      ...(thinkingOptionId ? { thinkingOptionId } : {}),
+      ...(modeId ? { modeId } : {}),
     };
   }
 

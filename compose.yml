@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.14.0}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.16.3}
     build: .
     container_name: overtchat-app
     restart: unless-stopped
@@ -9,6 +9,7 @@ services:
     environment:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
+      DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}
       HOST_CONNECTOR_URL: ${HOST_CONNECTOR_URL:-http://127.0.0.1:${APP_PORT:-4718}}
       SEARXNG_URL: ${OVERTCHAT_SEARXNG_URL:-http://searxng:8080}
       KOKORO_URL: ${OVERTCHAT_KOKORO_URL:-http://kokoro:8880}
@@ -19,6 +20,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - overtchat-data:/app/data
+      - overtchat-npm-cache:/app/npm-cache
     depends_on:
       searxng:
         condition: service_healthy
@@ -30,7 +32,7 @@ services:
         condition: service_healthy
 
   redis:
-    image: redis:8-alpine@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+    image: docker.io/library/redis@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
     container_name: overtchat-redis
     restart: unless-stopped
     command:
@@ -51,7 +53,7 @@ services:
 
   searxng:
     # SearXNG engines churn often; latest avoids silently losing search coverage.
-    image: docker.io/searxng/searxng:latest
+    image: docker.io/searxng/searxng@sha256:11a9b34cdc0b1ec2b991470a2762ecb5a1a531898289fb51dcd015260450729e
     container_name: overtchat-searxng
     restart: unless-stopped
     environment:
@@ -67,7 +69,7 @@ services:
       start_period: 10s
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
+    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:c8812546d358cbfd6a5c4087a28795b2b001d8e32d7a322eedd246e6bc13cb55
     container_name: overtchat-kokoro
     restart: unless-stopped
     healthcheck:
@@ -82,7 +84,7 @@ services:
   #   docker compose --profile stt-gpu up -d    (NVIDIA GPU, requires NVIDIA Container Toolkit)
   # Both services are reachable from `app` as `http://stt:5092`.
   stt-cpu:
-    image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.0}
+    image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.1}
     build:
       context: ./stt
       dockerfile: Dockerfile.cpu
@@ -96,7 +98,7 @@ services:
       - overtchat-stt-models:/models
 
   stt-gpu:
-    image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.0}
+    image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.1}
     build:
       context: ./stt
       dockerfile: Dockerfile.gpu
@@ -121,7 +123,7 @@ services:
   # searxng and kokoro stay on the internal Docker network.
   #
   # cloudflared:
-  #   image: cloudflare/cloudflared:latest
+  #   image: docker.io/cloudflare/cloudflared@sha256:0aa26e284f05e6c77ae375b8c9c11d9eb6a448fb7bcd8d40f31cb6176189eb38
   #   container_name: overtchat-cloudflared
   #   restart: unless-stopped
   #   command: tunnel --no-autoupdate run
@@ -133,4 +135,5 @@ services:
 
 volumes:
   overtchat-data:
+  overtchat-npm-cache:
   overtchat-stt-models:

@@ -3,12 +3,14 @@ import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
   isHostConnectorCommand,
+  isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
+import { agentProviderCatalogSchema } from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
-  it("keeps the agent-daemon v1 compatibility token independent of builds", () => {
-    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.2.0");
+  it("rejects connector builds from the previous v1 wire shape", () => {
+    expect(HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE).toBe("0.7.0");
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {
@@ -42,5 +44,69 @@ describe("Host Connector protocol compatibility", () => {
         activeSessionIds: [],
       }),
     ).toBe(true);
+  });
+
+  it("accepts a session-directory snapshot and provider-independent upserts", () => {
+    expect(
+      isHostConnectorEvent({
+        sequence: 1,
+        payload: {
+          type: "session_directory",
+          sessions: [
+            { sessionId: "session", runtimeStatus: "running" },
+          ],
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorEvent({
+        sequence: 2,
+        payload: {
+          type: "session_update",
+          session: { sessionId: "session", runtimeStatus: "idle" },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorEvent({
+        sequence: 3,
+        payload: {
+          type: "session_directory",
+          sessions: [
+            { sessionId: "session", runtimeStatus: "idle" },
+            { sessionId: "session", runtimeStatus: "running" },
+          ],
+        },
+      }),
+    ).toBe(false);
+  });
+
+  it("validates provider catalogs at the connector boundary", () => {
+    const catalog = {
+      provider: "omp",
+      models: [
+        {
+          provider: "omp",
+          id: "openai/gpt-5",
+          label: "GPT-5",
+          api: "openai-responses",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: null,
+          maxTokens: null,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      modes: [{ id: "full", label: "Full Access", description: "Yolo" }],
+      defaultModeId: "full",
+    };
+    expect(agentProviderCatalogSchema.safeParse(catalog).success).toBe(true);
+    expect(
+      agentProviderCatalogSchema.safeParse({
+        ...catalog,
+        models: [{ ...catalog.models[0], provider: "pi" }],
+      }).success,
+    ).toBe(false);
   });
 });

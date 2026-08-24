@@ -23,7 +23,7 @@ export async function POST(request: Request) {
   ) {
     return Response.json(
       {
-        error: `This server requires the Host Connector protocol ${HOST_CONNECTOR_PROTOCOL_VERSION} agent-daemon wire shape.`,
+        error: `The OvertChat app and Host Connector are out of date with each other. Run \`overtchat update\` on the OvertChat host (or reinstall connector ${HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE}).`,
         code: "unsupported_connector_protocol",
         supportedProtocolVersions: [HOST_CONNECTOR_PROTOCOL_VERSION],
         compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,

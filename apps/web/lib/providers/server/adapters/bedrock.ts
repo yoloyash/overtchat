@@ -79,6 +79,7 @@ export const bedrockAdapter: ProviderAdapter = {
             baseUrl: config.baseUrl,
             apiKey: config.apiKey,
             model: config.model,
+            supportsImageInput: config.supportsImageInput,
           }),
           providerOptionsKey: "bedrock",
         };

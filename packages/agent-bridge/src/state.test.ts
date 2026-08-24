@@ -18,7 +18,6 @@ function snapshot(): AgentRuntimeSnapshot {
     state: { isStreaming: false },
     messages: [{ role: "user", content: "Hello" }],
     models: [],
-    thinkingLevels: ["off"],
     commands: [],
     queuedMessages: [],
     stats: {

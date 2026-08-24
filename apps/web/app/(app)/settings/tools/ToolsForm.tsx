@@ -11,8 +11,10 @@ import {
   SettingsRow,
   SettingsSection,
 } from "../_components/SettingsRows";
+import { AvailableMcpServersPanel } from "./AvailableMcpServersPanel";
+import { McpServersPanel } from "./McpServersPanel";
 
-export function ToolsForm() {
+export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
   const [webSearchEnabled, setWebSearchEnabled] = useLocalStorage<boolean>(
     WEB_SEARCH_ENABLED_STORAGE_KEY,
     DEFAULT_WEB_SEARCH_ENABLED,
@@ -22,7 +24,7 @@ export function ToolsForm() {
     <div className="max-w-3xl space-y-8">
       <SettingsPageHeader
         title="Tools"
-        description="Control which capabilities models can use in this browser."
+        description="Control model capabilities and connect external tool servers."
       />
 
       <SettingsSection
@@ -44,6 +46,10 @@ export function ToolsForm() {
           />
         </SettingsRow>
       </SettingsSection>
+
+      <AvailableMcpServersPanel />
+
+      {isAdmin && <McpServersPanel />}
     </div>
   );
 }

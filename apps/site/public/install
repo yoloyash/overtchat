@@ -2,7 +2,7 @@
 set -eu
 
 repository="yoloyash/overtchat"
-cli_version="0.1.0"
+cli_version="0.1.10"
 
 say() {
   printf '%s\n' "$*"
@@ -57,7 +57,7 @@ case ":$PATH:" in
     ;;
 esac
 
-if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+if ( : </dev/tty >/dev/tty ) 2>/dev/null; then
   exec "$install_path" setup </dev/tty >/dev/tty
 fi
 

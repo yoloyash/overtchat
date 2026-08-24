@@ -5,20 +5,29 @@ on:
     tags: ["mobile-v*"]
   workflow_dispatch:
 
+permissions: {}
+
+concurrency:
+  group: mobile-release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  android:
+  build-android:
     runs-on: self-hosted
     permissions:
-      contents: write
+      contents: read
+    outputs:
+      expected_tag: ${{ steps.version.outputs.expected_tag }}
+      version: ${{ steps.version.outputs.version }}
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: 22.x
           cache: npm
@@ -56,6 +65,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         # `env:exec` runs this through `sh`, so keep it POSIX.
         run: |
+          # shellcheck disable=SC2016
           npx eas-cli@20 env:exec production '
             if [ -z "$EXPO_PUBLIC_SENTRY_DSN" ]; then
               echo "::error::EXPO_PUBLIC_SENTRY_DSN is not readable in the production environment. It must have plain-text visibility; local builds cannot read secret variables."
@@ -98,24 +108,105 @@ jobs:
             --platform android --profile production-apk \
             --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
 
+      - name: Upload signed Android artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: overtchat-mobile-${{ steps.version.outputs.version }}
+          path: |
+            dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab
+            dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+  smoke-android:
+    needs: build-android
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Download signed Android artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: overtchat-mobile-${{ needs.build-android.outputs.version }}
+          path: dist/mobile
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Smoke-test production APK
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_7_pro
+          disable-animations: true
+          script: >-
+            bash .github/scripts/android-release-smoke.sh
+            "dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.apk"
+            "dist/mobile/smoke-diagnostics"
+
+      - name: Upload smoke-test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: overtchat-mobile-smoke-diagnostics-${{ needs.build-android.outputs.version }}
+          path: dist/mobile/smoke-diagnostics/
+          if-no-files-found: warn
+          retention-days: 14
+
+  publish-android:
+    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: [build-android, smoke-android]
+    runs-on: self-hosted
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download verified Android artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: overtchat-mobile-${{ needs.build-android.outputs.version }}
+          path: dist/mobile
+
       - name: Submit AAB to Play
-        if: startsWith(github.ref, 'refs/tags/mobile-v')
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           npx eas-cli@20 submit --non-interactive \
             --platform android --profile production \
-            --path "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.aab"
+            --path "../../dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.aab"
 
       - name: Attach APK to GitHub release
-        if: startsWith(github.ref, 'refs/tags/mobile-v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ steps.version.outputs.expected_tag }}"
-          APK="dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
+          TAG="${{ needs.build-android.outputs.expected_tag }}"
+          APK="dist/mobile/overtchat-v${{ needs.build-android.outputs.version }}.apk"
 
           gh release view "$TAG" >/dev/null 2>&1 || \
-            gh release create "$TAG" --draft --title "$TAG" --notes "Draft - fill in notes before publishing."
+            gh release create "$TAG" --draft --latest=false --title "$TAG" --notes "Draft - fill in notes before publishing."
           gh release upload "$TAG" "$APK" --clobber

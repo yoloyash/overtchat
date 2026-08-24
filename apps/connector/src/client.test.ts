@@ -136,7 +136,7 @@ describe.sequential("connector client compatibility", () => {
     expect(headers.get("x-overtchat-connector-version")).toBe(
       HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
     );
-    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.4.0");
+    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.7.0");
     expect(headers.get("x-overtchat-connector-protocol")).toBe(
       String(HOST_CONNECTOR_PROTOCOL_VERSION),
     );
@@ -186,6 +186,47 @@ describe.sequential("connector client compatibility", () => {
     expect(batches[0]!.events.map((event) => event.sequence)).toEqual([1]);
     expect(batches[1]!.events.map((event) => event.sequence)).toEqual([1]);
     expect(batches[1]!.connectorEpoch).not.toBe(batches[0]!.connectorEpoch);
+    await client.stop();
+    await running;
+  });
+
+  it("delivers session-directory upserts through the event outbox", async () => {
+    const batches: HostConnectorEventBatch[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (String(input).endsWith("/channel")) return emptyChannel();
+        const batch = JSON.parse(String(init?.body)) as HostConnectorEventBatch;
+        batches.push(batch);
+        return Response.json({
+          connectorEpoch: batch.connectorEpoch,
+          acknowledgedSequence: batch.events.at(-1)!.sequence,
+        });
+      }),
+    );
+    const client = await ConnectorClient.create(await config());
+    const running = client.run();
+    const enqueue = Reflect.get(client, "enqueue") as (
+      value: HostConnectorEventPayload,
+    ) => void;
+    enqueue.call(client, {
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running" },
+    });
+
+    await vi.waitFor(() =>
+      expect(
+        batches.flatMap((batch) => batch.events).some(
+          (event) =>
+            event.payload.type === "session_update" &&
+            event.payload.session.sessionId === "session" &&
+            event.payload.session.runtimeStatus === "running",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      Reflect.get(client, "liveEvents") as HostConnectorEventPayload[],
+    ).toHaveLength(0);
     await client.stop();
     await running;
   });

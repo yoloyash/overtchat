@@ -11,12 +11,14 @@ const mocks = vi.hoisted(() => ({
   prepareFiles: vi.fn(),
   readInstallationConfig: vi.fn(),
   readInstallationSecrets: vi.fn(),
+  reconcileManagedSidecars: vi.fn(),
   renderStackEnvironment: vi.fn(),
   requireDocker: vi.fn(),
   requireSuccessful: vi.fn(),
   spinnerMessage: vi.fn(),
   spinnerStart: vi.fn(),
   spinnerStop: vi.fn(),
+  showSidecarReconciliation: vi.fn(),
   updateCliIfNeeded: vi.fn(),
   waitForApp: vi.fn(),
   writeInstallationConfig: vi.fn(),
@@ -50,6 +52,7 @@ vi.mock("./compose.js", () => ({
 vi.mock("./docker.js", () => ({
   detectDockerCommand: mocks.detectDockerCommand,
   dockerComposeAvailable: mocks.dockerComposeAvailable,
+  reconcileManagedSidecars: mocks.reconcileManagedSidecars,
   requireDocker: mocks.requireDocker,
 }));
 
@@ -81,10 +84,17 @@ vi.mock("./release.js", async (importOriginal) => {
 
 vi.mock("./setup.js", () => ({
   prepareFiles: mocks.prepareFiles,
+  showSidecarReconciliation: mocks.showSidecarReconciliation,
   waitForApp: mocks.waitForApp,
 }));
 
 import { update } from "./update.js";
+
+const releaseImages = {
+  redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
+  searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
+  kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
+};
 
 function config(
   overrides: Partial<InstallationConfig> = {},
@@ -95,6 +105,7 @@ function config(
     appImage: "ghcr.io/yoloyash/overtchat-app:0.14.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    ...releaseImages,
     appPort: 4718,
     bindAddress: "127.0.0.1",
     publicUrl: "https://chat.example.com",
@@ -125,13 +136,18 @@ beforeEach(() => {
   mocks.readInstallationSecrets.mockResolvedValue(secrets);
   mocks.latestReleaseManifest.mockResolvedValue({
     format: 1,
-    cliVersion: "0.1.0",
+    cliVersion: "0.1.1",
     appVersion: "0.14.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
+    ...releaseImages,
   });
   mocks.updateCliIfNeeded.mockResolvedValue(null);
   mocks.renderStackEnvironment.mockReturnValue("rendered environment\n");
+  mocks.reconcileManagedSidecars.mockResolvedValue({
+    removed: [],
+    warnings: [],
+  });
   mocks.requireDocker.mockResolvedValue({
     stdout: "",
     stderr: "",
@@ -207,6 +223,17 @@ describe("managed updates", () => {
     expect(mocks.waitForApp).toHaveBeenCalledWith("http://127.0.0.1:4718");
     expect(mocks.installManagedConnector).not.toHaveBeenCalled();
     expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, current);
+    expect(mocks.reconcileManagedSidecars).toHaveBeenCalledWith(
+      "docker",
+      current,
+    );
+    expect(mocks.showSidecarReconciliation).toHaveBeenCalledWith({
+      removed: [],
+      warnings: [],
+    });
+    expect(
+      mocks.waitForApp.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.reconcileManagedSidecars.mock.invocationCallOrder[0]!);
     expect(mocks.outro).toHaveBeenCalledWith("Open: https://chat.example.com");
   });
 
@@ -221,10 +248,11 @@ describe("managed updates", () => {
     mocks.readInstallationConfig.mockResolvedValue(current);
     mocks.latestReleaseManifest.mockResolvedValue({
       format: 1,
-      cliVersion: "0.1.0",
+      cliVersion: "0.1.1",
       appVersion: "0.14.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      ...releaseImages,
     });
 
     await update();
@@ -235,6 +263,7 @@ describe("managed updates", () => {
       appImage: "ghcr.io/yoloyash/overtchat-app:0.14.0",
       connectorVersion: "0.5.0",
       sttVersion: "0.1.0",
+      ...releaseImages,
     };
     expect(mocks.prepareFiles).toHaveBeenCalledWith(expected, undefined);
     expect(mocks.installManagedConnector).toHaveBeenCalledWith(
@@ -248,6 +277,9 @@ describe("managed updates", () => {
     expect(
       mocks.installManagedConnector.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.writeInstallationConfig.mock.invocationCallOrder[0]!);
+    expect(
+      mocks.writeInstallationConfig.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.reconcileManagedSidecars.mock.invocationCallOrder[0]!);
   });
 
   it("hands control to an updated CLI before touching the stack", async () => {
@@ -275,10 +307,11 @@ describe("managed updates", () => {
     );
     mocks.latestReleaseManifest.mockResolvedValue({
       format: 1,
-      cliVersion: "0.1.0",
+      cliVersion: "0.1.1",
       appVersion: "0.14.0",
       connectorVersion: "0.4.0",
       sttVersion: "0.1.0",
+      ...releaseImages,
     });
     mocks.requireDocker.mockRejectedValueOnce(new Error("pull failed"));
 
@@ -287,7 +320,21 @@ describe("managed updates", () => {
     expect(mocks.requireDocker).toHaveBeenCalledTimes(1);
     expect(mocks.waitForApp).not.toHaveBeenCalled();
     expect(mocks.installManagedConnector).not.toHaveBeenCalled();
+    expect(mocks.reconcileManagedSidecars).not.toHaveBeenCalled();
     expect(mocks.writeInstallationConfig).not.toHaveBeenCalled();
+    expect(mocks.spinnerStop).toHaveBeenCalledWith(
+      "OvertChat update failed",
+      1,
+    );
+  });
+
+  it("does not remove old sidecars when the replacement app is unhealthy", async () => {
+    mocks.waitForApp.mockRejectedValueOnce(new Error("app unhealthy"));
+
+    await expect(update()).rejects.toThrow("app unhealthy");
+
+    expect(mocks.writeInstallationConfig).not.toHaveBeenCalled();
+    expect(mocks.reconcileManagedSidecars).not.toHaveBeenCalled();
     expect(mocks.spinnerStop).toHaveBeenCalledWith(
       "OvertChat update failed",
       1,

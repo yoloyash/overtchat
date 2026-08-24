@@ -20,12 +20,16 @@ const mocks = vi.hoisted(() => {
     getModelConfig: vi.fn(),
     getTaskModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
+    listEffectiveMcpServers: vi.fn(),
+    acquireMcpBinding: vi.fn(),
+    releaseMcpBinding: vi.fn(),
     getProject: vi.fn(),
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
     catalogEntryFor: vi.fn(),
     catalogPricingFor: vi.fn(),
+    resolveModelCapabilities: vi.fn(),
     resolveModelContextWindow: vi.fn(),
     createConfiguredLanguageModel: vi.fn(),
     cancelRegister: vi.fn(),
@@ -34,6 +38,7 @@ const mocks = vi.hoisted(() => {
     getStreamContext: vi.fn(),
     currentDateSystemPrompt: vi.fn(),
     convertToModelMessages: vi.fn(),
+    createWebTools: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -42,7 +47,7 @@ const mocks = vi.hoisted(() => {
     agentStreamArgs: [] as Array<Record<string, unknown>>,
     uiStreamOptions: undefined as Record<string, unknown> | undefined,
     responseOptions: undefined as Record<string, unknown> | undefined,
-    webTools,
+    responseStream: undefined as ReadableStream<string> | undefined,
     chatTools,
     toolOrder: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
@@ -68,8 +73,7 @@ vi.mock("ai", () => ({
   toUIMessageStream: mocks.toUIMessageStream,
 }));
 vi.mock("@/lib/tools", () => ({
-  chatTools: mocks.chatTools,
-  webTools: mocks.webTools,
+  createWebTools: mocks.createWebTools,
   CHAT_TOOL_ORDER: mocks.toolOrder,
   WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
@@ -110,6 +114,12 @@ vi.mock("@/lib/db/modelConfigs", () => ({
 vi.mock("@/lib/db/serverCapabilities", () => ({
   getServerCapability: mocks.getServerCapability,
 }));
+vi.mock("@/lib/db/mcpServers", () => ({
+  listEffectiveMcpServers: mocks.listEffectiveMcpServers,
+}));
+vi.mock("@/lib/mcp/manager", () => ({
+  acquireMcpBinding: mocks.acquireMcpBinding,
+}));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
 vi.mock("@/lib/title", () => ({
   generateChatTitle: mocks.generateChatTitle,
@@ -125,6 +135,7 @@ vi.mock("@/lib/providers/server/model-catalog", () => ({
   catalogEntryFor: mocks.catalogEntryFor,
   catalogPricingFor: mocks.catalogPricingFor,
   resolveModelContextWindow: mocks.resolveModelContextWindow,
+  resolveModelCapabilities: mocks.resolveModelCapabilities,
 }));
 vi.mock("@/lib/streams/cancel-registry", () => ({
   register: mocks.cancelRegister,
@@ -206,12 +217,19 @@ describe("chat route setup boundary", () => {
     mocks.agentStreamArgs.length = 0;
     mocks.uiStreamOptions = undefined;
     mocks.responseOptions = undefined;
+    mocks.responseStream = undefined;
 
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
     mocks.getTaskModelConfig.mockReturnValue(null);
     mocks.getServerCapability.mockReturnValue({ provider: "bundled" });
+    mocks.listEffectiveMcpServers.mockResolvedValue([]);
+    mocks.releaseMcpBinding.mockResolvedValue(undefined);
+    mocks.acquireMcpBinding.mockResolvedValue({
+      tools: {},
+      release: mocks.releaseMcpBinding,
+    });
     mocks.getChat.mockResolvedValue(null);
     mocks.getProject.mockResolvedValue(null);
     mocks.getChatMessage.mockResolvedValue(null);
@@ -220,6 +238,8 @@ describe("chat route setup boundary", () => {
       providerOptions: undefined,
       promptCacheStrategy: undefined,
     });
+    mocks.resolveModelCapabilities.mockReturnValue(undefined);
+    mocks.createWebTools.mockReturnValue(mocks.chatTools);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -248,6 +268,13 @@ describe("chat route setup boundary", () => {
     mocks.createUIMessageStreamResponse.mockImplementation(
       (options: Record<string, unknown>) => {
         mocks.responseOptions = options;
+        const consumeSseStream = options.consumeSseStream as
+          | ((event: { stream: ReadableStream<string> }) => Promise<void>)
+          | undefined;
+        if (consumeSseStream) {
+          mocks.responseStream = new ReadableStream<string>();
+          void consumeSseStream({ stream: mocks.responseStream });
+        }
         return new Response("stream", {
           status: 200,
           headers: options.headers as Headers,
@@ -299,6 +326,21 @@ describe("chat route setup boundary", () => {
     expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
       "exp://mobile",
     );
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.cancelRegister).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("does not mutate chat when MCP preparation fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.listEffectiveMcpServers.mockResolvedValue([{ id: "reference" }]);
+    mocks.acquireMcpBinding.mockRejectedValue(
+      new Error("MCP configuration failed"),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
     expect(mocks.cancelRegister).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
@@ -517,17 +559,37 @@ describe("chat route setup boundary", () => {
 
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
-    const consumeSseStream = mocks.responseOptions?.consumeSseStream as (event: {
-      stream: ReadableStream<string>;
-    }) => Promise<void>;
-    const stream = new ReadableStream<string>();
-    await consumeSseStream({ stream });
 
     expect(createNewResumableStream).toHaveBeenCalledWith(
       claim.streamId,
       expect.any(Function),
     );
-    expect(createNewResumableStream.mock.calls[0][1]()).toBe(stream);
+    expect(createNewResumableStream.mock.calls[0][1]()).toBe(
+      mocks.responseStream,
+    );
+  });
+
+  it("registers the resumable stream before returning the response", async () => {
+    let markReady = () => {};
+    const ready = new Promise<void>((resolve) => {
+      markReady = resolve;
+    });
+    const createNewResumableStream = vi.fn().mockReturnValue(ready);
+    mocks.getStreamContext.mockReturnValue({ createNewResumableStream });
+
+    let didReturn = false;
+    const responsePromise = POST(request()).then((response) => {
+      didReturn = true;
+      return response;
+    });
+
+    await vi.waitFor(() => {
+      expect(createNewResumableStream).toHaveBeenCalledOnce();
+    });
+    expect(didReturn).toBe(false);
+
+    markReady();
+    await expect(responsePromise).resolves.toHaveProperty("status", 200);
   });
 
   it("blocks a second request while the claimed stream is active", async () => {
@@ -586,6 +648,29 @@ describe("chat route setup boundary", () => {
     expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toBe(
       mocks.chatTools,
     );
+    expect(mocks.createWebTools).toHaveBeenCalledWith({
+      userId: "user",
+      supportsImageInput: true,
+    });
+    expect(mocks.convertToModelMessages).toHaveBeenCalledWith(messages, {
+      tools: mocks.chatTools,
+    });
+  });
+
+  it("marks fetched images unavailable to an explicitly text-only model", async () => {
+    mocks.resolveModelCapabilities.mockReturnValue({
+      inputModalities: ["text"],
+    });
+
+    await POST(request());
+
+    expect(mocks.createWebTools).toHaveBeenCalledWith({
+      userId: "user",
+      supportsImageInput: false,
+    });
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ supportsImageInput: false }),
+    );
   });
 
   it("removes web tools when the capability is disabled", async () => {
@@ -612,6 +697,68 @@ describe("chat route setup boundary", () => {
     expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
       expect.objectContaining({ tools: undefined }),
     );
+  });
+
+  it("uses persistent MCP tools without web tools", async () => {
+    const mcpTool = { description: "MCP echo" };
+    const mcpTools = {
+      mcp__reference__abc1234__echo__def12: mcpTool,
+    };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+      forceSearch: true,
+    });
+    mocks.listEffectiveMcpServers.mockResolvedValue([{ id: "reference" }]);
+    mocks.acquireMcpBinding.mockResolvedValue({
+      tools: mcpTools,
+      release: mocks.releaseMcpBinding,
+    });
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.close();
+        },
+      }),
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mcpTools,
+        toolOrder: Object.keys(mcpTools),
+        toolChoice: "auto",
+      }),
+    );
+    expect(mocks.agentSettings[0]?.prepareStep).toBeUndefined();
+    expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: mcpTools }),
+    );
+    expect(mocks.acquireMcpBinding).toHaveBeenCalledWith(
+      { userId: "user", chatId: "chat" },
+      [{ id: "reference" }],
+    );
+    const observed = mocks.uiStreamOptions?.stream as
+      | ReadableStream<unknown>
+      | undefined;
+    await observed?.pipeTo(new WritableStream());
+    expect(mocks.releaseMcpBinding).toHaveBeenCalledOnce();
+  });
+
+  it("releases an MCP binding when the atomic chat claim fails", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    mocks.listEffectiveMcpServers.mockResolvedValue([{ id: "reference" }]);
+    mocks.commitChatTurn.mockImplementation(() => {
+      throw new Error("database unavailable");
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(500);
+    expect(mocks.releaseMcpBinding).toHaveBeenCalledOnce();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 
   it("labels project context between model and web instructions", async () => {

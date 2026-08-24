@@ -106,6 +106,7 @@ export type AgentProviderSessionMetadata = {
   messageCount: number;
   createdAt: Date | null;
   modifiedAt: Date | null;
+  launchConfig?: AgentSessionLaunchConfig;
 };
 
 export type AgentWorkspaceListItem = {
@@ -165,15 +166,23 @@ export type HostConnectorPairing = {
 };
 
 export type AgentModel = {
+  provider: AgentProviderId;
   id: string;
-  name: string;
-  provider: string;
+  label: string;
+  description?: string;
+  isDefault?: boolean;
+  metadata?: {
+    provider?: string;
+    modelId?: string;
+  };
   api: string;
   baseUrl: string;
   reasoning: boolean;
   input: Array<"text" | "image">;
   contextWindow: number | null;
   maxTokens: number | null;
+  thinkingOptions?: AgentSelectOption[];
+  defaultThinkingOptionId?: AgentThinkingLevel;
   cost: {
     input: number;
     output: number;
@@ -181,6 +190,40 @@ export type AgentModel = {
     cacheWrite: number;
   };
 };
+
+export type AgentSelectOption = {
+  id: AgentThinkingLevel;
+  label: string;
+  description?: string;
+  isDefault?: boolean;
+};
+
+export const agentSessionLaunchConfigSchema = z
+  .object({
+    model: z.string().trim().min(1).max(500).optional(),
+    thinkingOptionId: z.enum(AGENT_THINKING_LEVELS).optional(),
+    modeId: z.string().trim().min(1).max(120).optional(),
+  })
+  .strict();
+
+export type AgentSessionLaunchConfig = z.infer<
+  typeof agentSessionLaunchConfigSchema
+>;
+
+export type AgentProviderNotice = {
+  type: "info" | "warning";
+  message: string;
+};
+
+export function isAgentProviderNotice(value: unknown): value is AgentProviderNotice {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    (Reflect.get(value, "type") === "info" ||
+      Reflect.get(value, "type") === "warning") &&
+    typeof Reflect.get(value, "message") === "string"
+  );
+}
 
 export type AgentReadyConnectionProbe = {
   status: "ready";
@@ -271,13 +314,90 @@ export const AGENT_COLLABORATION_MODES = ["default", "plan"] as const;
 export type AgentCollaborationMode =
   (typeof AGENT_COLLABORATION_MODES)[number];
 
-export const AGENT_ACCESS_MODES = [
-  "inherit",
-  "default",
-  "auto-review",
-  "full-access",
-] as const;
-export type AgentAccessMode = (typeof AGENT_ACCESS_MODES)[number];
+export type AgentMode = {
+  id: string;
+  label: string;
+  description: string;
+  dangerous?: boolean;
+};
+
+export type AgentProviderCatalog = {
+  provider: AgentProviderId;
+  models: AgentModel[];
+  modes: AgentMode[];
+  defaultModeId?: string | null;
+};
+
+const agentSelectOptionSchema = z.object({
+  id: z.enum(AGENT_THINKING_LEVELS),
+  label: z.string().min(1),
+  description: z.string().optional(),
+  isDefault: z.boolean().optional(),
+});
+
+const agentModelSchema = z.object({
+  provider: z.enum(AGENT_PROVIDER_IDS),
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string().optional(),
+  isDefault: z.boolean().optional(),
+  metadata: z
+    .object({
+      provider: z.string().optional(),
+      modelId: z.string().optional(),
+    })
+    .optional(),
+  api: z.string(),
+  baseUrl: z.string(),
+  reasoning: z.boolean(),
+  input: z.array(z.enum(["text", "image"])),
+  contextWindow: z.number().int().positive().nullable(),
+  maxTokens: z.number().int().positive().nullable(),
+  thinkingOptions: z.array(agentSelectOptionSchema).optional(),
+  defaultThinkingOptionId: z.enum(AGENT_THINKING_LEVELS).optional(),
+  cost: z.object({
+    input: z.number().nonnegative(),
+    output: z.number().nonnegative(),
+    cacheRead: z.number().nonnegative(),
+    cacheWrite: z.number().nonnegative(),
+  }),
+});
+
+const agentModeSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  description: z.string(),
+  dangerous: z.boolean().optional(),
+});
+
+export const agentProviderCatalogSchema = z
+  .object({
+    provider: z.enum(AGENT_PROVIDER_IDS),
+    models: z.array(agentModelSchema).min(1),
+    modes: z.array(agentModeSchema),
+    defaultModeId: z.string().min(1).nullable().optional(),
+  })
+  .superRefine((catalog, context) => {
+    for (const [index, model] of catalog.models.entries()) {
+      if (model.provider !== catalog.provider) {
+        context.addIssue({
+          code: "custom",
+          path: ["models", index, "provider"],
+          message: "Model provider must match the catalog provider.",
+        });
+      }
+    }
+    if (
+      catalog.defaultModeId &&
+      !catalog.modes.some((mode) => mode.id === catalog.defaultModeId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["defaultModeId"],
+        message: "Default mode must be present in the catalog.",
+      });
+    }
+  });
 
 export const AGENT_GOAL_STATUSES = [
   "active",
@@ -349,7 +469,6 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("set_model"),
-    provider: z.string().trim().min(1).max(120),
     modelId: z.string().trim().min(1).max(500),
   }),
   z.object({
@@ -365,8 +484,8 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     enabled: z.boolean(),
   }),
   z.object({
-    type: z.literal("set_access_mode"),
-    mode: z.enum(AGENT_ACCESS_MODES),
+    type: z.literal("set_mode"),
+    modeId: z.string().trim().min(1).max(120),
   }),
   z.object({
     type: z.literal("update_goal"),
@@ -457,7 +576,6 @@ export type AgentRuntimeSnapshot = {
   state: Record<string, unknown>;
   messages: unknown[];
   models: AgentModel[];
-  thinkingLevels: AgentThinkingLevel[];
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
   queuedMessages: AgentQueuedMessage[];

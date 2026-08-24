@@ -37,7 +37,6 @@ function snapshot(
     state,
     messages: [],
     models: [],
-    thinkingLevels: ["off"],
     commands: [],
     queuedMessages: [],
     stats: {

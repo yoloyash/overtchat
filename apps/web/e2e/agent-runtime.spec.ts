@@ -17,11 +17,16 @@ const TEST_PNG = Buffer.from(
 
 const imageModel: AgentRuntimeSnapshot["models"][number] = {
   id: "gpt-5.6",
-  name: "GPT-5.6",
+  label: "GPT-5.6",
   provider: "codex",
   api: "codex-app-server",
   baseUrl: "",
   reasoning: true,
+  thinkingOptions: [
+    { id: "low", label: "Low" },
+    { id: "high", label: "High", isDefault: true },
+  ],
+  defaultThinkingOptionId: "high",
   input: ["text", "image"],
   contextWindow: 100_000,
   maxTokens: 10_000,
@@ -36,7 +41,7 @@ const imageModel: AgentRuntimeSnapshot["models"][number] = {
 const textModel: AgentRuntimeSnapshot["models"][number] = {
   ...imageModel,
   id: "gpt-5.6-mini",
-  name: "GPT-5.6 Mini",
+  label: "GPT-5.6 Mini",
   input: ["text"],
 };
 
@@ -102,8 +107,25 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       collaborationModes: ["default", "plan"],
       fastModeEnabled: false,
       fastModeAvailable: true,
-      accessMode: "inherit",
-      accessModes: ["inherit", "default", "auto-review", "full-access"],
+      modeId: "auto",
+      modes: [
+        {
+          id: "auto",
+          label: "Default Permissions",
+          description: "Edit files and run commands with Codex's default approval flow.",
+        },
+        {
+          id: "auto-review",
+          label: "Auto-review",
+          description: "Route eligible approvals through Codex's auto-reviewer.",
+        },
+        {
+          id: "full-access",
+          label: "Full Access",
+          description: "Run without additional prompts.",
+          dangerous: true,
+        },
+      ],
       goalsSupported: true,
       goal: {
         objective: "Finish Codex parity",
@@ -273,7 +295,6 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       },
     ],
     models: [imageModel, textModel],
-    thinkingLevels: ["low", "high"],
     commands: [
       {
         name: "plan",
@@ -475,9 +496,7 @@ test("shows durable turn activity without changing completed tool status", async
         }
         if (command.type === "set_model") {
           snapshot.state.model = snapshot.models.find(
-            (model) =>
-              model.provider === command.provider &&
-              model.id === command.modelId,
+            (model) => model.id === command.modelId,
           );
         }
         if (command.type === "set_thinking_level") {
@@ -486,8 +505,8 @@ test("shows durable turn activity without changing completed tool status", async
         if (command.type === "set_fast_mode") {
           snapshot.state.fastModeEnabled = command.enabled;
         }
-        if (command.type === "set_access_mode") {
-          snapshot.state.accessMode = command.mode;
+        if (command.type === "set_mode") {
+          snapshot.state.modeId = command.modeId;
         }
         if (command.type === "update_goal") {
           if (command.action === "clear") {
@@ -641,11 +660,13 @@ test("shows durable turn activity without changing completed tool status", async
     const sources: FakeEventSource[] = [];
     let online = true;
     class FakeEventSource extends EventTarget {
+      readonly url: string;
       onopen: ((event: Event) => void) | null = null;
       onerror: ((event: Event) => void) | null = null;
 
-      constructor() {
+      constructor(url: string | URL) {
         super();
+        this.url = String(url);
         sources.push(this);
         window.setTimeout(() => {
           if (online && sources.includes(this)) {
@@ -659,10 +680,16 @@ test("shows durable turn activity without changing completed tool status", async
         if (index >= 0) sources.splice(index, 1);
       }
     }
+    const runtimeSources = () =>
+      sources.filter(
+        (source) =>
+          source.url.includes("/api/agent-sessions/") &&
+          source.url.includes("/events"),
+      );
 
     const controls: RuntimeControls = {
       emit(envelope) {
-        for (const source of sources) {
+        for (const source of runtimeSources()) {
           source.dispatchEvent(
             new MessageEvent("runtime", {
               data: JSON.stringify(envelope),
@@ -673,19 +700,19 @@ test("shows durable turn activity without changing completed tool status", async
       async disconnect() {
         online = false;
         await setRuntimeAvailable(false);
-        for (const source of [...sources]) {
+        for (const source of runtimeSources()) {
           source.onerror?.(new Event("error"));
         }
       },
       async reconnect() {
         await setRuntimeAvailable(true);
         online = true;
-        for (const source of [...sources]) {
+        for (const source of runtimeSources()) {
           source.onopen?.(new Event("open"));
         }
       },
       connected() {
-        return sources.length > 0;
+        return runtimeSources().length > 0;
       },
     };
     Object.assign(window, {
@@ -738,25 +765,26 @@ test("shows durable turn activity without changing completed tool status", async
     agentComposer.getByRole("button", { name: "Fast", exact: true }),
   ).toHaveCount(0);
   const permissionsControl = agentComposer.getByRole("button", {
-    name: "Permissions: Codex default",
+    name: "Permissions: Default Permissions",
   });
   await expect(permissionsControl).toBeEnabled();
   await permissionsControl.click();
   await page
     .getByRole("menu", { name: "Permissions" })
-    .getByRole("menuitem", { name: /Default permissions/u })
+    .getByRole("menuitem", { name: /Auto-review/u })
     .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "set_access_mode",
-    mode: "default",
+    type: "set_mode",
+    modeId: "auto-review",
   });
+  await expect(page.getByText("Permission mode applies next turn")).toBeVisible();
   const defaultPermissionsControl = agentComposer.getByRole("button", {
-    name: "Permissions: Default permissions",
+    name: "Permissions: Auto-review",
   });
   await defaultPermissionsControl.click();
   await page
     .getByRole("menu", { name: "Permissions" })
-    .getByRole("menuitem", { name: /Full access/u })
+    .getByRole("menuitem", { name: /Full Access/u })
     .click();
   const fullAccessDialog = page.getByRole("alertdialog", {
     name: "Enable Full access?",
@@ -765,8 +793,8 @@ test("shows durable turn activity without changing completed tool status", async
     .getByRole("button", { name: "Enable Full access" })
     .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "set_access_mode",
-    mode: "full-access",
+    type: "set_mode",
+    modeId: "full-access",
   });
   await expect(
     agentComposer.getByRole("button", {
@@ -782,8 +810,10 @@ test("shows durable turn activity without changing completed tool status", async
     '[data-testid="sidebar-workspace-git-status-workspace"]:visible',
   );
   await expect(sidebarGitStatus).toContainText("feature/runtime-status");
-  await expect(sidebarGitStatus).toContainText("+8");
-  await expect(sidebarGitStatus).toContainText("-3");
+  await expect(sidebarGitStatus).toHaveAttribute(
+    "title",
+    "feature/runtime-status · 2 changed files · +8 −3",
+  );
   await page.getByRole("button", { name: "Session actions" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Copy workspace path" }),
@@ -807,20 +837,21 @@ test("shows durable turn activity without changing completed tool status", async
 
   await page.getByRole("button", { name: "Expand Runtime test" }).click();
   await expect(sessionActivity).toBeVisible();
-  await page.getByRole("button", { name: "Collapse This machine" }).click();
-  await expect(
-    page.getByRole("status", {
-      name: "This machine has running sessions",
-    }),
-  ).toBeVisible();
-  await expect(sessionActivity).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Expand This machine" }).click();
-  await expect(sessionActivity).toBeVisible();
 
   const genericActivity = page.getByTestId("agent-run-activity");
-  await expect(genericActivity).toBeVisible();
-  await expect(genericActivity).toContainText(/\d+s/u);
+  await expect(genericActivity).toHaveCount(0);
+  await expect(
+    page.locator('[data-activity-sequence="single"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-activity-sequence="first"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-activity-sequence="middle"]'),
+  ).toHaveCount(1);
+  await expect(
+    page.locator('[data-activity-sequence="last"]'),
+  ).toHaveCount(1);
   await expect(
     page.getByText("I'm auditing the release state before merging anything."),
   ).toBeVisible();
@@ -843,25 +874,36 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(page.getByTestId("agent-goal-bar")).toContainText(
     "Finish Codex parity",
   );
+  const toolSummaries = page.locator('[data-agent-tool-summary="true"]');
+  await expect(toolSummaries).toHaveCount(2);
+  const completedCommandSummary = page.getByRole("button", {
+    name: "Ran 1 command, completed",
+  });
+  await expect(completedCommandSummary).toBeVisible();
   const liveActivity = page.getByRole("button", {
-    name: "Search: runtimeStatus, running",
+    name: "Edited 1 file and searched 1 time, running",
   });
   await expect(liveActivity).toBeVisible();
+  const completedCommand = page.getByRole("button", {
+    name: "Terminal: printf done, completed",
+  });
+  const completedEdit = page.getByRole("button", {
+    name: "Edit: apps/web/runtime.ts, completed",
+  });
+  await expect(completedCommand).not.toBeVisible();
+  await expect(completedEdit).not.toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-collapsed-desktop.png"),
     fullPage: true,
   });
-  const completedCommand = page.getByRole("button", {
-    name: "Terminal: printf done, completed",
-  });
+  await completedCommandSummary.click();
   await expect(completedCommand).toBeVisible();
   await completedCommand.click();
   await expect(page.getByText("$ printf done", { exact: true })).toBeVisible();
   await expect(page.getByText("done", { exact: true })).toBeVisible();
   await expect(page.getByText("› y", { exact: true })).toBeVisible();
-  const completedEdit = page.getByRole("button", {
-    name: "Edit: apps/web/runtime.ts, completed",
-  });
+  await liveActivity.click();
+  await expect(completedEdit).toBeVisible();
   await completedEdit.click();
   await expect(page.getByText("Changes", { exact: true }).first()).toBeVisible();
   await expect(
@@ -1040,7 +1082,7 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("button", { name: "Stopping Codex" }),
   ).toBeVisible();
-  await expect(genericActivity).toContainText("Working", { timeout: 2_000 });
+  await expect(genericActivity).toHaveCount(0, { timeout: 2_000 });
   await expect(page.getByRole("button", { name: "Stop Codex" })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-desktop.png"),
@@ -1231,8 +1273,25 @@ test("shows durable turn activity without changing completed tool status", async
         collaborationModes: ["default", "plan"],
         fastModeEnabled: false,
         fastModeAvailable: true,
-        accessMode: "default",
-        accessModes: ["inherit", "default", "auto-review", "full-access"],
+        modeId: "auto",
+        modes: [
+          {
+            id: "auto",
+            label: "Default Permissions",
+            description: "Use Codex's default approval flow.",
+          },
+          {
+            id: "auto-review",
+            label: "Auto-review",
+            description: "Route eligible approvals through Codex's auto-reviewer.",
+          },
+          {
+            id: "full-access",
+            label: "Full Access",
+            description: "Run without additional prompts.",
+            dangerous: true,
+          },
+        ],
       },
     });
   }, imageModel);
@@ -1281,7 +1340,6 @@ test("shows durable turn activity without changing completed tool status", async
     .click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
     type: "set_model",
-    provider: "codex",
     modelId: "gpt-5.6-mini",
   });
   await expect(

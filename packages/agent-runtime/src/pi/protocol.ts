@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type {
   AgentModel,
-  AgentProviderId,
   AgentSlashCommand,
   AgentSessionStats,
   AgentThinkingLevel,
@@ -20,35 +19,29 @@ const modelCostSchema = z
 const rpcModelSchema = z
   .object({
     id: z.string().min(1),
-    name: z.string().min(1),
-    api: z.string(),
+    name: z.string().min(1).optional(),
+    api: z.string().optional(),
     provider: z.string().min(1),
-    baseUrl: z.string(),
-    reasoning: z.boolean(),
-    input: z.array(z.enum(["text", "image"])),
+    baseUrl: z.string().optional(),
+    reasoning: z.boolean().optional(),
+    input: z.array(z.string()).optional(),
     contextWindow: z.number().int().positive().nullable().optional(),
     maxTokens: z.number().int().positive().nullable().optional(),
-    cost: modelCostSchema,
+    cost: modelCostSchema.optional(),
+    thinking: z
+      .object({
+        efforts: z.array(z.string()).optional(),
+        defaultLevel: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .passthrough();
 
-export const piModelSchema = rpcModelSchema.extend({
-  contextWindow: z.number().int().positive(),
-  maxTokens: z.number().int().positive(),
-});
+export const piModelSchema = rpcModelSchema;
 
 export const piModelsResponseSchema = z
   .object({ models: z.array(piModelSchema) })
-  .passthrough();
-
-const ompModelsResponseSchema = z
-  .object({ models: z.array(rpcModelSchema) })
-  .passthrough();
-
-const thinkingLevelsResponseSchema = z
-  .object({
-    levels: z.array(z.enum(AGENT_THINKING_LEVELS)),
-  })
   .passthrough();
 
 const slashCommandsResponseSchema = z
@@ -119,39 +112,71 @@ export type PiRpcEvent = {
 
 export function parsePiModels(
   value: unknown,
-  provider: AgentProviderId = "pi",
 ): AgentModel[] {
-  const models =
-    provider === "omp"
-      ? ompModelsResponseSchema
-          .parse(value)
-          .models.filter(
-            (model) =>
-              typeof model.contextWindow === "number" &&
-              model.contextWindow > 0,
-          )
-      : piModelsResponseSchema.parse(value).models;
-  return models.map((model) => ({
-    id: model.id,
-    name: model.name,
-    api: model.api,
-    provider: model.provider,
-    baseUrl: model.baseUrl,
-    reasoning: model.reasoning,
-    input: model.input,
-    contextWindow: model.contextWindow!,
-    maxTokens: model.maxTokens ?? model.contextWindow!,
-    cost: {
-      input: model.cost.input,
-      output: model.cost.output,
-      cacheRead: model.cost.cacheRead,
-      cacheWrite: model.cost.cacheWrite,
-    },
-  }));
+  const models = piModelsResponseSchema.parse(value).models;
+  return models.map((model) => {
+    const options = model.reasoning
+      ? thinkingOptionsForModel()
+      : [];
+    const defaultThinkingOptionId = options.find((option) => option.isDefault)?.id;
+    const input = (model.input ?? []).flatMap((value): Array<"text" | "image"> =>
+      value === "text" || value === "image" ? [value] : [],
+    );
+    const cost = model.cost;
+    return {
+      provider: "pi",
+      id: `${model.provider}/${model.id}`,
+      label: displayModelLabel(model.name ?? model.id),
+      description: `${model.provider}/${model.id}`,
+      metadata: { provider: model.provider, modelId: model.id },
+      api: model.api ?? "",
+      baseUrl: model.baseUrl ?? "",
+      reasoning: model.reasoning === true,
+      input,
+      contextWindow: model.contextWindow ?? null,
+      maxTokens: model.maxTokens ?? model.contextWindow ?? null,
+      ...(options.length ? { thinkingOptions: options } : {}),
+      ...(defaultThinkingOptionId ? { defaultThinkingOptionId } : {}),
+      cost: {
+        input: cost?.input ?? 0,
+        output: cost?.output ?? 0,
+        cacheRead: cost?.cacheRead ?? 0,
+        cacheWrite: cost?.cacheWrite ?? 0,
+      },
+    };
+  });
 }
 
-export function parsePiThinkingLevels(value: unknown): AgentThinkingLevel[] {
-  return thinkingLevelsResponseSchema.parse(value).levels;
+function displayModelLabel(name: string): string {
+  const raw = name.split("/").filter(Boolean).at(-1) ?? name;
+  const normalized = raw.trim().replace(/[_\s]+/gu, " ");
+  const separator = normalized.indexOf(": ");
+  return separator === -1
+    ? normalized
+    : normalized.slice(separator + 2).trim();
+}
+
+const THINKING_COPY: Record<
+  AgentThinkingLevel,
+  { label: string; description: string }
+> = {
+  off: { label: "Off", description: "No extra reasoning" },
+  minimal: { label: "Minimal", description: "Light reasoning" },
+  low: { label: "Low", description: "Faster reasoning" },
+  medium: { label: "Medium", description: "Balanced reasoning" },
+  high: { label: "High", description: "Deeper reasoning" },
+  xhigh: { label: "XHigh", description: "Very deep reasoning" },
+  max: { label: "Max", description: "Extreme reasoning" },
+};
+
+function thinkingOptionsForModel() {
+  const levels = [...AGENT_THINKING_LEVELS];
+  const defaultLevel: AgentThinkingLevel = "medium";
+  return levels.map((level) => ({
+    id: level,
+    ...THINKING_COPY[level],
+    ...(level === defaultLevel ? { isDefault: true } : {}),
+  }));
 }
 
 export function parsePiCommands(value: unknown): AgentSlashCommand[] {

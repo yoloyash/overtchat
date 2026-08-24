@@ -7,8 +7,8 @@ import {
   type AgentDaemonRequest,
   type AgentDaemonSessionDescriptor,
   type AgentRuntimeEnvelope,
+  type AgentSessionDirectoryEntry,
   type AgentSessionSync,
-  type AgentRuntimeStatus,
   type ConnectorSshHost,
   type HostConnectorCommand,
   type HostConnectorCapability,
@@ -24,6 +24,7 @@ const CONNECTOR_DISCONNECT_GRACE_MS = 5_000;
 type Channel = {
   send: (command: HostConnectorCommand) => void;
   capabilities: Set<HostConnectorCapability>;
+  sessionIds: Set<string>;
 };
 
 type PendingRequest = {
@@ -42,6 +43,20 @@ function isLedgerProtectedCommand(request: AgentDaemonRequest): boolean {
   );
 }
 
+function sessionIdForRequest(request: AgentDaemonRequest): string | undefined {
+  switch (request.type) {
+    case "create_session":
+    case "stop_session":
+      return request.sessionId;
+    case "open_session":
+    case "session_command":
+    case "subscribe_session":
+      return request.session.sessionId;
+    default:
+      return undefined;
+  }
+}
+
 type SessionSubscription = {
   connectorId: string;
   session: AgentDaemonSessionDescriptor;
@@ -54,11 +69,25 @@ type SessionSubscription = {
   replayBuffer: AgentRuntimeEnvelope[] | null;
 };
 
+export type AgentSessionDirectoryEvent =
+  | { type: "snapshot"; sessions: AgentSessionDirectoryEntry[] }
+  | { type: "update"; session: AgentSessionDirectoryEntry };
+
+type SessionDirectorySubscription = {
+  sessionIds: Set<string>;
+  subscriber: (event: AgentSessionDirectoryEvent) => void;
+};
+
 export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly subscriptions = new Map<string, SessionSubscription>();
-  private readonly sessionStatuses = new Map<string, AgentRuntimeStatus>();
+  private readonly sessionDirectory = new Map<
+    string,
+    { connectorId: string; session: AgentSessionDirectoryEntry }
+  >();
+  private readonly directorySubscriptions =
+    new Set<SessionDirectorySubscription>();
   private readonly disconnectTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
@@ -69,8 +98,33 @@ export class HostConnectorBroker {
     return this.channels.has(connectorId);
   }
 
-  runtimeStatusForSession(sessionId: string): AgentRuntimeStatus {
-    return this.sessionStatuses.get(sessionId) ?? "idle";
+  runtimeStatusForSession(
+    sessionId: string,
+  ): AgentSessionDirectoryEntry["runtimeStatus"] {
+    return (
+      this.sessionDirectory.get(sessionId)?.session.runtimeStatus ?? "idle"
+    );
+  }
+
+  subscribeSessionDirectory(
+    sessionIds: Iterable<string>,
+    subscriber: (event: AgentSessionDirectoryEvent) => void,
+  ): () => void {
+    const subscription = {
+      sessionIds: new Set(sessionIds),
+      subscriber,
+    };
+    this.directorySubscriptions.add(subscription);
+    subscriber({
+      type: "snapshot",
+      sessions: [...subscription.sessionIds].map((sessionId) => ({
+        sessionId,
+        runtimeStatus: this.runtimeStatusForSession(sessionId),
+      })),
+    });
+    return () => {
+      this.directorySubscriptions.delete(subscription);
+    };
   }
 
   replaceSessionProviderSession(
@@ -106,8 +160,18 @@ export class HostConnectorBroker {
     const capabilities = new Set(
       connectorCapabilities.filter((capability) => supported.has(capability)),
     );
-    const channel = { send, capabilities };
+    const sessionIds = new Set(activeSessionIds);
+    const channel = { send, capabilities, sessionIds };
     this.channels.set(connectorId, channel);
+    for (const sessionId of sessionIds) {
+      const current = this.sessionDirectory.get(sessionId);
+      if (!current || current.connectorId !== connectorId) {
+        this.sessionDirectory.set(sessionId, {
+          connectorId,
+          session: { sessionId, runtimeStatus: "idle" },
+        });
+      }
+    }
     send({
       type: "sync",
       connectionEpoch: crypto.randomUUID(),
@@ -137,6 +201,8 @@ export class HostConnectorBroker {
       );
     }
     const requestId = crypto.randomUUID();
+    const sessionId = sessionIdForRequest(request);
+    if (sessionId) channel.sessionIds.add(sessionId);
     const replaySafe =
       isLedgerProtectedCommand(request) &&
       channel.capabilities.has("command-wal-v1");
@@ -260,10 +326,7 @@ export class HostConnectorBroker {
         );
       }
       sync = this.readSessionSync(connectorId, session, after, result?.sync);
-      if (sync) {
-        subscription.after = sync.cursor;
-        this.projectSessionSyncStatus(session.sessionId, sync);
-      }
+      if (sync) subscription.after = sync.cursor;
       subscription.initialized = true;
     } catch (error) {
       if (this.subscriptions.get(subscriptionId) === subscription) {
@@ -329,6 +392,14 @@ export class HostConnectorBroker {
       this.pending.delete(event.requestId);
       if (event.success) pending.resolve(event.data);
       else pending.reject(new Error(event.error));
+      return;
+    }
+    if (event.type === "session_directory") {
+      this.acceptSessionDirectory(connectorId, event.sessions);
+      return;
+    }
+    if (event.type === "session_update") {
+      this.acceptSessionDirectory(connectorId, [event.session]);
       return;
     }
     if (event.type === "session_metadata") {
@@ -402,7 +473,6 @@ export class HostConnectorBroker {
           );
           if (sync) {
             subscription.after = sync.cursor;
-            this.projectSessionSyncStatus(subscription.session.sessionId, sync);
             subscription.synchronize(sync);
           }
           subscription.replayBuffer = null;
@@ -456,37 +526,37 @@ export class HostConnectorBroker {
         sequence: envelope.sequence,
       };
     }
-    this.projectEnvelopeStatus(subscription.session.sessionId, envelope);
     subscription.subscriber(envelope);
   }
 
-  private projectSessionSyncStatus(
-    sessionId: string,
-    sync: AgentSessionSync,
+  private acceptSessionDirectory(
+    connectorId: string,
+    sessions: readonly AgentSessionDirectoryEntry[],
   ): void {
-    if (sync.reset) {
-      this.sessionStatuses.set(sessionId, sync.snapshot.status);
-      return;
-    }
-    for (const envelope of sync.events) {
-      this.projectEnvelopeStatus(sessionId, envelope);
+    const channel = this.channels.get(connectorId);
+    if (!channel) return;
+    for (const session of sessions) {
+      if (!channel.sessionIds.has(session.sessionId)) continue;
+      this.upsertSessionDirectory(connectorId, session);
     }
   }
 
-  private projectEnvelopeStatus(
-    sessionId: string,
-    envelope: AgentRuntimeEnvelope,
+  private upsertSessionDirectory(
+    connectorId: string,
+    session: AgentSessionDirectoryEntry,
   ): void {
-    if (envelope.type === "snapshot") {
-      this.sessionStatuses.set(sessionId, envelope.data.status);
-    } else if (
-      envelope.data.type === "overtchat_status" &&
-      ["idle", "running", "exited"].includes(String(envelope.data.status))
+    const current = this.sessionDirectory.get(session.sessionId);
+    if (
+      current?.connectorId === connectorId &&
+      current.session.runtimeStatus === session.runtimeStatus
     ) {
-      this.sessionStatuses.set(
-        sessionId,
-        envelope.data.status as AgentRuntimeStatus,
-      );
+      return;
+    }
+    this.sessionDirectory.set(session.sessionId, { connectorId, session });
+    for (const subscription of this.directorySubscriptions) {
+      if (subscription.sessionIds.has(session.sessionId)) {
+        subscription.subscriber({ type: "update", session });
+      }
     }
   }
 
@@ -583,6 +653,13 @@ export class HostConnectorBroker {
         if (subscription.connectorId !== connectorId) continue;
         this.subscriptions.delete(subscriptionId);
         subscription.disconnect(error);
+      }
+      for (const entry of this.sessionDirectory.values()) {
+        if (entry.connectorId !== connectorId) continue;
+        this.upsertSessionDirectory(connectorId, {
+          ...entry.session,
+          runtimeStatus: "exited",
+        });
       }
     }, this.disconnectGraceMs);
     timer.unref();

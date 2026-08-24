@@ -12,6 +12,7 @@ import type {
   AgentConnectionListItem,
   AgentProviderSessionMetadata,
   AgentProviderId,
+  AgentSessionLaunchConfig,
   AgentSessionListItem,
   AgentTransportId,
 } from "@overtchat/agent-bridge";
@@ -348,6 +349,9 @@ export function syncAgentWorkspaceSessions(
           messageCount: session.messageCount,
           providerCreatedAt: session.createdAt,
           providerModifiedAt: session.modifiedAt,
+          model: session.launchConfig?.model,
+          thinkingOptionId: session.launchConfig?.thinkingOptionId,
+          modeId: session.launchConfig?.modeId,
           lastSyncedAt: now,
         })
         .onConflictDoUpdate({
@@ -362,6 +366,15 @@ export function syncAgentWorkspaceSessions(
             messageCount: session.messageCount,
             providerCreatedAt: session.createdAt,
             providerModifiedAt: session.modifiedAt,
+            ...(session.launchConfig?.model
+              ? { model: session.launchConfig.model }
+              : {}),
+            ...(session.launchConfig?.thinkingOptionId
+              ? { thinkingOptionId: session.launchConfig.thinkingOptionId }
+              : {}),
+            ...(session.launchConfig?.modeId
+              ? { modeId: session.launchConfig.modeId }
+              : {}),
             lastSyncedAt: now,
             updatedAt: now,
           },
@@ -391,6 +404,7 @@ export async function upsertAgentSession(
   workspaceId: string,
   session: ProviderSessionMetadata,
   sessionId = crypto.randomUUID(),
+  launchConfig: AgentSessionLaunchConfig = {},
 ): Promise<AgentSessionRow> {
   const now = new Date();
   const [row] = await db
@@ -400,6 +414,9 @@ export async function upsertAgentSession(
       workspaceId,
       providerSessionId: session.providerSessionId,
       providerSessionPath: session.providerSessionPath,
+      model: launchConfig.model,
+      thinkingOptionId: launchConfig.thinkingOptionId,
+      modeId: launchConfig.modeId,
       name: session.name,
       firstMessage: session.firstMessage,
       messageCount: session.messageCount,
@@ -414,6 +431,9 @@ export async function upsertAgentSession(
       ],
       set: {
         providerSessionId: session.providerSessionId,
+        model: launchConfig.model,
+        thinkingOptionId: launchConfig.thinkingOptionId,
+        modeId: launchConfig.modeId,
         name: session.name,
         firstMessage: session.firstMessage,
         messageCount: session.messageCount,
@@ -431,6 +451,7 @@ export async function upsertAgentSession(
 export async function replaceAgentSessionProviderSession(
   id: string,
   session: ProviderSessionMetadata,
+  launchConfig?: AgentSessionLaunchConfig,
 ): Promise<void> {
   const now = new Date();
   await db
@@ -438,6 +459,13 @@ export async function replaceAgentSessionProviderSession(
     .set({
       providerSessionId: session.providerSessionId,
       providerSessionPath: session.providerSessionPath,
+      ...(launchConfig
+        ? {
+            model: launchConfig.model ?? null,
+            thinkingOptionId: launchConfig.thinkingOptionId ?? null,
+            modeId: launchConfig.modeId ?? null,
+          }
+        : {}),
       name: session.name,
       firstMessage: session.firstMessage,
       messageCount: session.messageCount,
@@ -456,12 +484,21 @@ export async function updateAgentSessionMetadata(
     firstMessage?: string | null;
     messageCount?: number;
     providerModifiedAt?: Date;
+    launchConfig?: AgentSessionLaunchConfig;
   },
 ): Promise<void> {
+  const { launchConfig, ...metadata } = patch;
   await db
     .update(agentSessions)
     .set({
-      ...patch,
+      ...metadata,
+      ...(launchConfig
+        ? {
+            model: launchConfig.model ?? null,
+            thinkingOptionId: launchConfig.thinkingOptionId ?? null,
+            modeId: launchConfig.modeId ?? null,
+          }
+        : {}),
       updatedAt: new Date(),
       lastSyncedAt: new Date(),
     })

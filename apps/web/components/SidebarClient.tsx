@@ -3,26 +3,36 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
+  Check,
   FolderPlus,
+  MoreHorizontal,
   PanelLeft,
   Pencil,
-  Plus,
+  RefreshCw,
   Search,
 } from "lucide-react";
-import { BetaBadge } from "@/components/BetaBadge";
+import type { AgentProviderId } from "@overtchat/agent-bridge";
+import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import { SidebarChatList } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
-import { SidebarConnections } from "@/components/SidebarConnections";
+import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { useSidebar } from "@/components/sidebar-context";
 import { useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
-import { useAgentConnections } from "@/lib/queries/agentConnections";
+import {
+  useAgentConnectionSessionDirectory,
+  useAgentConnections,
+  useRefreshAllAgentWorkspaces,
+} from "@/lib/queries/agentConnections";
 import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
+import { toast } from "@/components/ui/toast";
+import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
@@ -134,7 +144,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           <span>New project</span>
         </button>
 
-        {isAdmin && <AdminConnections />}
+        {isAdmin && <AdminAgentWorkspaces />}
 
         <SidebarChatList chats={unprojected} projects={projectOptions} />
       </div>
@@ -147,30 +157,189 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function AdminConnections() {
+function AdminAgentWorkspaces() {
   const { data: connections = [] } = useAgentConnections();
-  const { closeMobile } = useSidebar();
+  const refresh = useRefreshAllAgentWorkspaces();
+  useAgentConnectionSessionDirectory(connections);
+  const { closeMobile, drawerRef } = useSidebar();
+  const [providerFilter, setProviderFilter] = useState<AgentProviderId | null>(
+    null,
+  );
+  const hasWorkspaces = connections.some(
+    (connection) => connection.workspaces.length > 0,
+  );
+  const providers = useMemo(
+    () =>
+      [...new Set(
+        connections
+          .filter((connection) => connection.workspaces.length > 0)
+          .map((connection) => connection.provider),
+      )].sort(),
+    [connections],
+  );
+  const activeProviderFilter =
+    providerFilter && providers.includes(providerFilter)
+      ? providerFilter
+      : null;
+
+  if (!hasWorkspaces) return null;
+
+  async function refreshAllChats() {
+    try {
+      const result = await refresh.mutateAsync(connections);
+      const synced = result.created + result.refreshed;
+      if (synced === 0) {
+        toast.error({
+          title: "Chats could not be refreshed",
+          description: result.failures[0]?.message,
+        });
+      } else if (result.failures.length > 0) {
+        toast.warning({
+          title: "Chats refreshed with some errors",
+          description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced; ${result.failures.length} failed.`,
+        });
+      } else {
+        toast.success({
+          title: "Chats refreshed",
+          description: `${synced} agent workspace${synced === 1 ? "" : "s"} synced.`,
+        });
+      }
+    } catch (error) {
+      toast.error({
+        title: "Chats could not be refreshed",
+        description:
+          error instanceof Error ? error.message : "Refresh failed.",
+      });
+    }
+  }
 
   return (
     <>
       <SectionLabel
-        badge={<BetaBadge />}
         action={
-          <Link
-            href="/settings/connections?add=1"
-            onClick={closeMobile}
-            aria-label="Add agent"
-            title="Add agent"
-            className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-          >
-            <Plus className="size-3.5" />
-          </Link>
+          <span className="flex items-center gap-0.5">
+            <Menu.Root>
+              <Menu.Trigger
+                aria-label={
+                  activeProviderFilter
+                    ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                    : "Agent workspace options"
+                }
+                title={
+                  activeProviderFilter
+                    ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                    : "Workspace options"
+                }
+                className={cn(
+                  "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
+                  activeProviderFilter && "bg-sidebar-accent text-foreground",
+                )}
+              >
+                <MoreHorizontal className="size-3.5" />
+                {activeProviderFilter && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+                  />
+                )}
+              </Menu.Trigger>
+              <Menu.Portal container={drawerRef}>
+                <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+                  <Menu.Popup
+                    className={cn(
+                      "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                      motionClasses.popup,
+                    )}
+                  >
+                    {providers.length > 1 && (
+                      <>
+                        <Menu.Group>
+                          <Menu.GroupLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                            Show chats from
+                          </Menu.GroupLabel>
+                          <Menu.RadioGroup
+                            value={activeProviderFilter ?? "all"}
+                            onValueChange={(value) =>
+                              setProviderFilter(
+                                value === "all"
+                                  ? null
+                                  : (value as AgentProviderId),
+                              )
+                            }
+                          >
+                            <ProviderFilterMenuItem value="all" label="All agents" />
+                            {providers.map((provider) => (
+                              <ProviderFilterMenuItem
+                                key={provider}
+                                value={provider}
+                                label={agentProviderMetadata(provider).label}
+                              />
+                            ))}
+                          </Menu.RadioGroup>
+                        </Menu.Group>
+                        <Menu.Separator className="mx-1 my-1 h-px bg-border" />
+                      </>
+                    )}
+                    <Menu.Item
+                      disabled={refresh.isPending}
+                      onClick={() => void refreshAllChats()}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                    >
+                      <RefreshCw
+                        className={cn(
+                          "size-3.5 shrink-0 text-muted-foreground",
+                          refresh.isPending &&
+                            "animate-spin motion-reduce:animate-none",
+                        )}
+                      />
+                      <span>Refresh all chats</span>
+                    </Menu.Item>
+                  </Menu.Popup>
+                </Menu.Positioner>
+              </Menu.Portal>
+            </Menu.Root>
+            <Link
+              href="/settings/connections?add=1"
+              onClick={closeMobile}
+              aria-label="Add workspace"
+              title="Add workspace"
+              className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+            >
+              <FolderPlus className="size-3.5" />
+            </Link>
+          </span>
         }
       >
-        Connections
+        Agent workspaces
       </SectionLabel>
-      <SidebarConnections connections={connections} />
+      <SidebarAgentWorkspaces
+        connections={connections}
+        providerFilter={activeProviderFilter}
+      />
     </>
+  );
+}
+
+function ProviderFilterMenuItem({
+  value,
+  label,
+}: {
+  value: string;
+  label: string;
+}) {
+  return (
+    <Menu.RadioItem
+      value={value}
+      closeOnClick
+      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+    >
+      <span>{label}</span>
+      <span className="ml-auto flex size-4 items-center justify-center">
+        <Menu.RadioItemIndicator>
+          <Check className="size-3.5" />
+        </Menu.RadioItemIndicator>
+      </span>
+    </Menu.RadioItem>
   );
 }
 

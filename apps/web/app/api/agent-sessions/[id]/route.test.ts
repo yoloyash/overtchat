@@ -63,6 +63,7 @@ const sessionDescriptor = {
   sessionId: "session",
   providerSessionId: "provider-session",
   providerSessionPath: "/sessions/provider-session.jsonl",
+  launchConfig: {},
 };
 
 const snapshot = {
@@ -418,6 +419,7 @@ describe("agent session route", () => {
     expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
       type: "create_session",
       sessionId: expect.any(String),
+      launchConfig: {},
       workspace: {
         connectionId: "connection",
         workspaceId: "workspace",
@@ -432,6 +434,7 @@ describe("agent session route", () => {
       "workspace",
       expect.objectContaining({ providerSessionId: "new-provider-session" }),
       expect.any(String),
+      {},
     );
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });

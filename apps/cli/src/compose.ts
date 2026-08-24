@@ -47,11 +47,15 @@ export function renderStackEnvironment(
     ["APP_VERSION", config.appVersion],
     ["OVERTCHAT_APP_IMAGE", config.appImage],
     ["STT_VERSION", config.sttVersion],
+    ["OVERTCHAT_REDIS_IMAGE", config.redisImage],
+    ["OVERTCHAT_SEARXNG_IMAGE", config.searxngImage],
+    ["OVERTCHAT_KOKORO_IMAGE", config.kokoroImage],
     ["APP_PORT", config.appPort],
     ["APP_BIND_ADDRESS", composeBindAddress(config.bindAddress)],
     ["BETTER_AUTH_URL", config.publicUrl],
     ["EXTRA_TRUSTED_ORIGINS", trustedOrigins.join(",")],
     ["HOST_CONNECTOR_URL", config.connectorServerUrl],
+    ["DISABLE_UPDATE_CHECK", String(config.disableUpdateCheck ?? false)],
     ["BETTER_AUTH_SECRET", secrets.betterAuthSecret],
     ["OVERTCHAT_MANAGEMENT_SECRET", secrets.managementSecret],
     ["SEARXNG_SECRET", secrets.searxngSecret],
@@ -134,6 +138,7 @@ services:
       BETTER_AUTH_URL: \${BETTER_AUTH_URL}
       EXTRA_TRUSTED_ORIGINS: \${EXTRA_TRUSTED_ORIGINS:-}
       HOST_CONNECTOR_URL: \${HOST_CONNECTOR_URL}
+      DISABLE_UPDATE_CHECK: \${DISABLE_UPDATE_CHECK:-false}
       OVERTCHAT_MANAGEMENT_SECRET: \${OVERTCHAT_MANAGEMENT_SECRET}
       OVERTCHAT_INSTALLED_CAPABILITIES: \${OVERTCHAT_INSTALLED_CAPABILITIES:-}
       WEB_SEARCH_PROVIDER: \${WEB_SEARCH_PROVIDER}
@@ -151,6 +156,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
 ${appDataMount}
+      - overtchat-npm-cache:/app/npm-cache
     depends_on:
       redis:
         condition: service_healthy
@@ -162,7 +168,7 @@ ${appDataMount}
         required: false
 
   redis:
-    image: redis:8-alpine@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2
+    image: \${OVERTCHAT_REDIS_IMAGE}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-redis
     restart: unless-stopped
     command: [redis-server, --save, "", --appendonly, "no", --maxmemory, 64mb, --maxmemory-policy, allkeys-lru]
@@ -173,7 +179,7 @@ ${appDataMount}
       retries: 5
 
   searxng:
-    image: docker.io/searxng/searxng:latest
+    image: \${OVERTCHAT_SEARXNG_IMAGE}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-searxng
     restart: unless-stopped
     profiles: [search-bundled]
@@ -190,7 +196,7 @@ ${appDataMount}
       start_period: 10s
 
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.4
+    image: \${OVERTCHAT_KOKORO_IMAGE}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-kokoro
     restart: unless-stopped
     profiles: [tts-bundled]
@@ -233,7 +239,8 @@ ${appDataMount}
               capabilities: [gpu]
 
 volumes:
-${appDataVolume}  overtchat-stt-models:
+${appDataVolume}  overtchat-npm-cache:
+  overtchat-stt-models:
     name: overtchat-stt-models
 `;
 }

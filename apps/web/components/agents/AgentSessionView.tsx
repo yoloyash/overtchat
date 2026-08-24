@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -17,9 +17,9 @@ import { SidebarToggle } from "@/components/SidebarToggle";
 import { toast } from "@/components/ui/toast";
 import { AGENT_GOAL_STATUSES } from "@overtchat/agent-bridge";
 import type {
-  AgentAccessMode,
   AgentCollaborationMode,
   AgentGoal,
+  AgentMode,
   AgentPromptImage,
   AgentProviderId,
   AgentRuntimeSnapshot,
@@ -36,7 +36,14 @@ import {
   useAgentSessionUsage,
 } from "@/lib/queries/agentSessions";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
+import {
+  AGENT_CREATE_PREFERENCES_KEY,
+  DEFAULT_AGENT_CREATE_PREFERENCES,
+  mergeAgentProviderPreferences,
+  parseAgentCreatePreferences,
+} from "@/lib/agents/createPreferences";
 import { motionClasses } from "@/lib/motion";
+import { useLocalStorage } from "@/lib/useLocalStorage";
 import { AgentComposer } from "./AgentComposer";
 import {
   AgentInteractionDialog,
@@ -68,10 +75,11 @@ function currentModel(
 
 function currentThinking(
   snapshot: AgentRuntimeSnapshot,
+  model: AgentRuntimeSnapshot["models"][number] | undefined,
 ): AgentThinkingLevel | null {
   const level = snapshot.state.thinkingLevel;
   return typeof level === "string" &&
-    snapshot.thinkingLevels.includes(level as AgentThinkingLevel)
+    model?.thinkingOptions?.some((option) => option.id === level)
     ? (level as AgentThinkingLevel)
     : null;
 }
@@ -98,25 +106,28 @@ function currentCollaborationMode(
   return snapshot.state.collaborationMode === "plan" ? "plan" : "default";
 }
 
-function accessModes(snapshot: AgentRuntimeSnapshot): AgentAccessMode[] {
-  const value = snapshot.state.accessModes;
+function agentModes(snapshot: AgentRuntimeSnapshot): AgentMode[] {
+  const value = snapshot.state.modes;
   if (!Array.isArray(value)) return [];
-  return value.filter(
-    (mode): mode is AgentAccessMode =>
-      mode === "inherit" ||
-      mode === "default" ||
-      mode === "auto-review" ||
-      mode === "full-access",
-  );
+  return value.flatMap((value) => {
+    const mode = recordOf(value);
+    return typeof mode?.id === "string" &&
+      typeof mode.label === "string" &&
+      typeof mode.description === "string"
+      ? [{
+          id: mode.id,
+          label: mode.label,
+          description: mode.description,
+          ...(mode.dangerous === true ? { dangerous: true } : {}),
+        }]
+      : [];
+  });
 }
 
-function currentAccessMode(snapshot: AgentRuntimeSnapshot): AgentAccessMode {
-  const mode = snapshot.state.accessMode;
-  return mode === "default" ||
-    mode === "auto-review" ||
-    mode === "full-access"
-    ? mode
-    : "inherit";
+function currentModeId(snapshot: AgentRuntimeSnapshot): string {
+  return typeof snapshot.state.modeId === "string"
+    ? snapshot.state.modeId
+    : "";
 }
 
 function currentGoal(snapshot: AgentRuntimeSnapshot): AgentGoal | null {
@@ -165,6 +176,14 @@ export function AgentSessionView({
   const session = useAgentSession(sessionId);
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
+  const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
+    AGENT_CREATE_PREFERENCES_KEY,
+    DEFAULT_AGENT_CREATE_PREFERENCES,
+  );
+  const preferences = useMemo(
+    () => parseAgentCreatePreferences(storedPreferences),
+    [storedPreferences],
+  );
   const [renameOpen, setRenameOpen] = useState(false);
   const [compactOpen, setCompactOpen] = useState(false);
   const [usage, setUsage] = useState<AgentUsageSnapshot | null>(null);
@@ -194,6 +213,9 @@ export function AgentSessionView({
     setDialogError("");
     try {
       const result = await command.mutateAsync(input);
+      if (result.notice) {
+        toast.warning(result.notice.message);
+      }
       if (
         input.type === "edit_message" ||
         input.type === "fork_message"
@@ -332,14 +354,14 @@ export function AgentSessionView({
           candidate.id === model.id,
       )
     : undefined;
-  const thinking = currentThinking(snapshot);
+  const thinking = currentThinking(snapshot, selectedModel);
   const currentName = sessionName(snapshot) || initialSessionName;
   const availableCollaborationModes = collaborationModes(snapshot);
   const collaborationMode = currentCollaborationMode(snapshot);
   const fastModeEnabled = snapshot.state.fastModeEnabled === true;
   const fastModeAvailable = snapshot.state.fastModeAvailable === true;
-  const availableAccessModes = accessModes(snapshot);
-  const accessMode = currentAccessMode(snapshot);
+  const availableModes = agentModes(snapshot);
+  const modeId = currentModeId(snapshot);
   const goal = currentGoal(snapshot);
   const runtimeError =
     snapshot.error ??
@@ -491,28 +513,61 @@ export function AgentSessionView({
               models: snapshot.models,
               currentModel: model,
               thinkingLevel: thinking,
-              thinkingLevels: snapshot.thinkingLevels,
+              thinkingOptions: selectedModel?.thinkingOptions ?? [],
               collaborationMode,
               collaborationModes: availableCollaborationModes,
               fastModeEnabled,
               fastModeAvailable,
-              accessMode,
-              accessModes: availableAccessModes,
+              modeId,
+              modes: availableModes,
               disabled: controlsDisabled,
-              onSelectModel: (selected) =>
+              onSelectModel: (selected) => {
                 void run({
                   type: "set_model",
-                  provider: selected.provider,
                   modelId: selected.id,
-                }),
-              onSelectThinking: (level) =>
-                void run({ type: "set_thinking_level", level }),
+                }).then((changed) => {
+                  if (!changed) return;
+                  setStoredPreferences(
+                    mergeAgentProviderPreferences({
+                      preferences,
+                      provider,
+                      updates: { model: selected.id },
+                    }),
+                  );
+                });
+              },
+              onSelectThinking: (level) => {
+                if (selectedModel) {
+                  setStoredPreferences(
+                    mergeAgentProviderPreferences({
+                      preferences,
+                      provider,
+                      updates: {
+                        model: selectedModel.id,
+                        thinkingByModel: { [selectedModel.id]: level },
+                      },
+                    }),
+                  );
+                }
+                void run({ type: "set_thinking_level", level });
+              },
               onSelectCollaborationMode: (mode) =>
                 void run({ type: "set_collaboration_mode", mode }),
               onToggleFastMode: (enabled) =>
                 void run({ type: "set_fast_mode", enabled }),
-              onSelectAccessMode: (mode) =>
-                void run({ type: "set_access_mode", mode }),
+              onSelectMode: (selectedModeId) => {
+                setStoredPreferences(
+                  mergeAgentProviderPreferences({
+                    preferences,
+                    provider,
+                    updates: { mode: selectedModeId },
+                  }),
+                );
+                if (running && provider !== "omp") {
+                  toast.success("Permission mode applies next turn");
+                }
+                void run({ type: "set_mode", modeId: selectedModeId });
+              },
               onMenuOpenChange: setComposerMenuOpen,
             }}
             contextUsage={snapshot.stats.contextUsage}

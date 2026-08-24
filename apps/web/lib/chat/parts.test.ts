@@ -16,6 +16,15 @@ const search = (query: string): Part =>
   }) as unknown as Part;
 const file = (): Part =>
   ({ type: "file", mediaType: "image/png", url: "x" }) as Part;
+const mcpTool = (): Part =>
+  ({
+    type: "dynamic-tool",
+    toolName: "mcp__reference__echo",
+    toolCallId: "echo",
+    state: "output-available",
+    input: { value: "hello" },
+    output: { content: [{ type: "text", text: "hello" }] },
+  }) as Part;
 
 describe("groupMessageParts", () => {
   it("collapses interleaved reasoning + tools into one activity block", () => {
@@ -75,5 +84,20 @@ describe("groupMessageParts", () => {
     const activity = segs[0] as Extract<Segment, { kind: "activity" }>;
     expect(activity.parts).toHaveLength(4); // reasoning + 3 searches, blanks dropped
     expect(segs[1]).toMatchObject({ kind: "text", index: 6 });
+  });
+
+  it("groups dynamic MCP tools into the activity timeline", () => {
+    const segs = groupMessageParts([
+      reasoning("calling a tool"),
+      mcpTool(),
+      text("done"),
+    ]);
+    expect(segs.map((segment) => segment.kind)).toEqual([
+      "activity",
+      "text",
+    ]);
+    expect(
+      (segs[0] as Extract<Segment, { kind: "activity" }>).parts,
+    ).toHaveLength(2);
   });
 });

@@ -1,6 +1,8 @@
 import { z } from "zod";
-import type { AgentProviderId } from "@overtchat/agent-bridge";
-import type { AgentProviderSessionMetadata as ProviderSessionMetadata } from "@overtchat/agent-bridge";
+import {
+  agentSessionLaunchConfigSchema,
+  type AgentProviderSessionMetadata as ProviderSessionMetadata,
+} from "@overtchat/agent-bridge";
 import {
   executeOnHost,
   type HostTarget,
@@ -17,6 +19,7 @@ const sessionMetadataSchema = z.array(
     messageCount: z.number().int().nonnegative(),
     createdAt: z.number().finite().nullable(),
     modifiedAt: z.number().finite().nullable(),
+    launchConfig: agentSessionLaunchConfigSchema.optional(),
   }),
 );
 
@@ -30,7 +33,6 @@ const path = require("node:path");
 const readline = require("node:readline");
 
 const requestedCwd = fs.realpathSync(process.argv[1]);
-const provider = process.argv[2] || "pi";
 const home = os.homedir();
 const expand = (value, base) => {
   if (value === "~") return home;
@@ -45,14 +47,11 @@ const readSettingsDir = (file) => {
     return null;
   }
 };
-const defaultAgentDir = provider === "omp" ? "~/.omp/agent" : "~/.pi/agent";
-const agentDir = expand(process.env.PI_CODING_AGENT_DIR || defaultAgentDir, process.cwd());
+const agentDir = expand(process.env.PI_CODING_AGENT_DIR || "~/.pi/agent", process.cwd());
 const configured =
   process.env.PI_CODING_AGENT_SESSION_DIR ||
-  (provider === "pi"
-    ? readSettingsDir(path.join(requestedCwd, ".pi", "settings.json")) ||
-      readSettingsDir(path.join(agentDir, "settings.json"))
-    : null);
+  readSettingsDir(path.join(requestedCwd, ".pi", "settings.json")) ||
+  readSettingsDir(path.join(agentDir, "settings.json"));
 const root = configured
   ? expand(configured, requestedCwd)
   : path.join(agentDir, "sessions");
@@ -92,6 +91,8 @@ async function readSession(file) {
   let firstMessage = null;
   let messageCount = 0;
   let modifiedAt = null;
+  let model = null;
+  let thinkingOptionId = null;
   try {
     const input = fs.createReadStream(file, { encoding: "utf8" });
     const lines = readline.createInterface({ input, crlfDelay: Infinity });
@@ -115,6 +116,14 @@ async function readSession(file) {
       if (entry.type === "session_info") {
         name = typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : null;
       }
+      if (entry.type === "model_change") {
+        if (typeof entry.provider === "string" && typeof entry.modelId === "string") {
+          model = entry.provider + "/" + entry.modelId;
+        }
+      }
+      if (entry.type === "thinking_level_change" && ["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(entry.thinkingLevel)) {
+        thinkingOptionId = entry.thinkingLevel;
+      }
       if (entry.type !== "message" || !entry.message) continue;
       messageCount++;
       const activity =
@@ -124,6 +133,9 @@ async function readSession(file) {
       if (Number.isFinite(activity)) modifiedAt = Math.max(modifiedAt || 0, activity);
       if (!firstMessage && entry.message.role === "user") {
         firstMessage = textContent(entry.message) || null;
+      }
+      if (entry.message.role === "assistant" && typeof entry.message.provider === "string" && typeof entry.message.model === "string") {
+        model = entry.message.provider + "/" + entry.message.model;
       }
     }
     if (!header) return null;
@@ -140,6 +152,12 @@ async function readSession(file) {
       messageCount,
       createdAt: Number.isFinite(createdAt) ? createdAt : null,
       modifiedAt: Number.isFinite(modifiedAt) ? modifiedAt : null,
+      ...((model || thinkingOptionId) ? {
+        launchConfig: {
+          ...(model ? { model } : {}),
+          ...(thinkingOptionId ? { thinkingOptionId } : {}),
+        },
+      } : {}),
     };
   } catch {
     return null;
@@ -167,8 +185,7 @@ async function readSession(file) {
 });
 `.trim();
 
-export async function listAgentWorkspaceSessions(
-  provider: AgentProviderId,
+export async function listPiWorkspaceSessions(
   target: HostTarget,
   workspacePath: string,
 ): Promise<ProviderSessionMetadata[]> {
@@ -176,7 +193,7 @@ export async function listAgentWorkspaceSessions(
     target,
     {
       command: "node",
-      args: ["-e", SESSION_SCAN_SCRIPT, workspacePath, provider],
+      args: ["-e", SESSION_SCAN_SCRIPT, workspacePath],
     },
     { timeoutMs: SESSION_SCAN_TIMEOUT_MS },
   );
@@ -188,11 +205,4 @@ export async function listAgentWorkspaceSessions(
     modifiedAt:
       session.modifiedAt === null ? null : new Date(session.modifiedAt),
   }));
-}
-
-export function listPiWorkspaceSessions(
-  target: HostTarget,
-  workspacePath: string,
-): Promise<ProviderSessionMetadata[]> {
-  return listAgentWorkspaceSessions("pi", target, workspacePath);
 }

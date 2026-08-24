@@ -48,7 +48,7 @@ type SessionState = {
 };
 
 type ConnectorState = {
-  format: 2;
+  format: 3;
   connectorEpoch: string;
   nextEventSequence: number;
   acknowledgedSequence: number;
@@ -242,7 +242,7 @@ function compactLegacyState(raw: string): string {
 function parseState(value: unknown): ConnectorState {
   if (
     !isRecord(value) ||
-    value.format !== 2 ||
+    value.format !== 3 ||
     typeof value.connectorEpoch !== "string" ||
     !value.connectorEpoch ||
     !Number.isSafeInteger(value.nextEventSequence) ||
@@ -294,7 +294,7 @@ function parseState(value: unknown): ConnectorState {
     throw new Error("Invalid Host Connector command journal.");
   }
   return {
-    format: 2,
+    format: 3,
     connectorEpoch: value.connectorEpoch,
     nextEventSequence,
     acknowledgedSequence,
@@ -302,6 +302,27 @@ function parseState(value: unknown): ConnectorState {
     commands,
     sessions,
   };
+}
+
+function migrateV2State(value: unknown): ConnectorState {
+  if (!isRecord(value) || value.format !== 2 || !isRecord(value.sessions)) {
+    throw new Error("Invalid Host Connector v2 state journal.");
+  }
+  const sessions = Object.fromEntries(
+    Object.entries(value.sessions).map(([sessionId, session]) => {
+      if (!isRecord(session) || !isRecord(session.descriptor)) {
+        throw new Error("Invalid Host Connector v2 session journal.");
+      }
+      return [
+        sessionId,
+        {
+          ...session,
+          descriptor: { ...session.descriptor, launchConfig: {} },
+        },
+      ];
+    }),
+  );
+  return parseState({ ...value, format: 3, sessions });
 }
 
 function migrateLegacyState(value: unknown): ConnectorState {
@@ -338,7 +359,7 @@ function migrateLegacyState(value: unknown): ConnectorState {
       result: stableCommandResult(entry[1]),
     };
   });
-  return parseState({
+  return migrateV2State({
     ...value,
     format: 2,
     connectorEpoch: crypto.randomUUID(),
@@ -352,7 +373,7 @@ function migrateLegacyState(value: unknown): ConnectorState {
 
 function initialState(): ConnectorState {
   return {
-    format: 2,
+    format: 3,
     connectorEpoch: crypto.randomUUID(),
     nextEventSequence: 0,
     acknowledgedSequence: 0,
@@ -382,6 +403,9 @@ export class ConnectorStateJournal {
       if (format === "1") {
         raw = compactLegacyState(raw);
         state = migrateLegacyState(JSON.parse(raw));
+        migrated = true;
+      } else if (format === "2") {
+        state = migrateV2State(JSON.parse(raw));
         migrated = true;
       } else {
         state = parseState(JSON.parse(raw));
@@ -567,6 +591,17 @@ export class ConnectorStateJournal {
       descriptor,
       queuedMessages: current?.queuedMessages ?? [],
     };
+    await this.save();
+  }
+
+  async updateSessionLaunchConfig(
+    sessionId: string,
+    launchConfig: AgentDaemonSessionDescriptor["launchConfig"],
+  ): Promise<void> {
+    this.assertOpen();
+    const current = this.state.sessions[sessionId];
+    if (!current) return;
+    current.descriptor = { ...current.descriptor, launchConfig };
     await this.save();
   }
 

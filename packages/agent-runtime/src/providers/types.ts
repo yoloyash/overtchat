@@ -1,18 +1,18 @@
 import type {
-  AgentAccessMode,
   AgentCollaborationMode,
   AgentConnectionDraft,
   AgentGoal,
   AgentModel,
+  AgentProviderCatalog,
   AgentPromptImage,
   AgentProviderSessionMetadata,
   AgentProviderId,
   AgentReadyConnectionProbe,
   AgentRuntimeEnvelope,
   AgentSessionCommand,
+  AgentSessionLaunchConfig,
   AgentSessionStats,
   AgentSlashCommand,
-  AgentThinkingLevel,
   AgentInteractionValue,
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
@@ -27,7 +27,6 @@ export type AgentRuntimeInitialState = {
   state: Record<string, unknown>;
   messages: unknown[];
   models: AgentModel[];
-  thinkingLevels: AgentThinkingLevel[];
   commands: AgentSlashCommand[];
   stats: AgentSessionStats;
 };
@@ -38,7 +37,7 @@ export type AgentSessionIdentity = {
   sessionName: string | null;
 };
 
-export type AgentSessionLaunch = {
+export type AgentSessionLaunch = AgentSessionLaunchConfig & {
   executable: string;
   cwd: string;
   detectedVersion?: string | null;
@@ -68,7 +67,6 @@ export interface AgentRuntimeClient {
   getMessages(): Promise<{ messages: unknown[] }>;
   getAvailableModels(timeoutMs?: number): Promise<AgentModel[]>;
   getSessionStats(): Promise<AgentSessionStats>;
-  getAvailableThinkingLevels(): Promise<AgentThinkingLevel[]>;
   getCommands(): Promise<AgentSlashCommand[]>;
   prompt(
     message: string,
@@ -81,11 +79,11 @@ export interface AgentRuntimeClient {
     options?: AgentSubmissionOptions,
   ): Promise<unknown>;
   abort(): Promise<unknown>;
-  setModel(provider: string, modelId: string): Promise<unknown>;
+  setModel(modelId: string): Promise<unknown>;
   setThinkingLevel(level: string): Promise<unknown>;
   setCollaborationMode?(mode: AgentCollaborationMode): Promise<unknown>;
   setFastMode?(enabled: boolean): Promise<unknown>;
-  setAccessMode?(mode: AgentAccessMode): Promise<unknown>;
+  setMode?(modeId: string): Promise<unknown>;
   updateGoal?(
     action: "set" | "pause" | "resume" | "clear",
     objective?: string,
@@ -140,6 +138,10 @@ export interface AgentProviderAdapter {
     executable: string,
     workspacePath: string,
   ): Promise<AgentProviderSessionMetadata[]>;
+  fetchCatalog(
+    target: HostTarget,
+    launch: Omit<AgentSessionLaunch, "resume">,
+  ): Promise<AgentProviderCatalog>;
   sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity;
   createEventClassifier(): AgentRuntimeEventClassifier;
   commandsFromEvent(

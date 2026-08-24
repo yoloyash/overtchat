@@ -35,6 +35,7 @@ function createCustomLanguageModel(
           baseUrl: config.baseUrl,
           apiKey: config.apiKey,
           model: config.model,
+          supportsImageInput: config.supportsImageInput,
         }),
         providerOptionsKey: "custom",
       };

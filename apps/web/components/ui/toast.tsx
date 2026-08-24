@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
-import { CheckCircle2, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, X, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 
@@ -35,6 +35,14 @@ export const toast = {
       timeout: options.timeout ?? 7000,
     });
   },
+  warning(input: ToastInput) {
+    const options = normalizeInput(input);
+    toastManager.add({
+      ...options,
+      type: "warning",
+      timeout: options.timeout ?? 6000,
+    });
+  },
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -63,6 +71,7 @@ function ToastList() {
         motionClasses.toast,
         item.type === "success" && "border-ring/30",
         item.type === "error" && "border-destructive/35",
+        item.type === "warning" && "border-amber-500/35",
       )}
     >
       <ToastPrimitive.Content className="flex gap-3 p-3">
@@ -87,6 +96,9 @@ function ToastList() {
 function ToastIcon({ type }: { type?: string }) {
   if (type === "error") {
     return <XCircle className="mt-0.5 size-4 shrink-0 text-destructive" />;
+  }
+  if (type === "warning") {
+    return <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />;
   }
 
   return <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-ring" />;

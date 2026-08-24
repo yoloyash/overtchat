@@ -29,8 +29,22 @@ export const agentConnectionKeys = {
       transport,
       sshAlias,
     ] as const,
-  directories: (id: string, path: string) =>
-    [...agentConnectionKeys.all(), "directories", id, path] as const,
+  targetDirectories: (
+    connectorId: string,
+    transport: "local" | "ssh",
+    sshAlias: string,
+    path: string,
+  ) =>
+    [
+      ...agentConnectionKeys.all(),
+      "targetDirectories",
+      connectorId,
+      transport,
+      sshAlias,
+      path,
+    ] as const,
+  catalog: (workspaceId: string) =>
+    [...agentConnectionKeys.all(), "catalog", workspaceId] as const,
 };
 
 export const agentSessionKeys = {
@@ -50,6 +64,13 @@ export const modelConfigKeys = {
   publicList: () => [...modelConfigKeys.all(), "list", "public"] as const,
   adminList: () => [...modelConfigKeys.all(), "list", "admin"] as const,
   health: (id: string) => [...modelConfigKeys.all(), "health", id] as const,
+};
+
+export const mcpServerKeys = {
+  all: () => ["mcpServers"] as const,
+  adminList: () => [...mcpServerKeys.all(), "list", "admin"] as const,
+  availableList: () => [...mcpServerKeys.all(), "list", "available"] as const,
+  health: (id: string) => [...mcpServerKeys.all(), "health", id] as const,
 };
 
 export const serverCapabilityKeys = {
@@ -73,4 +94,9 @@ export const activityKeys = {
 export const searchKeys = {
   all: () => ["search"] as const,
   byQuery: (q: string) => [...searchKeys.all(), q] as const,
+};
+
+export const appUpdateKeys = {
+  all: () => ["appUpdate"] as const,
+  status: () => [...appUpdateKeys.all(), "status"] as const,
 };

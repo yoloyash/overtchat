@@ -119,6 +119,79 @@ export type AgentActivityPresentation = {
   status: AgentToolStatus;
 };
 
+export type AgentActivitySequencePosition =
+  | "single"
+  | "first"
+  | "middle"
+  | "last";
+
+/**
+ * Activity stays individually addressable, but adjacent activity rows form one
+ * visual sequence. Any conversational or turn-level item is a hard boundary.
+ */
+export function agentActivitySequencePosition(
+  items: readonly AgentTranscriptItem[],
+  index: number,
+): AgentActivitySequencePosition | null {
+  if (items[index]?.type !== "activity") return null;
+  const hasPrevious = items[index - 1]?.type === "activity";
+  const hasNext = items[index + 1]?.type === "activity";
+  if (hasPrevious && hasNext) return "middle";
+  if (hasPrevious) return "last";
+  if (hasNext) return "first";
+  return "single";
+}
+
+function isGroupableToolActivity(
+  item: AgentTranscriptItem,
+): item is Extract<AgentTranscriptItem, { type: "activity" }> {
+  return (
+    item.type === "activity" &&
+    item.entries.length > 0 &&
+    item.entries.every(
+      (entry) =>
+        entry.type === "tool" && normalizedToolName(entry.tool.name) !== "speak",
+    )
+  );
+}
+
+/**
+ * Consecutive tool calls share one expandable summary in the transcript. The
+ * raw entries remain intact inside that summary, and any non-tool item seals
+ * the current run.
+ */
+export function groupAgentToolActivity(
+  items: readonly AgentTranscriptItem[],
+): AgentTranscriptItem[] {
+  const grouped: AgentTranscriptItem[] = [];
+  let pending: Array<Extract<AgentTranscriptItem, { type: "activity" }>> = [];
+
+  const flush = () => {
+    const first = pending[0];
+    if (!first) return;
+    grouped.push(
+      pending.length === 1
+        ? first
+        : {
+            ...first,
+            entries: pending.flatMap((item) => item.entries),
+          },
+    );
+    pending = [];
+  };
+
+  for (const item of items) {
+    if (isGroupableToolActivity(item)) {
+      pending.push(item);
+      continue;
+    }
+    flush();
+    grouped.push(item);
+  }
+  flush();
+  return grouped;
+}
+
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)
@@ -562,7 +635,7 @@ export function projectAgentTranscript(
       message,
     });
   });
-  return items;
+  return groupAgentToolActivity(items);
 }
 
 function normalizedToolName(name: string): string {
@@ -688,56 +761,6 @@ export function agentToolStatus(
   return active ? "running" : "stopped";
 }
 
-function singleActivityLabel(
-  presentation: AgentToolPresentation,
-  status: AgentToolStatus,
-): string {
-  if (status === "failed") {
-    return presentation.category === "shell"
-      ? "Command failed"
-      : `${presentation.label} failed`;
-  }
-  if (status === "stopped") {
-    return presentation.category === "shell"
-      ? "Command stopped"
-      : `${presentation.label} stopped`;
-  }
-  if (status === "running") {
-    switch (presentation.category) {
-      case "shell":
-        return "Running command";
-      case "read":
-        return "Reading file";
-      case "edit":
-        return "Editing file";
-      case "write":
-        return "Writing file";
-      case "search":
-        return "Searching";
-      case "fetch":
-        return "Fetching page";
-      case "other":
-        return `Running ${presentation.label}`;
-    }
-  }
-  switch (presentation.category) {
-    case "shell":
-      return "Ran command";
-    case "read":
-      return "Read file";
-    case "edit":
-      return "Edited file";
-    case "write":
-      return "Wrote file";
-    case "search":
-      return "Searched";
-    case "fetch":
-      return "Fetched page";
-    case "other":
-      return `Used ${presentation.label}`;
-  }
-}
-
 function plural(count: number, one: string, many = `${one}s`): string {
   return `${count.toLocaleString()} ${count === 1 ? one : many}`;
 }
@@ -783,55 +806,51 @@ export function describeAgentActivity(
   }
 
   const statuses = tools.map((tool) => agentToolStatus(tool, active));
-  const status: AgentToolStatus = statuses.includes("failed")
-    ? "failed"
-    : statuses.includes("running")
-      ? "running"
+  const status: AgentToolStatus = statuses.includes("running")
+    ? "running"
+    : statuses.includes("failed")
+      ? "failed"
       : statuses.includes("stopped")
         ? "stopped"
         : "completed";
 
-  if (tools.length === 1) {
-    const presentation = describeAgentTool(tools[0]);
-    return {
-      label: singleActivityLabel(presentation, status),
-      secondary: presentation.summary,
-      status,
-    };
+  const editedFiles = new Set<string>();
+  const readFiles = new Set<string>();
+  let commandCount = 0;
+  let searchCount = 0;
+  let otherToolCount = 0;
+  for (const tool of tools) {
+    const presentation = describeAgentTool(tool);
+    const identity = presentation.summary?.trim() || `tool:${tool.id}`;
+    switch (presentation.category) {
+      case "edit":
+      case "write":
+        editedFiles.add(identity);
+        break;
+      case "shell":
+        commandCount += 1;
+        break;
+      case "read":
+        readFiles.add(identity);
+        break;
+      case "search":
+        searchCount += 1;
+        break;
+      case "fetch":
+      case "other":
+        otherToolCount += 1;
+        break;
+    }
   }
-
-  if (status === "running") {
-    const runningIndex = statuses.findLastIndex(
-      (candidate) => candidate === "running",
-    );
-    const runningTool = tools[runningIndex];
-    const current = describeAgentTool(runningTool);
-    return {
-      label: singleActivityLabel(current, "running"),
-      secondary: current.summary,
-      status,
-    };
-  }
-
-  const counts: Record<AgentToolCategory, number> = {
-    shell: 0,
-    read: 0,
-    edit: 0,
-    write: 0,
-    search: 0,
-    fetch: 0,
-    other: 0,
-  };
-  for (const tool of tools) counts[describeAgentTool(tool).category] += 1;
 
   const summary = [
-    counts.shell ? `ran ${plural(counts.shell, "command")}` : null,
-    counts.read ? `read ${plural(counts.read, "file")}` : null,
-    counts.edit ? `edited ${plural(counts.edit, "file")}` : null,
-    counts.write ? `wrote ${plural(counts.write, "file")}` : null,
-    counts.search ? `made ${plural(counts.search, "search", "searches")}` : null,
-    counts.fetch ? `fetched ${plural(counts.fetch, "page")}` : null,
-    counts.other ? `used ${plural(counts.other, "other tool")}` : null,
+    editedFiles.size ? `edited ${plural(editedFiles.size, "file")}` : null,
+    commandCount ? `ran ${plural(commandCount, "command")}` : null,
+    readFiles.size ? `read ${plural(readFiles.size, "file")}` : null,
+    searchCount ? `searched ${plural(searchCount, "time")}` : null,
+    otherToolCount
+      ? `used ${plural(otherToolCount, "other tool")}`
+      : null,
   ].filter((part): part is string => part !== null);
   const failed = statuses.filter((candidate) => candidate === "failed").length;
   const stopped = statuses.filter((candidate) => candidate === "stopped").length;

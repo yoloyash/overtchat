@@ -27,6 +27,7 @@ const session: AgentDaemonSessionDescriptor = {
   sessionId: "session",
   providerSessionId: "provider-session",
   providerSessionPath: "/sessions/provider-session.jsonl",
+  launchConfig: {},
 };
 
 afterEach(async () => {
@@ -303,7 +304,7 @@ describe("connector state journal", () => {
     });
     await migrated.close();
     const persisted = await readFile(file, "utf8");
-    expect(JSON.parse(persisted)).toMatchObject({ format: 2 });
+    expect(JSON.parse(persisted)).toMatchObject({ format: 3 });
     expect(persisted).not.toContain("x".repeat(10_000));
   });
 
@@ -330,6 +331,25 @@ describe("connector state journal", () => {
     await expect(ConnectorStateJournal.open(file)).rejects.toThrow(
       "Invalid Host Connector command journal",
     );
+  });
+
+  it("migrates format-2 session descriptors to an empty launch configuration", async () => {
+    const { file, value } = await journal();
+    await value.recordSession(session);
+    await value.close();
+    const state = JSON.parse(await readFile(file, "utf8"));
+    state.format = 2;
+    delete state.sessions.session.descriptor.launchConfig;
+    await writeFile(file, JSON.stringify(state));
+
+    const migrated = await ConnectorStateJournal.open(file);
+    await migrated.close();
+    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
+      format: 3,
+      sessions: {
+        session: { descriptor: { launchConfig: {} } },
+      },
+    });
   });
 
   it("rejects a format-2 transport journal with a missing event", async () => {

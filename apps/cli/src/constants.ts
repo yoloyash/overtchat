@@ -1,7 +1,4 @@
-export const CLI_VERSION = "0.1.0";
-export const APP_VERSION = "0.14.0";
-export const CONNECTOR_VERSION = "0.4.0";
-export const STT_VERSION = "0.1.0";
+export const CLI_VERSION = "0.1.10";
 
 export const APP_IMAGE = "ghcr.io/yoloyash/overtchat-app";
 export const CONNECTOR_REPOSITORY = "yoloyash/overtchat";

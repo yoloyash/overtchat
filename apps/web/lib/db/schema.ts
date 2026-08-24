@@ -4,6 +4,7 @@ import {
   text,
   integer,
   index,
+  primaryKey,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
@@ -13,6 +14,7 @@ import {
   PROVIDER_IDS,
 } from "@/lib/providers/catalog";
 import type { ModelPricing } from "@/lib/model-config/schema";
+import type { McpServerConfig } from "@/lib/mcp/schema";
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -267,6 +269,9 @@ export const agentSessions = sqliteTable(
       .references(() => agentWorkspaces.id, { onDelete: "cascade" }),
     providerSessionId: text("provider_session_id").notNull(),
     providerSessionPath: text("provider_session_path").notNull(),
+    model: text("model"),
+    thinkingOptionId: text("thinking_option_id"),
+    modeId: text("mode_id"),
     name: text("name"),
     firstMessage: text("first_message"),
     messageCount: integer("message_count").default(0).notNull(),
@@ -620,6 +625,50 @@ export const modelConfigs = sqliteTable(
     uniqueIndex("model_configs_taskModel_idx")
       .on(table.taskModel)
       .where(sql`${table.taskModel} = true`),
+  ],
+);
+
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  availability: text("availability", {
+    enum: ["everyone", "admins", "disabled"],
+  })
+    .default("everyone")
+    .notNull(),
+  config: text("config", { mode: "json" }).$type<McpServerConfig>().notNull(),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => new Date())
+    .notNull(),
+});
+
+export const userMcpServerPreferences = sqliteTable(
+  "user_mcp_server_preferences",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    serverId: text("server_id")
+      .notNull()
+      .references(() => mcpServers.id, { onDelete: "cascade" }),
+    enabled: integer("enabled", { mode: "boolean" })
+      .default(true)
+      .notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.serverId] }),
+    index("user_mcp_server_preferences_serverId_idx").on(table.serverId),
   ],
 );
 

@@ -46,11 +46,15 @@ export type InstallationConfig = {
   appImage: string;
   connectorVersion: string;
   sttVersion: string;
+  redisImage: string;
+  searxngImage: string;
+  kokoroImage: string;
   appPort: number;
   bindAddress: string;
   publicUrl: string;
   extraTrustedOrigins: string[];
   connectorServerUrl: string;
+  disableUpdateCheck?: boolean;
   composeProject: string;
   dataMountType: "volume" | "bind";
   dataVolume: string;

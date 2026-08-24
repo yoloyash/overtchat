@@ -15,11 +15,34 @@ export interface WebSearchResult {
 }
 
 export interface FetchedPage {
+  kind?: "text";
   url: string;
   title: string;
   content: string;
   wordCount: number;
+  contentType?: string;
+  extractor?: string;
+  startIndex?: number;
+  returnedChars?: number;
+  totalChars?: number;
+  truncated?: boolean;
+  nextStartIndex?: number;
+  fallbackReason?: string;
+  pageCount?: number;
+  metadata?: Record<string, string | number | boolean | null>;
+  links?: string[];
 }
+
+export interface FetchedImage {
+  kind: "image";
+  url: string;
+  uploadUrl: string;
+  filename: string;
+  contentType: string;
+  byteLength: number;
+}
+
+export type FetchedUrl = FetchedPage | FetchedImage;
 
 export type WebSearchPart = {
   type: "tool-web_search";
@@ -34,8 +57,8 @@ export type FetchUrlPart = {
   type: "tool-fetch_url";
   toolCallId: string;
   state: ToolState;
-  input?: { url?: string };
-  output?: FetchedPage;
+  input?: { url?: string; startIndex?: number };
+  output?: FetchedUrl;
   errorText?: string;
 };
 
