@@ -2048,10 +2048,35 @@
       "context": 1048576,
       "output": 65536,
       "cost": {
-        "cache_read": 0.15,
-        "input": 1.5,
-        "input_audio": 1.5,
-        "output": 7.5
+        "cache_read": 0.075,
+        "input": 0.75,
+        "input_audio": 0.75,
+        "output": 3.75
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true
+    },
+    "gemini-3.7-flash": {
+      "context": 1048576,
+      "output": 65536,
+      "cost": {
+        "cache_read": 0.075,
+        "input": 0.75,
+        "input_audio": 0.75,
+        "output": 3.75
       },
       "input_modalities": [
         "text",
@@ -2114,10 +2139,10 @@
       "context": 1048576,
       "output": 65536,
       "cost": {
-        "cache_read": 0.15,
-        "input": 1.5,
-        "input_audio": 1.5,
-        "output": 9
+        "cache_read": 0.075,
+        "input": 0.75,
+        "input_audio": 0.75,
+        "output": 3.75
       },
       "input_modalities": [
         "text",
@@ -2139,10 +2164,9 @@
       "context": 1048576,
       "output": 65536,
       "cost": {
-        "cache_read": 0.025,
-        "input": 0.25,
-        "input_audio": 0.5,
-        "output": 1.5
+        "cache_read": 0.03,
+        "input": 0.3,
+        "output": 2.5
       },
       "input_modalities": [
         "text",
@@ -2380,6 +2404,28 @@
         "text"
       ],
       "attachment": false,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true
+    },
+    "deepseek-v4-flash-vision-exp": {
+      "context": 1000000,
+      "output": 384000,
+      "cost": {
+        "cache_read": 0.0028,
+        "input": 0.14,
+        "output": 0.28,
+        "reasoning": 0.28
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
@@ -3389,6 +3435,132 @@
         "cache_write": 2.5,
         "input": 2,
         "output": 10
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
+    "global.openai.gpt-5.6-luna": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.022,
+        "cache_write": 0.275,
+        "context_over_200k": {
+          "cache_read": 0.044,
+          "cache_write": 0.55,
+          "input": 0.44,
+          "output": 1.98
+        },
+        "input": 0.22,
+        "output": 1.32,
+        "tiers": [
+          {
+            "cache_read": 0.044,
+            "cache_write": 0.55,
+            "input": 0.44,
+            "output": 1.98,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
+    "global.openai.gpt-5.6-sol": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.55,
+        "cache_write": 6.875,
+        "context_over_200k": {
+          "cache_read": 1.1,
+          "cache_write": 13.75,
+          "input": 11,
+          "output": 49.5
+        },
+        "input": 5.5,
+        "output": 33,
+        "tiers": [
+          {
+            "cache_read": 1.1,
+            "cache_write": 13.75,
+            "input": 11,
+            "output": 49.5,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false
+    },
+    "global.openai.gpt-5.6-terra": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.22,
+        "cache_write": 2.75,
+        "context_over_200k": {
+          "cache_read": 0.44,
+          "cache_write": 5.5,
+          "input": 4.4,
+          "output": 19.8
+        },
+        "input": 2.2,
+        "output": 13.2,
+        "tiers": [
+          {
+            "cache_read": 0.44,
+            "cache_write": 5.5,
+            "input": 4.4,
+            "output": 19.8,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
       },
       "input_modalities": [
         "text",
@@ -4827,6 +4999,27 @@
         "cache_read": 0.2,
         "input": 1.25,
         "output": 2.5
+      },
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true
+    },
+    "xai.grok-4.6": {
+      "context": 500000,
+      "output": 500000,
+      "cost": {
+        "cache_read": 0.55,
+        "input": 2.2,
+        "output": 6.6
       },
       "input_modalities": [
         "text",
