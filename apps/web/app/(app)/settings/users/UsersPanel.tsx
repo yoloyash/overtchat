@@ -219,7 +219,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                   <span className="font-medium text-foreground">
                     {pendingRoleChange.user.email}
                   </span>{" "}
-                  will be able to manage users, models, and Agent Connections,
+                  will be able to manage users, models, and agent workspaces,
                   including running code and opening SSH connections from this
                   server.
                 </>

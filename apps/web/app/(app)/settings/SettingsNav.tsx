@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Cable,
+  Bot,
   Cpu,
   Database,
   KeyRound,
@@ -59,8 +59,8 @@ const ADMIN_ITEMS: Item[] = [
   },
   {
     href: "/settings/connections",
-    label: "Connections",
-    icon: Cable,
+    label: "Agents",
+    icon: Bot,
     beta: true,
   },
   { href: "/settings/users", label: "Users", icon: Users },

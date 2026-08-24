@@ -31,7 +31,7 @@ export default async function Page({
   return (
     <HydrationBoundary state={dehydrate(queryClient)}>
       <ConnectionsPanel
-        key={initialAddOpen ? "add-agent" : "connections"}
+        key={initialAddOpen ? "add-agent-workspace" : "agents"}
         initialAddOpen={initialAddOpen}
       />
     </HydrationBoundary>
