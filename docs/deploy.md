@@ -70,6 +70,17 @@ Machine-specific URLs and trusted origins still belong in the ignored
 container-only `REDIS_URL`; the full root command supplies its local Redis URL
 explicitly.
 
+The root `.env` is the Compose/production configuration. `apps/web/.env` must
+remain a symlink to `../../.env` so direct Next.js commands see the same file;
+do not replace it with a copy. Next loads `.env.development` and then the
+gitignored `.env.local` overrides during development. Mobile has no environment
+file because its server URL is selected per device.
+
+For a phone or browser on another development origin, update both mechanisms:
+`EXTRA_TRUSTED_ORIGINS` controls Better Auth and CORS, while
+`allowedDevOrigins` in `apps/web/next.config.ts` controls Next.js development
+assets. Neither setting replaces the other.
+
 Use the narrower commands when the complete stack is not needed:
 
 ```bash
