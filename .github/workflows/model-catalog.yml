@@ -18,13 +18,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      actions: write
-      contents: write
-      pull-requests: write
+      contents: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+
+      - name: Create catalog automation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.OVERTCHAT_AUTOMATION_CLIENT_ID }}
+          private-key: ${{ secrets.OVERTCHAT_AUTOMATION_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -50,6 +57,8 @@ jobs:
         id: catalog-pr
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          token: ${{ steps.app-token.outputs.token }}
+          sign-commits: true
           branch: automation/model-catalog
           delete-branch: true
           add-paths: |
@@ -62,16 +71,3 @@ jobs:
 
             The generator validates the catalog hash, source provenance, and
             focused pricing tests before this pull request is created.
-
-      # GITHUB_TOKEN-authored pull requests do not emit push/pull_request
-      # events. Dispatch the regular checks against the bot branch explicitly.
-      - name: Run pull request checks
-        if: >-
-          steps.catalog-pr.outputs.pull-request-operation == 'created' ||
-          steps.catalog-pr.outputs.pull-request-operation == 'updated'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_BRANCH: ${{ steps.catalog-pr.outputs.pull-request-branch }}
-        run: |
-          gh workflow run validate.yml --ref "$PR_BRANCH"
-          gh workflow run web-e2e.yml --ref "$PR_BRANCH"
