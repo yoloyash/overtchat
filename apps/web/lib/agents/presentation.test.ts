@@ -5,6 +5,7 @@ import {
   describeAgentActivity,
   describeAgentTool,
   formatAgentToolDetail,
+  latestAgentTaskList,
   presentAgentError,
   projectAgentTranscript,
   type AgentToolActivity,
@@ -381,9 +382,71 @@ describe("projectAgentTranscript", () => {
     expect(projected[1]).toMatchObject({
       type: "plan",
       explanation: "A focused plan.",
+      actionable: false,
       steps: [
         { step: "Inspect", status: "completed" },
         { step: "Implement", status: "pending" },
+      ],
+    });
+  });
+
+  it("projects task progress separately and exposes the latest snapshot", () => {
+    const messages = [
+      assistant(
+        [
+          {
+            type: "taskList",
+            id: "tasks-1",
+            explanation: "Live execution progress.",
+            items: [
+              { step: "Inspect", status: "completed" },
+              { step: "Implement", status: "inProgress" },
+            ],
+          },
+        ],
+        1,
+      ),
+      assistant([{ type: "text", text: "Still working." }], 2),
+      assistant(
+        [
+          {
+            type: "taskList",
+            id: "tasks-1",
+            explanation: "Live execution progress.",
+            items: [
+              { step: "Inspect", status: "completed" },
+              { step: "Implement", status: "completed" },
+            ],
+          },
+        ],
+        3,
+      ),
+    ];
+
+    expect(projectAgentTranscript(messages)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "task_list",
+          snapshot: expect.objectContaining({
+            tasks: [
+              expect.objectContaining({
+                step: "Inspect",
+                status: "completed",
+              }),
+              expect.objectContaining({
+                step: "Implement",
+                status: "completed",
+              }),
+            ],
+          }),
+        }),
+      ]),
+    );
+    expect(latestAgentTaskList(messages)).toMatchObject({
+      id: "tasks-1",
+      tasks: [
+        { id: "tasks-1:0", step: "Inspect", status: "completed" },
+        { id: "tasks-1:1", step: "Implement", status: "completed" },
       ],
     });
   });

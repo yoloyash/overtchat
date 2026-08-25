@@ -552,7 +552,19 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
   const assistantContent: UnknownRecord[] = [];
   const assistantOrders: number[] = [];
   const results: unknown[] = [];
-  const planItems = turn.items.filter((item) => item.type === "plan");
+  const taskPlanItems = turn.items.filter(
+    (item) =>
+      item.type === "plan" &&
+      stringOf(item, "overtchatPlanKind") === "taskProgress",
+  );
+  const selectedTaskPlan = taskPlanItems.findLast((item) =>
+    Array.isArray(item.steps),
+  );
+  const planItems = turn.items.filter(
+    (item) =>
+      item.type === "plan" &&
+      stringOf(item, "overtchatPlanKind") !== "taskProgress",
+  );
   const structuredPlan = planItems.findLast((item) =>
     Array.isArray(item.steps),
   );
@@ -561,6 +573,7 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
     structuredPlan ??
     null;
   let planAdded = false;
+  let taskPlanAdded = false;
   const pushAssistantContent = (content: UnknownRecord, order: number) => {
     assistantContent.push(content);
     assistantOrders.push(order);
@@ -624,6 +637,20 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
       continue;
     }
     if (item.type === "plan") {
+      if (
+        !taskPlanAdded &&
+        item.id === selectedTaskPlan?.id &&
+        Array.isArray(selectedTaskPlan.steps)
+      ) {
+        pushAssistantContent({
+          type: "taskList",
+          id: selectedTaskPlan.id,
+          explanation: stringOf(selectedTaskPlan, "explanation"),
+          items: selectedTaskPlan.steps,
+        }, itemIndex);
+        taskPlanAdded = true;
+        continue;
+      }
       if (!planAdded && item.id === selectedPlan?.id) {
         const structured = structuredPlan ?? selectedPlan;
         pushAssistantContent({
@@ -632,6 +659,8 @@ function canonicalTurnMessages(turn: CodexTurn): unknown[] {
           text: stringOf(selectedPlan, "text") ?? "",
           explanation: stringOf(structured, "explanation"),
           steps: Array.isArray(structured?.steps) ? structured.steps : [],
+          actionable:
+            stringOf(selectedPlan, "overtchatPlanKind") === "proposal",
         }, itemIndex);
         planAdded = true;
       }
@@ -1981,6 +2010,9 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     if (method === "turn/plan/updated") {
       const turnId = stringOf(data, "turnId");
       if (turnId) {
+        // Codex uses this notification for both an execution checklist and a
+        // Plan-mode proposal. Capture the meaning now because the completed
+        // turn projection no longer has the mode that produced the item.
         const steps = Array.isArray(data?.plan)
           ? data.plan.flatMap((value) => {
               const step = recordOf(value);
@@ -2000,6 +2032,10 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         this.upsertItem(turnId, {
           id: `overtchat:turn-plan:${turnId}`,
           type: "plan",
+          overtchatPlanKind:
+            this.selectedCollaborationMode === "plan"
+              ? "proposal"
+              : "taskProgress",
           text,
           explanation: stringOf(data, "explanation"),
           steps,
@@ -2612,7 +2648,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         items: [],
         startedAt: Date.now() / 1_000,
       });
-    const item = { ...value, id, type };
+    const item = {
+      ...value,
+      id,
+      type,
+      ...(type === "plan" && !stringOf(value, "overtchatPlanKind")
+        ? {
+            overtchatPlanKind:
+              this.selectedCollaborationMode === "plan"
+                ? "proposal"
+                : "informational",
+          }
+        : {}),
+    };
     const index = turn.items.findIndex((candidate) => candidate.id === id);
     if (index >= 0) turn.items[index] = item;
     else turn.items.push(item);

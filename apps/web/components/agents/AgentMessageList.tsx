@@ -39,6 +39,7 @@ import {
   formatAgentElapsed,
   type AgentRunActivity,
 } from "./AgentActivity";
+import { AgentTaskProgressCard } from "./AgentTaskList";
 
 export type { AgentRunActivity } from "./AgentActivity";
 
@@ -280,6 +281,9 @@ function AgentTranscriptRow({
       />
     );
   }
+  if (item.type === "task_list") {
+    return <AgentTaskProgressCard snapshot={item.snapshot} />;
+  }
   return (
     <AgentActivityGroup
       entries={item.entries}
@@ -397,17 +401,19 @@ function AgentPlanCard({
             ))}
           </ol>
         ) : null}
-        <div className="flex justify-end border-t pt-3">
-          <Button
-            type="button"
-            size="sm"
-            disabled={disabled}
-            onClick={onImplement}
-          >
-            <Play />
-            Implement plan
-          </Button>
-        </div>
+        {item.actionable && (
+          <div className="flex justify-end border-t pt-3">
+            <Button
+              type="button"
+              size="sm"
+              disabled={disabled}
+              onClick={onImplement}
+            >
+              <Play />
+              Implement plan
+            </Button>
+          </div>
+        )}
       </div>
     </section>
   );

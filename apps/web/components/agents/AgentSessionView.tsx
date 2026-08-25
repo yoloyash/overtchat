@@ -6,11 +6,7 @@ import {
   AlertTriangle,
   Loader2,
   LockKeyhole,
-  Pause,
-  Play,
   RefreshCw,
-  Target,
-  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -36,6 +32,7 @@ import {
   useAgentSessionUsage,
 } from "@/lib/queries/agentSessions";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
+import { latestAgentTaskList } from "@/lib/agents/presentation";
 import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -53,6 +50,7 @@ import {
 } from "./AgentSessionDialogs";
 import { AgentMessageList } from "./AgentMessageList";
 import type { AgentRunActivity } from "./AgentActivity";
+import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
 
 type UnknownRecord = Record<string, unknown>;
@@ -363,6 +361,7 @@ export function AgentSessionView({
   const availableModes = agentModes(snapshot);
   const modeId = currentModeId(snapshot);
   const goal = currentGoal(snapshot);
+  const tasks = latestAgentTaskList(snapshot.messages);
   const runtimeError =
     snapshot.error ??
     (session.error instanceof Error ? session.error.message : undefined);
@@ -407,31 +406,6 @@ export function AgentSessionView({
           setCompactOpen(true);
         }}
       />
-
-      {goal && (
-        <AgentGoalBar
-          goal={goal}
-          disabled={Boolean(readOnly) || command.isPending}
-          onPause={() =>
-            void run(
-              { type: "update_goal", action: "pause" },
-              { toastTitle: "Goal paused" },
-            )
-          }
-          onResume={() =>
-            void run(
-              { type: "update_goal", action: "resume" },
-              { toastTitle: "Goal resumed" },
-            )
-          }
-          onClear={() =>
-            void run(
-              { type: "update_goal", action: "clear" },
-              { toastTitle: "Goal cleared" },
-            )
-          }
-        />
-      )}
 
       {readOnly && (
         <section
@@ -497,6 +471,29 @@ export function AgentSessionView({
 
       <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <div className="mx-auto max-w-3xl">
+          <AgentSessionContext
+            goal={goal}
+            tasks={tasks}
+            goalActionsDisabled={Boolean(readOnly) || command.isPending}
+            onPauseGoal={() =>
+              void run(
+                { type: "update_goal", action: "pause" },
+                { toastTitle: "Goal paused" },
+              )
+            }
+            onResumeGoal={() =>
+              void run(
+                { type: "update_goal", action: "resume" },
+                { toastTitle: "Goal resumed" },
+              )
+            }
+            onClearGoal={() =>
+              void run(
+                { type: "update_goal", action: "clear" },
+                { toastTitle: "Goal cleared" },
+              )
+            }
+          />
           <AgentComposer
             key={sessionId}
             providerLabel={providerLabel}
@@ -654,84 +651,6 @@ export function AgentSessionView({
         }}
       />
     </div>
-  );
-}
-
-function AgentGoalBar({
-  goal,
-  disabled,
-  onPause,
-  onResume,
-  onClear,
-}: {
-  goal: AgentGoal;
-  disabled: boolean;
-  onPause: () => void;
-  onResume: () => void;
-  onClear: () => void;
-}) {
-  const paused = goal.status === "paused";
-  const status = goal.status.replace(/([a-z])([A-Z])/gu, "$1 $2");
-  const budget =
-    goal.tokenBudget !== null
-      ? `${goal.tokensUsed.toLocaleString()} / ${goal.tokenBudget.toLocaleString()} tokens`
-      : goal.tokensUsed > 0
-        ? `${goal.tokensUsed.toLocaleString()} tokens`
-        : null;
-
-  return (
-    <section
-      aria-label={`Goal: ${goal.objective}`}
-      className="border-b bg-muted/20 px-4 py-2"
-      data-testid="agent-goal-bar"
-    >
-      <div className="mx-auto flex max-w-3xl items-center gap-2">
-        <Target className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {goal.objective}
-        </span>
-        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
-          {status}
-          {budget ? ` · ${budget}` : ""}
-        </span>
-        {paused ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            title="Resume goal"
-            aria-label="Resume goal"
-            disabled={disabled}
-            onClick={onResume}
-          >
-            <Play />
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            title="Pause goal"
-            aria-label="Pause goal"
-            disabled={disabled}
-            onClick={onPause}
-          >
-            <Pause />
-          </Button>
-        )}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          title="Clear goal"
-          aria-label="Clear goal"
-          disabled={disabled}
-          onClick={onClear}
-        >
-          <X />
-        </Button>
-      </div>
-    </section>
   );
 }
 
