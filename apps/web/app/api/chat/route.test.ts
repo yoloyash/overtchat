@@ -42,10 +42,14 @@ const mocks = vi.hoisted(() => {
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
+    createUIMessageStream: vi.fn(),
     createUIMessageStreamResponse: vi.fn(),
     agentSettings: [] as Array<Record<string, unknown>>,
     agentStreamArgs: [] as Array<Record<string, unknown>>,
     uiStreamOptions: undefined as Record<string, unknown> | undefined,
+    outerUiStreamOptions: undefined as Record<string, unknown> | undefined,
+    uiChunks: [] as Array<Record<string, unknown>>,
+    mergedUiStream: undefined as ReadableStream<unknown> | undefined,
     responseOptions: undefined as Record<string, unknown> | undefined,
     responseStream: undefined as ReadableStream<string> | undefined,
     chatTools,
@@ -58,6 +62,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({
   convertToModelMessages: mocks.convertToModelMessages,
+  createUIMessageStream: mocks.createUIMessageStream,
   createUIMessageStreamResponse: mocks.createUIMessageStreamResponse,
   isStepCount: mocks.isStepCount,
   ToolLoopAgent: class MockToolLoopAgent {
@@ -216,6 +221,9 @@ describe("chat route setup boundary", () => {
     mocks.agentSettings.length = 0;
     mocks.agentStreamArgs.length = 0;
     mocks.uiStreamOptions = undefined;
+    mocks.outerUiStreamOptions = undefined;
+    mocks.uiChunks.length = 0;
+    mocks.mergedUiStream = undefined;
     mocks.responseOptions = undefined;
     mocks.responseStream = undefined;
 
@@ -263,6 +271,28 @@ describe("chat route setup boundary", () => {
       (options: Record<string, unknown>) => {
         mocks.uiStreamOptions = options;
         return options.stream;
+      },
+    );
+    mocks.createUIMessageStream.mockImplementation(
+      (options: Record<string, unknown>) => {
+        mocks.outerUiStreamOptions = options;
+        const execute = options.execute as (event: {
+          writer: {
+            write(part: Record<string, unknown>): void;
+            merge(stream: ReadableStream<unknown>): void;
+          };
+        }) => void;
+        execute({
+          writer: {
+            write(part) {
+              mocks.uiChunks.push(part);
+            },
+            merge(stream) {
+              mocks.mergedUiStream = stream;
+            },
+          },
+        });
+        return new ReadableStream();
       },
     );
     mocks.createUIMessageStreamResponse.mockImplementation(
@@ -697,6 +727,61 @@ describe("chat route setup boundary", () => {
     expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
       expect.objectContaining({ tools: undefined }),
     );
+  });
+
+  it("forwards llama.cpp prompt progress as transient UI data", async () => {
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "llamacpp",
+      apiFormat: "auto",
+    });
+    mocks.getProvider.mockReturnValue({ label: "llama.cpp", iconId: null });
+    mocks.agentStream.mockResolvedValue({
+      stream: new ReadableStream({
+        start(controller) {
+          controller.enqueue({
+            type: "raw",
+            rawValue: {
+              choices: [{ delta: { content: null }, finish_reason: null }],
+              prompt_progress: {
+                total: 2_048,
+                cache: 0,
+                processed: 1_536,
+                time_ms: 3_200,
+              },
+            },
+          });
+          controller.close();
+        },
+      }),
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toMatchObject({
+      include: { rawChunks: true },
+    });
+    expect(mocks.outerUiStreamOptions).toBeDefined();
+    expect(mocks.mergedUiStream).toBeDefined();
+
+    const observed = mocks.uiStreamOptions?.stream as ReadableStream<unknown>;
+    await observed.pipeTo(new WritableStream());
+
+    expect(mocks.uiChunks).toEqual([
+      {
+        type: "data-inference-activity",
+        transient: true,
+        data: {
+          phase: "prompt",
+          completedTokens: 1_536,
+          totalTokens: 2_048,
+          cachedTokens: 0,
+          elapsedMs: 3_200,
+          progress: 0.75,
+          tokensPerSecond: 480,
+        },
+      },
+    ]);
   });
 
   it("uses persistent MCP tools without web tools", async () => {

@@ -12,10 +12,15 @@ type ListModels = (
   connection: ProviderConnection,
 ) => Promise<DiscoveredModel[]>;
 
+type TransformRequestBody = (
+  body: Record<string, unknown>,
+) => Record<string, unknown>;
+
 export function createOpenAICompatibleAdapter(
   id: ProviderId,
   listModels: ListModels = (connection) =>
     listOpenAIModels(connection.baseUrl, connection.apiKey),
+  transformRequestBody?: TransformRequestBody,
 ): ProviderAdapter {
   return {
     id,
@@ -27,6 +32,7 @@ export function createOpenAICompatibleAdapter(
           apiKey: config.apiKey,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
+          transformRequestBody,
         }),
         providerOptionsKey: id,
       };

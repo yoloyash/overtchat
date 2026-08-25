@@ -261,6 +261,74 @@ describe("provider registry", () => {
     },
   );
 
+  it("requests and preserves live activity fields from llama.cpp", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    const progressChunk = {
+      id: "chatcmpl-test",
+      choices: [
+        { delta: { role: "assistant", content: null }, finish_reason: null },
+      ],
+      timings: {
+        cache_n: 0,
+        prompt_n: 7,
+        prompt_ms: 167.085,
+        predicted_n: 0,
+        predicted_ms: 0,
+      },
+      prompt_progress: {
+        total: 11,
+        cache: 0,
+        processed: 7,
+        time_ms: 168,
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(
+          [
+            `data: ${JSON.stringify(progressChunk)}`,
+            'data: {"id":"chatcmpl-test","choices":[{"delta":{"content":"ok"},"finish_reason":null}]}',
+            'data: {"id":"chatcmpl-test","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}',
+            "data: [DONE]",
+            "",
+          ].join("\n\n"),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }),
+    );
+    const configured = createConfiguredLanguageModel({
+      ...baseConfig,
+      providerId: "llamacpp",
+    });
+
+    const result = await configured.model.doStream({
+      includeRawChunks: true,
+      prompt: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Hello" }],
+        },
+      ],
+    });
+    const rawChunks: unknown[] = [];
+    await result.stream.pipeTo(
+      new WritableStream({
+        write(part) {
+          if (part.type === "raw") rawChunks.push(part.rawValue);
+        },
+      }),
+    );
+
+    expect(requestBody).toMatchObject({
+      stream: true,
+      return_progress: true,
+      timings_per_token: true,
+    });
+    expect(rawChunks).toContainEqual(progressChunk);
+  });
+
   it("uses the shared OpenAI-compatible transport for DeepSeek", () => {
     const configured = createConfiguredLanguageModel({
       ...baseConfig,

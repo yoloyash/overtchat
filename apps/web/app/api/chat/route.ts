@@ -1,5 +1,6 @@
 import {
   convertToModelMessages,
+  createUIMessageStream,
   createUIMessageStreamResponse,
   isStepCount,
   ToolLoopAgent,
@@ -9,6 +10,10 @@ import {
   type ToolSet,
 } from "ai";
 import type { MessageStats } from "@/lib/chat/stats";
+import {
+  INFERENCE_ACTIVITY_DATA_TYPE,
+  type InferenceActivity,
+} from "@/lib/chat/inference-activity";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   markAnthropicConversationCacheBoundary,
@@ -55,6 +60,7 @@ import {
   resolveModelContextWindow,
 } from "@/lib/providers/server/model-catalog";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
+import { readLlamaCppInferenceActivity } from "@/lib/providers/server/llamacpp-activity";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
 
@@ -315,6 +321,10 @@ async function handlePost(req: Request): Promise<Response> {
         (name) => !(CHAT_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
+    const includeProviderActivity = modelConfig.providerId === "llamacpp";
+    const streamInclude = includeProviderActivity
+      ? { rawChunks: true as const }
+      : undefined;
     const result = toolsEnabled
       ? await new ToolLoopAgent<never, ToolSet>({
           model,
@@ -333,11 +343,13 @@ async function handlePost(req: Request): Promise<Response> {
                   : undefined
             : undefined,
           providerOptions: requestProviderOptions,
+          ...(streamInclude ? { include: streamInclude } : {}),
         }).stream({ messages: modelMessages, abortSignal })
       : await new ToolLoopAgent<never, Record<string, never>>({
           model,
           instructions,
           providerOptions: requestProviderOptions,
+          ...(streamInclude ? { include: streamInclude } : {}),
         }).stream({ messages: modelMessages, abortSignal });
 
     if (
@@ -358,6 +370,9 @@ async function handlePost(req: Request): Promise<Response> {
     const streamContext = temporary ? null : getStreamContext();
     const streamHeaders = corsHeaders(req);
     streamHeaders.set("Content-Encoding", "none");
+    let emitInferenceActivity:
+      | ((activity: InferenceActivity) => void)
+      | undefined;
     const observedStream = observeChatStream(
       result.stream as ReadableStream<TextStreamPart<ToolSet>>,
       {
@@ -382,6 +397,9 @@ async function handlePost(req: Request): Promise<Response> {
             hasUnpricedStep = true;
           }
         },
+        onInferenceActivity(activity) {
+          emitInferenceActivity?.(activity);
+        },
         onError(error) {
           if (streamError === null) {
             streamError = error;
@@ -393,7 +411,7 @@ async function handlePost(req: Request): Promise<Response> {
         },
       },
     );
-    const uiStream = toUIMessageStream({
+    const convertedUiStream = toUIMessageStream({
       stream: observedStream,
       tools: toolsEnabled ? agentTools : undefined,
       sendReasoning: true,
@@ -525,6 +543,20 @@ async function handlePost(req: Request): Promise<Response> {
         }
       },
     });
+    const uiStream = includeProviderActivity
+      ? createUIMessageStream({
+          execute({ writer }) {
+            emitInferenceActivity = (activity) => {
+              writer.write({
+                type: INFERENCE_ACTIVITY_DATA_TYPE,
+                data: activity,
+                transient: true,
+              });
+            };
+            writer.merge(convertedUiStream);
+          },
+        })
+      : convertedUiStream;
     let resumableSetup: Promise<void> | undefined;
     const response = createUIMessageStreamResponse({
       stream: uiStream,
@@ -574,11 +606,14 @@ function observeChatStream(
   callbacks: {
     onFirstToken(): void;
     onFinishStep(usage: LanguageModelUsage): void;
+    onInferenceActivity(activity: InferenceActivity): void;
     onError(error: unknown): void;
     onDone(): void;
   },
 ): ReadableStream<TextStreamPart<ToolSet>> {
   const reader = stream.getReader();
+  let lastActivityPhase: InferenceActivity["phase"] | undefined;
+  let lastGenerationActivityAt = 0;
 
   return new ReadableStream<TextStreamPart<ToolSet>>({
     async pull(controller) {
@@ -597,6 +632,23 @@ function observeChatStream(
           callbacks.onFirstToken();
         } else if (part.type === "finish-step") {
           callbacks.onFinishStep(part.usage);
+        } else if (part.type === "raw") {
+          const activity = readLlamaCppInferenceActivity(part.rawValue);
+          if (activity) {
+            const now = Date.now();
+            const phaseChanged = activity.phase !== lastActivityPhase;
+            if (
+              activity.phase === "prompt" ||
+              phaseChanged ||
+              now - lastGenerationActivityAt >= 1_000
+            ) {
+              callbacks.onInferenceActivity(activity);
+              lastActivityPhase = activity.phase;
+              if (activity.phase === "generation") {
+                lastGenerationActivityAt = now;
+              }
+            }
+          }
         } else if (part.type === "error") {
           callbacks.onError(part.error);
         }
