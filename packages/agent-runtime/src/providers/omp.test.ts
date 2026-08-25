@@ -8,7 +8,7 @@ import { ompProviderAdapter } from "./omp";
 describe("OMP provider adapter", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("launches rpc-ui with an explicit Paseo approval mode", () => {
+  it("launches rpc-ui with an explicit approval mode", () => {
     const client = {};
     mocks.startOmp.mockReturnValue(client);
     const target = { transport: "ssh" as const, alias: "workstation" };
@@ -35,7 +35,7 @@ describe("OMP provider adapter", () => {
     });
   });
 
-  it("defaults new OMP sessions to Paseo full access", () => {
+  it("defaults new OMP sessions to full access", () => {
     mocks.startOmp.mockReturnValue({});
     ompProviderAdapter.startSession(
       { transport: "local" },

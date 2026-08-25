@@ -74,7 +74,7 @@ function announceReady(process: FakeAgentProcess): void {
 }
 
 describe("OmpClient", () => {
-  it("builds Paseo-compatible rpc-ui and approval arguments", () => {
+  it("builds rpc-ui and approval arguments", () => {
     expect(
       buildOmpArgs({
         executable: "omp",

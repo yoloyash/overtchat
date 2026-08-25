@@ -33,7 +33,7 @@ describe("OMP RPC protocol", () => {
     ]);
   });
 
-  it("uses Paseo's full-set fallback for unknown OMP thinking metadata", () => {
+  it("uses the complete fallback set for unknown OMP thinking metadata", () => {
     const [model] = parseOmpModels({
       models: [
         {

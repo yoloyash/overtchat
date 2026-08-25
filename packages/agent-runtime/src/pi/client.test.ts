@@ -61,7 +61,7 @@ class FakeAgentProcess implements AgentProcess {
 }
 
 describe("PiClient", () => {
-  it("builds Paseo-compatible RPC launch arguments", () => {
+  it("builds provider-native RPC launch arguments", () => {
     expect(
       buildPiArgs({
         executable: "pi",
