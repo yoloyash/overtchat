@@ -25,6 +25,7 @@ import type {
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   AGENT_SESSION_PREVIEW_COUNT,
+  agentSessionDisplayTitle,
   agentSessionIsRunning,
   visibleAgentSessions,
 } from "@/lib/agents/sidebar";
@@ -262,7 +263,7 @@ function SessionLink({ item }: { item: AgentWorkspaceSession }) {
   const pathname = usePathname();
   const { closeMobile } = useSidebar();
   const { session, provider } = item;
-  const title = session.name || "New session";
+  const title = agentSessionDisplayTitle(session) || "New session";
   return (
     <li>
       <Link

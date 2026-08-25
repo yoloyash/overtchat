@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AgentSessionView } from "@/components/agents/AgentSessionView";
+import { agentSessionDisplayTitle } from "@/lib/agents/sidebar";
 import { auth } from "@/lib/auth/server";
 import { getOwnedAgentSession } from "@/lib/db/agentConnections";
 import { isAgentProviderId } from "@overtchat/agent-bridge";
@@ -25,7 +26,7 @@ export default async function AgentSessionPage({
       workspaceId={owned.workspace.id}
       workspaceName={owned.workspace.name}
       workspacePath={owned.workspace.path}
-      initialSessionName={owned.agentSession.name ?? ""}
+      initialSessionName={agentSessionDisplayTitle(owned.agentSession) ?? ""}
     />
   );
 }
