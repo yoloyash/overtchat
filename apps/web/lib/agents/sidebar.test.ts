@@ -6,6 +6,7 @@ import type {
 import {
   AGENT_SESSION_PREVIEW_COUNT,
   agentConnectionHasRunningSession,
+  agentSessionDisplayTitle,
   agentWorkspaceHasRunningSession,
   visibleAgentSessions,
   withAgentSessionDirectory,
@@ -25,6 +26,24 @@ function sessions(count: number): AgentSessionListItem[] {
 }
 
 describe("agent sessions in the sidebar", () => {
+  it("preserves legacy first-message titles while preferring persisted names", () => {
+    expect(
+      agentSessionDisplayTitle({
+        name: "Persisted title",
+        firstMessage: "Original prompt",
+      }),
+    ).toBe("Persisted title");
+    expect(
+      agentSessionDisplayTitle({
+        name: null,
+        firstMessage: "Legacy prompt title",
+      }),
+    ).toBe("Legacy prompt title");
+    expect(
+      agentSessionDisplayTitle({ name: null, firstMessage: null }),
+    ).toBeNull();
+  });
+
   it("shows only the recent preview until expanded", () => {
     const all = sessions(20);
     expect(visibleAgentSessions(all, false, null)).toHaveLength(

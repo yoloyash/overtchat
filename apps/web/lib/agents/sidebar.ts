@@ -7,6 +7,12 @@ import type {
 
 export const AGENT_SESSION_PREVIEW_COUNT = 8;
 
+export function agentSessionDisplayTitle(
+  session: Pick<AgentSessionListItem, "name" | "firstMessage">,
+): string | null {
+  return session.name || session.firstMessage || null;
+}
+
 export function agentSessionIsRunning(
   session: AgentSessionListItem,
 ): boolean {
