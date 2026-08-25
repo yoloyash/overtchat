@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, notInArray } from "drizzle-orm";
+import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentConnections,
@@ -17,6 +17,7 @@ import type {
   AgentTransportId,
 } from "@overtchat/agent-bridge";
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
+import { resolveInitialAgentSessionTitle } from "@/lib/agents/sessionTitle";
 
 export type AgentHostRow = typeof agentHosts.$inferSelect;
 export type AgentConnectionRow = typeof agentConnections.$inferSelect;
@@ -338,13 +339,14 @@ export function syncAgentWorkspaceSessions(
     }
 
     for (const session of sessions) {
+      const initialTitle = resolveInitialAgentSessionTitle(session);
       tx.insert(agentSessions)
         .values({
           id: crypto.randomUUID(),
           workspaceId,
           providerSessionId: session.providerSessionId,
           providerSessionPath: session.providerSessionPath,
-          name: session.name,
+          name: initialTitle,
           firstMessage: session.firstMessage,
           messageCount: session.messageCount,
           providerCreatedAt: session.createdAt,
@@ -361,7 +363,11 @@ export function syncAgentWorkspaceSessions(
           ],
           set: {
             providerSessionId: session.providerSessionId,
-            name: session.name,
+            ...(initialTitle
+              ? {
+                  name: sql`coalesce(nullif(trim(${agentSessions.name}), ''), ${initialTitle})`,
+                }
+              : {}),
             firstMessage: session.firstMessage,
             messageCount: session.messageCount,
             providerCreatedAt: session.createdAt,
@@ -407,6 +413,7 @@ export async function upsertAgentSession(
   launchConfig: AgentSessionLaunchConfig = {},
 ): Promise<AgentSessionRow> {
   const now = new Date();
+  const initialTitle = resolveInitialAgentSessionTitle(session);
   const [row] = await db
     .insert(agentSessions)
     .values({
@@ -417,7 +424,7 @@ export async function upsertAgentSession(
       model: launchConfig.model,
       thinkingOptionId: launchConfig.thinkingOptionId,
       modeId: launchConfig.modeId,
-      name: session.name,
+      name: initialTitle,
       firstMessage: session.firstMessage,
       messageCount: session.messageCount,
       providerCreatedAt: session.createdAt,
@@ -434,7 +441,11 @@ export async function upsertAgentSession(
         model: launchConfig.model,
         thinkingOptionId: launchConfig.thinkingOptionId,
         modeId: launchConfig.modeId,
-        name: session.name,
+        ...(initialTitle
+          ? {
+              name: sql`coalesce(nullif(trim(${agentSessions.name}), ''), ${initialTitle})`,
+            }
+          : {}),
         firstMessage: session.firstMessage,
         messageCount: session.messageCount,
         providerCreatedAt: session.createdAt,
@@ -466,7 +477,6 @@ export async function replaceAgentSessionProviderSession(
             modeId: launchConfig.modeId ?? null,
           }
         : {}),
-      name: session.name,
       firstMessage: session.firstMessage,
       messageCount: session.messageCount,
       providerCreatedAt: session.createdAt,
@@ -487,11 +497,20 @@ export async function updateAgentSessionMetadata(
     launchConfig?: AgentSessionLaunchConfig;
   },
 ): Promise<void> {
-  const { launchConfig, ...metadata } = patch;
+  const { launchConfig, name: providerName, ...metadata } = patch;
+  const initialTitle = resolveInitialAgentSessionTitle({
+    name: providerName,
+    firstMessage: patch.firstMessage,
+  });
   await db
     .update(agentSessions)
     .set({
       ...metadata,
+      ...(initialTitle
+        ? {
+            name: sql`coalesce(nullif(trim(${agentSessions.name}), ''), ${initialTitle})`,
+          }
+        : {}),
       ...(launchConfig
         ? {
             model: launchConfig.model ?? null,
@@ -499,6 +518,20 @@ export async function updateAgentSessionMetadata(
             modeId: launchConfig.modeId ?? null,
           }
         : {}),
+      updatedAt: new Date(),
+      lastSyncedAt: new Date(),
+    })
+    .where(eq(agentSessions.id, id));
+}
+
+export async function renameAgentSession(
+  id: string,
+  name: string,
+): Promise<void> {
+  await db
+    .update(agentSessions)
+    .set({
+      name: name.trim(),
       updatedAt: new Date(),
       lastSyncedAt: new Date(),
     })

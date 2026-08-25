@@ -262,7 +262,7 @@ function SessionLink({ item }: { item: AgentWorkspaceSession }) {
   const pathname = usePathname();
   const { closeMobile } = useSidebar();
   const { session, provider } = item;
-  const title = session.name || session.firstMessage || "Untitled session";
+  const title = session.name || "New session";
   return (
     <li>
       <Link
