@@ -40,7 +40,7 @@ describe("GET /api/app-update", () => {
     expect(mocks.getAppUpdateStatus).not.toHaveBeenCalled();
   });
 
-  it("returns the cached update status without HTTP caching", async () => {
+  it("returns the current update status without HTTP caching", async () => {
     const response = await GET(request());
 
     expect(response.status).toBe(200);

@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { appUpdateKeys } from "@/lib/queries/keys";
 
-const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1_000;
+const UPDATE_STALE_TIME_MS = 60_000;
 
 export type AppUpdateStatus = {
   currentVersion: string;
@@ -20,7 +20,9 @@ export function useAppUpdate(enabled: boolean) {
       return response.json() as Promise<AppUpdateStatus>;
     },
     enabled,
-    retry: false,
-    staleTime: CHECK_INTERVAL_MS,
+    retry: 1,
+    staleTime: UPDATE_STALE_TIME_MS,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
   });
 }

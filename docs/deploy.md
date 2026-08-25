@@ -136,11 +136,14 @@ This updates the management CLI, app image, selected local sidecars, and managed
 Agent Connector as one coordinated release. Database migrations run
 automatically when the app starts; the existing data mount is not replaced.
 
-When an administrator opens the account menu, OvertChat checks the public
-release manifest at `overtchat.com` and shows an update notice when a newer app
-image is available. The result is cached by the server for 12 hours; the check
-does not send an instance identifier, account data, configuration, or the
-installed version. For a manual Compose installation, set
+When an administrator loads the authenticated web app, OvertChat checks the
+public release manifest at `overtchat.com` and shows an update indicator on the
+account button when a newer app image is available. The account menu includes
+the available version. The browser may recheck after reconnecting, returning
+to the tab, or reopening a stale account menu; the server does not retain a
+process-wide update result. The check does not send an instance identifier,
+account data, configuration, or the installed version. For a manual Compose
+installation, set
 `DISABLE_UPDATE_CHECK=true` in the root `.env` file. For an installation made
 with the guided manager, run `DISABLE_UPDATE_CHECK=true overtchat setup` once
 to persist the same opt-out.

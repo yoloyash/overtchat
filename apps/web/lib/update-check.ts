@@ -2,7 +2,6 @@ import "server-only";
 import { APP_VERSION } from "@/lib/version";
 
 const RELEASE_MANIFEST_URL = "https://overtchat.com/install-manifest.json";
-const CHECK_INTERVAL_MS = 12 * 60 * 60 * 1_000;
 const REQUEST_TIMEOUT_MS = 5_000;
 const SEMVER_PATTERN = /^v?(\d+)\.(\d+)\.(\d+)$/u;
 
@@ -11,14 +10,6 @@ export type AppUpdateStatus = {
   latestVersion: string | null;
   updateAvailable: boolean;
 };
-
-type CacheEntry = {
-  checkedAt: number;
-  latestVersion: string | null;
-};
-
-let cached: CacheEntry | null = null;
-let pending: Promise<string | null> | null = null;
 
 function updateCheckDisabled(): boolean {
   return /^(1|true|yes)$/iu.test(
@@ -58,6 +49,7 @@ function manifestVersion(value: unknown): string | null {
 async function fetchLatestVersion(): Promise<string | null> {
   try {
     const response = await fetch(RELEASE_MANIFEST_URL, {
+      cache: "no-store",
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
@@ -68,26 +60,8 @@ async function fetchLatestVersion(): Promise<string | null> {
   }
 }
 
-async function latestVersion(): Promise<string | null> {
-  const now = Date.now();
-  if (cached && now - cached.checkedAt < CHECK_INTERVAL_MS) {
-    return cached.latestVersion;
-  }
-  if (pending) return pending;
-
-  pending = fetchLatestVersion()
-    .then((version) => {
-      cached = { checkedAt: Date.now(), latestVersion: version };
-      return version;
-    })
-    .finally(() => {
-      pending = null;
-    });
-  return pending;
-}
-
 export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
-  const latest = updateCheckDisabled() ? null : await latestVersion();
+  const latest = updateCheckDisabled() ? null : await fetchLatestVersion();
   return {
     currentVersion: APP_VERSION,
     latestVersion: latest,
