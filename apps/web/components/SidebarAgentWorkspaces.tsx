@@ -112,12 +112,12 @@ function WorkspaceNode({
 
   return (
     <li>
-      <div className="group relative min-w-0">
+      <div className="group flex min-w-0 rounded-md motion-colors hover:bg-sidebar-accent">
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
           aria-label={open ? `Collapse ${group.name}` : `Expand ${group.name}`}
-          className="flex min-h-11 w-full min-w-0 items-center gap-1.5 rounded-md px-1 py-1 text-left text-sm motion-colors hover:bg-sidebar-accent"
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded-l-md px-1 py-1 text-left text-sm"
           title={group.path}
         >
           <ChevronRight
@@ -128,7 +128,15 @@ function WorkspaceNode({
           />
           <Folder className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="flex min-h-8 min-w-0 flex-1 flex-col justify-center">
-            <span className="truncate pr-7">{group.name}</span>
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate">{group.name}</span>
+              {!open && hasRunningSession && (
+                <RuntimeActivityIndicator
+                  active
+                  label={`${group.name} has running sessions`}
+                />
+              )}
+            </span>
             <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
               {group.host.transport === "ssh" && (
                 <span className="flex min-w-0 items-center gap-1">
@@ -141,17 +149,16 @@ function WorkspaceNode({
               <WorkspaceGitMeta status={gitStatus} workspaceId={representativeWorkspace.id} />
             </span>
           </span>
-          <RuntimeActivityIndicator
-            active={!open && hasRunningSession}
-            label={`${group.name} has running sessions`}
-          />
         </button>
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
           aria-label={`New session in ${group.name}`}
           title={`New session in ${group.name}`}
-          className="absolute top-0.5 right-0.5 rounded p-1 text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground disabled:pointer-events-none disabled:opacity-50 max-md:p-2"
+          className={cn(
+            "flex min-h-11 w-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
+            motionClasses.hoverReveal,
+          )}
         >
           <Plus className="size-4" />
         </button>

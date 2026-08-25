@@ -839,17 +839,32 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByRole("menuitem", { name: "Copy branch name" }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
-  await expect(
-    page.getByRole("button", { name: "New session in Runtime test" }),
-  ).toBeVisible();
+  const newSessionButton = page.getByRole("button", {
+    name: "New session in Runtime test",
+  });
+  await page.mouse.move(0, 0);
+  await expect(newSessionButton).toHaveCSS("opacity", "0");
+  await page.getByRole("button", { name: "Collapse Runtime test" }).hover();
+  await expect(newSessionButton).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await newSessionButton.focus();
+  await expect(newSessionButton).toHaveCSS("opacity", "1");
   await expect(page.getByText("New session", { exact: true })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Collapse Runtime test" }).click();
-  await expect(
-    page.getByRole("status", {
-      name: "Runtime test has running sessions",
-    }),
-  ).toBeVisible();
+  const workspaceActivity = page.getByRole("status", {
+    name: "Runtime test has running sessions",
+  });
+  await expect(workspaceActivity).toBeVisible();
+  const [activityBox, newSessionBox] = await Promise.all([
+    workspaceActivity.boundingBox(),
+    newSessionButton.boundingBox(),
+  ]);
+  expect(activityBox).not.toBeNull();
+  expect(newSessionBox).not.toBeNull();
+  expect(activityBox!.x + activityBox!.width).toBeLessThanOrEqual(
+    newSessionBox!.x,
+  );
   await expect(sessionActivity).toHaveCount(0);
 
   await page.getByRole("button", { name: "Expand Runtime test" }).click();
