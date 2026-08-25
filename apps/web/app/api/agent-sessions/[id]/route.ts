@@ -19,6 +19,7 @@ import {
 } from "@/lib/agents/connector/descriptors";
 import {
   getOwnedAgentSession,
+  renameAgentSession,
   replaceAgentSessionProviderSession,
   type OwnedAgentSession,
   updateAgentSessionMetadata,
@@ -219,7 +220,7 @@ export async function POST(
         providerModifiedAt: new Date(),
       });
     } else if (command.type === "set_session_name") {
-      await updateAgentSessionMetadata(id, { name: command.name });
+      await renameAgentSession(id, command.name);
     }
     return Response.json({
       accepted: true,

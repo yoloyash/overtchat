@@ -196,7 +196,9 @@ export function AgentSessionView({
   const snapshot = session.data;
 
   useEffect(() => {
-    const title = snapshot ? sessionName(snapshot) : initialSessionName;
+    const title = snapshot
+      ? sessionName(snapshot) || initialSessionName
+      : initialSessionName;
     document.title = `${title.trim() || workspaceName} · ${providerLabel}`;
   }, [initialSessionName, providerLabel, snapshot, workspaceName]);
 

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentSession: vi.fn(),
+  renameAgentSession: vi.fn(),
   replaceAgentSessionProviderSession: vi.fn(),
   updateAgentSessionMetadata: vi.fn(),
   upsertAgentSession: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentSession: mocks.getOwnedAgentSession,
+  renameAgentSession: mocks.renameAgentSession,
   replaceAgentSessionProviderSession: mocks.replaceAgentSessionProviderSession,
   updateAgentSessionMetadata: mocks.updateAgentSessionMetadata,
   upsertAgentSession: mocks.upsertAgentSession,
@@ -223,6 +225,23 @@ describe("agent session route", () => {
       "session",
       expect.objectContaining({ firstMessage: "screen.png" }),
     );
+  });
+
+  it("persists an explicit rename as the authoritative session title", async () => {
+    const response = await POST(
+      request("POST", {
+        type: "set_session_name",
+        name: "Release prep",
+      }),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.renameAgentSession).toHaveBeenCalledWith(
+      "session",
+      "Release prep",
+    );
+    expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
   });
 
   it("forwards provider-neutral queue commands", async () => {

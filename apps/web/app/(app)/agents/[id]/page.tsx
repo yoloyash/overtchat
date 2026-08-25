@@ -25,11 +25,7 @@ export default async function AgentSessionPage({
       workspaceId={owned.workspace.id}
       workspaceName={owned.workspace.name}
       workspacePath={owned.workspace.path}
-      initialSessionName={
-        owned.agentSession.name ??
-        owned.agentSession.firstMessage ??
-        ""
-      }
+      initialSessionName={owned.agentSession.name ?? ""}
     />
   );
 }

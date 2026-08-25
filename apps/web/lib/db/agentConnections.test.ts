@@ -179,6 +179,7 @@ describe("agent connection persistence", () => {
               }),
               expect.objectContaining({
                 providerSessionId: "older",
+                name: "Review this repository",
               }),
             ],
           }),
@@ -187,7 +188,7 @@ describe("agent connection persistence", () => {
     ]);
   });
 
-  it("updates and prunes only cached session metadata on a full sync", async () => {
+  it("updates cached metadata without replacing an established title", async () => {
     const owned = createAliceConnection();
     const workspace = await repository.createAgentWorkspace(
       owned.connection.id,
@@ -240,7 +241,7 @@ describe("agent connection persistence", () => {
     expect(rows[0]).toMatchObject({
       providerSessionId: "keep",
       providerSessionPath: "/remote/keep.jsonl",
-      name: "New name",
+      name: "Old name",
       messageCount: 3,
       model: "openai/new-model",
       thinkingOptionId: "high",
@@ -282,10 +283,56 @@ describe("agent connection persistence", () => {
         id: original.id,
         providerSessionId: "edited-thread",
         providerSessionPath: "/codex/edited-thread.jsonl",
-        name: null,
+        name: "Original thread",
         firstMessage: null,
         messageCount: 0,
       },
+    });
+  });
+
+  it("fills a missing title once and preserves explicit renames", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/overtchat", name: "overtchat" },
+    );
+    const session = await repository.upsertAgentSession(workspace!.id, {
+      providerSessionId: "session",
+      providerSessionPath: "/remote/session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    });
+
+    await repository.updateAgentSessionMetadata(session.id, {
+      firstMessage:
+        "\n  Diagnose   inconsistent\tchat titles\nKeep this focused",
+    });
+    await expect(
+      repository.getOwnedAgentSession(session.id, "alice"),
+    ).resolves.toMatchObject({
+      agentSession: {
+        name: "Diagnose inconsistent chat titles",
+        firstMessage:
+          "\n  Diagnose   inconsistent\tchat titles\nKeep this focused",
+      },
+    });
+
+    await repository.updateAgentSessionMetadata(session.id, {
+      name: "Late provider name",
+    });
+    await repository.renameAgentSession(session.id, "  My title  ");
+    await repository.updateAgentSessionMetadata(session.id, {
+      name: "Another provider name",
+    });
+
+    await expect(
+      repository.getOwnedAgentSession(session.id, "alice"),
+    ).resolves.toMatchObject({
+      agentSession: { name: "My title" },
     });
   });
 
