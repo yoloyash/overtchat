@@ -895,7 +895,7 @@ describe("CodexRuntimeClient", () => {
     });
   });
 
-  it("keeps plans, terminal input, and child activity after sparse completion", async () => {
+  it("keeps task progress, terminal input, and child activity after sparse completion", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },
       { executable: "codex", cwd: "/workspace" },
@@ -971,6 +971,15 @@ describe("CodexRuntimeClient", () => {
         { step: "Implement parity", status: "inProgress" },
       ],
     });
+    server.emit("turn/plan/updated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      explanation: "Two focused steps.",
+      plan: [
+        { step: "Inspect the runtime", status: "completed" },
+        { step: "Implement parity", status: "completed" },
+      ],
+    });
     server.emit("turn/completed", {
       threadId: "child-1",
       turn: {
@@ -1011,8 +1020,18 @@ describe("CodexRuntimeClient", () => {
           terminalInputs: ["y\n"],
         }),
         expect.objectContaining({
-          type: "plan",
+          type: "taskList",
           explanation: "Two focused steps.",
+          items: [
+            expect.objectContaining({
+              step: "Inspect the runtime",
+              status: "completed",
+            }),
+            expect.objectContaining({
+              step: "Implement parity",
+              status: "completed",
+            }),
+          ],
         }),
         expect.objectContaining({ type: "text", text: "Ready." }),
       ]),
@@ -1020,6 +1039,63 @@ describe("CodexRuntimeClient", () => {
     await expect(client.getState()).resolves.toMatchObject({
       isStreaming: false,
     });
+  });
+
+  it("keeps Plan-mode proposals actionable and separate from task progress", async () => {
+    server.collaborationModes = [
+      {
+        name: "Code",
+        mode: "default",
+        model: null,
+        reasoning_effort: null,
+      },
+      {
+        name: "Plan",
+        mode: "plan",
+        model: null,
+        reasoning_effort: null,
+      },
+    ];
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    await client.setCollaborationMode("plan");
+    await client.prompt("Design the change");
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: {
+        id: "turn-plan",
+        status: "inProgress",
+        startedAt: 10,
+        items: [],
+      },
+    });
+    server.emit("turn/plan/updated", {
+      threadId: "thread-1",
+      turnId: "turn-plan",
+      explanation: "Ready for review.",
+      plan: [
+        { step: "Inspect the runtime", status: "completed" },
+        { step: "Implement parity", status: "pending" },
+      ],
+    });
+
+    expect(assistantParts((await client.getMessages()).messages)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "plan",
+          explanation: "Ready for review.",
+          actionable: true,
+        }),
+      ]),
+    );
+    expect(assistantParts((await client.getMessages()).messages)).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "taskList" }),
+      ]),
+    );
   });
 
   it("ignores aggregate diff telemetry and keeps concrete file changes", async () => {

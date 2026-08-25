@@ -60,6 +60,20 @@ export type AgentErrorPresentation = {
   details: string | null;
 };
 
+export type AgentTaskStatus = "pending" | "in_progress" | "completed";
+
+export type AgentTask = {
+  id: string;
+  step: string;
+  status: AgentTaskStatus;
+};
+
+export type AgentTaskListSnapshot = {
+  id: string;
+  explanation: string | null;
+  tasks: AgentTask[];
+};
+
 export type AgentTranscriptItem =
   | {
       type: "message";
@@ -95,10 +109,16 @@ export type AgentTranscriptItem =
       key: string;
       text: string;
       explanation: string | null;
+      actionable: boolean;
       steps: Array<{
         step: string;
         status: string;
       }>;
+    }
+  | {
+      type: "task_list";
+      key: string;
+      snapshot: AgentTaskListSnapshot;
     };
 
 export type AgentToolStatus =
@@ -196,6 +216,71 @@ function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as UnknownRecord)
     : null;
+}
+
+function normalizeTaskStatus(value: unknown): AgentTaskStatus {
+  if (value === "completed") return "completed";
+  if (value === "inProgress" || value === "in_progress") {
+    return "in_progress";
+  }
+  return "pending";
+}
+
+function taskListSnapshot(
+  value: unknown,
+  fallbackId: string,
+): AgentTaskListSnapshot | null {
+  const part = recordOf(value);
+  if (part?.type !== "taskList" || !Array.isArray(part.items)) return null;
+  const id = typeof part.id === "string" ? part.id : fallbackId;
+  return {
+    id,
+    explanation:
+      typeof part.explanation === "string" ? part.explanation : null,
+    tasks: part.items.flatMap((value, index) => {
+      const task = recordOf(value);
+      const step =
+        typeof task?.step === "string"
+          ? task.step
+          : typeof task?.text === "string"
+            ? task.text
+            : null;
+      return step
+        ? [{
+            id: typeof task?.id === "string" ? task.id : `${id}:${index}`,
+            step,
+            status: normalizeTaskStatus(task?.status),
+          }]
+        : [];
+    }),
+  };
+}
+
+export function latestAgentTaskList(
+  messages: readonly unknown[],
+): AgentTaskListSnapshot | null {
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex -= 1
+  ) {
+    const message = recordOf(messages[messageIndex]);
+    if (message?.role !== "assistant" || !Array.isArray(message.content)) {
+      continue;
+    }
+    for (
+      let partIndex = message.content.length - 1;
+      partIndex >= 0;
+      partIndex -= 1
+    ) {
+      const snapshot = taskListSnapshot(
+        message.content[partIndex],
+        `task-list:${messageIndex}:${partIndex}`,
+      );
+      if (snapshot) return snapshot;
+    }
+  }
+  return null;
 }
 
 function roleOf(message: unknown): string {
@@ -427,6 +512,7 @@ export function projectAgentTranscript(
               typeof partRecord.explanation === "string"
                 ? partRecord.explanation
                 : null,
+            actionable: partRecord.actionable === true,
             steps: Array.isArray(partRecord.steps)
               ? partRecord.steps.flatMap((value) => {
                   const step = recordOf(value);
@@ -444,6 +530,18 @@ export function projectAgentTranscript(
                 })
               : [],
           });
+          return;
+        }
+
+        const tasks = taskListSnapshot(partRecord, partIdentity);
+        if (tasks) {
+          if (tasks.tasks.length > 0) {
+            items.push({
+              type: "task_list",
+              key: `task-list:${tasks.id}`,
+              snapshot: tasks,
+            });
+          }
           return;
         }
 

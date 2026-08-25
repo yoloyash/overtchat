@@ -128,7 +128,8 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       ],
       goalsSupported: true,
       goal: {
-        objective: "Finish Codex parity",
+        objective:
+          "Finish Codex parity across the connector, runtime, and web interface without losing live goal updates",
         status: "active",
         tokenBudget: 20_000,
         tokensUsed: 4_200,
@@ -204,6 +205,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
             id: "plan",
             text: "- [x] Audit the runtime\n- [ ] Finish parity",
             explanation: "Two focused steps.",
+            actionable: true,
             steps: [
               { step: "Audit the runtime", status: "completed" },
               { step: "Finish parity", status: "inProgress" },
@@ -211,6 +213,21 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
           },
         ],
         timestamp: 2.5,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "taskList",
+            id: "tasks",
+            explanation: "Live execution progress.",
+            items: [
+              { step: "Audit the runtime", status: "completed" },
+              { step: "Finish parity", status: "inProgress" },
+            ],
+          },
+        ],
+        timestamp: 2.6,
       },
       {
         role: "assistant",
@@ -871,9 +888,32 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(page.getByTestId("agent-plan-card")).toContainText(
     "Finish parity",
   );
-  await expect(page.getByTestId("agent-goal-bar")).toContainText(
-    "Finish Codex parity",
+  const taskProgress = page.getByTestId("agent-task-progress-card");
+  await expect(taskProgress).toContainText("1/2");
+  await expect(
+    taskProgress.getByRole("button", { name: "Implement plan" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Goal, active" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Goal, active" }).click();
+  await expect(page.getByTestId("agent-goal-panel")).toContainText(
+    "Finish Codex parity across the connector, runtime, and web interface without losing live goal updates",
   );
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByRole("button", { name: "1 of 2 tasks complete" }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "1 of 2 tasks complete" })
+    .click();
+  await expect(page.getByTestId("agent-task-panel")).toContainText(
+    "Finish parity",
+  );
+  await expect(
+    page.getByTestId("agent-task-panel").getByLabel("In progress"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   const toolSummaries = page.locator('[data-agent-tool-summary="true"]');
   await expect(toolSummaries).toHaveCount(2);
   const completedCommandSummary = page.getByRole("button", {
@@ -1367,17 +1407,18 @@ test("shows durable turn activity without changing completed tool status", async
     enabled: false,
   });
   await expect(fastModeControl).toHaveCount(0);
+  await page.getByRole("button", { name: "Goal, active" }).click();
   await page.getByRole("button", { name: "Pause goal" }).click();
   await expect(page.getByRole("button", { name: "Resume goal" })).toBeVisible();
   await page.getByRole("button", { name: "Resume goal" }).click();
   await expect(page.getByRole("button", { name: "Pause goal" })).toBeVisible();
+  await page.getByRole("button", { name: "Clear goal" }).click();
+  await expect(page.getByRole("button", { name: /^Goal,/u })).toHaveCount(0);
   await page.getByRole("button", { name: "Implement plan" }).click();
   await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
     type: "implement_plan",
     plan: expect.stringContaining("Finish parity"),
   });
-  await page.getByRole("button", { name: "Clear goal" }).click();
-  await expect(page.getByTestId("agent-goal-bar")).toHaveCount(0);
   await page.screenshot({
     path: testInfo.outputPath("runtime-codex-parity-desktop.png"),
     fullPage: true,
