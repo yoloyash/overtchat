@@ -2,10 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { Dialog } from "@base-ui/react/dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
+  Check,
   ChevronUp,
   CircleArrowUp,
+  Clipboard,
   ExternalLink,
   FileText,
   LogOut,
@@ -15,7 +19,7 @@ import {
   User,
   UserRound,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
@@ -26,8 +30,11 @@ import { APP_VERSION } from "@/lib/version";
 import { useAppUpdate } from "@/lib/queries/appUpdate";
 import { useSidebar } from "@/components/sidebar-context";
 
+const UPDATE_COMMAND = "overtchat update";
+
 export function AccountMenu() {
   const router = useRouter();
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const { data: session, isPending } = authClient.useSession();
   const isAdmin = session?.user.role === "admin";
   const { data: update, isStale, refetch } = useAppUpdate(isAdmin);
@@ -175,33 +182,36 @@ export function AccountMenu() {
               </Menu.Item>
             )}
             <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-            <Menu.Item
-              render={
-                <a
-                  href="https://overtchat.com/releases/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={closeMobile}
-                />
-              }
-              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-            >
-              {updateAvailable ? (
+            {updateAvailable ? (
+              <Menu.Item
+                onClick={() => {
+                  setUpdateDialogOpen(true);
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              >
                 <CircleArrowUp className="size-3.5 shrink-0 text-ring" />
-              ) : (
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-              )}
-              <span className={cn("flex-1", updateAvailable && "font-medium")}>
-                {updateAvailable ? "Update available" : "Release notes"}
-              </span>
-              {updateAvailable ? (
+                <span className="flex-1 font-medium">Update available</span>
                 <span className="text-xs font-medium text-ring">
                   v{availableVersion}
                 </span>
-              ) : (
+              </Menu.Item>
+            ) : (
+              <Menu.Item
+                render={
+                  <a
+                    href="https://overtchat.com/releases/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={closeMobile}
+                  />
+                }
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+              >
+                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="flex-1">Release notes</span>
                 <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
-              )}
-            </Menu.Item>
+              </Menu.Item>
+            )}
             <Menu.Item
               render={
                 <a
@@ -231,6 +241,98 @@ export function AccountMenu() {
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
+      {availableVersion && (
+        <AppUpdateDialog
+          open={updateDialogOpen}
+          version={availableVersion}
+          onOpenChange={setUpdateDialogOpen}
+        />
+      )}
     </Menu.Root>
+  );
+}
+
+function AppUpdateDialog({
+  open,
+  version,
+  onOpenChange,
+}: {
+  open: boolean;
+  version: string;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function handleOpenChange(next: boolean) {
+    if (!next) setCopied(false);
+    onOpenChange(next);
+  }
+
+  async function copyUpdateCommand() {
+    try {
+      await navigator.clipboard.writeText(UPDATE_COMMAND);
+      setCopied(true);
+    } catch (error) {
+      toast.error({
+        title: "Could not copy update command",
+        description: getErrorMessage(error, "Copy the command manually."),
+      });
+    }
+  }
+
+  return (
+    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Backdrop
+          className={cn("fixed inset-0 z-40 bg-black/40", motionClasses.overlay)}
+        />
+        <Dialog.Popup
+          className={cn(
+            "fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border bg-card p-6 text-card-foreground shadow-lg outline-none",
+            motionClasses.dialog,
+          )}
+        >
+          <Dialog.Title className="text-lg font-semibold tracking-tight">
+            Update available
+          </Dialog.Title>
+          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+            OvertChat v{version} is ready. Run this on the OvertChat host.
+          </Dialog.Description>
+
+          <div className="mt-4 flex items-center gap-2">
+            <code
+              aria-label="OvertChat update command"
+              className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-muted px-3 py-2 text-sm"
+            >
+              {UPDATE_COMMAND}
+            </code>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => void copyUpdateCommand()}
+              aria-label={
+                copied ? "Update command copied" : "Copy update command"
+              }
+              title={copied ? "Copied" : "Copy update command"}
+            >
+              {copied ? <Check /> : <Clipboard />}
+            </Button>
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t pt-4">
+            <a
+              href="https://overtchat.com/releases/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              View release notes
+              <ExternalLink />
+            </a>
+            <Dialog.Close render={<Button size="sm" />}>Close</Dialog.Close>
+          </div>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }

@@ -22,6 +22,7 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   page,
 }) => {
   test.setTimeout(60_000);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.route("**/api/app-update", async (route) => {
@@ -51,9 +52,32 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await expect(
     page.getByRole("menuitem", { name: "Administration" }),
   ).toBeVisible();
+  await page
+    .getByRole("menuitem", { name: "Update available v99.0.0" })
+    .click();
+  const updateDialog = page.getByRole("dialog", { name: "Update available" });
+  await expect(updateDialog).toBeVisible();
+  await expect(updateDialog).toContainText(
+    "OvertChat v99.0.0 is ready. Run this on the OvertChat host.",
+  );
   await expect(
-    page.getByRole("menuitem", { name: "Update available v99.0.0" }),
+    updateDialog.getByLabel("OvertChat update command"),
+  ).toHaveText("overtchat update");
+  await updateDialog
+    .getByRole("button", { name: "Copy update command" })
+    .click();
+  await expect(
+    updateDialog.getByRole("button", { name: "Update command copied" }),
+  ).toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("overtchat update");
+  await expect(
+    updateDialog.getByRole("link", { name: "View release notes" }),
   ).toHaveAttribute("href", "https://overtchat.com/releases/");
+  await updateDialog.getByRole("button", { name: "Close" }).click();
+
+  await accountButton.click();
   await expect(page.getByRole("menuitem", { name: "Privacy" })).toHaveAttribute(
     "href",
     "https://overtchat.com/privacy/",
@@ -124,10 +148,14 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   });
   await expect(mobileAccountButton).toBeVisible();
   await mobileAccountButton.click();
+  await page
+    .getByRole("menuitem", { name: "Update available v99.0.0" })
+    .click();
+  await expect(updateDialog).toBeVisible();
   await expect(
-    page.getByRole("menuitem", { name: "Update available v99.0.0" }),
-  ).toBeVisible();
-  await page.keyboard.press("Escape");
+    updateDialog.getByLabel("OvertChat update command"),
+  ).toHaveText("overtchat update");
+  await updateDialog.getByRole("button", { name: "Close" }).click();
   await expect(drawer).toBeVisible();
 
   await drawer.getByRole("link", { name: "Sidebar Project", exact: true }).click();
