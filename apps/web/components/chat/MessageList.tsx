@@ -5,7 +5,13 @@ import { AlertTriangle, ChevronDown, RotateCcw } from "lucide-react";
 import { useStickToBottom } from "use-stick-to-bottom";
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
-import { readMessageStats, type StoredMessageStats } from "@/lib/chat/stats";
+import type { InferenceActivity } from "@/lib/chat/inference-activity";
+import {
+  formatInteger,
+  formatTps,
+  readMessageStats,
+  type StoredMessageStats,
+} from "@/lib/chat/stats";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MessageBubble } from "./MessageBubble";
@@ -14,6 +20,7 @@ export function MessageList({
   messages,
   streaming,
   status,
+  inferenceActivity,
   error,
   configured,
   speech,
@@ -26,6 +33,7 @@ export function MessageList({
   messages: UIMessage[];
   streaming: boolean;
   status: ChatStatus;
+  inferenceActivity: InferenceActivity | null;
   error: Error | undefined;
   configured: boolean;
   speech: ReturnType<typeof useSpeech>;
@@ -65,7 +73,11 @@ export function MessageList({
             />
           ))}
           {error && <ChatErrorBubble error={error} onRetry={onRetry} />}
+          {!error && streaming && inferenceActivity && (
+            <InferenceActivityIndicator activity={inferenceActivity} />
+          )}
           {!error &&
+            !inferenceActivity &&
             status === "submitted" &&
             messages.at(-1)?.role === "user" && <PendingIndicator />}
         </div>
@@ -89,6 +101,54 @@ export function MessageList({
   );
 }
 
+function InferenceActivityIndicator({
+  activity,
+}: {
+  activity: InferenceActivity;
+}) {
+  const details: string[] = [];
+  let label: string;
+
+  if (activity.phase === "prompt") {
+    const cachedTokens = activity.cachedTokens ?? 0;
+    label =
+      activity.progress === undefined
+        ? "Processing prompt"
+        : `Processing prompt ${Math.round(activity.progress * 100)}%`;
+    if (activity.totalTokens !== undefined) {
+      details.push(
+        `${formatInteger(activity.completedTokens)} / ${formatInteger(activity.totalTokens)} ${cachedTokens > 0 ? "new" : "tokens"}`,
+      );
+    }
+    if (cachedTokens > 0) {
+      details.push(`${formatInteger(cachedTokens)} cached`);
+    }
+  } else {
+    label = "Generating";
+    details.push(`${formatInteger(activity.completedTokens)} tokens`);
+  }
+
+  if (activity.tokensPerSecond !== undefined) {
+    details.push(formatTps(activity.tokensPerSecond));
+  }
+
+  const description = [label, ...details].join(" · ");
+  return (
+    <div
+      className="flex flex-wrap items-center gap-x-2 gap-y-1 py-2 text-xs text-muted-foreground"
+      role="status"
+      aria-label={description}
+      aria-live="polite"
+    >
+      <PendingDots />
+      <span className="font-medium text-foreground/80">{label}</span>
+      {details.length > 0 && (
+        <span className="tabular-nums">{details.join(" · ")}</span>
+      )}
+    </div>
+  );
+}
+
 function PendingIndicator() {
   return (
     <div
@@ -96,10 +156,18 @@ function PendingIndicator() {
       role="status"
       aria-label="Assistant is responding"
     >
+      <PendingDots />
+    </div>
+  );
+}
+
+function PendingDots() {
+  return (
+    <span className="flex items-center gap-1.5" aria-hidden="true">
       <span className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.3s] ${motionClasses.pendingDot}`} />
       <span className={`size-1.5 rounded-full bg-muted-foreground/70 [animation-delay:-0.15s] ${motionClasses.pendingDot}`} />
       <span className={`size-1.5 rounded-full bg-muted-foreground/70 ${motionClasses.pendingDot}`} />
-    </div>
+    </span>
   );
 }
 

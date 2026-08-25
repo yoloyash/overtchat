@@ -41,6 +41,11 @@ import {
   getDataTransferFiles,
   hasDataTransferFiles,
 } from "@/lib/chat/attachments";
+import {
+  INFERENCE_ACTIVITY_DATA_TYPE,
+  isInferenceActivity,
+  type InferenceActivity,
+} from "@/lib/chat/inference-activity";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { ChatHeader } from "./ChatHeader";
@@ -130,6 +135,8 @@ export function ChatArea({
   const [storedStats, setStoredStats] = useState<StoredMessageStats>(() =>
     readStoredMessageStats(),
   );
+  const [inferenceActivity, setInferenceActivity] =
+    useState<InferenceActivity | null>(null);
   const [dragDepth, setDragDepth] = useState(0);
 
   const isNewRef = useRef(isNew ?? false);
@@ -168,7 +175,17 @@ export function ChatArea({
     resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
+    onData: (part) => {
+      if (
+        part.type === INFERENCE_ACTIVITY_DATA_TYPE &&
+        isInferenceActivity(part.data)
+      ) {
+        setInferenceActivity(part.data);
+      }
+    },
+    onError: () => setInferenceActivity(null),
     onFinish: ({ message, isError }) => {
+      setInferenceActivity(null);
       const stats = readMessageStats(message);
       if (stats && !temporaryRef.current) {
         setStoredStats((current) => {
@@ -244,6 +261,7 @@ export function ChatArea({
   }
 
   function handleStop() {
+    setInferenceActivity(null);
     stop();
     if (!temporary) {
       void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
@@ -253,6 +271,7 @@ export function ChatArea({
   }
 
   function handleSubmit(text: string, attachments: FileUIPart[]) {
+    setInferenceActivity(null);
     const wasNew = isNewRef.current && !temporary;
     if (wasNew) {
       isNewRef.current = false;
@@ -290,16 +309,19 @@ export function ChatArea({
 
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
+    setInferenceActivity(null);
     regenerate({ messageId, body: requestBody() });
   }
 
   function handleRetry() {
     if (streaming || !configured) return;
+    setInferenceActivity(null);
     regenerate({ body: requestBody() });
   }
 
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
     if (streaming || !configured) return;
+    setInferenceActivity(null);
     sendMessage({ text, files, messageId }, { body: requestBody() });
   }
 
@@ -435,6 +457,7 @@ export function ChatArea({
             messages={messages}
             streaming={streaming}
             status={status}
+            inferenceActivity={inferenceActivity}
             error={error}
             configured={configured}
             speech={speech}
