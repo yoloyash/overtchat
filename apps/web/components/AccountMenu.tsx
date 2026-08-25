@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   ChevronUp,
@@ -29,10 +28,9 @@ import { useSidebar } from "@/components/sidebar-context";
 
 export function AccountMenu() {
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
   const { data: session, isPending } = authClient.useSession();
   const isAdmin = session?.user.role === "admin";
-  const { data: update } = useAppUpdate(menuOpen && isAdmin);
+  const { data: update, isStale, refetch } = useAppUpdate(isAdmin);
   const availableVersion = update?.updateAvailable
     ? update.latestVersion
     : null;
@@ -42,6 +40,10 @@ export function AccountMenu() {
   // the drawer isn't mounted, ref.current is null, and base-ui falls back to
   // portaling into <body>. See sidebar-context.tsx for the full explanation.
   const { closeMobile, drawerRef } = useSidebar();
+
+  function handleOpenChange(open: boolean) {
+    if (open && isAdmin && isStale) void refetch();
+  }
 
   async function logOut() {
     try {
@@ -64,7 +66,7 @@ export function AccountMenu() {
   }
 
   return (
-    <Menu.Root onOpenChange={setMenuOpen}>
+    <Menu.Root onOpenChange={handleOpenChange}>
       <Menu.Trigger
         render={
           <Button
@@ -97,6 +99,17 @@ export function AccountMenu() {
             </span>
           )}
         </span>
+        {updateAvailable && (
+          <span
+            className="shrink-0 text-ring"
+            title={`Update available v${availableVersion}`}
+          >
+            <CircleArrowUp className="size-4" aria-hidden="true" />
+            <span className="sr-only">
+              Update available v{availableVersion}
+            </span>
+          </span>
+        )}
         <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
       </Menu.Trigger>
       <Menu.Portal container={drawerRef}>

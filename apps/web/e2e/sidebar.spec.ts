@@ -41,7 +41,11 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
 
-  await page.getByText("Sidebar Admin", { exact: true }).click();
+  const accountButton = page.getByRole("button", {
+    name: "Sidebar Admin Update available v99.0.0",
+  });
+  await expect(accountButton).toBeVisible();
+  await accountButton.click();
   await expect(page.getByRole("menuitem", { name: "Profile" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Settings" })).toBeVisible();
   await expect(
@@ -115,6 +119,16 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
     "transition-property",
     "transform, translate, scale, rotate",
   );
+  const mobileAccountButton = drawer.getByRole("button", {
+    name: "Sidebar Admin Update available v99.0.0",
+  });
+  await expect(mobileAccountButton).toBeVisible();
+  await mobileAccountButton.click();
+  await expect(
+    page.getByRole("menuitem", { name: "Update available v99.0.0" }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeVisible();
 
   await drawer.getByRole("link", { name: "Sidebar Project", exact: true }).click();
   await expect(drawer).toBeHidden();

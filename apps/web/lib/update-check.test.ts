@@ -24,7 +24,7 @@ describe("app update check", () => {
     expect(isNewerVersion("0.16.0", "not-a-version")).toBe(false);
   });
 
-  it("caches the public manifest result across checks", async () => {
+  it("fetches the current public manifest for every check", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValue(
@@ -39,17 +39,23 @@ describe("app update check", () => {
     });
     await getAppUpdateStatus();
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock).toHaveBeenCalledWith(
       "https://overtchat.com/install-manifest.json",
-      expect.objectContaining({ headers: { Accept: "application/json" } }),
+      expect.objectContaining({
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      }),
     );
   });
 
-  it("fails silently and caches an unavailable result", async () => {
+  it("does not retain an unavailable manifest result", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response(null, { status: 503 }));
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(
+        Response.json({ format: 1, appVersion: "99.0.0" }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const { getAppUpdateStatus } = await import("./update-check");
 
@@ -57,9 +63,12 @@ describe("app update check", () => {
       latestVersion: null,
       updateAvailable: false,
     });
-    await getAppUpdateStatus();
+    await expect(getAppUpdateStatus()).resolves.toMatchObject({
+      latestVersion: "99.0.0",
+      updateAvailable: true,
+    });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not make a request when checks are disabled", async () => {
