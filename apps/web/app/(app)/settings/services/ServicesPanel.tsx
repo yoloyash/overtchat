@@ -113,7 +113,11 @@ function CapabilitySection({
   return (
     <SettingsSection
       title={TITLES[draft.id]}
-      description="Choose the provider used by everyone on this server."
+      description={
+        draft.id === "search"
+          ? "Choose the first provider OvertChat tries."
+          : "Choose the provider used by everyone on this server."
+      }
     >
       <SettingsRow
         title="Provider"
@@ -231,6 +235,23 @@ function CapabilitySection({
             }
             autoComplete="off"
           />
+        </SettingsRow>
+      )}
+
+      {draft.id === "search" && draft.provider !== "disabled" && (
+        <SettingsRow
+          title="Search order"
+          description="If your primary provider fails, OvertChat tries free search providers."
+          align="center"
+          controlAlign="end"
+        >
+          <span className="text-xs text-muted-foreground">
+            {draft.provider === "brave"
+              ? draft.bundledInstalled || draft.baseUrl
+                ? "Brave → SearXNG → Firecrawl → Exa → DuckDuckGo"
+                : "Brave → Firecrawl → Exa → DuckDuckGo"
+              : "SearXNG → Firecrawl → Exa → DuckDuckGo"}
+          </span>
         </SettingsRow>
       )}
 

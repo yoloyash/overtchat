@@ -14,7 +14,7 @@ export function createWebTools({
   return Object.freeze({
     web_search: tool({
       description:
-        "Search the web. Returns {link, title, snippet}. Cite sources.",
+        "Search the web through automatic provider fallbacks. Returns the provider that answered plus sources and optional answer metadata. Cite sources.",
       inputSchema: z.object({
         query: z.string(),
         limit: z.number().int().min(1).max(10).default(5),

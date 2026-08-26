@@ -14,6 +14,71 @@ export interface WebSearchResult {
   snippet: string;
 }
 
+export type WebSearchProvider =
+  | "brave"
+  | "duckduckgo"
+  | "exa"
+  | "firecrawl"
+  | "none"
+  | "searxng";
+
+const WEB_SEARCH_PROVIDER_LABELS: Record<WebSearchProvider, string> = {
+  brave: "Brave",
+  duckduckgo: "DuckDuckGo",
+  exa: "Exa",
+  firecrawl: "Firecrawl",
+  none: "No provider",
+  searxng: "SearXNG",
+};
+
+export interface WebSearchSource {
+  title: string;
+  url: string;
+  snippet?: string;
+  publishedDate?: string;
+  ageSeconds?: number;
+  author?: string;
+}
+
+export interface WebSearchOutput {
+  provider: WebSearchProvider;
+  answer?: string;
+  sources: WebSearchSource[];
+  citations?: Array<{ url: string; title: string; citedText?: string }>;
+  searchQueries?: string[];
+  relatedQuestions?: string[];
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    searchRequests?: number;
+    totalTokens?: number;
+  };
+  model?: string;
+  requestId?: string;
+  authMode?: string;
+}
+
+export type PersistedWebSearchOutput = WebSearchOutput | WebSearchResult[];
+
+export function webSearchResults(
+  output: PersistedWebSearchOutput | undefined,
+): WebSearchResult[] {
+  if (!output) return [];
+  if (Array.isArray(output)) return output;
+  return output.sources.map((source) => ({
+    link: source.url,
+    title: source.title,
+    snippet: source.snippet ?? "",
+  }));
+}
+
+export function webSearchProviderLabel(
+  output: PersistedWebSearchOutput | undefined,
+): string | undefined {
+  if (!output || Array.isArray(output)) return undefined;
+  return WEB_SEARCH_PROVIDER_LABELS[output.provider];
+}
+
 export interface FetchedPage {
   kind?: "text";
   url: string;
@@ -49,7 +114,7 @@ export type WebSearchPart = {
   toolCallId: string;
   state: ToolState;
   input?: { query?: string; limit?: number };
-  output?: WebSearchResult[];
+  output?: PersistedWebSearchOutput;
   errorText?: string;
 };
 

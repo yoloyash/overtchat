@@ -24,7 +24,11 @@
  * - index: Result index within that type (0-based)
  */
 
-import type { WebSearchPart, WebSearchResult } from "./tools";
+import {
+  webSearchResults,
+  type WebSearchPart,
+  type WebSearchResult,
+} from "./tools";
 
 export const SPAN_REGEX = /((?:\\ue203|).*?(?:\\ue204|))/g;
 
@@ -94,7 +98,7 @@ export function buildWebCitationIndex(
     if (searchPart?.type !== "tool-web_search") continue;
 
     const resolvedTurn: ResolvedWebCitation[] = [];
-    const results = Array.isArray(searchPart.output) ? searchPart.output : [];
+    const results = webSearchResults(searchPart.output);
     for (const source of results) {
       let number = numberByUrl.get(source.link);
       if (number === undefined) {

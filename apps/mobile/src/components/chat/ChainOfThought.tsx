@@ -22,6 +22,8 @@ import {
   type FetchUrlPart,
   isToolSettled,
   parseMcpToolName,
+  webSearchProviderLabel,
+  webSearchResults,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
@@ -400,8 +402,12 @@ function SearchStep({ part }: { part: WebSearchPart }) {
   const { colors, fonts } = useTheme();
   const [showAll, setShowAll] = useState(false);
   const query = part.input?.query?.trim();
-  const results = part.output ?? [];
-  const running = !isToolSettled(part);
+  const results = webSearchResults(part.output);
+  const provider = webSearchProviderLabel(part.output);
+  const hasAnswer =
+    part.output !== undefined &&
+    !Array.isArray(part.output) &&
+    Boolean(part.output.answer);
   const visible = showAll ? results : results.slice(0, RESULTS_PREVIEW);
   const hidden = results.length - visible.length;
 
@@ -431,7 +437,12 @@ function SearchStep({ part }: { part: WebSearchPart }) {
               { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
             ]}
           >
-            {results.length} {results.length === 1 ? "result" : "results"}
+            {results.length > 0
+              ? `${results.length} ${results.length === 1 ? "result" : "results"}`
+              : hasAnswer
+                ? "answer"
+                : "no results"}
+            {provider ? ` · ${provider}` : ""}
           </Text>
         ) : null}
       </View>
@@ -445,7 +456,7 @@ function SearchStep({ part }: { part: WebSearchPart }) {
         >
           {part.errorText}
         </Text>
-      ) : running && results.length === 0 ? null : (
+      ) : results.length === 0 ? null : (
         <View
           style={[
             styles.resultList,

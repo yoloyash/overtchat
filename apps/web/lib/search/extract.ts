@@ -1,5 +1,9 @@
 import "server-only";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import {
+  webSearchResults,
+  type PersistedWebSearchOutput,
+} from "@overtchat/shared";
 import { stripCitationMarkers } from "@/lib/citations";
 
 type AnyPart = UIMessagePart<UIDataTypes, UITools>;
@@ -15,12 +19,13 @@ export function extractSearchText(parts: AnyPart[]): string {
       const withOutput = p as { output?: unknown; input?: unknown };
       const query = (withOutput.input as { query?: string } | undefined)?.query;
       if (query) out.push(query);
-      const results = withOutput.output;
-      if (Array.isArray(results)) {
-        for (const r of results as { title?: string; snippet?: string }[]) {
-          if (r.title) out.push(r.title);
-          if (r.snippet) out.push(r.snippet);
-        }
+      const output = withOutput.output as PersistedWebSearchOutput | undefined;
+      if (output && !Array.isArray(output) && output.answer) {
+        out.push(output.answer);
+      }
+      for (const result of webSearchResults(output)) {
+        if (result.title) out.push(result.title);
+        if (result.snippet) out.push(result.snippet);
       }
     } else if (p.type === "tool-fetch_url") {
       const withOutput = p as { output?: unknown };

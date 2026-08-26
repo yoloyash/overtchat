@@ -18,6 +18,8 @@ import {
   type FetchedImage,
   type FetchUrlPart,
   isToolSettled,
+  webSearchProviderLabel,
+  webSearchResults,
   type WebSearchPart,
   type WebSearchResult,
 } from "@overtchat/shared";
@@ -259,8 +261,12 @@ function Rail({ icon: Icon, isLast }: { icon: LucideIcon; isLast: boolean }) {
 
 function SearchStep({ part }: { part: WebSearchPart }) {
   const query = part.input?.query?.trim();
-  const results = part.output ?? [];
-  const running = !isToolSettled(part);
+  const results = webSearchResults(part.output);
+  const provider = webSearchProviderLabel(part.output);
+  const hasAnswer =
+    part.output !== undefined &&
+    !Array.isArray(part.output) &&
+    Boolean(part.output.answer);
 
   return (
     <div className="space-y-1.5">
@@ -270,14 +276,19 @@ function SearchStep({ part }: { part: WebSearchPart }) {
         </span>
         {part.state === "output-available" && (
           <span className="shrink-0 text-muted-foreground">
-            {results.length} {results.length === 1 ? "result" : "results"}
+            {results.length > 0
+              ? `${results.length} ${results.length === 1 ? "result" : "results"}`
+              : hasAnswer
+                ? "answer"
+                : "no results"}
+            {provider ? ` · ${provider}` : ""}
           </span>
         )}
       </div>
 
       {part.state === "output-error" ? (
         <p className="text-destructive">{part.errorText}</p>
-      ) : running && results.length === 0 ? null : (
+      ) : results.length === 0 ? null : (
         <ul className="max-h-48 divide-y divide-border overflow-y-auto rounded-lg border bg-background/40">
           {results.map((r, i) => (
             <ResultRow key={i} result={r} />

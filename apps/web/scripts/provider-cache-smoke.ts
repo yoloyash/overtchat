@@ -233,13 +233,16 @@ const chatTools = createWebTools({
 const smokeTools = {
   web_search: {
     ...chatTools.web_search,
-    execute: async ({ query, limit }: { query: string; limit: number }) => [
-      {
-        link: "https://example.com/cache-smoke",
-        title: "Overtchat provider cache smoke",
-        snippet: `Deterministic result for ${query} (limit ${limit}).`,
-      },
-    ],
+    execute: async ({ query, limit }: { query: string; limit: number }) => ({
+      provider: "searxng" as const,
+      sources: [
+        {
+          url: "https://example.com/cache-smoke",
+          title: "Overtchat provider cache smoke",
+          snippet: `Deterministic result for ${query} (limit ${limit}).`,
+        },
+      ],
+    }),
   },
   fetch_url: {
     ...chatTools.fetch_url,

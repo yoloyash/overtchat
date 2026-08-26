@@ -8,9 +8,9 @@ import {
   type WebBasicsOptions,
 } from "@yoloyash/web-basics";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
-import type { FetchedPage, WebSearchResult } from "./web-client";
+import type { FetchedPage, WebSearchOutput } from "./web-client";
 
-export type { FetchedPage, WebSearchResult } from "./web-client";
+export type { FetchedPage, WebSearchOutput, WebSearchResult } from "./web-client";
 export { cleanDomain, faviconUrl } from "./web-client";
 
 const BUNDLED_SEARXNG_URL = "http://searxng:8080";
@@ -19,9 +19,10 @@ const MAX_CONTENT_CHARS = 8_000;
 type FetchedWebPage = FetchedPage & { kind: "text" };
 export type FetchedWebResource = FetchedWebPage | FetchImageResult;
 
-type SearchConfiguration =
-  | { provider: "brave"; apiKey: string }
-  | { provider: "searxng"; baseUrl: string };
+type SearchConfiguration = {
+  braveApiKey?: string;
+  searxngUrl?: string;
+};
 
 let activeSearchClient:
   | { configuration: SearchConfiguration; client: WebBasics }
@@ -36,15 +37,26 @@ function configuredSearch(): SearchConfiguration {
     if (!capability.apiKey) {
       throw new Error("The Brave Search API key is not configured.");
     }
-    return { provider: "brave", apiKey: capability.apiKey };
+    const configuredSearxng = capability.baseUrl || process.env.SEARXNG_URL;
+    const searxngUrl =
+      configuredSearxng ||
+      (capability.bundledInstalled ? BUNDLED_SEARXNG_URL : undefined);
+    return {
+      braveApiKey: capability.apiKey,
+      searxngUrl,
+    };
   }
   if (capability.provider === "bundled") {
-    return { provider: "searxng", baseUrl: BUNDLED_SEARXNG_URL };
+    return {
+      searxngUrl: BUNDLED_SEARXNG_URL,
+    };
   }
   if (capability.provider === "searxng") {
     const baseUrl = capability.baseUrl || process.env.SEARXNG_URL;
     if (!baseUrl) throw new Error("SearXNG is not configured.");
-    return { provider: "searxng", baseUrl };
+    return {
+      searxngUrl: baseUrl,
+    };
   }
   throw new Error("The configured web search provider is not supported.");
 }
@@ -53,14 +65,9 @@ function sameSearchConfiguration(
   left: SearchConfiguration,
   right: SearchConfiguration,
 ): boolean {
-  if (left.provider !== right.provider) return false;
-  if (left.provider === "brave" && right.provider === "brave") {
-    return left.apiKey === right.apiKey;
-  }
   return (
-    left.provider === "searxng" &&
-    right.provider === "searxng" &&
-    left.baseUrl === right.baseUrl
+    left.braveApiKey === right.braveApiKey &&
+    left.searxngUrl === right.searxngUrl
   );
 }
 
@@ -73,10 +80,12 @@ function configuredSearchClient(): WebBasics {
     return activeSearchClient.client;
   }
 
-  const options: WebBasicsOptions =
-    configuration.provider === "brave"
-      ? { searchBackend: "brave", braveApiKey: configuration.apiKey }
-      : { searchBackend: "searxng", searxngUrl: configuration.baseUrl };
+  const options: WebBasicsOptions = {
+    searchBackend: "auto",
+    allowKeylessFallback: true,
+    braveApiKey: configuration.braveApiKey,
+    searxngUrl: configuration.searxngUrl,
+  };
   const client = createWebBasics(options);
   activeSearchClient = { configuration, client };
   return client;
@@ -86,7 +95,7 @@ export async function searchWeb(
   query: string,
   limit = 5,
   signal?: AbortSignal,
-): Promise<WebSearchResult[]> {
+): Promise<WebSearchOutput> {
   return configuredSearchClient().webSearch({
     query,
     limit,

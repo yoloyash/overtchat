@@ -241,7 +241,21 @@ describe("Citation Regex Patterns", () => {
           type: "tool-web_search",
           toolCallId: "search-1",
           state: "output-available",
-          output: [sourceB, sourceC],
+          output: {
+            provider: "firecrawl",
+            sources: [
+              {
+                url: sourceB.link,
+                title: sourceB.title,
+                snippet: sourceB.snippet,
+              },
+              {
+                url: sourceC.link,
+                title: sourceC.title,
+                snippet: sourceC.snippet,
+              },
+            ],
+          },
         },
       ]);
 

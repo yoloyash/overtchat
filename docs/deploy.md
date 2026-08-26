@@ -28,6 +28,13 @@ overtchat setup
 Provider selection can also be changed later in **Admin Settings → Services**.
 Bundled services must first be installed with `overtchat setup`.
 
+Web search uses the selected provider as its primary. When Brave is selected,
+an installed or configured SearXNG service is used automatically if Brave
+fails or returns no useful results. OvertChat then tries Firecrawl, Exa, and
+DuckDuckGo in order, stopping after the first useful response. Those public
+backup providers receive the query only when the providers before them cannot
+answer. Search activity records which provider ultimately served the results.
+
 ## Existing Compose installations
 
 Running `overtchat setup` on a machine that already has the standard
