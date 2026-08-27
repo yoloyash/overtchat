@@ -73,7 +73,7 @@ const CODE_EXECUTION_SYSTEM_PROMPT = [
   "- Use exact /mnt/uploads/<filename> paths when reading them.",
   "- Save every file the user should receive into /mnt/uploads; saved files are returned as downloads.",
   "- Generated files are attached to the response automatically. Refer to them by filename, do not expose their internal URLs, and do not reproduce their full contents unless the user asks.",
-  "- Call matplotlib.pyplot.show() to return the current chart as a PNG.",
+  "- For a chart the user should receive, either save it once under a meaningful filename in /mnt/uploads or call matplotlib.pyplot.show() for an auto-named PNG; do not do both for the same figure.",
   "- Network access and package installation are unavailable.",
 ].join("\n");
 

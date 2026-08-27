@@ -146,7 +146,7 @@ test("runs Python code blocks from the self-hosted opaque-origin runtime", async
   await page.goto("/chat/code-execution-chat");
 
   const runButtons = page.getByRole("button", { name: "Run Python" });
-  await expect(runButtons).toHaveCount(5);
+  await expect(runButtons).toHaveCount(6);
 
   await runButtons.nth(0).click();
   await expect(page.getByText("6", { exact: true })).toBeVisible({
@@ -194,6 +194,12 @@ test("runs Python code blocks from the self-hosted opaque-origin runtime", async
   await expect(
     page.getByText(/Network access is disabled in Python execution/u),
   ).toBeVisible();
+
+  await runButtons.nth(5).click();
+  await expect(page.getByAltText("named-plot.png")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByAltText("plot-2.png")).toHaveCount(0);
 });
 
 test("returns browser Python results to the model and persists one assistant turn", async ({
@@ -374,6 +380,13 @@ function seedCodeChat() {
               "\n\nNetwork isolation:\n\n```python",
               "from js import fetch",
               "await fetch('https://example.com')",
+              "```",
+              "\n\nNamed plot output:\n\n```python",
+              "import matplotlib.pyplot as plt",
+              "plt.plot([1, 2, 3], [3, 2, 1])",
+              "plt.savefig('/mnt/uploads/named-plot.png', dpi=150, bbox_inches='tight')",
+              "plt.show()",
+              "'named plot ready'",
               "```",
             ].join("\n"),
           },

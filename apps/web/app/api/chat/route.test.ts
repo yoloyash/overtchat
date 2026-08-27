@@ -734,8 +734,8 @@ describe("chat route setup boundary", () => {
     );
     expect(mocks.agentSettings[0].instructions).toEqual({
       role: "system",
-      content: expect.stringContaining(
-        "Generated files are attached to the response automatically.",
+      content: expect.stringMatching(
+        /Generated files are attached to the response automatically[\s\S]*do not do both for the same figure/u,
       ),
     });
   });
