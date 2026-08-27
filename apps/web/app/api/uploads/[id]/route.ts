@@ -18,6 +18,8 @@ export async function GET(
     return new Response(new Uint8Array(bytes), {
       headers: {
         "Content-Type": row.mediaType,
+        "Content-Length": String(bytes.byteLength),
+        "Content-Disposition": contentDisposition(row),
         "X-Content-Type-Options": "nosniff",
         "Cache-Control": "private, max-age=31536000, immutable",
       },
@@ -25,4 +27,16 @@ export async function GET(
   } catch {
     return new Response("Not found", { status: 404 });
   }
+}
+
+function contentDisposition(row: {
+  category: string;
+  filename: string;
+}): string {
+  const mode = row.category === "image" ? "inline" : "attachment";
+  const encoded = encodeURIComponent(row.filename).replace(
+    /['()*]/gu,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `${mode}; filename*=UTF-8''${encoded}`;
 }

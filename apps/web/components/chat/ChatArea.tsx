@@ -35,6 +35,8 @@ import {
   executePython,
   resetPythonExecutor,
 } from "@/lib/code-execution/browser-python";
+import { loadPythonInputs } from "@/lib/code-execution/inputs";
+import { persistPythonOutput } from "@/lib/code-execution/persistence";
 import { authClient } from "@/lib/auth/client";
 import {
   readMessageStats,
@@ -186,6 +188,7 @@ export function ChatArea({
   const addToolOutputRef = useRef<
     ChatAddToolOutputFunction<UIMessage> | null
   >(null);
+  const messagesRef = useRef<UIMessage[]>(initialMessages ?? []);
   const chat = useChat({
     id: temporary ? undefined : chatId,
     resume: !temporary && !isNew,
@@ -204,7 +207,14 @@ export function ChatArea({
         ) {
           throw new Error("Invalid Python execution request");
         }
-        const output = await executePython(input.code);
+        const loaded = await loadPythonInputs(messagesRef.current);
+        const localOutput = await executePython(input.code, loaded.files);
+        const output = await persistPythonOutput({
+          ...localOutput,
+          stderr: [localOutput.stderr, ...loaded.warnings]
+            .filter(Boolean)
+            .join("\n") || null,
+        });
         void addToolOutputRef.current?.({
           tool: EXECUTE_CODE_TOOL_NAME,
           toolCallId: toolCall.toolCallId,
@@ -256,6 +266,9 @@ export function ChatArea({
     };
   }, [chat.addToolOutput]);
   const { messages, sendMessage, regenerate, status, stop, error } = chat;
+  useLayoutEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     resetPythonExecutor();

@@ -8,6 +8,7 @@ import { db } from "@/lib/db/client";
 import { messages, uploads } from "@/lib/db/schema";
 import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import { assertFetchedImageContent } from "@/lib/image-content";
+import type { CodeExecutionArtifact } from "@overtchat/shared";
 
 type Part = UIMessagePart<UIDataTypes, UITools>;
 
@@ -27,7 +28,7 @@ export async function createUpload(row: {
   userId: string;
   filename: string;
   mediaType: string;
-  category: "image" | "document" | "text" | "spreadsheet";
+  category: "image" | "document" | "text" | "spreadsheet" | "artifact";
   size: number;
   pageCount: number | null;
   extractedText: string | null;
@@ -82,6 +83,68 @@ export async function storeFetchedImage(input: {
     throw error;
   }
   return { uploadUrl: `${UPLOAD_URL_PREFIX}${id}` };
+}
+
+type CodeArtifactInput = {
+  userId: string;
+  filename: string;
+  mediaType: string;
+  data: Uint8Array;
+  image: boolean;
+};
+
+export async function storeCodeArtifacts(
+  inputs: readonly CodeArtifactInput[],
+): Promise<CodeExecutionArtifact[]> {
+  const stored = inputs.map((input) => {
+    if (input.image) assertFetchedImageContent(input.data, input.mediaType);
+    return {
+      input,
+      id: crypto.randomUUID(),
+      filename: sanitizeArtifactFilename(input.filename),
+    };
+  });
+
+  try {
+    await Promise.all(
+      stored.map(({ id, input }) => fsp.writeFile(uploadPath(id), input.data)),
+    );
+    await db.insert(uploads).values(
+      stored.map(({ id, filename, input }) => ({
+        id,
+        userId: input.userId,
+        filename,
+        mediaType: input.mediaType || "application/octet-stream",
+        category: input.image ? ("image" as const) : ("artifact" as const),
+        size: input.data.byteLength,
+        pageCount: null,
+        extractedText: null,
+        truncated: false,
+      })),
+    );
+  } catch (error) {
+    await Promise.all(
+      stored.map(({ id }) => fsp.rm(uploadPath(id), { force: true })),
+    );
+    throw error;
+  }
+
+  return stored.map(({ id, filename, input }) => ({
+    kind: input.image ? "image" : "file",
+    name: filename,
+    mediaType: input.mediaType || "application/octet-stream",
+    byteLength: input.data.byteLength,
+    url: `${UPLOAD_URL_PREFIX}${id}`,
+  }));
+}
+
+function sanitizeArtifactFilename(value: string): string {
+  return (
+    value
+      .replace(/[\u0000-\u001f\u007f/\\]/g, "_")
+      .trim()
+      .slice(0, 180) || "output"
+  );
 }
 
 export async function readFetchedImage(
