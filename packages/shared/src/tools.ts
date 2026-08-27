@@ -156,6 +156,45 @@ export interface CodeExecutionOutput {
   failed?: boolean;
 }
 
+/** Collect durable generated artifacts for first-class message rendering. */
+export function collectCodeExecutionArtifacts(
+  parts: readonly unknown[],
+): CodeExecutionArtifact[] {
+  const artifacts: CodeExecutionArtifact[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const value of parts) {
+    if (!value || typeof value !== "object") continue;
+    const part = value as Partial<CodeExecutionPart>;
+    if (part.type !== "tool-execute_code") continue;
+    for (const artifact of part.output?.outputs ?? []) {
+      if (!isCodeExecutionArtifact(artifact) || seenUrls.has(artifact.url)) {
+        continue;
+      }
+      seenUrls.add(artifact.url);
+      artifacts.push(artifact);
+    }
+  }
+  return artifacts;
+}
+
+function isCodeExecutionArtifact(
+  value: unknown,
+): value is CodeExecutionArtifact {
+  if (!value || typeof value !== "object") return false;
+  const artifact = value as Partial<CodeExecutionArtifact>;
+  return (
+    (artifact.kind === "file" || artifact.kind === "image") &&
+    typeof artifact.name === "string" &&
+    typeof artifact.mediaType === "string" &&
+    typeof artifact.byteLength === "number" &&
+    Number.isFinite(artifact.byteLength) &&
+    artifact.byteLength >= 0 &&
+    typeof artifact.url === "string" &&
+    artifact.url.length > 0
+  );
+}
+
 export type CodeExecutionPart = {
   type: "tool-execute_code";
   toolCallId: string;

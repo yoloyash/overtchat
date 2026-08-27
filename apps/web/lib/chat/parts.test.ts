@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
+import { collectCodeExecutionArtifacts } from "@overtchat/shared";
 import { groupMessageParts, type Segment } from "./parts";
 
 type Part = UIMessage["parts"][number];
@@ -16,6 +17,27 @@ const search = (query: string): Part =>
   }) as unknown as Part;
 const file = (): Part =>
   ({ type: "file", mediaType: "image/png", url: "x" }) as Part;
+const code = (url: string): Part =>
+  ({
+    type: "tool-execute_code",
+    toolCallId: url,
+    state: "output-available",
+    input: { language: "python", code: "pass" },
+    output: {
+      stdout: null,
+      stderr: null,
+      result: null,
+      outputs: [
+        {
+          kind: "file",
+          name: "report.csv",
+          mediaType: "text/csv",
+          byteLength: 42,
+          url,
+        },
+      ],
+    },
+  }) as unknown as Part;
 const mcpTool = (): Part =>
   ({
     type: "dynamic-tool",
@@ -99,5 +121,23 @@ describe("groupMessageParts", () => {
     expect(
       (segs[0] as Extract<Segment, { kind: "activity" }>).parts,
     ).toHaveLength(2);
+  });
+
+  it("collects generated artifacts independently of the collapsed activity", () => {
+    const parts = [reasoning("working"), code("/api/uploads/report"), code("/api/uploads/report")];
+    const activity = groupMessageParts(parts)[0] as Extract<
+      Segment,
+      { kind: "activity" }
+    >;
+
+    expect(collectCodeExecutionArtifacts(activity.parts)).toEqual([
+      {
+        kind: "file",
+        name: "report.csv",
+        mediaType: "text/csv",
+        byteLength: 42,
+        url: "/api/uploads/report",
+      },
+    ]);
   });
 });

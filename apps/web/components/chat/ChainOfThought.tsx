@@ -12,7 +12,6 @@ import {
   type LucideIcon,
   Search,
 } from "lucide-react";
-import { CodeExecutionArtifacts } from "./CodeExecutionArtifacts";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
@@ -239,7 +238,6 @@ function CodeExecutionStep({ part }: { part: CodeExecutionPart }) {
               <ToolValue label="Stderr" value={part.output.stderr} />
             </div>
           )}
-          <CodeExecutionArtifacts artifacts={part.output.outputs} />
         </>
       )}
     </div>

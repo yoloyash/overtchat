@@ -257,10 +257,15 @@ test("mounts chat files and persists generated downloads and charts across reloa
   ).toBeVisible({ timeout: 60_000 });
   await expect.poll(() => sawArtifactOutput).toBe(true);
 
-  await page.getByRole("button", { name: /Ran Python/u }).click();
   const cleaned = page.getByRole("link", { name: /cleaned\.csv/u });
   await expect(cleaned).toBeVisible();
   await expect(page.getByAltText("plot-1.png")).toBeVisible();
+  await expect(cleaned).toHaveCount(1);
+  await expect(page.getByAltText("plot-1.png")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /Ran Python/u })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   const cleanedUrl = await cleaned.getAttribute("href");
   expect(cleanedUrl).toMatch(/^\/api\/uploads\//u);
   await expect
@@ -287,7 +292,6 @@ test("mounts chat files and persists generated downloads and charts across reloa
       { exact: true },
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: /Ran Python/u }).click();
   await expect(page.getByRole("link", { name: /cleaned\.csv/u })).toBeVisible();
   await expect(page.getByAltText("plot-1.png")).toBeVisible();
 

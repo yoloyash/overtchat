@@ -148,7 +148,7 @@ export function createCodeExecutionTools() {
       Record<string, never>
     >({
       description:
-        "Run Python for calculations, data analysis, transformations, file processing, and visualizations. The environment includes the Python standard library, NumPy, pandas, Matplotlib, SciPy, scikit-learn, SymPy, regex, tiktoken, and pytz. User and prior generated files are available in /mnt/uploads. Save files the user should receive into /mnt/uploads; they will be returned as downloadable outputs. Matplotlib plt.show() produces a PNG output. The environment has no network access and cannot install packages.",
+        "Run Python for calculations, data analysis, transformations, file processing, and visualizations. The environment includes the Python standard library, NumPy, pandas, Matplotlib, SciPy, scikit-learn, SymPy, regex, tiktoken, and pytz. User and prior generated files are available in /mnt/uploads. Save files the user should receive into /mnt/uploads; they are attached to the response automatically as downloadable outputs. Refer to generated files by filename instead of exposing internal URLs or reproducing their full contents unless asked. Matplotlib plt.show() produces a PNG output. The environment has no network access and cannot install packages.",
       inputSchema: z.object({
         language: z.literal("python").default("python"),
         code: z

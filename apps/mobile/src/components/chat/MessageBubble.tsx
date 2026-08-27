@@ -1,5 +1,8 @@
 import type { FileUIPart, UIMessage } from "ai";
-import { isToolSettled } from "@overtchat/shared";
+import {
+  collectCodeExecutionArtifacts,
+  isToolSettled,
+} from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -11,7 +14,11 @@ import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { AttachmentChip } from "./AttachmentChip";
-import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
+import {
+  type ActivityPart,
+  ChainOfThought,
+  CodeExecutionArtifacts,
+} from "./ChainOfThought";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { MessageActions } from "./MessageActions";
@@ -181,12 +188,15 @@ export function MessageBubble({
                   trailing as Parameters<typeof isToolSettled>[0],
                 );
           const active = streaming && isLast && !trailingDone;
+          const artifacts = collectCodeExecutionArtifacts(seg.parts);
           return (
-            <ChainOfThought
-              key={`a-${seg.startIndex}`}
-              parts={seg.parts as ActivityPart[]}
-              active={active}
-            />
+            <View key={`a-${seg.startIndex}`} style={styles.activitySegment}>
+              <ChainOfThought
+                parts={seg.parts as ActivityPart[]}
+                active={active}
+              />
+              <CodeExecutionArtifacts artifacts={artifacts} />
+            </View>
           );
         })}
         {!streaming ? <Sources message={message} /> : null}
@@ -223,6 +233,7 @@ const styles = StyleSheet.create({
   userRow: { alignItems: "flex-end", gap: 6 },
   assistantRow: { alignItems: "stretch" },
   assistantInner: { gap: 4 },
+  activitySegment: { gap: 8 },
   attachmentsRow: {
     flexDirection: "row",
     flexWrap: "wrap",

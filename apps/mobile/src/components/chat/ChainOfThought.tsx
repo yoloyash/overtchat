@@ -360,14 +360,13 @@ function CodeExecutionStep({ part }: { part: CodeExecutionPart }) {
             <ToolValue label="Result" value={part.output.result} />
           ) : null}
           {part.output.stderr ? <ToolValue label="Stderr" value={part.output.stderr} /> : null}
-          <CodeExecutionArtifacts artifacts={part.output.outputs} />
         </>
       ) : null}
     </View>
   );
 }
 
-function CodeExecutionArtifacts({
+export function CodeExecutionArtifacts({
   artifacts,
 }: {
   artifacts: readonly CodeExecutionArtifact[];

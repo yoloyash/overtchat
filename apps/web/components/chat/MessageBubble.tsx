@@ -14,7 +14,10 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { isToolSettled } from "@overtchat/shared";
+import {
+  collectCodeExecutionArtifacts,
+  isToolSettled,
+} from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -39,6 +42,7 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { CodeExecutionArtifacts } from "./CodeExecutionArtifacts";
 import { PythonCodeBlock } from "./PythonCodeBlock";
 import { StatsPopover } from "./StatsPopover";
 
@@ -217,14 +221,17 @@ function AssistantBubble({
                     trailing as Parameters<typeof isToolSettled>[0],
                   );
             const active = streaming && isLast && !trailingDone;
+            const artifacts = collectCodeExecutionArtifacts(seg.parts);
             return (
-              <ChainOfThought
-                key={seg.startIndex}
-                parts={
-                  seg.parts as Parameters<typeof ChainOfThought>[0]["parts"]
-                }
-                active={active}
-              />
+              <div key={seg.startIndex} className="space-y-2">
+                <ChainOfThought
+                  parts={
+                    seg.parts as Parameters<typeof ChainOfThought>[0]["parts"]
+                  }
+                  active={active}
+                />
+                <CodeExecutionArtifacts artifacts={artifacts} />
+              </div>
             );
           });
         })()}
