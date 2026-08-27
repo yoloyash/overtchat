@@ -19,8 +19,9 @@ state model used by the web app, connector, and runtime.
 - Keep this package transport-neutral and free of filesystem, network, process,
   database, UI, or provider implementations.
 - Wire types, Zod schemas, runtime guards, reducers, and tests must evolve
-  together. Protocol v1 is exact; coordinate wire changes across the web and
-  connector consumers rather than adding parallel protocol shapes.
+  together. The current protocol is exact; increment it only for a breaking
+  web-to-connector contract change and coordinate the web and connector
+  consumers rather than adding parallel protocol shapes.
 
 ## Agent runtime
 

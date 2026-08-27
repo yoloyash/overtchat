@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
 } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
@@ -29,14 +28,19 @@ vi.mock("@/lib/db/agentConnections", () => ({
 import { GET } from "./route";
 
 function request(
-  version = HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   protocol = HOST_CONNECTOR_PROTOCOL_VERSION,
-  options: { buildVersion?: string; capabilities?: string } = {},
+  options: {
+    buildVersion?: string;
+    capabilities?: string;
+    legacyVersion?: string;
+  } = {},
 ): Request {
   return new Request("http://server.test/api/host-connectors/channel", {
     headers: {
-      "X-OvertChat-Connector-Version": version,
       "X-OvertChat-Connector-Protocol": String(protocol),
+      ...(options.legacyVersion
+        ? { "X-OvertChat-Connector-Version": options.legacyVersion }
+        : {}),
       ...(options.buildVersion
         ? { "X-OvertChat-Connector-Build-Version": options.buildVersion }
         : {}),
@@ -68,7 +72,7 @@ describe("Host Connector command channel", () => {
     mocks.listActiveSessions.mockResolvedValue(["session"]);
   });
 
-  it("opens for the current protocol compatibility baseline", async () => {
+  it("opens for the current wire protocol", async () => {
     const response = await GET(request());
 
     expect(response.status).toBe(200);
@@ -81,24 +85,17 @@ describe("Host Connector command channel", () => {
       expect.any(Function),
       [],
     );
-    expect(mocks.touch).toHaveBeenCalledWith(
-      "connector",
-      HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-    );
+    expect(mocks.touch).toHaveBeenCalledWith("connector", undefined);
     await reader.cancel();
     expect(mocks.unregister).toHaveBeenCalled();
   });
 
   it("uses the build version for display without gating the wire", async () => {
     const response = await GET(
-      request(
-        HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-        HOST_CONNECTOR_PROTOCOL_VERSION,
-        {
-          buildVersion: "9.9.9",
-          capabilities: `${HOST_CONNECTOR_CAPABILITIES[0]},future-capability`,
-        },
-      ),
+      request(HOST_CONNECTOR_PROTOCOL_VERSION, {
+        buildVersion: "9.9.9",
+        capabilities: `${HOST_CONNECTOR_CAPABILITIES[0]},future-capability`,
+      }),
     );
 
     expect(response.status).toBe(200);
@@ -112,22 +109,25 @@ describe("Host Connector command channel", () => {
     await response.body!.cancel();
   });
 
-  it("rejects an incompatible wire shape or protocol", async () => {
-    const wrongRelease = await GET(request("0.1.0"));
-    expect(wrongRelease.status).toBe(409);
-    await expect(wrongRelease.json()).resolves.toMatchObject({
-      error: expect.stringContaining("overtchat update"),
-      code: "unsupported_connector_protocol",
-      compatibilityRelease: HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-    });
+  it("ignores the retired compatibility-release header", async () => {
+    const response = await GET(
+      request(HOST_CONNECTOR_PROTOCOL_VERSION, { legacyVersion: "0.1.0" }),
+    );
 
+    expect(response.status).toBe(200);
+    await response.body!.cancel();
+  });
+
+  it("rejects an incompatible wire protocol", async () => {
     const wrongProtocol = await GET(
-      request(
-        HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-        HOST_CONNECTOR_PROTOCOL_VERSION + 1,
-      ),
+      request(HOST_CONNECTOR_PROTOCOL_VERSION + 1),
     );
     expect(wrongProtocol.status).toBe(409);
+    await expect(wrongProtocol.json()).resolves.toMatchObject({
+      error: expect.stringContaining("overtchat update"),
+      code: "unsupported_connector_protocol",
+      supportedProtocolVersions: [HOST_CONNECTOR_PROTOCOL_VERSION],
+    });
     expect(mocks.register).not.toHaveBeenCalled();
   });
 

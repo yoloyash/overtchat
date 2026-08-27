@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   type HostConnectorEventBatch,
   type HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
@@ -119,7 +118,7 @@ describe.sequential("connector client compatibility", () => {
     ).toHaveLength(0);
   });
 
-  it("uses the protocol compatibility token and advertises its build", async () => {
+  it("advertises its wire protocol and build version", async () => {
     const requests: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal(
       "fetch",
@@ -133,9 +132,7 @@ describe.sequential("connector client compatibility", () => {
     await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0));
 
     const headers = new Headers(requests[0]!.init?.headers);
-    expect(headers.get("x-overtchat-connector-version")).toBe(
-      HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-    );
+    expect(headers.get("x-overtchat-connector-version")).toBeNull();
     expect(headers.get("x-overtchat-connector-build-version")).toBe("0.8.0");
     expect(headers.get("x-overtchat-connector-protocol")).toBe(
       String(HOST_CONNECTOR_PROTOCOL_VERSION),

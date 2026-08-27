@@ -13,8 +13,8 @@ body:
     attributes:
       label: App version
       description: |
-        Run `docker compose images app` and paste the tag (e.g. `0.7.0`). If you're running from source, paste the short commit hash from `git rev-parse --short HEAD`.
-      placeholder: "0.7.0"
+        Run `overtchat status` and paste the reported version. If you're running from source, paste the short commit hash from `git rev-parse --short HEAD`.
+      placeholder: "0.17.0"
     validations:
       required: true
 
@@ -51,5 +51,5 @@ body:
     attributes:
       label: Relevant logs (optional)
       description: |
-        Output of `docker compose logs app --tail=100` around the time of the bug, if it's a server-side issue. Browser DevTools console errors are great for UI bugs.
+        Output of `docker logs overtchat-app --tail=100` around the time of the bug, if it's a server-side issue. Browser DevTools console errors are great for UI bugs.
       render: shell

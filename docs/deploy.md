@@ -35,18 +35,21 @@ DuckDuckGo in order, stopping after the first useful response. Those public
 backup providers receive the query only when the providers before them cannot
 answer. Search activity records which provider ultimately served the results.
 
-## Existing Compose installations
+## Adopting an existing Compose installation
 
 Running `overtchat setup` on a machine that already has the standard
 `overtchat-app` container adopts it in place. The installer preserves the
 current `/app/data` Docker volume or bind mount, public port, auth secret, and
 standard SearXNG configuration. If the containers were removed with
 `docker compose down`, it can recover a single standard Compose data volume by
-its Docker labels.
+its Docker labels. After adoption, use `overtchat setup`, `overtchat status`,
+and `overtchat update` instead of the old Compose workflow.
 
-The old Compose commands remain supported. If more than one candidate data
-volume exists or the installation uses unrelated container names, start the
-specific old stack first or continue managing that custom layout manually.
+If more than one candidate data volume exists, start the specific old stack
+before running setup so the manager can identify it. Custom layouts and source
+deployments are not part of the supported production update path; back up their
+data and migrate it into a standard installation instead of expecting the
+manager to modify an ambiguous deployment.
 
 ## Development
 
@@ -77,8 +80,10 @@ Machine-specific URLs and trusted origins still belong in the ignored
 container-only `REDIS_URL`; the full root command supplies its local Redis URL
 explicitly.
 
-The root `.env` is the Compose/production configuration. `apps/web/.env` must
-remain a symlink to `../../.env` so direct Next.js commands see the same file;
+The root `.env` is source-development configuration. Managed production
+settings live under `~/.config/overtchat` and must be changed through
+`overtchat setup` or the product settings. `apps/web/.env` must remain a
+symlink to `../../.env` so direct Next.js commands see the development file;
 do not replace it with a copy. Next loads `.env.development` and then the
 gitignored `.env.local` overrides during development. Mobile has no environment
 file because its server URL is selected per device.
@@ -149,37 +154,18 @@ account button when a newer app image is available. The account menu includes
 the available version. The browser may recheck after reconnecting, returning
 to the tab, or reopening a stale account menu; the server does not retain a
 process-wide update result. The check does not send an instance identifier,
-account data, configuration, or the installed version. For a manual Compose
-installation, set
-`DISABLE_UPDATE_CHECK=true` in the root `.env` file. For an installation made
-with the guided manager, run `DISABLE_UPDATE_CHECK=true overtchat setup` once
-to persist the same opt-out.
+account data, configuration, or the installed version. Run
+`DISABLE_UPDATE_CHECK=true overtchat setup` once to persist an opt-out.
 
 Running `overtchat setup` adopts an older manually paired connector, rotates
 its credentials, and brings it under managed updates.
-
-## Manual Compose installation
-
-For source development, custom orchestration, or non-Linux hosts, clone the
-repository and use the original Compose flow:
-
-```bash
-git clone https://github.com/yoloyash/overtchat
-cd overtchat
-cp .env.example .env
-echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)" >> .env
-echo "SEARXNG_SECRET=$(openssl rand -hex 32)" >> .env
-docker compose up -d --build
-```
-
-Set `BETTER_AUTH_URL` in `.env` to the URL browsers will use. Manual installs
-update with `git pull && docker compose up -d --build`.
 
 ## Pointing at your LLM
 
 The app container makes the upstream LLM calls, so the base URL you set in **Settings → API endpoint** needs to be reachable **from inside the container**, not from your browser.
 
-- **LLM running on the host (not in docker):** use `http://host.docker.internal:<port>/v1`. Baked into `compose.yml` via `extra_hosts`, works on Linux / macOS / Windows.
+- **LLM running on the host:** use `http://host.docker.internal:<port>/v1`.
+  The managed stack provides this hostname on Linux.
 - **Public provider (OpenAI / Groq / etc.):** use the provider's base URL + API key.
 
 ## MCP servers
@@ -198,53 +184,36 @@ MCP addresses are resolved from inside the container. Use
 container on the same network. Downloads launched through npm use the separate
 `overtchat-npm-cache` volume.
 
-## Reusing sidecars
+## Using existing search and speech services
 
-SearXNG and Kokoro are bundled by default. To point the app at existing services, set container-reachable URLs in `.env`:
+Run `overtchat setup` and select **Existing SearXNG** or an
+**OpenAI-compatible API** for speech. Enter a URL reachable from the app
+container. Use `host.docker.internal` for a service running on the OvertChat
+host, or use a LAN URL for another machine.
 
-```env
-OVERTCHAT_SEARXNG_URL=http://host.docker.internal:8088
-OVERTCHAT_KOKORO_URL=http://host.docker.internal:8880
-OVERTCHAT_STT_URL=http://host.docker.internal:5092
-```
-
-This changes where the app connects. To also stop the bundled containers from starting, add this to your local `compose.override.yml`:
-
-```yaml
-services:
-  searxng:
-    profiles: ["disabled"]
-  kokoro:
-    profiles: ["disabled"]
-```
-
-Docker Compose loads `compose.override.yml` automatically; this repo ignores it. If you already use that file for local networks or other overrides, merge these service entries into it.
-
-Then run the usual command:
+## Status, logs, and backup
 
 ```bash
-docker compose up -d
-```
+# Installation status
+overtchat status
 
-Use `host.docker.internal` for services running on the Docker host, or a LAN/container URL for services running elsewhere.
-
-## Common ops
-
-```bash
-# Tail logs
-docker compose logs -f app
-
-# Stop everything
-docker compose down
+# App logs
+docker logs -f overtchat-app
 
 # Backup the DB (safe while running)
-docker compose exec app sqlite3 /app/data/chat.db ".backup /app/data/backup.db"
-docker compose cp app:/app/data/backup.db ./backup.db
+docker exec overtchat-app sqlite3 /app/data/chat.db ".backup /app/data/backup.db"
+docker cp overtchat-app:/app/data/backup.db ./backup.db
 ```
+
+The manager owns the generated Compose and environment files. Manual edits to
+those files may be replaced by the next `overtchat setup` or `overtchat update`.
 
 ## Troubleshooting
 
 - **`curl -I http://localhost:4718` returns `307`** — healthy (redirect to `/login`).
-- **Login succeeds, next page redirects back to login** — `BETTER_AUTH_URL` mismatch with what the browser sees. Fix in `.env`, then `docker compose up -d`.
-- **Port already in use** — change `APP_PORT` in `.env`.
-- **Schema errors after pull** — you didn't rebuild. `docker compose up -d --build`.
+- **Login succeeds, next page redirects back to login** — the configured public
+  URL does not match what the browser sees. Run `overtchat setup` and correct
+  the URL.
+- **Port already in use** — run `overtchat setup` and choose another port.
+- **An update stops partway through** — run `overtchat update` again. It
+  reconciles every managed component against the current release manifest.

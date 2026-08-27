@@ -2,7 +2,6 @@ import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   isHostConnectorCommand,
   MAX_AGENT_IMAGE_BYTES,
   type AgentPromptImage,
@@ -200,8 +199,6 @@ export class ConnectorClient {
         signal: abort.signal,
         headers: {
           Authorization: `Bearer ${this.config.token}`,
-          "X-OvertChat-Connector-Version":
-            HOST_CONNECTOR_COMPATIBILITY_RELEASE,
           "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
           "X-OvertChat-Connector-Capabilities":
             HOST_CONNECTOR_CAPABILITIES.join(","),
@@ -316,8 +313,6 @@ export class ConnectorClient {
           headers: {
             Authorization: `Bearer ${this.config.token}`,
             "Content-Type": "application/json",
-            "X-OvertChat-Connector-Version":
-              HOST_CONNECTOR_COMPATIBILITY_RELEASE,
             "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
             "X-OvertChat-Connector-Capabilities":
               HOST_CONNECTOR_CAPABILITIES.join(","),
