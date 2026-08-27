@@ -17,7 +17,6 @@ import {
 } from "@/lib/chat/prompt-cache";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
-  CHAT_TOOL_ORDER,
   createWebTools,
   WEB_SEARCH_CITATION_PROMPT,
   WEB_TOOL_NAMES,
@@ -538,7 +537,7 @@ async function runOnce(
       ? markAnthropicSystemCacheBoundary(instructions)
       : instructions,
     tools: smokeTools,
-    toolOrder: CHAT_TOOL_ORDER,
+    toolOrder: WEB_TOOL_NAMES,
     toolChoice: "auto",
     prepareStep: run.forceSearch
       ? ({ stepNumber }) =>

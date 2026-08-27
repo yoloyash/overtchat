@@ -6,6 +6,7 @@ const ChatRequestEnvelopeSchema = z.object({
   modelConfigId: z.string().trim().min(1, "Missing modelConfigId"),
   chatId: z.string().trim().min(1, "Missing chatId"),
   webSearchEnabled: z.boolean().optional().default(true),
+  codeExecutionSupported: z.boolean().optional().default(false),
   forceSearch: z.boolean().optional(),
   // Accepted during the mobile rollout. `true` maps cleanly to the new
   // one-message action; `false` now means the normal automatic policy.
@@ -25,12 +26,14 @@ export interface ParsedChatRequest {
   modelConfigId: string;
   chatId: string;
   webSearchEnabled: boolean;
+  codeExecutionSupported: boolean;
   forceSearch: boolean;
   timeZone?: string;
   projectId?: string | null;
   trigger: "submit-message" | "regenerate-message";
   messageId?: string;
   temporary: boolean;
+  toolContinuation: boolean;
 }
 
 export class ChatRequestError extends Error {
@@ -71,8 +74,15 @@ export async function parseChatRequest(
   }
 
   const last = validated.data[validated.data.length - 1];
-  if (last.role !== "user") {
-    throw new ChatRequestError("The final message must be a user message");
+  const toolContinuation =
+    last.role === "assistant" &&
+    envelope.data.trigger === "submit-message" &&
+    envelope.data.codeExecutionSupported &&
+    hasCompletedCodeExecution(last);
+  if (last.role !== "user" && !toolContinuation) {
+    throw new ChatRequestError(
+      "The final message must be a user message or completed code execution",
+    );
   }
   if (
     envelope.data.trigger === "regenerate-message" &&
@@ -87,5 +97,25 @@ export async function parseChatRequest(
     ...data,
     messages: validated.data,
     forceSearch: data.webSearchEnabled && forceSearch,
+    toolContinuation,
   };
+}
+
+function hasCompletedCodeExecution(message: UIMessage): boolean {
+  const lastStepStart = message.parts.reduce(
+    (index, part, current) => (part.type === "step-start" ? current : index),
+    -1,
+  );
+  const codeParts = message.parts
+    .slice(lastStepStart + 1)
+    .filter((part) => part.type === "tool-execute_code") as Array<{
+    state?: string;
+  }>;
+  return (
+    codeParts.length > 0 &&
+    codeParts.every(
+      (part) =>
+        part.state === "output-available" || part.state === "output-error",
+    )
+  );
 }

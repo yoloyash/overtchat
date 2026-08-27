@@ -127,6 +127,35 @@ export type FetchUrlPart = {
   errorText?: string;
 };
 
+export type CodeExecutionLanguage = "python";
+export const EXECUTE_CODE_TOOL_NAME = "execute_code" as const;
+
+/** A persisted output reference. V1 returns an empty collection; generated
+ * files can be uploaded and represented here without changing the tool shape. */
+export interface CodeExecutionArtifact {
+  kind: "file" | "image";
+  name: string;
+  mediaType: string;
+  byteLength: number;
+  url: string;
+}
+
+export interface CodeExecutionOutput {
+  stdout: string | null;
+  stderr: string | null;
+  result: unknown;
+  outputs: CodeExecutionArtifact[];
+}
+
+export type CodeExecutionPart = {
+  type: "tool-execute_code";
+  toolCallId: string;
+  state: ToolState;
+  input?: { language?: CodeExecutionLanguage; code?: string };
+  output?: CodeExecutionOutput;
+  errorText?: string;
+};
+
 export function isToolSettled(part: ToolStatePart): boolean {
   return (
     part.state === "output-available" ||

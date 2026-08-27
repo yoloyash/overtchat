@@ -5,6 +5,7 @@ import {
   Brain,
   ChevronDown,
   CircleAlert,
+  Code2,
   Globe,
   Loader2,
   Wrench,
@@ -16,6 +17,7 @@ import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import {
   type FetchedImage,
+  type CodeExecutionPart,
   type FetchUrlPart,
   isToolSettled,
   webSearchProviderLabel,
@@ -31,6 +33,7 @@ type ReasoningPart = { type: "reasoning"; text: string; state?: string };
 export type ActivityPart =
   | WebSearchPart
   | FetchUrlPart
+  | CodeExecutionPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -42,6 +45,9 @@ function isFetchUrl(p: ActivityPart): p is FetchUrlPart {
 }
 function isReasoning(p: ActivityPart): p is ReasoningPart {
   return p.type === "reasoning";
+}
+function isCodeExecution(p: ActivityPart): p is CodeExecutionPart {
+  return p.type === "tool-execute_code";
 }
 function isMcpTool(p: ActivityPart): p is DynamicToolUIPart {
   return p.type === "dynamic-tool" && parseMcpToolName(p.toolName) !== null;
@@ -88,12 +94,17 @@ export function ChainOfThought({
   }, [active]);
 
   const hasTools = parts.some(
-    (p) => isWebSearch(p) || isFetchUrl(p) || isMcpTool(p),
+    (p) =>
+      isWebSearch(p) || isFetchUrl(p) || isCodeExecution(p) || isMcpTool(p),
   );
   const lastTool = [...parts]
     .reverse()
     .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+      (part) =>
+        isWebSearch(part) ||
+        isFetchUrl(part) ||
+        isCodeExecution(part) ||
+        isMcpTool(part),
     );
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
@@ -102,8 +113,10 @@ export function ChainOfThought({
     ? Loader2
     : lastToolFailed
       ? CircleAlert
-      : hasTools
-        ? Globe
+      : isCodeExecution(lastTool ?? last)
+        ? Code2
+        : hasTools
+          ? Globe
         : Brain;
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
@@ -158,13 +171,18 @@ export function ChainOfThought({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part) || isMcpTool(part)) &&
+    (isWebSearch(part) ||
+      isFetchUrl(part) ||
+      isCodeExecution(part) ||
+      isMcpTool(part)) &&
     part.state === "output-error"
       ? CircleAlert
       : isWebSearch(part)
         ? Search
         : isFetchUrl(part)
           ? Globe
+          : isCodeExecution(part)
+            ? Code2
           : isMcpTool(part)
             ? Wrench
           : Brain;
@@ -177,12 +195,47 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isCodeExecution(part) ? (
+          <CodeExecutionStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
           <ThinkingContent content={part.text} />
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function CodeExecutionStep({ part }: { part: CodeExecutionPart }) {
+  const running = !["output-available", "output-error"].includes(part.state);
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="font-medium text-foreground">Python</span>
+        <span className="shrink-0 text-muted-foreground">
+          {running ? "Running" : part.state === "output-error" ? "Failed" : "Done"}
+        </span>
+      </div>
+      {part.input?.code && <ToolValue label="Code" value={part.input.code} />}
+      {part.state === "output-error" && (
+        <p className="text-destructive">{part.errorText}</p>
+      )}
+      {part.state === "output-available" && part.output && (
+        <>
+          {part.output.stdout && (
+            <ToolValue label="Stdout" value={part.output.stdout} />
+          )}
+          {part.output.result !== null && part.output.result !== undefined && (
+            <ToolValue label="Result" value={part.output.result} />
+          )}
+          {part.output.stderr && (
+            <div className="text-destructive">
+              <ToolValue label="Stderr" value={part.output.stderr} />
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -445,6 +498,7 @@ function activeLabel(last: ActivityPart | undefined): string {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
+  if (last.type === "tool-execute_code") return "Running Python…";
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -458,7 +512,11 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   const lastTool = [...parts]
     .reverse()
     .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+      (part) =>
+        isWebSearch(part) ||
+        isFetchUrl(part) ||
+        isCodeExecution(part) ||
+        isMcpTool(part),
     );
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
@@ -471,6 +529,13 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
       return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
     }
     return "Page fetch did not complete";
+  }
+  if (lastTool?.type === "tool-execute_code") {
+    if (lastTool.state === "output-error") return "Python failed";
+    if (lastTool.state === "output-available") {
+      return lastTool.output?.stderr ? "Python returned an error" : "Ran Python";
+    }
+    return "Python did not complete";
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);

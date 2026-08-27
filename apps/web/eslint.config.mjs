@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    "public/pyodide/**",
     "next-env.d.ts",
     // Gitignored local-only tooling dirs — never lint these.
     ".gemini/**",

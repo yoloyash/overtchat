@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
-import { Streamdown } from "streamdown";
+import { Streamdown, type Components } from "streamdown";
 import {
   Check,
   Copy,
@@ -39,6 +39,7 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { PythonCodeBlock } from "./PythonCodeBlock";
 import { StatsPopover } from "./StatsPopover";
 
 const CITATION_REMARK_PLUGINS = [
@@ -174,6 +175,15 @@ function AssistantBubble({
     }),
     [lookup],
   );
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      ...citationComponents,
+      code: (props) => (
+        <PythonCodeBlock {...props} disabled={streaming} />
+      ),
+    }),
+    [citationComponents, streaming],
+  );
 
   return (
     <div className="group flex flex-col items-start gap-2">
@@ -191,7 +201,7 @@ function AssistantBubble({
                   plugins={STREAMDOWN_PLUGINS}
                   remarkPlugins={CITATION_REMARK_PLUGINS}
                   allowedTags={CITATION_ALLOWED_TAGS}
-                  components={citationComponents}
+                  components={markdownComponents}
                   isAnimating={streaming}
                   caret={showCaret ? "block" : undefined}
                 >

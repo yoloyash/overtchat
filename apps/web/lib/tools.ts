@@ -1,6 +1,11 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { FetchedImage, FetchedUrl } from "@overtchat/shared";
+import {
+  EXECUTE_CODE_TOOL_NAME,
+  type CodeExecutionOutput,
+  type FetchedImage,
+  type FetchedUrl,
+} from "@overtchat/shared";
 
 export interface WebToolOptions {
   userId: string;
@@ -134,14 +139,51 @@ export function createWebTools({
 
 export type WebTools = ReturnType<typeof createWebTools>;
 
+/** Declared on the server and fulfilled by the authenticated web client. */
+export function createCodeExecutionTools() {
+  return Object.freeze({
+    [EXECUTE_CODE_TOOL_NAME]: tool<
+      { language: "python"; code: string },
+      CodeExecutionOutput,
+      Record<string, never>
+    >({
+      description:
+        "Run Python for calculations, data analysis, transformations, and verification. The environment includes the Python standard library, NumPy, pandas, SciPy, scikit-learn, SymPy, regex, tiktoken, and pytz. It has no network access or input files and cannot create downloadable files or charts yet. Use printed output or the final expression result.",
+      inputSchema: z.object({
+        language: z.literal("python").default("python"),
+        code: z
+          .string()
+          .min(1)
+          .max(100_000)
+          .describe("Complete Python source code to execute"),
+      }),
+      outputSchema: z.object({
+        stdout: z.string().nullable(),
+        stderr: z.string().nullable(),
+        result: z.unknown(),
+        outputs: z.array(
+          z.object({
+            kind: z.enum(["file", "image"]),
+            name: z.string(),
+            mediaType: z.string(),
+            byteLength: z.number().int().nonnegative(),
+            url: z.string(),
+          }),
+        ),
+      }),
+    }),
+  });
+}
+
 /** Exhaustive native-tool names in deterministic provider order. */
 export const CHAT_TOOL_ORDER = Object.freeze([
+  EXECUTE_CODE_TOOL_NAME,
   "web_search",
   "fetch_url",
 ] as const);
 
 /** Tools available when the user explicitly requests Search for one message. */
-export const WEB_TOOL_NAMES = CHAT_TOOL_ORDER;
+export const WEB_TOOL_NAMES = Object.freeze(["web_search", "fetch_url"] as const);
 
 function isFetchedImage(value: unknown): value is FetchedImage {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

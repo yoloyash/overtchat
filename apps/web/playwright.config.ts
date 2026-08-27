@@ -25,8 +25,8 @@ export default defineConfig({
     // Run the standalone server so CI exercises the same artifact the Docker image ships.
     // Static assets aren't bundled into the standalone tree, so copy them in first.
     command: isCI
-      ? "mkdir -p .next/standalone/apps/web/.next && cp -r .next/static .next/standalone/apps/web/.next/static && node .next/standalone/apps/web/server.js"
-      : "npm run build && mkdir -p .next/standalone/apps/web/.next && cp -r .next/static .next/standalone/apps/web/.next/static && node .next/standalone/apps/web/server.js",
+      ? "mkdir -p .next/standalone/apps/web/.next .next/standalone/apps/web/public && cp -r .next/static .next/standalone/apps/web/.next/static && cp -r public/. .next/standalone/apps/web/public/ && node .next/standalone/apps/web/server.js"
+      : "npm run build && mkdir -p .next/standalone/apps/web/.next .next/standalone/apps/web/public && cp -r .next/static .next/standalone/apps/web/.next/static && cp -r public/. .next/standalone/apps/web/public/ && node .next/standalone/apps/web/server.js",
     url: baseURL,
     reuseExistingServer: !isCI,
     timeout: 180 * 1000,

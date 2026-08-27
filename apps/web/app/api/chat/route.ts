@@ -23,6 +23,7 @@ import {
 } from "@/lib/chat/prompt-cache";
 import {
   CHAT_TOOL_ORDER,
+  createCodeExecutionTools,
   createWebTools,
   WEB_TOOL_NAMES,
   WEB_SEARCH_CITATION_PROMPT,
@@ -110,6 +111,7 @@ async function handlePost(req: Request): Promise<Response> {
     messages,
     modelConfigId,
     webSearchEnabled,
+    codeExecutionSupported,
     forceSearch,
     timeZone,
     chatId,
@@ -117,6 +119,7 @@ async function handlePost(req: Request): Promise<Response> {
     trigger,
     messageId,
     temporary,
+    toolContinuation,
   } = await parseChatRequest(req);
 
   const modelConfig = await getModelConfig(modelConfigId);
@@ -152,7 +155,9 @@ async function handlePost(req: Request): Promise<Response> {
   if (!temporary && messageId) {
     const target = await getChatMessage(chatId, messageId);
     const expectedRole =
-      trigger === "regenerate-message" ? "assistant" : "user";
+      trigger === "regenerate-message" || toolContinuation
+        ? "assistant"
+        : "user";
     if (!target || target.role !== expectedRole) {
       throw new ChatRequestError(
         "Chat history changed; refresh and try again",
@@ -184,9 +189,11 @@ async function handlePost(req: Request): Promise<Response> {
       supportsImageInput,
     });
   const chatTools = createWebTools({ userId, supportsImageInput });
+  const codeExecutionTools = createCodeExecutionTools();
+  const conversionTools = { ...chatTools, ...codeExecutionTools };
   const inlined = await inlineUploads(messages, userId);
   const convertedMessages = await convertToModelMessages(inlined, {
-    tools: chatTools,
+    tools: conversionTools,
   });
   const modelMessages =
     promptCacheStrategy?.kind === "anthropic"
@@ -214,6 +221,8 @@ async function handlePost(req: Request): Promise<Response> {
     getServerCapability("search").provider !== "disabled";
   const webToolsEnabled =
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
+  const codeExecutionEnabled =
+    toolCallingEnabled && codeExecutionSupported;
   const systemParts = [
     modelConfig.systemPrompt,
     projectSystemPrompt(project),
@@ -256,11 +265,14 @@ async function handlePost(req: Request): Promise<Response> {
         projectId: resolvedProjectId,
         streamId,
         staleStreamId,
-        truncateFromMessageId: messageId,
+        truncateFromMessageId: toolContinuation ? undefined : messageId,
         userMessage:
-          trigger === "regenerate-message"
+          trigger === "regenerate-message" || toolContinuation
             ? undefined
             : { id: last.id, parts: last.parts },
+        assistantContinuation: toolContinuation
+          ? { id: last.id, parts: last.parts }
+          : undefined,
       });
 
       if (commitResult === "committed") {
@@ -305,18 +317,15 @@ async function handlePost(req: Request): Promise<Response> {
 
   try {
     const abortSignal = controller?.signal ?? req.signal;
-    const hasMcpTools = Object.keys(mcpTools).length > 0;
-    const agentTools: ToolSet = hasMcpTools
-      ? webToolsEnabled
-        ? { ...chatTools, ...mcpTools }
-        : mcpTools
-      : webToolsEnabled
-        ? chatTools
-        : {};
+    const agentTools: ToolSet = {
+      ...(codeExecutionEnabled ? codeExecutionTools : {}),
+      ...(webToolsEnabled ? chatTools : {}),
+      ...mcpTools,
+    };
     const agentToolNames = Object.keys(agentTools);
     const toolsEnabled = agentToolNames.length > 0;
     const toolOrder = [
-      ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
+      ...CHAT_TOOL_ORDER.filter((name) => name in agentTools),
       ...agentToolNames.filter(
         (name) => !(CHAT_TOOL_ORDER as readonly string[]).includes(name),
       ),
@@ -354,6 +363,7 @@ async function handlePost(req: Request): Promise<Response> {
 
     if (
       !temporary &&
+      !toolContinuation &&
       (existingChat?.title ?? null) === null &&
       messageId === undefined &&
       userMessageCount === 1

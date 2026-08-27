@@ -60,6 +60,7 @@ export function commitChatTurn({
   staleStreamId,
   truncateFromMessageId,
   userMessage,
+  assistantContinuation,
 }: {
   chatId: string;
   userId: string;
@@ -68,6 +69,7 @@ export function commitChatTurn({
   staleStreamId: string | null;
   truncateFromMessageId?: string;
   userMessage?: { id: string; parts: AnyPart[] };
+  assistantContinuation?: { id: string; parts: AnyPart[] };
 }): CommitChatTurnResult {
   return db.transaction((tx) => {
     const existing = tx
@@ -80,6 +82,25 @@ export function commitChatTurn({
     if (existing && existing.userId !== userId) return "not-found";
     if (existing?.activeStreamId && existing.activeStreamId !== staleStreamId) {
       return "stream-active";
+    }
+    if (assistantContinuation) {
+      const latest = tx.get<{ id: string; role: string; parts: string }>(sql`
+        SELECT id, role, parts
+        FROM ${messages}
+        WHERE ${messages.chatId} = ${chatId}
+        ORDER BY rowid DESC
+        LIMIT 1
+      `);
+      const storedParts = latest ? parseParts(latest.parts) : null;
+      if (
+        !existing ||
+        latest?.id !== assistantContinuation.id ||
+        latest.role !== "assistant" ||
+        !storedParts ||
+        !isValidCodeContinuation(storedParts, assistantContinuation.parts)
+      ) {
+        return "history-conflict";
+      }
     }
 
     let truncateFromRowId: number | null = null;
@@ -125,6 +146,17 @@ export function commitChatTurn({
         `);
       }
     }
+    if (assistantContinuation) {
+      tx.update(messages)
+        .set({ parts: assistantContinuation.parts })
+        .where(
+          and(
+            eq(messages.id, assistantContinuation.id),
+            eq(messages.chatId, chatId),
+          ),
+        )
+        .run();
+    }
 
     tx.update(chats)
       .set({ activeStreamId: streamId, updatedAt: new Date() })
@@ -162,15 +194,44 @@ export function completeChatStream({
     if (!chat || chat.activeStreamId !== streamId) return null;
 
     if (assistantMessage) {
-      tx.insert(messages)
-        .values({
-          id: assistantMessage.id,
-          chatId,
-          role: "assistant",
-          parts: assistantMessage.parts,
-          metadata: assistantMessage.metadata,
-        })
-        .run();
+      const existingAssistant = tx
+        .select({ chatId: messages.chatId, role: messages.role })
+        .from(messages)
+        .where(eq(messages.id, assistantMessage.id))
+        .limit(1)
+        .get();
+      if (existingAssistant) {
+        if (
+          existingAssistant.chatId !== chatId ||
+          existingAssistant.role !== "assistant"
+        ) {
+          return null;
+        }
+        tx.update(messages)
+          .set({
+            parts: assistantMessage.parts,
+            metadata: assistantMessage.metadata,
+          })
+          .where(
+            and(eq(messages.id, assistantMessage.id), eq(messages.chatId, chatId)),
+          )
+          .run();
+        tx.run(sql`
+          DELETE FROM messages_fts
+          WHERE message_id = ${assistantMessage.id}
+            AND chat_id = ${chatId}
+        `);
+      } else {
+        tx.insert(messages)
+          .values({
+            id: assistantMessage.id,
+            chatId,
+            role: "assistant",
+            parts: assistantMessage.parts,
+            metadata: assistantMessage.metadata,
+          })
+          .run();
+      }
       const content = extractSearchText(assistantMessage.parts);
       if (content) {
         tx.run(sql`
@@ -204,6 +265,54 @@ export function completeChatStream({
   }
 
   return true;
+}
+
+function parseParts(value: string): AnyPart[] | null {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return Array.isArray(parsed) ? (parsed as AnyPart[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isValidCodeContinuation(
+  stored: readonly AnyPart[],
+  submitted: readonly AnyPart[],
+): boolean {
+  if (stored.length !== submitted.length) return false;
+  let completedCodeCall = false;
+
+  for (let index = 0; index < stored.length; index += 1) {
+    const before = stored[index] as Record<string, unknown>;
+    const after = submitted[index] as Record<string, unknown>;
+    if (JSON.stringify(before) === JSON.stringify(after)) continue;
+    if (
+      before.type !== "tool-execute_code" ||
+      after.type !== "tool-execute_code" ||
+      before.toolCallId !== after.toolCallId ||
+      (before.state !== "input-available" && before.state !== "input-streaming") ||
+      (after.state !== "output-available" && after.state !== "output-error")
+    ) {
+      return false;
+    }
+    const beforeCall = codeCallIdentity(before);
+    const afterCall = codeCallIdentity(after);
+    if (JSON.stringify(beforeCall) !== JSON.stringify(afterCall)) return false;
+    completedCodeCall = true;
+  }
+
+  return completedCodeCall;
+}
+
+function codeCallIdentity(
+  part: Record<string, unknown>,
+): Record<string, unknown> {
+  const identity = { ...part };
+  delete identity.state;
+  delete identity.output;
+  delete identity.errorText;
+  return identity;
 }
 
 export async function clearActiveStreamId(

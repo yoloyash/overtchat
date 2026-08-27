@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "npm run prepare:pyodide",
     "dev": "mkdir -p data && next dev -p ${PORT:-4717}",
+    "prebuild": "npm run prepare:pyodide",
     "build": "next build",
     "start": "mkdir -p data && next start -p 4717",
     "lint": "eslint",
@@ -15,6 +17,7 @@
     "catalog:generate": "tsx scripts/generate-model-catalog.ts",
     "catalog:check": "tsx scripts/check-model-catalog.ts",
     "auth:generate": "npx --yes auth@1.6.11 generate --config lib/auth/server.ts --output lib/db/schema.ts --y",
+    "prepare:pyodide": "node scripts/prepare-pyodide.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "mkdir -p data && drizzle-kit migrate",
     "db:studio": "drizzle-kit studio"
@@ -52,6 +55,7 @@
     "media-chrome": "^4.19.0",
     "next": "16.3.0",
     "next-themes": "^0.4.6",
+    "pyodide": "^314.0.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-simple-code-editor": "^0.14.1",

@@ -65,6 +65,10 @@ Ctrl-C. Next.js and the connector run directly on the host; Docker supplies
 Redis only. Redis stays available between runs; stop it with
 `npm run dev:down`.
 
+The first web development or production build prepares the pinned Pyodide
+runtime and Python packages in the ignored `apps/web/public/pyodide` directory.
+Later runs reuse those assets until the pinned runtime or package set changes.
+
 Generated credentials, journals, timelines, and locks live under the ignored
 `.overtchat-dev/` directory. Development never reads or changes the installed
 connector in `~/.config/overtchat`, its binary, or its systemd service. When a

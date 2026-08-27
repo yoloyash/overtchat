@@ -5,6 +5,7 @@ export interface ChatRequestBody {
   modelConfigId: string;
   chatId: string;
   webSearchEnabled?: boolean;
+  codeExecutionSupported?: boolean;
   forceSearch?: boolean;
   timeZone?: string;
   projectId?: string | null;
