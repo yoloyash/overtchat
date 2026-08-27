@@ -1,11 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
-import { modelSupportsToolCalling } from "@overtchat/shared";
+import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithToolCalls,
+  type ChatAddToolOutputFunction,
+  type FileUIPart,
+  type UIMessage,
+} from "ai";
+import {
+  EXECUTE_CODE_TOOL_NAME,
+  modelSupportsToolCalling,
+} from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -22,6 +31,12 @@ import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
 } from "@/lib/tool-preferences";
+import {
+  executePython,
+  resetPythonExecutor,
+} from "@/lib/code-execution/browser-python";
+import { loadPythonInputs } from "@/lib/code-execution/inputs";
+import { persistPythonOutput } from "@/lib/code-execution/persistence";
 import { authClient } from "@/lib/auth/client";
 import {
   readMessageStats,
@@ -170,11 +185,51 @@ export function ChatArea({
     temporaryRef.current = temporary;
   }, [temporary]);
 
-  const { messages, sendMessage, regenerate, status, stop, error } = useChat({
+  const addToolOutputRef = useRef<
+    ChatAddToolOutputFunction<UIMessage> | null
+  >(null);
+  const messagesRef = useRef<UIMessage[]>(initialMessages ?? []);
+  const chat = useChat({
     id: temporary ? undefined : chatId,
     resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
+    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onToolCall: async ({ toolCall }) => {
+      if (toolCall.dynamic || toolCall.toolName !== EXECUTE_CODE_TOOL_NAME) {
+        return;
+      }
+      try {
+        const input = toolCall.input as { language?: unknown; code?: unknown };
+        if (
+          input.language !== "python" ||
+          typeof input.code !== "string"
+        ) {
+          throw new Error("Invalid Python execution request");
+        }
+        const loaded = await loadPythonInputs(messagesRef.current);
+        const localOutput = await executePython(input.code, loaded.files);
+        const output = await persistPythonOutput({
+          ...localOutput,
+          stderr: [localOutput.stderr, ...loaded.warnings]
+            .filter(Boolean)
+            .join("\n") || null,
+        });
+        void addToolOutputRef.current?.({
+          tool: EXECUTE_CODE_TOOL_NAME,
+          toolCallId: toolCall.toolCallId,
+          output,
+        });
+      } catch (cause) {
+        void addToolOutputRef.current?.({
+          tool: EXECUTE_CODE_TOOL_NAME,
+          toolCallId: toolCall.toolCallId,
+          state: "output-error",
+          errorText:
+            cause instanceof Error ? cause.message : "Python execution failed",
+        });
+      }
+    },
     onData: (part) => {
       if (
         part.type === INFERENCE_ACTIVITY_DATA_TYPE &&
@@ -204,6 +259,21 @@ export function ChatArea({
       ]);
     },
   });
+  useLayoutEffect(() => {
+    addToolOutputRef.current = chat.addToolOutput;
+    return () => {
+      addToolOutputRef.current = null;
+    };
+  }, [chat.addToolOutput]);
+  const { messages, sendMessage, regenerate, status, stop, error } = chat;
+  useLayoutEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    resetPythonExecutor();
+    return resetPythonExecutor;
+  }, [chatId]);
 
   const speech = useSpeech();
   const { data: session } = authClient.useSession();
@@ -220,6 +290,7 @@ export function ChatArea({
   const requestBody = (forceSearch = false) => ({
     modelConfigId: selectedId,
     webSearchEnabled,
+    codeExecutionSupported: true,
     forceSearch: searchAvailable && forceSearch,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,

@@ -28,7 +28,7 @@ vi.mock("@/lib/db/schema", () => ({
   uploads: {},
 }));
 
-import { storeFetchedImage } from "./uploads";
+import { storeCodeArtifacts, storeFetchedImage } from "./uploads";
 
 describe("fetched image persistence boundary", () => {
   beforeEach(() => {
@@ -75,5 +75,64 @@ describe("fetched image persistence boundary", () => {
 
     expect(mocks.writeFile).not.toHaveBeenCalled();
     expect(mocks.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe("code artifact persistence", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.insert.mockReturnValue({ values: mocks.insertValues });
+    mocks.insertValues.mockResolvedValue(undefined);
+    mocks.writeFile.mockResolvedValue(undefined);
+    mocks.removeFile.mockResolvedValue(undefined);
+  });
+
+  it("stores a generated batch and returns authenticated references", async () => {
+    const artifacts = await storeCodeArtifacts([
+      {
+        userId: "user-id",
+        filename: "../report.csv",
+        mediaType: "text/csv",
+        data: new TextEncoder().encode("value\n42\n"),
+        image: false,
+      },
+    ]);
+
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        kind: "file",
+        name: ".._report.csv",
+        mediaType: "text/csv",
+        url: expect.stringMatching(/^\/api\/uploads\//),
+      }),
+    ]);
+    expect(mocks.insertValues).toHaveBeenCalledWith([
+      expect.objectContaining({ category: "artifact", filename: ".._report.csv" }),
+    ]);
+  });
+
+  it("removes every batch file when SQLite persistence fails", async () => {
+    mocks.insertValues.mockRejectedValue(new Error("database unavailable"));
+
+    await expect(
+      storeCodeArtifacts([
+        {
+          userId: "user-id",
+          filename: "one.txt",
+          mediaType: "text/plain",
+          data: new TextEncoder().encode("one"),
+          image: false,
+        },
+        {
+          userId: "user-id",
+          filename: "two.txt",
+          mediaType: "text/plain",
+          data: new TextEncoder().encode("two"),
+          image: false,
+        },
+      ]),
+    ).rejects.toThrow("database unavailable");
+
+    expect(mocks.removeFile).toHaveBeenCalledTimes(2);
   });
 });

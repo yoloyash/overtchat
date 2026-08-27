@@ -5,6 +5,7 @@
 **/.turbo
 npm-debug.log*
 apps/web/data
+apps/web/public/pyodide
 apps/connector
 apps/mobile
 apps/site/*
@@ -38,7 +39,8 @@ compose.override.yaml
 .gemini
 .claude
 .DS_Store
-apps/web/scripts
+apps/web/scripts/*
+!apps/web/scripts/prepare-pyodide.mjs
 **/tsconfig.tsbuildinfo
 docs
 searxng

@@ -7,6 +7,9 @@ const mocks = vi.hoisted(() => {
     fetch_url: { description: "fetch" },
   };
   const chatTools = { ...webTools };
+  const codeExecutionTools = {
+    execute_code: { description: "python" },
+  };
 
   return {
     getSession: vi.fn(),
@@ -39,6 +42,7 @@ const mocks = vi.hoisted(() => {
     currentDateSystemPrompt: vi.fn(),
     convertToModelMessages: vi.fn(),
     createWebTools: vi.fn(),
+    createCodeExecutionTools: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -53,7 +57,9 @@ const mocks = vi.hoisted(() => {
     responseOptions: undefined as Record<string, unknown> | undefined,
     responseStream: undefined as ReadableStream<string> | undefined,
     chatTools,
-    toolOrder: ["web_search", "fetch_url"],
+    codeExecutionTools,
+    toolOrder: ["execute_code", "web_search", "fetch_url"],
+    webToolNames: ["web_search", "fetch_url"],
     citationPrompt: "stable web citation instruction",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
@@ -79,8 +85,9 @@ vi.mock("ai", () => ({
 }));
 vi.mock("@/lib/tools", () => ({
   createWebTools: mocks.createWebTools,
+  createCodeExecutionTools: mocks.createCodeExecutionTools,
   CHAT_TOOL_ORDER: mocks.toolOrder,
-  WEB_TOOL_NAMES: mocks.toolOrder,
+  WEB_TOOL_NAMES: mocks.webToolNames,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
@@ -168,12 +175,14 @@ const parsedRequest = {
   modelConfigId: "model-config",
   chatId: "chat",
   webSearchEnabled: true,
+  codeExecutionSupported: false,
   forceSearch: false,
   timeZone: "America/Los_Angeles",
   projectId: null,
   trigger: "submit-message" as const,
   messageId: undefined,
   temporary: false,
+  toolContinuation: false,
 };
 
 const modelConfig = {
@@ -248,6 +257,7 @@ describe("chat route setup boundary", () => {
     });
     mocks.resolveModelCapabilities.mockReturnValue(undefined);
     mocks.createWebTools.mockReturnValue(mocks.chatTools);
+    mocks.createCodeExecutionTools.mockReturnValue(mocks.codeExecutionTools);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -646,7 +656,7 @@ describe("chat route setup boundary", () => {
       expect(settings).toEqual(
         expect.objectContaining({
           tools: mocks.chatTools,
-          toolOrder: mocks.toolOrder,
+          toolOrder: mocks.webToolNames,
           instructions: {
             role: "system",
             content: `${mocks.citationPrompt}\n\n${mocks.currentDatePrompt}`,
@@ -663,19 +673,19 @@ describe("chat route setup boundary", () => {
       stepNumber: number;
     }) => unknown;
     expect(prepareStep({ stepNumber: 0 })).toEqual({
-      activeTools: mocks.toolOrder,
+      activeTools: mocks.webToolNames,
       toolChoice: "required",
     });
     expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
-    expect(automatic.tools).toBe(forced.tools);
+    expect(automatic.tools).toEqual(forced.tools);
     expect(automatic.instructions).toEqual(forced.instructions);
     expect(mocks.currentDateSystemPrompt).toHaveBeenCalledWith(
       parsedRequest.timeZone,
     );
-    expect(mocks.toUIMessageStream.mock.calls[0][0].tools).toBe(
+    expect(mocks.toUIMessageStream.mock.calls[0][0].tools).toEqual(
       mocks.chatTools,
     );
-    expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toBe(
+    expect(mocks.toUIMessageStream.mock.calls[1][0].tools).toEqual(
       mocks.chatTools,
     );
     expect(mocks.createWebTools).toHaveBeenCalledWith({
@@ -683,7 +693,7 @@ describe("chat route setup boundary", () => {
       supportsImageInput: true,
     });
     expect(mocks.convertToModelMessages).toHaveBeenCalledWith(messages, {
-      tools: mocks.chatTools,
+      tools: { ...mocks.chatTools, ...mocks.codeExecutionTools },
     });
   });
 
@@ -701,6 +711,81 @@ describe("chat route setup boundary", () => {
     expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
       expect.objectContaining({ supportsImageInput: false }),
     );
+  });
+
+  it("exposes browser code execution only when the client advertises support", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+      codeExecutionSupported: true,
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mocks.codeExecutionTools,
+        toolOrder: ["execute_code"],
+        toolChoice: "auto",
+      }),
+    );
+    expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
+      expect.objectContaining({ tools: mocks.codeExecutionTools }),
+    );
+    expect(mocks.agentSettings[0].instructions).toEqual({
+      role: "system",
+      content: expect.stringMatching(
+        /Generated files are attached to the response automatically[\s\S]*do not do both for the same figure/u,
+      ),
+    });
+  });
+
+  it("claims an automatic code continuation without inserting or truncating a turn", async () => {
+    const assistant = {
+      id: "assistant-message",
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "tool-execute_code" as const,
+          toolCallId: "call-1",
+          state: "output-available" as const,
+          input: { language: "python", code: "1 + 1" },
+          output: {
+            stdout: null,
+            stderr: null,
+            result: 2,
+            outputs: [],
+          },
+        },
+      ],
+    };
+    const continuationMessages = [...messages, assistant];
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      messages: continuationMessages,
+      codeExecutionSupported: true,
+      toolContinuation: true,
+      messageId: assistant.id,
+    });
+    mocks.inlineUploads.mockResolvedValue(continuationMessages);
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getChatMessage.mockResolvedValue(assistant);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.getChatMessage).toHaveBeenCalledWith("chat", assistant.id);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        truncateFromMessageId: undefined,
+        userMessage: undefined,
+        assistantContinuation: {
+          id: assistant.id,
+          parts: assistant.parts,
+        },
+      }),
+    );
+    expect(mocks.generateChatTitle).not.toHaveBeenCalled();
   });
 
   it("removes web tools when the capability is disabled", async () => {

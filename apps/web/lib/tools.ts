@@ -1,6 +1,11 @@
 import { tool } from "ai";
 import { z } from "zod";
-import type { FetchedImage, FetchedUrl } from "@overtchat/shared";
+import {
+  EXECUTE_CODE_TOOL_NAME,
+  type CodeExecutionOutput,
+  type FetchedImage,
+  type FetchedUrl,
+} from "@overtchat/shared";
 
 export interface WebToolOptions {
   userId: string;
@@ -134,14 +139,52 @@ export function createWebTools({
 
 export type WebTools = ReturnType<typeof createWebTools>;
 
+/** Declared on the server and fulfilled by the authenticated web client. */
+export function createCodeExecutionTools() {
+  return Object.freeze({
+    [EXECUTE_CODE_TOOL_NAME]: tool<
+      { language: "python"; code: string },
+      CodeExecutionOutput,
+      Record<string, never>
+    >({
+      description:
+        "Run Python for calculations, data analysis, transformations, file processing, and visualizations. The environment includes the Python standard library, NumPy, pandas, Matplotlib, SciPy, scikit-learn, SymPy, regex, tiktoken, and pytz. User and prior generated files are available in /mnt/uploads. Save files the user should receive into /mnt/uploads; they are attached to the response automatically as downloadable outputs. Refer to generated files by filename instead of exposing internal URLs or reproducing their full contents unless asked. For a chart, either save it once under a meaningful filename in /mnt/uploads or call Matplotlib plt.show() for an auto-named PNG; do not do both for the same figure. The environment has no network access and cannot install packages.",
+      inputSchema: z.object({
+        language: z.literal("python").default("python"),
+        code: z
+          .string()
+          .min(1)
+          .max(100_000)
+          .describe("Complete Python source code to execute"),
+      }),
+      outputSchema: z.object({
+        stdout: z.string().nullable(),
+        stderr: z.string().nullable(),
+        result: z.unknown(),
+        failed: z.boolean().optional(),
+        outputs: z.array(
+          z.object({
+            kind: z.enum(["file", "image"]),
+            name: z.string(),
+            mediaType: z.string(),
+            byteLength: z.number().int().nonnegative(),
+            url: z.string(),
+          }),
+        ),
+      }),
+    }),
+  });
+}
+
 /** Exhaustive native-tool names in deterministic provider order. */
 export const CHAT_TOOL_ORDER = Object.freeze([
+  EXECUTE_CODE_TOOL_NAME,
   "web_search",
   "fetch_url",
 ] as const);
 
 /** Tools available when the user explicitly requests Search for one message. */
-export const WEB_TOOL_NAMES = CHAT_TOOL_ORDER;
+export const WEB_TOOL_NAMES = Object.freeze(["web_search", "fetch_url"] as const);
 
 function isFetchedImage(value: unknown): value is FetchedImage {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;

@@ -127,6 +127,83 @@ export type FetchUrlPart = {
   errorText?: string;
 };
 
+export type CodeExecutionLanguage = "python";
+export const EXECUTE_CODE_TOOL_NAME = "execute_code" as const;
+export const CODE_EXECUTION_UPLOAD_DIR = "/mnt/uploads" as const;
+export const MAX_CODE_EXECUTION_INPUTS = 20;
+export const MAX_CODE_EXECUTION_INPUT_BYTES = 20 * 1024 * 1024;
+export const MAX_CODE_EXECUTION_TOTAL_INPUT_BYTES = 50 * 1024 * 1024;
+export const MAX_CODE_EXECUTION_OUTPUTS = 10;
+export const MAX_CODE_EXECUTION_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_CODE_EXECUTION_TOTAL_OUTPUT_BYTES = 50 * 1024 * 1024;
+
+/** A generated file persisted by OvertChat, or a browser-local reference for
+ * a manual code-block run. */
+export interface CodeExecutionArtifact {
+  kind: "file" | "image";
+  name: string;
+  mediaType: string;
+  byteLength: number;
+  url: string;
+}
+
+export interface CodeExecutionOutput {
+  stdout: string | null;
+  stderr: string | null;
+  result: unknown;
+  outputs: CodeExecutionArtifact[];
+  /** True only when execution itself failed; stderr may also contain warnings. */
+  failed?: boolean;
+}
+
+/** Collect durable generated artifacts for first-class message rendering. */
+export function collectCodeExecutionArtifacts(
+  parts: readonly unknown[],
+): CodeExecutionArtifact[] {
+  const artifacts: CodeExecutionArtifact[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const value of parts) {
+    if (!value || typeof value !== "object") continue;
+    const part = value as Partial<CodeExecutionPart>;
+    if (part.type !== "tool-execute_code") continue;
+    for (const artifact of part.output?.outputs ?? []) {
+      if (!isCodeExecutionArtifact(artifact) || seenUrls.has(artifact.url)) {
+        continue;
+      }
+      seenUrls.add(artifact.url);
+      artifacts.push(artifact);
+    }
+  }
+  return artifacts;
+}
+
+function isCodeExecutionArtifact(
+  value: unknown,
+): value is CodeExecutionArtifact {
+  if (!value || typeof value !== "object") return false;
+  const artifact = value as Partial<CodeExecutionArtifact>;
+  return (
+    (artifact.kind === "file" || artifact.kind === "image") &&
+    typeof artifact.name === "string" &&
+    typeof artifact.mediaType === "string" &&
+    typeof artifact.byteLength === "number" &&
+    Number.isFinite(artifact.byteLength) &&
+    artifact.byteLength >= 0 &&
+    typeof artifact.url === "string" &&
+    artifact.url.length > 0
+  );
+}
+
+export type CodeExecutionPart = {
+  type: "tool-execute_code";
+  toolCallId: string;
+  state: ToolState;
+  input?: { language?: CodeExecutionLanguage; code?: string };
+  output?: CodeExecutionOutput;
+  errorText?: string;
+};
+
 export function isToolSettled(part: ToolStatePart): boolean {
   return (
     part.state === "output-available" ||

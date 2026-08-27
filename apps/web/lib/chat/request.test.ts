@@ -27,6 +27,7 @@ describe("chat request parsing", () => {
     await expect(parseChatRequest(request(validBody))).resolves.toMatchObject({
       ...validBody,
       webSearchEnabled: true,
+      codeExecutionSupported: false,
       forceSearch: false,
       temporary: false,
       trigger: "submit-message",
@@ -114,8 +115,69 @@ describe("chat request parsing", () => {
         }),
       ),
     ).rejects.toMatchObject({
-      message: "The final message must be a user message",
+      message: "The final message must be a user message or completed code execution",
     });
+  });
+
+  it("accepts a completed browser code result as an automatic continuation", async () => {
+    const messages = [
+      ...validBody.messages,
+      {
+        id: "assistant",
+        role: "assistant",
+        parts: [
+          { type: "step-start" },
+          {
+            type: "tool-execute_code",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: { language: "python", code: "1 + 1" },
+            output: { stdout: null, stderr: null, result: 2, outputs: [] },
+          },
+        ],
+      },
+    ];
+
+    await expect(
+      parseChatRequest(
+        request({ ...validBody, messages, codeExecutionSupported: true }),
+      ),
+    ).resolves.toMatchObject({
+      messages,
+      codeExecutionSupported: true,
+      toolContinuation: true,
+    });
+  });
+
+  it("rejects assistant continuations from clients without code execution", async () => {
+    await expect(
+      parseChatRequest(
+        request({
+          ...validBody,
+          messages: [
+            ...validBody.messages,
+            {
+              id: "assistant",
+              role: "assistant",
+              parts: [
+                {
+                  type: "tool-execute_code",
+                  toolCallId: "call-1",
+                  state: "output-available",
+                  input: { language: "python", code: "1 + 1" },
+                  output: {
+                    stdout: null,
+                    stderr: null,
+                    result: 2,
+                    outputs: [],
+                  },
+                },
+              ],
+            },
+          ],
+        }),
+      ),
+    ).rejects.toBeInstanceOf(ChatRequestError);
   });
 
   it("requires regenerate requests to identify their target", async () => {

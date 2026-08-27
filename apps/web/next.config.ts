@@ -16,6 +16,19 @@ const nextConfig: NextConfig = {
   // (Next.js ignores this at build time). Phone-on-LAN testing needs the
   // host's LAN IP listed here.
   allowedDevOrigins: ["10.0.0.200", "10.0.0.26"],
+  async headers() {
+    return [
+      {
+        // The Python runtime is loaded by an opaque-origin iframe so generated
+        // code cannot inherit the authenticated OvertChat origin.
+        source: "/pyodide/:path*",
+        headers: [
+          { key: "Access-Control-Allow-Origin", value: "*" },
+          { key: "Cross-Origin-Resource-Policy", value: "cross-origin" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
-import { Streamdown } from "streamdown";
+import { Streamdown, type Components } from "streamdown";
 import {
   Check,
   Copy,
@@ -14,7 +14,10 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { isToolSettled } from "@overtchat/shared";
+import {
+  collectCodeExecutionArtifacts,
+  isToolSettled,
+} from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -39,6 +42,8 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { CodeExecutionArtifacts } from "./CodeExecutionArtifacts";
+import { PythonCodeBlock } from "./PythonCodeBlock";
 import { StatsPopover } from "./StatsPopover";
 
 const CITATION_REMARK_PLUGINS = [
@@ -174,6 +179,15 @@ function AssistantBubble({
     }),
     [lookup],
   );
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      ...citationComponents,
+      code: (props) => (
+        <PythonCodeBlock {...props} disabled={streaming} />
+      ),
+    }),
+    [citationComponents, streaming],
+  );
 
   return (
     <div className="group flex flex-col items-start gap-2">
@@ -191,7 +205,7 @@ function AssistantBubble({
                   plugins={STREAMDOWN_PLUGINS}
                   remarkPlugins={CITATION_REMARK_PLUGINS}
                   allowedTags={CITATION_ALLOWED_TAGS}
-                  components={citationComponents}
+                  components={markdownComponents}
                   isAnimating={streaming}
                   caret={showCaret ? "block" : undefined}
                 >
@@ -207,14 +221,17 @@ function AssistantBubble({
                     trailing as Parameters<typeof isToolSettled>[0],
                   );
             const active = streaming && isLast && !trailingDone;
+            const artifacts = collectCodeExecutionArtifacts(seg.parts);
             return (
-              <ChainOfThought
-                key={seg.startIndex}
-                parts={
-                  seg.parts as Parameters<typeof ChainOfThought>[0]["parts"]
-                }
-                active={active}
-              />
+              <div key={seg.startIndex} className="space-y-2">
+                <ChainOfThought
+                  parts={
+                    seg.parts as Parameters<typeof ChainOfThought>[0]["parts"]
+                  }
+                  active={active}
+                />
+                <CodeExecutionArtifacts artifacts={artifacts} />
+              </div>
             );
           });
         })()}

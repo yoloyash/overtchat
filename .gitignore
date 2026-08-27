@@ -26,6 +26,7 @@ playwright/.cache/
 
 # data (dev SQLite DB only; anchored so it can't match source dirs like settings/data/)
 /apps/web/data/
+/apps/web/public/pyodide/
 *.db
 *.db-journal
 *.db-wal

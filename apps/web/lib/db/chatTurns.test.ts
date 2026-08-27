@@ -338,6 +338,169 @@ describe("transactional chat turns", () => {
     });
   });
 
+  it("atomically continues a browser code result into the same assistant message", () => {
+    const pendingParts = [
+      { type: "step-start" as const },
+      {
+        type: "tool-execute_code" as const,
+        toolCallId: "call-1",
+        state: "input-available" as const,
+        input: { language: "python", code: "sum(range(10))" },
+      },
+    ];
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Calculate it" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "stream-one",
+        assistantMessage: { id: "assistant-message", parts: pendingParts },
+      }),
+    ).toBe(true);
+
+    const completedParts = [
+      pendingParts[0],
+      {
+        ...pendingParts[1],
+        state: "output-available" as const,
+        output: {
+          stdout: null,
+          stderr: null,
+          result: 45,
+          outputs: [],
+        },
+      },
+    ];
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-two",
+        staleStreamId: null,
+        assistantContinuation: {
+          id: "assistant-message",
+          parts: completedParts,
+        },
+      }),
+    ).toBe("committed");
+    expect(messageIds()).toEqual(["user-message", "assistant-message"]);
+    expect(
+      raw.prepare("SELECT parts FROM messages WHERE id = ?").get(
+        "assistant-message",
+      ),
+    ).toEqual({ parts: JSON.stringify(completedParts) });
+
+    const finalParts = [
+      ...completedParts,
+      { type: "step-start" as const },
+      { type: "text" as const, text: "The answer is 45." },
+    ];
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "stream-two",
+        assistantMessage: {
+          id: "assistant-message",
+          parts: finalParts,
+          metadata: { stats: { responseTokens: 8 } },
+        },
+      }),
+    ).toBe(true);
+    expect(messageIds()).toEqual(["user-message", "assistant-message"]);
+    expect(
+      raw.prepare("SELECT parts FROM messages WHERE id = ?").get(
+        "assistant-message",
+      ),
+    ).toEqual({ parts: JSON.stringify(finalParts) });
+    expect(
+      raw
+        .prepare(
+          "SELECT content, message_id AS messageId FROM messages_fts ORDER BY rowid",
+        )
+        .all(),
+    ).toEqual([
+      { content: "Calculate it", messageId: "user-message" },
+      { content: "The answer is 45.", messageId: "assistant-message" },
+    ]);
+  });
+
+  it("rejects a code continuation that changes assistant-authored content", () => {
+    const storedParts = [
+      { type: "text" as const, text: "Working" },
+      {
+        type: "tool-execute_code" as const,
+        toolCallId: "call-1",
+        state: "input-available" as const,
+        input: { language: "python", code: "1 + 1" },
+      },
+    ];
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Calculate" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "stream-one",
+        assistantMessage: { id: "assistant-message", parts: storedParts },
+      }),
+    ).toBe(true);
+
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-two",
+        staleStreamId: null,
+        assistantContinuation: {
+          id: "assistant-message",
+          parts: [
+            { type: "text", text: "Tampered" },
+            {
+              type: "tool-execute_code",
+              toolCallId: "call-1",
+              state: "output-available" as const,
+              input: { language: "python", code: "1 + 1" },
+              output: {
+                stdout: null,
+                stderr: null,
+                result: 2,
+                outputs: [],
+              },
+            },
+          ],
+        },
+      }),
+    ).toBe("history-conflict");
+    expect(
+      raw
+        .prepare("SELECT active_stream_id AS streamId FROM chats WHERE id = 'chat'")
+        .get(),
+    ).toEqual({ streamId: null });
+  });
+
   it("keeps assistant persistence when usage insertion fails", () => {
     expect(
       chatTurns.commitChatTurn({

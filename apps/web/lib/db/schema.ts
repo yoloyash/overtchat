@@ -559,7 +559,7 @@ export const uploads = sqliteTable(
     filename: text("filename").notNull(),
     mediaType: text("media_type").notNull(),
     category: text("category", {
-      enum: ["image", "document", "text", "spreadsheet"],
+      enum: ["image", "document", "text", "spreadsheet", "artifact"],
     }).notNull(),
     size: integer("size").notNull(),
     pageCount: integer("page_count"),

@@ -7,6 +7,7 @@ const ACTIVITY_TYPES = new Set([
   "reasoning",
   "tool-web_search",
   "tool-fetch_url",
+  "tool-execute_code",
 ]);
 
 export function isActivityPart(part: AnyPart): boolean {
