@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listAgentConnections: vi.fn(),
   subscribeSessionDirectory: vi.fn(),
-  unsubscribe: vi.fn(),
+  unsubscribeDirectory: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -37,6 +37,7 @@ describe("agent connection session-directory stream", () => {
     });
     mocks.listAgentConnections.mockResolvedValue([
       {
+        host: { connectorId: "connector" },
         workspaces: [
           {
             sessions: [{ id: "session" }, { id: "other-session" }],
@@ -57,7 +58,7 @@ describe("agent connection session-directory stream", () => {
             { sessionId: "other-session", runtimeStatus: "exited" },
           ],
         });
-        return mocks.unsubscribe;
+        return mocks.unsubscribeDirectory;
       },
     );
   });
@@ -97,7 +98,7 @@ describe("agent connection session-directory stream", () => {
       JSON.stringify({ sessionId: "session", runtimeStatus: "running" }),
     );
     await reader.cancel();
-    expect(mocks.unsubscribe).toHaveBeenCalledOnce();
+    expect(mocks.unsubscribeDirectory).toHaveBeenCalledOnce();
   });
 
   it("does not expose the directory to non-admin users", async () => {

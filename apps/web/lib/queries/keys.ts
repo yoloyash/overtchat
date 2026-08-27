@@ -29,6 +29,18 @@ export const agentConnectionKeys = {
       transport,
       sshAlias,
     ] as const,
+  providerSnapshot: (
+    connectorId: string,
+    transport: "local" | "ssh",
+    sshAlias: string,
+  ) =>
+    [
+      ...agentConnectionKeys.all(),
+      "providerSnapshot",
+      connectorId,
+      transport,
+      sshAlias,
+    ] as const,
   targetDirectories: (
     connectorId: string,
     transport: "local" | "ssh",
@@ -43,8 +55,8 @@ export const agentConnectionKeys = {
       sshAlias,
       path,
     ] as const,
-  catalog: (workspaceId: string) =>
-    [...agentConnectionKeys.all(), "catalog", workspaceId] as const,
+  catalog: (workspaceId: string, provider: string) =>
+    [...agentConnectionKeys.all(), "catalog", workspaceId, provider] as const,
 };
 
 export const agentSessionKeys = {

@@ -20,7 +20,6 @@ import type {
   AgentProviderId,
   AgentRuntimeSnapshot,
   AgentSessionCommand,
-  AgentThinkingLevel,
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import {
@@ -74,11 +73,11 @@ function currentModel(
 function currentThinking(
   snapshot: AgentRuntimeSnapshot,
   model: AgentRuntimeSnapshot["models"][number] | undefined,
-): AgentThinkingLevel | null {
+): string | null {
   const level = snapshot.state.thinkingLevel;
   return typeof level === "string" &&
     model?.thinkingOptions?.some((option) => option.id === level)
-    ? (level as AgentThinkingLevel)
+    ? level
     : null;
 }
 

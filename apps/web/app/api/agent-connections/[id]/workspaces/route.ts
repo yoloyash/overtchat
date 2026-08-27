@@ -3,13 +3,12 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { addAgentWorkspaceSchema } from "@overtchat/agent-bridge";
+import { addAgentWorkspaceSchema, isAgentProviderId } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import {
   daemonTarget,
   parseProviderSessionMetadata,
 } from "@/lib/agents/connector/descriptors";
-import { isAgentProviderId } from "@overtchat/agent-bridge";
 import {
   createAgentWorkspace,
   getOwnedAgentConnection,
@@ -81,10 +80,7 @@ export async function POST(
       workspaceId,
     );
     if (!row) return new Response("Not found", { status: 404 });
-    const sessions = syncAgentWorkspaceSessions(
-      row.id,
-      metadata,
-    );
+    const sessions = syncAgentWorkspaceSessions(row.id, metadata);
     return Response.json(
       {
         workspace: {

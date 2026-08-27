@@ -2,6 +2,7 @@ import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
   AgentProviderId,
+  AgentProviderSnapshot,
   AgentSessionListItem,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
@@ -24,6 +25,11 @@ export type AgentWorkspaceGroup = {
   host: AgentConnectionListItem["host"];
   targets: AgentWorkspaceTarget[];
   sessions: AgentWorkspaceSession[];
+};
+
+export type AgentWorkspaceProviderTarget = {
+  provider: AgentProviderId;
+  workspace: AgentWorkspaceListItem;
 };
 
 export function agentTargetKey(target: AgentDiscoveryTarget): string {
@@ -119,5 +125,25 @@ export function groupAgentWorkspaces(
         right.session.modifiedAt ?? right.session.createdAt ?? 0;
       return rightTime - leftTime;
     }),
+  }));
+}
+
+export function projectAgentWorkspaceProviders(
+  group: AgentWorkspaceGroup,
+  snapshot: AgentProviderSnapshot | undefined,
+): AgentWorkspaceProviderTarget[] {
+  const representativeWorkspace = group.targets[0]!.workspace;
+  const providers = new Set<AgentProviderId>(
+    snapshot?.providers.flatMap((entry) =>
+      entry.status === "ready" ? [entry.provider] : [],
+    ) ?? [],
+  );
+  for (const { connection } of group.targets) providers.add(connection.provider);
+  return [...providers].map((provider) => ({
+    provider,
+    workspace:
+      group.targets.find(
+        ({ connection }) => connection.provider === provider,
+      )?.workspace ?? representativeWorkspace,
   }));
 }

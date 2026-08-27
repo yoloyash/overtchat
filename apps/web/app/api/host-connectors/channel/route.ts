@@ -1,6 +1,6 @@
 import {
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   isHostConnectorProtocolVersion,
   parseHostConnectorCapabilities,
   type HostConnectorCommand,
@@ -27,14 +27,14 @@ export async function GET(request: Request) {
     ?.trim();
   if (
     !isHostConnectorProtocolVersion(protocol) ||
-    connectorVersion !== HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE
+    connectorVersion !== HOST_CONNECTOR_COMPATIBILITY_RELEASE
   ) {
     return Response.json(
       {
-        error: `The OvertChat app and Host Connector are out of date with each other. Run \`overtchat update\` on the OvertChat host (or reinstall connector ${HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE}).`,
+        error: `The OvertChat app and Host Connector are out of date with each other. Run \`overtchat update\` on the OvertChat host (or reinstall connector ${HOST_CONNECTOR_COMPATIBILITY_RELEASE}).`,
         code: "unsupported_connector_protocol",
         supportedProtocolVersions: [HOST_CONNECTOR_PROTOCOL_VERSION],
-        compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+        compatibilityRelease: HOST_CONNECTOR_COMPATIBILITY_RELEASE,
       },
       { status: 409 },
     );

@@ -20,10 +20,6 @@ import {
   Trash2,
   Wifi,
 } from "lucide-react";
-import claudeCodeIcon from "@/assets/agent-providers/claude-code.png";
-import codexIcon from "@/assets/agent-providers/codex.png";
-import ompIcon from "@/assets/agent-providers/omp.svg";
-import piIcon from "@/assets/agent-providers/pi.svg";
 import { BetaBadge } from "@/components/BetaBadge";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -32,13 +28,20 @@ import type {
   HostConnectorListItem,
   HostConnectorPairing,
 } from "@overtchat/agent-bridge";
-import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
+  AGENT_PROVIDERS,
+  agentProviderMetadata,
+} from "@overtchat/agent-bridge";
+import {
+  agentConnectionTarget,
   groupAgentWorkspaces,
+  projectAgentWorkspaceProviders,
   type AgentWorkspaceGroup,
 } from "@/lib/agents/workspaces";
+import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
 import {
   useAgentConnections,
+  useAgentProviderSnapshot,
   useDeleteAgentConnection,
   useDeleteHostConnector,
   useDeleteAgentWorkspace,
@@ -56,7 +59,6 @@ import {
 import { AddAgentWorkspaceDialog } from "./AddAgentWorkspaceDialog";
 
 type PendingDetach =
-  | { type: "connection"; connection: AgentConnectionListItem }
   | { type: "connector"; connector: HostConnectorListItem }
   | { type: "workspace-group"; group: AgentWorkspaceGroup };
 
@@ -71,10 +73,6 @@ export function ConnectionsPanel({
   const connector = connectors[0];
   const workspaceGroups = useMemo(
     () => groupAgentWorkspaces(connections),
-    [connections],
-  );
-  const unassignedConnections = useMemo(
-    () => connections.filter((connection) => connection.workspaces.length === 0),
     [connections],
   );
   const testMutation = useTestAgentConnection();
@@ -116,15 +114,7 @@ export function ConnectionsPanel({
     if (!pendingDetach) return;
     setDetachError("");
     try {
-      if (pendingDetach.type === "connection") {
-        await deleteConnectionMutation.mutateAsync(
-          pendingDetach.connection.id,
-        );
-        toast.success({
-          title: "Agent removed",
-          description: pendingDetach.connection.host.name,
-        });
-      } else if (pendingDetach.type === "connector") {
+      if (pendingDetach.type === "connector") {
         await deleteConnectorMutation.mutateAsync(
           pendingDetach.connector.id,
         );
@@ -202,40 +192,29 @@ export function ConnectionsPanel({
             <span>Run coding agents in project folders on this server or over SSH.</span>
             <span
               className="inline-flex items-center gap-1"
-              aria-label="Supported agents: Pi, Oh My Pi, and Codex. Claude Code coming soon."
+              aria-label={`Supported agents: ${Object.values(AGENT_PROVIDERS)
+                .map((provider) => provider.label)
+                .join(", ")}.`}
             >
-              <span
-                className="flex size-6 items-center justify-center rounded-md border bg-background"
-                title="Pi"
-              >
-                <Image src={piIcon} alt="" className="size-4 object-contain" />
-              </span>
-              <span
-                className="flex size-6 items-center justify-center rounded-md border bg-zinc-950"
-                title="Oh My Pi"
-              >
-                <Image src={ompIcon} alt="" className="size-4 object-contain" />
-              </span>
-              <span
-                className="flex size-6 items-center justify-center rounded-md border bg-background opacity-40 grayscale"
-                title="Claude Code · Coming soon"
-              >
-                <Image
-                  src={claudeCodeIcon}
-                  alt=""
-                  className="size-4 object-contain"
-                />
-              </span>
-              <span
-                className="flex size-6 items-center justify-center rounded-md border bg-zinc-950"
-                title="Codex"
-              >
-                <Image
-                  src={codexIcon}
-                  alt=""
-                  className="size-4 object-contain"
-                />
-              </span>
+              {Object.values(AGENT_PROVIDERS).map((provider) => {
+                const visual = AGENT_PROVIDER_VISUALS[provider.id];
+                return (
+                  <span
+                    key={provider.id}
+                    className={cn(
+                      "flex size-6 items-center justify-center rounded-md border bg-background",
+                      visual.darkSurface && "bg-zinc-950",
+                    )}
+                    title={provider.label}
+                  >
+                    <Image
+                      src={visual.icon}
+                      alt=""
+                      className="size-4 object-contain"
+                    />
+                  </span>
+                );
+              })}
             </span>
           </span>
         }
@@ -440,31 +419,6 @@ export function ConnectionsPanel({
               />
             ))
           )}
-          {unassignedConnections.length > 0 && (
-            <div className="border-t px-4 py-3">
-              <p className="text-xs font-medium text-muted-foreground">
-                Unassigned agent installations
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                These are not shown in the sidebar. Add a workspace to reuse one,
-                or remove it.
-              </p>
-              <div className="mt-2 space-y-1">
-                {unassignedConnections.map((connection) => (
-                  <UnassignedConnectionRow
-                    key={connection.id}
-                    connection={connection}
-                    actionId={actionId}
-                    onTest={() => void testConnection(connection)}
-                    onRemove={() => {
-                      setDetachError("");
-                      setPendingDetach({ type: "connection", connection });
-                    }}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
         </SettingsSection>
       )}
 
@@ -499,9 +453,7 @@ export function ConnectionsPanel({
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
               {pendingDetach?.type === "workspace-group"
                 ? "Remove workspace?"
-                : pendingDetach?.type === "connector"
-                  ? "Remove Host Connector?"
-                  : "Remove agent?"}
+                : "Remove Host Connector?"}
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
               {pendingDetach?.type === "connector" ? (
@@ -520,18 +472,7 @@ export function ConnectionsPanel({
                   and its agent chats will be removed from OvertChat. Files and
                   native agent sessions remain on the host.
                 </>
-              ) : (
-                <>
-                  <span className="font-medium text-foreground">
-                    {pendingDetach?.connection.host.name}
-                  </span>{" "}
-                  will be removed from OvertChat. Files and native{" "}
-                  {pendingDetach
-                    ? agentProviderMetadata(pendingDetach.connection.provider).label
-                    : "agent"}{" "}
-                  sessions remain on the host.
-                </>
-              )}
+              ) : null}
             </AlertDialog.Description>
             {detachError && (
               <SettingsNotice tone="error" className="mt-3 text-xs">
@@ -635,6 +576,13 @@ function WorkspaceGroupRow({
       ? "This server"
       : `ssh ${group.host.sshAlias}`;
   const sessionCount = group.sessions.length;
+  const providerSnapshot = useAgentProviderSnapshot(
+    agentConnectionTarget(group.targets[0]!.connection),
+  );
+  const providers = projectAgentWorkspaceProviders(
+    group,
+    providerSnapshot.data,
+  );
 
   return (
     <div className="px-4 py-4">
@@ -646,7 +594,7 @@ function WorkspaceGroupRow({
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <span className="text-sm font-medium">{group.name}</span>
             <span className="text-xs text-muted-foreground">
-              {group.targets.length} agent{group.targets.length === 1 ? "" : "s"}
+              {providers.length} agent{providers.length === 1 ? "" : "s"}
             </span>
           </div>
           <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground" title={group.path}>
@@ -674,11 +622,29 @@ function WorkspaceGroupRow({
       </div>
 
       <div className="mt-4 ml-4 border-l pl-4">
-        {group.targets.map(({ connection, workspace }) => {
-          const provider = agentProviderMetadata(connection.provider);
+        {providers.map(({ provider: providerId }) => {
+          const backing = group.targets.find(
+            ({ connection }) => connection.provider === providerId,
+          );
+          const installation = providerSnapshot.data?.providers.find(
+            (entry) =>
+              entry.provider === providerId && entry.status === "ready",
+          );
+          const provider = agentProviderMetadata(providerId);
+          const executable =
+            installation?.status === "ready"
+              ? installation.executable
+              : backing?.connection.executable;
+          const version =
+            installation?.status === "ready"
+              ? installation.version
+              : backing?.connection.detectedVersion;
+          const providerSessionCount = group.sessions.filter(
+            (session) => session.provider === providerId,
+          ).length;
           return (
             <div
-              key={workspace.id}
+              key={providerId}
               className="flex flex-col gap-2 border-b py-3 first:pt-0 last:border-0 last:pb-0 @xl:flex-row @xl:items-center"
             >
               <TerminalSquare className="size-4 shrink-0 text-muted-foreground" />
@@ -686,18 +652,19 @@ function WorkspaceGroupRow({
                 <div className="flex flex-wrap items-baseline gap-x-2">
                   <p className="text-sm font-medium">{provider.label}</p>
                   <span className="text-xs text-muted-foreground">
-                    {connection.detectedVersion ?? "Not tested"}
+                    {version ?? "Not tested"}
                   </span>
                 </div>
-                <p className="truncate font-mono text-xs text-muted-foreground" title={connection.executable}>
-                  {connection.executable}
+                <p className="truncate font-mono text-xs text-muted-foreground" title={executable}>
+                  {executable}
                 </p>
               </div>
               <span className="text-xs text-muted-foreground">
-                {workspace.sessions.length} session
-                {workspace.sessions.length === 1 ? "" : "s"}
+                {providerSessionCount} session
+                {providerSessionCount === 1 ? "" : "s"}
               </span>
-              <div className="flex items-center gap-1 @xl:justify-end">
+              {backing && (
+                <div className="flex items-center gap-1 @xl:justify-end">
                 <Button
                   type="button"
                   variant="ghost"
@@ -705,74 +672,21 @@ function WorkspaceGroupRow({
                   disabled={actionId !== null}
                   aria-label={`Test ${provider.label} in ${group.name}`}
                   title="Test agent"
-                  onClick={() => onTest(connection)}
+                  onClick={() => onTest(backing.connection)}
                 >
                   <RefreshCw
                     className={cn(
-                      actionId === connection.id &&
+                      actionId === backing.connection.id &&
                         "animate-spin motion-reduce:animate-none",
                     )}
                   />
                 </Button>
               </div>
+              )}
             </div>
           );
         })}
       </div>
-    </div>
-  );
-}
-
-function UnassignedConnectionRow({
-  connection,
-  actionId,
-  onTest,
-  onRemove,
-}: {
-  connection: AgentConnectionListItem;
-  actionId: string | null;
-  onTest: () => void;
-  onRemove: () => void;
-}) {
-  const HostIcon = connection.host.transport === "local" ? Server : Wifi;
-  const provider = agentProviderMetadata(connection.provider);
-  return (
-    <div className="flex min-w-0 items-center gap-2 rounded-md bg-muted/20 px-2 py-2">
-      <HostIcon className="size-4 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
-          {provider.label} · {connection.host.name}
-        </p>
-        <p className="truncate font-mono text-xs text-muted-foreground">
-          {connection.executable}
-        </p>
-      </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        disabled={actionId !== null}
-        aria-label={`Test ${provider.label}`}
-        title="Test agent"
-        onClick={onTest}
-      >
-        <RefreshCw
-          className={cn(
-            actionId === connection.id &&
-              "animate-spin motion-reduce:animate-none",
-          )}
-        />
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Remove ${provider.label}`}
-        title={`Remove ${provider.label}`}
-        onClick={onRemove}
-      >
-        <Trash2 />
-      </Button>
     </div>
   );
 }

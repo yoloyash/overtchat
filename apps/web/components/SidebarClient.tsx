@@ -186,7 +186,7 @@ function AdminAgentWorkspaces() {
 
   async function refreshAllChats() {
     try {
-      const result = await refresh.mutateAsync(connections);
+      const result = await refresh.mutateAsync();
       const synced = result.created + result.refreshed;
       if (synced === 0) {
         toast.error({

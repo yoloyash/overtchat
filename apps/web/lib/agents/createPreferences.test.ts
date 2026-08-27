@@ -45,4 +45,28 @@ describe("agent create preferences", () => {
       }),
     ).toEqual({});
   });
+
+  it("preserves OpenCode model variants", () => {
+    expect(
+      parseAgentCreatePreferences({
+        providerPreferences: {
+          opencode: {
+            model: "anthropic/claude-sonnet-4-5",
+            mode: "build",
+            thinkingByModel: {
+              "anthropic/claude-sonnet-4-5": "max-reasoning",
+            },
+          },
+        },
+      }),
+    ).toMatchObject({
+      providerPreferences: {
+        opencode: {
+          thinkingByModel: {
+            "anthropic/claude-sonnet-4-5": "max-reasoning",
+          },
+        },
+      },
+    });
+  });
 });

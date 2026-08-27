@@ -3,15 +3,8 @@ import {
   connectionErrorMessage,
   storedConnectionAccessError,
 } from "@/lib/agents/access";
-import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import {
-  daemonWorkspace,
-  parseProviderSessionMetadata,
-} from "@/lib/agents/connector/descriptors";
-import {
-  getOwnedAgentWorkspace,
-  upsertAgentSession,
-} from "@/lib/db/agentConnections";
+import { createAgentWorkspaceProviderSession } from "@/lib/agents/connector/providerSnapshots";
+import { getOwnedAgentWorkspace } from "@/lib/db/agentConnections";
 import {
   agentSessionLaunchConfigSchema,
   isAgentProviderId,
@@ -32,35 +25,38 @@ export async function POST(
   const { id } = await params;
   const owned = await getOwnedAgentWorkspace(id, session.user.id);
   if (!owned) return new Response("Not found", { status: 404 });
+  let errorProvider = isAgentProviderId(owned.connection.provider)
+    ? owned.connection.provider
+    : "pi";
 
   try {
-    const body = await req.json().catch(() => ({}));
-    const launchConfig = agentSessionLaunchConfigSchema.parse(body);
-    const sessionId = crypto.randomUUID();
-    const created = await hostConnectorBroker.request<{
-      session: unknown;
-      launchConfig: unknown;
-      snapshot: unknown;
-    }>(owned.host.connectorId, {
-      type: "create_session",
-      sessionId,
-      workspace: daemonWorkspace(owned),
+    const body = (await req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const requestedProvider = body.provider;
+    const provider =
+      typeof requestedProvider === "string" && isAgentProviderId(requestedProvider)
+      ? requestedProvider
+      : isAgentProviderId(owned.connection.provider)
+        ? owned.connection.provider
+        : null;
+    if (!provider) throw new Error("This coding-agent provider is not supported.");
+    errorProvider = provider;
+    const launchConfig = agentSessionLaunchConfigSchema.parse(
+      body.launchConfig ?? body,
+    );
+    const created = await createAgentWorkspaceProviderSession({
+      userId: session.user.id,
+      anchorWorkspaceId: id,
+      provider,
       launchConfig,
     });
-    const resolvedLaunchConfig = agentSessionLaunchConfigSchema.parse(
-      created.launchConfig,
-    );
-    const row = await upsertAgentSession(
-      owned.workspace.id,
-      parseProviderSessionMetadata(created.session),
-      sessionId,
-      resolvedLaunchConfig,
-    );
     return Response.json(
       {
         session: {
-          id: row.id,
-          launchConfig: resolvedLaunchConfig,
+          id: created.session.id,
+          launchConfig: created.launchConfig,
           snapshot: created.snapshot,
         },
       },
@@ -69,12 +65,7 @@ export async function POST(
   } catch (error) {
     return Response.json(
       {
-        error: connectionErrorMessage(
-          error,
-          isAgentProviderId(owned.connection.provider)
-            ? owned.connection.provider
-            : "pi",
-        ),
+        error: connectionErrorMessage(error, errorProvider),
       },
       { status: 400 },
     );

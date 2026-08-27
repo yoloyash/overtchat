@@ -16,13 +16,13 @@ import {
 } from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
+  AgentProviderSnapshotManager,
   agentProviderAdapter,
   configureProcessSpawner,
-  discoverAgentInstallations,
+  configureTcpTunnelOpener,
   inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
   probeAgentWorkspace,
-  targetForDiscovery,
   type AgentSessionRuntime,
   type HostTarget,
   type ResolvedAgentImage,
@@ -124,6 +124,7 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 
 export class ConnectorDaemon {
   private readonly processHost = new ConnectorProcessHost();
+  private readonly providerSnapshots = new AgentProviderSnapshotManager();
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
@@ -148,6 +149,7 @@ export class ConnectorDaemon {
     private readonly shutdownGraceMs = SHUTDOWN_GRACE_MS,
   ) {
     configureProcessSpawner(this.processHost.spawn);
+    configureTcpTunnelOpener(this.processHost.openTcpTunnel);
     this.registry = new AgentRuntimeRegistry({
       resolveImages,
       updateSessionMetadata: async (sessionId, patch) => {
@@ -334,8 +336,10 @@ export class ConnectorDaemon {
     switch (request.type) {
       case "list_ssh_hosts":
         return listSshHosts();
-      case "discover":
-        return discoverAgentInstallations(targetForDiscovery(request.target));
+      case "provider_snapshot":
+        return this.providerSnapshots.getSnapshot(request.target, {
+          refresh: request.refresh,
+        });
       case "probe":
         return agentProviderAdapter(request.draft.provider).probeConnection(
           request.draft,

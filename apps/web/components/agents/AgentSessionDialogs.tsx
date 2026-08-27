@@ -463,6 +463,8 @@ function InteractionDialogContent({
     typeof request.approveValue === "string" ? request.approveValue : "Approve";
   const denyValue =
     typeof request.denyValue === "string" ? request.denyValue : "Deny";
+  const alwaysValue =
+    typeof request.alwaysValue === "string" ? request.alwaysValue : null;
   const options = Array.isArray(request.options)
     ? request.options.filter(
         (option): option is string => typeof option === "string",
@@ -617,6 +619,17 @@ function InteractionDialogContent({
                   >
                     Deny
                   </Button>
+                  {alwaysValue && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => onRespond({ value: alwaysValue })}
+                    >
+                      Allow always
+                    </Button>
+                  )}
                   <Button
                     type="button"
                     size="sm"

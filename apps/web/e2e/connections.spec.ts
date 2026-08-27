@@ -50,9 +50,7 @@ async function startHostConnector(
   ).toBeVisible();
   await expect(page.getByTitle("Pi", { exact: true })).toBeVisible();
   await expect(page.getByTitle("Oh My Pi", { exact: true })).toBeVisible();
-  await expect(
-    page.getByTitle("Claude Code · Coming soon", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTitle("OpenCode", { exact: true })).toBeVisible();
   await expect(page.getByTitle("Codex", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent host" }),
@@ -299,9 +297,7 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
   ).toBeVisible();
   await expect(page.getByTitle("Pi", { exact: true })).toBeVisible();
   await expect(page.getByTitle("Oh My Pi", { exact: true })).toBeVisible();
-  await expect(
-    page.getByTitle("Claude Code · Coming soon", { exact: true }),
-  ).toBeVisible();
+  await expect(page.getByTitle("OpenCode", { exact: true })).toBeVisible();
   await expect(page.getByTitle("Codex", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Agent host" }),
@@ -457,21 +453,63 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
   await startHostConnector(page, testInfo);
   const workspaceIds = seedMixedProviderWorkspace();
   await page.route("**/api/agent-connections/discover", async (route) => {
+    const target = route.request().postDataJSON();
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
+        snapshot: {
+          target,
+          providers: [
+            {
+              provider: "pi",
+              status: "unavailable",
+            },
+            {
+              provider: "omp",
+              status: "ready",
+              executable: "omp",
+              version: "test",
+              shellMode: "interactive",
+            },
+            {
+              provider: "codex",
+              status: "ready",
+              executable: "codex",
+              version: "test",
+              shellMode: "interactive",
+            },
+            {
+              provider: "opencode",
+              status: "unavailable",
+            },
+          ],
+          refreshedAt: Date.now(),
+        },
         installations: [
-          { provider: "codex", executable: "codex", version: "test" },
-          { provider: "omp", executable: "omp", version: "test" },
+          {
+            provider: "codex",
+            executable: "codex",
+            version: "test",
+            shellMode: "interactive",
+          },
+          {
+            provider: "omp",
+            executable: "omp",
+            version: "test",
+            shellMode: "interactive",
+          },
         ],
       }),
     });
   });
   await page.route(
-    /\/api\/agent-workspaces\/[^/]+\/catalog$/u,
+    /\/api\/agent-workspaces\/[^/]+\/catalog(?:\?.*)?$/u,
     async (route) => {
-      const id = new URL(route.request().url()).pathname.split("/").at(-2);
-      const provider = id === workspaceIds.codex ? "codex" : "omp";
+      const url = new URL(route.request().url());
+      const id = url.pathname.split("/").at(-2);
+      const provider =
+        url.searchParams.get("provider") ??
+        (id === workspaceIds.codex ? "codex" : "omp");
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -507,7 +545,13 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
     },
   );
   await page.route(/\/api\/agent-workspaces\/[^/]+$/u, async (route) => {
-    if (route.request().method() === "POST") {
+    const workspaceId = new URL(route.request().url()).pathname
+      .split("/")
+      .at(-1);
+    if (
+      route.request().method() === "POST" &&
+      (workspaceId === workspaceIds.codex || workspaceId === workspaceIds.omp)
+    ) {
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({ sessions: [] }),
@@ -515,6 +559,19 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
       return;
     }
     await route.continue();
+  });
+  await page.route("**/api/agent-workspaces/sync", async (route) => {
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: {
+          providers: 2,
+          created: 0,
+          refreshed: 2,
+          failures: [],
+        },
+      }),
+    });
   });
 
   await page.goto("/");
@@ -645,11 +702,28 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
         await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({
+            snapshot: {
+              target: route.request().postDataJSON(),
+              providers: [
+                {
+                  provider: "pi",
+                  status: "ready",
+                  executable: "/usr/local/bin/pi",
+                  version: "0.42.3",
+                  shellMode: "interactive",
+                },
+                { provider: "omp", status: "unavailable" },
+                { provider: "codex", status: "unavailable" },
+                { provider: "opencode", status: "unavailable" },
+              ],
+              refreshedAt: Date.now(),
+            },
             installations: [
               {
                 provider: "pi",
                 executable: "/usr/local/bin/pi",
                 version: "0.42.3",
+                shellMode: "interactive",
               },
             ],
           }),

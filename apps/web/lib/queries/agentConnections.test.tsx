@@ -187,5 +187,6 @@ describe("agent connection session directory", () => {
         agentConnectionKeys.list(),
       )?.[0]?.workspaces[0]?.sessions[0]?.runtimeStatus,
     ).toBe("running");
+
   });
 });

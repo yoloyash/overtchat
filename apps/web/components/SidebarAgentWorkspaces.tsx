@@ -1,6 +1,6 @@
 "use client";
 
-import Image, { type StaticImageData } from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -14,9 +14,6 @@ import {
   Plus,
   Wifi,
 } from "lucide-react";
-import codexIcon from "@/assets/agent-providers/codex.png";
-import ompIcon from "@/assets/agent-providers/omp.svg";
-import piIcon from "@/assets/agent-providers/pi.svg";
 import type {
   AgentConnectionListItem,
   AgentProviderId,
@@ -30,24 +27,19 @@ import {
   visibleAgentSessions,
 } from "@/lib/agents/sidebar";
 import {
+  agentConnectionTarget,
   groupAgentWorkspaces,
+  projectAgentWorkspaceProviders,
   type AgentWorkspaceGroup,
   type AgentWorkspaceSession,
 } from "@/lib/agents/workspaces";
 import { useSidebar } from "@/components/sidebar-context";
 import { motionClasses } from "@/lib/motion";
+import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
+import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
-
-const PROVIDER_ICONS: Record<
-  AgentProviderId,
-  { icon: StaticImageData; darkSurface?: boolean }
-> = {
-  pi: { icon: piIcon },
-  omp: { icon: ompIcon, darkSurface: true },
-  codex: { icon: codexIcon, darkSurface: true },
-};
 
 export function SidebarAgentWorkspaces({
   connections,
@@ -88,7 +80,11 @@ function WorkspaceNode({
   const hasRunningSession = group.sessions.some(({ session }) =>
     agentSessionIsRunning(session),
   );
-  const representativeWorkspace = group.targets[0]!.workspace;
+  const representativeTarget = group.targets[0]!;
+  const representativeWorkspace = representativeTarget.workspace;
+  const providerSnapshot = useAgentProviderSnapshot(
+    agentConnectionTarget(representativeTarget.connection),
+  );
   const gitStatus = useAgentWorkspaceGitStatus(representativeWorkspace.id, {
     active: hasActiveSession,
     running: hasRunningSession,
@@ -110,6 +106,16 @@ function WorkspaceNode({
     visibleIds.has(session.id),
   );
   const hiddenSessionCount = filteredSessions.length - visibleSessions.length;
+  const sessionTargets = projectAgentWorkspaceProviders(
+    group,
+    providerSnapshot.data,
+  ).map(({ provider, workspace }) => {
+    return {
+      workspace,
+      provider,
+      providerLabel: agentProviderMetadata(provider).label,
+    };
+  });
 
   return (
     <li>
@@ -154,8 +160,15 @@ function WorkspaceNode({
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
+          disabled={providerSnapshot.isPending || sessionTargets.length === 0}
           aria-label={`New session in ${group.name}`}
-          title={`New session in ${group.name}`}
+          title={
+            sessionTargets.length > 0
+              ? `New session in ${group.name}`
+              : providerSnapshot.isPending
+                ? "Detecting agents on this machine"
+                : "No agents are currently available on this machine"
+          }
           className={cn(
             "flex min-h-11 w-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
             motionClasses.hoverReveal,
@@ -197,23 +210,21 @@ function WorkspaceNode({
             )}
         </ul>
       )}
-      <NewAgentSessionDialog
-        open={createOpen}
-        onOpenChange={(next) => {
-          setCreateOpen(next);
-          if (!next) setOpen(true);
-        }}
-        targets={group.targets.map(({ connection, workspace }) => ({
-          workspace,
-          provider: connection.provider,
-          providerLabel: agentProviderMetadata(connection.provider).label,
-        }))}
-        machineLabel={
-          group.host.transport === "local"
-            ? "This server"
-            : `ssh ${group.host.sshAlias}`
-        }
-      />
+      {sessionTargets.length > 0 && (
+        <NewAgentSessionDialog
+          open={createOpen}
+          onOpenChange={(next) => {
+            setCreateOpen(next);
+            if (!next) setOpen(true);
+          }}
+          targets={sessionTargets}
+          machineLabel={
+            group.host.transport === "local"
+              ? "This server"
+              : `ssh ${group.host.sshAlias}`
+          }
+        />
+      )}
     </li>
   );
 }
@@ -288,7 +299,7 @@ function SessionLink({ item }: { item: AgentWorkspaceSession }) {
 }
 
 function ProviderLogo({ provider }: { provider: AgentProviderId }) {
-  const icon = PROVIDER_ICONS[provider];
+  const icon = AGENT_PROVIDER_VISUALS[provider];
   return (
     <span
       className={cn(

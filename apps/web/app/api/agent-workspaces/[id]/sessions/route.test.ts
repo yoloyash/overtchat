@@ -3,17 +3,17 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentWorkspace: vi.fn(),
-  daemonRequest: vi.fn(),
-  upsertAgentSession: vi.fn(),
+  createProviderSession: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({ auth: { api: { getSession: mocks.getSession } } }));
 vi.mock("@/lib/db/agentConnections", () => ({
   getOwnedAgentWorkspace: mocks.getOwnedAgentWorkspace,
-  upsertAgentSession: mocks.upsertAgentSession,
 }));
-vi.mock("@/lib/agents/connector/broker", () => ({ hostConnectorBroker: { request: mocks.daemonRequest } }));
+vi.mock("@/lib/agents/connector/providerSnapshots", () => ({
+  createAgentWorkspaceProviderSession: mocks.createProviderSession,
+}));
 
 import { POST } from "./route";
 
@@ -35,16 +35,8 @@ describe("create agent workspace session route", () => {
     vi.clearAllMocks();
     mocks.getSession.mockResolvedValue({ user: { id: "owner", role: "admin" } });
     mocks.getOwnedAgentWorkspace.mockResolvedValue(owned);
-    mocks.daemonRequest.mockResolvedValue({
-      session: {
-        providerSessionId: "native",
-        providerSessionPath: "/sessions/native.jsonl",
-        name: null,
-        firstMessage: null,
-        messageCount: 0,
-        createdAt: null,
-        modifiedAt: null,
-      },
+    mocks.createProviderSession.mockResolvedValue({
+      session: { id: "created" },
       launchConfig: {
         model: "vllm/qwen",
         thinkingOptionId: "high",
@@ -52,7 +44,6 @@ describe("create agent workspace session route", () => {
       },
       snapshot: { sessionId: "created", status: "idle" },
     });
-    mocks.upsertAgentSession.mockResolvedValue({ id: "created" });
   });
 
   it("sends and persists the connector-resolved launch tuple", async () => {
@@ -70,16 +61,34 @@ describe("create agent workspace session route", () => {
       context,
     );
     expect(response.status).toBe(201);
-    expect(mocks.daemonRequest).toHaveBeenCalledWith(
-      "connector",
-      expect.objectContaining({ type: "create_session", launchConfig }),
-    );
-    expect(mocks.upsertAgentSession).toHaveBeenCalledWith(
-      "workspace",
-      expect.objectContaining({ providerSessionId: "native" }),
-      expect.any(String),
+    expect(mocks.createProviderSession).toHaveBeenCalledWith({
+      userId: "owner",
+      anchorWorkspaceId: "workspace",
+      provider: "omp",
       launchConfig,
+    });
+  });
+
+  it("starts a detected provider through an existing workspace anchor", async () => {
+    const response = await POST(
+      new Request("http://server.test/api/agent-workspaces/workspace/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: "opencode",
+          launchConfig: { model: "openai/gpt-5" },
+        }),
+      }),
+      context,
     );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createProviderSession).toHaveBeenCalledWith({
+      userId: "owner",
+      anchorWorkspaceId: "workspace",
+      provider: "opencode",
+      launchConfig: { model: "openai/gpt-5" },
+    });
   });
 
   it("rejects invalid launch configuration before contacting the connector", async () => {
@@ -87,11 +96,11 @@ describe("create agent workspace session route", () => {
       new Request("http://server.test/api/agent-workspaces/workspace/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ thinkingOptionId: "ultra" }),
+        body: JSON.stringify({ thinkingOptionId: "x".repeat(121) }),
       }),
       context,
     );
     expect(response.status).toBe(400);
-    expect(mocks.daemonRequest).not.toHaveBeenCalled();
+    expect(mocks.createProviderSession).not.toHaveBeenCalled();
   });
 });

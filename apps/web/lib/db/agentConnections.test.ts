@@ -130,6 +130,121 @@ function createAliceConnection() {
 }
 
 describe("agent connection persistence", () => {
+  it("reuses an existing configured connection for the same target and provider", () => {
+    const first = createAliceConnection();
+    const updated = repository.createAgentConnection({
+      userId: "alice",
+      host: {
+        name: "This server",
+        transport: "local",
+        connectorId: "alice-connector",
+      },
+      connection: {
+        provider: "pi",
+        executable: "/new/pi",
+        shellMode: "login",
+        detectedVersion: "0.83.0",
+      },
+    });
+    const codex = repository.createAgentConnection({
+      userId: "alice",
+      host: {
+        name: "This server",
+        transport: "local",
+        connectorId: "alice-connector",
+      },
+      connection: {
+        provider: "codex",
+        executable: "codex",
+        shellMode: "interactive",
+        detectedVersion: "1.0.0",
+      },
+    });
+
+    expect(updated.host.id).toBe(first.host.id);
+    expect(updated.connection.id).toBe(first.connection.id);
+    expect(updated.connection.executable).toBe("/new/pi");
+    expect(codex.host.id).not.toBe(first.host.id);
+    expect(raw.prepare("SELECT count(*) AS count FROM agent_hosts").get()).toEqual({
+      count: 2,
+    });
+    expect(
+      raw.prepare("SELECT count(*) AS count FROM agent_connections").get(),
+    ).toEqual({ count: 2 });
+  });
+
+  it("deleting one provider preserves sibling providers on the same target", async () => {
+    const pi = createAliceConnection();
+    const codex = repository.createAgentConnection({
+      userId: "alice",
+      host: {
+        name: "Workstation",
+        transport: "local",
+        connectorId: "alice-connector",
+      },
+      connection: {
+        provider: "codex",
+        executable: "codex",
+        shellMode: "interactive",
+        detectedVersion: "1.0.0",
+      },
+    });
+
+    await expect(
+      repository.deleteAgentConnection(pi.connection.id, "alice"),
+    ).resolves.toBe(true);
+    await expect(
+      repository.getOwnedAgentConnection(codex.connection.id, "alice"),
+    ).resolves.toMatchObject({
+      host: { id: codex.host.id },
+      connection: { provider: "codex" },
+    });
+  });
+
+  it("atomically saves a provider, workspace, and imported sessions", async () => {
+    const saved = repository.saveAgentWorkspaceInstallation({
+      userId: "alice",
+      host: {
+        name: "Workstation",
+        transport: "local",
+        connectorId: "alice-connector",
+      },
+      connection: {
+        provider: "opencode",
+        executable: "opencode",
+        shellMode: "interactive",
+        detectedVersion: "1.18.23",
+      },
+      workspace: { path: "/work/overtchat", name: "overtchat" },
+      sessions: [
+        {
+          providerSessionId: "native",
+          providerSessionPath: "/opencode/native",
+          name: "OpenCode work",
+          firstMessage: "Implement it",
+          messageCount: 2,
+          createdAt: new Date(1_000),
+          modifiedAt: new Date(2_000),
+        },
+      ],
+    });
+
+    expect(saved.connection.provider).toBe("opencode");
+    expect(saved.workspace.path).toBe("/work/overtchat");
+    expect(saved.sessions).toHaveLength(1);
+    await expect(repository.listAgentConnections("alice")).resolves.toEqual([
+      expect.objectContaining({
+        provider: "opencode",
+        workspaces: [
+          expect.objectContaining({
+            path: "/work/overtchat",
+            sessions: [expect.objectContaining({ providerSessionId: "native" })],
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it("returns the nested connection, workspace, and session hierarchy", async () => {
     const owned = createAliceConnection();
     const workspace = await repository.createAgentWorkspace(

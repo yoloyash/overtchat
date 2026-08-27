@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
 } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
@@ -26,11 +26,10 @@ vi.mock("@/lib/db/hostConnectors", () => ({
 vi.mock("@/lib/db/agentConnections", () => ({
   listActiveAgentSessionIds: mocks.listActiveSessions,
 }));
-
 import { GET } from "./route";
 
 function request(
-  version = HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+  version = HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   protocol = HOST_CONNECTOR_PROTOCOL_VERSION,
   options: { buildVersion?: string; capabilities?: string } = {},
 ): Request {
@@ -51,7 +50,7 @@ function request(
 describe("Host Connector command channel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.authenticate.mockReturnValue({ id: "connector" });
+    mocks.authenticate.mockReturnValue({ id: "connector", userId: "admin" });
     mocks.register.mockImplementation(
       (
         _connectorId: string,
@@ -69,7 +68,7 @@ describe("Host Connector command channel", () => {
     mocks.listActiveSessions.mockResolvedValue(["session"]);
   });
 
-  it("opens for the protocol-1 compatibility baseline", async () => {
+  it("opens for the current protocol compatibility baseline", async () => {
     const response = await GET(request());
 
     expect(response.status).toBe(200);
@@ -84,7 +83,7 @@ describe("Host Connector command channel", () => {
     );
     expect(mocks.touch).toHaveBeenCalledWith(
       "connector",
-      HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+      HOST_CONNECTOR_COMPATIBILITY_RELEASE,
     );
     await reader.cancel();
     expect(mocks.unregister).toHaveBeenCalled();
@@ -93,7 +92,7 @@ describe("Host Connector command channel", () => {
   it("uses the build version for display without gating the wire", async () => {
     const response = await GET(
       request(
-        HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+        HOST_CONNECTOR_COMPATIBILITY_RELEASE,
         HOST_CONNECTOR_PROTOCOL_VERSION,
         {
           buildVersion: "9.9.9",
@@ -119,12 +118,12 @@ describe("Host Connector command channel", () => {
     await expect(wrongRelease.json()).resolves.toMatchObject({
       error: expect.stringContaining("overtchat update"),
       code: "unsupported_connector_protocol",
-      compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+      compatibilityRelease: HOST_CONNECTOR_COMPATIBILITY_RELEASE,
     });
 
     const wrongProtocol = await GET(
       request(
-        HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+        HOST_CONNECTOR_COMPATIBILITY_RELEASE,
         HOST_CONNECTOR_PROTOCOL_VERSION + 1,
       ),
     );

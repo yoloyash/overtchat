@@ -4,12 +4,16 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getOwnedAgentWorkspace: vi.fn(),
   daemonRequest: vi.fn(),
+  resolveProvider: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/auth/server", () => ({ auth: { api: { getSession: mocks.getSession } } }));
 vi.mock("@/lib/db/agentConnections", () => ({ getOwnedAgentWorkspace: mocks.getOwnedAgentWorkspace }));
 vi.mock("@/lib/agents/connector/broker", () => ({ hostConnectorBroker: { request: mocks.daemonRequest } }));
+vi.mock("@/lib/agents/connector/providerSnapshots", () => ({
+  resolveAgentWorkspaceProvider: mocks.resolveProvider,
+}));
 
 import { GET } from "./route";
 
@@ -30,6 +34,17 @@ describe("agent workspace catalog route", () => {
         detectedVersion: "17.2.15",
       },
       workspace: { id: "workspace", path: "/workspace" },
+    });
+    mocks.resolveProvider.mockResolvedValue({
+      descriptor: {
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider: "omp",
+        target: { transport: "local", shellMode: "interactive" },
+        executable: "omp",
+        cwd: "/workspace",
+        detectedVersion: "17.2.15",
+      },
     });
     mocks.daemonRequest.mockResolvedValue({
       provider: "omp",
@@ -67,9 +82,61 @@ describe("agent workspace catalog route", () => {
         detectedVersion: "17.2.15",
       },
     });
+    expect(mocks.resolveProvider).toHaveBeenCalledWith({
+      userId: "owner",
+      anchorWorkspaceId: "workspace",
+      provider: "omp",
+    });
     await expect(response.json()).resolves.toMatchObject({
       provider: "omp",
       defaultModeId: "full",
+    });
+  });
+
+  it("resolves a detected provider through an existing workspace anchor", async () => {
+    mocks.resolveProvider.mockResolvedValueOnce({
+      descriptor: {
+        connectionId: "virtual-connection",
+        workspaceId: "virtual-workspace",
+        provider: "opencode",
+        target: { transport: "local", shellMode: "interactive" },
+        executable: "opencode",
+        cwd: "/workspace",
+        detectedVersion: "1.2.3",
+      },
+    });
+    mocks.daemonRequest.mockResolvedValueOnce({
+      provider: "opencode",
+      models: [
+        {
+          id: "openai/gpt-5",
+          label: "GPT-5",
+          provider: "opencode",
+          api: "openai-responses",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: null,
+          maxTokens: null,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      modes: [],
+      defaultModeId: null,
+    });
+
+    const response = await GET(
+      new Request(
+        "http://server.test/api/agent-workspaces/workspace/catalog?provider=opencode",
+      ),
+      context,
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveProvider).toHaveBeenCalledWith({
+      userId: "owner",
+      anchorWorkspaceId: "workspace",
+      provider: "opencode",
     });
   });
 

@@ -7,6 +7,7 @@ import {
   listSshHosts,
   parseSshExpansion,
   sshSpawnArgs,
+  sshTunnelArgs,
 } from "./ssh.js";
 
 const temporaryPaths: string[] = [];
@@ -80,6 +81,28 @@ describe("SSH process launching", () => {
         shellMode: "interactive",
       }),
     ).toThrow("Invalid SSH host alias");
+  });
+
+  it("opens a loopback-only TCP forwarding tunnel", () => {
+    expect(sshTunnelArgs("macbook", 41234, 4096)).toEqual([
+      "-N",
+      "-T",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=10",
+      "-o",
+      "ExitOnForwardFailure=yes",
+      "-L",
+      "127.0.0.1:41234:127.0.0.1:4096",
+      "macbook",
+    ]);
+    expect(() => sshTunnelArgs("developer@host", 41234, 4096)).toThrow(
+      "Invalid SSH host alias",
+    );
+    expect(() => sshTunnelArgs("macbook", 0, 4096)).toThrow(
+      "Invalid SSH tunnel port",
+    );
   });
 });
 

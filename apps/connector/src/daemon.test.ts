@@ -9,6 +9,7 @@ import type {
   HostConnectorCommand,
   HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
+import { HOST_CONNECTOR_PROTOCOL_VERSION } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
   configureProcessSpawner: vi.fn(),
@@ -504,7 +505,7 @@ describe("connector daemon command identity", () => {
       connectionEpoch: "connection-1",
       activeSessionIds: ["session"],
       serverInfo: {
-        protocolVersion: 1,
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
         capabilities: ["session-sync-v1"],
       },
     });
@@ -566,7 +567,7 @@ describe("connector daemon command identity", () => {
       connectionEpoch: "connection-1",
       activeSessionIds: ["session"],
       serverInfo: {
-        protocolVersion: 1,
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
         capabilities: [],
       },
     });
@@ -625,7 +626,10 @@ describe("connector daemon command identity", () => {
       type: "sync",
       connectionEpoch: "connection-1",
       activeSessionIds: ["session"],
-      serverInfo: { protocolVersion: 1, capabilities: ["session-sync-v1"] },
+      serverInfo: {
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+        capabilities: ["session-sync-v1"],
+      },
     });
     await daemon.handle({
       type: "request",
@@ -988,7 +992,10 @@ describe("connector daemon command identity", () => {
       type: "sync",
       connectionEpoch: "connection-1",
       activeSessionIds: ["session"],
-      serverInfo: { protocolVersion: 1, capabilities: ["session-sync-v1"] },
+      serverInfo: {
+        protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+        capabilities: ["session-sync-v1"],
+      },
     });
     await daemon.handle({
       type: "request",

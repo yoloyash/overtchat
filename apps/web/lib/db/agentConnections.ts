@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, notInArray, sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentConnections,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/db/schema";
 import type {
   AgentConnectionListItem,
+  AgentDiscoveryTarget,
   AgentProviderSessionMetadata,
   AgentProviderId,
   AgentSessionLaunchConfig,
@@ -50,6 +51,20 @@ export type NewAgentConnection = {
     executable: string;
     shellMode: ConnectorShellMode;
     detectedVersion: string;
+  };
+};
+
+export type AgentWorkspaceInstallation = NewAgentConnection & {
+  workspace: {
+    path: string;
+    name: string;
+  };
+  sessions: ProviderSessionMetadata[];
+  ids?: {
+    hostId: string;
+    connectionId: string;
+    workspaceId: string;
+    sessionIds?: Record<string, string>;
   };
 };
 
@@ -195,6 +210,64 @@ export async function getOwnedAgentWorkspace(
   return row ?? null;
 }
 
+export async function findOwnedAgentWorkspaceForTargetProvider(input: {
+  userId: string;
+  target: AgentDiscoveryTarget;
+  provider: AgentProviderId;
+  path: string;
+}): Promise<OwnedAgentWorkspace | null> {
+  const [row] = await db
+    .select({
+      host: agentHosts,
+      connection: agentConnections,
+      workspace: agentWorkspaces,
+    })
+    .from(agentWorkspaces)
+    .innerJoin(
+      agentConnections,
+      eq(agentWorkspaces.connectionId, agentConnections.id),
+    )
+    .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+    .where(
+      and(
+        eq(agentHosts.userId, input.userId),
+        eq(agentHosts.connectorId, input.target.connectorId),
+        eq(agentHosts.transport, input.target.transport),
+        input.target.transport === "local"
+          ? isNull(agentHosts.sshAlias)
+          : eq(agentHosts.sshAlias, input.target.sshAlias),
+        eq(agentConnections.provider, input.provider),
+        eq(agentWorkspaces.path, input.path),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function findOwnedAgentConnectionForTargetProvider(input: {
+  userId: string;
+  target: AgentDiscoveryTarget;
+  provider: AgentProviderId;
+}): Promise<OwnedAgentConnection | null> {
+  const [row] = await db
+    .select({ host: agentHosts, connection: agentConnections })
+    .from(agentConnections)
+    .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+    .where(
+      and(
+        eq(agentHosts.userId, input.userId),
+        eq(agentHosts.connectorId, input.target.connectorId),
+        eq(agentHosts.transport, input.target.transport),
+        input.target.transport === "local"
+          ? isNull(agentHosts.sshAlias)
+          : eq(agentHosts.sshAlias, input.target.sshAlias),
+        eq(agentConnections.provider, input.provider),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
 export async function getOwnedAgentSession(
   id: string,
   userId: string,
@@ -225,34 +298,93 @@ export function createAgentConnection(
   input: NewAgentConnection,
 ): OwnedAgentConnection {
   return db.transaction((tx) => {
-    const hostId = crypto.randomUUID();
-    const [host] = tx
-      .insert(agentHosts)
-      .values({
-        id: hostId,
-        userId: input.userId,
-        ...input.host,
-      })
-      .returning()
-      .all();
-    const [connection] = tx
-      .insert(agentConnections)
-      .values({
-        id: crypto.randomUUID(),
-        hostId,
-        provider: input.connection.provider,
+    return upsertAgentConnectionRecord(tx, input);
+  });
+}
+
+type AgentDbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+function agentHostTargetCondition(input: NewAgentConnection) {
+  return and(
+    eq(agentHosts.userId, input.userId),
+    eq(agentHosts.connectorId, input.host.connectorId),
+    eq(agentHosts.transport, input.host.transport),
+    input.host.transport === "local"
+      ? isNull(agentHosts.sshAlias)
+      : eq(agentHosts.sshAlias, input.host.sshAlias ?? ""),
+  );
+}
+
+function upsertAgentConnectionRecord(
+  tx: AgentDbTransaction,
+  input: NewAgentConnection,
+  ids?: { hostId: string; connectionId: string },
+): OwnedAgentConnection {
+  const existing = tx
+    .select({ host: agentHosts, connection: agentConnections })
+    .from(agentConnections)
+    .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+    .where(
+      and(
+        agentHostTargetCondition(input),
+        eq(agentConnections.provider, input.connection.provider),
+      ),
+    )
+    .limit(1)
+    .get();
+  if (existing) {
+    const host =
+      existing.host.name === input.host.name
+        ? existing.host
+        : tx
+            .update(agentHosts)
+            .set({ name: input.host.name, updatedAt: new Date() })
+            .where(eq(agentHosts.id, existing.host.id))
+            .returning()
+            .get();
+    const connection = tx
+      .update(agentConnections)
+      .set({
         executable: input.connection.executable,
         shellMode: input.connection.shellMode,
         detectedVersion: input.connection.detectedVersion,
         lastValidatedAt: new Date(),
+        updatedAt: new Date(),
       })
+      .where(eq(agentConnections.id, existing.connection.id))
       .returning()
-      .all();
+      .get();
     if (!host || !connection) {
-      throw new Error("Failed to create agent connection.");
+      throw new Error("Failed to update the agent connection backing record.");
     }
     return { host, connection };
-  });
+  }
+
+  const host = tx
+    .insert(agentHosts)
+    .values({
+      id: ids?.hostId ?? crypto.randomUUID(),
+      userId: input.userId,
+      ...input.host,
+    })
+    .returning()
+    .get();
+  if (!host) throw new Error("Failed to save the agent host.");
+  const connection = tx
+    .insert(agentConnections)
+    .values({
+      id: ids?.connectionId ?? crypto.randomUUID(),
+      hostId: host.id,
+      provider: input.connection.provider,
+      executable: input.connection.executable,
+      shellMode: input.connection.shellMode,
+      detectedVersion: input.connection.detectedVersion,
+      lastValidatedAt: new Date(),
+    })
+    .returning()
+    .get();
+  if (!connection) throw new Error("Failed to save the agent connection.");
+  return { host, connection };
 }
 
 export async function touchAgentConnectionValidation(
@@ -263,15 +395,34 @@ export async function touchAgentConnectionValidation(
 ): Promise<boolean> {
   const owned = await getOwnedAgentConnection(id, userId);
   if (!owned) return false;
+  return updateAgentConnectionRuntime({
+    id,
+    userId,
+    executable: owned.connection.executable,
+    detectedVersion,
+    shellMode,
+  });
+}
+
+export async function updateAgentConnectionRuntime(input: {
+  id: string;
+  userId: string;
+  executable: string;
+  detectedVersion: string;
+  shellMode: ConnectorShellMode;
+}): Promise<boolean> {
+  const owned = await getOwnedAgentConnection(input.id, input.userId);
+  if (!owned) return false;
   const updated = await db
     .update(agentConnections)
     .set({
-      detectedVersion,
-      shellMode,
+      executable: input.executable,
+      detectedVersion: input.detectedVersion,
+      shellMode: input.shellMode,
       lastValidatedAt: new Date(),
       updatedAt: new Date(),
     })
-    .where(eq(agentConnections.id, id))
+    .where(eq(agentConnections.id, input.id))
     .returning({ id: agentConnections.id });
   return updated.length > 0;
 }
@@ -311,6 +462,56 @@ export async function createAgentWorkspace(
   return row ?? null;
 }
 
+export function saveAgentWorkspaceInstallation(
+  input: AgentWorkspaceInstallation,
+): OwnedAgentConnection & {
+  workspace: AgentWorkspaceRow;
+  sessions: AgentSessionRow[];
+} {
+  return db.transaction((tx) => {
+    const owned = upsertAgentConnectionRecord(tx, input, input.ids);
+    const existingWorkspace = tx
+      .select()
+      .from(agentWorkspaces)
+      .where(
+        and(
+          eq(agentWorkspaces.connectionId, owned.connection.id),
+          eq(agentWorkspaces.path, input.workspace.path),
+        ),
+      )
+      .limit(1)
+      .get();
+    const workspace = existingWorkspace
+      ? tx
+          .update(agentWorkspaces)
+          .set({ name: input.workspace.name, updatedAt: new Date() })
+          .where(eq(agentWorkspaces.id, existingWorkspace.id))
+          .returning()
+          .get()
+      : tx
+          .insert(agentWorkspaces)
+          .values({
+            id: input.ids?.workspaceId ?? crypto.randomUUID(),
+            connectionId: owned.connection.id,
+            path: input.workspace.path,
+            name: input.workspace.name,
+          })
+          .returning()
+          .get();
+    if (!workspace) throw new Error("Failed to save the agent workspace.");
+    return {
+      ...owned,
+      workspace,
+      sessions: syncAgentWorkspaceSessionsInTransaction(
+        tx,
+        workspace.id,
+        input.sessions,
+        input.ids?.sessionIds,
+      ),
+    };
+  });
+}
+
 export async function deleteAgentWorkspace(
   id: string,
   userId: string,
@@ -328,82 +529,91 @@ export function syncAgentWorkspaceSessions(
   workspaceId: string,
   sessions: ProviderSessionMetadata[],
 ): AgentSessionRow[] {
-  return db.transaction((tx) => {
-    const now = new Date();
-    const paths = sessions.map((session) => session.providerSessionPath);
-    if (paths.length === 0) {
-      tx.delete(agentSessions)
-        .where(eq(agentSessions.workspaceId, workspaceId))
-        .run();
-      return [];
-    }
+  return db.transaction((tx) =>
+    syncAgentWorkspaceSessionsInTransaction(tx, workspaceId, sessions),
+  );
+}
 
-    for (const session of sessions) {
-      const initialTitle = resolveInitialAgentSessionTitle(session);
-      tx.insert(agentSessions)
-        .values({
-          id: crypto.randomUUID(),
-          workspaceId,
+function syncAgentWorkspaceSessionsInTransaction(
+  tx: AgentDbTransaction,
+  workspaceId: string,
+  sessions: ProviderSessionMetadata[],
+  sessionIds: Record<string, string> = {},
+): AgentSessionRow[] {
+  const now = new Date();
+  const paths = sessions.map((session) => session.providerSessionPath);
+  if (paths.length === 0) {
+    tx.delete(agentSessions)
+      .where(eq(agentSessions.workspaceId, workspaceId))
+      .run();
+    return [];
+  }
+
+  for (const session of sessions) {
+    const initialTitle = resolveInitialAgentSessionTitle(session);
+    tx.insert(agentSessions)
+      .values({
+        id: sessionIds[session.providerSessionPath] ?? crypto.randomUUID(),
+        workspaceId,
+        providerSessionId: session.providerSessionId,
+        providerSessionPath: session.providerSessionPath,
+        name: initialTitle,
+        firstMessage: session.firstMessage,
+        messageCount: session.messageCount,
+        providerCreatedAt: session.createdAt,
+        providerModifiedAt: session.modifiedAt,
+        model: session.launchConfig?.model,
+        thinkingOptionId: session.launchConfig?.thinkingOptionId,
+        modeId: session.launchConfig?.modeId,
+        lastSyncedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          agentSessions.workspaceId,
+          agentSessions.providerSessionPath,
+        ],
+        set: {
           providerSessionId: session.providerSessionId,
-          providerSessionPath: session.providerSessionPath,
-          name: initialTitle,
+          ...(initialTitle
+            ? {
+                name: sql`coalesce(nullif(trim(${agentSessions.name}), ''), ${initialTitle})`,
+              }
+            : {}),
           firstMessage: session.firstMessage,
           messageCount: session.messageCount,
           providerCreatedAt: session.createdAt,
           providerModifiedAt: session.modifiedAt,
-          model: session.launchConfig?.model,
-          thinkingOptionId: session.launchConfig?.thinkingOptionId,
-          modeId: session.launchConfig?.modeId,
+          ...(session.launchConfig?.model
+            ? { model: session.launchConfig.model }
+            : {}),
+          ...(session.launchConfig?.thinkingOptionId
+            ? { thinkingOptionId: session.launchConfig.thinkingOptionId }
+            : {}),
+          ...(session.launchConfig?.modeId
+            ? { modeId: session.launchConfig.modeId }
+            : {}),
           lastSyncedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            agentSessions.workspaceId,
-            agentSessions.providerSessionPath,
-          ],
-          set: {
-            providerSessionId: session.providerSessionId,
-            ...(initialTitle
-              ? {
-                  name: sql`coalesce(nullif(trim(${agentSessions.name}), ''), ${initialTitle})`,
-                }
-              : {}),
-            firstMessage: session.firstMessage,
-            messageCount: session.messageCount,
-            providerCreatedAt: session.createdAt,
-            providerModifiedAt: session.modifiedAt,
-            ...(session.launchConfig?.model
-              ? { model: session.launchConfig.model }
-              : {}),
-            ...(session.launchConfig?.thinkingOptionId
-              ? { thinkingOptionId: session.launchConfig.thinkingOptionId }
-              : {}),
-            ...(session.launchConfig?.modeId
-              ? { modeId: session.launchConfig.modeId }
-              : {}),
-            lastSyncedAt: now,
-            updatedAt: now,
-          },
-        })
-        .run();
-    }
-
-    tx.delete(agentSessions)
-      .where(
-        and(
-          eq(agentSessions.workspaceId, workspaceId),
-          notInArray(agentSessions.providerSessionPath, paths),
-        ),
-      )
+          updatedAt: now,
+        },
+      })
       .run();
+  }
 
-    return tx
-      .select()
-      .from(agentSessions)
-      .where(eq(agentSessions.workspaceId, workspaceId))
-      .orderBy(desc(agentSessions.providerModifiedAt))
-      .all();
-  });
+  tx.delete(agentSessions)
+    .where(
+      and(
+        eq(agentSessions.workspaceId, workspaceId),
+        notInArray(agentSessions.providerSessionPath, paths),
+      ),
+    )
+    .run();
+
+  return tx
+    .select()
+    .from(agentSessions)
+    .where(eq(agentSessions.workspaceId, workspaceId))
+    .orderBy(desc(agentSessions.providerModifiedAt))
+    .all();
 }
 
 export async function upsertAgentSession(

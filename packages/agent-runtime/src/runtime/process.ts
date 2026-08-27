@@ -39,8 +39,43 @@ export type ProcessSpawner = (
 
 let configuredSpawner: ProcessSpawner | undefined;
 
+export type AgentTcpTunnel = {
+  url: string;
+  close(): Promise<void>;
+};
+
+export type TcpTunnelOpener = (
+  target: Extract<HostTarget, { transport: "ssh" }>,
+  remotePort: number,
+) => Promise<AgentTcpTunnel>;
+
+let configuredTcpTunnelOpener: TcpTunnelOpener | undefined;
+
 export function configureProcessSpawner(spawner: ProcessSpawner): void {
   configuredSpawner = spawner;
+}
+
+export function configureTcpTunnelOpener(opener: TcpTunnelOpener): void {
+  configuredTcpTunnelOpener = opener;
+}
+
+export function openTcpTunnel(
+  target: HostTarget,
+  remotePort: number,
+): Promise<AgentTcpTunnel> {
+  if (!Number.isInteger(remotePort) || remotePort < 1 || remotePort > 65_535) {
+    return Promise.reject(new Error("Invalid remote TCP port."));
+  }
+  if (target.transport === "local") {
+    return Promise.resolve({
+      url: `http://127.0.0.1:${remotePort}`,
+      close: async () => {},
+    });
+  }
+  if (!configuredTcpTunnelOpener) {
+    return Promise.reject(new Error("The agent TCP tunnel opener is not configured."));
+  }
+  return configuredTcpTunnelOpener(target, remotePort);
 }
 
 export function spawnOnHost(
