@@ -37,13 +37,26 @@ describe("Agent Connection discovery route", () => {
       user: { id: "admin", role: "admin" },
     });
     mocks.getOwnedConnector.mockReturnValue({ id: "connector" });
-    mocks.daemonRequest.mockResolvedValue([
-      {
-        provider: "omp",
-        executable: "/home/admin/.bun/bin/omp",
-        version: "17.2.10",
+    mocks.daemonRequest.mockResolvedValue({
+      target: {
+        connectorId: "connector",
+        transport: "ssh",
+        sshAlias: "macbook",
       },
-    ]);
+      providers: [
+        { provider: "pi", status: "unavailable" },
+        {
+          provider: "omp",
+          status: "ready",
+          executable: "/home/admin/.bun/bin/omp",
+          version: "17.2.10",
+          shellMode: "interactive",
+        },
+        { provider: "codex", status: "unavailable" },
+        { provider: "opencode", status: "unavailable" },
+      ],
+      refreshedAt: 123,
+    });
   });
 
   it("discovers agents through an owned connector and exact SSH alias", async () => {
@@ -57,11 +70,32 @@ describe("Agent Connection discovery route", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
+      snapshot: {
+        target: {
+          connectorId: "connector",
+          transport: "ssh",
+          sshAlias: "macbook",
+        },
+        providers: [
+          { provider: "pi", status: "unavailable" },
+          {
+            provider: "omp",
+            status: "ready",
+            executable: "/home/admin/.bun/bin/omp",
+            version: "17.2.10",
+            shellMode: "interactive",
+          },
+          { provider: "codex", status: "unavailable" },
+          { provider: "opencode", status: "unavailable" },
+        ],
+        refreshedAt: 123,
+      },
       installations: [
         {
           provider: "omp",
           executable: "/home/admin/.bun/bin/omp",
           version: "17.2.10",
+          shellMode: "interactive",
         },
       ],
     });
@@ -70,12 +104,13 @@ describe("Agent Connection discovery route", () => {
       "admin",
     );
     expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
-      type: "discover",
+      type: "provider_snapshot",
       target: {
         connectorId: "connector",
         transport: "ssh",
         sshAlias: "macbook",
       },
+      refresh: true,
     });
   });
 

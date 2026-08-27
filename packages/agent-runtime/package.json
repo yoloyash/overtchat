@@ -14,6 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "1.18.23",
     "@overtchat/agent-bridge": "*",
     "zod": "^4.4.3"
   },

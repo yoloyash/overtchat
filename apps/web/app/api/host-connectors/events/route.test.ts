@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
 } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
@@ -39,7 +39,7 @@ function request(
     headers: {
       "Content-Type": "application/json",
       "X-OvertChat-Connector-Version":
-        options.version ?? HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+        options.version ?? HOST_CONNECTOR_COMPATIBILITY_RELEASE,
       "X-OvertChat-Connector-Protocol": String(
         options.protocol ?? HOST_CONNECTOR_PROTOCOL_VERSION,
       ),
@@ -91,7 +91,7 @@ describe("Host Connector event route", () => {
     );
     expect(mocks.touch).toHaveBeenCalledWith(
       "connector",
-      HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+      HOST_CONNECTOR_COMPATIBILITY_RELEASE,
     );
   });
 
@@ -223,7 +223,7 @@ describe("Host Connector event route", () => {
     await expect(response.json()).resolves.toMatchObject({
       error: expect.stringContaining("overtchat update"),
       code: "unsupported_connector_protocol",
-      compatibilityRelease: HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE,
+      compatibilityRelease: HOST_CONNECTOR_COMPATIBILITY_RELEASE,
     });
     expect(mocks.acceptBatch).not.toHaveBeenCalled();
   });

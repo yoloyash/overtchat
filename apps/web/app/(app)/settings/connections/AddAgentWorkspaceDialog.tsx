@@ -203,6 +203,7 @@ export function AddAgentWorkspaceDialog({
         provider: customProvider,
         executable: customExecutable.trim(),
         version: "configured",
+        shellMode: "interactive",
       };
       const index = installations.findIndex(
         (installation) => installation.provider === customProvider,
@@ -216,7 +217,6 @@ export function AddAgentWorkspaceDialog({
       const result = await createMutation.mutateAsync({
         target,
         path: chosenPath,
-        connections,
         installations,
       });
       const providerCount = result.created + result.refreshed;

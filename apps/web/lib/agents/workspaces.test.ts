@@ -3,6 +3,7 @@ import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import {
   agentConnectionMatchesTarget,
   groupAgentWorkspaces,
+  projectAgentWorkspaceProviders,
 } from "./workspaces";
 
 function connection(
@@ -111,5 +112,39 @@ describe("agent workspace projection", () => {
         "omp",
       ),
     ).toBe(false);
+  });
+
+  it("projects a newly detected provider onto an existing workspace", () => {
+    const group = groupAgentWorkspaces([
+      connection("pi", "pi"),
+    ])[0]!;
+
+    const targets = projectAgentWorkspaceProviders(group, {
+      target: { connectorId: "connector", transport: "local" },
+      providers: [
+        {
+          provider: "pi",
+          status: "ready",
+          executable: "pi",
+          version: "1",
+          shellMode: "interactive",
+        },
+        { provider: "omp", status: "unavailable" },
+        { provider: "codex", status: "unavailable" },
+        {
+          provider: "opencode",
+          status: "ready",
+          executable: "opencode",
+          version: "2",
+          shellMode: "interactive",
+        },
+      ],
+      refreshedAt: 1,
+    });
+
+    expect(targets).toEqual([
+      { provider: "pi", workspace: group.targets[0]!.workspace },
+      { provider: "opencode", workspace: group.targets[0]!.workspace },
+    ]);
   });
 });

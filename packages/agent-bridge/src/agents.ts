@@ -3,7 +3,7 @@ import { z } from "zod";
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
 
-export const AGENT_PROVIDER_IDS = ["pi", "omp", "codex"] as const;
+export const AGENT_PROVIDER_IDS = ["pi", "omp", "codex", "opencode"] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
@@ -83,9 +83,50 @@ export const addAgentWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
 });
 
+export const detectedAgentInstallationSchema = z.object({
+  provider: z.enum(AGENT_PROVIDER_IDS),
+  executable: z.string().trim().min(1).max(500),
+  version: z.string().trim().min(1).max(120),
+  shellMode: z.enum(CONNECTOR_SHELL_MODES),
+});
+
+export const agentProviderSnapshotRequestSchema = z.object({
+  target: agentDiscoveryTargetSchema,
+  refresh: z.boolean().optional(),
+});
+
+export const createAgentWorkspaceSchema = z.object({
+  target: agentDiscoveryTargetSchema,
+  path: addAgentWorkspaceSchema.shape.path,
+  installations: z.array(detectedAgentInstallationSchema).optional(),
+});
+
+const agentProviderSnapshotEntrySchema = z.discriminatedUnion("status", [
+  detectedAgentInstallationSchema.extend({ status: z.literal("ready") }),
+  z.object({
+    provider: z.enum(AGENT_PROVIDER_IDS),
+    status: z.literal("unavailable"),
+  }),
+]);
+
+export const agentProviderSnapshotSchema = z.object({
+  target: agentDiscoveryTargetSchema,
+  providers: z.array(agentProviderSnapshotEntrySchema).length(
+    AGENT_PROVIDER_IDS.length,
+  ),
+  refreshedAt: z.number().int().nonnegative(),
+});
+
 export type AddAgentWorkspaceInput = z.infer<
   typeof addAgentWorkspaceSchema
 >;
+export type AgentProviderSnapshotRequest = z.infer<
+  typeof agentProviderSnapshotRequestSchema
+>;
+export type AgentProviderSnapshot = z.infer<
+  typeof agentProviderSnapshotSchema
+>;
+export type AgentProviderSnapshotEntry = AgentProviderSnapshot["providers"][number];
 
 export type AgentSessionListItem = {
   id: string;
@@ -182,7 +223,7 @@ export type AgentModel = {
   contextWindow: number | null;
   maxTokens: number | null;
   thinkingOptions?: AgentSelectOption[];
-  defaultThinkingOptionId?: AgentThinkingLevel;
+  defaultThinkingOptionId?: string;
   cost: {
     input: number;
     output: number;
@@ -192,7 +233,7 @@ export type AgentModel = {
 };
 
 export type AgentSelectOption = {
-  id: AgentThinkingLevel;
+  id: string;
   label: string;
   description?: string;
   isDefault?: boolean;
@@ -201,7 +242,7 @@ export type AgentSelectOption = {
 export const agentSessionLaunchConfigSchema = z
   .object({
     model: z.string().trim().min(1).max(500).optional(),
-    thinkingOptionId: z.enum(AGENT_THINKING_LEVELS).optional(),
+    thinkingOptionId: z.string().trim().min(1).max(120).optional(),
     modeId: z.string().trim().min(1).max(120).optional(),
   })
   .strict();
@@ -238,6 +279,7 @@ export type DetectedAgentInstallation = {
   provider: AgentProviderId;
   executable: string;
   version: string;
+  shellMode: ConnectorShellMode;
 };
 
 export type AgentSshHostCandidate = {
@@ -329,7 +371,7 @@ export type AgentProviderCatalog = {
 };
 
 const agentSelectOptionSchema = z.object({
-  id: z.enum(AGENT_THINKING_LEVELS),
+  id: z.string().trim().min(1).max(120),
   label: z.string().min(1),
   description: z.string().optional(),
   isDefault: z.boolean().optional(),
@@ -354,7 +396,7 @@ const agentModelSchema = z.object({
   contextWindow: z.number().int().positive().nullable(),
   maxTokens: z.number().int().positive().nullable(),
   thinkingOptions: z.array(agentSelectOptionSchema).optional(),
-  defaultThinkingOptionId: z.enum(AGENT_THINKING_LEVELS).optional(),
+  defaultThinkingOptionId: z.string().trim().min(1).max(120).optional(),
   cost: z.object({
     input: z.number().nonnegative(),
     output: z.number().nonnegative(),
@@ -473,7 +515,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("set_thinking_level"),
-    level: z.enum(AGENT_THINKING_LEVELS),
+    level: z.string().trim().min(1).max(120),
   }),
   z.object({
     type: z.literal("set_collaboration_mode"),

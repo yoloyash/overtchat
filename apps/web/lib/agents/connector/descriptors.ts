@@ -1,12 +1,13 @@
 import "server-only";
-import type {
-  AgentDaemonSessionDescriptor,
-  AgentDaemonTarget,
-  AgentDaemonWorkspaceDescriptor,
-  AgentProviderSessionMetadata,
-  AgentProviderId,
-  AgentSessionLaunchConfig,
-  ConnectorShellMode,
+import {
+  agentSessionLaunchConfigSchema,
+  type AgentDaemonSessionDescriptor,
+  type AgentDaemonTarget,
+  type AgentDaemonWorkspaceDescriptor,
+  type AgentProviderSessionMetadata,
+  type AgentProviderId,
+  type AgentSessionLaunchConfig,
+  type ConnectorShellMode,
 } from "@overtchat/agent-bridge";
 import type {
   AgentHostRow,
@@ -78,6 +79,9 @@ export function parseProviderSessionMetadata(
   const name = Reflect.get(value, "name");
   const firstMessage = Reflect.get(value, "firstMessage");
   const messageCount = Reflect.get(value, "messageCount");
+  const launchConfig = agentSessionLaunchConfigSchema.safeParse(
+    Reflect.get(value, "launchConfig"),
+  );
   if (
     typeof providerSessionId !== "string" ||
     !providerSessionId ||
@@ -98,5 +102,6 @@ export function parseProviderSessionMetadata(
     messageCount: Number(messageCount),
     createdAt: optionalDate(Reflect.get(value, "createdAt")),
     modifiedAt: optionalDate(Reflect.get(value, "modifiedAt")),
+    ...(launchConfig.success ? { launchConfig: launchConfig.data } : {}),
   };
 }

@@ -104,7 +104,9 @@ async function discoverAgentInstallationsInMode(
           args: ["--version"],
         });
         const version = parseAgentVersion(versionResult.stdout);
-        return version ? { provider: id, executable, version } : null;
+        return version
+          ? { provider: id, executable, version, shellMode }
+          : null;
       } catch {
         return null;
       }

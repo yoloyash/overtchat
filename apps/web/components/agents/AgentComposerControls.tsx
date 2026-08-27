@@ -22,7 +22,6 @@ import type {
   AgentMode,
   AgentModel,
   AgentSelectOption,
-  AgentThinkingLevel,
 } from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { modelIconForModel } from "@/lib/providers/catalog";
@@ -32,7 +31,7 @@ export interface AgentComposerControlsProps {
   providerLabel: string;
   models: AgentModel[];
   currentModel: { provider: string; id: string } | null;
-  thinkingLevel: AgentThinkingLevel | null;
+  thinkingLevel: string | null;
   thinkingOptions: AgentSelectOption[];
   collaborationMode: AgentCollaborationMode;
   collaborationModes: AgentCollaborationMode[];
@@ -42,7 +41,7 @@ export interface AgentComposerControlsProps {
   modes: AgentMode[];
   disabled: boolean;
   onSelectModel: (model: AgentModel) => void;
-  onSelectThinking: (level: AgentThinkingLevel) => void;
+  onSelectThinking: (level: string) => void;
   onSelectCollaborationMode: (mode: AgentCollaborationMode) => void;
   onToggleFastMode: (enabled: boolean) => void;
   onSelectMode: (modeId: string) => void;
@@ -470,10 +469,12 @@ function iconForModel(model: AgentModel | undefined) {
   );
 }
 
-function thinkingLabel(level: AgentThinkingLevel): string {
+function thinkingLabel(level: string): string {
   return level === "off"
     ? "Off"
     : level === "xhigh"
       ? "Extra high"
-      : level[0].toUpperCase() + level.slice(1);
+      : level
+          .replace(/[-_]+/gu, " ")
+          .replace(/\b\w/gu, (letter) => letter.toUpperCase());
 }

@@ -50,6 +50,32 @@ export function sshSpawnArgs(
   ];
 }
 
+export function sshTunnelArgs(
+  alias: string,
+  localPort: number,
+  remotePort: number,
+): string[] {
+  if (!SAFE_ALIAS.test(alias)) throw new Error("Invalid SSH host alias.");
+  for (const port of [localPort, remotePort]) {
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+      throw new Error("Invalid SSH tunnel port.");
+    }
+  }
+  return [
+    "-N",
+    "-T",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "ExitOnForwardFailure=yes",
+    "-L",
+    `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`,
+    alias,
+  ];
+}
+
 function stripComment(line: string): string {
   let quote: "'" | '"' | null = null;
   for (let index = 0; index < line.length; index++) {

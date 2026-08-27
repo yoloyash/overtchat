@@ -79,8 +79,8 @@ describe("agent sessions in the sidebar", () => {
       id: "connection",
       provider: "pi",
       executable: "pi",
-      detectedVersion: null,
-      lastValidatedAt: null,
+    detectedVersion: null,
+    lastValidatedAt: null,
       host: {
         id: "host",
         connectorId: "connector",
@@ -110,8 +110,8 @@ describe("agent sessions in the sidebar", () => {
       id: "connection",
       provider: "codex",
       executable: "codex",
-      detectedVersion: null,
-      lastValidatedAt: null,
+    detectedVersion: null,
+    lastValidatedAt: null,
       host: {
         id: "host",
         connectorId: "connector",

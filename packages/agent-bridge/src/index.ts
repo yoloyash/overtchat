@@ -19,14 +19,13 @@ import {
   agentSessionLaunchConfigSchema,
 } from "./agents";
 
-export const HOST_CONNECTOR_PROTOCOL_VERSION = 1;
+export const HOST_CONNECTOR_PROTOCOL_VERSION = 2;
 /**
- * Protocol 1 was accidentally reused for two incompatible connector designs.
- * Release 0.7.0 is the compatibility baseline for the current agent-daemon
- * wire shape and remains stable even when the connector build version changes.
+ * Release 0.8.0 is the compatibility baseline for protocol 2 and remains
+ * stable when connector build versions change without changing the wire shape.
  */
-export const HOST_CONNECTOR_V1_COMPATIBILITY_RELEASE = "0.7.0";
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.7.0";
+export const HOST_CONNECTOR_COMPATIBILITY_RELEASE = "0.8.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.8.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
@@ -37,7 +36,7 @@ export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
 
 export type HostConnectorServerInfo = {
-  protocolVersion: 1;
+  protocolVersion: typeof HOST_CONNECTOR_PROTOCOL_VERSION;
   capabilities: string[];
 };
 
@@ -85,7 +84,11 @@ export type AgentSessionDirectoryEntry = {
 
 export type AgentDaemonRequest =
   | { type: "list_ssh_hosts" }
-  | { type: "discover"; target: AgentDiscoveryTarget }
+  | {
+      type: "provider_snapshot";
+      target: AgentDiscoveryTarget;
+      refresh?: boolean;
+    }
   | { type: "probe"; draft: AgentConnectionDraft }
   | {
       type: "list_sessions";
@@ -180,7 +183,7 @@ export type HostConnectorEvent = {
 };
 
 export type HostConnectorEventBatch = {
-  protocolVersion: 1;
+  protocolVersion: typeof HOST_CONNECTOR_PROTOCOL_VERSION;
   connectorEpoch: string;
   events: HostConnectorEvent[];
 };
@@ -295,8 +298,11 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
   switch (value.type) {
     case "list_ssh_hosts":
       return true;
-    case "discover":
-      return agentDiscoveryTargetSchema.safeParse(value.target).success;
+    case "provider_snapshot":
+      return (
+        agentDiscoveryTargetSchema.safeParse(value.target).success &&
+        (value.refresh === undefined || typeof value.refresh === "boolean")
+      );
     case "probe":
       return agentConnectionDraftSchema.safeParse(value.draft).success;
     case "list_sessions":

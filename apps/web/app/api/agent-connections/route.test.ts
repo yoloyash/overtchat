@@ -106,22 +106,23 @@ describe("Agent Connections route", () => {
       host: { id: "host" },
       connection: { id: "connection" },
     });
-    const connection = {
-      id: "connection",
-      provider: "omp",
-      executable: "/Users/yash/.bun/bin/omp",
-      detectedVersion: "17.2.11",
-      lastValidatedAt: Date.now(),
-      host: {
-        id: "host",
-        connectorId: "connector",
-        name: "macbook",
-        transport: "ssh",
-        sshAlias: "macbook",
+    mocks.listAgentConnections.mockResolvedValue([
+      {
+        id: "connection",
+        provider: "omp",
+        executable: "/Users/yash/.bun/bin/omp",
+        detectedVersion: "17.2.11",
+        lastValidatedAt: Date.now(),
+        host: {
+          id: "host",
+          connectorId: "connector",
+          name: "macbook",
+          transport: "ssh",
+          sshAlias: "macbook",
+        },
+        workspaces: [],
       },
-      workspaces: [],
-    };
-    mocks.listAgentConnections.mockResolvedValue([connection]);
+    ]);
 
     const response = await POST(
       request("POST", {
@@ -146,4 +147,5 @@ describe("Agent Connections route", () => {
       }),
     );
   });
+
 });

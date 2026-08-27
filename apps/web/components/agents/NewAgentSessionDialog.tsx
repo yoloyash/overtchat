@@ -1,17 +1,13 @@
 "use client";
 
-import Image, { type StaticImageData } from "next/image";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Check, Loader2 } from "lucide-react";
-import codexIcon from "@/assets/agent-providers/codex.png";
-import ompIcon from "@/assets/agent-providers/omp.svg";
-import piIcon from "@/assets/agent-providers/pi.svg";
 import type {
   AgentModel,
   AgentProviderId,
   AgentSessionLaunchConfig,
-  AgentThinkingLevel,
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +22,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { useSidebar } from "@/components/sidebar-context";
 import { motionClasses } from "@/lib/motion";
+import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
 import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -54,15 +51,6 @@ function defaultThinking(model: AgentModel | null): string {
   );
 }
 
-const PROVIDER_ICONS: Record<
-  AgentProviderId,
-  { icon: StaticImageData; darkSurface?: boolean }
-> = {
-  pi: { icon: piIcon },
-  omp: { icon: ompIcon, darkSurface: true },
-  codex: { icon: codexIcon, darkSurface: true },
-};
-
 export function NewAgentSessionDialog({
   open,
   onOpenChange,
@@ -80,16 +68,19 @@ export function NewAgentSessionDialog({
 }) {
   const router = useRouter();
   const { closeMobile } = useSidebar();
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState<AgentProviderId | "">(
+    "",
+  );
   const selectedTarget =
     targets.length === 1
       ? targets[0]
-      : targets.find((target) => target.workspace.id === selectedWorkspaceId);
+      : targets.find((target) => target.provider === selectedProvider);
   const workspace = selectedTarget?.workspace ?? targets[0]!.workspace;
   const provider = selectedTarget?.provider;
   const providerLabel = selectedTarget?.providerLabel;
   const catalog = useAgentWorkspaceCatalog(
     selectedTarget?.workspace.id ?? null,
+    selectedTarget?.provider ?? null,
     open && selectedTarget !== undefined,
   );
   const createSession = useCreateAgentSession();
@@ -102,7 +93,7 @@ export function NewAgentSessionDialog({
     [storedPreferences],
   );
   const [modelId, setModelId] = useState("");
-  const [thinkingOptionId, setThinkingOptionId] = useState<AgentThinkingLevel | "">("");
+  const [thinkingOptionId, setThinkingOptionId] = useState("");
   const [modeId, setModeId] = useState("");
   const providerPreferences = provider
     ? preferences.providerPreferences?.[provider]
@@ -128,9 +119,7 @@ export function NewAgentSessionDialog({
       (option) => option.id === thinkingOptionId,
     )
       ? thinkingOptionId
-      : ((preferredThinking ?? defaultThinking(selectedModel)) as
-          | AgentThinkingLevel
-          | "");
+      : (preferredThinking ?? defaultThinking(selectedModel));
   const preferredMode = catalog.data?.modes.find(
     (mode) => mode.id === providerPreferences?.mode,
   )?.id;
@@ -160,7 +149,7 @@ export function NewAgentSessionDialog({
         ? remembered!
         : defaultThinking(model);
     setModelId(model.id);
-    setThinkingOptionId(thinking as AgentThinkingLevel | "");
+    setThinkingOptionId(thinking);
     updateProviderPreferences({ model: model.id });
   }
 
@@ -194,6 +183,7 @@ export function NewAgentSessionDialog({
     try {
       const id = await createSession.mutateAsync({
         workspaceId: selectedTarget.workspace.id,
+        provider,
         launchConfig,
       });
       closeDialog();
@@ -213,15 +203,15 @@ export function NewAgentSessionDialog({
   const loading = catalog.isFetching && !catalog.data;
   const error = catalog.error instanceof Error ? catalog.error.message : null;
 
-  function selectAgent(workspaceId: string) {
-    setSelectedWorkspaceId(workspaceId);
+  function selectAgent(nextProvider: AgentProviderId) {
+    setSelectedProvider(nextProvider);
     setModelId("");
     setThinkingOptionId("");
     setModeId("");
   }
 
   function closeDialog() {
-    setSelectedWorkspaceId("");
+    setSelectedProvider("");
     setModelId("");
     setThinkingOptionId("");
     setModeId("");
@@ -262,15 +252,15 @@ export function NewAgentSessionDialog({
               <Label>{targets.length > 1 ? "Choose an agent" : "Agent"}</Label>
               <div className="grid gap-2 sm:grid-cols-2">
                 {targets.map((target) => {
-                  const selected = target.workspace.id === selectedTarget?.workspace.id;
-                  const icon = PROVIDER_ICONS[target.provider];
+                  const selected = target.provider === selectedTarget?.provider;
+                  const icon = AGENT_PROVIDER_VISUALS[target.provider];
                   return (
                     <button
-                      key={target.workspace.id}
+                      key={target.provider}
                       type="button"
                       aria-pressed={selected}
                       aria-label={`Select ${target.providerLabel}`}
-                      onClick={() => selectAgent(target.workspace.id)}
+                      onClick={() => selectAgent(target.provider)}
                       className={cn(
                         "flex min-h-16 items-center gap-3 rounded-lg border p-3 text-left outline-none motion-colors hover:bg-muted/30 focus-visible:ring-3 focus-visible:ring-ring/50",
                         selected && "border-primary bg-primary/5 ring-1 ring-primary",
@@ -355,7 +345,7 @@ export function NewAgentSessionDialog({
                     value={effectiveThinkingOptionId}
                     onValueChange={(value) => {
                       if (!value || !selectedModel) return;
-                      setThinkingOptionId(value as AgentThinkingLevel);
+                      setThinkingOptionId(value);
                       updateProviderPreferences({
                         thinkingByModel: {
                           ...providerPreferences?.thinkingByModel,

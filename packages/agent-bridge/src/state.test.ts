@@ -576,6 +576,23 @@ describe("agent runtime event reducer", () => {
     expect(settled.activeTurn).toBeNull();
   });
 
+  it("preserves multi-question interaction forms", () => {
+    const next = applyAgentRuntimeEnvelope(
+      snapshot(),
+      event({
+        type: "interaction_request",
+        id: "opencode:question:1",
+        method: "form",
+        title: "OpenCode needs your input",
+        fields: [{ id: "0", type: "text", label: "Target" }],
+      }),
+    );
+    expect(next?.pendingInteraction).toMatchObject({
+      id: "opencode:question:1",
+      method: "form",
+    });
+  });
+
   it("tracks OvertChat-owned queues and late prompt errors", () => {
     const queued = applyAgentRuntimeEnvelope(
       snapshot(),

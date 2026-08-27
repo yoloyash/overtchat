@@ -44,6 +44,14 @@ export const AGENT_PROVIDERS: Record<
       forkMessages: true,
     },
   },
+  opencode: {
+    id: "opencode",
+    label: "OpenCode",
+    executable: "opencode",
+    capabilities: {
+      steer: true,
+    },
+  },
 };
 
 export function agentProviderMetadata(

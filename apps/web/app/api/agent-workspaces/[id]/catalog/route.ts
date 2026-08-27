@@ -4,7 +4,7 @@ import {
   storedConnectionAccessError,
 } from "@/lib/agents/access";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import { daemonWorkspace } from "@/lib/agents/connector/descriptors";
+import { resolveAgentWorkspaceProvider } from "@/lib/agents/connector/providerSnapshots";
 import { getOwnedAgentWorkspace } from "@/lib/db/agentConnections";
 import {
   agentProviderCatalogSchema,
@@ -26,26 +26,39 @@ export async function GET(
   const { id } = await params;
   const owned = await getOwnedAgentWorkspace(id, session.user.id);
   if (!owned) return new Response("Not found", { status: 404 });
+  const requestedProvider = new URL(req.url).searchParams.get("provider");
+  const provider =
+    typeof requestedProvider === "string" && isAgentProviderId(requestedProvider)
+    ? requestedProvider
+    : isAgentProviderId(owned.connection.provider)
+      ? owned.connection.provider
+      : null;
+  if (!provider) {
+    return Response.json(
+      { error: "This coding-agent provider is not supported." },
+      { status: 400 },
+    );
+  }
 
   try {
+    const resolved = await resolveAgentWorkspaceProvider({
+      userId: session.user.id,
+      anchorWorkspaceId: id,
+      provider,
+    });
     const response = await hostConnectorBroker.request<unknown>(
       owned.host.connectorId,
-      { type: "get_catalog", workspace: daemonWorkspace(owned) },
+      { type: "get_catalog", workspace: resolved.descriptor },
     );
     const catalog = agentProviderCatalogSchema.parse(response);
-    if (catalog.provider !== owned.connection.provider) {
+    if (catalog.provider !== provider) {
       throw new Error("The connector returned a catalog for another provider.");
     }
     return Response.json(catalog);
   } catch (error) {
     return Response.json(
       {
-        error: connectionErrorMessage(
-          error,
-          isAgentProviderId(owned.connection.provider)
-            ? owned.connection.provider
-            : "pi",
-        ),
+        error: connectionErrorMessage(error, provider),
       },
       { status: 400 },
     );

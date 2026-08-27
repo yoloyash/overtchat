@@ -3,7 +3,10 @@ import {
   connectionAccessError,
   connectionErrorMessage,
 } from "@/lib/agents/access";
-import { agentDiscoveryTargetSchema } from "@overtchat/agent-bridge";
+import {
+  agentDiscoveryTargetSchema,
+  agentProviderSnapshotSchema,
+} from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
 
@@ -31,10 +34,27 @@ export async function POST(request: Request) {
   }
 
   try {
+    const refresh = new URL(request.url).searchParams.get("refresh") !== "0";
+    const snapshot = agentProviderSnapshotSchema.parse(
+      await hostConnectorBroker.request(parsed.data.connectorId, {
+        type: "provider_snapshot",
+        target: parsed.data,
+        refresh,
+      }),
+    );
     return Response.json({
-      installations: await hostConnectorBroker.request(
-        parsed.data.connectorId,
-        { type: "discover", target: parsed.data },
+      snapshot,
+      installations: snapshot.providers.flatMap((entry) =>
+        entry.status === "ready"
+          ? [
+              {
+                provider: entry.provider,
+                executable: entry.executable,
+                version: entry.version,
+                shellMode: entry.shellMode,
+              },
+            ]
+          : [],
       ),
     });
   } catch (error) {

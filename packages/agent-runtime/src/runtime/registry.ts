@@ -398,7 +398,9 @@ export class AgentSessionRuntime {
         event.type === "interaction_request" &&
         typeof event.id === "string" &&
         typeof event.method === "string" &&
-        ["select", "confirm", "input", "editor"].includes(event.method)
+        ["select", "confirm", "input", "editor", "form", "external"].includes(
+          event.method,
+        )
       ) {
         this.clearPendingInteraction();
         this.pendingInteraction = event as NonNullable<
