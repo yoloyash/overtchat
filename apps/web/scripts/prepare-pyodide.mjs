@@ -6,6 +6,7 @@ import { loadPyodide } from "pyodide";
 const PACKAGES = Object.freeze([
   "numpy",
   "pandas",
+  "matplotlib",
   "scipy",
   "scikit-learn",
   "sympy",

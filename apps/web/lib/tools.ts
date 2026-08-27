@@ -148,7 +148,7 @@ export function createCodeExecutionTools() {
       Record<string, never>
     >({
       description:
-        "Run Python for calculations, data analysis, transformations, and verification. The environment includes the Python standard library, NumPy, pandas, SciPy, scikit-learn, SymPy, regex, tiktoken, and pytz. It has no network access or input files and cannot create downloadable files or charts yet. Use printed output or the final expression result.",
+        "Run Python for calculations, data analysis, transformations, file processing, and visualizations. The environment includes the Python standard library, NumPy, pandas, Matplotlib, SciPy, scikit-learn, SymPy, regex, tiktoken, and pytz. User and prior generated files are available in /mnt/uploads. Save files the user should receive into /mnt/uploads; they will be returned as downloadable outputs. Matplotlib plt.show() produces a PNG output. The environment has no network access and cannot install packages.",
       inputSchema: z.object({
         language: z.literal("python").default("python"),
         code: z
@@ -161,6 +161,7 @@ export function createCodeExecutionTools() {
         stdout: z.string().nullable(),
         stderr: z.string().nullable(),
         result: z.unknown(),
+        failed: z.boolean().optional(),
         outputs: z.array(
           z.object({
             kind: z.enum(["file", "image"]),

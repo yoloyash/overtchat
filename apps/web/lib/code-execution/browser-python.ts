@@ -1,6 +1,12 @@
 "use client";
 
-import type { CodeExecutionOutput } from "@overtchat/shared";
+import {
+  MAX_CODE_EXECUTION_FILE_BYTES,
+  MAX_CODE_EXECUTION_OUTPUTS,
+  MAX_CODE_EXECUTION_TOTAL_OUTPUT_BYTES,
+  type CodeExecutionArtifact,
+  type CodeExecutionOutput,
+} from "@overtchat/shared";
 
 export const PYTHON_EXECUTION_TIMEOUT_MS = 60_000;
 export const MAX_PYTHON_CODE_CHARS = 100_000;
@@ -9,6 +15,7 @@ const MAX_OUTPUT_CHARS = 64_000;
 const PACKAGE_IMPORTS = Object.freeze({
   numpy: "numpy",
   pandas: "pandas",
+  matplotlib: "matplotlib",
   scipy: "scipy",
   sklearn: "scikit-learn",
   sympy: "sympy",
@@ -17,9 +24,20 @@ const PACKAGE_IMPORTS = Object.freeze({
   pytz: "pytz",
 });
 
+export interface PythonInputFile {
+  name: string;
+  data: ArrayBuffer;
+}
+
 type PendingExecution = {
   resolve: (output: CodeExecutionOutput) => void;
   timeout: number;
+};
+
+type SandboxArtifact = {
+  name?: unknown;
+  byteLength?: unknown;
+  data?: unknown;
 };
 
 type SandboxMessage = {
@@ -28,6 +46,8 @@ type SandboxMessage = {
   stdout?: unknown;
   stderr?: unknown;
   result?: unknown;
+  outputs?: unknown;
+  failed?: unknown;
 };
 
 // The worker keeps CPU-bound Python off the chat UI thread. Its owning iframe
@@ -38,7 +58,13 @@ const pythonWorkerScript = String.raw`
   var pyodideReady = null;
   var stdout = "";
   var stderr = "";
+  var nativeFetch = self.fetch.bind(self);
+  var nativeImportScripts = self.importScripts.bind(self);
   var MAX_OUTPUT_CHARS = 64000;
+  var MAX_OUTPUT_FILES = ${MAX_CODE_EXECUTION_OUTPUTS};
+  var MAX_FILE_BYTES = ${MAX_CODE_EXECUTION_FILE_BYTES};
+  var MAX_TOTAL_BYTES = ${MAX_CODE_EXECUTION_TOTAL_OUTPUT_BYTES};
+  var UPLOAD_DIR = "/mnt/uploads";
 
   function append(current, text) {
     if (current.length >= MAX_OUTPUT_CHARS) return current;
@@ -46,6 +72,19 @@ const pythonWorkerScript = String.raw`
     return next.length > MAX_OUTPUT_CHARS
       ? next.slice(0, MAX_OUTPUT_CHARS) + "\n[output truncated]"
       : next;
+  }
+
+  function disableNetwork() {
+    var blocked = function () {
+      throw new Error("Network access is disabled in Python execution");
+    };
+    self.fetch = function () {
+      return Promise.reject(new Error("Network access is disabled in Python execution"));
+    };
+    self.importScripts = blocked;
+    self.XMLHttpRequest = blocked;
+    self.WebSocket = blocked;
+    self.EventSource = blocked;
   }
 
   function clean(value, depth, seen) {
@@ -63,9 +102,7 @@ const pythonWorkerScript = String.raw`
       }
       return clean(converted, depth + 1, seen);
     }
-    if (ArrayBuffer.isView(value)) {
-      return Array.from(value).slice(0, 10000);
-    }
+    if (ArrayBuffer.isView(value)) return Array.from(value).slice(0, 10000);
     if (value instanceof Map) {
       var mapped = {};
       for (var entry of value.entries()) {
@@ -95,7 +132,110 @@ const pythonWorkerScript = String.raw`
     return String(value);
   }
 
+  function ensureUploadDir() {
+    try {
+      pyodide.FS.stat(UPLOAD_DIR);
+    } catch {
+      pyodide.FS.mkdirTree(UPLOAD_DIR);
+    }
+  }
+
+  function mountFiles(files) {
+    ensureUploadDir();
+    for (var file of files || []) {
+      if (!file || typeof file.name !== "string" || !(file.data instanceof ArrayBuffer)) continue;
+      pyodide.FS.writeFile(UPLOAD_DIR + "/" + file.name, new Uint8Array(file.data));
+    }
+  }
+
+  function fingerprint(bytes) {
+    var hash = 2166136261;
+    for (var index = 0; index < bytes.length; index += 1) {
+      hash ^= bytes[index];
+      hash = Math.imul(hash, 16777619);
+    }
+    return bytes.length + ":" + (hash >>> 0);
+  }
+
+  function snapshotFiles() {
+    ensureUploadDir();
+    var snapshot = {};
+    var names = pyodide.FS.readdir(UPLOAD_DIR)
+      .filter(function (name) { return name !== "." && name !== ".."; })
+      .sort();
+    for (var name of names) {
+      var path = UPLOAD_DIR + "/" + name;
+      try {
+        var stat = pyodide.FS.stat(path);
+        if (pyodide.FS.isDir(stat.mode)) continue;
+        snapshot[name] = fingerprint(pyodide.FS.readFile(path));
+      } catch {}
+    }
+    return snapshot;
+  }
+
+  function collectOutputs(before) {
+    var outputs = [];
+    var warnings = [];
+    var total = 0;
+    var names = pyodide.FS.readdir(UPLOAD_DIR)
+      .filter(function (name) { return name !== "." && name !== ".."; })
+      .sort();
+
+    for (var name of names) {
+      var path = UPLOAD_DIR + "/" + name;
+      try {
+        var stat = pyodide.FS.stat(path);
+        if (pyodide.FS.isDir(stat.mode)) continue;
+        var bytes = pyodide.FS.readFile(path);
+        if (before[name] === fingerprint(bytes)) continue;
+        if (outputs.length >= MAX_OUTPUT_FILES) {
+          warnings.push("Skipped " + name + ": only " + MAX_OUTPUT_FILES + " output files are allowed");
+          continue;
+        }
+        if (bytes.byteLength > MAX_FILE_BYTES) {
+          warnings.push("Skipped " + name + ": file exceeds the 20 MB output limit");
+          continue;
+        }
+        if (total + bytes.byteLength > MAX_TOTAL_BYTES) {
+          warnings.push("Skipped " + name + ": outputs exceed the 50 MB total limit");
+          continue;
+        }
+        var copy = bytes.slice().buffer;
+        outputs.push({ name: name, byteLength: bytes.byteLength, data: copy });
+        total += bytes.byteLength;
+      } catch (error) {
+        warnings.push("Skipped " + name + ": " + (error && error.message ? error.message : String(error)));
+      }
+    }
+    return { outputs: outputs, warnings: warnings };
+  }
+
+  async function patchMatplotlib() {
+    await pyodide.runPythonAsync([
+      "import os",
+      "os.environ['MPLBACKEND'] = 'AGG'",
+      "import matplotlib.pyplot as _overtchat_plt",
+      "try:",
+      "    _overtchat_plot_counter",
+      "except NameError:",
+      "    _overtchat_plot_counter = 0",
+      "def _overtchat_show(*, block=None):",
+      "    global _overtchat_plot_counter",
+      "    while True:",
+      "        _overtchat_plot_counter += 1",
+      "        _path = f'/mnt/uploads/plot-{_overtchat_plot_counter}.png'",
+      "        if not os.path.exists(_path):",
+      "            break",
+      "    _overtchat_plt.savefig(_path, format='png', bbox_inches='tight')",
+      "    _overtchat_plt.close()",
+      "_overtchat_plt.show = _overtchat_show"
+    ].join("\n"));
+  }
+
   async function ensureRuntime(indexUrl, packages) {
+    self.fetch = nativeFetch;
+    self.importScripts = nativeImportScripts;
     if (!pyodideReady) {
       importScripts(indexUrl + "pyodide.js");
       pyodideReady = loadPyodide({
@@ -104,11 +244,16 @@ const pythonWorkerScript = String.raw`
         stderr: function (text) { stderr = append(stderr, text); }
       }).then(function (runtime) {
         pyodide = runtime;
+        ensureUploadDir();
         return runtime;
       });
     }
-    await pyodideReady;
-    if (packages && packages.length > 0) await pyodide.loadPackage(packages);
+    try {
+      await pyodideReady;
+      if (packages && packages.length > 0) await pyodide.loadPackage(packages);
+    } finally {
+      disableNetwork();
+    }
   }
 
   self.addEventListener("message", async function (event) {
@@ -118,21 +263,32 @@ const pythonWorkerScript = String.raw`
     stderr = "";
     try {
       await ensureRuntime(data.indexUrl, data.packages || []);
+      mountFiles(data.files || []);
+      var before = snapshotFiles();
+      if (/(?:^|\s)(?:from|import)\s+matplotlib\b/m.test(data.code)) {
+        await patchMatplotlib();
+      }
       var result = await pyodide.runPythonAsync(data.code);
+      var collected = collectOutputs(before);
+      for (var warning of collected.warnings) stderr = append(stderr, warning);
       self.postMessage({
         type: "result",
         id: data.id,
         stdout: stdout || null,
         stderr: stderr || null,
-        result: clean(result, 0, new WeakSet())
-      });
+        result: clean(result, 0, new WeakSet()),
+        outputs: collected.outputs,
+        failed: false
+      }, collected.outputs.map(function (output) { return output.data; }));
     } catch (error) {
       self.postMessage({
         type: "result",
         id: data.id,
         stdout: stdout || null,
         stderr: error && error.message ? error.message : String(error),
-        result: null
+        result: null,
+        outputs: [],
+        failed: true
       });
     }
   });
@@ -147,8 +303,16 @@ const sandboxScript = String.raw`
   var worker = new Worker(workerUrl);
   URL.revokeObjectURL(workerUrl);
 
+  function buffersFromFiles(files) {
+    return (files || []).map(function (file) { return file.data; })
+      .filter(function (data) { return data instanceof ArrayBuffer; });
+  }
+
   worker.addEventListener("message", function (event) {
-    parent.postMessage(event.data, "*");
+    var outputs = event.data && event.data.outputs;
+    var transfers = (outputs || []).map(function (output) { return output.data; })
+      .filter(function (data) { return data instanceof ArrayBuffer; });
+    parent.postMessage(event.data, "*", transfers);
   });
   worker.addEventListener("error", function (event) {
     parent.postMessage({
@@ -160,7 +324,7 @@ const sandboxScript = String.raw`
     if (event.source !== parent) return;
     var data = event.data || {};
     if (data.type !== "execute" || typeof data.id !== "string") return;
-    worker.postMessage(Object.assign({}, data, { indexUrl: indexUrl }));
+    worker.postMessage(Object.assign({}, data, { indexUrl: indexUrl }), buffersFromFiles(data.files));
   });
 })();
 `;
@@ -181,18 +345,27 @@ class BrowserPythonExecutor {
   private pending = new Map<string, PendingExecution>();
   private queue: Promise<unknown> = Promise.resolve();
   private generation = 0;
+  private objectUrls = new Set<string>();
   private onWindowMessage: ((event: MessageEvent<SandboxMessage>) => void) | null =
     null;
 
-  execute(code: string): Promise<CodeExecutionOutput> {
+  execute(code: string, files: PythonInputFile[]): Promise<CodeExecutionOutput> {
     const generation = this.generation;
     const operation = this.queue.then(() =>
       generation === this.generation
-        ? this.executeNow(code)
+        ? this.executeNow(code, files)
         : failedOutput("Python runtime was reset"),
     );
     this.queue = operation.catch(() => undefined);
     return operation;
+  }
+
+  release(output: CodeExecutionOutput): void {
+    for (const artifact of output.outputs) {
+      if (!artifact.url.startsWith("blob:")) continue;
+      URL.revokeObjectURL(artifact.url);
+      this.objectUrls.delete(artifact.url);
+    }
   }
 
   dispose(reason = "Python runtime was reset"): void {
@@ -209,9 +382,14 @@ class BrowserPythonExecutor {
     this.iframe?.remove();
     this.iframe = null;
     this.ready = null;
+    for (const url of this.objectUrls) URL.revokeObjectURL(url);
+    this.objectUrls.clear();
   }
 
-  private async executeNow(code: string): Promise<CodeExecutionOutput> {
+  private async executeNow(
+    code: string,
+    files: PythonInputFile[],
+  ): Promise<CodeExecutionOutput> {
     if (!code.trim()) return failedOutput("No Python code was provided");
     if (code.length > MAX_PYTHON_CODE_CHARS) {
       return failedOutput(
@@ -236,8 +414,10 @@ class BrowserPythonExecutor {
           id,
           code,
           packages: packagesForPython(code),
+          files,
         },
         "*",
+        files.map((file) => file.data),
       );
     });
   }
@@ -273,7 +453,7 @@ class BrowserPythonExecutor {
         if (!pending) return;
         this.pending.delete(message.id);
         window.clearTimeout(pending.timeout);
-        pending.resolve(normalizeOutput(message));
+        pending.resolve(this.normalizeOutput(message));
       };
 
       iframe.addEventListener("load", () => resolve(), { once: true });
@@ -293,17 +473,45 @@ class BrowserPythonExecutor {
 
     return this.ready;
   }
+
+  private normalizeOutput(message: SandboxMessage): CodeExecutionOutput {
+    const outputs = Array.isArray(message.outputs)
+      ? message.outputs.flatMap((value) => {
+          const artifact = normalizeArtifact(value as SandboxArtifact);
+          if (!artifact) return [];
+          const url = URL.createObjectURL(
+            new Blob([artifact.data], { type: artifact.mediaType }),
+          );
+          this.objectUrls.add(url);
+          return [{ ...artifact, url } satisfies CodeExecutionArtifact];
+        })
+      : [];
+    return {
+      stdout: truncateText(textValue(message.stdout)),
+      stderr: truncateText(textValue(message.stderr)),
+      result: limitResult(message.result),
+      outputs,
+      failed: message.failed === true,
+    };
+  }
 }
 
 let executor: BrowserPythonExecutor | null = null;
 
-export function executePython(code: string): Promise<CodeExecutionOutput> {
+export function executePython(
+  code: string,
+  files: PythonInputFile[] = [],
+): Promise<CodeExecutionOutput> {
   executor ??= new BrowserPythonExecutor();
-  return executor.execute(code).catch((cause) =>
+  return executor.execute(code, files).catch((cause) =>
     failedOutput(
       cause instanceof Error ? cause.message : "Python execution failed",
     ),
   );
+}
+
+export function releasePythonOutput(output: CodeExecutionOutput): void {
+  executor?.release(output);
 }
 
 export function resetPythonExecutor(): void {
@@ -312,16 +520,82 @@ export function resetPythonExecutor(): void {
 }
 
 function failedOutput(stderr: string): CodeExecutionOutput {
-  return { stdout: null, stderr, result: null, outputs: [] };
+  return { stdout: null, stderr, result: null, outputs: [], failed: true };
 }
 
-function normalizeOutput(message: SandboxMessage): CodeExecutionOutput {
+function normalizeArtifact(value: SandboxArtifact):
+  | (Omit<CodeExecutionArtifact, "url"> & { data: ArrayBuffer })
+  | null {
+  if (
+    typeof value.name !== "string" ||
+    typeof value.byteLength !== "number" ||
+    !(value.data instanceof ArrayBuffer) ||
+    value.byteLength !== value.data.byteLength
+  ) {
+    return null;
+  }
+  const name = safeFilename(value.name);
+  const mediaType = artifactMediaType(name, new Uint8Array(value.data));
   return {
-    stdout: truncateText(textValue(message.stdout)),
-    stderr: truncateText(textValue(message.stderr)),
-    result: limitResult(message.result),
-    outputs: [],
+    kind: mediaType.startsWith("image/") ? "image" : "file",
+    name,
+    mediaType,
+    byteLength: value.byteLength,
+    data: value.data,
   };
+}
+
+function safeFilename(value: string): string {
+  const sanitized = value
+    .replace(/[\u0000-\u001f\u007f/\\]/g, "_")
+    .trim()
+    .slice(0, 180);
+  return sanitized || "output.bin";
+}
+
+function artifactMediaType(name: string, data: Uint8Array): string {
+  if (hasBytes(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+    return "image/png";
+  }
+  if (hasBytes(data, [0xff, 0xd8, 0xff])) return "image/jpeg";
+  if (
+    hasBytes(data, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) ||
+    hasBytes(data, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61])
+  ) {
+    return "image/gif";
+  }
+  if (
+    hasBytes(data, [0x52, 0x49, 0x46, 0x46]) &&
+    String.fromCharCode(...data.slice(8, 12)) === "WEBP"
+  ) {
+    return "image/webp";
+  }
+
+  const extension = name.toLowerCase().split(".").at(-1) ?? "";
+  return (
+    {
+      csv: "text/csv",
+      json: "application/json",
+      md: "text/markdown",
+      txt: "text/plain",
+      html: "text/html",
+      css: "text/css",
+      js: "text/javascript",
+      ts: "text/plain",
+      py: "text/x-python",
+      pdf: "application/pdf",
+      zip: "application/zip",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    } as Record<string, string>
+  )[extension] ?? "application/octet-stream";
+}
+
+function hasBytes(data: Uint8Array, prefix: number[]): boolean {
+  return (
+    data.byteLength >= prefix.length &&
+    prefix.every((byte, index) => data[index] === byte)
+  );
 }
 
 function textValue(value: unknown): string | null {

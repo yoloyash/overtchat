@@ -12,6 +12,7 @@ import {
   type LucideIcon,
   Search,
 } from "lucide-react";
+import { CodeExecutionArtifacts } from "./CodeExecutionArtifacts";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import { cleanDomain, faviconUrl } from "@/lib/web-client";
@@ -214,7 +215,11 @@ function CodeExecutionStep({ part }: { part: CodeExecutionPart }) {
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-medium text-foreground">Python</span>
         <span className="shrink-0 text-muted-foreground">
-          {running ? "Running" : part.state === "output-error" ? "Failed" : "Done"}
+          {running
+            ? "Running"
+            : part.state === "output-error" || part.output?.failed
+              ? "Failed"
+              : "Done"}
         </span>
       </div>
       {part.input?.code && <ToolValue label="Code" value={part.input.code} />}
@@ -234,6 +239,7 @@ function CodeExecutionStep({ part }: { part: CodeExecutionPart }) {
               <ToolValue label="Stderr" value={part.output.stderr} />
             </div>
           )}
+          <CodeExecutionArtifacts artifacts={part.output.outputs} />
         </>
       )}
     </div>
@@ -533,7 +539,8 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   if (lastTool?.type === "tool-execute_code") {
     if (lastTool.state === "output-error") return "Python failed";
     if (lastTool.state === "output-available") {
-      return lastTool.output?.stderr ? "Python returned an error" : "Ran Python";
+      if (lastTool.output?.failed) return "Python failed";
+      return lastTool.output?.stderr ? "Ran Python with warnings" : "Ran Python";
     }
     return "Python did not complete";
   }

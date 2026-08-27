@@ -129,9 +129,16 @@ export type FetchUrlPart = {
 
 export type CodeExecutionLanguage = "python";
 export const EXECUTE_CODE_TOOL_NAME = "execute_code" as const;
+export const CODE_EXECUTION_UPLOAD_DIR = "/mnt/uploads" as const;
+export const MAX_CODE_EXECUTION_INPUTS = 20;
+export const MAX_CODE_EXECUTION_INPUT_BYTES = 20 * 1024 * 1024;
+export const MAX_CODE_EXECUTION_TOTAL_INPUT_BYTES = 50 * 1024 * 1024;
+export const MAX_CODE_EXECUTION_OUTPUTS = 10;
+export const MAX_CODE_EXECUTION_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_CODE_EXECUTION_TOTAL_OUTPUT_BYTES = 50 * 1024 * 1024;
 
-/** A persisted output reference. V1 returns an empty collection; generated
- * files can be uploaded and represented here without changing the tool shape. */
+/** A generated file persisted by OvertChat, or a browser-local reference for
+ * a manual code-block run. */
 export interface CodeExecutionArtifact {
   kind: "file" | "image";
   name: string;
@@ -145,6 +152,8 @@ export interface CodeExecutionOutput {
   stderr: string | null;
   result: unknown;
   outputs: CodeExecutionArtifact[];
+  /** True only when execution itself failed; stderr may also contain warnings. */
+  failed?: boolean;
 }
 
 export type CodeExecutionPart = {

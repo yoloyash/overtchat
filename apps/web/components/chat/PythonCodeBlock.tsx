@@ -17,9 +17,13 @@ import {
 } from "streamdown";
 import { Loader2, Play } from "lucide-react";
 import type { CodeExecutionOutput } from "@overtchat/shared";
-import { executePython } from "@/lib/code-execution/browser-python";
+import {
+  executePython,
+  releasePythonOutput,
+} from "@/lib/code-execution/browser-python";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
+import { CodeExecutionArtifacts } from "./CodeExecutionArtifacts";
 
 type MarkdownCodeProps = ComponentProps<"code"> & {
   node?: unknown;
@@ -48,6 +52,12 @@ export function PythonCodeBlock({
       mounted.current = false;
     };
   }, []);
+  useEffect(
+    () => () => {
+      if (execution) releasePythonOutput(execution.output);
+    },
+    [execution],
+  );
   if (!isBlock) {
     const { children, ...inlineProps } = props;
     delete inlineProps.node;
@@ -128,6 +138,9 @@ function ExecutionOutputView({ output }: { output: CodeExecutionOutput }) {
           <pre className="whitespace-pre-wrap break-words text-destructive">
             {output.stderr}
           </pre>
+        )}
+        {output.outputs.length > 0 && (
+          <CodeExecutionArtifacts artifacts={output.outputs} />
         )}
         {!output.stdout && !hasResult && !output.stderr && (
           <span className="font-sans text-muted-foreground">

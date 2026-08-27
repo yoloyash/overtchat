@@ -7,10 +7,11 @@ describe("browser Python package detection", () => {
       packagesForPython(`
 import numpy as np
 from pandas import DataFrame
+import matplotlib.pyplot as plt
 import os
 from sklearn.linear_model import LinearRegression
       `),
-    ).toEqual(["numpy", "pandas", "scikit-learn"]);
+    ).toEqual(["numpy", "pandas", "matplotlib", "scikit-learn"]);
   });
 
   it("deduplicates imports and ignores comments and arbitrary package names", () => {
