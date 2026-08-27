@@ -6,6 +6,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Image,
   LayoutAnimation,
@@ -15,9 +16,13 @@ import {
   Text,
   View,
 } from "react-native";
+import { File as FsFile, Paths } from "expo-file-system";
+import * as Sharing from "expo-sharing";
 import {
   cleanDomain,
   faviconUrl,
+  type CodeExecutionArtifact,
+  type CodeExecutionPart,
   type FetchedImage,
   type FetchUrlPart,
   isToolSettled,
@@ -28,7 +33,7 @@ import {
   type WebSearchResult,
 } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
-import { getApiBase, getAuthCookie } from "@/lib/api";
+import { authFetch, getApiBase, getAuthCookie } from "@/lib/api";
 import { useTheme } from "@/lib/theme";
 import { MarkdownBody } from "./MarkdownBody";
 
@@ -36,6 +41,7 @@ type ReasoningPart = { type: "reasoning"; text: string; state?: string };
 export type ActivityPart =
   | WebSearchPart
   | FetchUrlPart
+  | CodeExecutionPart
   | DynamicToolUIPart
   | ReasoningPart;
 
@@ -47,6 +53,9 @@ function isFetchUrl(p: ActivityPart): p is FetchUrlPart {
 }
 function isReasoning(p: ActivityPart): p is ReasoningPart {
   return p.type === "reasoning";
+}
+function isCodeExecution(p: ActivityPart): p is CodeExecutionPart {
+  return p.type === "tool-execute_code";
 }
 function isMcpTool(p: ActivityPart): p is DynamicToolUIPart {
   return p.type === "dynamic-tool" && parseMcpToolName(p.toolName) !== null;
@@ -94,12 +103,16 @@ export function ChainOfThought({
   }, [active]);
 
   const hasTools = parts.some(
-    (p) => isWebSearch(p) || isFetchUrl(p) || isMcpTool(p),
+    (p) => isWebSearch(p) || isFetchUrl(p) || isCodeExecution(p) || isMcpTool(p),
   );
   const lastTool = [...parts]
     .reverse()
     .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+      (part) =>
+        isWebSearch(part) ||
+        isFetchUrl(part) ||
+        isCodeExecution(part) ||
+        isMcpTool(part),
     );
   const lastToolFailed = lastTool?.state === "output-error";
   const last = parts[parts.length - 1];
@@ -237,13 +250,18 @@ function ShimmerLabel({
 /** A single timeline node: left rail (icon + connector) + the step's content. */
 function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   const icon =
-    (isWebSearch(part) || isFetchUrl(part) || isMcpTool(part)) &&
+    (isWebSearch(part) ||
+      isFetchUrl(part) ||
+      isCodeExecution(part) ||
+      isMcpTool(part)) &&
     part.state === "output-error"
         ? "failed"
       : isWebSearch(part)
           ? "search"
           : isFetchUrl(part)
             ? "globe"
+            : isCodeExecution(part)
+              ? "code"
             : isMcpTool(part)
               ? "tool"
             : "brain";
@@ -256,6 +274,8 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
           <SearchStep part={part} />
         ) : isFetchUrl(part) ? (
           <FetchStep part={part} />
+        ) : isCodeExecution(part) ? (
+          <CodeExecutionStep part={part} />
         ) : isMcpTool(part) ? (
           <McpStep part={part} />
         ) : isReasoning(part) ? (
@@ -266,7 +286,7 @@ function Step({ part, isLast }: { part: ActivityPart; isLast: boolean }) {
   );
 }
 
-type RailIcon = "search" | "globe" | "tool" | "brain" | "failed";
+type RailIcon = "search" | "globe" | "code" | "tool" | "brain" | "failed";
 
 /** Left gutter: the step's icon with a connecting line down to the next node. */
 function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
@@ -280,6 +300,8 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
           <Ionicons name="search" size={11} color={colors.mutedForeground} />
         ) : icon === "globe" ? (
           <Ionicons name="globe-outline" size={11} color={colors.mutedForeground} />
+        ) : icon === "code" ? (
+          <Ionicons name="code-slash-outline" size={11} color={colors.mutedForeground} />
         ) : icon === "tool" ? (
           <MaterialCommunityIcons name="wrench-outline" size={11} color={colors.mutedForeground} />
         ) : (
@@ -291,6 +313,170 @@ function Rail({ icon, isLast }: { icon: RailIcon; isLast: boolean }) {
       ) : null}
     </View>
   );
+}
+
+function CodeExecutionStep({ part }: { part: CodeExecutionPart }) {
+  const { colors, fonts } = useTheme();
+  const running = !["output-available", "output-error"].includes(part.state);
+  return (
+    <View style={styles.searchStep}>
+      <View style={styles.searchHeader}>
+        <Text
+          style={[
+            styles.stepTitle,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          Python
+        </Text>
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {running
+            ? "Running"
+            : part.state === "output-error" || part.output?.failed
+              ? "Failed"
+              : "Done"}
+        </Text>
+      </View>
+      {part.input?.code ? <ToolValue label="Code" value={part.input.code} /> : null}
+      {part.state === "output-error" ? (
+        <Text
+          style={[
+            styles.errorText,
+            { color: colors.destructive, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {part.errorText}
+        </Text>
+      ) : null}
+      {part.state === "output-available" && part.output ? (
+        <>
+          {part.output.stdout ? <ToolValue label="Stdout" value={part.output.stdout} /> : null}
+          {part.output.result !== null && part.output.result !== undefined ? (
+            <ToolValue label="Result" value={part.output.result} />
+          ) : null}
+          {part.output.stderr ? <ToolValue label="Stderr" value={part.output.stderr} /> : null}
+          <CodeExecutionArtifacts artifacts={part.output.outputs} />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+function CodeExecutionArtifacts({
+  artifacts,
+}: {
+  artifacts: readonly CodeExecutionArtifact[];
+}) {
+  return (
+    <View style={styles.artifactList}>
+      {artifacts.map((artifact) => (
+        <CodeExecutionArtifactRow
+          key={`${artifact.url}:${artifact.name}`}
+          artifact={artifact}
+        />
+      ))}
+    </View>
+  );
+}
+
+function CodeExecutionArtifactRow({
+  artifact,
+}: {
+  artifact: CodeExecutionArtifact;
+}) {
+  const { colors, fonts } = useTheme();
+  const [saving, setSaving] = useState(false);
+  const cookie = getAuthCookie();
+  const source = {
+    uri: `${getApiBase()}${artifact.url}`,
+    headers: cookie ? { Cookie: cookie } : undefined,
+  };
+
+  async function save() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const response = await authFetch(source.uri);
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+      const filename = artifact.name.replace(/[^a-zA-Z0-9._-]/g, "_") || "output";
+      const file = new FsFile(Paths.cache, `${Date.now()}-${filename}`);
+      file.create();
+      file.write(new Uint8Array(await response.arrayBuffer()));
+      if (!(await Sharing.isAvailableAsync())) {
+        throw new Error("Sharing is unavailable on this device.");
+      }
+      await Sharing.shareAsync(file.uri, {
+        mimeType: artifact.mediaType,
+        dialogTitle: `Save ${artifact.name}`,
+      });
+    } catch (cause) {
+      Alert.alert(
+        "Couldn’t save file",
+        cause instanceof Error ? cause.message : "Download failed.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View
+      style={[
+        styles.artifact,
+        { borderColor: colors.border, backgroundColor: colors.muted },
+      ]}
+    >
+      {artifact.kind === "image" ? (
+        <Image source={source} style={styles.artifactImage} resizeMode="contain" />
+      ) : null}
+      <Pressable
+        onPress={() => void save()}
+        style={({ pressed }) => [
+          styles.artifactFooter,
+          { opacity: pressed ? 0.7 : 1 },
+        ]}
+      >
+        <Ionicons
+          name={artifact.kind === "image" ? "image-outline" : "document-outline"}
+          size={16}
+          color={colors.mutedForeground}
+        />
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.artifactName,
+            { color: colors.foreground, fontFamily: fonts.sansMedium },
+          ]}
+        >
+          {artifact.name}
+        </Text>
+        <Text
+          style={[
+            styles.metaText,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {formatBytes(artifact.byteLength)}
+        </Text>
+        {saving ? (
+          <ActivityIndicator size="small" color={colors.mutedForeground} />
+        ) : (
+          <Ionicons name="download-outline" size={16} color={colors.mutedForeground} />
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function McpStep({ part }: { part: DynamicToolUIPart }) {
@@ -704,6 +890,7 @@ function activeLabel(last: ActivityPart | undefined): string {
     const url = last.input?.url;
     return url ? `Reading ${cleanDomain(url)}` : "Reading page…";
   }
+  if (last.type === "tool-execute_code") return "Running Python…";
   if (isMcpTool(last)) {
     const parsed = parseMcpToolName(last.toolName);
     return parsed
@@ -717,7 +904,11 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
   const lastTool = [...parts]
     .reverse()
     .find(
-      (part) => isWebSearch(part) || isFetchUrl(part) || isMcpTool(part),
+      (part) =>
+        isWebSearch(part) ||
+        isFetchUrl(part) ||
+        isCodeExecution(part) ||
+        isMcpTool(part),
     );
   if (lastTool?.type === "tool-web_search") {
     if (lastTool.state === "output-error") return "Web search failed";
@@ -730,6 +921,14 @@ function settledLabel(parts: ActivityPart[], duration: number): string {
       return isFetchedImage(lastTool.output) ? "Viewed image" : "Read page";
     }
     return "Page fetch did not complete";
+  }
+  if (lastTool?.type === "tool-execute_code") {
+    if (lastTool.state === "output-error") return "Python failed";
+    if (lastTool.state === "output-available") {
+      if (lastTool.output?.failed) return "Python failed";
+      return lastTool.output?.stderr ? "Ran Python with warnings" : "Ran Python";
+    }
+    return "Python did not complete";
   }
   if (lastTool && isMcpTool(lastTool)) {
     const parsed = parseMcpToolName(lastTool.toolName);
@@ -823,4 +1022,19 @@ const styles = StyleSheet.create({
   favicon: { width: 16, height: 16, borderRadius: 4 },
   fetchedImage: { width: 48, height: 48, borderRadius: 6 },
   fetchedImageText: { flex: 1, minWidth: 0 },
+  artifactList: { gap: 8 },
+  artifact: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  artifactImage: { width: "100%", height: 220 },
+  artifactFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  artifactName: { flex: 1, fontSize: 12 },
 });

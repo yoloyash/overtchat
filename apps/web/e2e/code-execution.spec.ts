@@ -6,6 +6,7 @@ import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
 let modelServer: Server;
 let modelBaseUrl: string;
 let sawToolOutput = false;
+let sawArtifactOutput = false;
 
 test.beforeAll(async () => {
   modelServer = createServer(async (request, response) => {
@@ -44,17 +45,27 @@ test.beforeAll(async () => {
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
     });
+    const artifactRequest = bodyText.includes("Analyze the attached CSV");
     const toolMessage = body.messages?.find(
       (message) => message.role === "tool",
     );
-    const toolResultRequest =
-      toolMessage !== undefined && JSON.stringify(toolMessage).includes("45");
-    sawToolOutput ||= toolResultRequest;
+    const serializedToolMessage = JSON.stringify(toolMessage);
+    const toolResultRequest = toolMessage !== undefined;
+    const artifactResultRequest =
+      toolResultRequest &&
+      artifactRequest &&
+      serializedToolMessage.includes("cleaned.csv") &&
+      serializedToolMessage.includes("plot-1.png") &&
+      serializedToolMessage.includes("/api/uploads/");
+    sawToolOutput ||= toolResultRequest && serializedToolMessage.includes("45");
+    sawArtifactOutput ||= artifactResultRequest;
     const events = toolResultRequest
       ? [
           completionChunk(created, {
             role: "assistant",
-            content: "Python says 45.",
+            content: artifactRequest
+              ? "I cleaned the CSV and created a chart. Both files are ready to download."
+              : "Python says 45.",
           }),
           completionChunk(created, {}, "stop"),
         ]
@@ -68,10 +79,26 @@ test.beforeAll(async () => {
                 type: "function",
                 function: {
                   name: "execute_code",
-                  arguments: JSON.stringify({
-                    language: "python",
-                    code: "sum(range(10))",
-                  }),
+                  arguments: JSON.stringify(
+                    artifactRequest
+                      ? {
+                          language: "python",
+                          code: [
+                            "import pandas as pd",
+                            "import matplotlib.pyplot as plt",
+                            "df = pd.read_csv('/mnt/uploads/data.csv')",
+                            "df['double'] = df['value'] * 2",
+                            "df.to_csv('/mnt/uploads/cleaned.csv', index=False)",
+                            "plt.plot(df['value'], df['double'])",
+                            "plt.show()",
+                            "print('cleaned rows', len(df))",
+                          ].join("\n"),
+                        }
+                      : {
+                          language: "python",
+                          code: "sum(range(10))",
+                        },
+                  ),
                 },
               },
             ],
@@ -99,6 +126,7 @@ test.afterAll(async () => {
 test.beforeEach(() => {
   resetE2eDatabase();
   sawToolOutput = false;
+  sawArtifactOutput = false;
 });
 
 test("runs Python code blocks from the self-hosted opaque-origin runtime", async ({
@@ -118,7 +146,7 @@ test("runs Python code blocks from the self-hosted opaque-origin runtime", async
   await page.goto("/chat/code-execution-chat");
 
   const runButtons = page.getByRole("button", { name: "Run Python" });
-  await expect(runButtons).toHaveCount(3);
+  await expect(runButtons).toHaveCount(5);
 
   await runButtons.nth(0).click();
   await expect(page.getByText("6", { exact: true })).toBeVisible({
@@ -145,6 +173,27 @@ test("runs Python code blocks from the self-hosted opaque-origin runtime", async
   await expect(page.getByText("worker finished", { exact: true })).toBeVisible({
     timeout: 5_000,
   });
+
+  await runButtons.nth(3).click();
+  const textArtifact = page.getByRole("link", { name: /manual\.txt/u });
+  await expect(textArtifact).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByAltText("plot-1.png")).toBeVisible();
+  await expect
+    .poll(async () => {
+      const url = await textArtifact.getAttribute("href");
+      return url
+        ? page.evaluate(async (artifactUrl) => {
+            const response = await fetch(artifactUrl);
+            return response.text();
+          }, url)
+        : null;
+    })
+    .toBe("manual output");
+
+  await runButtons.nth(4).click();
+  await expect(
+    page.getByText(/Network access is disabled in Python execution/u),
+  ).toBeVisible();
 });
 
 test("returns browser Python results to the model and persists one assistant turn", async ({
@@ -176,6 +225,89 @@ test("returns browser Python results to the model and persists one assistant tur
     expect(rows[1].parts).toContain('"type":"tool-execute_code"');
     expect(rows[1].parts).toContain('"result":45');
     expect(rows[1].parts).toContain("Python says 45.");
+  } finally {
+    database.close();
+  }
+});
+
+test("mounts chat files and persists generated downloads and charts across reload", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  await signUp(page, "code-artifact-admin@overtchat-test.local");
+  seedModel();
+  await page.reload();
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "data.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("value\n1\n2\n3\n"),
+  });
+  await expect(page.getByText("data.csv", { exact: true })).toBeVisible();
+  await page
+    .getByPlaceholder("Message…")
+    .fill("Analyze the attached CSV, create a cleaned CSV and chart, and let me download both.");
+  await page.getByLabel("Send message").click();
+
+  await expect(
+    page.getByText(
+      "I cleaned the CSV and created a chart. Both files are ready to download.",
+      { exact: true },
+    ),
+  ).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => sawArtifactOutput).toBe(true);
+
+  await page.getByRole("button", { name: /Ran Python/u }).click();
+  const cleaned = page.getByRole("link", { name: /cleaned\.csv/u });
+  await expect(cleaned).toBeVisible();
+  await expect(page.getByAltText("plot-1.png")).toBeVisible();
+  const cleanedUrl = await cleaned.getAttribute("href");
+  expect(cleanedUrl).toMatch(/^\/api\/uploads\//u);
+  await expect
+    .poll(() =>
+      cleanedUrl
+        ? page.evaluate(async (url) => {
+            const response = await fetch(url);
+            return {
+              text: await response.text(),
+              disposition: response.headers.get("content-disposition"),
+            };
+          }, cleanedUrl)
+        : null,
+    )
+    .toEqual({
+      text: "value,double\n1,2\n2,4\n3,6\n",
+      disposition: "attachment; filename*=UTF-8''cleaned.csv",
+    });
+
+  await page.reload();
+  await expect(
+    page.getByText(
+      "I cleaned the CSV and created a chart. Both files are ready to download.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /Ran Python/u }).click();
+  await expect(page.getByRole("link", { name: /cleaned\.csv/u })).toBeVisible();
+  await expect(page.getByAltText("plot-1.png")).toBeVisible();
+
+  const database = openE2eDatabase();
+  try {
+    const rows = database
+      .prepare("SELECT role, parts FROM messages ORDER BY rowid")
+      .all() as Array<{ role: string; parts: string }>;
+    expect(rows).toHaveLength(2);
+    expect(rows[1].parts).toContain('"name":"cleaned.csv"');
+    expect(rows[1].parts).toContain('"name":"plot-1.png"');
+    expect(rows[1].parts).not.toContain("blob:");
+    const uploads = database
+      .prepare("SELECT category, filename FROM uploads ORDER BY filename")
+      .all() as Array<{ category: string; filename: string }>;
+    expect(uploads).toEqual([
+      { category: "artifact", filename: "cleaned.csv" },
+      { category: "spreadsheet", filename: "data.csv" },
+      { category: "image", filename: "plot-1.png" },
+    ]);
   } finally {
     database.close();
   }
@@ -226,6 +358,18 @@ function seedCodeChat() {
               "import time",
               "time.sleep(2)",
               '"worker finished"',
+              "```",
+              "\n\nGenerated outputs:\n\n```python",
+              "from pathlib import Path",
+              "import matplotlib.pyplot as plt",
+              "Path('/mnt/uploads/manual.txt').write_text('manual output')",
+              "plt.plot([1, 2, 3], [1, 4, 9])",
+              "plt.show()",
+              '"outputs ready"',
+              "```",
+              "\n\nNetwork isolation:\n\n```python",
+              "from js import fetch",
+              "await fetch('https://example.com')",
               "```",
             ].join("\n"),
           },
