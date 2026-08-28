@@ -4,7 +4,7 @@ import {
   randomBytes,
   timingSafeEqual,
 } from "node:crypto";
-import { and, asc, eq, gt, isNull, lt } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   hostConnectorPairings,
@@ -268,6 +268,43 @@ export function listHostConnectors(userId: string): HostConnectorRow[] {
     .from(hostConnectors)
     .where(eq(hostConnectors.userId, userId))
     .all();
+}
+
+export function listAvailableHostConnectors(
+  userId: string,
+): HostConnectorRow[] {
+  return db
+    .select()
+    .from(hostConnectors)
+    .where(
+      or(
+        eq(hostConnectors.managed, true),
+        eq(hostConnectors.userId, userId),
+      ),
+    )
+    .orderBy(desc(hostConnectors.managed), asc(hostConnectors.createdAt))
+    .all();
+}
+
+export function getAvailableHostConnector(
+  id: string,
+  userId: string,
+): HostConnectorRow | null {
+  return (
+    db
+      .select()
+      .from(hostConnectors)
+      .where(
+        and(
+          eq(hostConnectors.id, id),
+          or(
+            eq(hostConnectors.managed, true),
+            eq(hostConnectors.userId, userId),
+          ),
+        ),
+      )
+      .get() ?? null
+  );
 }
 
 export function getOwnedHostConnector(

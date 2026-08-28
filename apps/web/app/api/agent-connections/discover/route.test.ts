@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   daemonRequest: vi.fn(),
-  getOwnedConnector: vi.fn(),
+  getAvailableConnector: vi.fn(),
   getSession: vi.fn(),
 }));
 
@@ -14,7 +14,7 @@ vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
-  getOwnedHostConnector: mocks.getOwnedConnector,
+  getAvailableHostConnector: mocks.getAvailableConnector,
 }));
 
 import { POST } from "./route";
@@ -36,7 +36,7 @@ describe("Agent Connection discovery route", () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "admin", role: "admin" },
     });
-    mocks.getOwnedConnector.mockReturnValue({ id: "connector" });
+    mocks.getAvailableConnector.mockReturnValue({ id: "connector" });
     mocks.daemonRequest.mockResolvedValue({
       target: {
         connectorId: "connector",
@@ -59,7 +59,7 @@ describe("Agent Connection discovery route", () => {
     });
   });
 
-  it("discovers agents through an owned connector and exact SSH alias", async () => {
+  it("discovers agents through an available connector and exact SSH alias", async () => {
     const response = await POST(
       request({
         connectorId: "connector",
@@ -99,7 +99,7 @@ describe("Agent Connection discovery route", () => {
         },
       ],
     });
-    expect(mocks.getOwnedConnector).toHaveBeenCalledWith(
+    expect(mocks.getAvailableConnector).toHaveBeenCalledWith(
       "connector",
       "admin",
     );
@@ -114,8 +114,8 @@ describe("Agent Connection discovery route", () => {
     });
   });
 
-  it("rejects connectors owned by another user", async () => {
-    mocks.getOwnedConnector.mockReturnValue(null);
+  it("rejects connectors unavailable to the current administrator", async () => {
+    mocks.getAvailableConnector.mockReturnValue(null);
 
     const response = await POST(
       request({ connectorId: "other", transport: "local" }),
@@ -135,7 +135,7 @@ describe("Agent Connection discovery route", () => {
     );
 
     expect(response.status).toBe(403);
-    expect(mocks.getOwnedConnector).not.toHaveBeenCalled();
+    expect(mocks.getAvailableConnector).not.toHaveBeenCalled();
     expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 });

@@ -11,7 +11,7 @@ vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
-  getOwnedHostConnector: mocks.getConnector,
+  getAvailableHostConnector: mocks.getConnector,
 }));
 vi.mock("@/lib/agents/connector/providerSnapshots", () => ({
   provisionAgentWorkspace: mocks.reconcile,
@@ -58,7 +58,7 @@ describe("atomic agent workspace route", () => {
     });
   });
 
-  it("does not reconcile another user's connector", async () => {
+  it("does not reconcile an unavailable connector", async () => {
     mocks.getConnector.mockReturnValue(null);
     const response = await POST(
       request({

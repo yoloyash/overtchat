@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   daemonRequest: vi.fn(),
   createPairing: vi.fn(),
   deleteConnector: vi.fn(),
+  getManagedConnector: vi.fn(),
   getOwnedConnector: vi.fn(),
   listConnectors: vi.fn(),
 }));
@@ -23,8 +24,9 @@ vi.mock("@/lib/agents/connector/broker", () => ({
 vi.mock("@/lib/db/hostConnectors", () => ({
   createHostConnectorPairing: mocks.createPairing,
   deleteHostConnector: mocks.deleteConnector,
+  getManagedHostConnector: mocks.getManagedConnector,
   getOwnedHostConnector: mocks.getOwnedConnector,
-  listHostConnectors: mocks.listConnectors,
+  listAvailableHostConnectors: mocks.listConnectors,
 }));
 
 import { DELETE, GET, POST } from "./route";
@@ -47,6 +49,7 @@ describe("Host Connectors route", () => {
       user: { id: "admin", role: "admin" },
     });
     mocks.listConnectors.mockReturnValue([]);
+    mocks.getManagedConnector.mockReturnValue(null);
     mocks.isOnline.mockReturnValue(false);
     mocks.createPairing.mockReturnValue({
       pairCode: "ocp_pair.secret",
@@ -85,6 +88,26 @@ describe("Host Connectors route", () => {
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });
 
+  it("lists connectors available to the current administrator", async () => {
+    mocks.listConnectors.mockReturnValue([
+      {
+        id: "managed",
+        name: "Managed host",
+        managed: true,
+        version: "0.8.0",
+        lastSeenAt: new Date(12_000),
+      },
+    ]);
+
+    const response = await GET(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.listConnectors).toHaveBeenCalledWith("admin");
+    await expect(response.json()).resolves.toMatchObject({
+      connectors: [{ id: "managed", managed: true }],
+    });
+  });
+
   it("keeps managed connectors under overtchat setup", async () => {
     const managed = {
       id: "managed",
@@ -94,6 +117,7 @@ describe("Host Connectors route", () => {
       lastSeenAt: null,
     };
     mocks.listConnectors.mockReturnValue([managed]);
+    mocks.getManagedConnector.mockReturnValue(managed);
     mocks.getOwnedConnector.mockReturnValue(managed);
 
     const pairResponse = await POST(request("POST"));

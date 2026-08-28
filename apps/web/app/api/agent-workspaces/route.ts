@@ -2,7 +2,7 @@ import { auth } from "@/lib/auth/server";
 import { connectionAccessError, connectionErrorMessage } from "@/lib/agents/access";
 import { createAgentWorkspaceSchema } from "@overtchat/agent-bridge";
 import { provisionAgentWorkspace } from "@/lib/agents/connector/providerSnapshots";
-import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
+import { getAvailableHostConnector } from "@/lib/db/hostConnectors";
 
 export const maxDuration = 150;
 
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     );
   }
   if (
-    !getOwnedHostConnector(parsed.data.target.connectorId, session.user.id)
+    !getAvailableHostConnector(parsed.data.target.connectorId, session.user.id)
   ) {
     return new Response("Host Connector not found", { status: 404 });
   }

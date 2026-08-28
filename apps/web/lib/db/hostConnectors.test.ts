@@ -133,6 +133,20 @@ describe("Host Connector pairing", () => {
     expect(repository.listHostConnectors("alice")).toHaveLength(1);
   });
 
+  it("keeps an unmanaged connector private to the administrator who paired it", () => {
+    const pairing = repository.createHostConnectorPairing("alice");
+    const paired = repository.consumeHostConnectorPairing({
+      pairCode: pairing.pairCode,
+      name: "Alice host",
+      version: "0.2.0",
+    })!;
+
+    expect(
+      repository.getAvailableHostConnector(paired.connector.id, "bob"),
+    ).toBeNull();
+    expect(repository.listAvailableHostConnectors("bob")).toEqual([]);
+  });
+
   it("rejects expired pairings", () => {
     const pairing = repository.createHostConnectorPairing("alice");
     raw.prepare("UPDATE host_connector_pairings SET expires_at = 0").run();
@@ -197,5 +211,23 @@ describe("managed Host Connector", () => {
     expect(repository.authenticateHostConnectorToken(managed.token))
       .toMatchObject({ id: legacy.connector.id });
     expect(repository.listHostConnectors("alice")).toHaveLength(1);
+  });
+
+  it("is available to another administrator without transferring ownership", () => {
+    raw.prepare("UPDATE user SET role = 'admin' WHERE id = 'bob'").run();
+    const managed = repository.provisionManagedHostConnector({
+      name: "Managed host",
+      version: "0.4.0",
+    }).connector;
+
+    expect(repository.getOwnedHostConnector(managed.id, "bob")).toBeNull();
+    expect(repository.getAvailableHostConnector(managed.id, "bob")).toMatchObject({
+      id: managed.id,
+      userId: "alice",
+      managed: true,
+    });
+    expect(repository.listAvailableHostConnectors("bob")).toEqual([
+      expect.objectContaining({ id: managed.id, userId: "alice", managed: true }),
+    ]);
   });
 });

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   daemonRequest: vi.fn(),
-  getOwnedConnector: vi.fn(),
+  getAvailableConnector: vi.fn(),
   getSession: vi.fn(),
 }));
 
@@ -14,7 +14,7 @@ vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
-  getOwnedHostConnector: mocks.getOwnedConnector,
+  getAvailableHostConnector: mocks.getAvailableConnector,
 }));
 
 import { POST } from "./route";
@@ -33,7 +33,7 @@ describe("Agent target directory route", () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "admin", role: "admin" },
     });
-    mocks.getOwnedConnector.mockReturnValue({ id: "connector" });
+    mocks.getAvailableConnector.mockReturnValue({ id: "connector" });
     mocks.daemonRequest.mockResolvedValue({
       path: "/srv",
       parent: "/",
@@ -108,8 +108,8 @@ describe("Agent target directory route", () => {
     expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
-  it("keeps browsing restricted to owned connectors", async () => {
-    mocks.getOwnedConnector.mockReturnValue(null);
+  it("keeps browsing restricted to available connectors", async () => {
+    mocks.getAvailableConnector.mockReturnValue(null);
 
     const response = await POST(
       request({
