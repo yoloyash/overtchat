@@ -130,6 +130,63 @@ function createAliceConnection() {
 }
 
 describe("agent connection persistence", () => {
+  it("keeps configured directories personal when two admins use the same connector", async () => {
+    repository.saveAgentWorkspaceInstallation({
+      userId: "alice",
+      host: {
+        name: "This server",
+        transport: "local",
+        connectorId: "alice-connector",
+      },
+      connection: {
+        provider: "pi",
+        executable: "pi",
+        shellMode: "interactive",
+        detectedVersion: "0.82.1",
+      },
+      workspace: { path: "/work/shared", name: "shared" },
+      sessions: [],
+    });
+
+    await expect(repository.listAgentConnections("bob")).resolves.toEqual([]);
+
+    repository.saveAgentWorkspaceInstallation({
+      userId: "bob",
+      host: {
+        name: "This server",
+        transport: "local",
+        connectorId: "alice-connector",
+      },
+      connection: {
+        provider: "pi",
+        executable: "pi",
+        shellMode: "interactive",
+        detectedVersion: "0.82.1",
+      },
+      workspace: { path: "/work/shared", name: "shared" },
+      sessions: [],
+    });
+
+    const [aliceConnections, bobConnections] = await Promise.all([
+      repository.listAgentConnections("alice"),
+      repository.listAgentConnections("bob"),
+    ]);
+    expect(aliceConnections).toEqual([
+      expect.objectContaining({
+        workspaces: [expect.objectContaining({ path: "/work/shared" })],
+      }),
+    ]);
+    expect(bobConnections).toEqual([
+      expect.objectContaining({
+        workspaces: [expect.objectContaining({ path: "/work/shared" })],
+      }),
+    ]);
+    expect(bobConnections[0]!.id).not.toBe(aliceConnections[0]!.id);
+    expect(bobConnections[0]!.workspaces[0]!.id).not.toBe(
+      aliceConnections[0]!.workspaces[0]!.id,
+    );
+  });
+
   it("reuses an existing configured connection for the same target and provider", () => {
     const first = createAliceConnection();
     const updated = repository.createAgentConnection({

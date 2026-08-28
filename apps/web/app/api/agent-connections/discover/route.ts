@@ -8,7 +8,7 @@ import {
   agentProviderSnapshotSchema,
 } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
+import { getAvailableHostConnector } from "@/lib/db/hostConnectors";
 
 export const maxDuration = 30;
 
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  if (!getOwnedHostConnector(parsed.data.connectorId, session.user.id)) {
+  if (!getAvailableHostConnector(parsed.data.connectorId, session.user.id)) {
     return new Response("Host Connector not found", { status: 404 });
   }
 

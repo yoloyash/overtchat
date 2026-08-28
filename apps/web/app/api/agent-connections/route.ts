@@ -9,7 +9,7 @@ import {
 } from "@overtchat/agent-bridge";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { withConnectorSessionDirectory } from "@/lib/agents/connector/directory";
-import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
+import { getAvailableHostConnector } from "@/lib/db/hostConnectors";
 import {
   createAgentConnection,
   listAgentConnections,
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     );
   }
   const draft = parsed.data;
-  if (!getOwnedHostConnector(draft.connectorId, session.user.id)) {
+  if (!getAvailableHostConnector(draft.connectorId, session.user.id)) {
     return new Response("Host Connector not found", { status: 404 });
   }
 

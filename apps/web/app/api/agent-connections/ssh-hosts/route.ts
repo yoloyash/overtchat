@@ -1,6 +1,6 @@
 import { auth } from "@/lib/auth/server";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import { getOwnedHostConnector } from "@/lib/db/hostConnectors";
+import { getAvailableHostConnector } from "@/lib/db/hostConnectors";
 
 export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
@@ -12,7 +12,7 @@ export async function GET(req: Request) {
   if (!connectorId) {
     return Response.json({ error: "Choose a Host Connector." }, { status: 400 });
   }
-  if (!getOwnedHostConnector(connectorId, session.user.id)) {
+  if (!getAvailableHostConnector(connectorId, session.user.id)) {
     return new Response("Not found", { status: 404 });
   }
   try {

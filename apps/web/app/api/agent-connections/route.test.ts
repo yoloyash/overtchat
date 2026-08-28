@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   listAgentConnections: vi.fn(),
   createAgentConnection: vi.fn(),
   daemonRequest: vi.fn(),
-  getOwnedHostConnector: vi.fn(),
+  getAvailableHostConnector: vi.fn(),
   withConnectorSessionDirectory: vi.fn(),
 }));
 
@@ -21,7 +21,7 @@ vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: { request: mocks.daemonRequest },
 }));
 vi.mock("@/lib/db/hostConnectors", () => ({
-  getOwnedHostConnector: mocks.getOwnedHostConnector,
+  getAvailableHostConnector: mocks.getAvailableHostConnector,
 }));
 vi.mock("@/lib/agents/connector/directory", () => ({
   withConnectorSessionDirectory: mocks.withConnectorSessionDirectory,
@@ -48,7 +48,7 @@ describe("Agent Connections route", () => {
       user: { id: "admin", role: "admin" },
     });
     mocks.listAgentConnections.mockResolvedValue([]);
-    mocks.getOwnedHostConnector.mockReturnValue({ id: "connector" });
+    mocks.getAvailableHostConnector.mockReturnValue({ id: "connector" });
     mocks.withConnectorSessionDirectory.mockImplementation(
       (connections) => connections,
     );

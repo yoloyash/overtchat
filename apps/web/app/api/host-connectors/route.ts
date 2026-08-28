@@ -7,8 +7,9 @@ import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import {
   createHostConnectorPairing,
   deleteHostConnector,
+  getManagedHostConnector,
   getOwnedHostConnector,
-  listHostConnectors,
+  listAvailableHostConnectors,
 } from "@/lib/db/hostConnectors";
 
 function shellQuote(value: string): string {
@@ -78,7 +79,7 @@ async function adminUser(request: Request) {
 export async function GET(request: Request) {
   const result = await adminUser(request);
   if (!result.ok) return result.error;
-  const connectors = listHostConnectors(result.user.id).map((connector) => {
+  const connectors = listAvailableHostConnectors(result.user.id).map((connector) => {
     const needsUpgrade = connectorNeedsUpgrade(connector.version);
     return {
       id: connector.id,
@@ -101,7 +102,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const result = await adminUser(request);
   if (!result.ok) return result.error;
-  if (listHostConnectors(result.user.id).some((connector) => connector.managed)) {
+  if (getManagedHostConnector()) {
     return Response.json(
       {
         error: "Agent Connections are managed by overtchat setup.",
