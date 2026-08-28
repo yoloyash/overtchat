@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "mkdir -p data && next dev -p ${PORT:-4717}",
     "build": "next build",
+    "postbuild": "node scripts/sanitize-build-output.mjs",
     "start": "mkdir -p data && next start -p 4717",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
