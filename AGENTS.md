@@ -2,8 +2,8 @@
 
 OvertChat is a self-hosted chat application for local and hosted LLMs, with
 web/mobile clients and optional coding-agent control. Users own the server and
-data; a host-native connector runs Codex, Pi, and Oh My Pi sessions locally or
-over SSH.
+data; a host-native connector runs Codex, Claude Code, Pi, Oh My Pi, and
+OpenCode sessions locally or over SSH.
 
 ## Sources of truth
 
@@ -26,7 +26,7 @@ runbook instead of copying its instructions.
 | `apps/cli` | Linux management CLI for setup, adoption, updates, and managed Compose state |
 | `apps/connector` | Host-native daemon that owns live coding-agent sessions and process execution |
 | `packages/agent-bridge` | Exact web-to-connector protocol and shared agent data contracts |
-| `packages/agent-runtime` | Codex, Pi, and OMP provider adapters plus host runtime primitives |
+| `packages/agent-runtime` | Coding-agent provider adapters plus host runtime primitives |
 | `packages/shared` | Cross-client chat/tool/model contracts and generated web/native theme outputs |
 | `scripts/dev.mjs` | Root development-stack orchestration |
 | `compose.yml`, `searxng/`, `stt/` | Self-hosted application and bundled sidecars |

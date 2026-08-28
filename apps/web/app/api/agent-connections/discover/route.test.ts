@@ -54,6 +54,7 @@ describe("Agent Connection discovery route", () => {
         },
         { provider: "codex", status: "unavailable" },
         { provider: "opencode", status: "unavailable" },
+        { provider: "claude", status: "unavailable" },
       ],
       refreshedAt: 123,
     });
@@ -87,6 +88,7 @@ describe("Agent Connection discovery route", () => {
           },
           { provider: "codex", status: "unavailable" },
           { provider: "opencode", status: "unavailable" },
+          { provider: "claude", status: "unavailable" },
         ],
         refreshedAt: 123,
       },

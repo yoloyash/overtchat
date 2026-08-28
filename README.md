@@ -39,7 +39,7 @@ Existing standard Compose installations can be adopted in place with
 
 | Local inference | Included locally | Coding agents |
 | --- | --- | --- |
-| vLLM · llama.cpp · SGLang | SearXNG · Kokoro TTS · Parakeet STT | Codex · Pi · Oh My Pi |
+| vLLM · llama.cpp · SGLang | SearXNG · Kokoro TTS · Parakeet STT | Codex · Claude Code · Pi · Oh My Pi |
 
 First-class setup and model discovery for local inference servers, plus hosted
 providers, custom endpoints, and MCP servers. The installer can also wire up

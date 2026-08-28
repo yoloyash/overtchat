@@ -310,6 +310,7 @@ async function detectedAgents(): Promise<string[]> {
     ["codex", "Codex"],
     ["pi", "Pi"],
     ["omp", "Oh My Pi"],
+    ["claude", "Claude Code"],
   ] as const;
   const detected: string[] = [];
   for (const [command, label] of agents) {
@@ -345,7 +346,7 @@ export async function promptInstallationConfig(
   const agents = await detectedAgents();
   note(
     [
-      "Use OvertChat as a client for coding agents such as Codex, Pi, and Oh My Pi.",
+      "Use OvertChat as a client for coding agents such as Codex, Claude Code, Pi, and Oh My Pi.",
       ...(agents.length > 0
         ? [`Detected on this machine: ${agents.join(", ")}`]
         : []),

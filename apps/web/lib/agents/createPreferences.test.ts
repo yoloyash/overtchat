@@ -69,4 +69,22 @@ describe("agent create preferences", () => {
       },
     });
   });
+
+  it("preserves Claude model, mode, and thinking preferences", () => {
+    expect(
+      parseAgentCreatePreferences({
+        providerPreferences: {
+          claude: {
+            model: "haiku",
+            mode: "auto",
+            thinkingByModel: { haiku: "medium" },
+          },
+        },
+      }),
+    ).toMatchObject({
+      providerPreferences: {
+        claude: { model: "haiku", mode: "auto" },
+      },
+    });
+  });
 });

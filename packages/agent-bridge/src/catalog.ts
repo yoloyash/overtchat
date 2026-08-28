@@ -52,6 +52,14 @@ export const AGENT_PROVIDERS: Record<
       steer: true,
     },
   },
+  claude: {
+    id: "claude",
+    label: "Claude Code",
+    executable: "claude",
+    capabilities: {
+      steer: true,
+    },
+  },
 };
 
 export function agentProviderMetadata(

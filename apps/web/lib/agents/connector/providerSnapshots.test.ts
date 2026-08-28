@@ -48,6 +48,7 @@ const snapshot = {
       version: "1.2.3",
       shellMode: "interactive" as const,
     },
+    { provider: "claude" as const, status: "unavailable" as const },
   ],
   refreshedAt: 123,
 };

@@ -25,7 +25,7 @@ state model used by the web app, connector, and runtime.
 
 ## Agent runtime
 
-`agent-runtime` adapts Codex, Pi, and Oh My Pi into the bridge contracts and
+`agent-runtime` adapts supported coding agents into the bridge contracts and
 provides host-runtime primitives used by the connector.
 
 - `src/providers/types.ts` defines the provider adapter and runtime-client
