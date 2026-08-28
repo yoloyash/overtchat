@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
       "./lib/providers/server/model-catalog.manifest.json",
     ],
   },
+  outputFileTracingExcludes: {
+    "/*": ["./data/**/*"],
+  },
   transpilePackages: ["@overtchat/agent-bridge", "@overtchat/shared"],
   // Hosts allowed to load `next dev` assets cross-origin. Only used in dev
   // (Next.js ignores this at build time). Phone-on-LAN testing needs the

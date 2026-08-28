@@ -3,15 +3,17 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
+      "inputs": ["$TURBO_DEFAULT$", ".env*"]
     },
     "@overtchat/mobile#build": {
       "cache": false
     },
+    "@overtchat/web#build": {
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**"]
+    },
     "@overtchat/site#build": {
       "env": ["GITHUB_TOKEN", "NEXT_PUBLIC_BASE_PATH", "NEXT_PUBLIC_SITE_ORIGIN"],
-      "outputs": [".next/**", "!.next/cache/**", "out/**"]
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "out/**"]
     },
     "@overtchat/connector#build": {
       "outputs": ["dist/**"]
