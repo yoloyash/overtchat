@@ -19,7 +19,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 | --- | --- | --- |
 | App | Manifest `appVersion`; `compose.yml` default | `vX.Y.Z` |
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
-| Connector | Package and lockfile; bridge release constants; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
+| Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
 | Bundled images | Manifest `redisImage`, `searxngImage`, or `kokoroImage` digest | None |
 | Mobile | See [Mobile release](#mobile-release) | `mobile-vX.Y.Z` |
@@ -42,7 +42,9 @@ Do not change unrelated manifest fields.
 - **CLI:** The CLI workflow verifies both binaries, publishes the GitHub
   release, and dispatches promotion.
 - **Connector:** The connector workflow verifies both binaries, publishes the
-  GitHub release, and dispatches promotion.
+  GitHub release, and dispatches promotion. Increment the bridge protocol only
+  for a breaking web-to-connector contract change; ordinary connector releases
+  retain the current protocol.
 - **STT:** The STT workflow publishes both images and dispatches promotion.
 - **Bundled images:** Promotion verifies amd64 and arm64 for every selected
   digest. A digest-only change does not require a CLI release.

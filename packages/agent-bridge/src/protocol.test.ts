@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
-  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isHostConnectorCommand,
   isHostConnectorEvent,
@@ -10,9 +9,8 @@ import {
 import { agentProviderCatalogSchema } from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
-  it("identifies the protocol 2 compatibility release", () => {
+  it("identifies the current wire protocol", () => {
     expect(HOST_CONNECTOR_PROTOCOL_VERSION).toBe(2);
-    expect(HOST_CONNECTOR_COMPATIBILITY_RELEASE).toBe("0.8.0");
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {

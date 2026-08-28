@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
 } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
@@ -29,20 +28,21 @@ import { POST } from "./route";
 function request(
   body: unknown,
   options: {
-    version?: string;
     protocol?: number;
     buildVersion?: string;
+    legacyVersion?: string;
   } = {},
 ): Request {
   return new Request("http://server.test/api/host-connectors/events", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-OvertChat-Connector-Version":
-        options.version ?? HOST_CONNECTOR_COMPATIBILITY_RELEASE,
       "X-OvertChat-Connector-Protocol": String(
         options.protocol ?? HOST_CONNECTOR_PROTOCOL_VERSION,
       ),
+      ...(options.legacyVersion
+        ? { "X-OvertChat-Connector-Version": options.legacyVersion }
+        : {}),
       ...(options.buildVersion
         ? { "X-OvertChat-Connector-Build-Version": options.buildVersion }
         : {}),
@@ -89,10 +89,7 @@ describe("Host Connector event route", () => {
       "daemon",
       [event],
     );
-    expect(mocks.touch).toHaveBeenCalledWith(
-      "connector",
-      HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-    );
+    expect(mocks.touch).toHaveBeenCalledWith("connector", undefined);
   });
 
   it("records a newer build without requiring its release to match", async () => {
@@ -197,7 +194,7 @@ describe("Host Connector event route", () => {
     expect(mocks.acceptBatch).not.toHaveBeenCalled();
   });
 
-  it("rejects an outdated connector release with an update instruction", async () => {
+  it("ignores the retired compatibility-release header", async () => {
     const response = await POST(
       request(
         {
@@ -215,17 +212,12 @@ describe("Host Connector event route", () => {
             },
           ],
         },
-        { version: "0.1.0" },
+        { legacyVersion: "0.1.0" },
       ),
     );
 
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toMatchObject({
-      error: expect.stringContaining("overtchat update"),
-      code: "unsupported_connector_protocol",
-      compatibilityRelease: HOST_CONNECTOR_COMPATIBILITY_RELEASE,
-    });
-    expect(mocks.acceptBatch).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.acceptBatch).toHaveBeenCalledOnce();
   });
 
   it("returns a client error when the broker rejects a noncontiguous batch", async () => {

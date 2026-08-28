@@ -31,8 +31,9 @@ you a URL to open. The first signup becomes the admin.
 - `overtchat status` — check the installation
 - `overtchat update` — update the app and everything it manages
 
-Prefer to manage Compose yourself or deploy from source? See the
-[deployment guide](docs/deploy.md#manual-compose-installation).
+The guided manager is the supported production installation and update path.
+Existing standard Compose installations can be adopted in place with
+`overtchat setup`.
 
 ## Built for your stack
 

@@ -19,12 +19,9 @@ import {
   agentSessionLaunchConfigSchema,
 } from "./agents";
 
+/** Increment only for a breaking web-to-connector wire contract change. */
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 2;
-/**
- * Release 0.8.0 is the compatibility baseline for protocol 2 and remains
- * stable when connector build versions change without changing the wire shape.
- */
-export const HOST_CONNECTOR_COMPATIBILITY_RELEASE = "0.8.0";
+/** Published connector artifact version; independent of wire compatibility. */
 export const HOST_CONNECTOR_RELEASE_VERSION = "0.8.0";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 

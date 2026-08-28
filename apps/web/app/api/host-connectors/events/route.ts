@@ -1,7 +1,6 @@
 import {
   HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   HOST_CONNECTOR_PROTOCOL_VERSION,
-  HOST_CONNECTOR_COMPATIBILITY_RELEASE,
   isHostConnectorEvent,
   isHostConnectorProtocolVersion,
   type HostConnectorEventBatch,
@@ -16,17 +15,13 @@ export async function POST(request: Request) {
   const protocol = Number(
     request.headers.get("x-overtchat-connector-protocol"),
   );
-  if (
-    request.headers.get("x-overtchat-connector-version") !==
-      HOST_CONNECTOR_COMPATIBILITY_RELEASE ||
-    !isHostConnectorProtocolVersion(protocol)
-  ) {
+  if (!isHostConnectorProtocolVersion(protocol)) {
     return Response.json(
       {
-        error: `The OvertChat app and Host Connector are out of date with each other. Run \`overtchat update\` on the OvertChat host (or reinstall connector ${HOST_CONNECTOR_COMPATIBILITY_RELEASE}).`,
+        error:
+          "The OvertChat app and Host Connector use incompatible protocols. Run `overtchat update` on the OvertChat host.",
         code: "unsupported_connector_protocol",
         supportedProtocolVersions: [HOST_CONNECTOR_PROTOCOL_VERSION],
-        compatibilityRelease: HOST_CONNECTOR_COMPATIBILITY_RELEASE,
       },
       { status: 409 },
     );
@@ -57,7 +52,7 @@ export async function POST(request: Request) {
       ?.trim();
     touchHostConnector(
       connector.id,
-      connectorBuildVersion || HOST_CONNECTOR_COMPATIBILITY_RELEASE,
+      connectorBuildVersion || undefined,
     );
     return Response.json(ack);
   } catch (error) {
