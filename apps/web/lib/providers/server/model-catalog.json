@@ -351,7 +351,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "gpt-5.2": {
       "context": 400000,
@@ -373,7 +373,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "gpt-5.2-chat-latest": {
       "context": 128000,
@@ -459,7 +459,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "gpt-5.3-codex-spark": {
       "context": 128000,
@@ -521,7 +521,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "gpt-5.4-mini": {
       "context": 400000,
@@ -543,7 +543,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "gpt-5.4-nano": {
       "context": 400000,
@@ -565,7 +565,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "gpt-5.4-pro": {
       "context": 1050000,
@@ -3416,22 +3416,22 @@
       "input": 922000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.022,
-        "cache_write": 0.275,
+        "cache_read": 0.02,
+        "cache_write": 0.25,
         "context_over_200k": {
-          "cache_read": 0.044,
-          "cache_write": 0.55,
-          "input": 0.44,
-          "output": 1.98
+          "cache_read": 0.04,
+          "cache_write": 0.5,
+          "input": 0.4,
+          "output": 1.8
         },
-        "input": 0.22,
-        "output": 1.32,
+        "input": 0.2,
+        "output": 1.2,
         "tiers": [
           {
-            "cache_read": 0.044,
-            "cache_write": 0.55,
-            "input": 0.44,
-            "output": 1.98,
+            "cache_read": 0.04,
+            "cache_write": 0.5,
+            "input": 0.4,
+            "output": 1.8,
             "tier": {
               "size": 272000,
               "type": "context"
@@ -3450,7 +3450,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": true,
+      "structured_output": false,
       "temperature": false
     },
     "global.openai.gpt-5.6-sol": {
@@ -3458,22 +3458,22 @@
       "input": 922000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.55,
-        "cache_write": 6.875,
+        "cache_read": 0.4,
+        "cache_write": 5,
         "context_over_200k": {
-          "cache_read": 1.1,
-          "cache_write": 13.75,
-          "input": 11,
-          "output": 49.5
+          "cache_read": 0.8,
+          "cache_write": 10,
+          "input": 8,
+          "output": 30
         },
-        "input": 5.5,
-        "output": 33,
+        "input": 4,
+        "output": 20,
         "tiers": [
           {
-            "cache_read": 1.1,
-            "cache_write": 13.75,
-            "input": 11,
-            "output": 49.5,
+            "cache_read": 0.8,
+            "cache_write": 10,
+            "input": 8,
+            "output": 30,
             "tier": {
               "size": 272000,
               "type": "context"
@@ -3492,7 +3492,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": true,
+      "structured_output": false,
       "temperature": false
     },
     "global.openai.gpt-5.6-terra": {
@@ -3500,22 +3500,22 @@
       "input": 922000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.22,
-        "cache_write": 2.75,
+        "cache_read": 0.2,
+        "cache_write": 2.5,
         "context_over_200k": {
-          "cache_read": 0.44,
-          "cache_write": 5.5,
-          "input": 4.4,
-          "output": 19.8
+          "cache_read": 0.4,
+          "cache_write": 5,
+          "input": 4,
+          "output": 18
         },
-        "input": 2.2,
-        "output": 13.2,
+        "input": 2,
+        "output": 12,
         "tiers": [
           {
-            "cache_read": 0.44,
-            "cache_write": 5.5,
-            "input": 4.4,
-            "output": 19.8,
+            "cache_read": 0.4,
+            "cache_write": 5,
+            "input": 4,
+            "output": 18,
             "tier": {
               "size": 272000,
               "type": "context"
@@ -3534,7 +3534,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": true,
+      "structured_output": false,
       "temperature": false
     },
     "google.gemma-3-12b-it": {
@@ -4215,7 +4215,7 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": true
     },
     "openai.gpt-5.5": {
       "context": 272000,
@@ -4286,22 +4286,22 @@
       "input": 922000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.55,
-        "cache_write": 6.875,
+        "cache_read": 0.44,
+        "cache_write": 5.5,
         "context_over_200k": {
-          "cache_read": 1.1,
-          "cache_write": 13.75,
-          "input": 11,
-          "output": 49.5
+          "cache_read": 0.88,
+          "cache_write": 11,
+          "input": 8.8,
+          "output": 33
         },
-        "input": 5.5,
-        "output": 33,
+        "input": 4.4,
+        "output": 22,
         "tiers": [
           {
-            "cache_read": 1.1,
-            "cache_write": 13.75,
-            "input": 11,
-            "output": 49.5,
+            "cache_read": 0.88,
+            "cache_write": 11,
+            "input": 8.8,
+            "output": 33,
             "tier": {
               "size": 272000,
               "type": "context"
