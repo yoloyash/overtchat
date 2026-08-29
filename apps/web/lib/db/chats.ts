@@ -3,8 +3,43 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
 import { chats, messages } from "@/lib/db/schema";
+import {
+  CHAT_MESSAGE_PAGE_SIZE,
+  type ChatMessagePage,
+} from "@/lib/chat/history";
 
 export type ChatRow = typeof chats.$inferSelect;
+
+type MessageRow = typeof messages.$inferSelect;
+type MessageUIRow = Pick<MessageRow, "id" | "role" | "parts" | "metadata">;
+type RawMessagePageRow = {
+  id: string;
+  role: MessageRow["role"];
+  parts: string | MessageRow["parts"];
+  metadata: string | MessageRow["metadata"];
+  rowId: number;
+};
+
+function toUIMessage(row: MessageUIRow): UIMessage {
+  return {
+    id: row.id,
+    role: row.role as UIMessage["role"],
+    parts: row.parts as UIMessage["parts"],
+    ...(row.metadata ? { metadata: row.metadata } : {}),
+  };
+}
+
+function parseJsonColumn<T>(value: string | T): T {
+  return typeof value === "string" ? (JSON.parse(value) as T) : value;
+}
+
+function decodeMessageCursor(cursor: string): number {
+  const rowId = Number(cursor);
+  if (!Number.isSafeInteger(rowId) || rowId <= 0) {
+    throw new Error("Invalid message cursor");
+  }
+  return rowId;
+}
 
 export async function getChat(
   id: string,
@@ -75,12 +110,56 @@ export async function getMessages(chatId: string): Promise<UIMessage[]> {
     .from(messages)
     .where(eq(messages.chatId, chatId))
     .orderBy(sql`${messages}.rowid`);
-  return rows.map((row) => ({
-    id: row.id,
-    role: row.role as UIMessage["role"],
-    parts: row.parts as UIMessage["parts"],
-    ...(row.metadata ? { metadata: row.metadata } : {}),
-  }));
+  return rows.map(toUIMessage);
+}
+
+/**
+ * Loads a newest-first keyset page and returns it in transcript order.
+ * SQLite rowids are the existing canonical ordering for messages, so the
+ * cursor preserves edit/regenerate and import ordering without a migration.
+ */
+export async function getMessagesPage(
+  chatId: string,
+  options: { cursor?: string; limit?: number } = {},
+): Promise<ChatMessagePage> {
+  const limit = Math.min(
+    100,
+    Math.max(1, Math.trunc(options.limit ?? CHAT_MESSAGE_PAGE_SIZE)),
+  );
+  const beforeRowId = options.cursor
+    ? decodeMessageCursor(options.cursor)
+    : Number.MAX_SAFE_INTEGER;
+  const rows = await db.all<RawMessagePageRow>(sql`
+    SELECT
+      ${messages.id} AS id,
+      ${messages.role} AS role,
+      ${messages.parts} AS parts,
+      ${messages.metadata} AS metadata,
+      ${messages}.rowid AS rowId
+    FROM ${messages}
+    WHERE ${messages.chatId} = ${chatId}
+      AND ${messages}.rowid < ${beforeRowId}
+    ORDER BY ${messages}.rowid DESC
+    LIMIT ${limit + 1}
+  `);
+  const hasMore = rows.length > limit;
+  const pageRows = rows.slice(0, limit);
+  const oldest = pageRows.at(-1);
+  return {
+    messages: pageRows.reverse().map((row) =>
+      toUIMessage({
+        ...row,
+        parts: parseJsonColumn<MessageRow["parts"]>(row.parts),
+        metadata:
+          row.metadata === null
+            ? null
+            : parseJsonColumn<NonNullable<MessageRow["metadata"]>>(
+                row.metadata,
+              ),
+      }),
+    ),
+    nextCursor: hasMore && oldest ? String(oldest.rowId) : null,
+  };
 }
 
 export async function setTitleIfNull(

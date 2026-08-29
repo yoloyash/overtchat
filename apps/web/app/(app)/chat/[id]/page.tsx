@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth/server";
-import { getChat, getMessages } from "@/lib/db/chats";
+import { getChat, getMessagesPage } from "@/lib/db/chats";
 import { ChatArea } from "@/components/chat/ChatArea";
 
 export default async function Page({
@@ -14,13 +14,14 @@ export default async function Page({
   if (!session) redirect("/login");
   const chat = await getChat(id, session.user.id);
   if (!chat) redirect("/");
-  const initialMessages = await getMessages(id);
+  const initialPage = await getMessagesPage(id);
   return (
     <ChatArea
       key={id}
       chatId={id}
       projectId={chat.projectId ?? null}
-      initialMessages={initialMessages}
+      initialMessages={initialPage.messages}
+      initialMessageCursor={initialPage.nextCursor}
     />
   );
 }
