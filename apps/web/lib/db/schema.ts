@@ -129,6 +129,46 @@ export const projects = sqliteTable(
   ],
 );
 
+export const userPersonalization = sqliteTable("user_personalization", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  enabled: integer("enabled", { mode: "boolean" }).default(true).notNull(),
+  preferredName: text("preferred_name"),
+  occupation: text("occupation"),
+  about: text("about"),
+  createdAt: integer("created_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .notNull(),
+  updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+    .$onUpdate(() => /* @__PURE__ */ new Date())
+    .notNull(),
+});
+
+export const memories = sqliteTable(
+  "memories",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    value: text("value").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => /* @__PURE__ */ new Date())
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("memories_userId_key_idx").on(table.userId, table.key),
+    index("memories_userId_updatedAt_idx").on(table.userId, table.updatedAt),
+  ],
+);
+
 export const hostConnectors = sqliteTable(
   "host_connectors",
   {
@@ -412,7 +452,7 @@ export const generationUsage = sqliteTable(
   ],
 );
 
-export const userRelations = relations(user, ({ many }) => ({
+export const userRelations = relations(user, ({ one, many }) => ({
   sessions: many(session),
   accounts: many(account),
   chats: many(chats),
@@ -421,6 +461,25 @@ export const userRelations = relations(user, ({ many }) => ({
   hostConnectorPairings: many(hostConnectorPairings),
   agentHosts: many(agentHosts),
   generationUsage: many(generationUsage),
+  memories: many(memories),
+  personalization: one(userPersonalization),
+}));
+
+export const userPersonalizationRelations = relations(
+  userPersonalization,
+  ({ one }) => ({
+    user: one(user, {
+      fields: [userPersonalization.userId],
+      references: [user.id],
+    }),
+  }),
+);
+
+export const memoriesRelations = relations(memories, ({ one }) => ({
+  user: one(user, {
+    fields: [memories.userId],
+    references: [user.id],
+  }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({

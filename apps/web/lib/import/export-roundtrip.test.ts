@@ -44,6 +44,25 @@ raw.exec(`
     cost_source TEXT,
     total_cost_nano_usd INTEGER
   );
+  CREATE TABLE user_personalization (
+    user_id TEXT PRIMARY KEY NOT NULL,
+    enabled INTEGER DEFAULT true NOT NULL,
+    preferred_name TEXT,
+    occupation TEXT,
+    about TEXT,
+    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
+  );
+  CREATE TABLE memories (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
+  );
+  CREATE UNIQUE INDEX memories_userId_key_idx ON memories (user_id, key);
+  CREATE INDEX memories_userId_updatedAt_idx ON memories (user_id, updated_at);
   CREATE VIRTUAL TABLE messages_fts USING fts5(
     content,
     message_id UNINDEXED,
@@ -53,12 +72,13 @@ raw.exec(`
 `);
 
 let exportChat: typeof import("../export").exportChat;
+let exportAllChats: typeof import("../export").exportAllChats;
 let importChats: typeof import(".").importChats;
 let importOurs: typeof import("./ours").importOurs;
 let sniffFormat: typeof import("./sniff").sniffFormat;
 
 beforeAll(async () => {
-  ({ exportChat } = await import("../export"));
+  ({ exportChat, exportAllChats } = await import("../export"));
   ({ importChats } = await import("."));
   ({ importOurs } = await import("./ours"));
   ({ sniffFormat } = await import("./sniff"));
@@ -145,6 +165,7 @@ describe("native export/import compatibility", () => {
       format: "ours",
       importedChats: 1,
       importedMessages: 2,
+      importedMemories: 0,
     });
 
     const importedChat = raw
@@ -229,5 +250,62 @@ describe("native export/import compatibility", () => {
     expect(importOurs(chat)[0]?.messages[0]?.metadata).toEqual({
       stats: { contextTokens: 512 },
     });
+  });
+
+  it("round-trips personalization and memories in a full export", async () => {
+    raw
+      .prepare(
+        `INSERT INTO user_personalization (
+          user_id, enabled, preferred_name, occupation, about
+        ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run("user", 1, "Boomer", "Engineer", "Builds self-hosted software.");
+    raw
+      .prepare(
+        `INSERT INTO memories (id, user_id, key, value)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run("memory", "user", "response_style", "Prefer concise answers.");
+
+    const payload = await exportAllChats("user");
+    expect(payload.version).toBe(2);
+    expect(payload.personalization).toEqual({
+      enabled: true,
+      preferredName: "Boomer",
+      occupation: "Engineer",
+      about: "Builds self-hosted software.",
+    });
+    expect(payload.memories).toMatchObject([
+      { key: "response_style", value: "Prefer concise answers." },
+    ]);
+
+    const result = await importChats(
+      "restored-user",
+      new TextEncoder().encode(JSON.stringify(payload)),
+    );
+    expect(result.importedMemories).toBe(1);
+    expect(
+      raw
+        .prepare(
+          `SELECT enabled, preferred_name AS preferredName,
+                  occupation, about
+           FROM user_personalization WHERE user_id = ?`,
+        )
+        .get("restored-user"),
+    ).toEqual({
+      enabled: 1,
+      preferredName: "Boomer",
+      occupation: "Engineer",
+      about: "Builds self-hosted software.",
+    });
+    expect(
+      raw
+        .prepare(
+          `SELECT key, value FROM memories WHERE user_id = ?`,
+        )
+        .all("restored-user"),
+    ).toEqual([
+      { key: "response_style", value: "Prefer concise answers." },
+    ]);
   });
 });

@@ -95,6 +95,11 @@ export const userKeys = {
   list: () => [...userKeys.all(), "list"] as const,
 };
 
+export const personalizationKeys = {
+  all: () => ["personalization"] as const,
+  detail: () => [...personalizationKeys.all(), "detail"] as const,
+};
+
 export const activityKeys = {
   all: () => ["activity"] as const,
   leaderboard: (period: string) =>

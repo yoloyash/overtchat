@@ -1,9 +1,9 @@
 import "server-only";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { chats, messages } from "@/lib/db/schema";
+import { chats, memories, messages, userPersonalization } from "@/lib/db/schema";
 
-export const EXPORT_VERSION = 1;
+export const EXPORT_VERSION = 2;
 
 export type ExportedMessage = {
   id: string;
@@ -26,6 +26,18 @@ export type ExportPayload = {
   version: number;
   exportedAt: string;
   chats: ExportedChat[];
+  personalization?: {
+    enabled: boolean;
+    preferredName: string | null;
+    occupation: string | null;
+    about: string | null;
+  };
+  memories?: Array<{
+    key: string;
+    value: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
 };
 
 async function loadOne(chatId: string, userId: string): Promise<ExportedChat | null> {
@@ -72,11 +84,33 @@ export async function exportChat(
 }
 
 export async function exportAllChats(userId: string): Promise<ExportPayload> {
-  const list = await db
-    .select({ id: chats.id })
-    .from(chats)
-    .where(eq(chats.userId, userId))
-    .orderBy(desc(chats.updatedAt));
+  const [list, profileRows, memoryRows] = await Promise.all([
+    db
+      .select({ id: chats.id })
+      .from(chats)
+      .where(eq(chats.userId, userId))
+      .orderBy(desc(chats.updatedAt)),
+    db
+      .select({
+        enabled: userPersonalization.enabled,
+        preferredName: userPersonalization.preferredName,
+        occupation: userPersonalization.occupation,
+        about: userPersonalization.about,
+      })
+      .from(userPersonalization)
+      .where(eq(userPersonalization.userId, userId))
+      .limit(1),
+    db
+      .select({
+        key: memories.key,
+        value: memories.value,
+        createdAt: memories.createdAt,
+        updatedAt: memories.updatedAt,
+      })
+      .from(memories)
+      .where(eq(memories.userId, userId))
+      .orderBy(memories.createdAt),
+  ]);
 
   const out: ExportedChat[] = [];
   for (const { id } of list) {
@@ -89,5 +123,15 @@ export async function exportAllChats(userId: string): Promise<ExportPayload> {
     version: EXPORT_VERSION,
     exportedAt: new Date().toISOString(),
     chats: out,
+    ...(profileRows[0] ? { personalization: profileRows[0] } : {}),
+    ...(memoryRows.length
+      ? {
+          memories: memoryRows.map((memory) => ({
+            ...memory,
+            createdAt: memory.createdAt.toISOString(),
+            updatedAt: memory.updatedAt.toISOString(),
+          })),
+        }
+      : {}),
   };
 }

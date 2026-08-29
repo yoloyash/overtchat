@@ -39,6 +39,7 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { MemoryArtifact } from "./MemoryArtifact";
 import { StatsPopover } from "./StatsPopover";
 
 const CITATION_REMARK_PLUGINS = [
@@ -198,6 +199,9 @@ function AssistantBubble({
                   {(seg.part as { text: string }).text}
                 </Streamdown>
               );
+            }
+            if (seg.kind === "memory") {
+              return <MemoryArtifact key={seg.startIndex} parts={seg.parts} />;
             }
             const trailing = seg.parts[seg.parts.length - 1];
             const trailingDone =

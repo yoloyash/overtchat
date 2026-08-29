@@ -25,6 +25,14 @@ const mcpTool = (): Part =>
     input: { value: "hello" },
     output: { content: [{ type: "text", text: "hello" }] },
   }) as Part;
+const memory = (key: string): Part =>
+  ({
+    type: "tool-set_memory",
+    toolCallId: key,
+    state: "output-available",
+    input: { key, value: "A saved preference." },
+    output: { ok: true, key, value: "A saved preference." },
+  }) as unknown as Part;
 
 describe("groupMessageParts", () => {
   it("collapses interleaved reasoning + tools into one activity block", () => {
@@ -99,5 +107,26 @@ describe("groupMessageParts", () => {
     expect(
       (segs[0] as Extract<Segment, { kind: "activity" }>).parts,
     ).toHaveLength(2);
+  });
+
+  it("renders memory tools as persistent artifacts outside the work timeline", () => {
+    const segs = groupMessageParts([
+      reasoning("calling a tool"),
+      memory("response_style"),
+      memory("preferred_editor"),
+      text("done"),
+    ]);
+
+    expect(segs.map((segment) => segment.kind)).toEqual([
+      "activity",
+      "memory",
+      "text",
+    ]);
+    const memorySegment = segs[1] as Extract<Segment, { kind: "memory" }>;
+    expect(memorySegment.parts).toHaveLength(2);
+    expect(memorySegment.parts[0]).toMatchObject({
+      type: "tool-set_memory",
+      output: { ok: true, key: "response_style" },
+    });
   });
 });

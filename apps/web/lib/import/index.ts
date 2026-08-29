@@ -2,6 +2,20 @@ import "server-only";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { chats, messages } from "@/lib/db/schema";
+import {
+  listMemories,
+  setMemory,
+  updatePersonalization,
+} from "@/lib/db/personalization";
+import { memorySystemPrompt } from "@/lib/personalization/prompt";
+import {
+  MEMORY_CONTEXT_CHAR_LIMIT,
+  MEMORY_ENTRY_LIMIT,
+  MemoryInputSchema,
+  PersonalizationInputSchema,
+  type MemoryInput,
+  type PersonalizationInput,
+} from "@/lib/personalization/schema";
 import { extractSearchText } from "@/lib/search/extract";
 import { importChatGPT } from "./chatgpt";
 import { importClaude } from "./claude";
@@ -18,6 +32,12 @@ export type ImportResult = {
   format: ImportFormat;
   importedChats: number;
   importedMessages: number;
+  importedMemories: number;
+};
+
+type NativePersonalization = {
+  personalization?: PersonalizationInput;
+  memories: MemoryInput[];
 };
 
 function parseBody(bytes: Uint8Array): unknown {
@@ -92,6 +112,62 @@ function writeChats(
   return { chats: chatCount, messages: msgCount };
 }
 
+function readNativePersonalization(data: unknown): NativePersonalization {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return { memories: [] };
+  }
+  const envelope = data as Record<string, unknown>;
+  if (envelope.format !== "overtchat") return { memories: [] };
+
+  let personalization: PersonalizationInput | undefined;
+  if (envelope.personalization !== undefined) {
+    const parsed = PersonalizationInputSchema.safeParse(envelope.personalization);
+    if (!parsed.success) {
+      throw new ImportError("Invalid personalization data in overtchat export.");
+    }
+    personalization = parsed.data;
+  }
+
+  const rawMemories = envelope.memories;
+  if (rawMemories === undefined) return { personalization, memories: [] };
+  if (!Array.isArray(rawMemories)) {
+    throw new ImportError("Invalid memories in overtchat export.");
+  }
+  const imported = rawMemories.map((memory) => {
+    const parsed = MemoryInputSchema.safeParse(memory);
+    if (!parsed.success) {
+      throw new ImportError("Invalid memory in overtchat export.");
+    }
+    return parsed.data;
+  });
+  return { personalization, memories: imported };
+}
+
+async function writeNativePersonalization(
+  userId: string,
+  imported: NativePersonalization,
+): Promise<number> {
+  if (!imported.personalization && imported.memories.length === 0) return 0;
+  const current = await listMemories(userId);
+  const merged = new Map(
+    current.map((memory) => [memory.key, { key: memory.key, value: memory.value }]),
+  );
+  for (const memory of imported.memories) merged.set(memory.key, memory);
+  const prospective = [...merged.values()];
+  if (
+    prospective.length > MEMORY_ENTRY_LIMIT ||
+    (memorySystemPrompt(prospective)?.length ?? 0) > MEMORY_CONTEXT_CHAR_LIMIT
+  ) {
+    throw new ImportError("Imported memories exceed OvertChat's memory limit.");
+  }
+
+  if (imported.personalization) {
+    await updatePersonalization(userId, imported.personalization);
+  }
+  for (const memory of imported.memories) setMemory(userId, memory);
+  return imported.memories.length;
+}
+
 export async function importChats(
   userId: string,
   fileBytes: Uint8Array,
@@ -104,10 +180,17 @@ export async function importChats(
     );
   }
   const normalized = runAdapter(format, data);
+  const personalization =
+    format === "ours" ? readNativePersonalization(data) : { memories: [] };
   const counts = writeChats(userId, normalized);
+  const importedMemories = await writeNativePersonalization(
+    userId,
+    personalization,
+  );
   return {
     format,
     importedChats: counts.chats,
     importedMessages: counts.messages,
+    importedMemories,
   };
 }

@@ -46,9 +46,11 @@ function normalizeMetadata(
 
 export function importOurs(data: unknown): ImportedChat[] {
   const exportEnvelope = data as OursExport;
-  const unwrapped =
+  const isEnvelope =
     exportEnvelope?.format === "overtchat" &&
-    Array.isArray(exportEnvelope.chats)
+    Array.isArray(exportEnvelope.chats);
+  const unwrapped =
+    isEnvelope
       ? exportEnvelope.chats
       : data;
   const list: OursChat[] = Array.isArray(unwrapped)
@@ -76,6 +78,8 @@ export function importOurs(data: unknown): ImportedChat[] {
       messages,
     });
   }
-  if (!out.length) throw new ImportError("No chats found in export.");
+  if (!out.length && !isEnvelope) {
+    throw new ImportError("No chats found in export.");
+  }
   return out;
 }

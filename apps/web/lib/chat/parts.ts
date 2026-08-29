@@ -1,5 +1,9 @@
 import type { UIMessage } from "ai";
 import { isMcpToolName } from "@overtchat/shared";
+import {
+  isMemoryToolPart,
+  type MemoryToolPart,
+} from "@/lib/personalization/tool-parts";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -18,26 +22,41 @@ export function isActivityPart(part: AnyPart): boolean {
 
 export type Segment =
   | { kind: "text"; part: AnyPart; index: number }
-  | { kind: "activity"; parts: AnyPart[]; startIndex: number };
+  | { kind: "activity"; parts: AnyPart[]; startIndex: number }
+  | { kind: "memory"; parts: MemoryToolPart[]; startIndex: number };
 
 /**
- * Fold a message's flat parts list into ordered segments: each contiguous run
- * of "work" (reasoning + tool calls) becomes one `activity` segment, broken by
- * `text` parts (the answer). Unrenderable parts (sources, files, step markers)
- * are dropped, matching the previous flat-map behavior. `index`/`startIndex`
- * are original-array positions, so callers keep stable keys and can tell which
- * segment is last / still streaming.
+ * Fold a message's flat parts list into ordered segments. Each contiguous run
+ * of reasoning/general tools becomes an `activity`; memory mutations become a
+ * dedicated `memory` artifact; answer text remains `text`. Unrenderable parts
+ * (sources, files, step markers) are dropped. Original indexes provide stable
+ * keys and let callers identify the last, potentially streaming segment.
  */
 export function groupMessageParts(parts: readonly AnyPart[]): Segment[] {
   const segments: Segment[] = [];
-  let run: AnyPart[] | null = null;
-  let runStart = 0;
+  let run: Extract<Segment, { kind: "activity" | "memory" }> | null = null;
 
   const flush = () => {
     if (run) {
-      segments.push({ kind: "activity", parts: run, startIndex: runStart });
+      segments.push(run);
       run = null;
     }
+  };
+
+  const appendActivity = (part: AnyPart, index: number) => {
+    if (run?.kind !== "activity") {
+      flush();
+      run = { kind: "activity", parts: [], startIndex: index };
+    }
+    run.parts.push(part);
+  };
+
+  const appendMemory = (part: MemoryToolPart, index: number) => {
+    if (run?.kind !== "memory") {
+      flush();
+      run = { kind: "memory", parts: [], startIndex: index };
+    }
+    run.parts.push(part);
   };
 
   parts.forEach((part, index) => {
@@ -53,12 +72,12 @@ export function groupMessageParts(parts: readonly AnyPart[]): Segment[] {
       segments.push({ kind: "text", part, index });
       return;
     }
+    if (isMemoryToolPart(part)) {
+      appendMemory(part, index);
+      return;
+    }
     if (isActivityPart(part)) {
-      if (!run) {
-        run = [];
-        runStart = index;
-      }
-      run.push(part);
+      appendActivity(part, index);
     }
   });
 
