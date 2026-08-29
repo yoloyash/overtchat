@@ -86,6 +86,9 @@ export function MessageList({
     gap: 24,
     paddingStart: 40,
     paddingEnd: 32,
+    // TanStack recommends disabling its synchronous adapter updates on
+    // React 19, which otherwise calls flushSync during a layout lifecycle.
+    useFlushSync: false,
     anchorTo: "end",
     followOnAppend: true,
     scrollEndThreshold: 80,
