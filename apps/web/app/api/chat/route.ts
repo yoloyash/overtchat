@@ -30,13 +30,16 @@ import {
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
 import { ChatRequestError, parseChatRequest } from "@/lib/chat/request";
-import { getChat } from "@/lib/db/chats";
+import {
+  ChatHistoryConflictError,
+  reconstructPersistedMessages,
+} from "@/lib/chat/history";
+import { getChat, getMessages } from "@/lib/db/chats";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
 import {
   clearActiveStreamId,
   commitChatTurn,
   completeChatStream,
-  getChatMessage,
   type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
@@ -116,7 +119,7 @@ async function handlePost(req: Request): Promise<Response> {
   }
   const userId = session.user.id;
   const {
-    messages,
+    messages: requestMessages,
     modelConfigId,
     webSearchEnabled,
     forceSearch,
@@ -163,16 +166,26 @@ async function handlePost(req: Request): Promise<Response> {
     : await getActivePersonalization(userId);
   const personalizationEnabled = activePersonalization !== null;
 
-  if (!temporary && messageId) {
-    const target = await getChatMessage(chatId, messageId);
-    const expectedRole =
-      trigger === "regenerate-message" ? "assistant" : "user";
-    if (!target || target.role !== expectedRole) {
-      throw new ChatRequestError(
-        "Chat history changed; refresh and try again",
-        409,
-      );
+  let messages = requestMessages;
+  if (existingChat) {
+    try {
+      messages = reconstructPersistedMessages({
+        storedMessages: await getMessages(chatId),
+        requestMessages,
+        trigger,
+        messageId,
+      });
+    } catch (error) {
+      if (error instanceof ChatHistoryConflictError) {
+        throw new ChatRequestError(error.message, 409);
+      }
+      throw error;
     }
+  } else if (!temporary && messageId) {
+    throw new ChatRequestError(
+      "Chat history changed; refresh and try again",
+      409,
+    );
   }
 
   // Everything above and through message conversion is read-only. A saved

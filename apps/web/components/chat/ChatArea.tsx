@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import {
 import {
   useChats,
   useChatUsage,
+  useLoadOlderChatMessages,
   type ChatListItem,
 } from "@/lib/queries/chats";
 import { useLocalStorage } from "@/lib/useLocalStorage";
@@ -33,6 +34,7 @@ import {
   writeStoredMessageStats,
   type StoredMessageStats,
 } from "@/lib/chat/stats";
+import { messagesForChatRequest } from "@/lib/chat/history";
 import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
@@ -53,6 +55,7 @@ import {
 import { hasSuccessfulMemoryMutation } from "@/lib/personalization/tool-parts";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
+import { toast } from "@/components/ui/toast";
 import { ChatHeader } from "./ChatHeader";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
@@ -67,6 +70,7 @@ function shouldAutofocusComposer() {
 interface Props {
   chatId: string;
   initialMessages?: UIMessage[];
+  initialMessageCursor?: string | null;
   isNew?: boolean;
   projectId?: string | null;
   initialQuery?: string;
@@ -75,6 +79,7 @@ interface Props {
 export function ChatArea({
   chatId,
   initialMessages,
+  initialMessageCursor,
   isNew,
   projectId,
   initialQuery,
@@ -165,7 +170,18 @@ export function ChatArea({
           trigger,
           messageId,
         }) => ({
-          body: { ...body, messages, trigger, messageId },
+          // Saved chats send only the user intent. The server reconstructs
+          // canonical context from persistence, avoiding an O(history) upload
+          // and preventing the browser from becoming the history authority.
+          body: {
+            ...body,
+            messages: messagesForChatRequest(
+              messages,
+              body?.temporary === true,
+            ),
+            trigger,
+            messageId,
+          },
         }),
       }),
   );
@@ -175,11 +191,20 @@ export function ChatArea({
     temporaryRef.current = temporary;
   }, [temporary]);
 
-  const { messages, sendMessage, regenerate, status, stop, error } = useChat({
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    regenerate,
+    status,
+    stop,
+    error,
+  } = useChat({
     id: temporary ? undefined : chatId,
     resume: !temporary && !isNew,
     transport,
     messages: initialMessages,
+    throttle: 32,
     onData: (part) => {
       if (
         part.type === INFERENCE_ACTIVITY_DATA_TYPE &&
@@ -212,6 +237,36 @@ export function ChatArea({
       ]);
     },
   });
+  const [olderMessageCursor, setOlderMessageCursor] = useState(
+    initialMessageCursor ?? null,
+  );
+  const {
+    mutateAsync: loadOlderMessages,
+    isPending: loadingOlderMessages,
+  } = useLoadOlderChatMessages(chatId);
+  const loadingOlderMessagesRef = useRef(false);
+  const handleLoadOlderMessages = useCallback(async () => {
+    if (!olderMessageCursor || loadingOlderMessagesRef.current) return;
+    loadingOlderMessagesRef.current = true;
+    try {
+      const page = await loadOlderMessages(olderMessageCursor);
+      setMessages((current) => {
+        const currentIds = new Set(current.map(({ id }) => id));
+        return [
+          ...page.messages.filter(({ id }) => !currentIds.has(id)),
+          ...current,
+        ];
+      });
+      setOlderMessageCursor(page.nextCursor);
+    } catch {
+      toast.error({
+        title: "Could not load older messages",
+        description: "Check your connection and try again.",
+      });
+    } finally {
+      loadingOlderMessagesRef.current = false;
+    }
+  }, [loadOlderMessages, olderMessageCursor, setMessages]);
 
   const speech = useSpeech();
   const { data: session } = authClient.useSession();
@@ -471,6 +526,9 @@ export function ChatArea({
             speech={speech}
             showStats={messageStatsEnabled}
             storedStats={storedStats}
+            hasOlderMessages={olderMessageCursor !== null}
+            loadingOlderMessages={loadingOlderMessages}
+            onLoadOlderMessages={handleLoadOlderMessages}
             onRegenerate={handleRegenerate}
             onEdit={handleEdit}
             onRetry={handleRetry}

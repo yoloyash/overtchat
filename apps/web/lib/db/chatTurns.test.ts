@@ -509,4 +509,33 @@ describe("transactional chat turns", () => {
       },
     ]);
   });
+
+  it("keyset-paginates messages from the newest page in transcript order", async () => {
+    seedChat();
+
+    const newest = await chatDb.getMessagesPage("chat", { limit: 2 });
+    expect(newest.messages.map(({ id }) => id)).toEqual([
+      "edit",
+      "assistant",
+    ]);
+    expect(newest.messages[1].parts).toEqual([
+      { type: "text", text: "Old answer" },
+    ]);
+    expect(newest.nextCursor).toMatch(/^\d+$/);
+
+    const oldest = await chatDb.getMessagesPage("chat", {
+      limit: 2,
+      cursor: newest.nextCursor!,
+    });
+    expect(oldest.messages.map(({ id }) => id)).toEqual(["before"]);
+    expect(oldest.nextCursor).toBeNull();
+  });
+
+  it("rejects malformed message cursors", async () => {
+    seedChat();
+
+    await expect(
+      chatDb.getMessagesPage("chat", { cursor: "not-a-rowid" }),
+    ).rejects.toThrow("Invalid message cursor");
+  });
 });

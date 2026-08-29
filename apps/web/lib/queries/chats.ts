@@ -5,6 +5,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import type { UIMessage } from "ai";
+import { CHAT_MESSAGE_PAGE_SIZE } from "@/lib/chat/history";
 import { chatKeys } from "@/lib/queries/keys";
 import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
 
@@ -41,6 +43,26 @@ export function useChatUsage(id: string, enabled = true) {
       return body.usage;
     },
     enabled,
+  });
+}
+
+export function useLoadOlderChatMessages(id: string) {
+  return useMutation({
+    mutationFn: async (cursor: string) => {
+      const params = new URLSearchParams({
+        cursor,
+        limit: String(CHAT_MESSAGE_PAGE_SIZE),
+      });
+      const response = await fetch(
+        `/api/chat/${encodeURIComponent(id)}/messages?${params}`,
+      );
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return (await response.json()) as {
+        messages: UIMessage[];
+        nextCursor: string | null;
+        projectId: string | null;
+      };
+    },
   });
 }
 

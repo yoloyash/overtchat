@@ -12,10 +12,10 @@ const mocks = vi.hoisted(() => {
     getSession: vi.fn(),
     parseChatRequest: vi.fn(),
     getChat: vi.fn(),
+    getMessages: vi.fn(),
     clearActiveStreamId: vi.fn(),
     commitChatTurn: vi.fn(),
     completeChatStream: vi.fn(),
-    getChatMessage: vi.fn(),
     inlineUploads: vi.fn(),
     getModelConfig: vi.fn(),
     getTaskModelConfig: vi.fn(),
@@ -115,12 +115,14 @@ vi.mock("@/lib/chat/request", () => {
     parseChatRequest: mocks.parseChatRequest,
   };
 });
-vi.mock("@/lib/db/chats", () => ({ getChat: mocks.getChat }));
+vi.mock("@/lib/db/chats", () => ({
+  getChat: mocks.getChat,
+  getMessages: mocks.getMessages,
+}));
 vi.mock("@/lib/db/chatTurns", () => ({
   clearActiveStreamId: mocks.clearActiveStreamId,
   commitChatTurn: mocks.commitChatTurn,
   completeChatStream: mocks.completeChatStream,
-  getChatMessage: mocks.getChatMessage,
 }));
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
 vi.mock("@/lib/db/modelConfigs", () => ({
@@ -253,9 +255,9 @@ describe("chat route setup boundary", () => {
       release: mocks.releaseMcpBinding,
     });
     mocks.getChat.mockResolvedValue(null);
+    mocks.getMessages.mockResolvedValue([]);
     mocks.getProject.mockResolvedValue(null);
     mocks.getActivePersonalization.mockResolvedValue(null);
-    mocks.getChatMessage.mockResolvedValue(null);
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
       providerOptions: undefined,
@@ -402,6 +404,50 @@ describe("chat route setup boundary", () => {
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
   });
 
+  it("reconstructs saved model context from persisted history", async () => {
+    const storedMessages = [
+      {
+        id: "stored-user",
+        role: "user" as const,
+        parts: [{ type: "text" as const, text: "Earlier question" }],
+      },
+      {
+        id: "stored-assistant",
+        role: "assistant" as const,
+        parts: [{ type: "text" as const, text: "Earlier answer" }],
+      },
+    ];
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue(storedMessages);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.inlineUploads).toHaveBeenCalledWith(
+      [...storedMessages, ...messages],
+      "user",
+    );
+    expect(mocks.uiStreamOptions?.originalMessages).toEqual([
+      ...storedMessages,
+      ...messages,
+    ]);
+  });
+
+  it("rejects a stale saved-history edit before model preparation", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      messageId: "missing-user-message",
+    });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue([]);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
   it("prepares an edit before atomically truncating and replacing it", async () => {
     const events: string[] = [];
     mocks.parseChatRequest.mockResolvedValue({
@@ -409,11 +455,18 @@ describe("chat route setup boundary", () => {
       messageId: "edited-user-message",
     });
     mocks.getChat.mockResolvedValue(existingChat());
-    mocks.getChatMessage.mockResolvedValue({
-      id: "edited-user-message",
-      role: "user",
-      parts: [{ type: "text", text: "Old" }],
-    });
+    mocks.getMessages.mockResolvedValue([
+      {
+        id: "edited-user-message",
+        role: "user",
+        parts: [{ type: "text", text: "Old" }],
+      },
+      {
+        id: "old-assistant-message",
+        role: "assistant",
+        parts: [{ type: "text", text: "Old answer" }],
+      },
+    ]);
     mocks.createConfiguredLanguageModel.mockImplementation(() => {
       events.push("model");
       return {
