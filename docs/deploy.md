@@ -67,6 +67,12 @@ Addresses configured in OvertChat must be reachable from the app container:
 - Configure MCP servers under **Settings → Tools**. STDIO commands run inside
   the app container; HTTP servers need a container-reachable URL.
 
+Claude Code connections use the `claude` executable and credentials already
+configured on the Host Connector machine. For SSH connections, install and
+authenticate Claude Code on the remote host as that SSH user. OvertChat does
+not copy or store Claude credentials; each execution target owns its Claude
+settings, skills, hooks, and MCP configuration.
+
 ## Status, logs, and backup
 
 ```bash

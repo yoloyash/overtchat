@@ -2,7 +2,7 @@
   "format": 1,
   "cliVersion": "0.1.10",
   "appVersion": "0.17.1",
-  "connectorVersion": "0.8.1",
+  "connectorVersion": "0.9.0",
   "sttVersion": "0.1.1",
   "redisImage": "docker.io/library/redis@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2",
   "searxngImage": "docker.io/searxng/searxng@sha256:11a9b34cdc0b1ec2b991470a2762ecb5a1a531898289fb51dcd015260450729e",

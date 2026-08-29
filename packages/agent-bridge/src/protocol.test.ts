@@ -10,7 +10,7 @@ import { agentProviderCatalogSchema } from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
   it("identifies the current wire protocol", () => {
-    expect(HOST_CONNECTOR_PROTOCOL_VERSION).toBe(2);
+    expect(HOST_CONNECTOR_PROTOCOL_VERSION).toBe(3);
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {

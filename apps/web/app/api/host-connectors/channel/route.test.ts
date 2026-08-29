@@ -118,10 +118,8 @@ describe("Host Connector command channel", () => {
     await response.body!.cancel();
   });
 
-  it("rejects an incompatible wire protocol", async () => {
-    const wrongProtocol = await GET(
-      request(HOST_CONNECTOR_PROTOCOL_VERSION + 1),
-    );
+  it("rejects a protocol-2 connector through the upgrade flow", async () => {
+    const wrongProtocol = await GET(request(2));
     expect(wrongProtocol.status).toBe(409);
     await expect(wrongProtocol.json()).resolves.toMatchObject({
       error: expect.stringContaining("overtchat update"),

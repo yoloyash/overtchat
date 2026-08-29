@@ -22,7 +22,7 @@ const providerPreferencesSchema = z.strictObject({
 const preferencesSchema = z.strictObject({
   providerPreferences: z
     .partialRecord(
-      z.enum(["pi", "omp", "codex", "opencode"]),
+      z.enum(["pi", "omp", "codex", "opencode", "claude"]),
       providerPreferencesSchema,
     )
     .optional(),

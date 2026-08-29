@@ -3,7 +3,13 @@ import { z } from "zod";
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
 
-export const AGENT_PROVIDER_IDS = ["pi", "omp", "codex", "opencode"] as const;
+export const AGENT_PROVIDER_IDS = [
+  "pi",
+  "omp",
+  "codex",
+  "opencode",
+  "claude",
+] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
 
