@@ -89,6 +89,19 @@ and run the workflow preflight before spending time on a release build.
 Run the standard repository lint, typecheck, and test scripts, followed by the
 release-specific checks below.
 
+For an app release, build and inspect the production image that the tag workflow
+will publish:
+
+```bash
+docker build --platform linux/amd64 --tag overtchat-app-release-check .
+docker run --rm --entrypoint sh overtchat-app-release-check -c '
+  test -f /app/apps/web/server.js
+  test -d /app/apps/web/drizzle
+  test ! -e /app/apps/web/data
+  test ! -e /app/apps/web/scripts
+'
+```
+
 For a CLI release, build the CLI workspace and then verify the bundled version:
 
 ```bash

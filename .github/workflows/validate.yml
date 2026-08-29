@@ -58,3 +58,25 @@ jobs:
 
       - name: Test
         run: npm run test
+
+  container:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Build production app image
+        run: docker build --platform linux/amd64 --tag "overtchat-app-ci:$GITHUB_SHA" .
+
+      - name: Verify runtime image contents
+        run: |
+          docker run --rm --entrypoint sh "overtchat-app-ci:$GITHUB_SHA" -c '
+            test -f /app/apps/web/server.js
+            test -d /app/apps/web/drizzle
+            test ! -e /app/apps/web/data
+            test ! -e /app/apps/web/scripts
+          '

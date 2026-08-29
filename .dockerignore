@@ -11,6 +11,7 @@ apps/site/*
 !apps/site/public
 apps/site/public/*
 !apps/site/public/install-manifest.json
+# Root maintenance tooling is not used by the app build. apps/web/scripts is.
 scripts
 **/test-results
 **/playwright-report
@@ -38,7 +39,6 @@ compose.override.yaml
 .gemini
 .claude
 .DS_Store
-apps/web/scripts
 **/tsconfig.tsbuildinfo
 docs
 searxng
