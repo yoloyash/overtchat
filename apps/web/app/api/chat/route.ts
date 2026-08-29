@@ -45,10 +45,19 @@ import {
   getTaskModelConfig,
 } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
+import { getActivePersonalization } from "@/lib/db/personalization";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
 import { acquireMcpBinding } from "@/lib/mcp/manager";
 import { generateChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
+import {
+  memorySystemPrompt,
+  userProfileSystemPrompt,
+} from "@/lib/personalization/prompt";
+import {
+  createMemoryTools,
+  MEMORY_TOOL_ORDER,
+} from "@/lib/personalization/tools";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   estimateGenerationCost,
@@ -149,6 +158,11 @@ async function handlePost(req: Request): Promise<Response> {
     return withCors(req, new Response("Project not found", { status: 404 }));
   }
 
+  const activePersonalization = temporary
+    ? null
+    : await getActivePersonalization(userId);
+  const personalizationEnabled = activePersonalization !== null;
+
   if (!temporary && messageId) {
     const target = await getChatMessage(chatId, messageId);
     const expectedRole =
@@ -216,6 +230,12 @@ async function handlePost(req: Request): Promise<Response> {
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
   const systemParts = [
     modelConfig.systemPrompt,
+    activePersonalization
+      ? userProfileSystemPrompt(activePersonalization.personalization)
+      : null,
+    activePersonalization
+      ? memorySystemPrompt(activePersonalization.memories)
+      : null,
     projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
     currentDateSystemPrompt(timeZone),
@@ -306,19 +326,26 @@ async function handlePost(req: Request): Promise<Response> {
   try {
     const abortSignal = controller?.signal ?? req.signal;
     const hasMcpTools = Object.keys(mcpTools).length > 0;
-    const agentTools: ToolSet = hasMcpTools
-      ? webToolsEnabled
-        ? { ...chatTools, ...mcpTools }
-        : mcpTools
-      : webToolsEnabled
-        ? chatTools
-        : {};
+    const memoryToolsEnabled = toolCallingEnabled && personalizationEnabled;
+    const memoryTools = memoryToolsEnabled ? createMemoryTools(userId) : {};
+    const toolSources: ToolSet[] = [
+      ...(webToolsEnabled ? [chatTools] : []),
+      ...(memoryToolsEnabled ? [memoryTools] : []),
+      ...(hasMcpTools ? [mcpTools] : []),
+    ];
+    const agentTools: ToolSet =
+      toolSources.length === 1
+        ? toolSources[0]
+        : Object.assign({}, ...toolSources);
     const agentToolNames = Object.keys(agentTools);
     const toolsEnabled = agentToolNames.length > 0;
     const toolOrder = [
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
+      ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
       ...agentToolNames.filter(
-        (name) => !(CHAT_TOOL_ORDER as readonly string[]).includes(name),
+        (name) =>
+          !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(MEMORY_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
     const includeProviderActivity = modelConfig.providerId === "llamacpp";

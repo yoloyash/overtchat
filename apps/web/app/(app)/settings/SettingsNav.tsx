@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Bot,
+  Brain,
   Cpu,
   Database,
   KeyRound,
@@ -41,6 +42,7 @@ type Group = {
 
 const PREFERENCE_ITEMS: Item[] = [
   { href: "/settings/general", label: "General", icon: Settings2 },
+  { href: "/settings/personalization", label: "Personalization", icon: Brain },
   { href: "/settings/tools", label: "Tools", icon: Wrench },
 ];
 

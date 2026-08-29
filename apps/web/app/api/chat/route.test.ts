@@ -24,6 +24,7 @@ const mocks = vi.hoisted(() => {
     acquireMcpBinding: vi.fn(),
     releaseMcpBinding: vi.fn(),
     getProject: vi.fn(),
+    getActivePersonalization: vi.fn(),
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
@@ -39,6 +40,7 @@ const mocks = vi.hoisted(() => {
     currentDateSystemPrompt: vi.fn(),
     convertToModelMessages: vi.fn(),
     createWebTools: vi.fn(),
+    createMemoryTools: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
     toUIMessageStream: vi.fn(),
@@ -53,7 +55,12 @@ const mocks = vi.hoisted(() => {
     responseOptions: undefined as Record<string, unknown> | undefined,
     responseStream: undefined as ReadableStream<string> | undefined,
     chatTools,
+    memoryTools: {
+      set_memory: { description: "set memory" },
+      delete_memory: { description: "delete memory" },
+    },
     toolOrder: ["web_search", "fetch_url"],
+    memoryToolOrder: ["set_memory", "delete_memory"],
     citationPrompt: "stable web citation instruction",
     currentDatePrompt: "Current date: 2026-07-22.",
   };
@@ -82,6 +89,10 @@ vi.mock("@/lib/tools", () => ({
   CHAT_TOOL_ORDER: mocks.toolOrder,
   WEB_TOOL_NAMES: mocks.toolOrder,
   WEB_SEARCH_CITATION_PROMPT: mocks.citationPrompt,
+}));
+vi.mock("@/lib/personalization/tools", () => ({
+  createMemoryTools: mocks.createMemoryTools,
+  MEMORY_TOOL_ORDER: mocks.memoryToolOrder,
 }));
 vi.mock("@/lib/chat/current-date", () => ({
   currentDateSystemPrompt: mocks.currentDateSystemPrompt,
@@ -126,6 +137,9 @@ vi.mock("@/lib/mcp/manager", () => ({
   acquireMcpBinding: mocks.acquireMcpBinding,
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
+vi.mock("@/lib/db/personalization", () => ({
+  getActivePersonalization: mocks.getActivePersonalization,
+}));
 vi.mock("@/lib/title", () => ({
   generateChatTitle: mocks.generateChatTitle,
 }));
@@ -240,6 +254,7 @@ describe("chat route setup boundary", () => {
     });
     mocks.getChat.mockResolvedValue(null);
     mocks.getProject.mockResolvedValue(null);
+    mocks.getActivePersonalization.mockResolvedValue(null);
     mocks.getChatMessage.mockResolvedValue(null);
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
@@ -248,6 +263,7 @@ describe("chat route setup boundary", () => {
     });
     mocks.resolveModelCapabilities.mockReturnValue(undefined);
     mocks.createWebTools.mockReturnValue(mocks.chatTools);
+    mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
     mocks.getProvider.mockReturnValue({
@@ -878,6 +894,90 @@ describe("chat route setup boundary", () => {
         mocks.currentDatePrompt,
       ].join("\n\n"),
     });
+  });
+
+  it("injects populated personalization and registers memory tools", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+    mocks.getActivePersonalization.mockResolvedValue({
+      personalization: {
+        enabled: true,
+        preferredName: "Boomer",
+        occupation: "Engineer",
+        about: null,
+      },
+      memories: [
+        {
+          id: "memory",
+          key: "response_style",
+          value: "Prefer concise answers.",
+          createdAt: "2026-08-28T00:00:00.000Z",
+          updatedAt: "2026-08-28T00:00:00.000Z",
+        },
+      ],
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mocks.memoryTools,
+        toolOrder: mocks.memoryToolOrder,
+        instructions: {
+          role: "system",
+          content: [
+            "# User profile\nPreferred name: Boomer\nOccupation: Engineer",
+            "# Existing memory about the user\n- `response_style`: Prefer concise answers.",
+            mocks.currentDatePrompt,
+          ].join("\n\n"),
+        },
+      }),
+    );
+    expect(mocks.createMemoryTools).toHaveBeenCalledWith("user");
+  });
+
+  it("omits empty personalization context while leaving memory tools available", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      webSearchEnabled: false,
+    });
+    mocks.getActivePersonalization.mockResolvedValue({
+      personalization: {
+        enabled: true,
+        preferredName: null,
+        occupation: null,
+        about: null,
+      },
+      memories: [],
+    });
+
+    await POST(request());
+
+    expect(mocks.agentSettings[0]).toEqual(
+      expect.objectContaining({
+        tools: mocks.memoryTools,
+        instructions: {
+          role: "system",
+          content: mocks.currentDatePrompt,
+        },
+      }),
+    );
+  });
+
+  it("does not load or expose personalization in temporary chats", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      temporary: true,
+      webSearchEnabled: false,
+    });
+
+    await POST(request());
+
+    expect(mocks.getActivePersonalization).not.toHaveBeenCalled();
+    expect(mocks.createMemoryTools).not.toHaveBeenCalled();
+    expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
   });
 
   it.each([

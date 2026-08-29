@@ -6,7 +6,11 @@ import { Download, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
-import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import {
+  chatKeys,
+  personalizationKeys,
+  projectKeys,
+} from "@/lib/queries/keys";
 import {
   SettingsNotice,
   SettingsPageHeader,
@@ -18,6 +22,7 @@ type ImportResult = {
   format: string;
   importedChats: number;
   importedMessages: number;
+  importedMemories: number;
 };
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -53,10 +58,15 @@ export function DataForm() {
       const result = body as ImportResult;
       qc.invalidateQueries({ queryKey: chatKeys.list() });
       qc.invalidateQueries({ queryKey: projectKeys.list() });
+      qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       toast.success({
         title: "Import complete",
         description: `Imported ${result.importedChats} chat${
           result.importedChats === 1 ? "" : "s"
+        }${
+          result.importedMemories
+            ? ` and ${result.importedMemories} memor${result.importedMemories === 1 ? "y" : "ies"}`
+            : ""
         } from ${FORMAT_LABELS[result.format] ?? result.format}.`,
       });
     } catch (err) {

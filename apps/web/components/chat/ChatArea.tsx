@@ -9,7 +9,11 @@ import { modelSupportsToolCalling } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
-import { activityKeys, chatKeys } from "@/lib/queries/keys";
+import {
+  activityKeys,
+  chatKeys,
+  personalizationKeys,
+} from "@/lib/queries/keys";
 import {
   useChats,
   useChatUsage,
@@ -46,6 +50,7 @@ import {
   isInferenceActivity,
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
+import { hasSuccessfulMemoryMutation } from "@/lib/personalization/tool-parts";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { ChatHeader } from "./ChatHeader";
@@ -195,6 +200,9 @@ export function ChatArea({
         });
       }
       if (temporaryRef.current) return;
+      if (hasSuccessfulMemoryMutation(message)) {
+        void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
+      }
       if (isError) return;
       setChatPersisted(true);
       void Promise.all([
