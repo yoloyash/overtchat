@@ -165,7 +165,6 @@ export const memories = sqliteTable(
   },
   (table) => [
     uniqueIndex("memories_userId_key_idx").on(table.userId, table.key),
-    index("memories_userId_updatedAt_idx").on(table.userId, table.updatedAt),
   ],
 );
 

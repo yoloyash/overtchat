@@ -1,4 +1,8 @@
-import type { Personalization } from "./schema";
+import {
+  MEMORY_ENTRY_LIMIT,
+  PERSONALIZATION_CONTEXT_BYTE_LIMIT,
+  type Personalization,
+} from "./schema";
 
 export type PromptMemory = { key: string; value: string };
 
@@ -31,4 +35,34 @@ export function memorySystemPrompt(
     "# Existing memory about the user",
     ...rows.map((memory) => `- \`${memory.key}\`: ${memory.value}`),
   ].join("\n");
+}
+
+export function personalizationSystemPrompt(
+  personalization: Pick<
+    Personalization,
+    "preferredName" | "occupation" | "about"
+  >,
+  rows: readonly PromptMemory[],
+): string | null {
+  const parts = [
+    userProfileSystemPrompt(personalization),
+    memorySystemPrompt(rows),
+  ].filter((value): value is string => value !== null);
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+export function personalizationContextUsage(
+  personalization: Pick<
+    Personalization,
+    "preferredName" | "occupation" | "about"
+  >,
+  rows: readonly PromptMemory[],
+) {
+  const context = personalizationSystemPrompt(personalization, rows) ?? "";
+  return {
+    bytes: new TextEncoder().encode(context).byteLength,
+    limit: PERSONALIZATION_CONTEXT_BYTE_LIMIT,
+    entries: rows.length,
+    entryLimit: MEMORY_ENTRY_LIMIT,
+  };
 }

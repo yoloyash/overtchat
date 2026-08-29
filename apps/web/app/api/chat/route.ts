@@ -45,7 +45,7 @@ import {
   getTaskModelConfig,
 } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
-import { getPersonalizationSnapshot } from "@/lib/db/personalization";
+import { getActivePersonalization } from "@/lib/db/personalization";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
 import { acquireMcpBinding } from "@/lib/mcp/manager";
 import { generateChatTitle } from "@/lib/title";
@@ -158,11 +158,10 @@ async function handlePost(req: Request): Promise<Response> {
     return withCors(req, new Response("Project not found", { status: 404 }));
   }
 
-  const personalizationSnapshot = temporary
+  const activePersonalization = temporary
     ? null
-    : await getPersonalizationSnapshot(userId);
-  const personalizationEnabled =
-    personalizationSnapshot?.personalization.enabled === true;
+    : await getActivePersonalization(userId);
+  const personalizationEnabled = activePersonalization !== null;
 
   if (!temporary && messageId) {
     const target = await getChatMessage(chatId, messageId);
@@ -231,11 +230,11 @@ async function handlePost(req: Request): Promise<Response> {
     toolCallingEnabled && webSearchEnabled && webSearchAvailable;
   const systemParts = [
     modelConfig.systemPrompt,
-    personalizationEnabled
-      ? userProfileSystemPrompt(personalizationSnapshot.personalization)
+    activePersonalization
+      ? userProfileSystemPrompt(activePersonalization.personalization)
       : null,
-    personalizationEnabled
-      ? memorySystemPrompt(personalizationSnapshot.memories)
+    activePersonalization
+      ? memorySystemPrompt(activePersonalization.memories)
       : null,
     projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,

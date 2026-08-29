@@ -1,15 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  getSession: vi.fn(),
-  getPersonalizationSnapshot: vi.fn(),
-  updatePersonalization: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class MemoryCapacityError extends Error {}
+  return {
+    MemoryCapacityError,
+    getSession: vi.fn(),
+    getPersonalizationSnapshot: vi.fn(),
+    updatePersonalization: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/auth/server", () => ({
   auth: { api: { getSession: mocks.getSession } },
 }));
 vi.mock("@/lib/db/personalization", () => ({
+  MemoryCapacityError: mocks.MemoryCapacityError,
   getPersonalizationSnapshot: mocks.getPersonalizationSnapshot,
   updatePersonalization: mocks.updatePersonalization,
 }));
@@ -49,7 +54,7 @@ describe("personalization API", () => {
         about: null,
       },
       memories: [],
-      memoryUsage: { characters: 0, limit: 4_096, entries: 0, entryLimit: 50 },
+      contextUsage: { bytes: 0, limit: 4_096, entries: 0, entryLimit: 50 },
     };
     mocks.getPersonalizationSnapshot.mockResolvedValue(snapshot);
 
@@ -95,5 +100,24 @@ describe("personalization API", () => {
     );
     expect(response.status).toBe(400);
     expect(mocks.updatePersonalization).not.toHaveBeenCalled();
+  });
+
+  it("reports profile changes that would exceed context capacity", async () => {
+    mocks.updatePersonalization.mockRejectedValue(
+      new mocks.MemoryCapacityError("Personalization context is full."),
+    );
+    const response = await PATCH(
+      request("PATCH", {
+        enabled: true,
+        preferredName: "Boomer",
+        occupation: null,
+        about: null,
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "Personalization context is full.",
+    });
   });
 });

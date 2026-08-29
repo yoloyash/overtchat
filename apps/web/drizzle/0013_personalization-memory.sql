@@ -9,7 +9,6 @@ CREATE TABLE `memories` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `memories_userId_key_idx` ON `memories` (`user_id`,`key`);--> statement-breakpoint
-CREATE INDEX `memories_userId_updatedAt_idx` ON `memories` (`user_id`,`updated_at`);--> statement-breakpoint
 CREATE TABLE `user_personalization` (
 	`user_id` text PRIMARY KEY NOT NULL,
 	`enabled` integer DEFAULT true NOT NULL,

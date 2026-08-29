@@ -8,6 +8,7 @@ import type {
   PersonalizationInput,
   PersonalizationSnapshot,
 } from "@/lib/personalization/schema";
+import { personalizationContextUsage } from "@/lib/personalization/prompt";
 import { personalizationKeys } from "@/lib/queries/keys";
 
 async function responseError(response: Response): Promise<Error> {
@@ -42,7 +43,17 @@ export function useUpdatePersonalization() {
     onSuccess: (personalization) => {
       client.setQueryData<PersonalizationSnapshot>(
         personalizationKeys.detail(),
-        (current) => (current ? { ...current, personalization } : current),
+        (current) =>
+          current
+            ? {
+                ...current,
+                personalization,
+                contextUsage: personalizationContextUsage(
+                  personalization,
+                  current.memories,
+                ),
+              }
+            : current,
       );
     },
   });

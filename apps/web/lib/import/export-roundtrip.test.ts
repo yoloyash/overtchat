@@ -62,7 +62,6 @@ raw.exec(`
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
   );
   CREATE UNIQUE INDEX memories_userId_key_idx ON memories (user_id, key);
-  CREATE INDEX memories_userId_updatedAt_idx ON memories (user_id, updated_at);
   CREATE VIRTUAL TABLE messages_fts USING fts5(
     content,
     message_id UNINDEXED,
@@ -307,5 +306,69 @@ describe("native export/import compatibility", () => {
     ).toEqual([
       { key: "response_style", value: "Prefer concise answers." },
     ]);
+  });
+
+  it("rolls back chats and personalization when any native import write fails", async () => {
+    const payload = {
+      format: "overtchat",
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      chats: [
+        {
+          id: "rollback-chat",
+          title: "Must roll back",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messages: [
+            {
+              id: "rollback-message",
+              role: "user",
+              parts: [{ type: "text", text: "Do not persist partially" }],
+              createdAt: new Date().toISOString(),
+            },
+          ],
+        },
+      ],
+      personalization: {
+        enabled: true,
+        preferredName: "Rollback",
+        occupation: null,
+        about: null,
+      },
+      memories: Array.from({ length: 3 }, (_, index) => ({
+        key: `oversized_${index}`,
+        value: "界".repeat(500),
+      })),
+    };
+
+    await expect(
+      importChats(
+        "rollback-user",
+        new TextEncoder().encode(JSON.stringify(payload)),
+      ),
+    ).rejects.toThrow("Personalization context is limited");
+
+    expect(
+      raw
+        .prepare("SELECT count(*) AS count FROM chats WHERE user_id = ?")
+        .get("rollback-user"),
+    ).toEqual({ count: 0 });
+    expect(
+      raw
+        .prepare("SELECT count(*) AS count FROM memories WHERE user_id = ?")
+        .get("rollback-user"),
+    ).toEqual({ count: 0 });
+    expect(
+      raw
+        .prepare(
+          "SELECT count(*) AS count FROM user_personalization WHERE user_id = ?",
+        )
+        .get("rollback-user"),
+    ).toEqual({ count: 0 });
+    expect(
+      raw
+        .prepare("SELECT count(*) AS count FROM messages_fts WHERE user_id = ?")
+        .get("rollback-user"),
+    ).toEqual({ count: 0 });
   });
 });

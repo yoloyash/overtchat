@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => {
     acquireMcpBinding: vi.fn(),
     releaseMcpBinding: vi.fn(),
     getProject: vi.fn(),
-    getPersonalizationSnapshot: vi.fn(),
+    getActivePersonalization: vi.fn(),
     generateChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
@@ -138,7 +138,7 @@ vi.mock("@/lib/mcp/manager", () => ({
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
 vi.mock("@/lib/db/personalization", () => ({
-  getPersonalizationSnapshot: mocks.getPersonalizationSnapshot,
+  getActivePersonalization: mocks.getActivePersonalization,
 }));
 vi.mock("@/lib/title", () => ({
   generateChatTitle: mocks.generateChatTitle,
@@ -254,21 +254,7 @@ describe("chat route setup boundary", () => {
     });
     mocks.getChat.mockResolvedValue(null);
     mocks.getProject.mockResolvedValue(null);
-    mocks.getPersonalizationSnapshot.mockResolvedValue({
-      personalization: {
-        enabled: false,
-        preferredName: null,
-        occupation: null,
-        about: null,
-      },
-      memories: [],
-      memoryUsage: {
-        characters: 0,
-        limit: 4_096,
-        entries: 0,
-        entryLimit: 50,
-      },
-    });
+    mocks.getActivePersonalization.mockResolvedValue(null);
     mocks.getChatMessage.mockResolvedValue(null);
     mocks.createConfiguredLanguageModel.mockReturnValue({
       model: "language-model",
@@ -915,7 +901,7 @@ describe("chat route setup boundary", () => {
       ...parsedRequest,
       webSearchEnabled: false,
     });
-    mocks.getPersonalizationSnapshot.mockResolvedValue({
+    mocks.getActivePersonalization.mockResolvedValue({
       personalization: {
         enabled: true,
         preferredName: "Boomer",
@@ -931,12 +917,6 @@ describe("chat route setup boundary", () => {
           updatedAt: "2026-08-28T00:00:00.000Z",
         },
       ],
-      memoryUsage: {
-        characters: 90,
-        limit: 4_096,
-        entries: 1,
-        entryLimit: 50,
-      },
     });
 
     await POST(request());
@@ -963,7 +943,7 @@ describe("chat route setup boundary", () => {
       ...parsedRequest,
       webSearchEnabled: false,
     });
-    mocks.getPersonalizationSnapshot.mockResolvedValue({
+    mocks.getActivePersonalization.mockResolvedValue({
       personalization: {
         enabled: true,
         preferredName: null,
@@ -971,12 +951,6 @@ describe("chat route setup boundary", () => {
         about: null,
       },
       memories: [],
-      memoryUsage: {
-        characters: 0,
-        limit: 4_096,
-        entries: 0,
-        entryLimit: 50,
-      },
     });
 
     await POST(request());
@@ -1001,7 +975,7 @@ describe("chat route setup boundary", () => {
 
     await POST(request());
 
-    expect(mocks.getPersonalizationSnapshot).not.toHaveBeenCalled();
+    expect(mocks.getActivePersonalization).not.toHaveBeenCalled();
     expect(mocks.createMemoryTools).not.toHaveBeenCalled();
     expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
   });

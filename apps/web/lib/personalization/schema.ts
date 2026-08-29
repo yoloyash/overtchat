@@ -5,7 +5,7 @@ export const OCCUPATION_MAX_LENGTH = 160;
 export const ABOUT_MAX_LENGTH = 1_000;
 export const MEMORY_KEY_MAX_LENGTH = 64;
 export const MEMORY_VALUE_MAX_LENGTH = 500;
-export const MEMORY_CONTEXT_CHAR_LIMIT = 4_096;
+export const PERSONALIZATION_CONTEXT_BYTE_LIMIT = 4_096;
 export const MEMORY_ENTRY_LIMIT = 50;
 
 const optionalProfileField = (max: number) =>
@@ -62,8 +62,8 @@ export type Memory = {
 export type PersonalizationSnapshot = {
   personalization: Personalization;
   memories: Memory[];
-  memoryUsage: {
-    characters: number;
+  contextUsage: {
+    bytes: number;
     limit: number;
     entries: number;
     entryLimit: number;

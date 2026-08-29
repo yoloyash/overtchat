@@ -2,10 +2,10 @@ import "server-only";
 import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { memories, userPersonalization } from "@/lib/db/schema";
-import { memorySystemPrompt } from "@/lib/personalization/prompt";
+import { personalizationContextUsage } from "@/lib/personalization/prompt";
 import {
-  MEMORY_CONTEXT_CHAR_LIMIT,
   MEMORY_ENTRY_LIMIT,
+  PERSONALIZATION_CONTEXT_BYTE_LIMIT,
   type Memory,
   type MemoryInput,
   type Personalization,
@@ -47,20 +47,28 @@ export async function updatePersonalization(
   userId: string,
   input: PersonalizationInput,
 ): Promise<Personalization> {
-  const [row] = await db
-    .insert(userPersonalization)
-    .values({ userId, ...input })
-    .onConflictDoUpdate({
-      target: userPersonalization.userId,
-      set: { ...input, updatedAt: new Date() },
-    })
-    .returning({
-      enabled: userPersonalization.enabled,
-      preferredName: userPersonalization.preferredName,
-      occupation: userPersonalization.occupation,
-      about: userPersonalization.about,
-    });
-  return row;
+  return db.transaction((tx) => {
+    const memoryRows = tx
+      .select({ key: memories.key, value: memories.value })
+      .from(memories)
+      .where(eq(memories.userId, userId))
+      .all();
+    assertCapacity(input, memoryRows);
+    return tx
+      .insert(userPersonalization)
+      .values({ userId, ...input })
+      .onConflictDoUpdate({
+        target: userPersonalization.userId,
+        set: { ...input, updatedAt: new Date() },
+      })
+      .returning({
+        enabled: userPersonalization.enabled,
+        preferredName: userPersonalization.preferredName,
+        occupation: userPersonalization.occupation,
+        about: userPersonalization.about,
+      })
+      .get();
+  });
 }
 
 export async function listMemories(userId: string): Promise<Memory[]> {
@@ -82,7 +90,22 @@ export async function getPersonalizationSnapshot(
   return {
     personalization,
     memories: memoryRows,
-    memoryUsage: usage(memoryRows),
+    contextUsage: personalizationContextUsage(personalization, memoryRows),
+  };
+}
+
+export async function getActivePersonalization(userId: string): Promise<
+  | {
+      personalization: Personalization;
+      memories: Memory[];
+    }
+  | null
+> {
+  const personalization = await getPersonalization(userId);
+  if (!personalization.enabled) return null;
+  return {
+    personalization,
+    memories: await listMemories(userId),
   };
 }
 
@@ -98,7 +121,10 @@ export function createMemory(
       .orderBy(asc(memories.createdAt), asc(memories.key))
       .all();
     if (current.some((memory) => memory.key === input.key)) return "conflict";
-    assertCapacity([...current, candidate(input)]);
+    assertCapacity(
+      transactionPersonalization(tx, userId),
+      [...current, candidate(input)],
+    );
     const row = tx
       .insert(memories)
       .values({ id: crypto.randomUUID(), userId, ...input })
@@ -124,7 +150,7 @@ export function setMemory(userId: string, input: MemoryInput): Memory {
             : memory,
         )
       : [...current, candidate(input)];
-    assertCapacity(prospective);
+    assertCapacity(transactionPersonalization(tx, userId), prospective);
     const now = new Date();
     const row = tx
       .insert(memories)
@@ -161,6 +187,7 @@ export function updateMemory(
       return "conflict";
     }
     assertCapacity(
+      transactionPersonalization(tx, userId),
       current.map((memory) =>
         memory.id === id ? { ...memory, ...input, updatedAt: new Date() } : memory,
       ),
@@ -212,27 +239,56 @@ function candidate(input: MemoryInput) {
   };
 }
 
-function assertCapacity(rows: readonly { key: string; value: string }[]) {
+export function assertPersonalizationCapacity(
+  personalization: Pick<
+    Personalization,
+    "preferredName" | "occupation" | "about"
+  >,
+  rows: readonly { key: string; value: string }[],
+) {
+  assertCapacity(personalization, rows);
+}
+
+function assertCapacity(
+  personalization: Pick<
+    Personalization,
+    "preferredName" | "occupation" | "about"
+  >,
+  rows: readonly { key: string; value: string }[],
+) {
   if (rows.length > MEMORY_ENTRY_LIMIT) {
     throw new MemoryCapacityError(
       `Memory is limited to ${MEMORY_ENTRY_LIMIT} entries.`,
     );
   }
-  const characters = memorySystemPrompt(rows)?.length ?? 0;
-  if (characters > MEMORY_CONTEXT_CHAR_LIMIT) {
+  const { bytes } = personalizationContextUsage(personalization, rows);
+  if (bytes > PERSONALIZATION_CONTEXT_BYTE_LIMIT) {
     throw new MemoryCapacityError(
-      `Memory context is limited to ${MEMORY_CONTEXT_CHAR_LIMIT.toLocaleString()} characters.`,
+      `Personalization context is limited to ${PERSONALIZATION_CONTEXT_BYTE_LIMIT.toLocaleString()} UTF-8 bytes. Shorten your profile or memories.`,
     );
   }
 }
 
-function usage(rows: readonly { key: string; value: string }[]) {
-  return {
-    characters: memorySystemPrompt(rows)?.length ?? 0,
-    limit: MEMORY_CONTEXT_CHAR_LIMIT,
-    entries: rows.length,
-    entryLimit: MEMORY_ENTRY_LIMIT,
-  };
+type PersonalizationTransaction = Parameters<
+  Parameters<typeof db.transaction>[0]
+>[0];
+
+function transactionPersonalization(
+  tx: PersonalizationTransaction,
+  userId: string,
+): Personalization {
+  return (
+    tx
+      .select({
+        enabled: userPersonalization.enabled,
+        preferredName: userPersonalization.preferredName,
+        occupation: userPersonalization.occupation,
+        about: userPersonalization.about,
+      })
+      .from(userPersonalization)
+      .where(eq(userPersonalization.userId, userId))
+      .get() ?? DEFAULT_PERSONALIZATION
+  );
 }
 
 function toMemory(row: typeof memories.$inferSelect): Memory {

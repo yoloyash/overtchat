@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import {
   getPersonalizationSnapshot,
+  MemoryCapacityError,
   updatePersonalization,
 } from "@/lib/db/personalization";
 import { PersonalizationInputSchema } from "@/lib/personalization/schema";
@@ -28,9 +29,16 @@ export async function PATCH(req: Request) {
       { status: 400 },
     );
   }
-  const personalization = await updatePersonalization(
-    session.user.id,
-    parsed.data,
-  );
-  return Response.json({ personalization });
+  try {
+    const personalization = await updatePersonalization(
+      session.user.id,
+      parsed.data,
+    );
+    return Response.json({ personalization });
+  } catch (error) {
+    if (error instanceof MemoryCapacityError) {
+      return Response.json({ error: error.message }, { status: 409 });
+    }
+    throw error;
+  }
 }

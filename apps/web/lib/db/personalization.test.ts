@@ -36,7 +36,6 @@ raw.exec(`
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
   );
   CREATE UNIQUE INDEX memories_userId_key_idx ON memories (user_id, key);
-  CREATE INDEX memories_userId_updatedAt_idx ON memories (user_id, updated_at);
   INSERT INTO user (id) VALUES ('user-a'), ('user-b');
 `);
 
@@ -53,11 +52,18 @@ afterAll(() => {
 
 describe("personalization persistence", () => {
   it("defaults to enabled with an empty profile", async () => {
-    await expect(service.getPersonalization("user-a")).resolves.toEqual({
+    const personalization = {
       enabled: true,
       preferredName: null,
       occupation: null,
       about: null,
+    };
+    await expect(service.getPersonalization("user-a")).resolves.toEqual(
+      personalization,
+    );
+    await expect(service.getActivePersonalization("user-a")).resolves.toEqual({
+      personalization,
+      memories: [],
     });
   });
 
@@ -75,6 +81,7 @@ describe("personalization persistence", () => {
       occupation: "Engineer",
       about: "Builds self-hosted software.",
     });
+    await expect(service.getActivePersonalization("user-a")).resolves.toBeNull();
   });
 
   it("scopes memory CRUD and keyed upserts to one user", async () => {
@@ -113,7 +120,7 @@ describe("personalization persistence", () => {
     expect(await service.listMemories("user-b")).toHaveLength(1);
   });
 
-  it("rejects writes that would exceed the rendered memory context limit", () => {
+  it("rejects writes that would exceed the complete personalization context limit", () => {
     for (let index = 0; index < 7; index += 1) {
       service.setMemory("user-a", {
         key: `large_${index}`,
@@ -126,6 +133,28 @@ describe("personalization persistence", () => {
         value: "x".repeat(500),
       }),
     ).toThrow(service.MemoryCapacityError);
+  });
+
+  it("applies the shared context limit when the profile changes", async () => {
+    await expect(
+      service.updatePersonalization("user-a", {
+        enabled: true,
+        preferredName: "Boomer",
+        occupation: "Engineer",
+        about: "x".repeat(1_000),
+      }),
+    ).rejects.toThrow(service.MemoryCapacityError);
+
+    const snapshot = await service.getPersonalizationSnapshot("user-a");
+    expect(snapshot.personalization).toEqual({
+      enabled: false,
+      preferredName: "Boomer",
+      occupation: "Engineer",
+      about: "Builds self-hosted software.",
+    });
+    expect(snapshot.contextUsage.bytes).toBeLessThanOrEqual(
+      snapshot.contextUsage.limit,
+    );
   });
 
   it("cascades personalization data with account deletion", async () => {

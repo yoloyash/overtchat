@@ -1187,14 +1187,6 @@
             "key"
           ],
           "isUnique": true
-        },
-        "memories_userId_updatedAt_idx": {
-          "name": "memories_userId_updatedAt_idx",
-          "columns": [
-            "user_id",
-            "updated_at"
-          ],
-          "isUnique": false
         }
       },
       "foreignKeys": {
