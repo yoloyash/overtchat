@@ -1,9 +1,7 @@
 import type { VoiceToolDefinition } from "@overtchat/shared";
 
-export const VOICE_WEB_SEARCH_PROMPT = `Web search in a voice conversation:
-Use web tools only when the user's request requires current or likely-to-change information, or when they explicitly ask. After searching, attribute important facts naturally by naming the source in the spoken answer.
-
-Do not emit citation markers, internal reference IDs such as turn0search0, raw URLs, Markdown links, footnotes, or HTML. The voice interface displays the underlying source links separately.`;
+export const VOICE_WEB_SEARCH_PROMPT =
+  "Web search is available when useful. Name important sources naturally, and do not read URLs aloud.";
 
 export const VOICE_WEB_TOOLS: VoiceToolDefinition[] = [
   {

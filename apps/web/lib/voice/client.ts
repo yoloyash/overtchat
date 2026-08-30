@@ -205,8 +205,6 @@ export class OvertChatVoiceClient {
     this.transport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
     const agent = new RealtimeAgent({
       name: "OvertChat",
-      instructions:
-        "Have a natural spoken conversation. Listen carefully, answer directly, and use available tools when they would improve the answer.",
       voice: "af_heart",
       tools: realtimeTools(this.grant.tools, this.callbacks),
     });

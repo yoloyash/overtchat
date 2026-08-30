@@ -15,6 +15,7 @@ import {
 } from "@/lib/personalization/prompt";
 import { verifyVoiceTicket } from "@/lib/voice/ticket";
 import { authorizeVoiceService } from "@/lib/voice/internal-auth";
+import { VOICE_CONVERSATION_PROMPT } from "@/lib/voice/prompt";
 import { VOICE_WEB_SEARCH_PROMPT } from "@/lib/voice/tools";
 
 export const maxDuration = 300;
@@ -57,6 +58,8 @@ export function toModelMessages(value: unknown): ModelMessage[] {
   for (const raw of value) {
     const message = record(raw);
     if (!message || typeof message.role !== "string") continue;
+    // Realtime session instructions are browser-controlled. Only server-owned
+    // prompts may supply system instructions.
     if (message.role === "system") continue;
     if (message.role === "user") {
       const content = textContent(message.content);
@@ -179,7 +182,7 @@ export async function POST(request: Request) {
     personalization ? memorySystemPrompt(personalization.memories) : null,
     ticket.webSearchEnabled ? VOICE_WEB_SEARCH_PROMPT : null,
     currentDateSystemPrompt(ticket.timeZone),
-    "This is a live spoken conversation. Be natural and concise. Do not use Markdown formatting unless the user explicitly asks for it.",
+    VOICE_CONVERSATION_PROMPT,
   ].filter((part): part is string => Boolean(part?.trim()));
   const messages = toModelMessages(body.messages);
   const requestedTools = ticket.webSearchEnabled ? requestTools(body.tools) : {};
