@@ -1,5 +1,22 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
+import type { ChatRequestAction } from "@overtchat/shared";
 import { z } from "zod";
+
+const ChatRequestActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("submit") }),
+  z.object({
+    type: z.literal("edit"),
+    targetUserMessageId: z.string().trim().min(1),
+  }),
+  z.object({
+    type: z.literal("regenerate"),
+    targetAssistantMessageId: z.string().trim().min(1),
+  }),
+  z.object({
+    type: z.literal("retry"),
+    userMessageId: z.string().trim().min(1),
+  }),
+]);
 
 const ChatRequestEnvelopeSchema = z.object({
   messages: z.unknown(),
@@ -12,6 +29,9 @@ const ChatRequestEnvelopeSchema = z.object({
   searchEnabled: z.boolean().optional(),
   timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
+  action: ChatRequestActionSchema.optional(),
+  // Kept as a wire-compatibility input for already-open web clients and
+  // released mobile clients. New clients send `action` explicitly.
   trigger: z
     .enum(["submit-message", "regenerate-message"])
     .optional()
@@ -28,8 +48,7 @@ export interface ParsedChatRequest {
   forceSearch: boolean;
   timeZone?: string;
   projectId?: string | null;
-  trigger: "submit-message" | "regenerate-message";
-  messageId?: string;
+  action: ChatRequestAction;
   temporary: boolean;
 }
 
@@ -74,18 +93,51 @@ export async function parseChatRequest(
   if (last.role !== "user") {
     throw new ChatRequestError("The final message must be a user message");
   }
+
+  const action =
+    envelope.data.action ??
+    legacyChatRequestAction({
+      trigger: envelope.data.trigger,
+      messageId: envelope.data.messageId,
+      userMessageId: last.id,
+    });
   if (
-    envelope.data.trigger === "regenerate-message" &&
-    !envelope.data.messageId
+    (action.type === "edit" && action.targetUserMessageId !== last.id) ||
+    (action.type === "retry" && action.userMessageId !== last.id)
   ) {
-    throw new ChatRequestError("Regenerate requires a messageId");
+    throw new ChatRequestError("Chat action does not match the user message");
   }
 
-  const { searchEnabled, ...data } = envelope.data;
-  const forceSearch = data.forceSearch ?? searchEnabled ?? false;
+  const { searchEnabled } = envelope.data;
+  const forceSearch = envelope.data.forceSearch ?? searchEnabled ?? false;
   return {
-    ...data,
     messages: validated.data,
-    forceSearch: data.webSearchEnabled && forceSearch,
+    modelConfigId: envelope.data.modelConfigId,
+    chatId: envelope.data.chatId,
+    webSearchEnabled: envelope.data.webSearchEnabled,
+    forceSearch: envelope.data.webSearchEnabled && forceSearch,
+    timeZone: envelope.data.timeZone,
+    projectId: envelope.data.projectId,
+    action,
+    temporary: envelope.data.temporary,
   };
+}
+
+function legacyChatRequestAction({
+  trigger,
+  messageId,
+  userMessageId,
+}: {
+  trigger: "submit-message" | "regenerate-message";
+  messageId?: string;
+  userMessageId: string;
+}): ChatRequestAction {
+  if (trigger === "regenerate-message") {
+    return messageId
+      ? { type: "regenerate", targetAssistantMessageId: messageId }
+      : { type: "retry", userMessageId };
+  }
+  return messageId
+    ? { type: "edit", targetUserMessageId: messageId }
+    : { type: "submit" };
 }

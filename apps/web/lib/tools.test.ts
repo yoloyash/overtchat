@@ -240,6 +240,88 @@ describe("native web tools", () => {
     ]);
   });
 
+  it("drops every incomplete persisted tool state before model conversion", async () => {
+    const incompleteIds = [
+      "input-streaming",
+      "input-available",
+      "approval-requested",
+      "missing-state",
+      "preliminary-output",
+    ];
+    const history: UIMessage[] = [
+      {
+        id: "interrupted-assistant",
+        role: "assistant",
+        parts: [
+          {
+            type: "dynamic-tool",
+            toolName: "interrupted_tool",
+            toolCallId: "input-streaming",
+            state: "input-streaming",
+            input: {},
+          },
+          {
+            type: "dynamic-tool",
+            toolName: "interrupted_tool",
+            toolCallId: "input-available",
+            state: "input-available",
+            input: {},
+          },
+          {
+            type: "dynamic-tool",
+            toolName: "interrupted_tool",
+            toolCallId: "approval-requested",
+            state: "approval-requested",
+            input: {},
+            approval: { id: "approval" },
+          },
+          {
+            type: "dynamic-tool",
+            toolName: "interrupted_tool",
+            toolCallId: "missing-state",
+            input: {},
+          } as unknown as UIMessage["parts"][number],
+          {
+            type: "dynamic-tool",
+            toolName: "interrupted_tool",
+            toolCallId: "preliminary-output",
+            state: "output-available",
+            input: {},
+            output: "partial",
+            preliminary: true,
+          },
+          {
+            type: "dynamic-tool",
+            toolName: "interrupted_tool",
+            toolCallId: "settled-error",
+            state: "output-error",
+            input: {},
+            errorText: "tool failed",
+          },
+        ],
+      },
+      {
+        id: "next-user",
+        role: "user",
+        parts: [{ type: "text", text: "Continue" }],
+      },
+    ];
+
+    const converted = await convertToModelMessages(history, {
+      ignoreIncompleteToolCalls: true,
+    });
+    const serialized = JSON.stringify(converted);
+
+    for (const toolCallId of incompleteIds) {
+      expect(serialized).not.toContain(toolCallId);
+    }
+    expect(serialized).toContain("settled-error");
+    expect(converted.at(-1)).toEqual({
+      role: "user",
+      content: [{ type: "text", text: "Continue" }],
+    });
+  });
+
   it("fails before persistence for an explicitly text-only model", async () => {
     mocks.fetchReadable.mockResolvedValue({
       kind: "image",

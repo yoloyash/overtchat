@@ -1,4 +1,5 @@
 import {
+  consumeStream,
   convertToModelMessages,
   createUIMessageStream,
   createUIMessageStreamResponse,
@@ -126,8 +127,7 @@ async function handlePost(req: Request): Promise<Response> {
     timeZone,
     chatId,
     projectId,
-    trigger,
-    messageId,
+    action,
     temporary,
   } = await parseChatRequest(req);
 
@@ -167,21 +167,28 @@ async function handlePost(req: Request): Promise<Response> {
   const personalizationEnabled = activePersonalization !== null;
 
   let messages = requestMessages;
+  let truncateFromMessageId: string | undefined;
+  let persistUserMessage = action.type === "submit" || action.type === "retry";
   if (existingChat) {
     try {
-      messages = reconstructPersistedMessages({
+      const reconstructed = reconstructPersistedMessages({
         storedMessages: await getMessages(chatId),
         requestMessages,
-        trigger,
-        messageId,
+        action,
       });
+      messages = reconstructed.messages;
+      truncateFromMessageId = reconstructed.truncateFromMessageId;
+      persistUserMessage = reconstructed.persistUserMessage;
     } catch (error) {
       if (error instanceof ChatHistoryConflictError) {
         throw new ChatRequestError(error.message, 409);
       }
       throw error;
     }
-  } else if (!temporary && messageId) {
+  } else if (
+    !temporary &&
+    (action.type === "edit" || action.type === "regenerate")
+  ) {
     throw new ChatRequestError(
       "Chat history changed; refresh and try again",
       409,
@@ -214,6 +221,9 @@ async function handlePost(req: Request): Promise<Response> {
   const inlined = await inlineUploads(messages, userId);
   const convertedMessages = await convertToModelMessages(inlined, {
     tools: chatTools,
+    // An intentional stop can persist a tool call before its result arrives.
+    // Keep partial text/reasoning, but do not replay an unmatched call.
+    ignoreIncompleteToolCalls: true,
   });
   const modelMessages =
     promptCacheStrategy?.kind === "anthropic"
@@ -289,11 +299,10 @@ async function handlePost(req: Request): Promise<Response> {
         projectId: resolvedProjectId,
         streamId,
         staleStreamId,
-        truncateFromMessageId: messageId,
-        userMessage:
-          trigger === "regenerate-message"
-            ? undefined
-            : { id: last.id, parts: last.parts },
+        truncateFromMessageId,
+        userMessage: persistUserMessage
+          ? { id: last.id, parts: last.parts }
+          : undefined,
       });
 
       if (commitResult === "committed") {
@@ -395,7 +404,8 @@ async function handlePost(req: Request): Promise<Response> {
     if (
       !temporary &&
       (existingChat?.title ?? null) === null &&
-      messageId === undefined &&
+      persistUserMessage &&
+      truncateFromMessageId === undefined &&
       userMessageCount === 1
     ) {
       const titleModelConfig = getTaskModelConfig() ?? modelConfig;
@@ -617,7 +627,7 @@ async function handlePost(req: Request): Promise<Response> {
               });
             return resumableSetup;
           }
-        : undefined,
+        : consumeStream,
     });
 
     // createUIMessageStreamResponse invokes consumeSseStream synchronously.

@@ -1,6 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
-import { modelSupportsToolCalling } from "@overtchat/shared";
+import {
+  modelSupportsToolCalling,
+  type ChatRequestAction,
+} from "@overtchat/shared";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
@@ -377,7 +380,7 @@ function ChatSurface({
     onNewChat,
   ]);
 
-  function requestBody(forceSearch = false) {
+  function requestBody(action: ChatRequestAction, forceSearch = false) {
     const requested = searchAvailable && forceSearch;
     return {
       modelConfigId: selectedId,
@@ -390,6 +393,7 @@ function ChatSurface({
       chatId,
       projectId,
       temporary: false,
+      action,
     };
   }
 
@@ -447,7 +451,7 @@ function ChatSurface({
     }
     sendMessage(
       { text, files },
-      { body: requestBody(searchRequested) },
+      { body: requestBody({ type: "submit" }, searchRequested) },
     );
     setSearchRequested(false);
     clearAttachments();
@@ -455,7 +459,13 @@ function ChatSurface({
 
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
-    regenerate({ messageId, body: requestBody() });
+    regenerate({
+      messageId,
+      body: requestBody({
+        type: "regenerate",
+        targetAssistantMessageId: messageId,
+      }),
+    });
   }
 
   function handleSaveEdit(
@@ -468,7 +478,15 @@ function ChatSurface({
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
     Keyboard.dismiss();
-    sendMessage({ text: trimmed, files, messageId }, { body: requestBody() });
+    sendMessage(
+      { text: trimmed, files, messageId },
+      {
+        body: requestBody({
+          type: "edit",
+          targetUserMessageId: messageId,
+        }),
+      },
+    );
   }
 
   return (

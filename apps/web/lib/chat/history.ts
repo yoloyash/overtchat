@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { ChatRequestAction } from "@overtchat/shared";
 
 export const CHAT_MESSAGE_PAGE_SIZE = 32;
 
@@ -13,6 +14,12 @@ export class ChatHistoryConflictError extends Error {
     this.name = "ChatHistoryConflictError";
   }
 }
+
+export type ReconstructedPersistedRequest = {
+  messages: UIMessage[];
+  persistUserMessage: boolean;
+  truncateFromMessageId?: string;
+};
 
 export function messagesForChatRequest(
   messages: UIMessage[],
@@ -29,39 +36,102 @@ export function messagesForChatRequest(
 export function reconstructPersistedMessages({
   storedMessages,
   requestMessages,
-  trigger,
-  messageId,
+  action,
 }: {
   storedMessages: UIMessage[];
   requestMessages: UIMessage[];
-  trigger: "submit-message" | "regenerate-message";
-  messageId?: string;
-}): UIMessage[] {
+  action: ChatRequestAction;
+}): ReconstructedPersistedRequest {
   const requestUserMessage = requestMessages.at(-1);
   if (!requestUserMessage || requestUserMessage.role !== "user") {
     throw new ChatHistoryConflictError();
   }
 
-  if (!messageId) {
-    return [...storedMessages, requestUserMessage];
+  if (action.type === "submit") {
+    if (
+      storedMessages.some((message) => message.id === requestUserMessage.id)
+    ) {
+      throw new ChatHistoryConflictError();
+    }
+    return {
+      messages: [...storedMessages, requestUserMessage],
+      persistUserMessage: true,
+    };
   }
 
+  const targetMessageId =
+    action.type === "edit"
+      ? action.targetUserMessageId
+      : action.type === "regenerate"
+        ? action.targetAssistantMessageId
+        : action.userMessageId;
   const targetIndex = storedMessages.findIndex(
-    (message) => message.id === messageId,
+    (message) => message.id === targetMessageId,
   );
   const target = storedMessages[targetIndex];
-  const expectedRole = trigger === "regenerate-message" ? "assistant" : "user";
-  if (!target || target.role !== expectedRole) {
+
+  if (action.type === "edit") {
+    if (
+      action.targetUserMessageId !== requestUserMessage.id ||
+      !target ||
+      target.role !== "user"
+    ) {
+      throw new ChatHistoryConflictError();
+    }
+    return {
+      messages: [
+        ...storedMessages.slice(0, targetIndex),
+        requestUserMessage,
+      ],
+      persistUserMessage: true,
+      truncateFromMessageId: target.id,
+    };
+  }
+
+  if (action.type === "regenerate") {
+    if (!target || target.role !== "assistant") {
+      throw new ChatHistoryConflictError();
+    }
+    const prefix = storedMessages.slice(0, targetIndex);
+    if (
+      prefix.at(-1)?.role !== "user" ||
+      prefix.at(-1)?.id !== requestUserMessage.id
+    ) {
+      throw new ChatHistoryConflictError();
+    }
+    return {
+      messages: prefix,
+      persistUserMessage: false,
+      truncateFromMessageId: target.id,
+    };
+  }
+
+  if (action.userMessageId !== requestUserMessage.id) {
+    throw new ChatHistoryConflictError();
+  }
+  if (!target) {
+    return {
+      messages: [...storedMessages, requestUserMessage],
+      persistUserMessage: true,
+    };
+  }
+  if (target.role !== "user") {
     throw new ChatHistoryConflictError();
   }
 
-  const prefix = storedMessages.slice(0, targetIndex);
-  if (trigger === "regenerate-message") {
-    if (prefix.at(-1)?.role !== "user") {
-      throw new ChatHistoryConflictError();
-    }
-    return prefix;
+  const following = storedMessages[targetIndex + 1];
+  if (!following) {
+    return {
+      messages: storedMessages,
+      persistUserMessage: false,
+    };
   }
-
-  return [...prefix, requestUserMessage];
+  if (following.role !== "assistant") {
+    throw new ChatHistoryConflictError();
+  }
+  return {
+    messages: storedMessages.slice(0, targetIndex + 1),
+    persistUserMessage: false,
+    truncateFromMessageId: following.id,
+  };
 }
