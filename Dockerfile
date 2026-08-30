@@ -30,9 +30,12 @@ RUN groupadd --system --gid 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/drizzle ./apps/web/drizzle
 
-RUN mkdir -p /app/data /app/npm-cache \
+RUN test -f /app/apps/web/public/voice/mic-capture.js \
+ && test -f /app/apps/web/public/voice/audio-playback.js \
+ && mkdir -p /app/data /app/npm-cache \
  && chown -R nextjs:nodejs /app/data /app/npm-cache
 
 USER nextjs
