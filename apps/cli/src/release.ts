@@ -14,6 +14,7 @@ import {
   APP_IMAGE,
   CONNECTOR_REPOSITORY,
   RELEASE_MANIFEST_URL,
+  VOICE_IMAGE,
 } from "./constants.js";
 import { runCommand } from "./process.js";
 import type { InstallationConfig } from "./types.js";
@@ -68,6 +69,10 @@ export function applyReleaseManifest(
       config.appImage === "overtchat-app:setup-dev"
         ? config.appImage
         : `${APP_IMAGE}:${appVersion}`,
+    voiceImage:
+      config.voiceImage === "overtchat-voice:setup-dev"
+        ? config.voiceImage
+        : `${VOICE_IMAGE}:${appVersion}`,
     connectorVersion,
     sttVersion,
     redisImage: manifest.redisImage,

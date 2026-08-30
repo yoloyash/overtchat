@@ -22,6 +22,7 @@ function config(
     format: 1,
     appVersion: "0.14.0",
     appImage: "ghcr.io/yoloyash/overtchat-app:0.14.0",
+    voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.14.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
@@ -42,6 +43,7 @@ function config(
       bundledInstalled: true,
       accelerator: "cpu",
     },
+    voice: { installed: false },
     agents: { installed: false },
     ...overrides,
   };

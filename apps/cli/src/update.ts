@@ -1,5 +1,6 @@
 import { outro, spinner } from "@clack/prompts";
 import {
+  initialSecrets,
   readInstallationConfig,
   readInstallationSecrets,
   writeInstallationConfig,
@@ -46,6 +47,7 @@ export async function update(): Promise<void> {
       "The managed installation secrets are incomplete. Run overtchat setup to repair them.",
     );
   }
+  const completedSecrets = initialSecrets(null, secrets);
   const progress = spinner();
   let progressActive = true;
   progress.start("Checking for OvertChat updates");
@@ -63,11 +65,7 @@ export async function update(): Promise<void> {
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(
       paths,
-      renderStackEnvironment(nextConfig, {
-        betterAuthSecret: secrets.betterAuthSecret,
-        managementSecret: secrets.managementSecret,
-        searxngSecret: secrets.searxngSecret,
-      }, paths),
+      renderStackEnvironment(nextConfig, completedSecrets, paths),
     );
     const composeArgs = [
       "compose",

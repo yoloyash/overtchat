@@ -85,6 +85,7 @@ jobs:
           }
           const managedDefaults = [
             `ghcr.io/yoloyash/overtchat-app:\${APP_VERSION:-${manifest.appVersion}}`,
+            `ghcr.io/yoloyash/overtchat-voice:\${APP_VERSION:-${manifest.appVersion}}`,
             `ghcr.io/yoloyash/overtchat-stt-cpu:\${STT_VERSION:-${manifest.sttVersion}}`,
             `ghcr.io/yoloyash/overtchat-stt-gpu:\${STT_VERSION:-${manifest.sttVersion}}`,
           ];
@@ -209,6 +210,11 @@ jobs:
           node .github/scripts/assert-image-platforms.mjs \
             "$verification_directory/app.json" linux/amd64 linux/arm64
 
+          inspect_image "ghcr.io/yoloyash/overtchat-voice:$APP_VERSION" \
+            "$verification_directory/voice.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/voice.json" linux/amd64 linux/arm64
+
           inspect_image "ghcr.io/yoloyash/overtchat-stt-cpu:$STT_VERSION" \
             "$verification_directory/stt-cpu.json"
           node .github/scripts/assert-image-platforms.mjs \
@@ -287,28 +293,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update the app latest alias
+      - name: Update owned image latest aliases
         if: steps.readiness.outputs.ready == 'true'
         env:
           APP_VERSION: ${{ steps.manifest.outputs.app }}
         run: |
-          versioned_image="ghcr.io/yoloyash/overtchat-app:$APP_VERSION"
-          latest_image="ghcr.io/yoloyash/overtchat-app:latest"
-          versioned_digest=$(docker buildx imagetools inspect \
-            "$versioned_image" --format '{{.Manifest.Digest}}')
-
-          docker buildx imagetools create \
-            --tag "$latest_image" \
-            "$versioned_image@$versioned_digest"
-
-          for _ in {1..10}; do
-            latest_digest=$(docker buildx imagetools inspect \
-              "$latest_image" --format '{{.Manifest.Digest}}')
-            if [ "$latest_digest" = "$versioned_digest" ]; then
-              exit 0
+          for repository in overtchat-app overtchat-voice; do
+            versioned_image="ghcr.io/yoloyash/$repository:$APP_VERSION"
+            latest_image="ghcr.io/yoloyash/$repository:latest"
+            versioned_digest=$(docker buildx imagetools inspect \
+              "$versioned_image" --format '{{.Manifest.Digest}}')
+            docker buildx imagetools create \
+              --tag "$latest_image" \
+              "$versioned_image@$versioned_digest"
+            matched=false
+            for _ in {1..10}; do
+              latest_digest=$(docker buildx imagetools inspect \
+                "$latest_image" --format '{{.Manifest.Digest}}')
+              if [ "$latest_digest" = "$versioned_digest" ]; then
+                matched=true
+                break
+              fi
+              sleep 3
+            done
+            if [ "$matched" != "true" ]; then
+              echo "$latest_image does not match $versioned_image." >&2
+              exit 1
             fi
-            sleep 3
           done
-
-          echo "$latest_image does not match $versioned_image." >&2
-          exit 1

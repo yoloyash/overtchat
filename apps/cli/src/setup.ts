@@ -344,7 +344,11 @@ export async function setup(
         `No OvertChat Dockerfile was found in ${sourceDirectory}. Set OVERTCHAT_SOURCE_DIR to the repository root.`,
       );
     }
-    config = { ...config, appImage: "overtchat-app:setup-dev" };
+    config = {
+      ...config,
+      appImage: "overtchat-app:setup-dev",
+      voiceImage: "overtchat-voice:setup-dev",
+    };
   }
   if (!saved && !existing) {
     const lanAddress = primaryLanAddress();
@@ -449,6 +453,19 @@ export async function setup(
       ["build", "--tag", config.appImage, sourceDirectory],
       { inherit: true },
     );
+    if (config.voice.installed) {
+      preparation.message("Building realtime voice from this worktree");
+      await requireDocker(
+        docker,
+        [
+          "build",
+          "--tag",
+          config.voiceImage,
+          path.join(sourceDirectory, "voice"),
+        ],
+        { inherit: true },
+      );
+    }
     if (config.agents.installed) {
       preparation.message("Building Agent Connections from this worktree");
       await requireSuccessful(

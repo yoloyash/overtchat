@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   detectDockerCommand: vi.fn(),
   dockerComposeAvailable: vi.fn(),
   installManagedConnector: vi.fn(),
+  initialSecrets: vi.fn(),
   latestReleaseManifest: vi.fn(),
   outro: vi.fn(),
   prepareFiles: vi.fn(),
@@ -35,6 +36,7 @@ vi.mock("@clack/prompts", () => ({
 }));
 
 vi.mock("./config.js", () => ({
+  initialSecrets: mocks.initialSecrets,
   readInstallationConfig: mocks.readInstallationConfig,
   readInstallationSecrets: mocks.readInstallationSecrets,
   writeInstallationConfig: mocks.writeInstallationConfig,
@@ -103,6 +105,7 @@ function config(
     format: 1,
     appVersion: "0.14.0",
     appImage: "ghcr.io/yoloyash/overtchat-app:0.14.0",
+    voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.14.0",
     connectorVersion: "0.4.0",
     sttVersion: "0.1.0",
     ...releaseImages,
@@ -117,6 +120,7 @@ function config(
     search: { provider: "bundled", bundledInstalled: true },
     tts: { provider: "bundled", bundledInstalled: true },
     stt: { provider: "disabled", bundledInstalled: false },
+    voice: { installed: false },
     agents: { installed: false },
     ...overrides,
   };
@@ -126,6 +130,7 @@ const secrets: InstallationSecrets = {
   betterAuthSecret: "better-auth-secret",
   managementSecret: "management-secret",
   searxngSecret: "searxng-secret",
+  voiceSharedSecret: "voice-secret",
 };
 
 beforeEach(() => {
@@ -134,6 +139,12 @@ beforeEach(() => {
   mocks.detectDockerCommand.mockResolvedValue("docker");
   mocks.dockerComposeAvailable.mockResolvedValue(true);
   mocks.readInstallationSecrets.mockResolvedValue(secrets);
+  mocks.initialSecrets.mockImplementation(
+    (_existing: null, previous: Partial<InstallationSecrets>) => ({
+      ...previous,
+      voiceSharedSecret: previous.voiceSharedSecret ?? "generated-voice-secret",
+    }),
+  );
   mocks.latestReleaseManifest.mockResolvedValue({
     format: 1,
     cliVersion: "0.1.1",
@@ -180,6 +191,24 @@ describe("managed updates", () => {
     );
     expect(mocks.prepareFiles).not.toHaveBeenCalled();
     expect(mocks.requireDocker).not.toHaveBeenCalled();
+  });
+
+  it("adds the voice secret when upgrading an older managed installation", async () => {
+    const legacySecrets = {
+      betterAuthSecret: secrets.betterAuthSecret,
+      managementSecret: secrets.managementSecret,
+      searxngSecret: secrets.searxngSecret,
+    };
+    mocks.readInstallationSecrets.mockResolvedValue(legacySecrets);
+
+    await update();
+
+    expect(mocks.initialSecrets).toHaveBeenCalledWith(null, legacySecrets);
+    expect(mocks.renderStackEnvironment).toHaveBeenCalledWith(
+      expect.anything(),
+      { ...legacySecrets, voiceSharedSecret: "generated-voice-secret" },
+      paths,
+    );
   });
 
   it("refreshes a current installation without changing its versions", async () => {

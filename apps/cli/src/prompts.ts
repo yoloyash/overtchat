@@ -343,6 +343,17 @@ export async function promptInstallationConfig(
   const search = await promptSearch(initial.search);
   const tts = await promptTts(initial.tts);
   const stt = await promptStt(initial.stt, gpus);
+  const voiceAvailable = tts.provider !== "disabled" && stt.provider !== "disabled";
+  const installVoice = voiceAvailable
+    ? chosen(
+        await confirm({
+          message: "Install realtime voice conversations?",
+          initialValue: initial.voice.installed,
+          active: "Yes",
+          inactive: "No",
+        }),
+      )
+    : false;
   const agents = await detectedAgents();
   note(
     [
@@ -366,6 +377,7 @@ export async function promptInstallationConfig(
     search,
     tts,
     stt,
+    voice: { installed: installVoice },
     agents: { installed: installAgents },
   };
 }

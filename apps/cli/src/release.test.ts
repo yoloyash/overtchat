@@ -19,6 +19,7 @@ function config(
     format: 1,
     appVersion: "1.0.0",
     appImage: "ghcr.io/yoloyash/overtchat-app:1.0.0",
+    voiceImage: "ghcr.io/yoloyash/overtchat-voice:1.0.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
     ...releaseImages,
@@ -33,6 +34,7 @@ function config(
     search: { provider: "bundled", bundledInstalled: true },
     tts: { provider: "bundled", bundledInstalled: true },
     stt: { provider: "disabled", bundledInstalled: false },
+    voice: { installed: false },
     agents: { installed: false },
     ...overrides,
   };
@@ -91,6 +93,7 @@ describe("release manifest", () => {
     ).toMatchObject({
       appVersion: "1.1.0",
       appImage: "ghcr.io/yoloyash/overtchat-app:1.1.0",
+      voiceImage: "ghcr.io/yoloyash/overtchat-voice:1.1.0",
       connectorVersion: "2.0.0",
       sttVersion: "3.1.0",
       ...releaseImages,

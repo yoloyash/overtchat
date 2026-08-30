@@ -11,6 +11,7 @@ import {
   DEFAULT_APP_PORT,
   DEFAULT_COMPOSE_PROJECT,
   DEFAULT_DATA_VOLUME,
+  VOICE_IMAGE,
 } from "./constants.js";
 import { compareVersions, type ReleaseManifest } from "./release.js";
 
@@ -18,6 +19,7 @@ export type InstallationSecrets = {
   betterAuthSecret: string;
   managementSecret: string;
   searxngSecret: string;
+  voiceSharedSecret: string;
 };
 
 function generatedSecret(): string {
@@ -51,6 +53,7 @@ export function defaultInstallationConfig(
     format: 1,
     appVersion,
     appImage,
+    voiceImage: `${VOICE_IMAGE}:${appVersion}`,
     connectorVersion: manifest.connectorVersion,
     sttVersion: manifest.sttVersion,
     redisImage: manifest.redisImage,
@@ -101,6 +104,7 @@ export function defaultInstallationConfig(
               gpuUuid: existing.sttGpuUuid,
             }
           : { provider: "disabled", bundledInstalled: false },
+    voice: { installed: existing?.bundledServices.voice ?? false },
     agents: { installed: false },
     ...(existing?.composeWorkingDir
       ? { adoptedFrom: existing.composeWorkingDir }
@@ -133,6 +137,8 @@ export async function readInstallationConfig(
         environmentFlag(process.env.DISABLE_UPDATE_CHECK) ??
         config.disableUpdateCheck ??
         false,
+      voiceImage: config.voiceImage ?? `${VOICE_IMAGE}:${config.appVersion}`,
+      voice: config.voice ?? { installed: false },
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
@@ -173,6 +179,7 @@ export function initialSecrets(
       previous.searxngSecret ||
       existing?.environment.get("SEARXNG_SECRET") ||
       generatedSecret(),
+    voiceSharedSecret: previous.voiceSharedSecret || generatedSecret(),
   };
 }
 
@@ -203,6 +210,7 @@ export async function readInstallationSecrets(
       betterAuthSecret: values.get("BETTER_AUTH_SECRET"),
       managementSecret: values.get("OVERTCHAT_MANAGEMENT_SECRET"),
       searxngSecret: values.get("SEARXNG_SECRET"),
+      voiceSharedSecret: values.get("VOICE_SHARED_SECRET"),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};

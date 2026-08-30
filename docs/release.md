@@ -17,7 +17,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 
 | Component | Change | Tag |
 | --- | --- | --- |
-| App | Manifest `appVersion`; `compose.yml` default | `vX.Y.Z` |
+| App and realtime voice | Manifest `appVersion`; `compose.yml` defaults | `vX.Y.Z` |
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
 | Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
@@ -36,9 +36,10 @@ Do not change unrelated manifest fields.
 
 ## Component notes
 
-- **App:** `.github/workflows/app-image.yml` publishes amd64 and arm64, creates
-  the GitHub release, and dispatches promotion. Successful stable promotion
-  then moves the mutable app `latest` alias to the verified versioned image.
+- **App and realtime voice:** `.github/workflows/app-image.yml` publishes both
+  amd64/arm64 images at the same version, creates the GitHub release, and
+  dispatches promotion. Successful stable promotion moves both mutable
+  `latest` aliases to the verified versioned images.
 - **CLI:** The CLI workflow verifies both binaries, publishes the GitHub
   release, and dispatches promotion.
 - **Connector:** The connector workflow verifies both binaries, publishes the
@@ -100,6 +101,8 @@ docker run --rm --entrypoint sh overtchat-app-release-check -c '
   test ! -e /app/apps/web/data
   test ! -e /app/apps/web/scripts
 '
+docker build --platform linux/amd64 --tag overtchat-voice-release-check voice
+(cd voice && python3 -m unittest test_overtchat_runtime.py)
 ```
 
 For a CLI release, build the CLI workspace and then verify the bundled version:
@@ -111,6 +114,6 @@ node apps/cli/dist/overtchat.mjs version
 
 `promote-release.yml` is the only CI production deploy path. It verifies CLI
 and connector checksums plus the required app/STT platforms before atomically
-deploying the site and manifest. After deployment, it updates the app `latest`
-alias to the same digest selected by `appVersion`; the manifest remains the
-stable source of truth. Versioned container tags are immutable.
+deploying the site and manifest. After deployment, it updates the app and voice
+`latest` aliases to the same versions selected by `appVersion`; the manifest
+remains the stable source of truth. Versioned container tags are immutable.

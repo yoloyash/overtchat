@@ -29,6 +29,10 @@ function installedCapabilityDefaults(): Set<string> {
   ]);
 }
 
+export function isServerCapabilityInstalled(id: string): boolean {
+  return installedCapabilityDefaults().has(id);
+}
+
 function nullable(value: string | undefined): string | null {
   return value?.trim() || null;
 }

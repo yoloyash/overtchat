@@ -12,6 +12,7 @@ import {
 import type { FileUIPart } from "ai";
 import {
   AlertCircle,
+  AudioLines,
   ArrowUp,
   Check,
   Cpu,
@@ -87,10 +88,14 @@ interface ComposerProps {
   dropActive: boolean;
   models: PublicModelConfig[] | null;
   selectedModelId: string;
+  voiceInstalled: boolean;
+  voiceAvailable: boolean;
+  voiceUnavailableReason: string;
   commandActions: ComposerCommandActions;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
   onStop: () => void;
+  onStartVoice: () => void;
   isAdmin: boolean;
 }
 
@@ -103,10 +108,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   dropActive,
   models,
   selectedModelId,
+  voiceInstalled,
+  voiceAvailable,
+  voiceUnavailableReason,
   commandActions,
   onToggleSearch,
   onSubmit,
   onStop,
+  onStartVoice,
   isAdmin,
 }, ref) {
   const [input, setInput] = useState("");
@@ -201,6 +210,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
       },
     ];
 
+    if (voiceInstalled) {
+      list.push({
+        name: "voice",
+        title: "Voice conversation",
+        description: "Talk with OvertChat in realtime",
+        group: "actions",
+        icon: AudioLines,
+        keywords: ["speech", "talk", "audio"],
+        toggle: {
+          active: false,
+          unavailableReason: voiceAvailable
+            ? undefined
+            : voiceUnavailableReason,
+        },
+        run: onStartVoice,
+      });
+    }
+
     if (commandActions.temporary) {
       list.push({
         name: "temporary",
@@ -261,6 +288,10 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     searchRequested,
     searchUnavailableReason,
     onToggleSearch,
+    onStartVoice,
+    voiceAvailable,
+    voiceInstalled,
+    voiceUnavailableReason,
   ]);
 
   const query = parseSlashCommandQuery(input);
@@ -565,6 +596,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               )}
             </div>
             <div className="flex items-center gap-1">
+              {voiceInstalled && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full"
+                  onClick={onStartVoice}
+                  disabled={!voiceAvailable || streaming}
+                  aria-label="Start voice conversation"
+                  title={voiceAvailable ? "Voice conversation" : voiceUnavailableReason}
+                >
+                  <AudioLines />
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"

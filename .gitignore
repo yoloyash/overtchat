@@ -73,6 +73,8 @@ compose.override.yaml
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+__pycache__/
+*.pyc
 
 # IDEs
 .vscode/

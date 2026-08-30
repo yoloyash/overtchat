@@ -1,6 +1,7 @@
 export const CLI_VERSION = "0.1.10";
 
 export const APP_IMAGE = "ghcr.io/yoloyash/overtchat-app";
+export const VOICE_IMAGE = "ghcr.io/yoloyash/overtchat-voice";
 export const CONNECTOR_REPOSITORY = "yoloyash/overtchat";
 export const RELEASE_MANIFEST_URL =
   "https://overtchat.com/install-manifest.json";

@@ -8,6 +8,7 @@ function config(): InstallationConfig {
     format: 1,
     appVersion: "1.2.3",
     appImage: "ghcr.io/example/overtchat:1.2.3",
+    voiceImage: "ghcr.io/example/overtchat-voice:1.2.3",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
@@ -40,6 +41,7 @@ function config(): InstallationConfig {
       baseUrl: "https://speech.example.com/v1",
       model: "whisper-1",
     },
+    voice: { installed: false },
     agents: { installed: false },
   };
 }

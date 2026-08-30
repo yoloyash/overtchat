@@ -25,18 +25,12 @@ RUN python -m venv "${VIRTUAL_ENV}"
 
 COPY requirements.txt /tmp/requirements.txt
 
-# Silero VAD is the only component that requires Torch. Install the CPU wheel
-# explicitly so PyPI cannot pull CUDA libraries into this orchestration image.
 RUN pip install --index-url https://download.pytorch.org/whl/cpu \
       torch==2.11.0+cpu \
       torchaudio==2.11.0+cpu \
  && pip install -r /tmp/requirements.txt \
  && pip check
 
-# This is OvertChat's image, built from a minimal Python base. We consume only
-# the pinned upstream engine source, not its Dockerfile or broad dependency
-# metadata. The checked revision contains the remote OpenAI-compatible STT and
-# TTS handlers that are not present in the v0.2.12 release tag.
 RUN git clone --filter=blob:none --no-checkout https://github.com/huggingface/speech-to-speech.git /tmp/speech-to-speech \
  && git -C /tmp/speech-to-speech checkout --detach "${SPEECH_TO_SPEECH_COMMIT}" \
  && test "$(git -C /tmp/speech-to-speech rev-parse HEAD)" = "${SPEECH_TO_SPEECH_COMMIT}" \
@@ -49,8 +43,6 @@ ENV HF_HOME=/opt/overtchat/models/huggingface \
     PYTHONPATH=/opt/overtchat/speech-to-speech/src \
     TORCH_HOME=/opt/overtchat/models/torch
 
-# Bake every local runtime asset into the image. Startup therefore does not
-# depend on GitHub or Hugging Face being reachable.
 RUN python -c "import nltk; nltk.download('punkt_tab', download_dir='$NLTK_DATA', raise_on_error=True); nltk.download('averaged_perceptron_tagger_eng', download_dir='$NLTK_DATA', raise_on_error=True)" \
  && mkdir -p "$NLTK_DATA/tokenizers" "$TORCH_HOME/hub" \
  && ln -s ../taggers/averaged_perceptron_tagger_eng "$NLTK_DATA/tokenizers/averaged_perceptron_tagger_eng" \
@@ -63,7 +55,7 @@ RUN python -c "import nltk; nltk.download('punkt_tab', download_dir='$NLTK_DATA'
  && test -s "${smart_turn_model}" \
  && cp "${smart_turn_model}" /opt/overtchat/models/smart-turn-v3.2-cpu.onnx \
  && rm -rf "$HF_HOME" \
- && python -c "from speech_to_speech.STT.openai_compatible_handler import OpenAICompatibleSTTHandler; from speech_to_speech.LLM.responses_api_language_model import ResponsesApiModelHandler; from speech_to_speech.TTS.openai_compatible_handler import OpenAICompatibleTTSHandler; from speech_to_speech.VAD.smart_turn import SmartTurnAnalyzer; from speech_to_speech.api.openai_realtime.websocket_router import create_app" \
+ && python -c "from speech_to_speech.STT.openai_compatible_handler import OpenAICompatibleSTTHandler; from speech_to_speech.LLM.chat_completions_language_model import ChatCompletionsApiModelHandler; from speech_to_speech.TTS.openai_compatible_handler import OpenAICompatibleTTSHandler; from speech_to_speech.VAD.smart_turn import SmartTurnAnalyzer; from speech_to_speech.api.openai_realtime.websocket_router import create_app" \
  && python -m speech_to_speech.cli serve --help >/dev/null
 
 FROM ${PYTHON_IMAGE} AS runtime
@@ -90,6 +82,7 @@ RUN apt-get update \
 
 COPY --from=builder --chown=overtchat:overtchat /opt/overtchat /opt/overtchat
 COPY --chown=overtchat:overtchat entrypoint.py /opt/overtchat/entrypoint.py
+COPY --chown=overtchat:overtchat overtchat_runtime.py /opt/overtchat/overtchat_runtime.py
 COPY --chown=overtchat:overtchat licenses/OVERTCHAT.LICENSE /opt/overtchat/licenses/OVERTCHAT.LICENSE
 COPY --chown=overtchat:overtchat licenses/SMART-TURN.LICENSE /opt/overtchat/licenses/SMART-TURN.LICENSE
 COPY --chown=overtchat:overtchat THIRD_PARTY_NOTICES.md /opt/overtchat/licenses/THIRD_PARTY_NOTICES.md

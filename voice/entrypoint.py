@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import sys
 
+from overtchat_runtime import install_runtime_hooks
+
 
 def env(name: str, default: str) -> str:
     value = os.getenv(name, default).strip()
@@ -32,6 +34,7 @@ def enabled(name: str, default: bool) -> bool:
 
 
 def main() -> None:
+    shared_secret = env("VOICE_SHARED_SECRET", "")
     command = [
         sys.executable,
         "-m",
@@ -48,25 +51,31 @@ def main() -> None:
         "--stt",
         "openai",
         "--openai_stt_base_url",
-        env("VOICE_STT_BASE_URL", "http://stt:5092/v1"),
+        env("VOICE_STT_BASE_URL", "http://app:4717/api/internal/voice/v1"),
         "--openai_stt_model",
         env("VOICE_STT_MODEL", "parakeet-tdt-0.6b-v3"),
+        "--openai_stt_api_key",
+        shared_secret,
         "--openai_stt_response_format",
         "json",
         "--llm_backend",
-        "responses-api",
+        "chat-completions",
         "--responses_api_base_url",
         env("VOICE_LLM_BASE_URL", "http://app:4717/api/internal/voice/v1"),
+        "--responses_api_api_key",
+        shared_secret,
         "--model_name",
         env("VOICE_LLM_MODEL", "overtchat"),
         "--tts",
         "openai",
         "--openai_tts_base_url",
-        env("VOICE_TTS_BASE_URL", "http://kokoro:8880/v1"),
+        env("VOICE_TTS_BASE_URL", "http://app:4717/api/internal/voice/v1"),
         "--openai_tts_model",
         env("VOICE_TTS_MODEL", "kokoro"),
         "--openai_tts_voice",
         env("VOICE_TTS_VOICE", "af_heart"),
+        "--openai_tts_api_key",
+        shared_secret,
         "--openai_tts_response_format",
         "pcm",
         "--openai_tts_sample_rate",
@@ -77,10 +86,6 @@ def main() -> None:
             "/opt/overtchat/models/smart-turn-v3.2-cpu.onnx",
         ),
     ]
-
-    optional_arg(command, "--openai_stt_api_key", "VOICE_STT_API_KEY")
-    optional_arg(command, "--responses_api_api_key", "VOICE_LLM_API_KEY")
-    optional_arg(command, "--openai_tts_api_key", "VOICE_TTS_API_KEY")
 
     configurable_values = (
         ("--live_transcription_update_interval", "VOICE_TRANSCRIPT_INTERVAL"),
@@ -100,10 +105,12 @@ def main() -> None:
     if enabled("VOICE_LOG_TRANSCRIPTS", False):
         command.append("--log_transcripts")
 
-    # Explicit container arguments are an escape hatch for upstream flags and
-    # are appended last so a developer can override a generated default.
     command.extend(sys.argv[1:])
-    os.execv(sys.executable, command)
+    install_runtime_hooks(shared_secret)
+    sys.argv = ["speech-to-speech", *command[3:]]
+    from speech_to_speech.cli import main as cli_main
+
+    cli_main()
 
 
 if __name__ == "__main__":

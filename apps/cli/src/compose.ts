@@ -19,6 +19,7 @@ function profileList(config: InstallationConfig): string[] {
   if (config.stt.bundledInstalled) {
     profiles.push(config.stt.accelerator === "cpu" ? "stt-cpu" : "stt-gpu");
   }
+  if (config.voice.installed) profiles.push("voice");
   return profiles;
 }
 
@@ -46,6 +47,7 @@ export function renderStackEnvironment(
   const values: Array<[string, string | number]> = [
     ["APP_VERSION", config.appVersion],
     ["OVERTCHAT_APP_IMAGE", config.appImage],
+    ["OVERTCHAT_VOICE_IMAGE", config.voiceImage],
     ["STT_VERSION", config.sttVersion],
     ["OVERTCHAT_REDIS_IMAGE", config.redisImage],
     ["OVERTCHAT_SEARXNG_IMAGE", config.searxngImage],
@@ -59,6 +61,7 @@ export function renderStackEnvironment(
     ["BETTER_AUTH_SECRET", secrets.betterAuthSecret],
     ["OVERTCHAT_MANAGEMENT_SECRET", secrets.managementSecret],
     ["SEARXNG_SECRET", secrets.searxngSecret],
+    ["VOICE_SHARED_SECRET", secrets.voiceSharedSecret],
     ["COMPOSE_PROJECT_NAME", config.composeProject],
     ["OVERTCHAT_CONTAINER_PREFIX", "overtchat"],
     ["COMPOSE_PROFILES", profileList(config).join(",")],
@@ -70,6 +73,7 @@ export function renderStackEnvironment(
         ...(config.search.bundledInstalled ? ["search"] : []),
         ...(config.tts.bundledInstalled ? ["tts"] : []),
         ...(config.stt.bundledInstalled ? ["stt"] : []),
+        ...(config.voice.installed ? ["voice"] : []),
         ...(config.agents.installed ? ["agents"] : []),
       ].join(","),
     ],
@@ -141,6 +145,7 @@ services:
       DISABLE_UPDATE_CHECK: \${DISABLE_UPDATE_CHECK:-false}
       OVERTCHAT_MANAGEMENT_SECRET: \${OVERTCHAT_MANAGEMENT_SECRET}
       OVERTCHAT_INSTALLED_CAPABILITIES: \${OVERTCHAT_INSTALLED_CAPABILITIES:-}
+      VOICE_SHARED_SECRET: \${VOICE_SHARED_SECRET}
       WEB_SEARCH_PROVIDER: \${WEB_SEARCH_PROVIDER}
       SEARXNG_URL: \${OVERTCHAT_SEARXNG_URL:-}
       TTS_PROVIDER: \${TTS_PROVIDER}
@@ -166,6 +171,17 @@ ${appDataMount}
       kokoro:
         condition: service_healthy
         required: false
+
+  voice:
+    image: \${OVERTCHAT_VOICE_IMAGE}
+    container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-voice
+    restart: unless-stopped
+    profiles: [voice]
+    environment:
+      VOICE_SHARED_SECRET: \${VOICE_SHARED_SECRET}
+    depends_on:
+      app:
+        condition: service_started
 
   redis:
     image: \${OVERTCHAT_REDIS_IMAGE}

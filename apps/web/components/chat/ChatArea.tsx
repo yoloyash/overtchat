@@ -17,6 +17,7 @@ import {
   chatKeys,
   personalizationKeys,
 } from "@/lib/queries/keys";
+import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import {
   useChats,
   useChatUsage,
@@ -63,6 +64,7 @@ import { ChatHeader } from "./ChatHeader";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
+import { RealtimeVoiceDialog } from "./RealtimeVoiceDialog";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
@@ -124,6 +126,9 @@ export function ChatArea({
     : "Web search is unavailable for this model";
 
   const [searchRequested, setSearchRequested] = useState(false);
+  const { data: capabilitiesData } = usePublicCapabilities();
+  const voiceCapability = capabilitiesData?.capabilities.voice;
+  const [voiceOpen, setVoiceOpen] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
     false,
@@ -459,6 +464,19 @@ export function ChatArea({
       dropActive={dropActive}
       models={models}
       selectedModelId={selectedId}
+      voiceInstalled={voiceCapability?.installed ?? false}
+      voiceAvailable={Boolean(voiceCapability?.available && configured)}
+      voiceUnavailableReason={
+        !configured
+          ? "Configure a model before starting voice"
+          : voiceCapability?.unavailableReason === "stt-unavailable"
+            ? "Speech-to-text is disabled"
+            : voiceCapability?.unavailableReason === "tts-unavailable"
+              ? "Text-to-speech is disabled"
+              : voiceCapability?.unavailableReason === "not-configured"
+                ? "Voice authentication is not configured"
+                : "Realtime voice is unavailable"
+      }
       commandActions={{
         temporary: canToggleTemporary
           ? { active: temporary, onToggle: () => setTemporary((t) => !t) }
@@ -473,6 +491,7 @@ export function ChatArea({
       }}
       onSubmit={handleSubmit}
       onStop={handleStop}
+      onStartVoice={() => setVoiceOpen(true)}
       isAdmin={isAdmin}
     />
   );
@@ -497,6 +516,16 @@ export function ChatArea({
       />
 
       <MiniSpeechPlayer speech={speech} />
+
+      {voiceCapability?.installed && selectedModel && voiceOpen && (
+        <RealtimeVoiceDialog
+          open={voiceOpen}
+          onOpenChange={setVoiceOpen}
+          modelConfigId={selectedId}
+          modelLabel={selectedModel.label}
+          webSearchEnabled={searchAvailable}
+        />
+      )}
 
       {dropActive && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">

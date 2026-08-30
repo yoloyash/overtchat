@@ -40,10 +40,15 @@ export type AgentConfig = {
   installed: boolean;
 };
 
+export type VoiceConfig = {
+  installed: boolean;
+};
+
 export type InstallationConfig = {
   format: 1;
   appVersion: string;
   appImage: string;
+  voiceImage: string;
   connectorVersion: string;
   sttVersion: string;
   redisImage: string;
@@ -61,6 +66,7 @@ export type InstallationConfig = {
   search: SearchConfig;
   tts: TtsConfig;
   stt: SttConfig;
+  voice: VoiceConfig;
   agents: AgentConfig;
   adoptedFrom?: string;
 };
@@ -82,6 +88,7 @@ export type ExistingInstallation = {
     search: boolean;
     tts: boolean;
     stt: boolean;
+    voice?: boolean;
   };
   sttAccelerator?: "cpu" | "gpu";
   sttGpuUuid?: string;
