@@ -1,22 +1,25 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { VoiceCapability } from "@overtchat/shared";
 import type {
   AdminServerCapability,
   ServerCapabilityInput,
 } from "@/lib/capabilities/schema";
 import { serverCapabilityKeys } from "@/lib/queries/keys";
 
+export interface AdminServicesSnapshot {
+  capabilities: AdminServerCapability[];
+  voice: VoiceCapability;
+}
+
 export function useServerCapabilities() {
   return useQuery({
     queryKey: serverCapabilityKeys.list(),
-    queryFn: async (): Promise<AdminServerCapability[]> => {
+    queryFn: async (): Promise<AdminServicesSnapshot> => {
       const response = await fetch("/api/server-capabilities");
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const body = (await response.json()) as {
-        capabilities: AdminServerCapability[];
-      };
-      return body.capabilities;
+      return (await response.json()) as AdminServicesSnapshot;
     },
   });
 }
@@ -32,20 +35,26 @@ export function useUpdateServerCapability() {
       });
       const body = (await response.json().catch(() => ({}))) as {
         capability?: AdminServerCapability;
+        voice?: VoiceCapability;
         error?: string;
       };
-      if (!response.ok || !body.capability) {
+      if (!response.ok || !body.capability || !body.voice) {
         throw new Error(body.error ?? `HTTP ${response.status}`);
       }
-      return body.capability;
+      return { capability: body.capability, voice: body.voice };
     },
-    onSuccess: (capability) => {
-      queryClient.setQueryData<AdminServerCapability[]>(
+    onSuccess: ({ capability, voice }) => {
+      queryClient.setQueryData<AdminServicesSnapshot>(
         serverCapabilityKeys.list(),
         (current) =>
-          current?.map((item) =>
-            item.id === capability.id ? capability : item,
-          ),
+          current
+            ? {
+                capabilities: current.capabilities.map((item) =>
+                  item.id === capability.id ? capability : item,
+                ),
+                voice,
+              }
+            : current,
       );
     },
   });

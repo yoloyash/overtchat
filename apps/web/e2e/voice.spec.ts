@@ -137,4 +137,13 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
     page.getByRole("button", { name: "Start voice conversation" }),
   ).toBeVisible();
   await expect(page.getByText("Hello by voice")).toBeVisible();
+
+  await page.goto("/settings/services");
+  await expect(
+    page.getByRole("heading", { name: "Realtime voice" }),
+  ).toBeVisible();
+  await expect(page.getByText("Not installed", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText(/Run overtchat setup and enable realtime voice/),
+  ).toBeVisible();
 });

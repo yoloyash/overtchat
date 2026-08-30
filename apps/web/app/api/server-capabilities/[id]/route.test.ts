@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getCapability: vi.fn(),
   updateCapability: vi.fn(),
   toAdmin: vi.fn((value) => value),
+  getVoiceCapability: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
@@ -15,6 +16,9 @@ vi.mock("@/lib/db/serverCapabilities", () => ({
   getServerCapability: mocks.getCapability,
   updateServerCapability: mocks.updateCapability,
   toAdminServerCapability: mocks.toAdmin,
+}));
+vi.mock("@/lib/voice/capability", () => ({
+  getVoiceCapability: mocks.getVoiceCapability,
 }));
 
 import { PUT } from "./route";
@@ -49,6 +53,11 @@ describe("server capability update", () => {
       apiKey: "stored-key",
     });
     mocks.updateCapability.mockImplementation((value) => value);
+    mocks.getVoiceCapability.mockReturnValue({
+      available: true,
+      installed: true,
+      unavailableReason: null,
+    });
   });
 
   it("requires an administrator", async () => {
@@ -69,6 +78,9 @@ describe("server capability update", () => {
       ...searchInput,
       id: "search",
       apiKey: "stored-key",
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      voice: { available: true, installed: true, unavailableReason: null },
     });
   });
 

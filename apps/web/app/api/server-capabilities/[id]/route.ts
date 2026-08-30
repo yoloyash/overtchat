@@ -9,6 +9,7 @@ import {
   toAdminServerCapability,
   updateServerCapability,
 } from "@/lib/db/serverCapabilities";
+import { getVoiceCapability } from "@/lib/voice/capability";
 
 export async function PUT(
   request: Request,
@@ -83,5 +84,6 @@ export async function PUT(
   const capability = updateServerCapability({ ...parsed.data, apiKey });
   return Response.json({
     capability: toAdminServerCapability(capability),
+    voice: getVoiceCapability(),
   });
 }

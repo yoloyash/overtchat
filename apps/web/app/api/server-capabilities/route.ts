@@ -3,6 +3,7 @@ import {
   listServerCapabilities,
   toAdminServerCapability,
 } from "@/lib/db/serverCapabilities";
+import { getVoiceCapability } from "@/lib/voice/capability";
 
 export async function GET(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
@@ -12,5 +13,6 @@ export async function GET(request: Request) {
   }
   return Response.json({
     capabilities: listServerCapabilities().map(toAdminServerCapability),
+    voice: getVoiceCapability(),
   });
 }
