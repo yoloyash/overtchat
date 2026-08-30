@@ -38,6 +38,7 @@ const mocks = vi.hoisted(() => {
     cancelHas: vi.fn(),
     getStreamContext: vi.fn(),
     currentDateSystemPrompt: vi.fn(),
+    consumeStream: vi.fn(),
     convertToModelMessages: vi.fn(),
     createWebTools: vi.fn(),
     createMemoryTools: vi.fn(),
@@ -68,6 +69,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({
+  consumeStream: mocks.consumeStream,
   convertToModelMessages: mocks.convertToModelMessages,
   createUIMessageStream: mocks.createUIMessageStream,
   createUIMessageStreamResponse: mocks.createUIMessageStreamResponse,
@@ -187,8 +189,7 @@ const parsedRequest = {
   forceSearch: false,
   timeZone: "America/Los_Angeles",
   projectId: null,
-  trigger: "submit-message" as const,
-  messageId: undefined,
+  action: { type: "submit" as const },
   temporary: false,
 };
 
@@ -282,6 +283,7 @@ describe("chat route setup boundary", () => {
     mocks.generateChatTitle.mockResolvedValue(null);
     mocks.getStreamContext.mockReturnValue(null);
     mocks.currentDateSystemPrompt.mockReturnValue(mocks.currentDatePrompt);
+    mocks.consumeStream.mockResolvedValue(undefined);
     mocks.agentStream.mockImplementation(async () => ({
       stream: new ReadableStream(),
     }));
@@ -433,10 +435,79 @@ describe("chat route setup boundary", () => {
     ]);
   });
 
+  it("regenerates from an explicit saved assistant target", async () => {
+    const storedUser = {
+      id: "user-message",
+      role: "user" as const,
+      parts: [{ type: "text" as const, text: "Hello" }],
+    };
+    const storedAssistant = {
+      id: "assistant-message",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: "Previous answer" }],
+    };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      action: {
+        type: "regenerate",
+        targetAssistantMessageId: "assistant-message",
+      },
+    });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue([storedUser, storedAssistant]);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.inlineUploads).toHaveBeenCalledWith([storedUser], "user");
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        truncateFromMessageId: "assistant-message",
+        userMessage: undefined,
+      }),
+    );
+  });
+
+  it("retries a committed user turn without inserting it twice", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      action: { type: "retry", userMessageId: "user-message" },
+    });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue(messages);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        truncateFromMessageId: undefined,
+        userMessage: undefined,
+      }),
+    );
+  });
+
+  it("persists a retry when the first turn was never committed", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      action: { type: "retry", userMessageId: "user-message" },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        truncateFromMessageId: undefined,
+        userMessage: { id: "user-message", parts: messages[0].parts },
+      }),
+    );
+  });
+
   it("rejects a stale saved-history edit before model preparation", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
-      messageId: "missing-user-message",
+      action: { type: "edit", targetUserMessageId: "missing-user-message" },
     });
     mocks.getChat.mockResolvedValue(existingChat());
     mocks.getMessages.mockResolvedValue([]);
@@ -450,9 +521,14 @@ describe("chat route setup boundary", () => {
 
   it("prepares an edit before atomically truncating and replacing it", async () => {
     const events: string[] = [];
+    const editedMessage = {
+      ...messages[0],
+      id: "edited-user-message",
+    };
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
-      messageId: "edited-user-message",
+      messages: [editedMessage],
+      action: { type: "edit", targetUserMessageId: "edited-user-message" },
     });
     mocks.getChat.mockResolvedValue(existingChat());
     mocks.getMessages.mockResolvedValue([
@@ -477,7 +553,7 @@ describe("chat route setup boundary", () => {
     });
     mocks.inlineUploads.mockImplementation(async () => {
       events.push("uploads");
-      return messages;
+      return [editedMessage];
     });
     mocks.convertToModelMessages.mockImplementation(async () => {
       events.push("convert");
@@ -507,7 +583,10 @@ describe("chat route setup boundary", () => {
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         truncateFromMessageId: "edited-user-message",
-        userMessage: { id: "user-message", parts: messages[0].parts },
+        userMessage: {
+          id: "edited-user-message",
+          parts: editedMessage.parts,
+        },
       }),
     );
   });
@@ -645,11 +724,14 @@ describe("chat route setup boundary", () => {
     });
   });
 
-  it("does not tee the response stream when resumability is disabled", async () => {
+  it("consumes the response stream so abort cleanup runs without resumability", async () => {
     await POST(request());
 
     expect(mocks.getStreamContext).toHaveBeenCalledOnce();
-    expect(mocks.responseOptions?.consumeSseStream).toBeUndefined();
+    expect(mocks.responseOptions?.consumeSseStream).toBe(mocks.consumeStream);
+    expect(mocks.consumeStream).toHaveBeenCalledWith({
+      stream: mocks.responseStream,
+    });
   });
 
   it("buffers a response-stream copy when resumability is enabled", async () => {
@@ -666,6 +748,7 @@ describe("chat route setup boundary", () => {
     expect(createNewResumableStream.mock.calls[0][1]()).toBe(
       mocks.responseStream,
     );
+    expect(mocks.consumeStream).not.toHaveBeenCalled();
   });
 
   it("registers the resumable stream before returning the response", async () => {
@@ -753,6 +836,7 @@ describe("chat route setup boundary", () => {
     });
     expect(mocks.convertToModelMessages).toHaveBeenCalledWith(messages, {
       tools: mocks.chatTools,
+      ignoreIncompleteToolCalls: true,
     });
   });
 

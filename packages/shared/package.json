@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ai": "^7.0.31"
+    "ai": "^7.0.84"
   },
   "devDependencies": {
     "@types/culori": "^4.0.0",

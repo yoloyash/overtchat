@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
-import { modelSupportsToolCalling } from "@overtchat/shared";
+import {
+  modelSupportsToolCalling,
+  type ChatRequestAction,
+} from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -65,6 +68,13 @@ const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 function shouldAutofocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+function lastUserMessageId(messages: UIMessage[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].role === "user") return messages[index].id;
+  }
+  return undefined;
 }
 
 interface Props {
@@ -280,7 +290,7 @@ export function ChatArea({
     !onboardingDismissed &&
     models !== null;
 
-  const requestBody = (forceSearch = false) => ({
+  const requestBody = (action: ChatRequestAction, forceSearch = false) => ({
     modelConfigId: selectedId,
     webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
@@ -288,6 +298,7 @@ export function ChatArea({
     chatId,
     projectId: projectId ?? null,
     temporary,
+    action,
   });
 
   const streaming = status === "streaming" || status === "submitted";
@@ -353,7 +364,7 @@ export function ChatArea({
     }
     sendMessage(
       { text, files: attachments },
-      { body: requestBody(searchRequested) },
+      { body: requestBody({ type: "submit" }, searchRequested) },
     );
     setSearchRequested(false);
   }
@@ -373,19 +384,37 @@ export function ChatArea({
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
-    regenerate({ messageId, body: requestBody() });
+    regenerate({
+      messageId,
+      body: requestBody({
+        type: "regenerate",
+        targetAssistantMessageId: messageId,
+      }),
+    });
   }
 
   function handleRetry() {
     if (streaming || !configured) return;
+    const userMessageId = lastUserMessageId(messages);
+    if (!userMessageId) return;
     setInferenceActivity(null);
-    regenerate({ body: requestBody() });
+    regenerate({
+      body: requestBody({ type: "retry", userMessageId }),
+    });
   }
 
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
-    sendMessage({ text, files, messageId }, { body: requestBody() });
+    sendMessage(
+      { text, files, messageId },
+      {
+        body: requestBody({
+          type: "edit",
+          targetUserMessageId: messageId,
+        }),
+      },
+    );
   }
 
   // A per-message search request is scoped to the model that supports it, so

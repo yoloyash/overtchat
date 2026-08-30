@@ -23,13 +23,17 @@ const validBody = {
 };
 
 describe("chat request parsing", () => {
-  it("validates and normalizes a normal submit request", async () => {
-    await expect(parseChatRequest(request(validBody))).resolves.toMatchObject({
+  it("validates and normalizes an explicit submit request", async () => {
+    await expect(
+      parseChatRequest(
+        request({ ...validBody, action: { type: "submit" } }),
+      ),
+    ).resolves.toMatchObject({
       ...validBody,
       webSearchEnabled: true,
       forceSearch: false,
       temporary: false,
-      trigger: "submit-message",
+      action: { type: "submit" },
     });
   });
 
@@ -118,11 +122,85 @@ describe("chat request parsing", () => {
     });
   });
 
-  it("requires regenerate requests to identify their target", async () => {
+  it("maps a legacy SDK targetless regenerate request to an explicit retry", async () => {
+    const parsed = await parseChatRequest(
+      request({ ...validBody, trigger: "regenerate-message" }),
+    );
+
+    expect(parsed).toMatchObject({
+      action: { type: "retry", userMessageId: "user-message" },
+    });
+    expect(parsed).not.toHaveProperty("trigger");
+    expect(parsed).not.toHaveProperty("messageId");
+  });
+
+  it.each([
+    {
+      trigger: "submit-message" as const,
+      messageId: "user-message",
+      expectedAction: { type: "edit", targetUserMessageId: "user-message" },
+    },
+    {
+      trigger: "regenerate-message" as const,
+      messageId: "assistant-message",
+      expectedAction: {
+        type: "regenerate",
+        targetAssistantMessageId: "assistant-message",
+      },
+    },
+  ])(
+    "maps a legacy $trigger target to $expectedAction.type",
+    async ({ trigger, messageId, expectedAction }) => {
+      await expect(
+        parseChatRequest(request({ ...validBody, trigger, messageId })),
+      ).resolves.toMatchObject({ action: expectedAction });
+    },
+  );
+
+  it("preserves an explicit regenerate target", async () => {
     await expect(
       parseChatRequest(
-        request({ ...validBody, trigger: "regenerate-message" }),
+        request({
+          ...validBody,
+          action: {
+            type: "regenerate",
+            targetAssistantMessageId: "assistant-message",
+          },
+        }),
       ),
-    ).rejects.toMatchObject({ message: "Regenerate requires a messageId" });
+    ).resolves.toMatchObject({
+      action: {
+        type: "regenerate",
+        targetAssistantMessageId: "assistant-message",
+      },
+    });
+  });
+
+  it("rejects edit and retry actions for a different user message", async () => {
+    for (const action of [
+      { type: "edit", targetUserMessageId: "other-user" },
+      { type: "retry", userMessageId: "other-user" },
+    ]) {
+      await expect(
+        parseChatRequest(request({ ...validBody, action })),
+      ).rejects.toMatchObject({
+        message: "Chat action does not match the user message",
+      });
+    }
+  });
+
+  it("prefers an explicit action over SDK compatibility fields", async () => {
+    await expect(
+      parseChatRequest(
+        request({
+          ...validBody,
+          action: { type: "retry", userMessageId: "user-message" },
+          trigger: "submit-message",
+          messageId: "user-message",
+        }),
+      ),
+    ).resolves.toMatchObject({
+      action: { type: "retry", userMessageId: "user-message" },
+    });
   });
 });

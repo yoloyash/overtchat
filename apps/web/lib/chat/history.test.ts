@@ -37,8 +37,8 @@ describe("reconstructPersistedMessages", () => {
         // A legacy client may upload stale or fabricated history. Only its
         // final user intent is accepted for a saved chat.
         requestMessages: [message("fabricated", "assistant"), next],
-        trigger: "submit-message",
-      }).map(({ id }) => id),
+        action: { type: "submit" },
+      }).messages.map(({ id }) => id),
     ).toEqual(["user-1", "assistant-1", "user-2", "assistant-2", "user-3"]);
   });
 
@@ -49,9 +49,8 @@ describe("reconstructPersistedMessages", () => {
       reconstructPersistedMessages({
         storedMessages: stored,
         requestMessages: [replacement],
-        trigger: "submit-message",
-        messageId: "user-2",
-      }).map(({ id }) => id),
+        action: { type: "edit", targetUserMessageId: "user-2" },
+      }).messages.map(({ id }) => id),
     ).toEqual(["user-1", "assistant-1", "user-2"]);
   });
 
@@ -60,10 +59,70 @@ describe("reconstructPersistedMessages", () => {
       reconstructPersistedMessages({
         storedMessages: stored,
         requestMessages: [message("user-2", "user")],
-        trigger: "regenerate-message",
-        messageId: "assistant-2",
-      }).map(({ id }) => id),
+        action: {
+          type: "regenerate",
+          targetAssistantMessageId: "assistant-2",
+        },
+      }).messages.map(({ id }) => id),
     ).toEqual(["user-1", "assistant-1", "user-2"]);
+  });
+
+  it("retries a user turn that already has a saved assistant", () => {
+    expect(
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [message("user-2", "user")],
+        action: { type: "retry", userMessageId: "user-2" },
+      }),
+    ).toEqual({
+      messages: stored.slice(0, 3),
+      persistUserMessage: false,
+      truncateFromMessageId: "assistant-2",
+    });
+  });
+
+  it("retries an older user turn and drops its saved branch", () => {
+    expect(
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [message("user-1", "user")],
+        action: { type: "retry", userMessageId: "user-1" },
+      }),
+    ).toEqual({
+      messages: [stored[0]],
+      persistUserMessage: false,
+      truncateFromMessageId: "assistant-1",
+    });
+  });
+
+  it("retries a user turn that was committed before generation failed", () => {
+    const interrupted = stored.slice(0, 3);
+
+    expect(
+      reconstructPersistedMessages({
+        storedMessages: interrupted,
+        requestMessages: [message("user-2", "user")],
+        action: { type: "retry", userMessageId: "user-2" },
+      }),
+    ).toEqual({
+      messages: interrupted,
+      persistUserMessage: false,
+    });
+  });
+
+  it("retries a user turn that failed before it was committed", () => {
+    const pending = message("user-3", "user");
+
+    expect(
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [pending],
+        action: { type: "retry", userMessageId: "user-3" },
+      }),
+    ).toEqual({
+      messages: [...stored, pending],
+      persistUserMessage: true,
+    });
   });
 
   it("rejects stale targets instead of regenerating the wrong branch", () => {
@@ -71,8 +130,43 @@ describe("reconstructPersistedMessages", () => {
       reconstructPersistedMessages({
         storedMessages: stored,
         requestMessages: [message("user-2", "user")],
-        trigger: "regenerate-message",
-        messageId: "missing",
+        action: {
+          type: "regenerate",
+          targetAssistantMessageId: "missing",
+        },
+      }),
+    ).toThrow(ChatHistoryConflictError);
+  });
+
+  it("rejects a regenerate action whose request user is from another turn", () => {
+    expect(() =>
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [message("user-1", "user")],
+        action: {
+          type: "regenerate",
+          targetAssistantMessageId: "assistant-2",
+        },
+      }),
+    ).toThrow(ChatHistoryConflictError);
+  });
+
+  it("rejects a submit that reuses a persisted message id", () => {
+    expect(() =>
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [message("user-2", "user")],
+        action: { type: "submit" },
+      }),
+    ).toThrow(ChatHistoryConflictError);
+  });
+
+  it("rejects retry actions that do not identify the request user", () => {
+    expect(() =>
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [message("user-2", "user")],
+        action: { type: "retry", userMessageId: "user-1" },
       }),
     ).toThrow(ChatHistoryConflictError);
   });
