@@ -56,6 +56,10 @@ import {
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
 import { hasSuccessfulMemoryMutation } from "@/lib/personalization/tool-parts";
+import {
+  chatComposerDraftScope,
+  newChatComposerDraftScope,
+} from "@/lib/chat/composer-drafts";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
@@ -138,6 +142,14 @@ export function ChatArea({
   );
 
   const [temporary, setTemporary] = useState(false);
+  const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
+    () =>
+      initialQuery?.trim()
+        ? null
+        : isNew
+          ? newChatComposerDraftScope(projectId)
+          : chatComposerDraftScope(chatId),
+  );
   const [chatPersisted, setChatPersisted] = useState(!isNew);
   const { data: sessionUsage } = useChatUsage(
     chatId,
@@ -349,6 +361,7 @@ export function ChatArea({
     const wasNew = isNewRef.current && !temporary;
     if (wasNew) {
       isNewRef.current = false;
+      setComposerDraftScope(chatComposerDraftScope(chatId));
       window.history.replaceState(null, "", `/chat/${chatId}`);
       qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) => {
         const next: ChatListItem = {
@@ -474,6 +487,9 @@ export function ChatArea({
       onSubmit={handleSubmit}
       onStop={handleStop}
       isAdmin={isAdmin}
+      draftUserId={session?.user.id}
+      draftScope={composerDraftScope}
+      draftEnabled={!temporary}
     />
   );
 
