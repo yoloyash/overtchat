@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import {
   AudioLines,
+  Check,
+  ExternalLink,
   Loader2,
   Mic,
   MicOff,
@@ -11,13 +13,16 @@ import {
   Square,
   X,
 } from "lucide-react";
-import type { VoiceSessionGrant } from "@overtchat/shared";
+import type { VoiceSessionGrant, WebSearchResult } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
+import { stripCitationMarkers } from "@/lib/citations";
+import { cleanDomain, faviconUrl } from "@/lib/web-client";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import {
   OvertChatVoiceClient,
   type VoiceClientStatus,
+  type VoiceToolActivityUpdate,
   type VoiceTranscriptUpdate,
 } from "@/lib/voice/client";
 
@@ -29,8 +34,15 @@ interface Props {
   webSearchEnabled: boolean;
 }
 
-function statusLabel(status: VoiceClientStatus, toolActivity: string | null) {
-  if (toolActivity) return toolActivity;
+type VoiceTimelineItem =
+  | { kind: "transcript"; value: VoiceTranscriptUpdate }
+  | { kind: "tool"; value: VoiceToolActivityUpdate };
+
+function statusLabel(
+  status: VoiceClientStatus,
+  toolActivity: VoiceToolActivityUpdate | undefined,
+) {
+  if (toolActivity) return toolActivity.label;
   switch (status) {
     case "connecting":
       return "Connecting";
@@ -67,12 +79,10 @@ export function RealtimeVoiceDialog({
   const clientRef = useRef<OvertChatVoiceClient | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<VoiceClientStatus>("connecting");
-  const [transcripts, setTranscripts] = useState<VoiceTranscriptUpdate[]>([]);
+  const [timeline, setTimeline] = useState<VoiceTimelineItem[]>([]);
   const [inputLevel, setInputLevel] = useState(0);
   const [muted, setMuted] = useState(false);
-  const [toolActivity, setToolActivity] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -100,18 +110,27 @@ export function RealtimeVoiceDialog({
           onStatus: (next) => {
             if (!active) return;
             setStatus(next);
-            if (next === "user-speaking") setNotice(null);
           },
           onTranscript: (update) => {
             if (!active) return;
-            setNotice(null);
-            setTranscripts((current) => {
+            const sanitized = {
+              ...update,
+              text: stripCitationMarkers(update.text),
+            };
+            setTimeline((current) => {
               const index = current.findIndex(
-                (entry) => entry.id === update.id && entry.role === update.role,
+                (item) =>
+                  item.kind === "transcript" &&
+                  item.value.id === sanitized.id &&
+                  item.value.role === sanitized.role,
               );
-              if (index === -1) return [...current, update];
+              const item: VoiceTimelineItem = {
+                kind: "transcript",
+                value: sanitized,
+              };
+              if (index === -1) return [...current, item];
               const next = [...current];
-              next[index] = update;
+              next[index] = item;
               return next;
             });
           },
@@ -120,14 +139,20 @@ export function RealtimeVoiceDialog({
             if (!active) return;
             setError(friendlyError(nextError));
           },
-          onRecoverableError: (nextError) => {
+          onToolActivity: (activity) => {
             if (!active) return;
-            const message = friendlyError(nextError);
-            setNotice(
-              `${message.replace(/[.!?]?$/u, ".")} The conversation is still connected.`,
-            );
+            setTimeline((current) => {
+              const index = current.findIndex(
+                (item) =>
+                  item.kind === "tool" && item.value.id === activity.id,
+              );
+              const item: VoiceTimelineItem = { kind: "tool", value: activity };
+              if (index === -1) return [...current, item];
+              const next = [...current];
+              next[index] = item;
+              return next;
+            });
           },
-          onToolActivity: (activity) => active && setToolActivity(activity),
         });
         clientRef.current = client;
         await client.connect();
@@ -150,9 +175,15 @@ export function RealtimeVoiceDialog({
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ block: "nearest" });
-  }, [transcripts]);
+  }, [timeline]);
 
-  const displayStatus = statusLabel(status, toolActivity);
+  const runningTool = timeline.findLast(
+    (item) => item.kind === "tool" && item.value.status === "running",
+  );
+  const displayStatus = statusLabel(
+    status,
+    runningTool?.kind === "tool" ? runningTool.value : undefined,
+  );
   const orbScale = useMemo(
     () => 1 + Math.min(0.2, inputLevel * 3.5),
     [inputLevel],
@@ -229,43 +260,47 @@ export function RealtimeVoiceDialog({
 
             <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_1.5rem,black)]">
               <div className="mx-auto flex max-w-2xl flex-col gap-5 px-1 pt-6 pb-8">
-                {notice && !error && (
-                  <div className="rounded-2xl border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
-                    {notice}
-                  </div>
-                )}
                 {error ? (
                   <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                     {error}
                   </div>
-                ) : transcripts.length === 0 ? (
+                ) : timeline.length === 0 ? (
                   <p className="py-10 text-center text-sm text-muted-foreground">
                     {status === "connecting"
                       ? "Preparing your microphone and voice models…"
                       : "Start speaking when you’re ready."}
                   </p>
                 ) : (
-                  transcripts.map((entry) => (
-                    <div
-                      key={`${entry.role}-${entry.id}`}
-                      className={cn(
-                        "max-w-[88%]",
-                        entry.role === "user" ? "ml-auto text-right" : "mr-auto",
-                      )}
-                    >
-                      <div className="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-                        {entry.role === "user" ? "You" : "OvertChat"}
-                      </div>
-                      <p
+                  timeline.map((item) =>
+                    item.kind === "tool" ? (
+                      <VoiceToolCard
+                        key={`tool-${item.value.id}`}
+                        activity={item.value}
+                      />
+                    ) : (
+                      <div
+                        key={`${item.value.role}-${item.value.id}`}
                         className={cn(
-                          "text-balance text-base leading-relaxed md:text-lg",
-                          entry.partial && "text-foreground/70",
+                          "max-w-[88%]",
+                          item.value.role === "user"
+                            ? "ml-auto text-right"
+                            : "mr-auto",
                         )}
                       >
-                        {entry.text}
-                      </p>
-                    </div>
-                  ))
+                        <div className="mb-1 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                          {item.value.role === "user" ? "You" : "OvertChat"}
+                        </div>
+                        <p
+                          className={cn(
+                            "text-balance text-base leading-relaxed md:text-lg",
+                            item.value.partial && "text-foreground/70",
+                          )}
+                        >
+                          {item.value.text}
+                        </p>
+                      </div>
+                    ),
+                  )
                 )}
                 <div ref={transcriptEndRef} />
               </div>
@@ -316,5 +351,59 @@ export function RealtimeVoiceDialog({
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+function VoiceToolCard({ activity }: { activity: VoiceToolActivityUpdate }) {
+  return (
+    <div className="mr-auto w-full max-w-xl rounded-2xl border bg-muted/30 p-3">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        {activity.status === "running" ? (
+          <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />
+        ) : (
+          <Check
+            className={cn(
+              "size-3.5",
+              activity.status === "failed" && "text-destructive",
+            )}
+          />
+        )}
+        <span>{activity.label}</span>
+      </div>
+      {activity.detail && (
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {activity.detail}
+        </p>
+      )}
+      {activity.sources.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {activity.sources.map((source: WebSearchResult) => {
+            const domain = cleanDomain(source.link);
+            return (
+              <a
+                key={source.link}
+                href={source.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={source.title}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={faviconUrl(domain)}
+                  alt=""
+                  loading="lazy"
+                  className="size-3.5 rounded-full"
+                />
+                <span className="max-w-44 truncate">
+                  {source.title || domain}
+                </span>
+                <ExternalLink className="size-3 shrink-0" />
+              </a>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }

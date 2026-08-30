@@ -13,9 +13,9 @@ import {
   memorySystemPrompt,
   userProfileSystemPrompt,
 } from "@/lib/personalization/prompt";
-import { WEB_SEARCH_CITATION_PROMPT } from "@/lib/tools";
 import { verifyVoiceTicket } from "@/lib/voice/ticket";
 import { authorizeVoiceService } from "@/lib/voice/internal-auth";
+import { VOICE_WEB_SEARCH_PROMPT } from "@/lib/voice/tools";
 
 export const maxDuration = 300;
 
@@ -177,9 +177,9 @@ export async function POST(request: Request) {
       ? userProfileSystemPrompt(personalization.personalization)
       : null,
     personalization ? memorySystemPrompt(personalization.memories) : null,
-    ticket.webSearchEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    ticket.webSearchEnabled ? VOICE_WEB_SEARCH_PROMPT : null,
     currentDateSystemPrompt(ticket.timeZone),
-    "This is a live spoken conversation. Be natural and concise. Do not use Markdown formatting unless the user explicitly asks for it. When using web search, name the sources naturally because citation markers are not useful in speech.",
+    "This is a live spoken conversation. Be natural and concise. Do not use Markdown formatting unless the user explicitly asks for it.",
   ].filter((part): part is string => Boolean(part?.trim()));
   const messages = toModelMessages(body.messages);
   const requestedTools = ticket.webSearchEnabled ? requestTools(body.tools) : {};

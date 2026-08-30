@@ -148,6 +148,43 @@ describe("voice Chat Completions bridge", () => {
     ]);
   });
 
+  it("uses spoken source attribution instead of chat citation markers", async () => {
+    mocks.verifyTicket.mockReturnValueOnce({
+      version: 1,
+      connectBy: 100,
+      expiresAt: 1_000,
+      userId: "user-1",
+      modelConfigId: "model-1",
+      webSearchEnabled: true,
+      timeZone: "UTC",
+    });
+
+    const response = await POST(
+      new Request("http://app.test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "signed-ticket",
+          messages: [{ role: "user", content: "What happened today?" }],
+        }),
+      }),
+    );
+    await response.text();
+
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.stringContaining(
+          "attribute important facts naturally by naming the source",
+        ),
+      }),
+    );
+    const call = mocks.streamText.mock.calls.at(-1)?.[0] as
+      | { instructions?: string }
+      | undefined;
+    expect(call?.instructions).not.toContain("\\ue202");
+    expect(call?.instructions).not.toContain("Citation format");
+  });
+
   it("gives concurrent streamed tool calls distinct indices", async () => {
     mocks.streamText.mockReturnValueOnce({
       fullStream: (async function* () {

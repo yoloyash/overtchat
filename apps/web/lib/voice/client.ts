@@ -7,9 +7,12 @@ import {
   tool,
   type TransportEvent,
 } from "@openai/agents/realtime";
-import type {
-  VoiceSessionGrant,
-  VoiceToolDefinition,
+import {
+  webSearchResults,
+  type PersistedWebSearchOutput,
+  type VoiceSessionGrant,
+  type VoiceToolDefinition,
+  type WebSearchResult,
 } from "@overtchat/shared";
 
 export type VoiceClientStatus =
@@ -27,13 +30,20 @@ export interface VoiceTranscriptUpdate {
   partial: boolean;
 }
 
+export interface VoiceToolActivityUpdate {
+  id: string;
+  label: string;
+  detail: string | null;
+  status: "running" | "completed" | "failed";
+  sources: WebSearchResult[];
+}
+
 export interface VoiceClientCallbacks {
   onStatus: (status: VoiceClientStatus) => void;
   onTranscript: (update: VoiceTranscriptUpdate) => void;
   onInputLevel: (level: number) => void;
   onError: (error: Error) => void;
-  onRecoverableError: (error: Error) => void;
-  onToolActivity: (label: string | null) => void;
+  onToolActivity: (activity: VoiceToolActivityUpdate) => void;
 }
 
 const AUDIO_SAMPLE_RATE = 24_000;
@@ -45,17 +55,16 @@ function websocketUrl(path: string): string {
   return url.href;
 }
 
-function errorFrom(value: unknown, fallback: string): Error {
-  if (value instanceof Error) return value;
-  if (value && typeof value === "object") {
-    const candidate = value as { error?: unknown; message?: unknown };
-    if (candidate.error instanceof Error) return candidate.error;
-    if (typeof candidate.message === "string") return new Error(candidate.message);
-  }
-  return new Error(fallback);
+interface VoiceToolResult {
+  output: string;
+  sources: WebSearchResult[];
+  failed: boolean;
 }
 
-async function executeVoiceTool(name: string, input: unknown): Promise<string> {
+async function executeVoiceTool(
+  name: string,
+  input: unknown,
+): Promise<VoiceToolResult> {
   try {
     const response = await fetch("/api/voice/tools", {
       method: "POST",
@@ -66,14 +75,46 @@ async function executeVoiceTool(name: string, input: unknown): Promise<string> {
       | { output?: unknown; error?: string }
       | null;
     if (!response.ok) {
-      return JSON.stringify({
-        error: body?.error || `Tool failed (${response.status})`,
-      });
+      return {
+        output: JSON.stringify({
+          error: body?.error || `Tool failed (${response.status})`,
+        }),
+        sources: [],
+        failed: true,
+      };
     }
-    return JSON.stringify(body?.output ?? null);
+    const output = body?.output ?? null;
+    return {
+      output: JSON.stringify(output),
+      sources:
+        name === "web_search"
+          ? webSearchResults(output as PersistedWebSearchOutput)
+          : [],
+      failed: false,
+    };
   } catch {
-    return JSON.stringify({ error: "The tool could not be reached." });
+    return {
+      output: JSON.stringify({ error: "The tool could not be reached." }),
+      sources: [],
+      failed: true,
+    };
   }
+}
+
+function toolDetail(name: string, input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const values = input as { query?: unknown; url?: unknown };
+  if (name === "web_search" && typeof values.query === "string") {
+    return values.query;
+  }
+  if (name === "fetch_url" && typeof values.url === "string") {
+    try {
+      return new URL(values.url).hostname.replace(/^www\./u, "");
+    } catch {
+      return values.url;
+    }
+  }
+  return null;
 }
 
 function realtimeTools(
@@ -87,14 +128,31 @@ function realtimeTools(
       parameters: definition.parameters as never,
       strict: false,
       execute: async (input) => {
-        callbacks.onToolActivity(
-          definition.name === "web_search" ? "Searching the web" : "Reading a source",
-        );
-        try {
-          return await executeVoiceTool(definition.name, input);
-        } finally {
-          callbacks.onToolActivity(null);
-        }
+        const id = crypto.randomUUID();
+        const search = definition.name === "web_search";
+        const detail = toolDetail(definition.name, input);
+        callbacks.onToolActivity({
+          id,
+          label: search ? "Searching the web" : "Reading a source",
+          detail,
+          status: "running",
+          sources: [],
+        });
+        const result = await executeVoiceTool(definition.name, input);
+        callbacks.onToolActivity({
+          id,
+          label: result.failed
+            ? search
+              ? "Search unavailable"
+              : "Source unavailable"
+            : search
+              ? "Searched the web"
+              : "Read a source",
+          detail,
+          status: result.failed ? "failed" : "completed",
+          sources: result.sources,
+        });
+        return result.output;
       },
     }),
   );
@@ -178,9 +236,7 @@ export class OvertChatVoiceClient {
     this.session.on("audio", (event) => this.onAudio(event.data));
     this.session.on("audio_interrupted", () => this.clearPlayback());
     this.session.on("error", (event) => {
-      this.callbacks.onRecoverableError(
-        errorFrom(event.error, "A voice action failed."),
-      );
+      console.warn("Recoverable voice session event", event.error);
     });
 
     await this.session.connect({
@@ -340,7 +396,6 @@ export class OvertChatVoiceClient {
         break;
       }
       case "response.done":
-        this.callbacks.onToolActivity(null);
         this.callbacks.onStatus("listening");
         break;
     }
