@@ -72,6 +72,7 @@ export function RealtimeVoiceDialog({
   const [muted, setMuted] = useState(false);
   const [toolActivity, setToolActivity] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -96,9 +97,14 @@ export function RealtimeVoiceDialog({
         }
         if (!active) return;
         const client = new OvertChatVoiceClient(body, {
-          onStatus: (next) => active && setStatus(next),
+          onStatus: (next) => {
+            if (!active) return;
+            setStatus(next);
+            if (next === "user-speaking") setNotice(null);
+          },
           onTranscript: (update) => {
             if (!active) return;
+            setNotice(null);
             setTranscripts((current) => {
               const index = current.findIndex(
                 (entry) => entry.id === update.id && entry.role === update.role,
@@ -113,6 +119,13 @@ export function RealtimeVoiceDialog({
           onError: (nextError) => {
             if (!active) return;
             setError(friendlyError(nextError));
+          },
+          onRecoverableError: (nextError) => {
+            if (!active) return;
+            const message = friendlyError(nextError);
+            setNotice(
+              `${message.replace(/[.!?]?$/u, ".")} The conversation is still connected.`,
+            );
           },
           onToolActivity: (activity) => active && setToolActivity(activity),
         });
@@ -216,6 +229,11 @@ export function RealtimeVoiceDialog({
 
             <div className="min-h-0 flex-1 overflow-y-auto [mask-image:linear-gradient(to_bottom,transparent,black_1.5rem,black)]">
               <div className="mx-auto flex max-w-2xl flex-col gap-5 px-1 pt-6 pb-8">
+                {notice && !error && (
+                  <div className="rounded-2xl border border-border bg-muted/50 p-3 text-sm text-muted-foreground">
+                    {notice}
+                  </div>
+                )}
                 {error ? (
                   <div className="rounded-2xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive">
                     {error}

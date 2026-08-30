@@ -32,6 +32,7 @@ export interface VoiceClientCallbacks {
   onTranscript: (update: VoiceTranscriptUpdate) => void;
   onInputLevel: (level: number) => void;
   onError: (error: Error) => void;
+  onRecoverableError: (error: Error) => void;
   onToolActivity: (label: string | null) => void;
 }
 
@@ -55,16 +56,24 @@ function errorFrom(value: unknown, fallback: string): Error {
 }
 
 async function executeVoiceTool(name: string, input: unknown): Promise<string> {
-  const response = await fetch("/api/voice/tools", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, input }),
-  });
-  const body = (await response.json().catch(() => null)) as
-    | { output?: unknown; error?: string }
-    | null;
-  if (!response.ok) throw new Error(body?.error || `Tool failed (${response.status})`);
-  return JSON.stringify(body?.output ?? null);
+  try {
+    const response = await fetch("/api/voice/tools", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, input }),
+    });
+    const body = (await response.json().catch(() => null)) as
+      | { output?: unknown; error?: string }
+      | null;
+    if (!response.ok) {
+      return JSON.stringify({
+        error: body?.error || `Tool failed (${response.status})`,
+      });
+    }
+    return JSON.stringify(body?.output ?? null);
+  } catch {
+    return JSON.stringify({ error: "The tool could not be reached." });
+  }
 }
 
 function realtimeTools(
@@ -169,7 +178,9 @@ export class OvertChatVoiceClient {
     this.session.on("audio", (event) => this.onAudio(event.data));
     this.session.on("audio_interrupted", () => this.clearPlayback());
     this.session.on("error", (event) => {
-      this.callbacks.onError(errorFrom(event.error, "Voice session failed."));
+      this.callbacks.onRecoverableError(
+        errorFrom(event.error, "A voice action failed."),
+      );
     });
 
     await this.session.connect({
@@ -331,9 +342,6 @@ export class OvertChatVoiceClient {
       case "response.done":
         this.callbacks.onToolActivity(null);
         this.callbacks.onStatus("listening");
-        break;
-      case "error":
-        this.callbacks.onError(errorFrom(event.error, "The voice server reported an error."));
         break;
     }
   }
