@@ -4,19 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import {
   AudioLines,
-  Check,
-  ExternalLink,
   Loader2,
   Mic,
   MicOff,
   PhoneOff,
+  Search,
   Square,
   X,
 } from "lucide-react";
 import type { VoiceSessionGrant, WebSearchResult } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { stripCitationMarkers } from "@/lib/citations";
-import { cleanDomain, faviconUrl } from "@/lib/web-client";
+import { cleanDomain } from "@/lib/web-client";
 import { cn } from "@/lib/utils";
 import { motionClasses } from "@/lib/motion";
 import {
@@ -356,28 +355,31 @@ export function RealtimeVoiceDialog({
 
 function VoiceToolCard({ activity }: { activity: VoiceToolActivityUpdate }) {
   return (
-    <div className="mr-auto w-full max-w-xl rounded-2xl border bg-muted/30 p-3">
-      <div className="flex items-center gap-2 text-sm font-medium">
+    <div className="mr-auto max-w-[88%] border-l border-border pl-3 text-xs text-muted-foreground">
+      <div className="flex min-w-0 items-center gap-1.5">
         {activity.status === "running" ? (
           <Loader2 className={`size-3.5 ${motionClasses.spinner}`} />
         ) : (
-          <Check
+          <Search
             className={cn(
-              "size-3.5",
+              "size-3.5 shrink-0",
               activity.status === "failed" && "text-destructive",
             )}
           />
         )}
-        <span>{activity.label}</span>
+        <span className="shrink-0 font-medium text-foreground/80">
+          {activity.label}
+        </span>
+        {activity.detail && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className="truncate">{activity.detail}</span>
+          </>
+        )}
       </div>
-      {activity.detail && (
-        <p className="mt-1 truncate text-xs text-muted-foreground">
-          {activity.detail}
-        </p>
-      )}
       {activity.sources.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          {activity.sources.map((source: WebSearchResult) => {
+        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 pl-5">
+          {activity.sources.map((source: WebSearchResult, index) => {
             const domain = cleanDomain(source.link);
             return (
               <a
@@ -386,19 +388,9 @@ function VoiceToolCard({ activity }: { activity: VoiceToolActivityUpdate }) {
                 target="_blank"
                 rel="noopener noreferrer"
                 title={source.title}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-full border bg-background px-2.5 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-accent hover:text-foreground"
+                className="max-w-44 truncate underline decoration-border underline-offset-2 motion-colors hover:text-foreground"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={faviconUrl(domain)}
-                  alt=""
-                  loading="lazy"
-                  className="size-3.5 rounded-full"
-                />
-                <span className="max-w-44 truncate">
-                  {source.title || domain}
-                </span>
-                <ExternalLink className="size-3 shrink-0" />
+                {index + 1}. {domain}
               </a>
             );
           })}
