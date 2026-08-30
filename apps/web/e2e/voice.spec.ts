@@ -103,13 +103,28 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
   await expect(page.getByText(/Microphone access was denied/)).toBeVisible();
   await expect(composer).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Stop assistant" })).toHaveCount(0);
   await page.getByRole("button", { name: "End voice session" }).click();
 
   const voiceRow = page.getByRole("listitem").filter({ hasText: "Voice Topic" });
-  await expect(voiceRow.getByLabel("Voice chat")).toBeVisible();
+  const voiceIndicator = voiceRow.getByLabel("Voice chat");
+  await expect(voiceIndicator).toBeVisible();
+  const indicatorBounds = await voiceIndicator.boundingBox();
   await voiceRow.hover();
-  await expect(voiceRow.getByLabel("Voice chat")).toBeHidden();
-  await expect(voiceRow.getByRole("button", { name: "Chat actions" })).toBeVisible();
+  await expect(voiceIndicator).toBeHidden();
+  const chatActions = voiceRow.getByRole("button", { name: "Chat actions" });
+  await expect(chatActions).toBeVisible();
+  const actionBounds = await chatActions.boundingBox();
+  expect(indicatorBounds).not.toBeNull();
+  expect(actionBounds).not.toBeNull();
+  expect((actionBounds?.x ?? 0) + (actionBounds?.width ?? 0) / 2).toBeCloseTo(
+    (indicatorBounds?.x ?? 0) + (indicatorBounds?.width ?? 0) / 2,
+    0,
+  );
+  expect((actionBounds?.y ?? 0) + (actionBounds?.height ?? 0) / 2).toBeCloseTo(
+    (indicatorBounds?.y ?? 0) + (indicatorBounds?.height ?? 0) / 2,
+    0,
+  );
 
   await page.goto("/chat/text-chat");
   await expect(

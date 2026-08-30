@@ -240,17 +240,18 @@ export const RealtimeVoiceSession = forwardRef<
           >
             {muted ? <MicOff /> : <Mic />}
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full"
-            disabled={!connected || status !== "assistant-speaking"}
-            onClick={() => clientRef.current?.interrupt()}
-            aria-label="Stop assistant"
-          >
-            <Square className="size-3 fill-current" />
-          </Button>
+          {connected && status === "assistant-speaking" && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="rounded-full"
+              onClick={() => clientRef.current?.interrupt()}
+              aria-label="Stop assistant"
+            >
+              <Square className="size-3 fill-current" />
+            </Button>
+          )}
         </div>
       </div>
     </div>

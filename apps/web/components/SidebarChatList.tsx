@@ -204,30 +204,31 @@ export function SidebarItem({
             "Untitled"
           )}
         </Link>
-        {chat.kind === "voice" && (
-          <AudioWaveform
-            aria-label="Voice chat"
-            className="mr-1 size-3.5 shrink-0 text-muted-foreground group-hover:hidden group-focus-within:hidden max-md:hidden"
-          />
-        )}
-        <Menu.Root>
-          <Menu.Trigger
-            aria-label="Chat actions"
-            className={cn(
-              "mr-0.5 rounded p-1 hover:bg-sidebar-accent max-md:p-2",
-              motionClasses.hoverReveal,
-            )}
-          >
-            <MoreHorizontal className="size-3.5 text-muted-foreground" />
-          </Menu.Trigger>
-          <Menu.Portal container={drawerRef}>
-            <Menu.Positioner side="right" align="start" sideOffset={6}>
-              <Menu.Popup
-                className={cn(
-                  "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-                  motionClasses.popup,
-                )}
-              >
+        <div className="relative mr-0.5 size-5.5 shrink-0 max-md:size-7.5">
+          {chat.kind === "voice" && (
+            <AudioWaveform
+              aria-label="Voice chat"
+              className="pointer-events-none absolute inset-0 m-auto size-3.5 text-muted-foreground group-hover:hidden group-focus-within:hidden max-md:hidden"
+            />
+          )}
+          <Menu.Root>
+            <Menu.Trigger
+              aria-label="Chat actions"
+              className={cn(
+                "absolute inset-0 flex items-center justify-center rounded hover:bg-sidebar-accent",
+                motionClasses.hoverReveal,
+              )}
+            >
+              <MoreHorizontal className="size-3.5 text-muted-foreground" />
+            </Menu.Trigger>
+            <Menu.Portal container={drawerRef}>
+              <Menu.Positioner side="right" align="start" sideOffset={6}>
+                <Menu.Popup
+                  className={cn(
+                    "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                    motionClasses.popup,
+                  )}
+                >
                 <Menu.Item
                   onClick={() => {
                     setDraft(chat.title ?? "");
@@ -298,10 +299,11 @@ export function SidebarItem({
                   <Trash2 className="size-3.5 shrink-0" />
                   <span>Delete</span>
                 </Menu.Item>
-              </Menu.Popup>
-            </Menu.Positioner>
-          </Menu.Portal>
-        </Menu.Root>
+                </Menu.Popup>
+              </Menu.Positioner>
+            </Menu.Portal>
+          </Menu.Root>
+        </div>
       </li>
 
       <AlertDialog.Root
