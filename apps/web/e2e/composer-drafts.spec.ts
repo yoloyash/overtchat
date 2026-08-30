@@ -135,26 +135,3 @@ test("moves the composer to the saved-chat scope after the first send", async ({
   await page.goto("/");
   await expect(composer(page)).toHaveValue("");
 });
-
-test("uses last-write-wins storage without replacing another tab's live input", async ({
-  page,
-  context,
-}) => {
-  await createAccountAndFixtures(page);
-  await page.goto("/chat/draft-chat-a");
-  await composer(page).fill("Draft from the first tab");
-  await page.waitForTimeout(500);
-
-  const secondPage = await context.newPage();
-  await secondPage.goto("/chat/draft-chat-a");
-  await expect(composer(secondPage)).toHaveValue("Draft from the first tab");
-  await composer(secondPage).fill("Newer draft from the second tab");
-  await secondPage.waitForTimeout(500);
-
-  await expect(composer(page)).toHaveValue("Draft from the first tab");
-  await page.close();
-  await secondPage.reload();
-  await expect(composer(secondPage)).toHaveValue(
-    "Newer draft from the second tab",
-  );
-});

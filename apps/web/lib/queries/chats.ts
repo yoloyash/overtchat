@@ -9,10 +9,6 @@ import type { UIMessage } from "ai";
 import { CHAT_MESSAGE_PAGE_SIZE } from "@/lib/chat/history";
 import { chatKeys } from "@/lib/queries/keys";
 import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
-import {
-  chatComposerDraftScope,
-  clearComposerDraftScope,
-} from "@/lib/chat/composer-drafts";
 
 export type ChatListItem = {
   id: string;
@@ -92,10 +88,7 @@ export function useDeleteChat() {
       const r = await fetch(`/api/chats/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
     },
-    onSuccess: (_, id) => {
-      clearComposerDraftScope(chatComposerDraftScope(id));
-      return qc.invalidateQueries({ queryKey: chatKeys.list() });
-    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.list() }),
   });
 }
 
