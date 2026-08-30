@@ -98,6 +98,42 @@ describe("voice history", () => {
     ]);
   });
 
+  it("removes internal citation markers before persisting transcripts", () => {
+    expect(
+      voiceHistoryToUiMessages("chat", [
+        {
+          type: "message",
+          id: "assistant",
+          previousId: null,
+          role: "assistant",
+          status: "completed",
+          text: "The answer. \ue202turn1search0",
+        },
+      ]),
+    ).toEqual([
+      {
+        id: "voice:chat:assistant",
+        role: "assistant",
+        parts: [{ type: "text", text: "The answer." }],
+      },
+    ]);
+  });
+
+  it("does not persist a transcript containing only citation markers", () => {
+    expect(
+      voiceHistoryToUiMessages("chat", [
+        {
+          type: "message",
+          id: "assistant",
+          previousId: null,
+          role: "assistant",
+          status: "completed",
+          text: "\ue202turn1search0",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
   it("restores persisted tool calls and results into model context", async () => {
     const messages = voiceHistoryToUiMessages("chat", [
       {

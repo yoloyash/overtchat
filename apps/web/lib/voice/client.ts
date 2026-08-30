@@ -65,6 +65,25 @@ interface VoiceToolResult {
   failed: boolean;
 }
 
+function historyFingerprint(item: VoiceHistoryItem): string {
+  return item.type === "message"
+    ? JSON.stringify({
+        type: item.type,
+        id: item.id,
+        role: item.role,
+        status: item.status,
+        text: item.text,
+      })
+    : JSON.stringify({
+        type: item.type,
+        id: item.id,
+        name: item.name,
+        status: item.status,
+        input: item.input,
+        output: item.output,
+      });
+}
+
 async function executeVoiceTool(
   name: string,
   input: unknown,
@@ -241,13 +260,7 @@ export class OvertChatVoiceClient {
     this.session.on("audio", (event) => this.onAudio(event.data));
     this.session.on("audio_interrupted", () => this.clearPlayback());
     this.session.on("history_updated", (history) => {
-      const changed = completedVoiceHistory(history).filter((item) => {
-        const serialized = JSON.stringify(item);
-        if (this.syncedHistory.get(item.id) === serialized) return false;
-        this.syncedHistory.set(item.id, serialized);
-        return true;
-      });
-      if (changed.length) this.callbacks.onHistoryItems?.(changed);
+      this.emitHistoryItems(completedVoiceHistory(history));
     });
     this.session.on("error", (event) => {
       console.warn("Recoverable voice session event", event.error);
@@ -428,6 +441,16 @@ export class OvertChatVoiceClient {
         if (id && text) {
           this.userText.delete(id);
           this.callbacks.onTranscript({ id, role: "user", text, partial: false });
+          this.emitHistoryItems([
+            {
+              type: "message",
+              id,
+              previousId: null,
+              role: "user",
+              status: "completed",
+              text,
+            },
+          ]);
         }
         break;
       }
@@ -464,6 +487,16 @@ export class OvertChatVoiceClient {
         if (text) {
           this.assistantText.delete(id);
           this.callbacks.onTranscript({ id, role: "assistant", text, partial: false });
+          this.emitHistoryItems([
+            {
+              type: "message",
+              id,
+              previousId: null,
+              role: "assistant",
+              status: "completed",
+              text,
+            },
+          ]);
         }
         break;
       }
@@ -471,5 +504,15 @@ export class OvertChatVoiceClient {
         this.callbacks.onStatus("listening");
         break;
     }
+  }
+
+  private emitHistoryItems(items: VoiceHistoryItem[]): void {
+    const changed = items.filter((item) => {
+      const serialized = historyFingerprint(item);
+      if (this.syncedHistory.get(item.id) === serialized) return false;
+      this.syncedHistory.set(item.id, serialized);
+      return true;
+    });
+    if (changed.length) this.callbacks.onHistoryItems?.(changed);
   }
 }

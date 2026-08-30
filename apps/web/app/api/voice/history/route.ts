@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     const selectedModel = await getModelConfig(ticket.modelConfigId);
     const titleModel = getTaskModelConfig() ?? selectedModel;
     if (titleModel?.enabled) {
-      void generateChatTitle({
+      await generateChatTitle({
         chatId: ticket.chatId,
         userId: ticket.userId,
         modelConfig: titleModel,

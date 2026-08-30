@@ -1,6 +1,7 @@
 import type { RealtimeItem } from "@openai/agents/realtime";
 import type { UIMessage } from "ai";
 import type { VoiceHistoryItem } from "@overtchat/shared";
+import { stripCitationMarkers } from "@/lib/citations";
 
 function parseJson(value: string | null): unknown {
   if (value === null) return null;
@@ -74,13 +75,18 @@ export function voiceHistoryToUiMessages(
   chatId: string,
   items: readonly VoiceHistoryItem[],
 ): UIMessage[] {
-  return items.map((item) => {
+  const messages: UIMessage[] = [];
+  for (const item of items) {
     if (item.type === "message") {
-      return {
-        id: messageId(chatId, item.id),
-        role: item.role,
-        parts: [{ type: "text", text: item.text }],
-      } satisfies UIMessage;
+      const text = stripCitationMarkers(item.text).trim();
+      if (text) {
+        messages.push({
+          id: messageId(chatId, item.id),
+          role: item.role,
+          parts: [{ type: "text", text }],
+        });
+      }
+      continue;
     }
 
     const errorText = failedToolOutput(item.output);
@@ -99,10 +105,11 @@ export function voiceHistoryToUiMessages(
             toolName: item.name,
             ...base,
           };
-    return {
+    messages.push({
       id: messageId(chatId, item.id),
       role: "assistant",
       parts: [part as UIMessage["parts"][number]],
-    } satisfies UIMessage;
-  });
+    });
+  }
+  return messages;
 }

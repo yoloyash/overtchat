@@ -65,6 +65,17 @@ describe("voice history sync", () => {
   });
 
   it("persists completed transcript and tool items under the ticket chat", async () => {
+    mocks.generateChatTitle.mockImplementation(async () => {
+      await Promise.resolve();
+      mocks.getChat.mockResolvedValue({
+        id: "chat-1",
+        title: "Greeting",
+        kind: "voice",
+        projectId: null,
+        updatedAt: new Date(1_000),
+      });
+      return "Greeting";
+    });
     const response = await POST(
       request([
         {
@@ -102,6 +113,9 @@ describe("voice history sync", () => {
     expect(mocks.generateChatTitle).toHaveBeenCalledWith(
       expect.objectContaining({ chatId: "chat-1", userId: "user-1" }),
     );
+    await expect(response.json()).resolves.toMatchObject({
+      chat: { id: "chat-1", title: "Greeting" },
+    });
   });
 
   it("requires the authenticated user and signed ticket to agree", async () => {
