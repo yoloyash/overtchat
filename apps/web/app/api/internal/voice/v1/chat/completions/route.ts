@@ -16,7 +16,10 @@ import {
 import { verifyVoiceTicket } from "@/lib/voice/ticket";
 import { authorizeVoiceService } from "@/lib/voice/internal-auth";
 import { VOICE_CONVERSATION_PROMPT } from "@/lib/voice/prompt";
-import { VOICE_WEB_SEARCH_PROMPT } from "@/lib/voice/tools";
+import {
+  VOICE_WEB_SEARCH_PROMPT,
+  VOICE_WEB_TOOLS,
+} from "@/lib/voice/tools";
 
 export const maxDuration = 300;
 
@@ -109,25 +112,12 @@ export function toModelMessages(value: unknown): ModelMessage[] {
   return messages;
 }
 
-function requestTools(value: unknown): ToolSet {
-  if (!Array.isArray(value)) return {};
+function voiceWebTools(): ToolSet {
   const tools: ToolSet = {};
-  for (const raw of value) {
-    const outer = record(raw);
-    const definition = record(outer?.function) ?? outer;
-    if (!definition || definition.type && definition.type !== "function") continue;
-    const name = definition.name;
-    if (typeof name !== "string" || !name) continue;
-    const parameters = record(definition.parameters) ?? {
-      type: "object",
-      properties: {},
-    };
-    tools[name] = dynamicTool({
-      description:
-        typeof definition.description === "string"
-          ? definition.description
-          : undefined,
-      inputSchema: jsonSchema(parameters),
+  for (const definition of VOICE_WEB_TOOLS) {
+    tools[definition.name] = dynamicTool({
+      description: definition.description,
+      inputSchema: jsonSchema(definition.parameters),
     });
   }
   return tools;
@@ -185,8 +175,10 @@ export async function POST(request: Request) {
     VOICE_CONVERSATION_PROMPT,
   ].filter((part): part is string => Boolean(part?.trim()));
   const messages = toModelMessages(body.messages);
-  const requestedTools = ticket.webSearchEnabled ? requestTools(body.tools) : {};
-  const tools = modelConfig.toolCallingEnabled === false ? {} : requestedTools;
+  const tools =
+    ticket.webSearchEnabled && modelConfig.toolCallingEnabled !== false
+      ? voiceWebTools()
+      : {};
   const configured = createConfiguredLanguageModel({
     providerId: modelConfig.providerId,
     apiFormat: modelConfig.apiFormat,

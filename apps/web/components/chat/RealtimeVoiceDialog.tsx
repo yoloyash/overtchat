@@ -197,7 +197,7 @@ export function RealtimeVoiceDialog({
         />
         <Dialog.Popup
           className={cn(
-            "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-15%,color-mix(in_oklab,var(--primary)_9%,transparent),transparent_42%),var(--background)] text-foreground outline-none md:inset-4 md:rounded-3xl md:border md:shadow-2xl",
+            "fixed inset-0 z-50 flex min-h-0 flex-col overflow-hidden bg-background bg-[radial-gradient(circle_at_50%_-15%,color-mix(in_oklab,var(--primary)_9%,transparent),transparent_42%)] text-foreground outline-none md:inset-4 md:rounded-3xl md:border md:shadow-2xl",
             motionClasses.dialog,
           )}
         >

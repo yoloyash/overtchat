@@ -1,9 +1,7 @@
 import "server-only";
-import {
-  VOICE_AUDIO_FORMAT,
-  VOICE_REALTIME_PATH,
-  type VoiceCapability,
-  type VoiceUnavailableReason,
+import type {
+  VoiceCapability,
+  VoiceUnavailableReason,
 } from "@overtchat/shared";
 import {
   getServerCapability,
@@ -26,10 +24,5 @@ export function getVoiceCapability(): VoiceCapability {
     available,
     installed,
     unavailableReason,
-    protocol: "openai-realtime",
-    transport: "websocket",
-    endpoint: available ? VOICE_REALTIME_PATH : null,
-    inputAudio: VOICE_AUDIO_FORMAT,
-    outputAudio: VOICE_AUDIO_FORMAT,
   };
 }

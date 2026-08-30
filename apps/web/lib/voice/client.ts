@@ -205,12 +205,12 @@ export class OvertChatVoiceClient {
     this.transport = new OpenAIRealtimeWebSocket({ useInsecureApiKey: true });
     const agent = new RealtimeAgent({
       name: "OvertChat",
-      voice: "af_heart",
+      voice: this.grant.voice,
       tools: realtimeTools(this.grant.tools, this.callbacks),
     });
     this.session = new RealtimeSession(agent, {
       transport: this.transport,
-      model: this.grant.model,
+      model: this.grant.token,
       tracingDisabled: true,
       config: {
         outputModalities: ["audio"],
@@ -242,7 +242,7 @@ export class OvertChatVoiceClient {
 
     await this.session.connect({
       apiKey: this.grant.token,
-      model: this.grant.model,
+      model: this.grant.token,
       url: websocketUrl(this.grant.endpoint),
     });
     if (this.closing) {

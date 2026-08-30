@@ -21,35 +21,21 @@ import { GET } from "./route";
 
 const request = new Request("http://server.test/api/capabilities");
 
-function configuredCapabilities(
-  sttProvider = "bundled",
-  ttsProvider = "bundled",
-) {
-  return [
-    {
-      id: "search",
-      provider: "bundled",
-      bundledInstalled: true,
-    },
-    { id: "tts", provider: ttsProvider, bundledInstalled: true },
-    { id: "stt", provider: sttProvider, bundledInstalled: true },
-  ];
-}
+const configuredCapabilities = [
+  { id: "search", provider: "bundled", bundledInstalled: true },
+  { id: "tts", provider: "bundled", bundledInstalled: true },
+  { id: "stt", provider: "bundled", bundledInstalled: true },
+];
 
 describe("public capabilities", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
-    mocks.listCapabilities.mockReturnValue(configuredCapabilities());
+    mocks.listCapabilities.mockReturnValue(configuredCapabilities);
     mocks.getVoiceCapability.mockReturnValue({
       available: true,
       installed: true,
       unavailableReason: null,
-      protocol: "openai-realtime",
-      transport: "websocket",
-      endpoint: "/api/voice/realtime",
-      inputAudio: { encoding: "pcm16", sampleRate: 24_000, channels: 1 },
-      outputAudio: { encoding: "pcm16", sampleRate: 24_000, channels: 1 },
     });
   });
 
@@ -59,7 +45,7 @@ describe("public capabilities", () => {
     expect((await GET(request)).status).toBe(401);
   });
 
-  it("advertises the same-origin realtime endpoint when voice is ready", async () => {
+  it("advertises realtime voice when it is ready", async () => {
     const response = await GET(request);
 
     expect(response.status).toBe(200);
@@ -69,31 +55,16 @@ describe("public capabilities", () => {
           available: true,
           installed: true,
           unavailableReason: null,
-          protocol: "openai-realtime",
-          transport: "websocket",
-          endpoint: "/api/voice/realtime",
-          inputAudio: {
-            encoding: "pcm16",
-            sampleRate: 24_000,
-            channels: 1,
-          },
-          outputAudio: {
-            encoding: "pcm16",
-            sampleRate: 24_000,
-            channels: 1,
-          },
         },
       },
     });
   });
 
-  it("does not expose an endpoint before the optional service is installed", async () => {
+  it("reports when the optional service is not installed", async () => {
     mocks.getVoiceCapability.mockReturnValue({
-      ...mocks.getVoiceCapability(),
       available: false,
       installed: false,
       unavailableReason: "not-installed",
-      endpoint: null,
     });
 
     const response = await GET(request);
@@ -104,10 +75,8 @@ describe("public capabilities", () => {
           available: false,
           installed: false,
           unavailableReason: "not-installed",
-          endpoint: null,
         },
       },
     });
   });
-
 });

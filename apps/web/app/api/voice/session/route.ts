@@ -6,7 +6,10 @@ import { normalizeTimeZone } from "@/lib/chat/current-date";
 import { getVoiceCapability } from "@/lib/voice/capability";
 import { issueVoiceTicket } from "@/lib/voice/ticket";
 import { VOICE_WEB_TOOLS } from "@/lib/voice/tools";
-import type { VoiceSessionGrant } from "@overtchat/shared";
+import {
+  VOICE_REALTIME_PATH,
+  type VoiceSessionGrant,
+} from "@overtchat/shared";
 
 const inputSchema = z.object({
   modelConfigId: z.string().min(1),
@@ -19,7 +22,7 @@ export async function POST(request: Request) {
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const capability = getVoiceCapability();
-  if (!capability.available || !capability.endpoint) {
+  if (!capability.available) {
     return Response.json(
       {
         error: "Realtime voice is unavailable.",
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
       modelConfig.toolCallingEnabled !== false &&
       getServerCapability("search").provider !== "disabled",
   );
-  const { token, connectBy } = issueVoiceTicket({
+  const { token } = issueVoiceTicket({
     userId: session.user.id,
     modelConfigId: modelConfig.id,
     webSearchEnabled,
@@ -51,9 +54,8 @@ export async function POST(request: Request) {
   });
   const grant: VoiceSessionGrant = {
     token,
-    model: token,
-    endpoint: capability.endpoint,
-    expiresAt: connectBy,
+    endpoint: VOICE_REALTIME_PATH,
+    voice: getServerCapability("tts").voice ?? "af_heart",
     tools: webSearchEnabled ? VOICE_WEB_TOOLS : [],
   };
   return Response.json(grant, {

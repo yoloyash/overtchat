@@ -102,9 +102,7 @@ describe("voice Chat Completions bridge", () => {
     );
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        instructions: expect.stringContaining(
-          "speaking aloud in a live conversation",
-        ),
+        instructions: expect.stringContaining(VOICE_CONVERSATION_PROMPT),
         messages: [{ role: "user", content: "Hello" }],
       }),
     );
@@ -210,6 +208,15 @@ describe("voice Chat Completions bridge", () => {
         body: JSON.stringify({
           model: "signed-ticket",
           messages: [{ role: "user", content: "What happened today?" }],
+          tools: [
+            {
+              type: "function",
+              function: {
+                name: "untrusted_tool",
+                parameters: { type: "object", properties: {} },
+              },
+            },
+          ],
         }),
       }),
     );
@@ -223,11 +230,12 @@ describe("voice Chat Completions bridge", () => {
       }),
     );
     const call = mocks.streamText.mock.calls.at(-1)?.[0] as
-      | { instructions?: string }
+      | { instructions?: string; tools?: Record<string, unknown> }
       | undefined;
     expect(call?.instructions).not.toContain("\\ue202");
     expect(call?.instructions).not.toContain("turn0search0");
     expect(call?.instructions).not.toContain("internal reference");
+    expect(Object.keys(call?.tools ?? {})).toEqual(["web_search", "fetch_url"]);
   });
 
   it("gives concurrent streamed tool calls distinct indices", async () => {
