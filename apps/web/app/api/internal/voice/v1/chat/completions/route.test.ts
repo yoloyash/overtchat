@@ -99,11 +99,18 @@ describe("voice Chat Completions bridge", () => {
     expect(mocks.createModel).toHaveBeenCalledWith(
       expect.objectContaining({ model: "local-model" }),
     );
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        instructions: expect.stringContaining("live spoken conversation"),
+        messages: [{ role: "user", content: "Hello" }],
+      }),
+    );
   });
 
   it("preserves tool calls and results in Chat Completions history", () => {
     expect(
       toModelMessages([
+        { role: "system", content: "Use the instructions field" },
         {
           role: "assistant",
           tool_calls: [

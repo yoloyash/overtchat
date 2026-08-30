@@ -57,11 +57,7 @@ export function toModelMessages(value: unknown): ModelMessage[] {
   for (const raw of value) {
     const message = record(raw);
     if (!message || typeof message.role !== "string") continue;
-    if (message.role === "system") {
-      const content = textContent(message.content);
-      if (content) messages.push({ role: "system", content });
-      continue;
-    }
+    if (message.role === "system") continue;
     if (message.role === "user") {
       const content = textContent(message.content);
       if (content) messages.push({ role: "user", content });
@@ -185,10 +181,7 @@ export async function POST(request: Request) {
     currentDateSystemPrompt(ticket.timeZone),
     "This is a live spoken conversation. Be natural and concise. Do not use Markdown formatting unless the user explicitly asks for it. When using web search, name the sources naturally because citation markers are not useful in speech.",
   ].filter((part): part is string => Boolean(part?.trim()));
-  const messages: ModelMessage[] = [
-    { role: "system", content: system.join("\n\n") },
-    ...toModelMessages(body.messages),
-  ];
+  const messages = toModelMessages(body.messages);
   const requestedTools = ticket.webSearchEnabled ? requestTools(body.tools) : {};
   const tools = modelConfig.toolCallingEnabled === false ? {} : requestedTools;
   const configured = createConfiguredLanguageModel({
@@ -203,6 +196,7 @@ export async function POST(request: Request) {
   });
   const result = streamText({
     model: configured.model,
+    instructions: system.join("\n\n"),
     messages,
     tools,
     toolChoice: Object.keys(tools).length ? "auto" : undefined,
