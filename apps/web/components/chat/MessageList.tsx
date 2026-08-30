@@ -57,6 +57,7 @@ export function MessageList({
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollCompleteRef = useRef(false);
+  const latestMessageIdRef = useRef(messages.at(-1)?.id);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [isAtTop, setIsAtTop] = useState(false);
   const errorOffset = messages.length;
@@ -119,6 +120,27 @@ export function MessageList({
     // followOnAppend and dynamic measurement anchoring.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const latestMessage = messages.at(-1);
+  const latestMessageId = latestMessage?.id;
+  const latestMessageRole = latestMessage?.role;
+  useLayoutEffect(() => {
+    const previousLatestMessageId = latestMessageIdRef.current;
+    latestMessageIdRef.current = latestMessageId;
+    if (
+      !initialScrollCompleteRef.current ||
+      !latestMessageId ||
+      latestMessageRole !== "user" ||
+      latestMessageId === previousLatestMessageId
+    ) {
+      return;
+    }
+
+    // A send is an explicit request to return to the active turn, even if the
+    // reader had scrolled up. Assistant appends and streaming growth still use
+    // followOnAppend, which only follows while the reader remains at the end.
+    virtualizer.scrollToEnd();
+  }, [latestMessageId, latestMessageRole, virtualizer]);
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden">
