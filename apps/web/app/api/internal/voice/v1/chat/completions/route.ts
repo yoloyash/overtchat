@@ -223,6 +223,7 @@ export async function POST(request: Request) {
           }),
         );
       let usedTools = false;
+      const toolCallIndexes = new Map<string, number>();
       let finalUsage = { inputTokens: 0, outputTokens: 0 };
       try {
         chunk({ role: "assistant" });
@@ -231,10 +232,15 @@ export async function POST(request: Request) {
             chunk({ content: part.text });
           } else if (part.type === "tool-call") {
             usedTools = true;
+            let index = toolCallIndexes.get(part.toolCallId);
+            if (index === undefined) {
+              index = toolCallIndexes.size;
+              toolCallIndexes.set(part.toolCallId, index);
+            }
             chunk({
               tool_calls: [
                 {
-                  index: 0,
+                  index,
                   id: part.toolCallId,
                   type: "function",
                   function: {

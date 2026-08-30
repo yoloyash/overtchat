@@ -147,4 +147,43 @@ describe("voice Chat Completions bridge", () => {
       },
     ]);
   });
+
+  it("gives concurrent streamed tool calls distinct indices", async () => {
+    mocks.streamText.mockReturnValueOnce({
+      fullStream: (async function* () {
+        yield {
+          type: "tool-call",
+          toolCallId: "call-1",
+          toolName: "web_search",
+          input: { query: "first" },
+        };
+        yield {
+          type: "tool-call",
+          toolCallId: "call-2",
+          toolName: "web_search",
+          input: { query: "second" },
+        };
+        yield {
+          type: "finish",
+          totalUsage: { inputTokens: 5, outputTokens: 3 },
+        };
+      })(),
+    });
+
+    const response = await POST(
+      new Request("http://app.test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "signed-ticket",
+          messages: [{ role: "user", content: "Search twice" }],
+        }),
+      }),
+    );
+    const body = await response.text();
+
+    expect(body).toContain('"index":0,"id":"call-1"');
+    expect(body).toContain('"index":1,"id":"call-2"');
+    expect(body).toContain('"finish_reason":"tool_calls"');
+  });
 });
