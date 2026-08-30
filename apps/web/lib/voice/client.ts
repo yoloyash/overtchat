@@ -42,6 +42,7 @@ export interface VoiceClientCallbacks {
   onStatus: (status: VoiceClientStatus) => void;
   onTranscript: (update: VoiceTranscriptUpdate) => void;
   onInputLevel: (level: number) => void;
+  onOutputLevel: (level: number) => void;
   onError: (error: Error) => void;
   onToolActivity: (activity: VoiceToolActivityUpdate) => void;
 }
@@ -168,6 +169,8 @@ export class OvertChatVoiceClient {
   private source: MediaStreamAudioSourceNode | null = null;
   private capture: AudioWorkletNode | null = null;
   private playback: AudioWorkletNode | null = null;
+  private outputAnalyser: AnalyserNode | null = null;
+  private outputMeterFrame: number | null = null;
   private muted = false;
   private closing = false;
   private currentUserItem = "";
@@ -271,19 +274,30 @@ export class OvertChatVoiceClient {
     this.session = null;
     this.transport = null;
     this.clearPlayback();
-    for (const node of [this.capture, this.playback, this.source]) {
+    for (const node of [
+      this.capture,
+      this.playback,
+      this.outputAnalyser,
+      this.source,
+    ]) {
       try {
         node?.disconnect();
       } catch {}
     }
     this.capture = null;
     this.playback = null;
+    this.outputAnalyser = null;
     this.source = null;
+    if (this.outputMeterFrame !== null) {
+      cancelAnimationFrame(this.outputMeterFrame);
+      this.outputMeterFrame = null;
+    }
     for (const track of this.mediaStream?.getTracks() ?? []) track.stop();
     this.mediaStream = null;
     await this.audioContext?.close().catch(() => undefined);
     this.audioContext = null;
     this.callbacks.onInputLevel(0);
+    this.callbacks.onOutputLevel(0);
     this.callbacks.onStatus("closed");
   }
 
@@ -321,7 +335,38 @@ export class OvertChatVoiceClient {
       outputChannelCount: [1],
     });
     this.playback.port.postMessage({ kind: "config", inputRate: AUDIO_SAMPLE_RATE });
-    this.playback.connect(context.destination);
+    this.outputAnalyser = context.createAnalyser();
+    this.outputAnalyser.fftSize = 256;
+    this.outputAnalyser.smoothingTimeConstant = 0.72;
+    this.playback.connect(this.outputAnalyser);
+    this.outputAnalyser.connect(context.destination);
+    this.startOutputMeter();
+  }
+
+  private startOutputMeter(): void {
+    const analyser = this.outputAnalyser;
+    if (!analyser) return;
+    const samples = new Uint8Array(analyser.fftSize);
+    let smoothed = 0;
+    let lastUpdate = 0;
+    const update = () => {
+      if (this.closing || this.outputAnalyser !== analyser) return;
+      analyser.getByteTimeDomainData(samples);
+      let sumSquares = 0;
+      for (const sample of samples) {
+        const normalized = (sample - 128) / 128;
+        sumSquares += normalized * normalized;
+      }
+      const target = Math.min(1, Math.sqrt(sumSquares / samples.length) * 5);
+      smoothed += (target - smoothed) * (target > smoothed ? 0.55 : 0.16);
+      const now = performance.now();
+      if (now - lastUpdate >= 32) {
+        this.callbacks.onOutputLevel(smoothed);
+        lastUpdate = now;
+      }
+      this.outputMeterFrame = requestAnimationFrame(update);
+    };
+    this.outputMeterFrame = requestAnimationFrame(update);
   }
 
   private onAudio(buffer: ArrayBuffer): void {
