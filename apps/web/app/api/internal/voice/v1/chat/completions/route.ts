@@ -1,14 +1,18 @@
 import {
   dynamicTool,
+  convertToModelMessages,
   jsonSchema,
   streamText,
   type ModelMessage,
   type ToolSet,
 } from "ai";
 import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getChat, getMessagesThroughRowId } from "@/lib/db/chats";
+import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
+import { projectSystemPrompt } from "@/lib/chat/project-prompt";
 import {
   memorySystemPrompt,
   userProfileSystemPrompt,
@@ -162,22 +166,38 @@ export async function POST(request: Request) {
   if (!modelConfig?.enabled) {
     return Response.json({ error: { message: "Model config not found." } }, { status: 404 });
   }
+  const chat = await getChat(ticket.chatId, ticket.userId);
+  if ((!ticket.newChat && !chat) || chat?.kind === "text") {
+    return Response.json({ error: { message: "Voice chat not found." } }, { status: 404 });
+  }
 
   const personalization = await getActivePersonalization(ticket.userId);
+  const project = ticket.projectId
+    ? await getProject(ticket.projectId, ticket.userId)
+    : null;
   const system = [
     modelConfig.systemPrompt,
     personalization
       ? userProfileSystemPrompt(personalization.personalization)
       : null,
     personalization ? memorySystemPrompt(personalization.memories) : null,
+    projectSystemPrompt(project),
     ticket.webSearchEnabled ? VOICE_WEB_SEARCH_PROMPT : null,
     currentDateSystemPrompt(ticket.timeZone),
     VOICE_CONVERSATION_PROMPT,
   ].filter((part): part is string => Boolean(part?.trim()));
-  const messages = toModelMessages(body.messages);
+  const historyTools = voiceWebTools();
+  const persistedHistory = await convertToModelMessages(
+    await getMessagesThroughRowId(
+      ticket.chatId,
+      ticket.historyThroughRowId,
+    ),
+    { tools: historyTools, ignoreIncompleteToolCalls: true },
+  );
+  const messages = [...persistedHistory, ...toModelMessages(body.messages)];
   const tools =
     ticket.webSearchEnabled && modelConfig.toolCallingEnabled !== false
-      ? voiceWebTools()
+      ? historyTools
       : {};
   const configured = createConfiguredLanguageModel({
     providerId: modelConfig.providerId,

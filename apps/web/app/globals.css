@@ -222,6 +222,21 @@
   isolation: isolate;
 }
 
+.voice-orb--composer {
+  width: 5.5rem;
+  flex: 0 0 auto;
+}
+
+.voice-orb--composer .voice-orb__spectrum {
+  height: 22px;
+  gap: 2px;
+}
+
+.voice-orb--composer .voice-orb__spectrum > span {
+  width: 2px;
+  max-height: 20px;
+}
+
 .voice-orb__ambient,
 .voice-orb__arc,
 .voice-orb__ring,

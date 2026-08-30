@@ -8,7 +8,11 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
-import type { ModelCapabilities } from "@overtchat/shared";
+import {
+  CHAT_KINDS,
+  type ChatKind,
+  type ModelCapabilities,
+} from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
   PROVIDER_IDS,
@@ -354,6 +358,10 @@ export const chats = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title"),
+    kind: text("kind", { enum: CHAT_KINDS })
+      .$type<ChatKind>()
+      .default("text")
+      .notNull(),
     activeStreamId: text("active_stream_id"),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)

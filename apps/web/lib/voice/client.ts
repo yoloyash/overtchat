@@ -10,10 +10,12 @@ import {
 import {
   webSearchResults,
   type PersistedWebSearchOutput,
+  type VoiceHistoryItem,
   type VoiceSessionGrant,
   type VoiceToolDefinition,
   type WebSearchResult,
 } from "@overtchat/shared";
+import { completedVoiceHistory } from "@/lib/voice/history";
 
 export type VoiceClientStatus =
   | "connecting"
@@ -45,6 +47,7 @@ export interface VoiceClientCallbacks {
   onOutputLevel: (level: number) => void;
   onError: (error: Error) => void;
   onToolActivity: (activity: VoiceToolActivityUpdate) => void;
+  onHistoryItems?: (items: VoiceHistoryItem[]) => void;
 }
 
 const AUDIO_SAMPLE_RATE = 24_000;
@@ -176,6 +179,7 @@ export class OvertChatVoiceClient {
   private currentUserItem = "";
   private userText = new Map<string, string>();
   private assistantText = new Map<string, string>();
+  private syncedHistory = new Map<string, string>();
 
   constructor(grant: VoiceSessionGrant, callbacks: VoiceClientCallbacks) {
     this.grant = grant;
@@ -236,6 +240,15 @@ export class OvertChatVoiceClient {
     });
     this.session.on("audio", (event) => this.onAudio(event.data));
     this.session.on("audio_interrupted", () => this.clearPlayback());
+    this.session.on("history_updated", (history) => {
+      const changed = completedVoiceHistory(history).filter((item) => {
+        const serialized = JSON.stringify(item);
+        if (this.syncedHistory.get(item.id) === serialized) return false;
+        this.syncedHistory.set(item.id, serialized);
+        return true;
+      });
+      if (changed.length) this.callbacks.onHistoryItems?.(changed);
+    });
     this.session.on("error", (event) => {
       console.warn("Recoverable voice session event", event.error);
     });
@@ -264,6 +277,12 @@ export class OvertChatVoiceClient {
     this.clearPlayback();
     this.session?.interrupt();
     this.callbacks.onStatus("listening");
+  }
+
+  sendMessage(text: string): void {
+    const value = text.trim();
+    if (!value || !this.session) return;
+    this.session.sendMessage(value);
   }
 
   async close(): Promise<void> {
@@ -417,7 +436,12 @@ export class OvertChatVoiceClient {
         break;
       case "response.output_audio_transcript.delta":
       case "response.audio_transcript.delta": {
-        const id = typeof event.response_id === "string" ? event.response_id : "assistant";
+        const id =
+          "item_id" in event && typeof event.item_id === "string"
+            ? event.item_id
+            : typeof event.response_id === "string"
+              ? event.response_id
+              : "assistant";
         const delta = typeof event.delta === "string" ? event.delta : "";
         if (!delta) break;
         const text = `${this.assistantText.get(id) ?? ""}${delta}`;
@@ -427,7 +451,12 @@ export class OvertChatVoiceClient {
       }
       case "response.output_audio_transcript.done":
       case "response.audio_transcript.done": {
-        const id = typeof event.response_id === "string" ? event.response_id : "assistant";
+        const id =
+          "item_id" in event && typeof event.item_id === "string"
+            ? event.item_id
+            : typeof event.response_id === "string"
+              ? event.response_id
+              : "assistant";
         const text =
           typeof event.transcript === "string"
             ? event.transcript

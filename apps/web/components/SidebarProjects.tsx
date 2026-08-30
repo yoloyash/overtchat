@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ChevronRight, Plus } from "lucide-react";
+import type { ChatKind } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 
 interface ProjectWithChats extends ProjectOption {
-  chats: { id: string; title: string | null }[];
+  chats: { id: string; title: string | null; kind: ChatKind }[];
 }
 
 export function SidebarProjects({

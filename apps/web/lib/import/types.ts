@@ -1,4 +1,5 @@
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
+import type { ChatKind } from "@overtchat/shared";
 
 export type ImportedPart = UIMessagePart<UIDataTypes, UITools>;
 
@@ -11,6 +12,7 @@ export type ImportedMessage = {
 
 export type ImportedChat = {
   title: string;
+  kind?: ChatKind;
   createdAt: Date;
   messages: ImportedMessage[];
 };

@@ -113,6 +113,50 @@ export async function getMessages(chatId: string): Promise<UIMessage[]> {
   return rows.map(toUIMessage);
 }
 
+export async function getLatestMessageRowId(
+  chatId: string,
+): Promise<number | null> {
+  const row = await db.get<{ rowId: number }>(sql`
+    SELECT rowid AS rowId
+    FROM ${messages}
+    WHERE ${messages.chatId} = ${chatId}
+    ORDER BY rowid DESC
+    LIMIT 1
+  `);
+  return row?.rowId ?? null;
+}
+
+export async function getMessagesThroughRowId(
+  chatId: string,
+  throughRowId: number | null,
+): Promise<UIMessage[]> {
+  if (throughRowId === null) return [];
+  const rows = await db.all<RawMessagePageRow>(sql`
+    SELECT
+      ${messages.id} AS id,
+      ${messages.role} AS role,
+      ${messages.parts} AS parts,
+      ${messages.metadata} AS metadata,
+      ${messages}.rowid AS rowId
+    FROM ${messages}
+    WHERE ${messages.chatId} = ${chatId}
+      AND ${messages}.rowid <= ${throughRowId}
+    ORDER BY ${messages}.rowid
+  `);
+  return rows.map((row) =>
+    toUIMessage({
+      ...row,
+      parts: parseJsonColumn<MessageRow["parts"]>(row.parts),
+      metadata:
+        row.metadata === null
+          ? null
+          : parseJsonColumn<NonNullable<MessageRow["metadata"]>>(
+              row.metadata,
+            ),
+    }),
+  );
+}
+
 /**
  * Loads a newest-first keyset page and returns it in transcript order.
  * SQLite rowids are the existing canonical ordering for messages, so the

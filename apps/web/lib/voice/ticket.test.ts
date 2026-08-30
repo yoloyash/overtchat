@@ -7,6 +7,10 @@ import { issueVoiceTicket, verifyVoiceTicket } from "./ticket";
 const now = Date.UTC(2026, 7, 30, 12, 0, 0);
 const payload = {
   userId: "user-1",
+  chatId: "chat-1",
+  projectId: null,
+  newChat: true,
+  historyThroughRowId: null,
   modelConfigId: "model-1",
   webSearchEnabled: true,
   timeZone: "America/Los_Angeles",

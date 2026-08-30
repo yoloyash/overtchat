@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
   modelSupportsToolCalling,
+  type ChatKind,
   type ChatRequestAction,
 } from "@overtchat/shared";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -133,6 +134,7 @@ function ChatGate({
       isNew={isNew}
       initialMessages={hydration?.messages}
       projectId={isNew ? newChatProjectId : (hydration?.projectId ?? null)}
+      chatKind={isNew ? "text" : (hydration?.kind ?? "text")}
     />
   );
 }
@@ -142,11 +144,13 @@ function ChatSurface({
   isNew,
   initialMessages,
   projectId,
+  chatKind,
 }: {
   chatId: string;
   isNew: boolean;
   initialMessages: UIMessage[] | undefined;
   projectId: string | null;
+  chatKind: ChatKind;
 }) {
   const { colors, fonts } = useTheme();
   const navigation = useNavigation();
@@ -161,6 +165,7 @@ function ChatSurface({
     (session.data?.user as { role?: string | null } | undefined)?.role ===
     "admin";
   const speech = useSpeech();
+  const voiceReadOnly = !isNew && chatKind === "voice";
 
   const {
     data: models,
@@ -441,6 +446,7 @@ function ChatSurface({
         const next: ChatListItem = {
           id: chatId,
           title: null,
+          kind: "text",
           projectId,
           updatedAt: Date.now(),
         };
@@ -548,6 +554,7 @@ function ChatSurface({
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
+          readOnly={voiceReadOnly}
         />
       )}
 
@@ -557,26 +564,52 @@ function ChatSurface({
           { paddingBottom: keyboardVisible ? 8 : 12 + insets.bottom },
         ]}
       >
-        <Composer
-          configured={configured}
-          streaming={streaming}
-          searchAvailable={searchAvailable}
-          searchRequested={searchAvailable && searchRequested}
-          attachments={attachments}
-          attachmentMeta={attachmentMeta}
-          uploading={uploading}
-          uploadError={uploadError}
-          isAdmin={isAdmin}
-          onClearSearch={() => setSearchRequested(false)}
-          onOpenAddSheet={() => {
-            Keyboard.dismiss();
-            addSheetRef.current?.present();
-          }}
-          onRemoveAttachment={removeAttachment}
-          onDismissUploadError={dismissUploadError}
-          onSubmit={handleSubmit}
-          onStop={handleStop}
-        />
+        {voiceReadOnly ? (
+          <View
+            style={[
+              styles.voiceNotice,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <Ionicons
+              name="pulse-outline"
+              size={18}
+              color={colors.mutedForeground}
+            />
+            <Text
+              style={[
+                styles.voiceNoticeText,
+                {
+                  color: colors.mutedForeground,
+                  fontFamily: fonts.sansRegular,
+                },
+              ]}
+            >
+              Resume this voice chat on the web.
+            </Text>
+          </View>
+        ) : (
+          <Composer
+            configured={configured}
+            streaming={streaming}
+            searchAvailable={searchAvailable}
+            searchRequested={searchAvailable && searchRequested}
+            attachments={attachments}
+            attachmentMeta={attachmentMeta}
+            uploading={uploading}
+            uploadError={uploadError}
+            isAdmin={isAdmin}
+            onClearSearch={() => setSearchRequested(false)}
+            onOpenAddSheet={() => {
+              Keyboard.dismiss();
+              addSheetRef.current?.present();
+            }}
+            onRemoveAttachment={removeAttachment}
+            onDismissUploadError={dismissUploadError}
+            onSubmit={handleSubmit}
+            onStop={handleStop}
+          />
+        )}
       </View>
 
       <ModelPickerSheet
@@ -638,6 +671,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
   },
+  voiceNotice: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+  },
+  voiceNoticeText: { fontSize: 14 },
 });
 
 function assetToPickedFile(asset: ImagePicker.ImagePickerAsset): PickedFile {

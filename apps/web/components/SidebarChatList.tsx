@@ -7,11 +7,13 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
   Download,
+  AudioWaveform,
   FolderInput,
   MoreHorizontal,
   Pencil,
   Trash2,
 } from "lucide-react";
+import type { ChatKind } from "@overtchat/shared";
 import { cn } from "@/lib/utils";
 import { groupByDate } from "@/lib/dateGroups";
 import {
@@ -29,6 +31,7 @@ import { useReducedMotion } from "@/lib/useReducedMotion";
 interface Chat {
   id: string;
   title: string | null;
+  kind: ChatKind;
 }
 
 interface DatedChat extends Chat {
@@ -186,7 +189,7 @@ export function SidebarItem({
           href={`/chat/${chat.id}`}
           onClick={closeMobile}
           className={cn(
-            "flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
             active && "bg-sidebar-accent",
           )}
         >
@@ -201,6 +204,12 @@ export function SidebarItem({
             "Untitled"
           )}
         </Link>
+        {chat.kind === "voice" && (
+          <AudioWaveform
+            aria-label="Voice chat"
+            className="mr-1 size-3.5 shrink-0 text-muted-foreground group-hover:hidden group-focus-within:hidden max-md:hidden"
+          />
+        )}
         <Menu.Root>
           <Menu.Trigger
             aria-label="Chat actions"

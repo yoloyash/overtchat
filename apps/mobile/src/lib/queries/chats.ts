@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import type { ChatKind } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
 
 export type ChatListItem = {
   id: string;
   title: string | null;
+  kind: ChatKind;
   projectId: string | null;
   updatedAt: number;
 };

@@ -19,6 +19,7 @@ raw.exec(`
     user_id TEXT NOT NULL,
     project_id TEXT,
     title TEXT,
+    kind TEXT DEFAULT 'text' NOT NULL,
     active_stream_id TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
@@ -92,8 +93,8 @@ function seedExportSource() {
   raw
     .prepare(
       `INSERT INTO chats (
-        id, user_id, project_id, title, active_stream_id, created_at, updated_at
-      ) VALUES (?, ?, NULL, ?, NULL, ?, ?)`,
+        id, user_id, project_id, title, kind, active_stream_id, created_at, updated_at
+      ) VALUES (?, ?, NULL, ?, 'voice', NULL, ?, ?)`,
     )
     .run("source-chat", "user", "Context meter", 1_000, 3_000);
 
@@ -155,6 +156,7 @@ describe("native export/import compatibility", () => {
         responseTokens: 256,
       },
     });
+    expect(payload?.chats[0]?.kind).toBe("voice");
 
     const result = await importChats(
       "user",
@@ -169,16 +171,17 @@ describe("native export/import compatibility", () => {
 
     const importedChat = raw
       .prepare(
-        `SELECT id, title
+        `SELECT id, title, kind
          FROM chats
          WHERE user_id = ? AND id <> ?
          ORDER BY rowid DESC
          LIMIT 1`,
       )
       .get("user", "source-chat") as
-      | { id: string; title: string }
+      | { id: string; title: string; kind: string }
       | undefined;
     expect(importedChat?.title).toBe("Context meter");
+    expect(importedChat?.kind).toBe("voice");
 
     const importedMessages = raw
       .prepare(
@@ -267,7 +270,7 @@ describe("native export/import compatibility", () => {
       .run("memory", "user", "response_style", "Prefer concise answers.");
 
     const payload = await exportAllChats("user");
-    expect(payload.version).toBe(2);
+    expect(payload.version).toBe(3);
     expect(payload.personalization).toEqual({
       enabled: true,
       preferredName: "Boomer",

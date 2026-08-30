@@ -16,6 +16,7 @@ import {
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
+import { projectSystemPrompt } from "@/lib/chat/project-prompt";
 import {
   markAnthropicConversationCacheBoundary,
   markAnthropicSystemCacheBoundary,
@@ -79,28 +80,6 @@ import { getStreamContext } from "@/lib/streams/context";
 
 export const maxDuration = 300;
 
-function projectSystemPrompt(project: {
-  name: string;
-  instructions: string | null;
-} | null): string | null {
-  if (!project) return null;
-
-  const parts = [
-    "Project context:",
-    `You are working in a project named ${JSON.stringify(project.name)}.`,
-  ];
-
-  if (project.instructions?.trim()) {
-    parts.push(
-      "",
-      "User-provided project instructions:",
-      project.instructions,
-    );
-  }
-
-  return parts.join("\n");
-}
-
 export function OPTIONS(req: Request) {
   return preflight(req);
 }
@@ -140,6 +119,14 @@ async function handlePost(req: Request): Promise<Response> {
   }
 
   const existingChat = temporary ? null : await getChat(chatId, userId);
+  if (existingChat?.kind === "voice") {
+    return withCors(
+      req,
+      new Response("Voice chats must continue through realtime voice", {
+        status: 409,
+      }),
+    );
+  }
   let staleStreamId: string | null = null;
   if (existingChat?.activeStreamId) {
     if (cancelRegistry.has(existingChat.activeStreamId)) {

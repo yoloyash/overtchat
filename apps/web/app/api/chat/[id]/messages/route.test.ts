@@ -25,7 +25,11 @@ describe("chat message history route", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
-    mocks.getChat.mockResolvedValue({ id: "chat", projectId: "project" });
+    mocks.getChat.mockResolvedValue({
+      id: "chat",
+      projectId: "project",
+      kind: "voice",
+    });
     mocks.getMessages.mockResolvedValue([]);
     mocks.getMessagesPage.mockResolvedValue({
       messages: [{ id: "message", role: "user", parts: [] }],
@@ -49,6 +53,7 @@ describe("chat message history route", () => {
       messages: [{ id: "message", role: "user", parts: [] }],
       nextCursor: "41",
       projectId: "project",
+      kind: "voice",
     });
   });
 
@@ -77,6 +82,7 @@ describe("chat message history route", () => {
     await expect(response.json()).resolves.toEqual({
       messages: [],
       projectId: "project",
+      kind: "voice",
     });
   });
 });

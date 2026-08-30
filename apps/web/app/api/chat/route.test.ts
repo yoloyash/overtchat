@@ -226,6 +226,7 @@ function existingChat(activeStreamId: string | null = null) {
     userId: "user",
     projectId: null,
     title: "Existing chat",
+    kind: "text" as const,
     activeStreamId,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -783,6 +784,16 @@ describe("chat route setup boundary", () => {
     expect(response.status).toBe(409);
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("does not continue a voice chat through the text generation route", async () => {
+    mocks.getChat.mockResolvedValue({ ...existingChat(), kind: "voice" });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
   it("uses automatic tools normally and forces only the first requested step", async () => {

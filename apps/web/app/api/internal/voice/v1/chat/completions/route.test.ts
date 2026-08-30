@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   authorize: vi.fn(),
+  convertToModelMessages: vi.fn(),
   createModel: vi.fn(),
+  getChat: vi.fn(),
+  getMessagesThroughRowId: vi.fn(),
   getModelConfig: vi.fn(),
   getPersonalization: vi.fn(),
   streamText: vi.fn(),
@@ -12,7 +15,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("server-only", () => ({}));
 vi.mock("ai", async (importOriginal) => ({
   ...(await importOriginal<typeof import("ai")>()),
+  convertToModelMessages: mocks.convertToModelMessages,
   streamText: mocks.streamText,
+}));
+vi.mock("@/lib/db/chats", () => ({
+  getChat: mocks.getChat,
+  getMessagesThroughRowId: mocks.getMessagesThroughRowId,
 }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
@@ -42,6 +50,10 @@ describe("voice Chat Completions bridge", () => {
       connectBy: 100,
       expiresAt: 1_000,
       userId: "user-1",
+      chatId: "chat-1",
+      projectId: null,
+      newChat: true,
+      historyThroughRowId: null,
       modelConfigId: "model-1",
       webSearchEnabled: false,
       timeZone: "UTC",
@@ -59,6 +71,9 @@ describe("voice Chat Completions bridge", () => {
       toolCallingEnabled: true,
     });
     mocks.getPersonalization.mockResolvedValue(null);
+    mocks.getChat.mockResolvedValue(null);
+    mocks.getMessagesThroughRowId.mockResolvedValue([]);
+    mocks.convertToModelMessages.mockResolvedValue([]);
     mocks.createModel.mockReturnValue({ model: {}, providerOptions: undefined });
     mocks.streamText.mockReturnValue({
       fullStream: (async function* () {
@@ -104,6 +119,52 @@ describe("voice Chat Completions bridge", () => {
       expect.objectContaining({
         instructions: expect.stringContaining(VOICE_CONVERSATION_PROMPT),
         messages: [{ role: "user", content: "Hello" }],
+      }),
+    );
+  });
+
+  it("prepends the server-owned voice chat snapshot when resuming", async () => {
+    mocks.verifyTicket.mockReturnValueOnce({
+      version: 1,
+      connectBy: 100,
+      expiresAt: 1_000,
+      userId: "user-1",
+      chatId: "chat-1",
+      projectId: null,
+      newChat: false,
+      historyThroughRowId: 24,
+      modelConfigId: "model-1",
+      webSearchEnabled: false,
+      timeZone: "UTC",
+    });
+    mocks.getChat.mockResolvedValueOnce({ kind: "voice" });
+    const stored = [
+      { id: "stored", role: "user", parts: [{ type: "text", text: "Earlier" }] },
+    ];
+    const converted = [{ role: "user", content: "Earlier" }];
+    mocks.getMessagesThroughRowId.mockResolvedValueOnce(stored);
+    mocks.convertToModelMessages.mockResolvedValueOnce(converted);
+
+    const response = await POST(
+      new Request("http://app.test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "signed-ticket",
+          messages: [{ role: "user", content: "Now" }],
+        }),
+      }),
+    );
+    await response.text();
+
+    expect(mocks.getMessagesThroughRowId).toHaveBeenCalledWith("chat-1", 24);
+    expect(mocks.convertToModelMessages).toHaveBeenCalledWith(
+      stored,
+      expect.objectContaining({ ignoreIncompleteToolCalls: true }),
+    );
+    expect(mocks.streamText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: [...converted, { role: "user", content: "Now" }],
       }),
     );
   });
@@ -196,6 +257,10 @@ describe("voice Chat Completions bridge", () => {
       connectBy: 100,
       expiresAt: 1_000,
       userId: "user-1",
+      chatId: "chat-1",
+      projectId: null,
+      newChat: true,
+      historyThroughRowId: null,
       modelConfigId: "model-1",
       webSearchEnabled: true,
       timeZone: "UTC",

@@ -10,6 +10,10 @@ export interface VoiceTicketPayload {
   connectBy: number;
   expiresAt: number;
   userId: string;
+  chatId: string;
+  projectId: string | null;
+  newChat: boolean;
+  historyThroughRowId: number | null;
   modelConfigId: string;
   webSearchEnabled: boolean;
   timeZone: string;
@@ -73,6 +77,14 @@ export function verifyVoiceTicket(
     payload.expiresAt < Math.floor(now / 1000) ||
     typeof payload.userId !== "string" ||
     !payload.userId ||
+    typeof payload.chatId !== "string" ||
+    !payload.chatId ||
+    (payload.projectId !== null && typeof payload.projectId !== "string") ||
+    typeof payload.newChat !== "boolean" ||
+    (payload.historyThroughRowId !== null &&
+      (typeof payload.historyThroughRowId !== "number" ||
+        !Number.isSafeInteger(payload.historyThroughRowId) ||
+        payload.historyThroughRowId <= 0)) ||
     typeof payload.modelConfigId !== "string" ||
     !payload.modelConfigId ||
     typeof payload.webSearchEnabled !== "boolean" ||

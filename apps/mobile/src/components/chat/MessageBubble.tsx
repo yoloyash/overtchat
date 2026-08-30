@@ -27,6 +27,7 @@ export function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  readOnly = false,
 }: {
   message: UIMessage;
   streaming: boolean;
@@ -36,6 +37,7 @@ export function MessageBubble({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
   const [copied, setCopied] = useState(false);
@@ -66,8 +68,12 @@ export function MessageBubble({
     const actions: MessageAction[] = streaming
       ? []
       : text
-        ? ["copy", "edit"]
-        : ["edit"];
+        ? readOnly
+          ? ["copy"]
+          : ["copy", "edit"]
+        : readOnly
+          ? []
+          : ["edit"];
 
     function onMenuSelect(action: MessageAction) {
       if (action === "copy") copyText(text);
@@ -141,7 +147,11 @@ export function MessageBubble({
   const hasAnyText = message.parts.some((p) => p.type === "text");
   const showActions = !streaming && hasAnyText;
   const assistantActions: MessageAction[] =
-    !streaming && hasAnyText ? ["copy", "regenerate"] : [];
+    !streaming && hasAnyText
+      ? readOnly
+        ? ["copy"]
+        : ["copy", "regenerate"]
+      : [];
   const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
 
   function onAssistantMenuSelect(action: MessageAction) {
@@ -197,7 +207,9 @@ export function MessageBubble({
           <MessageActions
             copied={copied}
             onCopy={() => copyText(text)}
-            onRegenerate={() => onRegenerate(message.id)}
+            onRegenerate={
+              readOnly ? undefined : () => onRegenerate(message.id)
+            }
             onSpeak={
               text ? () => void speech.play(message.id, text) : undefined
             }

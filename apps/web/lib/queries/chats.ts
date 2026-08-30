@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
+import type { ChatKind } from "@overtchat/shared";
 import { CHAT_MESSAGE_PAGE_SIZE } from "@/lib/chat/history";
 import { chatKeys } from "@/lib/queries/keys";
 import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
@@ -13,6 +14,7 @@ import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
 export type ChatListItem = {
   id: string;
   title: string | null;
+  kind: ChatKind;
   projectId: string | null;
   updatedAt: number;
 };
@@ -61,6 +63,7 @@ export function useLoadOlderChatMessages(id: string) {
         messages: UIMessage[];
         nextCursor: string | null;
         projectId: string | null;
+        kind: ChatKind;
       };
     },
   });
