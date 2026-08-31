@@ -235,6 +235,8 @@ ${appDataMount}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-kokoro
     restart: unless-stopped
     profiles: [tts-cpu]
+    labels:
+      com.overtchat.tts.accelerator: cpu
     healthcheck:
       test:
         - CMD-SHELL
@@ -249,6 +251,9 @@ ${appDataMount}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-kokoro-gpu
     restart: unless-stopped
     profiles: [tts-gpu]
+    labels:
+      com.overtchat.tts.accelerator: gpu
+      com.overtchat.tts.gpu-variant: \${TTS_GPU_VARIANT:-standard}
     networks:
       default:
         aliases: [kokoro]

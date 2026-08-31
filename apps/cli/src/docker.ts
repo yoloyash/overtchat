@@ -321,12 +321,6 @@ export async function reconcileManagedSidecars(
       service: "kokoro-gpu",
     },
     {
-      containerName: "overtchat-kokoro-gpu-blackwell",
-      label: "Kokoro (legacy Blackwell profile)",
-      selected: false,
-      service: "kokoro-gpu-blackwell",
-    },
-    {
       containerName: "overtchat-voice",
       label: "Realtime voice",
       selected: config.voice.installed,
@@ -419,6 +413,16 @@ async function inspectContainer(
   }
 }
 
+function kokoroGpuVariant(
+  container: DockerInspect | null,
+): "standard" | "blackwell" | undefined {
+  if (!container) return undefined;
+  return container.Config?.Labels?.["com.overtchat.tts.gpu-variant"] ===
+    "blackwell"
+    ? "blackwell"
+    : "standard";
+}
+
 async function stoppedComposeInstallation(
   docker: DockerCommand,
 ): Promise<ExistingInstallation | null> {
@@ -454,11 +458,6 @@ async function stoppedComposeInstallation(
   const searxng = await inspectContainer(docker, "overtchat-searxng");
   const kokoro = await inspectContainer(docker, "overtchat-kokoro");
   const kokoroGpu = await inspectContainer(docker, "overtchat-kokoro-gpu");
-  const kokoroGpuBlackwell = await inspectContainer(
-    docker,
-    "overtchat-kokoro-gpu-blackwell",
-  );
-  const selectedKokoroGpu = kokoroGpuBlackwell ?? kokoroGpu;
   const voice = await inspectContainer(docker, "overtchat-voice");
   const sttGpu = await inspectContainer(docker, "overtchat-stt-gpu");
   const sttCpu = sttGpu
@@ -480,14 +479,13 @@ async function stoppedComposeInstallation(
     )?.Source,
     bundledServices: {
       search: Boolean(searxng),
-      tts: Boolean(selectedKokoroGpu ?? kokoro),
+      tts: Boolean(kokoroGpu ?? kokoro),
       stt: Boolean(sttGpu ?? sttCpu),
       voice: Boolean(voice),
     },
-    ttsAccelerator: selectedKokoroGpu ? "gpu" : kokoro ? "cpu" : undefined,
-    ttsGpuUuid:
-      selectedKokoroGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
-    ttsGpuVariant: kokoroGpuBlackwell ? "blackwell" : undefined,
+    ttsAccelerator: kokoroGpu ? "gpu" : kokoro ? "cpu" : undefined,
+    ttsGpuUuid: kokoroGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    ttsGpuVariant: kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
   };
@@ -525,11 +523,6 @@ export async function detectExistingInstallation(
   const searxng = await inspectContainer(docker, "overtchat-searxng");
   const kokoro = await inspectContainer(docker, "overtchat-kokoro");
   const kokoroGpu = await inspectContainer(docker, "overtchat-kokoro-gpu");
-  const kokoroGpuBlackwell = await inspectContainer(
-    docker,
-    "overtchat-kokoro-gpu-blackwell",
-  );
-  const selectedKokoroGpu = kokoroGpuBlackwell ?? kokoroGpu;
   const voice = await inspectContainer(docker, "overtchat-voice");
   const searxngConfigPath = searxng?.Mounts?.find(
     (mount) => mount.Destination === "/etc/searxng",
@@ -555,19 +548,16 @@ export async function detectExistingInstallation(
     searxngConfigPath,
     bundledServices: {
       search: Boolean(searxng),
-      tts: Boolean(selectedKokoroGpu ?? kokoro),
+      tts: Boolean(kokoroGpu ?? kokoro),
       stt: Boolean(sttGpu ?? sttCpu),
       voice: Boolean(voice),
     },
-    ttsAccelerator: selectedKokoroGpu ? "gpu" : kokoro ? "cpu" : undefined,
-    ttsGpuUuid:
-      selectedKokoroGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    ttsAccelerator: kokoroGpu ? "gpu" : kokoro ? "cpu" : undefined,
+    ttsGpuUuid: kokoroGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
     ttsGpuVariant:
-      kokoroGpuBlackwell || environment.get("TTS_GPU_VARIANT") === "blackwell"
+      environment.get("TTS_GPU_VARIANT") === "blackwell"
         ? "blackwell"
-        : selectedKokoroGpu
-          ? "standard"
-          : undefined,
+        : kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
   };

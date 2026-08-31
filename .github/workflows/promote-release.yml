@@ -80,7 +80,7 @@ jobs:
             }
           }
           const compose = fs.readFileSync("compose.yml", "utf8");
-          for (const field of Object.keys(images)) {
+          for (const field of ["redisImage", "searxngImage", "kokoroImage"]) {
             if (!compose.includes(`image: ${manifest[field]}`)) {
               throw new Error(`compose.yml does not select manifest ${field}.`);
             }

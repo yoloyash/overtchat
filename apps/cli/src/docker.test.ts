@@ -320,7 +320,7 @@ describe("managed sidecar reconciliation", () => {
 });
 
 describe("existing TTS accelerator detection", () => {
-  it("adopts the source Blackwell profile as bundled GPU TTS", async () => {
+  it("adopts managed Blackwell TTS as bundled GPU TTS", async () => {
     mocks.runCommand.mockImplementation(
       async (_command: string, args: string[]) => {
         if (args[0] !== "inspect") {
@@ -356,11 +356,19 @@ describe("existing TTS accelerator detection", () => {
             exitCode: 0,
           };
         }
-        if (name === "overtchat-kokoro-gpu-blackwell") {
+        if (name === "overtchat-kokoro-gpu") {
           return {
             stdout: JSON.stringify([
               {
-                Name: "/overtchat-kokoro-gpu-blackwell",
+                Name: "/overtchat-kokoro-gpu",
+                Config: {
+                  Image:
+                    "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:gpu-image",
+                  Labels: {
+                    "com.overtchat.tts.accelerator": "gpu",
+                    "com.overtchat.tts.gpu-variant": "blackwell",
+                  },
+                },
                 HostConfig: { DeviceRequests: [{ DeviceIDs: ["GPU-5090"] }] },
               },
             ]),
