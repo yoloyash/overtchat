@@ -188,6 +188,28 @@ describe("managed installation state", () => {
     }
   });
 
+  it("keeps missing STT accelerator state on CPU", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-legacy-stt-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const legacy = defaultInstallationConfig(null, manifest);
+      legacy.stt = { provider: "bundled", bundledInstalled: true };
+      await writeFile(paths.stateFile, JSON.stringify(legacy));
+
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        stt: {
+          provider: "bundled",
+          bundledInstalled: true,
+          accelerator: "cpu",
+        },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("never persists provider API keys", async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), "overtchat-installation-state-"),

@@ -161,6 +161,12 @@ export async function readInstallationConfig(
         ...config.tts,
         accelerator: config.tts.accelerator ?? "cpu",
       },
+      // Missing STT accelerator state is also a legacy CPU selection. Never
+      // turn an unknown value into an implicit NVIDIA service.
+      stt: {
+        ...config.stt,
+        accelerator: config.stt.accelerator ?? "cpu",
+      },
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

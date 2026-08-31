@@ -397,7 +397,8 @@ export async function setup(
     config.tts.provider === "bundled" &&
     (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu");
   const sttUsesGpu =
-    config.stt.provider === "bundled" && config.stt.accelerator !== "cpu";
+    config.stt.provider === "bundled" &&
+    (config.stt.accelerator === "auto" || config.stt.accelerator === "gpu");
   if (
     (ttsUsesGpu || sttUsesGpu) &&
     !(await nvidiaContainerRuntimeAvailable(docker))

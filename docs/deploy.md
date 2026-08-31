@@ -12,6 +12,8 @@ curl -fsSL https://overtchat.com/install | sh
 The wizard installs Docker when needed and configures the app, optional local
 services, realtime voice, and Agent Connections. Realtime voice requires both
 speech-to-text and text-to-speech; the wizard offers it after those providers.
+Choose **Set up later** for any optional provider you do not want to configure
+or install yet, then rerun `overtchat setup` when you are ready.
 Bundled Kokoro and Parakeet services can independently use the CPU or a
 detected NVIDIA GPU. GPU services require NVIDIA Container Toolkit; setup can
 install it on supported Linux distributions. Kokoro uses roughly 3–4 GB of

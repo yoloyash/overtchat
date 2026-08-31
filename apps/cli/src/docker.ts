@@ -330,14 +330,18 @@ export async function reconcileManagedSidecars(
       containerName: "overtchat-stt-cpu",
       label: "Parakeet (CPU)",
       selected:
-        config.stt.bundledInstalled && config.stt.accelerator === "cpu",
+        config.stt.bundledInstalled &&
+        config.stt.accelerator !== "auto" &&
+        config.stt.accelerator !== "gpu",
       service: "stt-cpu",
     },
     {
       containerName: "overtchat-stt-gpu",
       label: "Parakeet (NVIDIA)",
       selected:
-        config.stt.bundledInstalled && config.stt.accelerator !== "cpu",
+        config.stt.bundledInstalled &&
+        (config.stt.accelerator === "auto" ||
+          config.stt.accelerator === "gpu"),
       service: "stt-gpu",
     },
   ];

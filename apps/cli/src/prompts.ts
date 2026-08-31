@@ -55,7 +55,11 @@ async function promptSearch(
         },
         { value: "brave", label: "Brave Search API" },
         { value: "searxng", label: "Existing SearXNG" },
-        { value: "disabled", label: "Disabled" },
+        {
+          value: "disabled",
+          label: "Set up later",
+          hint: "web search stays unavailable",
+        },
       ],
     }),
   );
@@ -75,7 +79,7 @@ async function promptSearch(
     );
     return {
       provider,
-      bundledInstalled: current.bundledInstalled,
+      bundledInstalled: false,
       apiKey: apiKey.trim() || current.apiKey,
     };
   }
@@ -90,13 +94,13 @@ async function promptSearch(
     );
     return {
       provider,
-      bundledInstalled: current.bundledInstalled,
+      bundledInstalled: false,
       baseUrl: baseUrl.trim().replace(/\/$/u, ""),
     };
   }
   return {
     provider,
-    bundledInstalled: current.bundledInstalled || provider === "bundled",
+    bundledInstalled: provider === "bundled",
   };
 }
 
@@ -115,18 +119,16 @@ async function promptTts(
           hint: "local CPU or NVIDIA GPU service",
         },
         { value: "openai-compatible", label: "OpenAI-compatible API" },
-        { value: "disabled", label: "Disabled" },
+        {
+          value: "disabled",
+          label: "Set up later",
+          hint: "text-to-speech stays unavailable",
+        },
       ],
     }),
   );
   if (provider === "disabled") {
-    return {
-      provider,
-      bundledInstalled: current.bundledInstalled,
-      accelerator: current.accelerator,
-      gpuUuid: current.gpuUuid,
-      gpuVariant: current.gpuVariant,
-    };
+    return { provider, bundledInstalled: false };
   }
   if (provider === "bundled") {
     if (gpus.length === 0) {
@@ -210,14 +212,11 @@ async function promptTts(
   );
   return {
     provider,
-    bundledInstalled: current.bundledInstalled,
+    bundledInstalled: false,
     baseUrl: baseUrl.trim().replace(/\/$/u, ""),
     apiKey: apiKey.trim() || current.apiKey || "",
     model: model.trim(),
     voice: voice.trim(),
-    accelerator: current.accelerator,
-    gpuUuid: current.gpuUuid,
-    gpuVariant: current.gpuVariant,
   };
 }
 
@@ -295,7 +294,11 @@ async function promptStt(
           hint: gpus.length > 0 ? `${gpus.length} NVIDIA GPU${gpus.length === 1 ? "" : "s"} detected` : "CPU",
         },
         { value: "openai-compatible", label: "OpenAI-compatible API" },
-        { value: "disabled", label: "Disabled" },
+        {
+          value: "disabled",
+          label: "Set up later",
+          hint: "speech-to-text stays unavailable",
+        },
       ],
     }),
   );
@@ -325,14 +328,14 @@ async function promptStt(
     );
     return {
       provider,
-      bundledInstalled: current.bundledInstalled,
+      bundledInstalled: false,
       baseUrl: baseUrl.trim().replace(/\/$/u, ""),
       apiKey: apiKey.trim() || current.apiKey || "",
       model: model.trim(),
     };
   }
   if (provider === "disabled") {
-    return { provider, bundledInstalled: current.bundledInstalled };
+    return { provider, bundledInstalled: false };
   }
   if (gpus.length === 0) {
     note("No NVIDIA GPU was detected. Parakeet will use the CPU image.", "Local STT accelerator");
@@ -427,10 +430,16 @@ export async function promptInstallationConfig(
           message: "Install realtime voice conversations?",
           initialValue: initial.voice.installed,
           active: "Yes",
-          inactive: "No",
+          inactive: "Set up later",
         }),
       )
     : false;
+  if (!voiceAvailable) {
+    note(
+      "Run overtchat setup again after configuring both text-to-speech and speech-to-text.",
+      "Realtime voice set up later",
+    );
+  }
   const agents = await detectedAgents();
   note(
     [
@@ -446,7 +455,7 @@ export async function promptInstallationConfig(
       message: "Install Agent Connections?",
       initialValue: initial.agents.installed || agents.length > 0,
       active: "Yes",
-      inactive: "No",
+      inactive: "Set up later",
     }),
   );
   return {

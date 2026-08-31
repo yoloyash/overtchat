@@ -168,6 +168,38 @@ describe("managed Compose configuration", () => {
     );
   });
 
+  it("does not enable bundled profiles for external speech providers", () => {
+    const externalConfig = config();
+    externalConfig.search = { provider: "brave", bundledInstalled: false };
+    externalConfig.tts = {
+      provider: "openai-compatible",
+      bundledInstalled: false,
+      baseUrl: "http://tts.example.com",
+    };
+    externalConfig.stt = {
+      provider: "openai-compatible",
+      bundledInstalled: false,
+      baseUrl: "http://stt.example.com",
+    };
+
+    const environment = renderStackEnvironment(
+      externalConfig,
+      {
+        betterAuthSecret: "auth",
+        managementSecret: "management",
+        searxngSecret: "search",
+        voiceSharedSecret: "voice",
+      },
+      paths,
+    );
+
+    expect(environment).toContain('COMPOSE_PROFILES="voice"');
+    expect(environment).not.toContain("stt-gpu");
+    expect(environment).not.toContain("stt-cpu");
+    expect(environment).not.toContain("tts-gpu");
+    expect(environment).not.toContain("tts-cpu");
+  });
+
   it("preserves an adopted bind-mounted data directory", () => {
     const bindConfig = {
       ...config(),
