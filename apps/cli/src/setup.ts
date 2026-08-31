@@ -31,7 +31,10 @@ import {
 import { primaryLanAddress } from "./network.js";
 import { runtimePaths } from "./paths.js";
 import { requireSuccessful } from "./process.js";
-import { promptInstallationConfig } from "./prompts.js";
+import {
+  kokoroGpuVariant,
+  promptInstallationConfig,
+} from "./prompts.js";
 import {
   applyReleaseManifest,
   parseReleaseManifest,
@@ -99,6 +102,7 @@ function mergeRunningCapabilities(
       : config.search,
     tts: tts
       ? {
+          ...config.tts,
           provider: tts.provider as InstallationConfig["tts"]["provider"],
           bundledInstalled: tts.bundledInstalled,
           baseUrl: tts.baseUrl ?? undefined,
@@ -355,6 +359,19 @@ export async function setup(
     if (lanAddress) config.publicUrl = `http://${lanAddress}:${config.appPort}`;
   }
   const gpus = await detectNvidiaGpus();
+  if (
+    (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu") &&
+    !config.tts.gpuVariant
+  ) {
+    const selectedGpu =
+      gpus.find((gpu) => gpu.uuid === config.tts.gpuUuid) ??
+      [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
+    config.tts = {
+      ...config.tts,
+      gpuUuid: selectedGpu?.uuid ?? config.tts.gpuUuid,
+      gpuVariant: kokoroGpuVariant(selectedGpu),
+    };
+  }
   if (!options.defaults) {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       throw new Error(
@@ -376,13 +393,27 @@ export async function setup(
     };
   }
 
+  const ttsUsesGpu =
+    config.tts.provider === "bundled" &&
+    (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu");
+  const sttUsesGpu =
+    config.stt.provider === "bundled" && config.stt.accelerator !== "cpu";
   if (
-    config.stt.provider === "bundled" &&
-    config.stt.accelerator !== "cpu" &&
+    (ttsUsesGpu || sttUsesGpu) &&
     !(await nvidiaContainerRuntimeAvailable(docker))
   ) {
     if (options.defaults) {
-      config.stt = { ...config.stt, accelerator: "cpu", gpuUuid: undefined };
+      if (ttsUsesGpu) {
+        config.tts = {
+          ...config.tts,
+          accelerator: "cpu",
+          gpuUuid: undefined,
+          gpuVariant: undefined,
+        };
+      }
+      if (sttUsesGpu) {
+        config.stt = { ...config.stt, accelerator: "cpu", gpuUuid: undefined };
+      }
     } else {
       const installToolkit = await confirm({
         message:
@@ -405,7 +436,17 @@ export async function setup(
           );
         }
       } else {
-        config.stt = { ...config.stt, accelerator: "cpu", gpuUuid: undefined };
+        if (ttsUsesGpu) {
+          config.tts = {
+            ...config.tts,
+            accelerator: "cpu",
+            gpuUuid: undefined,
+            gpuVariant: undefined,
+          };
+        }
+        if (sttUsesGpu) {
+          config.stt = { ...config.stt, accelerator: "cpu", gpuUuid: undefined };
+        }
       }
     }
   }

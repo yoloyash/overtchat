@@ -1,11 +1,13 @@
 {
   "format": 1,
-  "cliVersion": "0.1.11",
+  "cliVersion": "0.1.12",
   "appVersion": "0.19.0",
   "voiceVersion": "0.1.0",
   "connectorVersion": "0.9.0",
   "sttVersion": "0.1.1",
   "redisImage": "docker.io/library/redis@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2",
   "searxngImage": "docker.io/searxng/searxng@sha256:11a9b34cdc0b1ec2b991470a2762ecb5a1a531898289fb51dcd015260450729e",
-  "kokoroImage": "ghcr.io/remsky/kokoro-fastapi-cpu@sha256:c8812546d358cbfd6a5c4087a28795b2b001d8e32d7a322eedd246e6bc13cb55"
+  "kokoroImage": "ghcr.io/remsky/kokoro-fastapi-cpu@sha256:28d6f0b6e4df369559012578299d201b855a08fac466f616653edd1f08c5370a",
+  "kokoroGpuImage": "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:9e5336d8ebc4984a78ae9181ce3280b285c96d9cbea9b20957e3526868ceb01d",
+  "kokoroGpuBlackwellImage": "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:b75ec27022d6187cf6e6aa4f9053cc64f4c3904fa80dc997c87d3b7a4abffed1"
 }

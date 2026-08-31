@@ -29,6 +29,8 @@ export type ReleaseManifest = {
   redisImage: string;
   searxngImage: string;
   kokoroImage: string;
+  kokoroGpuImage: string;
+  kokoroGpuBlackwellImage: string;
 };
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
@@ -84,6 +86,8 @@ export function applyReleaseManifest(
     redisImage: manifest.redisImage,
     searxngImage: manifest.searxngImage,
     kokoroImage: manifest.kokoroImage,
+    kokoroGpuImage: manifest.kokoroGpuImage,
+    kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
   };
 }
 
@@ -120,6 +124,11 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   const redisImage = Reflect.get(value, "redisImage");
   const searxngImage = Reflect.get(value, "searxngImage");
   const kokoroImage = Reflect.get(value, "kokoroImage");
+  const kokoroGpuImage = Reflect.get(value, "kokoroGpuImage");
+  const kokoroGpuBlackwellImage = Reflect.get(
+    value,
+    "kokoroGpuBlackwellImage",
+  );
   assertVersion(cliVersion, "CLI version");
   assertVersion(appVersion, "app version");
   assertVersion(voiceVersion, "voice version");
@@ -132,6 +141,16 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     "Kokoro image",
     "ghcr.io/remsky/kokoro-fastapi-cpu",
   );
+  assertDigestImage(
+    kokoroGpuImage,
+    "Kokoro GPU image",
+    "ghcr.io/remsky/kokoro-fastapi-gpu",
+  );
+  assertDigestImage(
+    kokoroGpuBlackwellImage,
+    "Kokoro Blackwell image",
+    "ghcr.io/remsky/kokoro-fastapi-gpu",
+  );
   return {
     format: 1,
     cliVersion,
@@ -142,6 +161,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     redisImage,
     searxngImage,
     kokoroImage,
+    kokoroGpuImage,
+    kokoroGpuBlackwellImage,
   };
 }
 

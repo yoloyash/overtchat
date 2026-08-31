@@ -13,7 +13,12 @@ vi.mock("./process.js", () => ({
   runCommand: mocks.runCommand,
 }));
 
-import { parseNvidiaSmi, reconcileManagedSidecars } from "./docker.js";
+import {
+  detectExistingInstallation,
+  detectNvidiaGpus,
+  parseNvidiaSmi,
+  reconcileManagedSidecars,
+} from "./docker.js";
 
 function config(
   overrides: Partial<InstallationConfig> = {},
@@ -29,6 +34,8 @@ function config(
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
     searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
+    kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
+    kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
     appPort: 4718,
     bindAddress: "127.0.0.1",
     publicUrl: "https://chat.example.com",
@@ -76,7 +83,7 @@ describe("NVIDIA GPU discovery", () => {
   it("keeps stable UUIDs alongside the friendly index and memory", () => {
     expect(
       parseNvidiaSmi(
-        "0, GPU-4090, NVIDIA GeForce RTX 4090, 24564\n1, GPU-A4000, NVIDIA RTX A4000, 16376\n",
+        "0, GPU-4090, NVIDIA GeForce RTX 4090, 24564, 8.9\n1, GPU-A4000, NVIDIA RTX A4000, 16376, 8.6\n",
       ),
     ).toEqual([
       {
@@ -84,12 +91,14 @@ describe("NVIDIA GPU discovery", () => {
         uuid: "GPU-4090",
         name: "NVIDIA GeForce RTX 4090",
         memoryMiB: 24_564,
+        computeCapability: 8.9,
       },
       {
         index: 1,
         uuid: "GPU-A4000",
         name: "NVIDIA RTX A4000",
         memoryMiB: 16_376,
+        computeCapability: 8.6,
       },
     ]);
   });
@@ -104,6 +113,30 @@ describe("NVIDIA GPU discovery", () => {
           memoryMiB: 49_140,
         },
       ]);
+  });
+
+  it("falls back when an older driver cannot report compute capability", async () => {
+    mocks.commandExists.mockResolvedValue(true);
+    mocks.runCommand
+      .mockResolvedValueOnce({ stdout: "", stderr: "unknown field", exitCode: 1 })
+      .mockResolvedValueOnce({
+        stdout: "0, GPU-A4000, NVIDIA RTX A4000, 16376\n",
+        stderr: "",
+        exitCode: 0,
+      });
+
+    await expect(detectNvidiaGpus()).resolves.toEqual([
+      {
+        index: 0,
+        uuid: "GPU-A4000",
+        name: "NVIDIA RTX A4000",
+        memoryMiB: 16_376,
+      },
+    ]);
+    expect(mocks.runCommand).toHaveBeenNthCalledWith(2, "nvidia-smi", [
+      "--query-gpu=index,uuid,name,memory.total",
+      "--format=csv,noheader,nounits",
+    ]);
   });
 });
 
@@ -252,7 +285,108 @@ describe("managed sidecar reconciliation", () => {
 
     expect(result).toEqual({
       removed: [],
-      warnings: ["Could not remove Kokoro: container is busy"],
+      warnings: ["Could not remove Kokoro (CPU): container is busy"],
+    });
+  });
+
+  it("removes the CPU Kokoro container when TTS moves to NVIDIA", async () => {
+    mocks.runCommand.mockImplementation(
+      async (_command: string, args: string[]) => ({
+        stdout:
+          args[0] === "inspect" && args[1] === "overtchat-kokoro"
+            ? inspectedContainer("overtchat-kokoro", "kokoro")
+            : "",
+        stderr: args[0] === "inspect" ? "No such container" : "",
+        exitCode:
+          args[0] === "inspect" && args[1] !== "overtchat-kokoro" ? 1 : 0,
+      }),
+    );
+
+    const result = await reconcileManagedSidecars(
+      { command: "docker", prefix: [] },
+      config({
+        tts: {
+          provider: "bundled",
+          bundledInstalled: true,
+          accelerator: "gpu",
+          gpuUuid: "GPU-4090",
+          gpuVariant: "standard",
+        },
+      }),
+    );
+
+    expect(result).toEqual({ removed: ["Kokoro (CPU)"], warnings: [] });
+  });
+});
+
+describe("existing TTS accelerator detection", () => {
+  it("adopts managed Blackwell TTS as bundled GPU TTS", async () => {
+    mocks.runCommand.mockImplementation(
+      async (_command: string, args: string[]) => {
+        if (args[0] !== "inspect") {
+          return { stdout: "", stderr: "", exitCode: 1 };
+        }
+        const name = args[1];
+        if (name === "overtchat-app") {
+          return {
+            stdout: JSON.stringify([
+              {
+                Name: "/overtchat-app",
+                Config: {
+                  Image: "ghcr.io/yoloyash/overtchat-app:0.14.0",
+                  Env: [
+                    "BETTER_AUTH_URL=https://chat.example.com",
+                    "TTS_GPU_VARIANT=blackwell",
+                  ],
+                  Labels: { "com.docker.compose.project": "overtchat" },
+                },
+                Mounts: [
+                  {
+                    Destination: "/app/data",
+                    Name: "overtchat-data",
+                    Type: "volume",
+                  },
+                ],
+                NetworkSettings: {
+                  Ports: { "4717/tcp": [{ HostIp: "0.0.0.0", HostPort: "4718" }] },
+                },
+              },
+            ]),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        if (name === "overtchat-kokoro-gpu") {
+          return {
+            stdout: JSON.stringify([
+              {
+                Name: "/overtchat-kokoro-gpu",
+                Config: {
+                  Image:
+                    "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:gpu-image",
+                  Labels: {
+                    "com.overtchat.tts.accelerator": "gpu",
+                    "com.overtchat.tts.gpu-variant": "blackwell",
+                  },
+                },
+                HostConfig: { DeviceRequests: [{ DeviceIDs: ["GPU-5090"] }] },
+              },
+            ]),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        return { stdout: "", stderr: "No such container", exitCode: 1 };
+      },
+    );
+
+    await expect(
+      detectExistingInstallation({ command: "docker", prefix: [] }),
+    ).resolves.toMatchObject({
+      bundledServices: { tts: true },
+      ttsAccelerator: "gpu",
+      ttsGpuUuid: "GPU-5090",
+      ttsGpuVariant: "blackwell",
     });
   });
 });

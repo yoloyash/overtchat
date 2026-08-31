@@ -25,6 +25,8 @@ function config(): InstallationConfig {
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
     searxngImage: `docker.io/searxng/searxng@sha256:${"b".repeat(64)}`,
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
+    kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
+    kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
     appPort: 4718,
     bindAddress: "0.0.0.0",
     publicUrl: "http://192.168.1.10:4718",
@@ -69,7 +71,7 @@ describe("managed Compose configuration", () => {
     );
 
     expect(environment).toContain(
-      'COMPOSE_PROFILES="tts-bundled,stt-gpu,voice"',
+      'COMPOSE_PROFILES="tts-cpu,stt-gpu,voice"',
     );
     expect(environment).toContain(
       'OVERTCHAT_INSTALLED_CAPABILITIES="tts,stt,voice,agents"',
@@ -83,10 +85,14 @@ describe("managed Compose configuration", () => {
     );
     expect(environment).toContain('DISABLE_UPDATE_CHECK="false"');
     expect(environment).toContain('STT_GPU_DEVICE_ID="GPU-abc"');
+    expect(environment).toContain('TTS_GPU_DEVICE_ID="0"');
     expect(environment).toContain('VOICE_VERSION="0.1.0"');
     expect(environment).toContain(`OVERTCHAT_REDIS_IMAGE="${config().redisImage}"`);
     expect(environment).toContain(`OVERTCHAT_SEARXNG_IMAGE="${config().searxngImage}"`);
     expect(environment).toContain(`OVERTCHAT_KOKORO_IMAGE="${config().kokoroImage}"`);
+    expect(environment).toContain(
+      `OVERTCHAT_KOKORO_GPU_IMAGE="${config().kokoroGpuImage}"`,
+    );
     expect(environment).toContain(`OVERTCHAT_VOICE_IMAGE="${config().voiceImage}"`);
     expect(environment).toContain('VOICE_SHARED_SECRET="voice-secret"');
     expect(environment).toContain(
@@ -103,17 +109,20 @@ describe("managed Compose configuration", () => {
   it("keeps optional services behind Compose profiles", () => {
     const compose = renderComposeFile(config());
     expect(compose).toContain("profiles: [search-bundled]");
-    expect(compose).toContain("profiles: [tts-bundled]");
+    expect(compose).toContain("profiles: [tts-cpu]");
+    expect(compose).toContain("profiles: [tts-gpu]");
     expect(compose).toContain("profiles: [stt-cpu]");
     expect(compose).toContain("profiles: [stt-gpu]");
     expect(compose).toContain("profiles: [voice]");
     expect(compose).toContain("image: ${OVERTCHAT_REDIS_IMAGE}");
     expect(compose).toContain("image: ${OVERTCHAT_SEARXNG_IMAGE}");
     expect(compose).toContain("image: ${OVERTCHAT_KOKORO_IMAGE}");
+    expect(compose).toContain("image: ${OVERTCHAT_KOKORO_GPU_IMAGE}");
     expect(compose).toContain("image: ${OVERTCHAT_VOICE_IMAGE}");
     expect(compose).toContain("VOICE_SHARED_SECRET: ${VOICE_SHARED_SECRET}");
     expect(compose).not.toContain("8765:8765");
     expect(compose).toContain('device_ids: ["${STT_GPU_DEVICE_ID}"]');
+    expect(compose).toContain('device_ids: ["${TTS_GPU_DEVICE_ID}"]');
     expect(compose).toContain(
       "DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}",
     );
@@ -123,6 +132,40 @@ describe("managed Compose configuration", () => {
     expect(compose).not.toContain("BRAVE_SEARCH_API_KEY");
     expect(compose).not.toContain("TTS_API_KEY");
     expect(compose).not.toContain("STT_API_KEY");
+  });
+
+  it("selects the Blackwell image and GPU profile independently from STT", () => {
+    const gpuConfig = config();
+    gpuConfig.tts = {
+      provider: "bundled",
+      bundledInstalled: true,
+      accelerator: "gpu",
+      gpuUuid: "GPU-5090",
+      gpuVariant: "blackwell",
+    };
+    gpuConfig.stt = {
+      provider: "bundled",
+      bundledInstalled: true,
+      accelerator: "cpu",
+    };
+
+    const environment = renderStackEnvironment(
+      gpuConfig,
+      {
+        betterAuthSecret: "auth",
+        managementSecret: "management",
+        searxngSecret: "search",
+        voiceSharedSecret: "voice",
+      },
+      paths,
+    );
+
+    expect(environment).toContain('COMPOSE_PROFILES="tts-gpu,stt-cpu,voice"');
+    expect(environment).toContain('TTS_GPU_DEVICE_ID="GPU-5090"');
+    expect(environment).toContain('TTS_GPU_VARIANT="blackwell"');
+    expect(environment).toContain(
+      `OVERTCHAT_KOKORO_GPU_IMAGE="${gpuConfig.kokoroGpuBlackwellImage}"`,
+    );
   });
 
   it("preserves an adopted bind-mounted data directory", () => {

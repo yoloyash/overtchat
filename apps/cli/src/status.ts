@@ -22,7 +22,13 @@ export async function status(): Promise<void> {
   console.log(`Status: ${app?.exitCode === 0 ? app.stdout.trim() : "unavailable"}`);
   console.log(`URL: ${config.publicUrl}`);
   console.log(`Web search: ${config.search.provider}`);
-  console.log(`Text-to-speech: ${config.tts.provider}`);
+  console.log(
+    `Text-to-speech: ${config.tts.provider}${
+      config.tts.provider === "bundled"
+        ? ` (${config.tts.accelerator === "auto" || config.tts.accelerator === "gpu" ? "NVIDIA" : "CPU"})`
+        : ""
+    }`,
+  );
   console.log(`Speech-to-text: ${config.stt.provider}`);
   console.log(`Realtime voice: ${config.voice.installed ? "installed" : "not installed"}`);
   console.log(`Agent Connections: ${config.agents.installed ? "installed" : "not installed"}`);

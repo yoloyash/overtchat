@@ -22,7 +22,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
 | Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
-| Bundled images | Manifest `redisImage`, `searxngImage`, or `kokoroImage` digest | None |
+| Bundled images | Manifest Redis, SearXNG, or Kokoro image digest | None |
 | Mobile | See [Mobile release](#mobile-release) | `mobile-vX.Y.Z` |
 
 Do not change unrelated manifest fields.
@@ -49,7 +49,9 @@ Do not change unrelated manifest fields.
   retain the current protocol.
 - **STT:** The STT workflow publishes both images and dispatches promotion.
 - **Bundled images:** Promotion verifies amd64 and arm64 for every selected
-  digest. A digest-only change does not require a CLI release.
+  digest except the amd64-only Kokoro Blackwell image. Keep the CPU, standard
+  CUDA, and Blackwell Kokoro digests on the same upstream release. A
+  digest-only change does not require a CLI release.
 - **Combined:** Artifacts may publish in any order; promotion succeeds only
   after every selected component is public.
 

@@ -82,10 +82,14 @@ services:
       retries: 10
       start_period: 10s
 
+  # Text-to-speech via Kokoro. The source stack keeps its existing CPU default;
+  # the managed installer owns accelerator selection.
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:c8812546d358cbfd6a5c4087a28795b2b001d8e32d7a322eedd246e6bc13cb55
+    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:28d6f0b6e4df369559012578299d201b855a08fac466f616653edd1f08c5370a
     container_name: overtchat-kokoro
     restart: unless-stopped
+    labels:
+      com.overtchat.tts.accelerator: cpu
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
       interval: 15s

@@ -304,9 +304,21 @@ export async function reconcileManagedSidecars(
     },
     {
       containerName: "overtchat-kokoro",
-      label: "Kokoro",
-      selected: config.tts.bundledInstalled,
+      label: "Kokoro (CPU)",
+      selected:
+        config.tts.bundledInstalled &&
+        config.tts.accelerator !== "auto" &&
+        config.tts.accelerator !== "gpu",
       service: "kokoro",
+    },
+    {
+      containerName: "overtchat-kokoro-gpu",
+      label: "Kokoro (NVIDIA)",
+      selected:
+        config.tts.bundledInstalled &&
+        (config.tts.accelerator === "auto" ||
+          config.tts.accelerator === "gpu"),
+      service: "kokoro-gpu",
     },
     {
       containerName: "overtchat-voice",
@@ -401,6 +413,16 @@ async function inspectContainer(
   }
 }
 
+function kokoroGpuVariant(
+  container: DockerInspect | null,
+): "standard" | "blackwell" | undefined {
+  if (!container) return undefined;
+  return container.Config?.Labels?.["com.overtchat.tts.gpu-variant"] ===
+    "blackwell"
+    ? "blackwell"
+    : "standard";
+}
+
 async function stoppedComposeInstallation(
   docker: DockerCommand,
 ): Promise<ExistingInstallation | null> {
@@ -435,6 +457,7 @@ async function stoppedComposeInstallation(
   const redis = await inspectContainer(docker, "overtchat-redis");
   const searxng = await inspectContainer(docker, "overtchat-searxng");
   const kokoro = await inspectContainer(docker, "overtchat-kokoro");
+  const kokoroGpu = await inspectContainer(docker, "overtchat-kokoro-gpu");
   const voice = await inspectContainer(docker, "overtchat-voice");
   const sttGpu = await inspectContainer(docker, "overtchat-stt-gpu");
   const sttCpu = sttGpu
@@ -456,10 +479,13 @@ async function stoppedComposeInstallation(
     )?.Source,
     bundledServices: {
       search: Boolean(searxng),
-      tts: Boolean(kokoro),
+      tts: Boolean(kokoroGpu ?? kokoro),
       stt: Boolean(sttGpu ?? sttCpu),
       voice: Boolean(voice),
     },
+    ttsAccelerator: kokoroGpu ? "gpu" : kokoro ? "cpu" : undefined,
+    ttsGpuUuid: kokoroGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    ttsGpuVariant: kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
   };
@@ -496,6 +522,7 @@ export async function detectExistingInstallation(
 
   const searxng = await inspectContainer(docker, "overtchat-searxng");
   const kokoro = await inspectContainer(docker, "overtchat-kokoro");
+  const kokoroGpu = await inspectContainer(docker, "overtchat-kokoro-gpu");
   const voice = await inspectContainer(docker, "overtchat-voice");
   const searxngConfigPath = searxng?.Mounts?.find(
     (mount) => mount.Destination === "/etc/searxng",
@@ -521,10 +548,16 @@ export async function detectExistingInstallation(
     searxngConfigPath,
     bundledServices: {
       search: Boolean(searxng),
-      tts: Boolean(kokoro),
+      tts: Boolean(kokoroGpu ?? kokoro),
       stt: Boolean(sttGpu ?? sttCpu),
       voice: Boolean(voice),
     },
+    ttsAccelerator: kokoroGpu ? "gpu" : kokoro ? "cpu" : undefined,
+    ttsGpuUuid: kokoroGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
+    ttsGpuVariant:
+      environment.get("TTS_GPU_VARIANT") === "blackwell"
+        ? "blackwell"
+        : kokoroGpuVariant(kokoroGpu),
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
   };
@@ -532,10 +565,18 @@ export async function detectExistingInstallation(
 
 export async function detectNvidiaGpus(): Promise<Gpu[]> {
   if (!(await commandExists("nvidia-smi"))) return [];
-  const result = await runCommand("nvidia-smi", [
-    "--query-gpu=index,uuid,name,memory.total",
+  let result = await runCommand("nvidia-smi", [
+    "--query-gpu=index,uuid,name,memory.total,compute_cap",
     "--format=csv,noheader,nounits",
   ]);
+  // Older drivers do not expose compute_cap as a query field. Keep GPU
+  // acceleration available; only Blackwell auto-detection is lost.
+  if (result.exitCode !== 0) {
+    result = await runCommand("nvidia-smi", [
+      "--query-gpu=index,uuid,name,memory.total",
+      "--format=csv,noheader,nounits",
+    ]);
+  }
   if (result.exitCode !== 0) return [];
   return parseNvidiaSmi(result.stdout);
 }
@@ -544,7 +585,7 @@ export function parseNvidiaSmi(output: string): Gpu[] {
   const gpus: Gpu[] = [];
   for (const line of output.split(/\r?\n/u)) {
     if (!line.trim()) continue;
-    const [rawIndex, rawUuid, rawName, rawMemory] = line
+    const [rawIndex, rawUuid, rawName, rawMemory, rawComputeCapability] = line
       .split(",")
       .map((value) => value.trim());
     const index = Number(rawIndex);
@@ -557,7 +598,14 @@ export function parseNvidiaSmi(output: string): Gpu[] {
     ) {
       continue;
     }
-    gpus.push({ index, uuid: rawUuid, name: rawName, memoryMiB });
+    const computeCapability = Number(rawComputeCapability);
+    gpus.push({
+      index,
+      uuid: rawUuid,
+      name: rawName,
+      memoryMiB,
+      ...(Number.isFinite(computeCapability) ? { computeCapability } : {}),
+    });
   }
   return gpus;
 }
