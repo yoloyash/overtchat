@@ -9,7 +9,7 @@ onnxruntime==1.29.0
 pillow==12.3.0
 pydantic==2.13.5
 rich==15.0.0
-requests==2.32.5
+requests==2.33.0
 scipy==1.18.1
 transformers==5.15.1
 uvicorn==0.52.4
