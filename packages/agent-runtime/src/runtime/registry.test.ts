@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   saveQueue: vi.fn(),
   getState: vi.fn(),
   getMessages: vi.fn(),
+  getAvailableModels: vi.fn(),
   setModel: vi.fn(),
   setThinkingLevel: vi.fn(),
   setMode: vi.fn(),
@@ -54,9 +55,7 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
       }),
       getState: mocks.getState,
       getMessages: mocks.getMessages,
-      getAvailableModels: vi.fn().mockResolvedValue([
-        { provider: "openai", id: "gpt-5", name: "GPT-5", input: ["text"] },
-      ]),
+      getAvailableModels: mocks.getAvailableModels,
       getSessionStats: vi.fn().mockResolvedValue(stats),
       getCommands: vi.fn().mockResolvedValue([]),
       prompt: mocks.prompt,
@@ -145,6 +144,9 @@ describe("agent runtime", () => {
       sessionFile: "/sessions/provider-session.jsonl",
     });
     mocks.getMessages.mockResolvedValue({ messages: [] });
+    mocks.getAvailableModels.mockResolvedValue([
+      { provider: "openai", id: "gpt-5", name: "GPT-5", input: ["text"] },
+    ]);
     mocks.eventSubscriber = null;
   });
 
@@ -1099,7 +1101,7 @@ describe("agent runtime", () => {
   );
 
   it("publishes one canonical user message when a provider echoes before accepting", async () => {
-    mocks.prompt.mockImplementation(async () => {
+    mocks.prompt.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
         type: "message_start",
         message: {
@@ -1107,6 +1109,7 @@ describe("agent runtime", () => {
           role: "user",
           content: "Continue the task",
           timestamp: 123,
+          overtchatSubmissionId: options?.clientMessageId,
         },
       });
       return { accepted: true };
@@ -1137,7 +1140,110 @@ describe("agent runtime", () => {
         id: "provider-message",
         role: "user",
         content: "Continue the task",
-        timestamp: 123,
+        timestamp: expect.any(Number),
+        overtchatProviderTimestamp: 123,
+        overtchatSubmissionId: "client-message",
+      },
+    ]);
+    await registry.stopAll();
+  });
+
+  it("keeps submitted image presentation through provider history refresh", async () => {
+    mocks.getState.mockResolvedValue({
+      isStreaming: false,
+      sessionId: "provider-session",
+      sessionFile: "/sessions/provider-session.jsonl",
+      model: { provider: "codex", id: "gpt-5" },
+    });
+    mocks.getAvailableModels.mockResolvedValue([
+      {
+        provider: "codex",
+        id: "gpt-5",
+        name: "GPT-5",
+        input: ["text", "image"],
+      },
+    ]);
+    mocks.getMessages
+      .mockResolvedValueOnce({ messages: [] })
+      .mockResolvedValueOnce({
+        messages: [
+          {
+            id: "provider-message",
+            role: "user",
+            content: [
+              { type: "text", text: "Inspect this" },
+              { data: "aW1hZ2U=", mimeType: "image/png" },
+            ],
+            timestamp: 200,
+          },
+        ],
+      });
+    mocks.prompt.mockImplementation(async (_message, _images, options) => {
+      mocks.eventSubscriber?.({
+        type: "message_start",
+        message: {
+          id: "provider-message",
+          role: "user",
+          content: [
+            { type: "text", text: "Inspect this" },
+            { data: "aW1hZ2U=", mimeType: "image/png" },
+          ],
+          timestamp: 200,
+          overtchatSubmissionId: options?.clientMessageId,
+        },
+      });
+      return { accepted: true };
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [
+        {
+          uploadId: "11111111-1111-4111-8111-111111111111",
+          filename: "screen.png",
+          mediaType: "image/png",
+          data: "aW1hZ2U=",
+        },
+      ],
+    });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+
+    await runtime.command(
+      {
+        type: "prompt",
+        message: "Inspect this",
+        images: [
+          {
+            uploadId: "11111111-1111-4111-8111-111111111111",
+            filename: "screen.png",
+            mediaType: "image/png",
+          },
+        ],
+      },
+      "client-message",
+    );
+    const submitted = runtime.snapshot().messages[0] as Record<string, unknown>;
+
+    mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
+    await vi.waitFor(() => expect(mocks.getMessages).toHaveBeenCalledTimes(2));
+
+    expect(runtime.snapshot().messages).toEqual([
+      {
+        id: "provider-message",
+        role: "user",
+        content: submitted.content,
+        timestamp: submitted.timestamp,
+        overtchatProviderTimestamp: 200,
+        overtchatSubmissionId: "client-message",
       },
     ]);
     await registry.stopAll();
@@ -1219,7 +1325,7 @@ describe("agent runtime", () => {
   });
 
   it("reconciles a native steering echo with the canonical steer message", async () => {
-    mocks.prompt.mockImplementation(async () => {
+    mocks.prompt.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
         type: "message_start",
         message: {
@@ -1227,11 +1333,12 @@ describe("agent runtime", () => {
           role: "user",
           content: "Start the task",
           timestamp: 123,
+          overtchatSubmissionId: options?.clientMessageId,
         },
       });
       return { accepted: true };
     });
-    mocks.steer.mockImplementation(async () => {
+    mocks.steer.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
         type: "message_start",
         message: {
@@ -1239,6 +1346,7 @@ describe("agent runtime", () => {
           role: "user",
           content: "Use the other approach",
           timestamp: 124,
+          overtchatSubmissionId: options?.clientMessageId,
         },
       });
       return { accepted: true };

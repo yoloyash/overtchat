@@ -191,6 +191,113 @@ describe("OmpClient", () => {
     await client.stop();
   });
 
+  it("sends typed image attachments with prompts and steering", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "negotiate_protocol") {
+        fake.reply(command, { protocolVersion: 2 });
+        return;
+      }
+      fake.reply(command);
+    });
+    const client = new OmpClient(process, "full");
+    announceReady(process);
+    const image = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png" as const,
+      data: "aW1hZ2U=",
+    };
+
+    await client.prompt("Inspect this", [image]);
+    await client.steer("", [image]);
+
+    expect(process.commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "prompt",
+          message: "Inspect this",
+          images: [
+            {
+              type: "image",
+              data: "aW1hZ2U=",
+              mimeType: "image/png",
+            },
+          ],
+        }),
+        expect.objectContaining({
+          type: "steer",
+          message: "",
+          images: [
+            {
+              type: "image",
+              data: "aW1hZ2U=",
+              mimeType: "image/png",
+            },
+          ],
+        }),
+      ]),
+    );
+    await client.stop();
+  });
+
+  it("attaches submission identity to provider user-message echoes", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "negotiate_protocol") {
+        fake.reply(command, { protocolVersion: 2 });
+        return;
+      }
+      const message = {
+        role: "user",
+        content: command.message,
+        timestamp: command.type === "prompt" ? 100 : 200,
+      };
+      fake.stdout.write(
+        `${JSON.stringify({ type: "message_start", message })}\n`,
+      );
+      fake.stdout.write(`${JSON.stringify({ type: "message_end", message })}\n`);
+      fake.reply(command);
+    });
+    const client = new OmpClient(process, "full");
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+    announceReady(process);
+
+    await client.prompt("Start", [], { clientMessageId: "client-prompt" });
+    await client.steer("Adjust", [], { clientMessageId: "client-steer" });
+
+    expect(events).toEqual([
+      {
+        type: "message_start",
+        message: expect.objectContaining({
+          content: "Start",
+          overtchatSubmissionId: "client-prompt",
+        }),
+      },
+      {
+        type: "message_end",
+        message: expect.objectContaining({
+          content: "Start",
+          overtchatSubmissionId: "client-prompt",
+        }),
+      },
+      {
+        type: "message_start",
+        message: expect.objectContaining({
+          content: "Adjust",
+          overtchatSubmissionId: "client-steer",
+        }),
+      },
+      {
+        type: "message_end",
+        message: expect.objectContaining({
+          content: "Adjust",
+          overtchatSubmissionId: "client-steer",
+        }),
+      },
+    ]);
+    await client.stop();
+  });
+
   it("surfaces OMP prompt failures emitted after acceptance", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {

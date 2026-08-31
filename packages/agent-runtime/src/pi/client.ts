@@ -20,6 +20,7 @@ import {
   type HostTarget,
   spawnOnHost,
 } from "@overtchat/agent-runtime/runtime/process";
+import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 
 export type PiLaunch = {
   executable: string;
@@ -43,6 +44,7 @@ function promptFrame(
     ...(images.length
       ? {
           images: images.map((image) => ({
+            type: "image" as const,
             data: image.data,
             mimeType: image.mediaType,
           })),
@@ -54,6 +56,7 @@ function promptFrame(
 export class PiClient {
   private readonly transport: JsonlRpcTransport;
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
+  private readonly submissionEchoes = new SubmissionEchoTracker();
 
   constructor(process: AgentProcess) {
     this.transport = new JsonlRpcTransport(process, "Pi");
@@ -62,10 +65,11 @@ export class PiClient {
         this.transport.fail("Pi RPC event is missing a type.");
         return;
       }
+      const event = this.submissionEchoes.annotate(record);
       this.emit(
-        record.type === "extension_ui_request"
-          ? ({ ...record, type: "interaction_request" } as PiRpcEvent)
-          : (record as PiRpcEvent),
+        event.type === "extension_ui_request"
+          ? ({ ...event, type: "interaction_request" } as PiRpcEvent)
+          : (event as PiRpcEvent),
       );
     });
   }
@@ -119,21 +123,34 @@ export class PiClient {
   prompt(
     message: string,
     images: readonly ResolvedAgentImage[] = [],
-    _options: AgentSubmissionOptions = {},
+    options: AgentSubmissionOptions = {},
   ): Promise<unknown> {
-    return this.request(promptFrame("prompt", message, images));
+    const cancelEcho = this.submissionEchoes.track(options.clientMessageId);
+    return this.request(promptFrame("prompt", message, images)).catch(
+      (error) => {
+        cancelEcho();
+        throw error;
+      },
+    );
   }
 
   steer(
     message: string,
     images: readonly ResolvedAgentImage[] = [],
-    _options: AgentSubmissionOptions = {},
+    options: AgentSubmissionOptions = {},
   ): Promise<unknown> {
-    return this.request(promptFrame("steer", message, images));
+    const cancelEcho = this.submissionEchoes.track(options.clientMessageId);
+    return this.request(promptFrame("steer", message, images)).catch((error) => {
+      cancelEcho();
+      throw error;
+    });
   }
 
   abort(): Promise<unknown> {
-    return this.request({ type: "abort" });
+    return this.request({ type: "abort" }).then((result) => {
+      this.submissionEchoes.clear();
+      return result;
+    });
   }
 
   setModel(modelId: string): Promise<unknown> {
@@ -178,6 +195,7 @@ export class PiClient {
   }
 
   stop(): Promise<void> {
+    this.submissionEchoes.clear();
     return this.transport.stop();
   }
 

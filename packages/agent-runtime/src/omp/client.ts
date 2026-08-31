@@ -12,6 +12,7 @@ import {
   JsonlRpcTransport,
 } from "@overtchat/agent-runtime/runtime/jsonl-rpc";
 import { type AgentProcess, type HostTarget, spawnOnHost } from "@overtchat/agent-runtime/runtime/process";
+import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 
 const READY_TIMEOUT_MS = 30_000;
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
@@ -33,6 +34,7 @@ type OmpEvent = { type: string; [key: string]: unknown };
 export class OmpClient {
   private readonly transport: JsonlRpcTransport;
   private readonly subscribers = new Set<(event: OmpEvent) => void>();
+  private readonly submissionEchoes = new SubmissionEchoTracker();
   private readonly ready: Promise<void>;
   private resolveReady: () => void = () => {};
   private rejectReady: (error: Error) => void = () => {};
@@ -124,23 +126,60 @@ export class OmpClient {
     return this.request({ type: "get_messages" });
   }
 
-  prompt(message: string, images: readonly ResolvedAgentImage[] = [], _options: AgentSubmissionOptions = {}): Promise<unknown> {
+  prompt(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+    options: AgentSubmissionOptions = {},
+  ): Promise<unknown> {
+    const cancelEcho = this.submissionEchoes.track(options.clientMessageId);
     return this.request({
       type: "prompt",
       message,
-      ...(images.length ? { images: images.map((image) => ({ data: image.data, mimeType: image.mediaType })) } : {}),
+      ...(images.length
+        ? {
+            images: images.map((image) => ({
+              type: "image" as const,
+              data: image.data,
+              mimeType: image.mediaType,
+            })),
+          }
+        : {}),
+    }).catch((error) => {
+      cancelEcho();
+      throw error;
     });
   }
 
-  steer(message: string, images: readonly ResolvedAgentImage[] = [], _options: AgentSubmissionOptions = {}): Promise<unknown> {
+  steer(
+    message: string,
+    images: readonly ResolvedAgentImage[] = [],
+    options: AgentSubmissionOptions = {},
+  ): Promise<unknown> {
+    const cancelEcho = this.submissionEchoes.track(options.clientMessageId);
     return this.request({
       type: "steer",
       message,
-      ...(images.length ? { images: images.map((image) => ({ data: image.data, mimeType: image.mediaType })) } : {}),
+      ...(images.length
+        ? {
+            images: images.map((image) => ({
+              type: "image" as const,
+              data: image.data,
+              mimeType: image.mediaType,
+            })),
+          }
+        : {}),
+    }).catch((error) => {
+      cancelEcho();
+      throw error;
     });
   }
 
-  abort(): Promise<unknown> { return this.request({ type: "abort" }); }
+  abort(): Promise<unknown> {
+    return this.request({ type: "abort" }).then((result) => {
+      this.submissionEchoes.clear();
+      return result;
+    });
+  }
 
   setModel(modelId: string): Promise<unknown> {
     const separator = modelId.indexOf("/");
@@ -167,6 +206,7 @@ export class OmpClient {
   }
 
   async stop(): Promise<void> {
+    this.submissionEchoes.clear();
     this.failReady(new Error("The Oh My Pi RPC process was stopped."));
     await this.transport.stop();
   }
@@ -183,7 +223,7 @@ export class OmpClient {
       return;
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
-    this.emit(mapOmpUiRequest(record) as OmpEvent);
+    this.emit(mapOmpUiRequest(this.submissionEchoes.annotate(record)) as OmpEvent);
   }
 
   private handleReady(record: Record<string, unknown>): void {

@@ -150,18 +150,37 @@ describe("agent runtime event reducer", () => {
     expect(twice.messages).toEqual(providerMessages);
   });
 
-  it("drops an optimistic row once an uncertain provider snapshot is available", () => {
+  it("preserves submitted image presentation when provider history takes over", () => {
+    const submittedContent = [
+      { type: "text", text: "Run tests" },
+      {
+        type: "image",
+        url: "/api/uploads/image-1",
+        mimeType: "image/png",
+        filename: "screen.png",
+      },
+    ];
     const durable = {
       ...snapshot(),
       messages: [
         {
           role: "user",
-          content: "Run tests",
+          content: submittedContent,
+          timestamp: 100,
+          overtchatProviderTimestamp: 200,
           overtchatSubmissionId: "submission-1",
         },
       ],
     };
-    const providerMessage = { role: "user", content: "Run tests" };
+    const providerMessage = {
+      id: "provider-message",
+      role: "user",
+      content: [
+        { type: "text", text: "Run tests" },
+        { data: "aW1hZ2U=", mimeType: "image/png" },
+      ],
+      timestamp: 200,
+    };
     const reconciled = reconcileAgentRuntimeSnapshot(durable, {
       ...snapshot(),
       messages: [providerMessage],
@@ -174,12 +193,78 @@ describe("agent runtime event reducer", () => {
       ],
     });
 
-    expect(reconciled.messages).toEqual([providerMessage]);
+    expect(reconciled.messages).toEqual([
+      {
+        id: "provider-message",
+        role: "user",
+        content: submittedContent,
+        timestamp: 100,
+        overtchatProviderTimestamp: 200,
+        overtchatSubmissionId: "submission-1",
+      },
+    ]);
     expect(reconciled.queuedMessages).toEqual([
       {
         id: "submission-1",
         message: "Run tests",
         status: "uncertain",
+      },
+    ]);
+  });
+
+  it("does not infer submission identity from repeated prompt text", () => {
+    const submittedContent = [
+      { type: "text", text: "Inspect this" },
+      {
+        type: "image",
+        url: "/api/uploads/image-1",
+        mimeType: "image/png",
+        filename: "screen.png",
+      },
+    ];
+    const reconciled = reconcileAgentRuntimeSnapshot(
+      {
+        ...snapshot(),
+        messages: [
+          { role: "user", content: "Inspect this" },
+          { role: "assistant", content: "First response" },
+          {
+            role: "user",
+            content: submittedContent,
+            timestamp: 100,
+            overtchatSubmissionId: "submission-1",
+          },
+        ],
+      },
+      {
+        ...snapshot(),
+        messages: [
+          { id: "provider-user-1", role: "user", content: "Inspect this" },
+          { id: "provider-assistant", role: "assistant", content: "First response" },
+          {
+            id: "provider-user-2",
+            role: "user",
+            content: [
+              { type: "text", text: "Inspect this" },
+              { data: "aW1hZ2U=", mimeType: "image/png" },
+            ],
+            timestamp: 200,
+          },
+        ],
+      },
+    );
+
+    expect(reconciled.messages).toEqual([
+      { id: "provider-user-1", role: "user", content: "Inspect this" },
+      { id: "provider-assistant", role: "assistant", content: "First response" },
+      {
+        id: "provider-user-2",
+        role: "user",
+        content: [
+          { type: "text", text: "Inspect this" },
+          { data: "aW1hZ2U=", mimeType: "image/png" },
+        ],
+        timestamp: 200,
       },
     ]);
   });
@@ -692,13 +777,20 @@ describe("agent runtime event reducer", () => {
           role: "user",
           content: "Next prompt",
           timestamp: 200,
+          overtchatSubmissionId: "submission:1",
         },
       }),
     )!;
 
     expect(acknowledged.messages).toEqual([
       { role: "user", content: "Hello" },
-      { role: "user", content: "Next prompt", timestamp: 200 },
+      {
+        role: "user",
+        content: "Next prompt",
+        timestamp: 100,
+        overtchatProviderTimestamp: 200,
+        overtchatSubmissionId: "submission:1",
+      },
     ]);
   });
 
@@ -752,6 +844,7 @@ describe("agent runtime event reducer", () => {
         id: "provider:2",
         role: "user",
         content: "Same follow-up",
+        timestamp: 100,
         overtchatSubmissionId: "submission:2",
       },
     ]);

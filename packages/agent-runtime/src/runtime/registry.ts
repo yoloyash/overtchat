@@ -21,6 +21,7 @@ import {
   agentProviderMetadata,
   isAgentProviderId,
   isAgentProviderNotice,
+  reconcileSubmittedUserMessages,
 } from "@overtchat/agent-bridge";
 import { agentProviderAdapter } from "@overtchat/agent-runtime/providers/registry";
 import type {
@@ -906,13 +907,16 @@ export class AgentSessionRuntime {
           this.client.getCommands().catch(() => this.commands),
         ]);
       this.state = state;
-      this.messages = messageData.messages;
+      this.messages = reconcileSubmittedUserMessages(
+        this.messages,
+        messageData.messages,
+      );
       this.stats = stats;
       this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
       const reconciledQueue = reconcileRestoredQueuedMessages(
         this.queuedMessages,
-        this.messages,
+        messageData.messages,
       );
       if (reconciledQueue.changed) {
         this.queuedMessages = reconciledQueue.messages;
