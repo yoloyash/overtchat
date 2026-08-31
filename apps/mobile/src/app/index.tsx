@@ -25,6 +25,7 @@ export default function WelcomeScreen() {
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push("/server")}
+          testID="welcome-get-started"
           style={({ pressed }) => [
             styles.cta,
             {
