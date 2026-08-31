@@ -4,6 +4,8 @@ import type { UIMessage } from "ai";
 const mocks = vi.hoisted(() => ({
   createConfiguredLanguageModel: vi.fn(),
   generateText: vi.fn(),
+  getChatTitleContext: vi.fn(),
+  getTaskModelConfig: vi.fn(),
   setTitleIfNull: vi.fn(),
   tryRecordGenerationUsage: vi.fn(),
 }));
@@ -11,7 +13,11 @@ const mocks = vi.hoisted(() => ({
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({ generateText: mocks.generateText }));
 vi.mock("@/lib/db/chats", () => ({
+  getChatTitleContext: mocks.getChatTitleContext,
   setTitleIfNull: mocks.setTitleIfNull,
+}));
+vi.mock("@/lib/db/modelConfigs", () => ({
+  getTaskModelConfig: mocks.getTaskModelConfig,
 }));
 vi.mock("@/lib/db/generationUsage", () => ({
   tryRecordGenerationUsage: mocks.tryRecordGenerationUsage,
@@ -23,8 +29,8 @@ vi.mock("@/lib/providers/server/registry", () => ({
 import {
   buildTitlePromptText,
   cleanGeneratedTitle,
+  ensureChatTitle,
   extractTextForTitle,
-  generateChatTitle,
 } from "./title";
 
 type Part = UIMessage["parts"][number];
@@ -93,6 +99,11 @@ describe("title helpers", () => {
     );
     mocks.tryRecordGenerationUsage.mockReturnValue(true);
     mocks.setTitleIfNull.mockImplementation(async (_chatId, title) => title);
+    mocks.getChatTitleContext.mockResolvedValue({
+      title: null,
+      firstUserParts,
+    });
+    mocks.getTaskModelConfig.mockReturnValue(null);
   });
 
   it("cleans generated title output", () => {
@@ -138,12 +149,66 @@ describe("title helpers", () => {
     expect(prompt).not.toContain("hidden query");
   });
 
-  it("returns null without calling the model when first-user text is empty", async () => {
-    const title = await generateChatTitle({
+  it("does nothing when the persisted chat already has a title", async () => {
+    mocks.getChatTitleContext.mockResolvedValue({
+      title: "Existing title",
+      firstUserParts,
+    });
+
+    await expect(
+      ensureChatTitle({
+        chatId: "chat",
+        userId: "user",
+        fallbackModelConfig: modelConfig,
+      }),
+    ).resolves.toBeNull();
+
+    expect(mocks.getTaskModelConfig).not.toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("uses a dedicated task model even when it is hidden from chat", async () => {
+    const hiddenTaskModel = {
+      ...modelConfig,
+      model: "hidden-task-model",
+      enabled: false,
+      taskModel: true,
+    };
+    mocks.getTaskModelConfig.mockReturnValue(hiddenTaskModel);
+
+    await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: [reasoning("private thought"), search(), file(), text(" ")],
+      fallbackModelConfig: modelConfig,
+    });
+
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({ model: "hidden-task-model" }),
+    );
+  });
+
+  it("does nothing without a task model or chat-model fallback", async () => {
+    await expect(
+      ensureChatTitle({
+        chatId: "chat",
+        userId: "user",
+        fallbackModelConfig: null,
+      }),
+    ).resolves.toBeNull();
+
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("returns null without calling the model when first-user text is empty", async () => {
+    mocks.getChatTitleContext.mockResolvedValue({
+      title: null,
+      firstUserParts: [reasoning("private thought"), search(), file(), text(" ")],
+    });
+
+    const title = await ensureChatTitle({
+      chatId: "chat",
+      userId: "user",
+      fallbackModelConfig: modelConfig,
     });
 
     expect(title).toBeNull();
@@ -156,11 +221,10 @@ describe("title helpers", () => {
       generationResult('"Dependency Cleanup!"'),
     );
 
-    const title = await generateChatTitle({
+    const title = await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: firstUserParts,
+      fallbackModelConfig: modelConfig,
     });
 
     expect(mocks.generateText).toHaveBeenCalledWith(
@@ -201,16 +265,15 @@ describe("title helpers", () => {
       generationResult("Priced Title"),
     );
 
-    await generateChatTitle({
+    await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig: {
+      fallbackModelConfig: {
         ...modelConfig,
         providerId: "anthropic",
         apiFormat: "auto",
         model: "claude-sonnet-4-6",
       },
-      userParts: firstUserParts,
     });
 
     expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith(
@@ -232,10 +295,10 @@ describe("title helpers", () => {
       generationResult("Configured Price"),
     );
 
-    await generateChatTitle({
+    await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig: {
+      fallbackModelConfig: {
         ...modelConfig,
         pricing: {
           input: 2,
@@ -244,7 +307,6 @@ describe("title helpers", () => {
           cacheWrite: 2.5,
         },
       },
-      userParts: firstUserParts,
     });
 
     expect(mocks.tryRecordGenerationUsage).toHaveBeenCalledWith(
@@ -266,11 +328,10 @@ describe("title helpers", () => {
       providerOptionsKey: "custom",
     });
 
-    await generateChatTitle({
+    await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: firstUserParts,
+      fallbackModelConfig: modelConfig,
     });
 
     expect(mocks.generateText).toHaveBeenCalledWith(
@@ -287,11 +348,10 @@ describe("title helpers", () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mocks.generateText.mockRejectedValue(err);
 
-    const title = await generateChatTitle({
+    const title = await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: firstUserParts,
+      fallbackModelConfig: modelConfig,
     });
 
     expect(title).toBeNull();
@@ -308,11 +368,10 @@ describe("title helpers", () => {
       throw err;
     });
 
-    const title = await generateChatTitle({
+    const title = await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: firstUserParts,
+      fallbackModelConfig: modelConfig,
     });
 
     expect(title).toBeNull();
@@ -326,11 +385,10 @@ describe("title helpers", () => {
   it("records usage without persisting an empty generated title", async () => {
     mocks.generateText.mockResolvedValue(generationResult("..."));
 
-    const title = await generateChatTitle({
+    const title = await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: firstUserParts,
+      fallbackModelConfig: modelConfig,
     });
 
     expect(title).toBeNull();
@@ -344,11 +402,10 @@ describe("title helpers", () => {
     );
     mocks.setTitleIfNull.mockResolvedValue(null);
 
-    const title = await generateChatTitle({
+    const title = await ensureChatTitle({
       chatId: "chat",
       userId: "user",
-      modelConfig,
-      userParts: firstUserParts,
+      fallbackModelConfig: modelConfig,
     });
 
     expect(title).toBeNull();

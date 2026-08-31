@@ -18,14 +18,13 @@ const mocks = vi.hoisted(() => {
     completeChatStream: vi.fn(),
     inlineUploads: vi.fn(),
     getModelConfig: vi.fn(),
-    getTaskModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
     listEffectiveMcpServers: vi.fn(),
     acquireMcpBinding: vi.fn(),
     releaseMcpBinding: vi.fn(),
     getProject: vi.fn(),
     getActivePersonalization: vi.fn(),
-    generateChatTitle: vi.fn(),
+    ensureChatTitle: vi.fn(),
     getProvider: vi.fn(),
     modelIconForModel: vi.fn(),
     catalogEntryFor: vi.fn(),
@@ -129,7 +128,6 @@ vi.mock("@/lib/db/chatTurns", () => ({
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
-  getTaskModelConfig: mocks.getTaskModelConfig,
 }));
 vi.mock("@/lib/db/serverCapabilities", () => ({
   getServerCapability: mocks.getServerCapability,
@@ -145,7 +143,7 @@ vi.mock("@/lib/db/personalization", () => ({
   getActivePersonalization: mocks.getActivePersonalization,
 }));
 vi.mock("@/lib/title", () => ({
-  generateChatTitle: mocks.generateChatTitle,
+  ensureChatTitle: mocks.ensureChatTitle,
 }));
 vi.mock("@/lib/providers/catalog", () => ({
   getProvider: mocks.getProvider,
@@ -248,7 +246,6 @@ describe("chat route setup boundary", () => {
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
-    mocks.getTaskModelConfig.mockReturnValue(null);
     mocks.getServerCapability.mockReturnValue({ provider: "bundled" });
     mocks.listEffectiveMcpServers.mockResolvedValue([]);
     mocks.releaseMcpBinding.mockResolvedValue(undefined);
@@ -281,7 +278,7 @@ describe("chat route setup boundary", () => {
     mocks.commitChatTurn.mockReturnValue("committed");
     mocks.completeChatStream.mockReturnValue(true);
     mocks.clearActiveStreamId.mockResolvedValue(undefined);
-    mocks.generateChatTitle.mockResolvedValue(null);
+    mocks.ensureChatTitle.mockResolvedValue(null);
     mocks.getStreamContext.mockReturnValue(null);
     mocks.currentDateSystemPrompt.mockReturnValue(mocks.currentDatePrompt);
     mocks.consumeStream.mockResolvedValue(undefined);
@@ -1244,34 +1241,14 @@ describe("chat route setup boundary", () => {
         userMessage: { id: "user-message", parts: messages[0].parts },
       }),
     );
-    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
+    expect(mocks.ensureChatTitle).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user",
-        modelConfig,
-        userParts: messages[0].parts,
+        fallbackModelConfig: modelConfig,
       }),
     );
     expect(messages).toEqual(originalMessages);
     expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
-  });
-
-  it("uses a dedicated task model for title generation even when hidden from chat", async () => {
-    const taskModelConfig = {
-      ...modelConfig,
-      id: "task-model",
-      label: "Fast task model",
-      model: "fast-model",
-      enabled: false,
-      taskModel: true,
-    };
-    mocks.getTaskModelConfig.mockReturnValue(taskModelConfig);
-
-    await POST(request());
-
-    expect(mocks.getTaskModelConfig).toHaveBeenCalledOnce();
-    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
-      expect.objectContaining({ modelConfig: taskModelConfig }),
-    );
   });
 
   it("emits provider cache token details in finish metadata", async () => {

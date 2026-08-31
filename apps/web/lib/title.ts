@@ -1,9 +1,12 @@
 import "server-only";
 import { generateText, type UIMessage } from "ai";
 import { stripCitationMarkers } from "@/lib/citations";
-import { setTitleIfNull } from "@/lib/db/chats";
+import { getChatTitleContext, setTitleIfNull } from "@/lib/db/chats";
 import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
-import type { ModelConfigRow } from "@/lib/db/modelConfigs";
+import {
+  getTaskModelConfig,
+  type ModelConfigRow,
+} from "@/lib/db/modelConfigs";
 import { estimateGenerationCost } from "@/lib/providers/server/model-cost";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
@@ -21,18 +24,27 @@ type TitleModelConfig = Pick<
   | "providerOptions"
 >;
 
-export async function generateChatTitle({
+export async function ensureChatTitle({
   chatId,
   userId,
-  modelConfig,
-  userParts,
+  fallbackModelConfig,
 }: {
   chatId: string;
   userId: string;
-  modelConfig: TitleModelConfig;
-  userParts: UIMessage["parts"];
+  fallbackModelConfig: TitleModelConfig | null;
 }): Promise<string | null> {
   try {
+    const context = await getChatTitleContext(chatId, userId);
+    if (!context || context.title !== null || !context.firstUserParts) {
+      return null;
+    }
+
+    // `enabled` controls chat-picker visibility. A dedicated task model is
+    // intentionally allowed to remain hidden from chat.
+    const modelConfig = getTaskModelConfig() ?? fallbackModelConfig;
+    if (!modelConfig) return null;
+
+    const userParts = context.firstUserParts;
     const prompt = buildTitlePromptText(userParts);
     if (!prompt) return null;
 

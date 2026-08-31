@@ -53,6 +53,30 @@ export async function getChat(
   return row ?? null;
 }
 
+export async function getChatTitleContext(
+  id: string,
+  userId: string,
+): Promise<{
+  title: string | null;
+  firstUserParts: UIMessage["parts"] | null;
+} | null> {
+  const [row] = await db
+    .select({
+      title: chats.title,
+      firstUserParts: messages.parts,
+    })
+    .from(chats)
+    .leftJoin(
+      messages,
+      and(eq(messages.chatId, chats.id), eq(messages.role, "user")),
+    )
+    .where(and(eq(chats.id, id), eq(chats.userId, userId)))
+    .orderBy(sql`${messages}.rowid`)
+    .limit(1);
+
+  return row ?? null;
+}
+
 export async function listChats(
   userId: string,
   limit = 100,

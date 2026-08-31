@@ -47,9 +47,13 @@ raw.exec(`
 `);
 
 let voiceChats: typeof import("./voiceChats");
+let chatQueries: typeof import("./chats");
 
 beforeAll(async () => {
-  voiceChats = await import("./voiceChats");
+  [voiceChats, chatQueries] = await Promise.all([
+    import("./voiceChats"),
+    import("./chats"),
+  ]);
 });
 
 beforeEach(() => {
@@ -87,7 +91,6 @@ describe("voice chat persistence", () => {
       status: "ok",
       createdChat: true,
       changed: true,
-      firstUserParts: user.parts,
     });
     expect(raw.prepare("SELECT kind FROM chats WHERE id = 'chat'").get()).toEqual({
       kind: "voice",
@@ -116,6 +119,26 @@ describe("voice chat persistence", () => {
     expect(raw.prepare("SELECT content FROM messages_fts").get()).toEqual({
       content: "Hello there",
     });
+  });
+
+  it("reads title context from the first persisted user message", async () => {
+    raw.exec(`
+      INSERT INTO chats (id, user_id, kind) VALUES ('chat', 'user', 'voice');
+      INSERT INTO messages (id, chat_id, role, parts) VALUES
+        ('assistant', 'chat', 'assistant', '[{"type":"text","text":"Earlier assistant"}]'),
+        ('first-user', 'chat', 'user', '[{"type":"text","text":"First topic"}]'),
+        ('second-user', 'chat', 'user', '[{"type":"text","text":"Follow-up"}]');
+    `);
+
+    await expect(
+      chatQueries.getChatTitleContext("chat", "user"),
+    ).resolves.toEqual({
+      title: null,
+      firstUserParts: [{ type: "text", text: "First topic" }],
+    });
+    await expect(
+      chatQueries.getChatTitleContext("chat", "other"),
+    ).resolves.toBeNull();
   });
 
   it("never converts a text chat or another user's chat", () => {

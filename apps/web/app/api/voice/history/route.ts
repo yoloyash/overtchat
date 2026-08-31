@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
 import { getChat } from "@/lib/db/chats";
-import { getModelConfig, getTaskModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig } from "@/lib/db/modelConfigs";
 import { syncVoiceHistory } from "@/lib/db/voiceChats";
-import { generateChatTitle } from "@/lib/title";
+import { ensureChatTitle } from "@/lib/title";
 import { voiceHistoryToUiMessages } from "@/lib/voice/history";
 import { verifyVoiceTicket } from "@/lib/voice/ticket";
 
@@ -70,18 +70,12 @@ export async function POST(request: Request) {
     );
   }
 
-  if (result.firstUserParts) {
-    const selectedModel = await getModelConfig(ticket.modelConfigId);
-    const titleModel = getTaskModelConfig() ?? selectedModel;
-    if (titleModel?.enabled) {
-      await generateChatTitle({
-        chatId: ticket.chatId,
-        userId: ticket.userId,
-        modelConfig: titleModel,
-        userParts: result.firstUserParts,
-      });
-    }
-  }
+  const selectedModel = await getModelConfig(ticket.modelConfigId);
+  await ensureChatTitle({
+    chatId: ticket.chatId,
+    userId: ticket.userId,
+    fallbackModelConfig: selectedModel,
+  });
   const chat = await getChat(ticket.chatId, ticket.userId);
   return Response.json({
     chat: chat

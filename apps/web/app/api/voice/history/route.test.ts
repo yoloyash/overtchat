@@ -6,8 +6,7 @@ const mocks = vi.hoisted(() => ({
   syncVoiceHistory: vi.fn(),
   getChat: vi.fn(),
   getModelConfig: vi.fn(),
-  getTaskModelConfig: vi.fn(),
-  generateChatTitle: vi.fn(),
+  ensureChatTitle: vi.fn(),
 }));
 
 vi.mock("@/lib/auth/server", () => ({
@@ -22,9 +21,8 @@ vi.mock("@/lib/db/voiceChats", () => ({
 vi.mock("@/lib/db/chats", () => ({ getChat: mocks.getChat }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
-  getTaskModelConfig: mocks.getTaskModelConfig,
 }));
-vi.mock("@/lib/title", () => ({ generateChatTitle: mocks.generateChatTitle }));
+vi.mock("@/lib/title", () => ({ ensureChatTitle: mocks.ensureChatTitle }));
 
 import { POST } from "./route";
 
@@ -51,10 +49,8 @@ describe("voice history sync", () => {
       status: "ok",
       createdChat: true,
       changed: true,
-      firstUserParts: [{ type: "text", text: "Hello" }],
     });
     mocks.getModelConfig.mockResolvedValue({ id: "model-1", enabled: true });
-    mocks.getTaskModelConfig.mockReturnValue(null);
     mocks.getChat.mockResolvedValue({
       id: "chat-1",
       title: null,
@@ -65,7 +61,7 @@ describe("voice history sync", () => {
   });
 
   it("persists completed transcript and tool items under the ticket chat", async () => {
-    mocks.generateChatTitle.mockImplementation(async () => {
+    mocks.ensureChatTitle.mockImplementation(async () => {
       await Promise.resolve();
       mocks.getChat.mockResolvedValue({
         id: "chat-1",
@@ -110,9 +106,11 @@ describe("voice history sync", () => {
         ],
       }),
     );
-    expect(mocks.generateChatTitle).toHaveBeenCalledWith(
-      expect.objectContaining({ chatId: "chat-1", userId: "user-1" }),
-    );
+    expect(mocks.ensureChatTitle).toHaveBeenCalledWith({
+      chatId: "chat-1",
+      userId: "user-1",
+      fallbackModelConfig: { id: "model-1", enabled: true },
+    });
     await expect(response.json()).resolves.toMatchObject({
       chat: { id: "chat-1", title: "Greeting" },
     });
