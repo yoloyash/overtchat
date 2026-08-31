@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
 import { useAppUpdate } from "@/lib/queries/appUpdate";
 import { useSidebar } from "@/components/sidebar-context";
+import { clearComposerDraftsForUser } from "@/lib/chat/composer-drafts";
 
 const UPDATE_COMMAND = "overtchat update";
 
@@ -62,6 +63,7 @@ export function AccountMenu() {
         });
         return;
       }
+      if (session?.user.id) clearComposerDraftsForUser(session.user.id);
       router.replace("/login");
       router.refresh();
     } catch (err) {

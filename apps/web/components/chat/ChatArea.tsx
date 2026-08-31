@@ -61,6 +61,10 @@ import {
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
 import { hasSuccessfulMemoryMutation } from "@/lib/personalization/tool-parts";
+import {
+  chatComposerDraftScope,
+  newChatComposerDraftScope,
+} from "@/lib/chat/composer-drafts";
 import { AdminOnboardingCard } from "@/components/AdminOnboardingCard";
 import { useSidebar } from "@/components/sidebar-context";
 import { toast } from "@/components/ui/toast";
@@ -156,6 +160,14 @@ export function ChatArea({
   );
 
   const [temporary, setTemporary] = useState(false);
+  const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
+    () =>
+      initialQuery?.trim()
+        ? null
+        : isNew
+          ? newChatComposerDraftScope(projectId)
+          : chatComposerDraftScope(chatId),
+  );
   const [chatPersisted, setChatPersisted] = useState(!isNew);
   const { data: sessionUsage } = useChatUsage(
     chatId,
@@ -364,6 +376,14 @@ export function ChatArea({
     }
   }
 
+  const markNewChatPersisted = useCallback(() => {
+    if (!isNewRef.current) return false;
+    isNewRef.current = false;
+    setComposerDraftScope(chatComposerDraftScope(chatId));
+    window.history.replaceState(null, "", `/chat/${chatId}`);
+    return true;
+  }, [chatId]);
+
   function handleSubmit(text: string, attachments: FileUIPart[]) {
     if (voiceActive) {
       voiceSessionRef.current?.sendMessage(text);
@@ -371,10 +391,8 @@ export function ChatArea({
     }
     if (resolvedChatKind === "voice") return;
     setInferenceActivity(null);
-    const wasNew = isNewRef.current && !temporary;
+    const wasNew = !temporary && markNewChatPersisted();
     if (wasNew) {
-      isNewRef.current = false;
-      window.history.replaceState(null, "", `/chat/${chatId}`);
       qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) => {
         const next: ChatListItem = {
           id: chatId,
@@ -499,10 +517,7 @@ export function ChatArea({
     (chat: ChatListItem) => {
       setResolvedChatKind("voice");
       setChatPersisted(true);
-      if (isNewRef.current) {
-        isNewRef.current = false;
-        window.history.replaceState(null, "", `/chat/${chatId}`);
-      }
+      markNewChatPersisted();
       qc.setQueryData<ChatListItem[]>(chatKeys.list(), (current) => {
         const withoutChat = (current ?? []).filter((item) => item.id !== chat.id);
         return [chat, ...withoutChat];
@@ -513,7 +528,7 @@ export function ChatArea({
         qc.invalidateQueries({ queryKey: activityKeys.all() }),
       ]);
     },
-    [chatId, qc],
+    [chatId, markNewChatPersisted, qc],
   );
 
   // Temporary mode is only switchable before the first message, matching the
@@ -588,6 +603,9 @@ export function ChatArea({
       onStartVoice={() => setVoiceActive(true)}
       onEndVoice={() => setVoiceActive(false)}
       isAdmin={isAdmin}
+      draftUserId={session?.user.id}
+      draftScope={composerDraftScope}
+      draftEnabled={!temporary}
     />
   );
 

@@ -2,6 +2,7 @@
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useId,
   useImperativeHandle,
@@ -38,6 +39,7 @@ import {
   getDataTransferFiles,
 } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
+import { useComposerDraft } from "@/lib/chat/use-composer-draft";
 import { motionClasses } from "@/lib/motion";
 import { useDictation } from "@/lib/useDictation";
 import {
@@ -102,6 +104,9 @@ interface ComposerProps {
   onStartVoice: () => void;
   onEndVoice: () => void;
   isAdmin: boolean;
+  draftUserId?: string;
+  draftScope: string | null;
+  draftEnabled: boolean;
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
@@ -127,8 +132,28 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onStartVoice,
   onEndVoice,
   isAdmin,
+  draftUserId,
+  draftScope,
+  draftEnabled,
 }, ref) {
-  const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const handleDraftRestore = useCallback(() => {
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (el) el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, []);
+  const {
+    value: input,
+    setValue: setInput,
+    clear: clearDraft,
+  } = useComposerDraft({
+    userId: draftUserId,
+    scope: draftScope,
+    enabled: draftEnabled,
+    onRestore: handleDraftRestore,
+  });
   const {
     attachments,
     uploading,
@@ -137,9 +162,6 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     removeAttachment,
     clearAttachments,
   } = useChatAttachments();
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useImperativeHandle(
     ref,
@@ -408,7 +430,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
     onSubmit(text, readyParts);
-    setInput("");
+    clearDraft();
     setDismissedQuery(null);
     setActiveIndex(0);
     clearAttachments();
