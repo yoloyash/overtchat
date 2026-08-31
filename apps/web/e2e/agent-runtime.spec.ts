@@ -181,7 +181,8 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
           {
             id: "answer",
             type: "text",
-            text: "I will inspect the runtime.",
+            text:
+              "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
           },
         ],
         timestamp: 2.2,
@@ -193,7 +194,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         role: "turnFooter",
         messageId: "turn-1:assistant",
         content:
-          "I'm auditing the release state before merging anything.\n\nI will inspect the runtime.",
+          "I'm auditing the release state before merging anything.\n\nI will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
         durationMs: 246_000,
         timestamp: 2.3,
       },
@@ -770,6 +771,42 @@ test("shows durable turn activity without changing completed tool status", async
   const agentHeader = page.getByTestId("agent-session-header");
   const agentComposer = page.getByTestId("agent-composer");
   await expect(
+    agentHeader.getByTestId("agent-provider-identity"),
+  ).toHaveAccessibleName("Codex agent");
+  await expect(agentHeader.getByTestId("agent-workspace-path")).toHaveText(
+    "/tmp/runtime-test",
+  );
+  await expect(agentHeader.getByTestId("agent-workspace-path")).toHaveAttribute(
+    "title",
+    "/tmp/runtime-test",
+  );
+  await expect(
+    page.getByRole("button", { name: /overtchat\/overtchat PR #232/u }),
+  ).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-github")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-typescript")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-web")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-json")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-csharp")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-file")).toBeVisible();
+  const agentViewLink = page
+    .getByTestId("agent-workspace-link")
+    .filter({ hasText: "the agent view" });
+  await expect(agentViewLink).toBeVisible();
+  await expect(agentViewLink).toHaveAttribute(
+    "data-workspace-path",
+    "apps/web/components/agents/AgentSessionView.tsx",
+  );
+  await expect(agentViewLink).toHaveAttribute("data-line-start", "391");
+  await expect(
+    page.getByRole("button", { name: "the docs", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByTestId("agent-workspace-link")
+      .filter({ hasText: "the fixture" }),
+  ).toBeVisible();
+  await expect(
     agentHeader.getByTestId("agent-model-effort-trigger"),
   ).toHaveCount(0);
   await expect(
@@ -898,7 +935,9 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("I should inspect the runtime before responding."),
   ).toBeVisible();
   await expect(
-    page.getByText("I will inspect the runtime.", { exact: true }),
+    page
+      .getByRole("paragraph")
+      .filter({ hasText: "I will inspect the runtime." }),
   ).toBeVisible();
   await expect(page.getByTestId("agent-plan-card")).toContainText(
     "Finish parity",

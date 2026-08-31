@@ -391,8 +391,8 @@ export function AgentSessionView({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <AgentSessionHeader
+        provider={provider}
         workspaceId={workspaceId}
-        workspaceName={workspaceName}
         workspacePath={workspacePath}
         stats={snapshot.stats}
         running={running}
