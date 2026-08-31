@@ -4,7 +4,7 @@ name: Build and publish app image
 # Built for linux/amd64 + linux/arm64.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]*"]
 
 permissions: {}
 
