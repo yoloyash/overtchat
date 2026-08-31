@@ -23,7 +23,11 @@ function profileList(config: InstallationConfig): string[] {
     );
   }
   if (config.stt.bundledInstalled) {
-    profiles.push(config.stt.accelerator === "cpu" ? "stt-cpu" : "stt-gpu");
+    profiles.push(
+      config.stt.accelerator === "auto" || config.stt.accelerator === "gpu"
+        ? "stt-gpu"
+        : "stt-cpu",
+    );
   }
   if (config.voice.installed) profiles.push("voice");
   return profiles;

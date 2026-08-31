@@ -188,6 +188,71 @@ describe("managed installation state", () => {
     }
   });
 
+  it("keeps missing STT accelerator state on CPU", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-legacy-stt-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const legacy = defaultInstallationConfig(null, manifest);
+      legacy.stt = { provider: "bundled", bundledInstalled: true };
+      await writeFile(paths.stateFile, JSON.stringify(legacy));
+
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        stt: {
+          provider: "bundled",
+          bundledInstalled: true,
+          accelerator: "cpu",
+        },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("repairs stale bundled state for external and deferred providers", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-stale-provider-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const stale = defaultInstallationConfig(null, manifest);
+      stale.search = { provider: "brave", bundledInstalled: true };
+      stale.tts = {
+        provider: "openai-compatible",
+        bundledInstalled: true,
+        baseUrl: "http://tts.example.com",
+        accelerator: "gpu",
+        gpuUuid: "GPU-tts",
+        gpuVariant: "blackwell",
+      };
+      stale.stt = {
+        provider: "disabled",
+        bundledInstalled: true,
+        accelerator: "gpu",
+        gpuUuid: "GPU-stt",
+      };
+      stale.voice = { installed: true };
+      await writeFile(paths.stateFile, JSON.stringify(stale));
+
+      const loaded = await readInstallationConfig(paths);
+
+      expect(loaded?.search.bundledInstalled).toBe(false);
+      expect(loaded?.tts).toEqual({
+        provider: "openai-compatible",
+        bundledInstalled: false,
+        baseUrl: "http://tts.example.com",
+      });
+      expect(loaded?.stt).toEqual({
+        provider: "disabled",
+        bundledInstalled: false,
+      });
+      expect(loaded?.voice).toEqual({ installed: false });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("never persists provider API keys", async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), "overtchat-installation-state-"),

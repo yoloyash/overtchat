@@ -1,9 +1,65 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   existingInstallationSummary,
   kokoroGpuVariant,
+  promptInstallationConfig,
 } from "./prompts.js";
-import type { ExistingInstallation } from "./types.js";
+import type { ExistingInstallation, InstallationConfig } from "./types.js";
+
+const promptAnswers = vi.hoisted(() => new Map<string, unknown>());
+const selectPrompts = vi.hoisted(
+  () =>
+    [] as Array<{
+      message: string;
+      options: Array<{ value: string; label: string }>;
+    }>,
+);
+const confirmPrompts = vi.hoisted(
+  () =>
+    [] as Array<{
+      message: string;
+      active: string;
+      inactive: string;
+    }>,
+);
+
+vi.mock("@clack/prompts", () => ({
+  cancel: vi.fn(),
+  confirm: vi.fn(
+    async (prompt: { message: string; active: string; inactive: string }) => {
+      confirmPrompts.push(prompt);
+      return promptAnswers.get(prompt.message);
+    },
+  ),
+  intro: vi.fn(),
+  isCancel: vi.fn(() => false),
+  note: vi.fn(),
+  password: vi.fn(async ({ message }: { message: string }) =>
+    promptAnswers.get(message),
+  ),
+  select: vi.fn(
+    async (prompt: {
+      message: string;
+      options: Array<{ value: string; label: string }>;
+    }) => {
+      selectPrompts.push(prompt);
+      return promptAnswers.get(prompt.message);
+    },
+  ),
+  text: vi.fn(async ({ message }: { message: string }) =>
+    promptAnswers.get(message),
+  ),
+}));
+
+vi.mock("./process.js", () => ({
+  commandExists: vi.fn(async () => false),
+}));
+
+beforeEach(() => {
+  promptAnswers.clear();
+  selectPrompts.length = 0;
+  confirmPrompts.length = 0;
+});
 
 function installation(
   overrides: Partial<ExistingInstallation> = {},
@@ -23,6 +79,47 @@ function installation(
     bundledServices: { search: true, tts: true, stt: true },
     sttAccelerator: "cpu",
     ...overrides,
+  };
+}
+
+function setupConfig(): InstallationConfig {
+  return {
+    format: 1,
+    appVersion: "1.2.3",
+    appImage: "ghcr.io/example/overtchat:1.2.3",
+    voiceVersion: "1.0.0",
+    voiceImage: "ghcr.io/example/overtchat-voice:1.0.0",
+    connectorVersion: "2.0.0",
+    sttVersion: "3.0.0",
+    redisImage: "redis",
+    searxngImage: "searxng",
+    kokoroImage: "kokoro-cpu",
+    kokoroGpuImage: "kokoro-gpu",
+    kokoroGpuBlackwellImage: "kokoro-gpu-blackwell",
+    appPort: 4717,
+    bindAddress: "0.0.0.0",
+    publicUrl: "http://localhost:4717",
+    extraTrustedOrigins: [],
+    connectorServerUrl: "http://127.0.0.1:4717",
+    composeProject: "overtchat",
+    dataMountType: "volume",
+    dataVolume: "overtchat-data",
+    search: { provider: "bundled", bundledInstalled: true },
+    tts: {
+      provider: "bundled",
+      bundledInstalled: true,
+      accelerator: "gpu",
+      gpuUuid: "GPU-old",
+      gpuVariant: "standard",
+    },
+    stt: {
+      provider: "bundled",
+      bundledInstalled: true,
+      accelerator: "gpu",
+      gpuUuid: "GPU-old",
+    },
+    voice: { installed: true },
+    agents: { installed: true },
   };
 }
 
@@ -72,5 +169,86 @@ describe("existing installation summary", () => {
     expect(
       kokoroGpuVariant({ ...gpu, name: "RTX 4090", computeCapability: 8.9 }, "x64"),
     ).toBe("standard");
+  });
+});
+
+describe("setup provider selection", () => {
+  it("removes hidden bundled speech services after external providers are selected", async () => {
+    const config = setupConfig();
+    promptAnswers.set("Web search", "brave");
+    promptAnswers.set("Brave Search API key", "brave-key");
+    promptAnswers.set("Text-to-speech", "openai-compatible");
+    promptAnswers.set("TTS API base URL", "http://tts.example.com");
+    promptAnswers.set("TTS API key (leave blank when not required)", "");
+    promptAnswers.set("TTS model", "kokoro");
+    promptAnswers.set("Default voice", "af_heart");
+    promptAnswers.set("Speech-to-text", "openai-compatible");
+    promptAnswers.set("STT API base URL", "http://stt.example.com");
+    promptAnswers.set("STT API key (leave blank when not required)", "");
+    promptAnswers.set("STT model", "parakeet");
+    promptAnswers.set("Install realtime voice conversations?", true);
+    promptAnswers.set("Install Agent Connections?", false);
+
+    const selected = await promptInstallationConfig(config, []);
+
+    expect(selected.search).toMatchObject({
+      provider: "brave",
+      bundledInstalled: false,
+    });
+    expect(selected.tts).toMatchObject({
+      provider: "openai-compatible",
+      bundledInstalled: false,
+    });
+    expect(selected.tts).not.toHaveProperty("accelerator");
+    expect(selected.tts).not.toHaveProperty("gpuUuid");
+    expect(selected.stt).toMatchObject({
+      provider: "openai-compatible",
+      bundledInstalled: false,
+    });
+    expect(selected.stt).not.toHaveProperty("accelerator");
+    expect(selected.stt).not.toHaveProperty("gpuUuid");
+    for (const message of ["Web search", "Text-to-speech", "Speech-to-text"]) {
+      expect(
+        selectPrompts.find((prompt) => prompt.message === message)?.options,
+      ).toContainEqual({
+        value: "disabled",
+        label: "Set up later",
+        hint: expect.any(String),
+      });
+    }
+    for (const message of [
+      "Install realtime voice conversations?",
+      "Install Agent Connections?",
+    ]) {
+      expect(
+        confirmPrompts.find((prompt) => prompt.message === message),
+      ).toMatchObject({
+        active: "Yes",
+        inactive: "Set up later",
+      });
+    }
+  });
+
+  it("removes previously installed optional services when setup is deferred", async () => {
+    promptAnswers.set("Web search", "disabled");
+    promptAnswers.set("Text-to-speech", "disabled");
+    promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install Agent Connections?", false);
+
+    const selected = await promptInstallationConfig(setupConfig(), []);
+
+    expect(selected.search).toEqual({
+      provider: "disabled",
+      bundledInstalled: false,
+    });
+    expect(selected.tts).toEqual({
+      provider: "disabled",
+      bundledInstalled: false,
+    });
+    expect(selected.stt).toEqual({
+      provider: "disabled",
+      bundledInstalled: false,
+    });
+    expect(selected.voice).toEqual({ installed: false });
   });
 });

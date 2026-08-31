@@ -35,13 +35,17 @@ vi.mock("@clack/prompts", () => ({
   }),
 }));
 
-vi.mock("./config.js", () => ({
-  initialSecrets: mocks.initialSecrets,
-  readInstallationConfig: mocks.readInstallationConfig,
-  readInstallationSecrets: mocks.readInstallationSecrets,
-  writeInstallationConfig: mocks.writeInstallationConfig,
-  writeSecretsFile: mocks.writeSecretsFile,
-}));
+vi.mock("./config.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./config.js")>();
+  return {
+    ...original,
+    initialSecrets: mocks.initialSecrets,
+    readInstallationConfig: mocks.readInstallationConfig,
+    readInstallationSecrets: mocks.readInstallationSecrets,
+    writeInstallationConfig: mocks.writeInstallationConfig,
+    writeSecretsFile: mocks.writeSecretsFile,
+  };
+});
 
 vi.mock("./connector.js", () => ({
   installManagedConnector: mocks.installManagedConnector,
@@ -121,7 +125,11 @@ function config(
     dataMountType: "volume",
     dataVolume: "overtchat-data",
     search: { provider: "bundled", bundledInstalled: true },
-    tts: { provider: "bundled", bundledInstalled: true },
+    tts: {
+      provider: "bundled",
+      bundledInstalled: true,
+      accelerator: "cpu",
+    },
     stt: { provider: "disabled", bundledInstalled: false },
     voice: { installed: false },
     agents: { installed: false },
@@ -268,6 +276,53 @@ describe("managed updates", () => {
       mocks.waitForApp.mock.invocationCallOrder[0],
     ).toBeLessThan(mocks.reconcileManagedSidecars.mock.invocationCallOrder[0]!);
     expect(mocks.outro).toHaveBeenCalledWith("Open: https://chat.example.com");
+  });
+
+  it("repairs stale provider state before pulling update images", async () => {
+    const stale = config({
+      search: { provider: "brave", bundledInstalled: true },
+      tts: {
+        provider: "openai-compatible",
+        bundledInstalled: true,
+        baseUrl: "http://tts.example.com",
+        accelerator: "gpu",
+        gpuUuid: "GPU-tts",
+        gpuVariant: "blackwell",
+      },
+      stt: {
+        provider: "disabled",
+        bundledInstalled: true,
+        accelerator: "gpu",
+        gpuUuid: "GPU-stt",
+      },
+      voice: { installed: true },
+    });
+    mocks.readInstallationConfig.mockResolvedValue(stale);
+
+    await update();
+
+    const repaired = {
+      ...stale,
+      search: { provider: "brave", bundledInstalled: false },
+      tts: {
+        provider: "openai-compatible",
+        bundledInstalled: false,
+        baseUrl: "http://tts.example.com",
+      },
+      stt: { provider: "disabled", bundledInstalled: false },
+      voice: { installed: false },
+    };
+    expect(mocks.prepareFiles).toHaveBeenCalledWith(repaired, undefined);
+    expect(mocks.renderStackEnvironment).toHaveBeenCalledWith(
+      repaired,
+      secrets,
+      paths,
+    );
+    expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, repaired);
+    expect(mocks.reconcileManagedSidecars).toHaveBeenCalledWith(
+      "docker",
+      repaired,
+    );
   });
 
   it("updates every component without downgrading newer local versions", async () => {

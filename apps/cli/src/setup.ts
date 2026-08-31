@@ -4,6 +4,7 @@ import { confirm, isCancel, note, outro, spinner } from "@clack/prompts";
 import {
   defaultInstallationConfig,
   initialSecrets,
+  normalizeInstallationConfig,
   readInstallationConfig,
   readInstallationSecrets,
   writeInstallationConfig,
@@ -342,6 +343,7 @@ export async function setup(
       await runningCapabilities(config, previousSecrets.managementSecret),
     );
   }
+  config = normalizeInstallationConfig(config);
   if (options.development) {
     if (!(await exists(path.join(sourceDirectory, "Dockerfile")))) {
       throw new Error(
@@ -397,7 +399,8 @@ export async function setup(
     config.tts.provider === "bundled" &&
     (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu");
   const sttUsesGpu =
-    config.stt.provider === "bundled" && config.stt.accelerator !== "cpu";
+    config.stt.provider === "bundled" &&
+    (config.stt.accelerator === "auto" || config.stt.accelerator === "gpu");
   if (
     (ttsUsesGpu || sttUsesGpu) &&
     !(await nvidiaContainerRuntimeAvailable(docker))

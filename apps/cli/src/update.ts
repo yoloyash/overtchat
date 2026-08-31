@@ -1,6 +1,7 @@
 import { outro, spinner } from "@clack/prompts";
 import {
   initialSecrets,
+  normalizeInstallationConfig,
   readInstallationConfig,
   readInstallationSecrets,
   writeInstallationConfig,
@@ -61,7 +62,9 @@ export async function update(): Promise<void> {
       return;
     }
 
-    const nextConfig = applyReleaseManifest(config, manifest);
+    const nextConfig = normalizeInstallationConfig(
+      applyReleaseManifest(config, manifest),
+    );
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(
       paths,
