@@ -1,9 +1,10 @@
 import "server-only";
 import { and, asc, desc, eq } from "drizzle-orm";
+import type { ChatKind } from "@overtchat/shared";
 import { db } from "@/lib/db/client";
 import { chats, memories, messages, userPersonalization } from "@/lib/db/schema";
 
-export const EXPORT_VERSION = 2;
+export const EXPORT_VERSION = 3;
 
 export type ExportedMessage = {
   id: string;
@@ -16,6 +17,7 @@ export type ExportedMessage = {
 export type ExportedChat = {
   id: string;
   title: string | null;
+  kind: ChatKind;
   createdAt: string;
   updatedAt: string;
   messages: ExportedMessage[];
@@ -57,6 +59,7 @@ async function loadOne(chatId: string, userId: string): Promise<ExportedChat | n
   return {
     id: chat.id,
     title: chat.title,
+    kind: chat.kind,
     createdAt: chat.createdAt.toISOString(),
     updatedAt: chat.updatedAt.toISOString(),
     messages: rows.map((r) => ({

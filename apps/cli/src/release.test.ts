@@ -19,6 +19,8 @@ function config(
     format: 1,
     appVersion: "1.0.0",
     appImage: "ghcr.io/yoloyash/overtchat-app:1.0.0",
+    voiceVersion: "0.1.0",
+    voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.1.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
     ...releaseImages,
@@ -33,6 +35,7 @@ function config(
     search: { provider: "bundled", bundledInstalled: true },
     tts: { provider: "bundled", bundledInstalled: true },
     stt: { provider: "disabled", bundledInstalled: false },
+    voice: { installed: false },
     agents: { installed: false },
     ...overrides,
   };
@@ -45,6 +48,7 @@ describe("release manifest", () => {
         format: 1,
         cliVersion: "1.2.3",
         appVersion: "4.5.6",
+        voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
         ...releaseImages,
@@ -53,6 +57,7 @@ describe("release manifest", () => {
       format: 1,
       cliVersion: "1.2.3",
       appVersion: "4.5.6",
+      voiceVersion: "0.1.0",
       connectorVersion: "7.8.9",
       sttVersion: "0.1.0",
       ...releaseImages,
@@ -65,6 +70,7 @@ describe("release manifest", () => {
         format: 1,
         cliVersion: "latest",
         appVersion: "4.5.6",
+        voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
         ...releaseImages,
@@ -84,6 +90,7 @@ describe("release manifest", () => {
         format: 1,
         cliVersion: "9.0.0",
         appVersion: "1.1.0",
+        voiceVersion: "0.2.0",
         connectorVersion: "1.9.0",
         sttVersion: "3.1.0",
         ...releaseImages,
@@ -91,9 +98,28 @@ describe("release manifest", () => {
     ).toMatchObject({
       appVersion: "1.1.0",
       appImage: "ghcr.io/yoloyash/overtchat-app:1.1.0",
+      voiceVersion: "0.2.0",
+      voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.2.0",
       connectorVersion: "2.0.0",
       sttVersion: "3.1.0",
       ...releaseImages,
+    });
+  });
+
+  it("does not retag voice when only the app version changes", () => {
+    expect(
+      applyReleaseManifest(config(), {
+        format: 1,
+        cliVersion: "1.0.0",
+        appVersion: "1.1.0",
+        voiceVersion: "0.1.0",
+        connectorVersion: "2.0.0",
+        sttVersion: "3.0.0",
+        ...releaseImages,
+      }),
+    ).toMatchObject({
+      appImage: "ghcr.io/yoloyash/overtchat-app:1.1.0",
+      voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.1.0",
     });
   });
 
@@ -103,6 +129,7 @@ describe("release manifest", () => {
         format: 1,
         cliVersion: "1.0.0",
         appVersion: "1.1.0",
+        voiceVersion: "0.1.0",
         connectorVersion: "2.0.0",
         sttVersion: "3.0.0",
         ...releaseImages,
@@ -116,6 +143,7 @@ describe("release manifest", () => {
         format: 1,
         cliVersion: "1.2.3",
         appVersion: "4.5.6",
+        voiceVersion: "0.1.0",
         connectorVersion: "7.8.9",
         sttVersion: "0.1.0",
         ...releaseImages,

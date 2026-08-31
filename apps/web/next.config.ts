@@ -1,6 +1,11 @@
 import path from "node:path";
 import type { NextConfig } from "next";
 
+const voiceOrigin = (process.env.VOICE_URL ?? "http://voice:8765").replace(
+  /\/$/,
+  "",
+);
+
 const nextConfig: NextConfig = {
   output: "standalone",
   outputFileTracingRoot: path.join(__dirname, "../../"),
@@ -19,6 +24,16 @@ const nextConfig: NextConfig = {
   // (Next.js ignores this at build time). Phone-on-LAN testing needs the
   // host's LAN IP listed here.
   allowedDevOrigins: ["10.0.0.200", "10.0.0.26"],
+  async rewrites() {
+    return {
+      beforeFiles: [
+        {
+          source: "/api/voice/realtime",
+          destination: `${voiceOrigin}/v1/realtime`,
+        },
+      ],
+    };
+  },
 };
 
 export default nextConfig;

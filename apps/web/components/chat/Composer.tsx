@@ -13,6 +13,7 @@ import {
 import type { FileUIPart } from "ai";
 import {
   AlertCircle,
+  AudioLines,
   ArrowUp,
   Check,
   Cpu,
@@ -89,10 +90,19 @@ interface ComposerProps {
   dropActive: boolean;
   models: PublicModelConfig[] | null;
   selectedModelId: string;
+  voiceInstalled: boolean;
+  voiceEligible: boolean;
+  voiceAvailable: boolean;
+  voiceActive: boolean;
+  voiceUnavailableReason: string;
+  attachmentsEnabled: boolean;
+  textInputDisabled: boolean;
   commandActions: ComposerCommandActions;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
   onStop: () => void;
+  onStartVoice: () => void;
+  onEndVoice: () => void;
   isAdmin: boolean;
   draftUserId?: string;
   draftScope: string | null;
@@ -108,10 +118,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   dropActive,
   models,
   selectedModelId,
+  voiceInstalled,
+  voiceEligible,
+  voiceAvailable,
+  voiceActive,
+  voiceUnavailableReason,
+  attachmentsEnabled,
+  textInputDisabled,
   commandActions,
   onToggleSearch,
   onSubmit,
   onStop,
+  onStartVoice,
+  onEndVoice,
   isAdmin,
   draftUserId,
   draftScope,
@@ -407,7 +426,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function submit() {
     const text = input.trim();
-    if (streaming || uploading) return;
+    if (streaming || uploading || textInputDisabled) return;
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
     onSubmit(text, readyParts);
@@ -418,7 +437,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handleFiles(files: FileList | null) {
-    if (!files || files.length === 0) return;
+    if (!attachmentsEnabled || !files || files.length === 0) return;
     addFiles(Array.from(files));
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
@@ -432,6 +451,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
+    if (!attachmentsEnabled) return;
     const files = getDataTransferFiles(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
@@ -480,10 +500,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             ref={textareaRef}
             rows={1}
             placeholder={
-              configured ? "Message… or / for commands" : "No models configured"
+              textInputDisabled
+                ? "Resume voice to continue"
+                : configured
+                  ? "Message… or / for commands"
+                  : "No models configured"
             }
             className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
             value={input}
+            disabled={textInputDisabled}
             onChange={(e) => {
               setInput(e.target.value);
               setActiveIndex(0);
@@ -521,6 +546,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       size="icon-sm"
                       className="rounded-full"
                       aria-label="Add to message"
+                      disabled={!attachmentsEnabled && !searchAvailable}
                     />
                   }
                 >
@@ -536,7 +562,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     >
                       <Menu.Item
                         onClick={() => fileInputRef.current?.click()}
-                        disabled={uploading}
+                        disabled={uploading || !attachmentsEnabled}
                         className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                       >
                         <Paperclip className="size-4 shrink-0 text-muted-foreground" />
@@ -603,7 +629,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                     void dictation.start();
                   }
                 }}
-                disabled={dictation.status === "transcribing"}
+                disabled={dictation.status === "transcribing" || voiceActive}
                 aria-label={
                   dictation.status === "recording"
                     ? "Stop dictation"
@@ -630,6 +656,35 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   aria-label="Stop generating"
                 >
                   <Square className="size-3 fill-current" />
+                </Button>
+              ) : voiceActive && !input.trim() && readyParts.length === 0 ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon-sm"
+                  className="shrink-0 rounded-full"
+                  onClick={onEndVoice}
+                  aria-label="End voice session"
+                >
+                  <X />
+                </Button>
+              ) : voiceInstalled &&
+                voiceEligible &&
+                !input.trim() &&
+                readyParts.length === 0 ? (
+                <Button
+                  type="button"
+                  variant="default"
+                  size="icon-sm"
+                  className="shrink-0 rounded-full"
+                  onClick={onStartVoice}
+                  disabled={!voiceAvailable}
+                  aria-label="Start voice conversation"
+                  title={
+                    voiceAvailable ? "Voice conversation" : voiceUnavailableReason
+                  }
+                >
+                  <AudioLines />
                 </Button>
               ) : (
                 <Button

@@ -19,6 +19,7 @@ export default async function Page({
     <ChatArea
       key={id}
       chatId={id}
+      chatKind={chat.kind}
       projectId={chat.projectId ?? null}
       initialMessages={initialPage.messages}
       initialMessageCursor={initialPage.nextCursor}

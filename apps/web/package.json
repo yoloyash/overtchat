@@ -30,6 +30,7 @@
     "@ai-sdk/react": "^4.0.87",
     "@base-ui/react": "^1.4.1",
     "@better-auth/expo": "1.6.23",
+    "@openai/agents": "0.14.3",
     "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
     "@streamdown/cjk": "^1.0.3",

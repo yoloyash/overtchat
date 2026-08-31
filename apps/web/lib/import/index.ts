@@ -82,6 +82,7 @@ function writeChats(
         id: chatId,
         userId,
         title: chat.title.slice(0, 200),
+        kind: chat.kind ?? "text",
         createdAt: chat.createdAt,
         updatedAt: chat.createdAt,
       })

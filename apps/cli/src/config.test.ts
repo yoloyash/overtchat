@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,12 +9,17 @@ import {
   writeInstallationConfig,
 } from "./config.js";
 import type { ReleaseManifest } from "./release.js";
-import type { ExistingInstallation, RuntimePaths } from "./types.js";
+import type {
+  ExistingInstallation,
+  InstallationConfig,
+  RuntimePaths,
+} from "./types.js";
 
 const manifest: ReleaseManifest = {
   format: 1,
   cliVersion: "1.0.0",
   appVersion: "2.0.0",
+  voiceVersion: "5.0.0",
   connectorVersion: "3.0.0",
   sttVersion: "4.0.0",
   redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
@@ -50,11 +55,30 @@ function existing(
   };
 }
 
+function pathsFor(directory: string): RuntimePaths {
+  return {
+    configDirectory: directory,
+    stateFile: path.join(directory, "installation.json"),
+    secretsFile: path.join(directory, "stack.env"),
+    stackDirectory: path.join(directory, "stack"),
+    composeFile: path.join(directory, "stack", "compose.yml"),
+    searxngDirectory: path.join(directory, "stack", "searxng"),
+    searxngSettingsFile: path.join(
+      directory,
+      "stack",
+      "searxng",
+      "settings.yml",
+    ),
+  };
+}
+
 describe("existing installation adoption", () => {
   it("uses the release manifest for a fresh installation", () => {
     expect(defaultInstallationConfig(null, manifest)).toMatchObject({
       appVersion: "2.0.0",
       appImage: "ghcr.io/yoloyash/overtchat-app:2.0.0",
+      voiceVersion: "5.0.0",
+      voiceImage: "ghcr.io/yoloyash/overtchat-voice:5.0.0",
       connectorVersion: "3.0.0",
       sttVersion: "4.0.0",
       redisImage: manifest.redisImage,
@@ -114,24 +138,35 @@ describe("existing installation adoption", () => {
 });
 
 describe("managed installation state", () => {
+  it("gives pre-voice state an upgradeable baseline version", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-legacy-installation-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const legacy: Partial<InstallationConfig> = defaultInstallationConfig(
+        null,
+        manifest,
+      );
+      delete legacy.voiceVersion;
+      delete legacy.voiceImage;
+      await writeFile(paths.stateFile, JSON.stringify(legacy));
+
+      await expect(readInstallationConfig(paths)).resolves.toMatchObject({
+        voiceVersion: "0.0.0",
+        voiceImage: "ghcr.io/yoloyash/overtchat-voice:0.0.0",
+        voice: { installed: false },
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("never persists provider API keys", async () => {
     const directory = await mkdtemp(
       path.join(os.tmpdir(), "overtchat-installation-state-"),
     );
-    const paths: RuntimePaths = {
-      configDirectory: directory,
-      stateFile: path.join(directory, "installation.json"),
-      secretsFile: path.join(directory, "stack.env"),
-      stackDirectory: path.join(directory, "stack"),
-      composeFile: path.join(directory, "stack", "compose.yml"),
-      searxngDirectory: path.join(directory, "stack", "searxng"),
-      searxngSettingsFile: path.join(
-        directory,
-        "stack",
-        "searxng",
-        "settings.yml",
-      ),
-    };
+    const paths = pathsFor(directory);
     try {
       const config = defaultInstallationConfig(null, manifest);
       config.search.apiKey = "brave-secret";

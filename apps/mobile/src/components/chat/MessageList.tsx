@@ -24,6 +24,7 @@ export function MessageList({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  readOnly = false,
 }: {
   messages: UIMessage[];
   streaming: boolean;
@@ -37,6 +38,7 @@ export function MessageList({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  readOnly?: boolean;
 }) {
   const { colors, fonts } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
@@ -77,6 +79,7 @@ export function MessageList({
             onCancelEdit={onCancelEdit}
             onSaveEdit={onSaveEdit}
             onRegenerate={onRegenerate}
+            readOnly={readOnly}
           />
         );
       })}

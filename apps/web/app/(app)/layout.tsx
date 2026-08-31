@@ -36,6 +36,7 @@ export default async function AppLayout({
         return rows.map((c) => ({
           id: c.id,
           title: c.title,
+          kind: c.kind,
           projectId: c.projectId,
           updatedAt: c.updatedAt.getTime(),
         }));

@@ -309,6 +309,12 @@ export async function reconcileManagedSidecars(
       service: "kokoro",
     },
     {
+      containerName: "overtchat-voice",
+      label: "Realtime voice",
+      selected: config.voice.installed,
+      service: "voice",
+    },
+    {
       containerName: "overtchat-stt-cpu",
       label: "Parakeet (CPU)",
       selected:
@@ -429,6 +435,7 @@ async function stoppedComposeInstallation(
   const redis = await inspectContainer(docker, "overtchat-redis");
   const searxng = await inspectContainer(docker, "overtchat-searxng");
   const kokoro = await inspectContainer(docker, "overtchat-kokoro");
+  const voice = await inspectContainer(docker, "overtchat-voice");
   const sttGpu = await inspectContainer(docker, "overtchat-stt-gpu");
   const sttCpu = sttGpu
     ? null
@@ -451,6 +458,7 @@ async function stoppedComposeInstallation(
       search: Boolean(searxng),
       tts: Boolean(kokoro),
       stt: Boolean(sttGpu ?? sttCpu),
+      voice: Boolean(voice),
     },
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],
@@ -488,6 +496,7 @@ export async function detectExistingInstallation(
 
   const searxng = await inspectContainer(docker, "overtchat-searxng");
   const kokoro = await inspectContainer(docker, "overtchat-kokoro");
+  const voice = await inspectContainer(docker, "overtchat-voice");
   const searxngConfigPath = searxng?.Mounts?.find(
     (mount) => mount.Destination === "/etc/searxng",
   )?.Source;
@@ -514,6 +523,7 @@ export async function detectExistingInstallation(
       search: Boolean(searxng),
       tts: Boolean(kokoro),
       stt: Boolean(sttGpu ?? sttCpu),
+      voice: Boolean(voice),
     },
     sttAccelerator: sttGpu ? "gpu" : sttCpu ? "cpu" : undefined,
     sttGpuUuid: sttGpu?.HostConfig?.DeviceRequests?.[0]?.DeviceIDs?.[0],

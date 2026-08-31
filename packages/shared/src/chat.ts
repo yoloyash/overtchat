@@ -1,5 +1,8 @@
 import type { UIMessage } from "ai";
 
+export const CHAT_KINDS = ["text", "voice"] as const;
+export type ChatKind = (typeof CHAT_KINDS)[number];
+
 export type ChatRequestAction =
   | { type: "submit" }
   | { type: "edit"; targetUserMessageId: string }

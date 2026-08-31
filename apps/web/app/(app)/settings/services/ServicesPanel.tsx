@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { VoiceCapability } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
@@ -72,6 +73,51 @@ const TITLES: Record<AdminServerCapability["id"], string> = {
   stt: "Speech-to-text",
 };
 
+interface VoiceServicePresentation {
+  label: string;
+  description: string;
+  configured: boolean;
+}
+
+export function voiceServicePresentation(
+  voice: VoiceCapability,
+): VoiceServicePresentation {
+  if (voice.available) {
+    return {
+      label: "Configured",
+      description: "Realtime voice conversations are available on this server.",
+      configured: true,
+    };
+  }
+  switch (voice.unavailableReason) {
+    case "not-installed":
+      return {
+        label: "Not installed",
+        description: "Run overtchat setup and enable realtime voice conversations.",
+        configured: false,
+      };
+    case "stt-unavailable":
+      return {
+        label: "Needs speech-to-text",
+        description: "Choose a speech-to-text provider above.",
+        configured: false,
+      };
+    case "tts-unavailable":
+      return {
+        label: "Needs text-to-speech",
+        description: "Choose a text-to-speech provider above.",
+        configured: false,
+      };
+    case "not-configured":
+    default:
+      return {
+        label: "Incomplete setup",
+        description: "Run overtchat setup to repair the realtime voice configuration.",
+        configured: false,
+      };
+  }
+}
+
 function needsBaseUrl(capability: CapabilityDraft): boolean {
   return (
     capability.provider === "searxng" ||
@@ -96,7 +142,7 @@ function CapabilitySection({
 
   async function save() {
     try {
-      const updated = await updateCapability.mutateAsync(
+      const { capability: updated } = await updateCapability.mutateAsync(
         draft as unknown as ServerCapabilityInput,
       );
       setDraft(updated);
@@ -302,8 +348,11 @@ function CapabilitySection({
 }
 
 export function ServicesPanel() {
-  const { data: capabilities = [], isPending, error } =
-    useServerCapabilities();
+  const { data, isPending, error } = useServerCapabilities();
+  const capabilities = data?.capabilities ?? [];
+  const voiceStatus = data?.voice
+    ? voiceServicePresentation(data.voice)
+    : null;
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -320,6 +369,31 @@ export function ServicesPanel() {
       {capabilities.map((capability) => (
         <CapabilitySection key={capability.id} capability={capability} />
       ))}
+      {voiceStatus && (
+        <SettingsSection
+          title="Realtime voice"
+          description="Live, interruptible conversations using the speech providers above and the selected chat model."
+        >
+          <SettingsRow
+            title="Status"
+            description={voiceStatus.description}
+            align="center"
+            controlAlign="end"
+          >
+            <span className="inline-flex items-center gap-2 text-sm font-medium">
+              <span
+                className={
+                  voiceStatus.configured
+                    ? "size-2 rounded-full bg-emerald-500"
+                    : "size-2 rounded-full bg-muted-foreground/40"
+                }
+                aria-hidden
+              />
+              {voiceStatus.label}
+            </span>
+          </SettingsRow>
+        </SettingsSection>
+      )}
     </div>
   );
 }

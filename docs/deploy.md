@@ -10,8 +10,9 @@ curl -fsSL https://overtchat.com/install | sh
 ```
 
 The wizard installs Docker when needed and configures the app, optional local
-services, and Agent Connections. Open the printed URL; the first signup becomes
-the administrator.
+services, realtime voice, and Agent Connections. Realtime voice requires both
+speech-to-text and text-to-speech; the wizard offers it after those providers.
+Open the printed URL; the first signup becomes the administrator.
 
 Use the manager for later changes:
 
@@ -48,10 +49,10 @@ update path. Back up their data before migrating to a standard installation.
 overtchat update
 ```
 
-This updates the management CLI, app image, selected sidecars, and managed Host
-Connector as one coordinated release. Database migrations run when the app
-starts without replacing its data mount. If an update stops partway through,
-run the command again to reconcile every managed component.
+This updates the management CLI, app and voice images, selected sidecars, and
+managed Host Connector as one coordinated release. Database migrations run
+when the app starts without replacing its data mount. If an update stops
+partway through, run the command again to reconcile every managed component.
 
 The web app reports newer releases from the public OvertChat manifest. To
 disable that check, run `DISABLE_UPDATE_CHECK=true overtchat setup` once.
@@ -67,6 +68,12 @@ Addresses configured in OvertChat must be reachable from the app container:
 - Configure MCP servers under **Settings → Tools**. STDIO commands run inside
   the app container; HTTP servers need a container-reachable URL.
 
+The realtime voice container has no published host port. Browsers connect to
+the normal OvertChat origin at `/api/voice/realtime`, and the app proxies that
+WebSocket over the private Compose network. HTTPS deployments therefore become
+`wss://` automatically and need no second public hostname; the existing reverse
+proxy only needs its normal WebSocket-upgrade support for the OvertChat app.
+
 Claude Code connections use the `claude` executable and credentials already
 configured on the Host Connector machine. For SSH connections, install and
 authenticate Claude Code on the remote host as that SSH user. OvertChat does
@@ -81,6 +88,9 @@ overtchat status
 
 # App logs
 docker logs -f overtchat-app
+
+# Realtime voice logs, when installed
+docker logs -f overtchat-voice
 
 # Backup the SQLite database while the app is running
 docker exec overtchat-app sqlite3 /app/data/chat.db ".backup /app/data/backup.db"

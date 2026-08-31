@@ -15,6 +15,7 @@ export async function GET(req: Request) {
   const items: ChatListItem[] = rows.map((c) => ({
     id: c.id,
     title: c.title,
+    kind: c.kind,
     projectId: c.projectId,
     updatedAt: c.updatedAt.getTime(),
   }));

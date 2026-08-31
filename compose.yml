@@ -11,6 +11,8 @@ services:
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
       DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}
       HOST_CONNECTOR_URL: ${HOST_CONNECTOR_URL:-http://127.0.0.1:${APP_PORT:-4718}}
+      OVERTCHAT_INSTALLED_CAPABILITIES: ${OVERTCHAT_INSTALLED_CAPABILITIES:-search,tts,stt}
+      VOICE_SHARED_SECRET: ${VOICE_SHARED_SECRET:-}
       SEARXNG_URL: ${OVERTCHAT_SEARXNG_URL:-http://searxng:8080}
       KOKORO_URL: ${OVERTCHAT_KOKORO_URL:-http://kokoro:8880}
       STT_URL: ${OVERTCHAT_STT_URL:-http://stt:5092}
@@ -30,6 +32,18 @@ services:
         required: false
       redis:
         condition: service_healthy
+
+  voice:
+    image: ghcr.io/yoloyash/overtchat-voice:${VOICE_VERSION:-0.1.0}
+    build: ./voice
+    container_name: overtchat-voice
+    restart: unless-stopped
+    profiles: [voice]
+    environment:
+      VOICE_SHARED_SECRET: ${VOICE_SHARED_SECRET:-}
+    depends_on:
+      app:
+        condition: service_started
 
   redis:
     image: docker.io/library/redis@sha256:d146f83b1e0f02fc27c26a50cee39338c736674c5959db84363e6ae3cd9e02d2

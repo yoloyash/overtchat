@@ -24,5 +24,6 @@ export async function status(): Promise<void> {
   console.log(`Web search: ${config.search.provider}`);
   console.log(`Text-to-speech: ${config.tts.provider}`);
   console.log(`Speech-to-text: ${config.stt.provider}`);
+  console.log(`Realtime voice: ${config.voice.installed ? "installed" : "not installed"}`);
   console.log(`Agent Connections: ${config.agents.installed ? "installed" : "not installed"}`);
 }

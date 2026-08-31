@@ -7,7 +7,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import {
   modelSupportsToolCalling,
+  type ChatKind,
   type ChatRequestAction,
+  type VoiceHistoryItem,
 } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
@@ -17,6 +19,7 @@ import {
   chatKeys,
   personalizationKeys,
 } from "@/lib/queries/keys";
+import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import {
   useChats,
   useChatUsage,
@@ -38,6 +41,8 @@ import {
   type StoredMessageStats,
 } from "@/lib/chat/stats";
 import { messagesForChatRequest } from "@/lib/chat/history";
+import { stripCitationMarkers } from "@/lib/citations";
+import { voiceHistoryToUiMessages } from "@/lib/voice/history";
 import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
@@ -67,6 +72,11 @@ import { ChatHeader } from "./ChatHeader";
 import { Composer, type ComposerHandle } from "./Composer";
 import { MessageList } from "./MessageList";
 import { MiniSpeechPlayer } from "./MiniSpeechPlayer";
+import {
+  RealtimeVoiceSession,
+  type RealtimeVoiceSessionHandle,
+} from "./RealtimeVoiceSession";
+import type { VoiceTranscriptUpdate } from "@/lib/voice/client";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
@@ -83,6 +93,7 @@ function lastUserMessageId(messages: UIMessage[]): string | undefined {
 
 interface Props {
   chatId: string;
+  chatKind?: ChatKind;
   initialMessages?: UIMessage[];
   initialMessageCursor?: string | null;
   isNew?: boolean;
@@ -92,6 +103,7 @@ interface Props {
 
 export function ChatArea({
   chatId,
+  chatKind,
   initialMessages,
   initialMessageCursor,
   isNew,
@@ -128,6 +140,12 @@ export function ChatArea({
     : "Web search is unavailable for this model";
 
   const [searchRequested, setSearchRequested] = useState(false);
+  const { data: capabilitiesData } = usePublicCapabilities();
+  const voiceCapability = capabilitiesData?.capabilities.voice;
+  const [resolvedChatKind, setResolvedChatKind] = useState<ChatKind | null>(
+    chatKind ?? null,
+  );
+  const [voiceActive, setVoiceActive] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
     false,
@@ -173,6 +191,7 @@ export function ChatArea({
 
   const isNewRef = useRef(isNew ?? false);
   const composerRef = useRef<ComposerHandle>(null);
+  const voiceSessionRef = useRef<RealtimeVoiceSessionHandle>(null);
 
   useEffect(() => {
     if (!configured || !shouldAutofocusComposer()) return;
@@ -338,6 +357,7 @@ export function ChatArea({
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    if (resolvedChatKind === "voice" || voiceActive) return;
     if (!hasDataTransferFiles(e.dataTransfer)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -356,17 +376,28 @@ export function ChatArea({
     }
   }
 
+  const markNewChatPersisted = useCallback(() => {
+    if (!isNewRef.current) return false;
+    isNewRef.current = false;
+    setComposerDraftScope(chatComposerDraftScope(chatId));
+    window.history.replaceState(null, "", `/chat/${chatId}`);
+    return true;
+  }, [chatId]);
+
   function handleSubmit(text: string, attachments: FileUIPart[]) {
+    if (voiceActive) {
+      voiceSessionRef.current?.sendMessage(text);
+      return;
+    }
+    if (resolvedChatKind === "voice") return;
     setInferenceActivity(null);
-    const wasNew = isNewRef.current && !temporary;
+    const wasNew = !temporary && markNewChatPersisted();
     if (wasNew) {
-      isNewRef.current = false;
-      setComposerDraftScope(chatComposerDraftScope(chatId));
-      window.history.replaceState(null, "", `/chat/${chatId}`);
       qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) => {
         const next: ChatListItem = {
           id: chatId,
           title: null,
+          kind: "text",
           projectId: projectId ?? null,
           updatedAt: Date.now(),
         };
@@ -437,6 +468,69 @@ export function ChatArea({
     setSelectedId(modelId);
   }
 
+  const mergeVoiceMessages = useCallback(
+    (incoming: UIMessage[]) => {
+      if (incoming.length === 0) return;
+      setMessages((current) => {
+        const next = [...current];
+        const indexes = new Map(
+          next.map((message, index) => [message.id, index] as const),
+        );
+        for (const message of incoming) {
+          const index = indexes.get(message.id);
+          if (index === undefined) {
+            indexes.set(message.id, next.length);
+            next.push(message);
+          } else {
+            next[index] = message;
+          }
+        }
+        return next;
+      });
+    },
+    [setMessages],
+  );
+
+  const handleVoiceTranscript = useCallback(
+    (update: VoiceTranscriptUpdate) => {
+      const text = stripCitationMarkers(update.text).trim();
+      if (!text) return;
+      mergeVoiceMessages([
+        {
+          id: `voice:${chatId}:${update.id}`,
+          role: update.role,
+          parts: [{ type: "text", text }],
+        },
+      ]);
+    },
+    [chatId, mergeVoiceMessages],
+  );
+
+  const handleVoiceHistory = useCallback(
+    (items: VoiceHistoryItem[]) => {
+      mergeVoiceMessages(voiceHistoryToUiMessages(chatId, items));
+    },
+    [chatId, mergeVoiceMessages],
+  );
+
+  const handleVoicePersisted = useCallback(
+    (chat: ChatListItem) => {
+      setResolvedChatKind("voice");
+      setChatPersisted(true);
+      markNewChatPersisted();
+      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (current) => {
+        const withoutChat = (current ?? []).filter((item) => item.id !== chat.id);
+        return [chat, ...withoutChat];
+      });
+      void Promise.all([
+        qc.invalidateQueries({ queryKey: chatKeys.list() }),
+        qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
+        qc.invalidateQueries({ queryKey: activityKeys.all() }),
+      ]);
+    },
+    [chatId, markNewChatPersisted, qc],
+  );
+
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
   const canToggleTemporary = Boolean(isNew) && messages.length === 0;
@@ -472,6 +566,26 @@ export function ChatArea({
       dropActive={dropActive}
       models={models}
       selectedModelId={selectedId}
+      voiceInstalled={voiceCapability?.installed ?? false}
+      voiceEligible={
+        resolvedChatKind === "voice" ||
+        (Boolean(isNew) && messages.length === 0 && !temporary)
+      }
+      voiceAvailable={Boolean(voiceCapability?.available && configured)}
+      voiceActive={voiceActive}
+      voiceUnavailableReason={
+        !configured
+          ? "Configure a model before starting voice"
+          : voiceCapability?.unavailableReason === "stt-unavailable"
+            ? "Speech-to-text is disabled"
+            : voiceCapability?.unavailableReason === "tts-unavailable"
+              ? "Text-to-speech is disabled"
+              : voiceCapability?.unavailableReason === "not-configured"
+                ? "Voice authentication is not configured"
+                : "Realtime voice is unavailable"
+      }
+      attachmentsEnabled={resolvedChatKind !== "voice" && !voiceActive}
+      textInputDisabled={resolvedChatKind === "voice" && !voiceActive}
       commandActions={{
         temporary: canToggleTemporary
           ? { active: temporary, onToggle: () => setTemporary((t) => !t) }
@@ -486,6 +600,8 @@ export function ChatArea({
       }}
       onSubmit={handleSubmit}
       onStop={handleStop}
+      onStartVoice={() => setVoiceActive(true)}
+      onEndVoice={() => setVoiceActive(false)}
       isAdmin={isAdmin}
       draftUserId={session?.user.id}
       draftScope={composerDraftScope}
@@ -532,7 +648,7 @@ export function ChatArea({
         </div>
       )}
 
-      {messages.length === 0 ? (
+      {messages.length === 0 && !voiceActive ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {showOnboarding ? (
             <AdminOnboardingCard
@@ -567,7 +683,7 @@ export function ChatArea({
             status={status}
             inferenceActivity={inferenceActivity}
             error={error}
-            configured={configured}
+            configured={configured && resolvedChatKind !== "voice"}
             speech={speech}
             showStats={messageStatsEnabled}
             storedStats={storedStats}
@@ -580,7 +696,22 @@ export function ChatArea({
           />
 
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto max-w-3xl">{composer}</div>
+            <div className="mx-auto max-w-3xl">
+              {voiceActive && selectedModel && (
+                <RealtimeVoiceSession
+                  ref={voiceSessionRef}
+                  chatId={chatId}
+                  projectId={projectId ?? null}
+                  modelConfigId={selectedId}
+                  modelLabel={selectedModel.label}
+                  webSearchEnabled={searchAvailable}
+                  onTranscript={handleVoiceTranscript}
+                  onHistoryItems={handleVoiceHistory}
+                  onPersisted={handleVoicePersisted}
+                />
+              )}
+              {composer}
+            </div>
           </div>
         </>
       )}

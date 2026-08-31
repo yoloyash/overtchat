@@ -705,6 +705,13 @@ function ChatRow({
         >
           {item.title?.trim() || "Untitled"}
         </Text>
+        {item.kind === "voice" ? (
+          <Ionicons
+            name="pulse-outline"
+            size={16}
+            color={colors.mutedForeground}
+          />
+        ) : null}
       </Pressable>
       <ChatRowMenu
         from={menu.anchorRect}
@@ -798,9 +805,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   newProjectText: { fontSize: 14 },
-  row: { paddingHorizontal: 12, paddingVertical: 10 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   rowIndented: { marginLeft: 24 },
-  rowText: { fontSize: 14 },
+  rowText: { flex: 1, fontSize: 14 },
   empty: { fontSize: 13, paddingHorizontal: 16, paddingVertical: 24, textAlign: "center" },
   footer: {
     flexDirection: "row",

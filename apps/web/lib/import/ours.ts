@@ -9,6 +9,7 @@ type OursMessage = {
 
 type OursChat = {
   title?: string | null;
+  kind?: unknown;
   createdAt?: number | string;
   messages?: OursMessage[];
 };
@@ -74,6 +75,7 @@ export function importOurs(data: unknown): ImportedChat[] {
     if (!messages.length) continue;
     out.push({
       title: (c.title ?? "").toString().slice(0, 200) || "Imported chat",
+      kind: c.kind === "voice" ? "voice" : "text",
       createdAt: chatCreated,
       messages,
     });

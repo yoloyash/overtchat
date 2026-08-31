@@ -56,17 +56,21 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         .map((c) => ({
           id: c.id,
           title: c.title,
+          kind: c.kind,
           updatedAt: c.updatedAt,
         })),
     [chats],
   );
 
   const projectsWithChats = useMemo(() => {
-    const byProject = new Map<string, { id: string; title: string | null }[]>();
+    const byProject = new Map<
+      string,
+      { id: string; title: string | null; kind: "text" | "voice" }[]
+    >();
     for (const c of chats) {
       if (!c.projectId) continue;
       const list = byProject.get(c.projectId) ?? [];
-      list.push({ id: c.id, title: c.title });
+      list.push({ id: c.id, title: c.title, kind: c.kind });
       byProject.set(c.projectId, list);
     }
     return projectOptions.map((p) => ({

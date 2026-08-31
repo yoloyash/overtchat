@@ -1,11 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
+import type { ChatKind } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
 
 export type ChatMessagesResponse = {
   messages: UIMessage[];
   projectId: string | null;
+  kind: ChatKind;
 };
 
 export function useChatMessages(chatId: string | null) {
