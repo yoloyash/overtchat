@@ -39,7 +39,7 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as SystemUI from "expo-system-ui";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -70,7 +70,6 @@ if (SENTRY_DSN) {
 
 function RootLayout() {
   const { colors, scheme } = useTheme();
-  const [queryClient] = useState(() => new QueryClient());
 
   const [loaded, error] = useFonts({
     PlusJakartaSans_400Regular,
@@ -107,14 +106,12 @@ function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <KeyboardProvider>
-        <QueryClientProvider client={queryClient}>
-          <SafeAreaProvider>
-            <BottomSheetModalProvider>
-              <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-              <AuthRoutes backgroundColor={colors.background} />
-            </BottomSheetModalProvider>
-          </SafeAreaProvider>
-        </QueryClientProvider>
+        <SafeAreaProvider>
+          <BottomSheetModalProvider>
+            <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+            <AuthRoutes backgroundColor={colors.background} />
+          </BottomSheetModalProvider>
+        </SafeAreaProvider>
       </KeyboardProvider>
     </GestureHandlerRootView>
   );
@@ -125,12 +122,14 @@ function AuthRoutes({ backgroundColor }: { backgroundColor: string }) {
 
   if (!serverUrl) {
     return (
-      <RootStack
-        authReady
-        hasServer={false}
-        hasSession={false}
-        backgroundColor={backgroundColor}
-      />
+      <QueryClientScope>
+        <RootStack
+          authReady
+          hasServer={false}
+          hasSession={false}
+          backgroundColor={backgroundColor}
+        />
+      </QueryClientScope>
     );
   }
 
@@ -139,14 +138,24 @@ function AuthRoutes({ backgroundColor }: { backgroundColor: string }) {
 
 function SessionRoutes({ backgroundColor }: { backgroundColor: string }) {
   const session = getAuthClient().useSession();
+  const userId = session.data?.user.id ?? "signed-out";
   return (
-    <RootStack
-      authReady={!session.isPending}
-      hasServer
-      hasSession={Boolean(session.data?.user)}
-      backgroundColor={backgroundColor}
-    />
+    <QueryClientScope key={userId}>
+      <RootStack
+        authReady={!session.isPending}
+        hasServer
+        hasSession={Boolean(session.data?.user)}
+        backgroundColor={backgroundColor}
+      />
+    </QueryClientScope>
   );
+}
+
+function QueryClientScope({ children }: { children: ReactNode }) {
+  // This component is remounted when the selected server or authenticated user
+  // changes, so server state can never bleed across either identity boundary.
+  const [client] = useState(() => new QueryClient());
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
 function RootStack({
