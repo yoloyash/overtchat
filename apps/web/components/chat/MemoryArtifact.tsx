@@ -12,9 +12,11 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   describeMemoryToolPart,
+  memoryToolArtifactLabel,
+  memoryToolStatusLabel,
   type MemoryToolDisplay,
   type MemoryToolPart,
-} from "@/lib/personalization/tool-parts";
+} from "@overtchat/shared";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +56,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
             />
           </span>
           <span className="min-w-0 truncate font-medium text-foreground">
-            {memoryArtifactLabel(details)}
+            {memoryToolArtifactLabel(details)}
           </span>
           <ChevronDown
             className={cn(
@@ -96,7 +98,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
 }
 
 function MemoryDetail({ detail }: { detail: MemoryToolDisplay }) {
-  const status = memoryDetailStatus(detail);
+  const status = memoryToolStatusLabel(detail);
   return (
     <div className="space-y-1.5 py-3">
       <div className="flex items-center justify-between gap-3">
@@ -122,40 +124,4 @@ function MemoryDetail({ detail }: { detail: MemoryToolDisplay }) {
       {detail.error && <p className="text-destructive">{detail.error}</p>}
     </div>
   );
-}
-
-function memoryDetailStatus(detail: MemoryToolDisplay): string {
-  if (detail.status === "running") {
-    return detail.action === "set" ? "Updating…" : "Removing…";
-  }
-  if (detail.status === "error") return "Failed";
-  if (detail.status === "missing") return "Not found";
-  if (detail.status === "incomplete") return "Did not complete";
-  return detail.action === "set" ? "Updated" : "Removed";
-}
-
-function memoryArtifactLabel(details: MemoryToolDisplay[]): string {
-  if (details.some((detail) => detail.status === "running")) {
-    if (details.length > 1) return "Updating memories…";
-    return details[0]?.action === "delete"
-      ? "Removing memory…"
-      : "Updating memory…";
-  }
-  if (details.some((detail) => detail.status === "error")) {
-    return details.some((detail) => detail.status === "success")
-      ? "Memories updated with errors"
-      : "Memory update failed";
-  }
-  if (details.every((detail) => detail.status === "missing")) {
-    return details.length > 1 ? "Memories not found" : "Memory not found";
-  }
-  if (details.some((detail) => detail.status === "incomplete")) {
-    return "Memory update did not complete";
-  }
-  if (details.length > 1) {
-    return details.every((detail) => detail.action === "delete")
-      ? "Memories removed"
-      : "Memories updated";
-  }
-  return details[0]?.action === "delete" ? "Memory removed" : "Memory updated";
 }

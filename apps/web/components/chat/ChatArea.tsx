@@ -6,6 +6,7 @@ import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import {
+  hasSuccessfulMemoryMutation,
   modelSupportsToolCalling,
   type ChatKind,
   type ChatRequestAction,
@@ -60,7 +61,6 @@ import {
   isInferenceActivity,
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
-import { hasSuccessfulMemoryMutation } from "@/lib/personalization/tool-parts";
 import {
   chatComposerDraftScope,
   newChatComposerDraftScope,

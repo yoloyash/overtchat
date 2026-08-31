@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
+  hasSuccessfulMemoryMutation,
   modelSupportsToolCalling,
   type ChatKind,
   type ChatRequestAction,
@@ -224,10 +225,13 @@ function ChatSurface({
     resume: !isNew,
     transport,
     messages: initialMessages,
-    onFinish: ({ isAbort }) => {
+    onFinish: ({ message, isAbort }) => {
+      if (hasSuccessfulMemoryMutation(message)) {
+        void qc.invalidateQueries({ queryKey: queryKeys.personalization() });
+      }
       if (isAbort) return;
-      qc.invalidateQueries({ queryKey: queryKeys.chats() });
-      qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+      void qc.invalidateQueries({ queryKey: queryKeys.chats() });
+      void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
     },
   });
 

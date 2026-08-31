@@ -1,12 +1,11 @@
 import type { FileUIPart, UIMessage } from "ai";
-import { isToolSettled } from "@overtchat/shared";
+import { groupMessageParts, isToolSettled } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { buildSourceLookup } from "@/lib/chat/citations";
-import { groupMessageParts } from "@/lib/chat/parts";
 import { textOf } from "@/lib/chat/text";
 import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
@@ -14,6 +13,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
+import { MemoryArtifact } from "./MemoryArtifact";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { Sources } from "./Sources";
@@ -181,6 +181,11 @@ export function MessageBubble({
                 text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
               />
+            );
+          }
+          if (seg.kind === "memory") {
+            return (
+              <MemoryArtifact key={`m-${seg.startIndex}`} parts={seg.parts} />
             );
           }
           const trailing = seg.parts[seg.parts.length - 1];

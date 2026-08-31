@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
-import { groupMessageParts, type Segment } from "./parts";
+import { groupMessageParts, type MessageSegment } from "@overtchat/shared";
 
 type Part = UIMessage["parts"][number];
 
@@ -43,7 +43,7 @@ describe("groupMessageParts", () => {
       text("answer"),
     ]);
     expect(segs.map((s) => s.kind)).toEqual(["activity", "text"]);
-    const activity = segs[0] as Extract<Segment, { kind: "activity" }>;
+    const activity = segs[0] as Extract<MessageSegment, { kind: "activity" }>;
     expect(activity.parts).toHaveLength(3);
     expect(segs[1]).toMatchObject({ kind: "text", index: 3 });
   });
@@ -63,7 +63,9 @@ describe("groupMessageParts", () => {
       "activity",
       "text",
     ]);
-    expect((segs[2] as Extract<Segment, { kind: "activity" }>).startIndex).toBe(
+    expect(
+      (segs[2] as Extract<MessageSegment, { kind: "activity" }>).startIndex,
+    ).toBe(
       3,
     );
   });
@@ -71,9 +73,9 @@ describe("groupMessageParts", () => {
   it("ignores unknown parts (step-start, files) without breaking a run", () => {
     const segs = groupMessageParts([reasoning("a"), file(), search("q")]);
     expect(segs).toHaveLength(1);
-    expect((segs[0] as Extract<Segment, { kind: "activity" }>).parts).toHaveLength(
-      2,
-    );
+    expect(
+      (segs[0] as Extract<MessageSegment, { kind: "activity" }>).parts,
+    ).toHaveLength(2);
   });
 
   it("does not let a blank text part break an activity run", () => {
@@ -89,7 +91,7 @@ describe("groupMessageParts", () => {
       text("real answer"),
     ]);
     expect(segs.map((s) => s.kind)).toEqual(["activity", "text"]);
-    const activity = segs[0] as Extract<Segment, { kind: "activity" }>;
+    const activity = segs[0] as Extract<MessageSegment, { kind: "activity" }>;
     expect(activity.parts).toHaveLength(4); // reasoning + 3 searches, blanks dropped
     expect(segs[1]).toMatchObject({ kind: "text", index: 6 });
   });
@@ -105,7 +107,7 @@ describe("groupMessageParts", () => {
       "text",
     ]);
     expect(
-      (segs[0] as Extract<Segment, { kind: "activity" }>).parts,
+      (segs[0] as Extract<MessageSegment, { kind: "activity" }>).parts,
     ).toHaveLength(2);
   });
 
@@ -122,7 +124,10 @@ describe("groupMessageParts", () => {
       "memory",
       "text",
     ]);
-    const memorySegment = segs[1] as Extract<Segment, { kind: "memory" }>;
+    const memorySegment = segs[1] as Extract<
+      MessageSegment,
+      { kind: "memory" }
+    >;
     expect(memorySegment.parts).toHaveLength(2);
     expect(memorySegment.parts[0]).toMatchObject({
       type: "tool-set_memory",
