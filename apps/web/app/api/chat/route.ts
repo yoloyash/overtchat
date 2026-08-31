@@ -45,15 +45,12 @@ import {
   type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
-import {
-  getModelConfig,
-  getTaskModelConfig,
-} from "@/lib/db/modelConfigs";
+import { getModelConfig } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
 import { acquireMcpBinding } from "@/lib/mcp/manager";
-import { generateChatTitle } from "@/lib/title";
+import { ensureChatTitle } from "@/lib/title";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
 import {
   memorySystemPrompt,
@@ -269,9 +266,6 @@ async function handlePost(req: Request): Promise<Response> {
   const mcpTools = mcpBinding?.tools ?? {};
 
   const last = messages[messages.length - 1];
-  const userMessageCount = messages.filter(
-    (message) => message.role === "user",
-  ).length;
   const streamId = crypto.randomUUID();
   const controller = temporary ? null : new AbortController();
   let streamClaimed = false;
@@ -388,19 +382,11 @@ async function handlePost(req: Request): Promise<Response> {
           ...(streamInclude ? { include: streamInclude } : {}),
         }).stream({ messages: modelMessages, abortSignal });
 
-    if (
-      !temporary &&
-      (existingChat?.title ?? null) === null &&
-      persistUserMessage &&
-      truncateFromMessageId === undefined &&
-      userMessageCount === 1
-    ) {
-      const titleModelConfig = getTaskModelConfig() ?? modelConfig;
-      titlePromise = generateChatTitle({
+    if (!temporary && (existingChat?.title ?? null) === null) {
+      titlePromise = ensureChatTitle({
         chatId,
         userId,
-        modelConfig: titleModelConfig,
-        userParts: last.parts,
+        fallbackModelConfig: modelConfig,
       });
     }
 

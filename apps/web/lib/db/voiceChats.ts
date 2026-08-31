@@ -10,7 +10,6 @@ export type SyncVoiceHistoryResult =
       status: "ok";
       createdChat: boolean;
       changed: boolean;
-      firstUserParts: UIMessage["parts"] | null;
     }
   | { status: "not-found" | "wrong-kind" | "invalid-project" };
 
@@ -93,7 +92,6 @@ export function syncVoiceHistory({
     }
 
     let changed = false;
-    let firstUserParts: UIMessage["parts"] | null = null;
     for (const message of history) {
       const existingMessage = existingMessages.get(message.id);
       if (existingMessage) {
@@ -113,9 +111,6 @@ export function syncVoiceHistory({
             parts: message.parts,
           })
           .run();
-        if (message.role === "user" && firstUserParts === null) {
-          firstUserParts = message.parts;
-        }
       }
 
       tx.run(sql`
@@ -142,7 +137,6 @@ export function syncVoiceHistory({
       status: "ok" as const,
       createdChat,
       changed,
-      firstUserParts,
     };
   });
 }
