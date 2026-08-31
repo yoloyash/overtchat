@@ -1,13 +1,15 @@
 export type SearchProvider = "bundled" | "brave" | "searxng" | "disabled";
 export type TtsProvider = "bundled" | "openai-compatible" | "disabled";
 export type SttProvider = "bundled" | "openai-compatible" | "disabled";
-export type SttAccelerator = "auto" | "cpu" | "gpu";
+export type SpeechAccelerator = "auto" | "cpu" | "gpu";
+export type KokoroGpuVariant = "standard" | "blackwell";
 
 export type Gpu = {
   index: number;
   uuid: string;
   name: string;
   memoryMiB: number;
+  computeCapability?: number;
 };
 
 export type SearchConfig = {
@@ -24,6 +26,9 @@ export type TtsConfig = {
   apiKey?: string;
   model?: string;
   voice?: string;
+  accelerator?: SpeechAccelerator;
+  gpuUuid?: string;
+  gpuVariant?: KokoroGpuVariant;
 };
 
 export type SttConfig = {
@@ -32,7 +37,7 @@ export type SttConfig = {
   baseUrl?: string;
   apiKey?: string;
   model?: string;
-  accelerator?: SttAccelerator;
+  accelerator?: SpeechAccelerator;
   gpuUuid?: string;
 };
 
@@ -55,6 +60,8 @@ export type InstallationConfig = {
   redisImage: string;
   searxngImage: string;
   kokoroImage: string;
+  kokoroGpuImage: string;
+  kokoroGpuBlackwellImage: string;
   appPort: number;
   bindAddress: string;
   publicUrl: string;
@@ -91,6 +98,9 @@ export type ExistingInstallation = {
     stt: boolean;
     voice?: boolean;
   };
+  ttsAccelerator?: "cpu" | "gpu";
+  ttsGpuUuid?: string;
+  ttsGpuVariant?: KokoroGpuVariant;
   sttAccelerator?: "cpu" | "gpu";
   sttGpuUuid?: string;
 };

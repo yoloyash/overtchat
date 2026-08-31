@@ -60,6 +60,8 @@ export function defaultInstallationConfig(
     redisImage: manifest.redisImage,
     searxngImage: manifest.searxngImage,
     kokoroImage: manifest.kokoroImage,
+    kokoroGpuImage: manifest.kokoroGpuImage,
+    kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
     appPort: existing?.appPort ?? DEFAULT_APP_PORT,
     bindAddress: existing?.bindAddress ?? "0.0.0.0",
     publicUrl:
@@ -89,7 +91,15 @@ export function defaultInstallationConfig(
           bundledInstalled: false,
           baseUrl: ttsUrl,
         }
-      : { provider: "bundled", bundledInstalled: true },
+      : existing?.ttsAccelerator
+        ? {
+            provider: "bundled",
+            bundledInstalled: true,
+            accelerator: existing.ttsAccelerator,
+            gpuUuid: existing.ttsGpuUuid,
+            gpuVariant: existing.ttsGpuVariant,
+          }
+        : { provider: "bundled", bundledInstalled: true },
     stt:
       sttUrl && sttUrl !== "http://stt:5092"
         ? {
@@ -145,6 +155,12 @@ export async function readInstallationConfig(
         config.voiceImage ??
         `${VOICE_IMAGE}:${config.voiceVersion ?? "0.0.0"}`,
       voice: config.voice ?? { installed: false },
+      // Bundled TTS predates accelerator selection. Missing state is the
+      // existing CPU service, never an implicit migration onto a GPU.
+      tts: {
+        ...config.tts,
+        accelerator: config.tts.accelerator ?? "cpu",
+      },
     });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;

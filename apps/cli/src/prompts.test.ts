@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { existingInstallationSummary } from "./prompts.js";
+import {
+  existingInstallationSummary,
+  kokoroGpuVariant,
+} from "./prompts.js";
 import type { ExistingInstallation } from "./types.js";
 
 function installation(
@@ -32,7 +35,7 @@ describe("existing installation summary", () => {
         "Published port: 127.0.0.1:49317",
         "Data: Docker volume overtchat_overtchat-data",
         "Compose directory: /home/yash/dev/overtchat",
-        "Bundled services: SearXNG, Kokoro, Parakeet (CPU)",
+        "Bundled services: SearXNG, Kokoro (CPU), Parakeet (CPU)",
         "",
         "This storage will be reused. A verified SQLite snapshot will be created before the app is replaced or migrations run.",
       ].join("\n"),
@@ -53,5 +56,21 @@ describe("existing installation summary", () => {
     expect(summary).toContain("Version: unknown");
     expect(summary).toContain("Data: Bind mount /srv/overtchat/data");
     expect(summary).toContain("Bundled services: none detected");
+  });
+
+  it("selects the Blackwell image only for x64 compute capability 12 GPUs", () => {
+    const gpu = {
+      index: 0,
+      uuid: "GPU-5090",
+      name: "NVIDIA GeForce RTX 5090",
+      memoryMiB: 32_000,
+      computeCapability: 12,
+    };
+
+    expect(kokoroGpuVariant(gpu, "x64")).toBe("blackwell");
+    expect(kokoroGpuVariant(gpu, "arm64")).toBe("standard");
+    expect(
+      kokoroGpuVariant({ ...gpu, name: "RTX 4090", computeCapability: 8.9 }, "x64"),
+    ).toBe("standard");
   });
 });

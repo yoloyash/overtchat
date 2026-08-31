@@ -30,6 +30,12 @@ services:
       kokoro:
         condition: service_healthy
         required: false
+      kokoro-gpu:
+        condition: service_healthy
+        required: false
+      kokoro-gpu-blackwell:
+        condition: service_healthy
+        required: false
       redis:
         condition: service_healthy
 
@@ -82,16 +88,66 @@ services:
       retries: 10
       start_period: 10s
 
+  # Text-to-speech via Kokoro. Off by default; opt in with:
+  #   docker compose --profile tts-cpu up -d    (CPU)
+  #   docker compose --profile tts-gpu up -d    (NVIDIA GPU, requires NVIDIA Container Toolkit)
+  #   docker compose --profile tts-gpu-blackwell up -d  (RTX 50-series)
+  # Both services are reachable from `app` as `http://kokoro:8880`.
   kokoro:
-    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:c8812546d358cbfd6a5c4087a28795b2b001d8e32d7a322eedd246e6bc13cb55
+    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:28d6f0b6e4df369559012578299d201b855a08fac466f616653edd1f08c5370a
     container_name: overtchat-kokoro
     restart: unless-stopped
+    profiles: [tts-cpu]
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
       interval: 15s
       timeout: 5s
       retries: 20
       start_period: 60s
+
+  kokoro-gpu:
+    image: ghcr.io/remsky/kokoro-fastapi-gpu@sha256:9e5336d8ebc4984a78ae9181ce3280b285c96d9cbea9b20957e3526868ceb01d
+    container_name: overtchat-kokoro-gpu
+    restart: unless-stopped
+    profiles: [tts-gpu]
+    networks:
+      default:
+        aliases: [kokoro]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  kokoro-gpu-blackwell:
+    image: ghcr.io/remsky/kokoro-fastapi-gpu@sha256:b75ec27022d6187cf6e6aa4f9053cc64f4c3904fa80dc997c87d3b7a4abffed1
+    container_name: overtchat-kokoro-gpu-blackwell
+    restart: unless-stopped
+    profiles: [tts-gpu-blackwell]
+    networks:
+      default:
+        aliases: [kokoro]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   # Speech-to-text via Parakeet TDT v3. Off by default; opt in with:
   #   docker compose --profile stt up -d        (CPU, ~670MB model, ~2GB RAM)

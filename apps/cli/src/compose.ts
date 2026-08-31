@@ -15,7 +15,13 @@ function composeBindAddress(value: string): string {
 function profileList(config: InstallationConfig): string[] {
   const profiles: string[] = [];
   if (config.search.bundledInstalled) profiles.push("search-bundled");
-  if (config.tts.bundledInstalled) profiles.push("tts-bundled");
+  if (config.tts.bundledInstalled) {
+    profiles.push(
+      config.tts.accelerator === "auto" || config.tts.accelerator === "gpu"
+        ? "tts-gpu"
+        : "tts-cpu",
+    );
+  }
   if (config.stt.bundledInstalled) {
     profiles.push(config.stt.accelerator === "cpu" ? "stt-cpu" : "stt-gpu");
   }
@@ -53,6 +59,12 @@ export function renderStackEnvironment(
     ["OVERTCHAT_REDIS_IMAGE", config.redisImage],
     ["OVERTCHAT_SEARXNG_IMAGE", config.searxngImage],
     ["OVERTCHAT_KOKORO_IMAGE", config.kokoroImage],
+    [
+      "OVERTCHAT_KOKORO_GPU_IMAGE",
+      config.tts.gpuVariant === "blackwell"
+        ? config.kokoroGpuBlackwellImage
+        : config.kokoroGpuImage,
+    ],
     ["APP_PORT", config.appPort],
     ["APP_BIND_ADDRESS", composeBindAddress(config.bindAddress)],
     ["BETTER_AUTH_URL", config.publicUrl],
@@ -98,6 +110,8 @@ export function renderStackEnvironment(
     ],
     ["TTS_MODEL", config.tts.model ?? "kokoro"],
     ["TTS_VOICE", config.tts.voice ?? "af_heart"],
+    ["TTS_GPU_DEVICE_ID", config.tts.gpuUuid ?? "0"],
+    ["TTS_GPU_VARIANT", config.tts.gpuVariant ?? "standard"],
     ["STT_PROVIDER", config.stt.provider],
     [
       "OVERTCHAT_STT_URL",
@@ -153,6 +167,7 @@ services:
       KOKORO_URL: \${OVERTCHAT_TTS_URL:-}
       TTS_MODEL: \${TTS_MODEL:-kokoro}
       TTS_VOICE: \${TTS_VOICE:-af_heart}
+      TTS_GPU_VARIANT: \${TTS_GPU_VARIANT:-standard}
       STT_PROVIDER: \${STT_PROVIDER}
       STT_URL: \${OVERTCHAT_STT_URL:-}
       STT_MODEL: \${STT_MODEL:-parakeet-tdt-0.6b-v3}
@@ -170,6 +185,9 @@ ${appDataMount}
         condition: service_healthy
         required: false
       kokoro:
+        condition: service_healthy
+        required: false
+      kokoro-gpu:
         condition: service_healthy
         required: false
 
@@ -216,7 +234,7 @@ ${appDataMount}
     image: \${OVERTCHAT_KOKORO_IMAGE}
     container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-kokoro
     restart: unless-stopped
-    profiles: [tts-bundled]
+    profiles: [tts-cpu]
     healthcheck:
       test:
         - CMD-SHELL
@@ -225,6 +243,30 @@ ${appDataMount}
       timeout: 5s
       retries: 20
       start_period: 60s
+
+  kokoro-gpu:
+    image: \${OVERTCHAT_KOKORO_GPU_IMAGE}
+    container_name: \${OVERTCHAT_CONTAINER_PREFIX:-overtchat}-kokoro-gpu
+    restart: unless-stopped
+    profiles: [tts-gpu]
+    networks:
+      default:
+        aliases: [kokoro]
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8880/health').status==200 else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["\${TTS_GPU_DEVICE_ID}"]
+              capabilities: [gpu]
 
   stt-cpu:
     image: ghcr.io/yoloyash/overtchat-stt-cpu:\${STT_VERSION}

@@ -13,6 +13,7 @@ import type {
   ExistingInstallation,
   Gpu,
   InstallationConfig,
+  KokoroGpuVariant,
   SearchProvider,
   SttProvider,
   TtsProvider,
@@ -101,6 +102,7 @@ async function promptSearch(
 
 async function promptTts(
   current: InstallationConfig["tts"],
+  gpus: Gpu[],
 ): Promise<InstallationConfig["tts"]> {
   const provider = chosen(
     await select<TtsProvider>({
@@ -110,17 +112,70 @@ async function promptTts(
         {
           value: "bundled",
           label: "Bundled Kokoro",
-          hint: "local CPU service",
+          hint: "local CPU or NVIDIA GPU service",
         },
         { value: "openai-compatible", label: "OpenAI-compatible API" },
         { value: "disabled", label: "Disabled" },
       ],
     }),
   );
-  if (provider !== "openai-compatible") {
+  if (provider === "disabled") {
     return {
       provider,
-      bundledInstalled: current.bundledInstalled || provider === "bundled",
+      bundledInstalled: current.bundledInstalled,
+      accelerator: current.accelerator,
+      gpuUuid: current.gpuUuid,
+      gpuVariant: current.gpuVariant,
+    };
+  }
+  if (provider === "bundled") {
+    if (gpus.length === 0) {
+      note(
+        "No NVIDIA GPU was detected. Kokoro will use the CPU image.",
+        "Local TTS accelerator",
+      );
+      return { provider, bundledInstalled: true, accelerator: "cpu" };
+    }
+    const autoGpu = [...gpus].sort(
+      (left, right) => right.memoryMiB - left.memoryMiB,
+    )[0];
+    const currentSelection =
+      current.accelerator === "cpu"
+        ? "cpu"
+        : current.accelerator === "gpu" && current.gpuUuid
+          ? `gpu:${current.gpuUuid}`
+          : "auto";
+    const accelerator = chosen(
+      await select<string>({
+        message: "Local TTS accelerator",
+        initialValue: currentSelection,
+        options: [
+          {
+            value: "auto",
+            label: `Auto — ${autoGpu?.name ?? gpus[0]?.name}`,
+            hint: "uses about 3–4 GB VRAM when loaded",
+          },
+          ...gpus.map((gpu) => ({
+            value: `gpu:${gpu.uuid}`,
+            label: gpuLabel(gpu),
+          })),
+          { value: "cpu", label: "CPU", hint: "smaller download and no VRAM use" },
+        ],
+      }),
+    );
+    if (accelerator === "cpu") {
+      return { provider, bundledInstalled: true, accelerator: "cpu" };
+    }
+    const selectedGpu =
+      accelerator === "auto"
+        ? autoGpu ?? gpus[0]
+        : gpus.find((gpu) => gpu.uuid === accelerator.slice("gpu:".length));
+    return {
+      provider,
+      bundledInstalled: true,
+      accelerator: accelerator === "auto" ? "auto" : "gpu",
+      gpuUuid: selectedGpu?.uuid,
+      gpuVariant: kokoroGpuVariant(selectedGpu),
     };
   }
   const baseUrl = chosen(
@@ -160,7 +215,23 @@ async function promptTts(
     apiKey: apiKey.trim() || current.apiKey || "",
     model: model.trim(),
     voice: voice.trim(),
+    accelerator: current.accelerator,
+    gpuUuid: current.gpuUuid,
+    gpuVariant: current.gpuVariant,
   };
+}
+
+export function kokoroGpuVariant(
+  gpu: Gpu | undefined,
+  architecture = process.arch,
+): KokoroGpuVariant {
+  if (
+    architecture === "x64" &&
+    ((gpu?.computeCapability ?? 0) >= 12 || /\bRTX\s*(?:PRO\s*)?50\d{2}\b/iu.test(gpu?.name ?? ""))
+  ) {
+    return "blackwell";
+  }
+  return "standard";
 }
 
 function gpuLabel(gpu: Gpu): string {
@@ -177,7 +248,13 @@ export function existingInstallationSummary(
       : `Bind mount ${existing.dataVolume}`;
   const services = [
     ...(existing.bundledServices.search ? ["SearXNG"] : []),
-    ...(existing.bundledServices.tts ? ["Kokoro"] : []),
+    ...(existing.bundledServices.tts
+      ? [
+          existing.ttsAccelerator === "gpu"
+            ? "Kokoro (NVIDIA)"
+            : "Kokoro (CPU)",
+        ]
+      : []),
     ...(existing.bundledServices.stt
       ? [
           existing.sttAccelerator === "gpu"
@@ -341,7 +418,7 @@ export async function promptInstallationConfig(
     }
   }
   const search = await promptSearch(initial.search);
-  const tts = await promptTts(initial.tts);
+  const tts = await promptTts(initial.tts, gpus);
   const stt = await promptStt(initial.stt, gpus);
   const voiceAvailable = tts.provider !== "disabled" && stt.provider !== "disabled";
   const installVoice = voiceAvailable

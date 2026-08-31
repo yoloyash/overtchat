@@ -68,6 +68,8 @@ jobs:
             redisImage: "docker.io/library/redis",
             searxngImage: "docker.io/searxng/searxng",
             kokoroImage: "ghcr.io/remsky/kokoro-fastapi-cpu",
+            kokoroGpuImage: "ghcr.io/remsky/kokoro-fastapi-gpu",
+            kokoroGpuBlackwellImage: "ghcr.io/remsky/kokoro-fastapi-gpu",
           };
           for (const [field, repository] of Object.entries(images)) {
             const prefix = `${repository}@sha256:`;
@@ -103,6 +105,8 @@ jobs:
             `redis_image=${manifest.redisImage}`,
             `searxng_image=${manifest.searxngImage}`,
             `kokoro_image=${manifest.kokoroImage}`,
+            `kokoro_gpu_image=${manifest.kokoroGpuImage}`,
+            `kokoro_gpu_blackwell_image=${manifest.kokoroGpuBlackwellImage}`,
             "",
           ].join("\n"));
           NODE
@@ -191,6 +195,8 @@ jobs:
           REDIS_IMAGE: ${{ steps.manifest.outputs.redis_image }}
           SEARXNG_IMAGE: ${{ steps.manifest.outputs.searxng_image }}
           KOKORO_IMAGE: ${{ steps.manifest.outputs.kokoro_image }}
+          KOKORO_GPU_IMAGE: ${{ steps.manifest.outputs.kokoro_gpu_image }}
+          KOKORO_GPU_BLACKWELL_IMAGE: ${{ steps.manifest.outputs.kokoro_gpu_blackwell_image }}
         run: |
           verification_directory=$(mktemp -d)
           trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
@@ -238,6 +244,16 @@ jobs:
           inspect_image "$KOKORO_IMAGE" "$verification_directory/kokoro.json"
           node .github/scripts/assert-image-platforms.mjs \
             "$verification_directory/kokoro.json" linux/amd64 linux/arm64
+
+          inspect_image "$KOKORO_GPU_IMAGE" \
+            "$verification_directory/kokoro-gpu.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/kokoro-gpu.json" linux/amd64 linux/arm64
+
+          inspect_image "$KOKORO_GPU_BLACKWELL_IMAGE" \
+            "$verification_directory/kokoro-gpu-blackwell.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/kokoro-gpu-blackwell.json" linux/amd64
 
       - name: Require a complete candidate release
         id: readiness
