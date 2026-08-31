@@ -5,6 +5,8 @@ import type {
   ExistingInstallation,
   InstallationConfig,
   RuntimePaths,
+  SttConfig,
+  TtsConfig,
 } from "./types.js";
 import {
   APP_IMAGE,
@@ -136,7 +138,7 @@ export async function readInstallationConfig(
       throw new Error(`Unsupported installation state at ${paths.stateFile}.`);
     }
     const config = parsed as InstallationConfig;
-    return withoutProviderKeys({
+    const migrated = {
       ...config,
       // State written by the first installer draft only supported volumes.
       dataMountType: config.dataMountType ?? "volume",
@@ -155,23 +157,68 @@ export async function readInstallationConfig(
         config.voiceImage ??
         `${VOICE_IMAGE}:${config.voiceVersion ?? "0.0.0"}`,
       voice: config.voice ?? { installed: false },
-      // Bundled TTS predates accelerator selection. Missing state is the
-      // existing CPU service, never an implicit migration onto a GPU.
-      tts: {
-        ...config.tts,
-        accelerator: config.tts.accelerator ?? "cpu",
-      },
-      // Missing STT accelerator state is also a legacy CPU selection. Never
-      // turn an unknown value into an implicit NVIDIA service.
-      stt: {
-        ...config.stt,
-        accelerator: config.stt.accelerator ?? "cpu",
-      },
-    });
+    };
+    return withoutProviderKeys(normalizeInstallationConfig(migrated));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
+}
+
+function normalizeTtsConfig(tts: TtsConfig): TtsConfig {
+  if (tts.provider === "bundled") {
+    return {
+      ...tts,
+      bundledInstalled: true,
+      // Bundled TTS predates accelerator selection. Missing state is the
+      // existing CPU service, never an implicit migration onto a GPU.
+      accelerator: tts.accelerator ?? "cpu",
+    };
+  }
+  const normalized = { ...tts, bundledInstalled: false };
+  delete normalized.accelerator;
+  delete normalized.gpuUuid;
+  delete normalized.gpuVariant;
+  return normalized;
+}
+
+function normalizeSttConfig(stt: SttConfig): SttConfig {
+  if (stt.provider === "bundled") {
+    return {
+      ...stt,
+      bundledInstalled: true,
+      // Missing STT accelerator state is also a legacy CPU selection. Never
+      // turn an unknown value into an implicit NVIDIA service.
+      accelerator: stt.accelerator ?? "cpu",
+    };
+  }
+  const normalized = { ...stt, bundledInstalled: false };
+  delete normalized.accelerator;
+  delete normalized.gpuUuid;
+  return normalized;
+}
+
+export function normalizeInstallationConfig(
+  config: InstallationConfig,
+): InstallationConfig {
+  const tts = normalizeTtsConfig(config.tts);
+  const stt = normalizeSttConfig(config.stt);
+
+  return {
+    ...config,
+    search: {
+      ...config.search,
+      bundledInstalled: config.search.provider === "bundled",
+    },
+    tts,
+    stt,
+    voice: {
+      installed:
+        config.voice.installed &&
+        tts.provider !== "disabled" &&
+        stt.provider !== "disabled",
+    },
+  };
 }
 
 function withoutApiKey<T extends { apiKey?: string }>(
@@ -264,7 +311,11 @@ export async function writeInstallationConfig(
 ): Promise<void> {
   await writeAtomic(
     paths.stateFile,
-    `${JSON.stringify(withoutProviderKeys(config), null, 2)}\n`,
+    `${JSON.stringify(
+      withoutProviderKeys(normalizeInstallationConfig(config)),
+      null,
+      2,
+    )}\n`,
     0o600,
   );
 }
