@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
+import { TextInputWrapper } from "expo-paste-input";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import type { AttachmentMeta } from "@/lib/chat/attachments";
@@ -24,6 +25,7 @@ export function Composer({
   onOpenAddSheet,
   onRemoveAttachment,
   onDismissUploadError,
+  onPasteImages,
   onSubmit,
   onStop,
 }: {
@@ -40,6 +42,7 @@ export function Composer({
   onOpenAddSheet: () => void;
   onRemoveAttachment: (index: number) => void;
   onDismissUploadError: () => void;
+  onPasteImages: (uris: string[]) => void;
   onSubmit: (text: string, attachments: FileUIPart[]) => void;
   onStop: () => void;
 }) {
@@ -233,18 +236,25 @@ export function Composer({
             <Ionicons name="add" size={20} color={colors.mutedForeground} />
           </Pressable>
 
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            editable={configured && dictation.status !== "transcribing"}
-            multiline
-            placeholder={configured ? "Message…" : "No models configured"}
-            placeholderTextColor={colors.mutedForeground}
-            style={[
-              styles.input,
-              { color: colors.foreground, fontFamily: fonts.sansRegular },
-            ]}
-          />
+          <TextInputWrapper
+            style={styles.inputWrapper}
+            onPaste={(payload) => {
+              if (payload.type === "images") onPasteImages(payload.uris);
+            }}
+          >
+            <TextInput
+              value={input}
+              onChangeText={setInput}
+              editable={configured && dictation.status !== "transcribing"}
+              multiline
+              placeholder={configured ? "Message…" : "No models configured"}
+              placeholderTextColor={colors.mutedForeground}
+              style={[
+                styles.input,
+                { color: colors.foreground, fontFamily: fonts.sansRegular },
+              ]}
+            />
+          </TextInputWrapper>
 
           {!streaming && !canSend ? (
             <Pressable
@@ -385,6 +395,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: 6,
   },
+  inputWrapper: { flex: 1 },
   iconButton: {
     width: 42,
     height: 42,
@@ -393,7 +404,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   input: {
-    flex: 1,
     minHeight: 42,
     maxHeight: 162,
     fontSize: 16,

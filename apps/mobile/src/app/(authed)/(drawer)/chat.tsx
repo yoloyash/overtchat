@@ -34,10 +34,7 @@ import {
   useKeyboardState,
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  AddToChatSheet,
-  type AddToChatTool,
-} from "@/components/chat/AddToChatSheet";
+import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
@@ -45,10 +42,6 @@ import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
-import {
-  cacheClipboardImage,
-  readClipboardImage,
-} from "@/lib/chat/clipboard";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
@@ -322,40 +315,13 @@ function ChatSurface({
     void addFiles(picked);
   }, [addFiles]);
 
-  const pasteFromClipboard = useCallback(async () => {
-    addSheetRef.current?.dismiss();
-    try {
-      const image = await readClipboardImage();
-      if (!image) {
-        toastError("No image on the clipboard");
-        return;
-      }
-      void addFiles([image]);
-    } catch (error) {
-      toastError("Couldn't paste image", error);
-    }
-  }, [addFiles]);
-
-  const pasteImageData = useCallback(
-    (data: string) => {
-      addSheetRef.current?.dismiss();
-      try {
-        void addFiles([cacheClipboardImage(data)]);
-      } catch (error) {
-        toastError("Couldn't paste image", error);
-      }
-    },
-    [addFiles],
-  );
-
   const onPickTool = useCallback(
-    (tool: AddToChatTool) => {
+    (tool: "camera" | "photos" | "files") => {
       if (tool === "camera") void pickFromCamera();
       else if (tool === "photos") void pickFromPhotos();
-      else if (tool === "files") void pickFromFiles();
-      else void pasteFromClipboard();
+      else void pickFromFiles();
     },
-    [pickFromCamera, pickFromPhotos, pickFromFiles, pasteFromClipboard],
+    [pickFromCamera, pickFromPhotos, pickFromFiles],
   );
 
   useLayoutEffect(() => {
@@ -640,6 +606,9 @@ function ChatSurface({
             }}
             onRemoveAttachment={removeAttachment}
             onDismissUploadError={dismissUploadError}
+            onPasteImages={(uris) => {
+              void addFiles(uris.map(pastedImageToPickedFile));
+            }}
             onSubmit={handleSubmit}
             onStop={handleStop}
           />
@@ -665,7 +634,6 @@ function ChatSurface({
         searchRequested={searchAvailable && searchRequested}
         onToggleSearchRequested={setSearchRequested}
         onPickTool={onPickTool}
-        onPasteImage={pasteImageData}
       />
     </KeyboardAvoidingView>
   );
@@ -726,4 +694,16 @@ function assetToPickedFile(asset: ImagePicker.ImagePickerAsset): PickedFile {
     asset.mimeType ??
     (filename.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
   return { uri: asset.uri, name: filename, type };
+}
+
+function pastedImageToPickedFile(uri: string, index: number): PickedFile {
+  const fallback = `pasted-image-${Date.now()}-${index}.png`;
+  const name = uri.split("/").pop()?.split("?")[0] || fallback;
+  const lower = name.toLowerCase();
+  const type = lower.endsWith(".gif")
+    ? "image/gif"
+    : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+      ? "image/jpeg"
+      : "image/png";
+  return { uri, name, type };
 }
