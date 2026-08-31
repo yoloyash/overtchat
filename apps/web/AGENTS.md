@@ -18,6 +18,9 @@ chat delivery.
   owns cancellation and optional reconnectable-stream integration.
 - `lib/capabilities` validates search and speech configuration;
   `lib/db/serverCapabilities.ts` persists it.
+- `lib/voice` owns realtime-session tickets, browser transport, history
+  conversion, tool definitions, and service availability. Durable voice chats
+  remain ordinary chat records distinguished by their chat kind.
 - `lib/agents` owns Agent Connections projections and access rules.
   `lib/agents/connector` owns the authorized web-side connector relay.
 - `lib/mcp` owns MCP configuration, connections, tool bindings, and lifecycle.
@@ -33,6 +36,11 @@ Host Connector routes authenticate connector tokens. Internal management routes
 authenticate `OVERTCHAT_MANAGEMENT_SECRET`. Keep both separate from user
 sessions, and never expose connector tokens, management secrets, provider keys,
 or executable MCP configuration through user APIs.
+
+Realtime voice browser routes require the user session and issue short-lived,
+chat-bound tickets. Internal voice routes independently authenticate
+`VOICE_SHARED_SECRET` and verify the ticket; the sidecar must not become a
+trusted substitute for user authorization.
 
 The first created user becomes the administrator. Public signup closes after
 that; administrators create subsequent users through Better Auth's admin path.
