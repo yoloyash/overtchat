@@ -29,7 +29,7 @@ runbook instead of copying its instructions.
 | `packages/agent-runtime` | Coding-agent provider adapters plus host runtime primitives |
 | `packages/shared` | Cross-client chat/tool/model contracts and generated web/native theme outputs |
 | `scripts/dev.mjs` | Root development-stack orchestration |
-| `compose.yml`, `searxng/`, `stt/` | Self-hosted application and bundled sidecars |
+| `compose.yml`, `searxng/`, `stt/`, `voice/` | Self-hosted application and bundled sidecars |
 | `.github/` | Validation, artifact publication, and release promotion automation |
 
 Keep these boundaries strict:
