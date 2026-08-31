@@ -1,12 +1,28 @@
 import { z } from "zod";
+import {
+  ABOUT_MAX_LENGTH,
+  MEMORY_KEY_MAX_LENGTH,
+  MEMORY_VALUE_MAX_LENGTH,
+  OCCUPATION_MAX_LENGTH,
+  PREFERRED_NAME_MAX_LENGTH,
+} from "@overtchat/shared";
 
-export const PREFERRED_NAME_MAX_LENGTH = 80;
-export const OCCUPATION_MAX_LENGTH = 160;
-export const ABOUT_MAX_LENGTH = 1_000;
-export const MEMORY_KEY_MAX_LENGTH = 64;
-export const MEMORY_VALUE_MAX_LENGTH = 500;
-export const PERSONALIZATION_CONTEXT_BYTE_LIMIT = 4_096;
-export const MEMORY_ENTRY_LIMIT = 50;
+export {
+  ABOUT_MAX_LENGTH,
+  MEMORY_ENTRY_LIMIT,
+  MEMORY_KEY_MAX_LENGTH,
+  MEMORY_VALUE_MAX_LENGTH,
+  OCCUPATION_MAX_LENGTH,
+  PERSONALIZATION_CONTEXT_BYTE_LIMIT,
+  PREFERRED_NAME_MAX_LENGTH,
+} from "@overtchat/shared";
+export type {
+  Memory,
+  MemoryInput,
+  Personalization,
+  PersonalizationInput,
+  PersonalizationSnapshot,
+} from "@overtchat/shared";
 
 const optionalProfileField = (max: number) =>
   z
@@ -40,32 +56,3 @@ export const MemoryInputSchema = z.object({
     ),
   value: z.string().trim().min(1).max(MEMORY_VALUE_MAX_LENGTH),
 });
-
-export type PersonalizationInput = z.infer<typeof PersonalizationInputSchema>;
-export type MemoryInput = z.infer<typeof MemoryInputSchema>;
-
-export type Personalization = {
-  enabled: boolean;
-  preferredName: string | null;
-  occupation: string | null;
-  about: string | null;
-};
-
-export type Memory = {
-  id: string;
-  key: string;
-  value: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PersonalizationSnapshot = {
-  personalization: Personalization;
-  memories: Memory[];
-  contextUsage: {
-    bytes: number;
-    limit: number;
-    entries: number;
-    entryLimit: number;
-  };
-};

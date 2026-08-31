@@ -5,4 +5,5 @@ export const queryKeys = {
   search: (q: string) => ["search", q] as const,
   projects: () => ["projects"] as const,
   project: (id: string) => ["projects", id] as const,
+  personalization: () => ["personalization"] as const,
 };
