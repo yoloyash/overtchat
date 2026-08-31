@@ -148,7 +148,13 @@ jobs:
         with:
           api-level: 35
           arch: x86_64
-          profile: pixel_7_pro
+          profile: pixel_5
+          cores: 2
+          ram-size: 2048M
+          emulator-build: 15917651 # 37.1.11; validated with API 35 on ubuntu-24.04
+          emulator-options: >-
+            -no-window -gpu swiftshader_indirect -no-snapshot -noaudio
+            -no-boot-anim -no-metrics -camera-back none -camera-front none
           disable-animations: true
           script: >-
             bash .github/scripts/android-release-smoke.sh
