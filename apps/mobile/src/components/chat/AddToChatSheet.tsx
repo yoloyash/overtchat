@@ -5,6 +5,7 @@ import {
   BottomSheetModal,
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
+import * as Clipboard from "expo-clipboard";
 import { forwardRef, useCallback } from "react";
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -33,6 +34,7 @@ export const AddToChatSheet = forwardRef<
     searchRequested: boolean;
     onToggleSearchRequested: (next: boolean) => void;
     onPickTool?: (tool: AddToChatTool) => void;
+    onPasteImage?: (data: string) => void;
   }
 >(function AddToChatSheet(
   {
@@ -41,6 +43,7 @@ export const AddToChatSheet = forwardRef<
     searchRequested,
     onToggleSearchRequested,
     onPickTool,
+    onPasteImage,
   },
   ref,
 ) {
@@ -82,37 +85,57 @@ export const AddToChatSheet = forwardRef<
         </Text>
 
         <View style={styles.tileRow}>
-          {TOOLS.map((t) => (
-            <Pressable
-              key={t.key}
-              onPress={() => onPickTool?.(t.key)}
-              style={({ pressed }) => [
-                styles.tile,
-                {
-                  backgroundColor: colors.muted,
-                  borderRadius: radii.lg,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Ionicons
-                name={t.icon}
-                size={22}
-                color={colors.popoverForeground}
-              />
-              <Text
-                style={[
-                  styles.tileLabel,
+          {TOOLS.map((t) => {
+            if (t.key === "paste" && Clipboard.isPasteButtonAvailable) {
+              return (
+                <Clipboard.ClipboardPasteButton
+                  key={t.key}
+                  acceptedContentTypes={["image"]}
+                  imageOptions={{ format: "png" }}
+                  displayMode="iconAndLabel"
+                  cornerStyle="fixed"
+                  backgroundColor={colors.muted}
+                  foregroundColor={colors.popoverForeground}
+                  style={styles.tile}
+                  onPress={(data) => {
+                    if (data.type === "image") onPasteImage?.(data.data);
+                  }}
+                />
+              );
+            }
+
+            return (
+              <Pressable
+                key={t.key}
+                onPress={() => onPickTool?.(t.key)}
+                style={({ pressed }) => [
+                  styles.tile,
                   {
-                    color: colors.popoverForeground,
-                    fontFamily: fonts.sansMedium,
+                    backgroundColor: colors.muted,
+                    borderRadius: radii.lg,
+                    opacity: pressed ? 0.85 : 1,
                   },
                 ]}
               >
-                {t.label}
-              </Text>
-            </Pressable>
-          ))}
+                <Ionicons
+                  name={t.icon}
+                  size={22}
+                  color={colors.popoverForeground}
+                />
+                <Text
+                  style={[
+                    styles.tileLabel,
+                    {
+                      color: colors.popoverForeground,
+                      fontFamily: fonts.sansMedium,
+                    },
+                  ]}
+                >
+                  {t.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View
@@ -179,7 +202,7 @@ const styles = StyleSheet.create({
   tileRow: { flexDirection: "row", gap: 8 },
   tile: {
     flex: 1,
-    aspectRatio: 1.1,
+    height: 72,
     alignItems: "center",
     justifyContent: "center",
     gap: 8,

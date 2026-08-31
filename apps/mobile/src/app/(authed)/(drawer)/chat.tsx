@@ -45,7 +45,10 @@ import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
-import { readClipboardImage } from "@/lib/chat/clipboard";
+import {
+  cacheClipboardImage,
+  readClipboardImage,
+} from "@/lib/chat/clipboard";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatMessages } from "@/lib/queries/chatMessages";
@@ -332,6 +335,18 @@ function ChatSurface({
       toastError("Couldn't paste image", error);
     }
   }, [addFiles]);
+
+  const pasteImageData = useCallback(
+    (data: string) => {
+      addSheetRef.current?.dismiss();
+      try {
+        void addFiles([cacheClipboardImage(data)]);
+      } catch (error) {
+        toastError("Couldn't paste image", error);
+      }
+    },
+    [addFiles],
+  );
 
   const onPickTool = useCallback(
     (tool: AddToChatTool) => {
@@ -650,6 +665,7 @@ function ChatSurface({
         searchRequested={searchAvailable && searchRequested}
         onToggleSearchRequested={setSearchRequested}
         onPickTool={onPickTool}
+        onPasteImage={pasteImageData}
       />
     </KeyboardAvoidingView>
   );
