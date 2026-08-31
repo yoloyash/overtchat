@@ -191,6 +191,55 @@ describe("OmpClient", () => {
     await client.stop();
   });
 
+  it("sends typed image attachments with prompts and steering", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "negotiate_protocol") {
+        fake.reply(command, { protocolVersion: 2 });
+        return;
+      }
+      fake.reply(command);
+    });
+    const client = new OmpClient(process, "full");
+    announceReady(process);
+    const image = {
+      uploadId: "11111111-1111-4111-8111-111111111111",
+      filename: "screen.png",
+      mediaType: "image/png" as const,
+      data: "aW1hZ2U=",
+    };
+
+    await client.prompt("Inspect this", [image]);
+    await client.steer("", [image]);
+
+    expect(process.commands).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "prompt",
+          message: "Inspect this",
+          images: [
+            {
+              type: "image",
+              data: "aW1hZ2U=",
+              mimeType: "image/png",
+            },
+          ],
+        }),
+        expect.objectContaining({
+          type: "steer",
+          message: "",
+          images: [
+            {
+              type: "image",
+              data: "aW1hZ2U=",
+              mimeType: "image/png",
+            },
+          ],
+        }),
+      ]),
+    );
+    await client.stop();
+  });
+
   it("surfaces OMP prompt failures emitted after acceptance", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {

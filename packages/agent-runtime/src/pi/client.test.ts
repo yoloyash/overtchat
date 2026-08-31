@@ -143,6 +143,7 @@ describe("PiClient", () => {
         message: "Inspect this",
         images: [
           {
+            type: "image",
             data: "aW1hZ2U=",
             mimeType: "image/png",
           },
@@ -153,6 +154,7 @@ describe("PiClient", () => {
         message: "",
         images: [
           {
+            type: "image",
             data: "aW1hZ2U=",
             mimeType: "image/png",
           },

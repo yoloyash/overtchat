@@ -128,7 +128,15 @@ export class OmpClient {
     return this.request({
       type: "prompt",
       message,
-      ...(images.length ? { images: images.map((image) => ({ data: image.data, mimeType: image.mediaType })) } : {}),
+      ...(images.length
+        ? {
+            images: images.map((image) => ({
+              type: "image" as const,
+              data: image.data,
+              mimeType: image.mediaType,
+            })),
+          }
+        : {}),
     });
   }
 
@@ -136,7 +144,15 @@ export class OmpClient {
     return this.request({
       type: "steer",
       message,
-      ...(images.length ? { images: images.map((image) => ({ data: image.data, mimeType: image.mediaType })) } : {}),
+      ...(images.length
+        ? {
+            images: images.map((image) => ({
+              type: "image" as const,
+              data: image.data,
+              mimeType: image.mediaType,
+            })),
+          }
+        : {}),
     });
   }
 

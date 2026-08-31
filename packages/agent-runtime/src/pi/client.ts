@@ -43,6 +43,7 @@ function promptFrame(
     ...(images.length
       ? {
           images: images.map((image) => ({
+            type: "image" as const,
             data: image.data,
             mimeType: image.mediaType,
           })),

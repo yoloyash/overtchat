@@ -65,6 +65,100 @@ function turnIdOf(message: unknown): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
+function withSubmittedUserPresentation(
+  submitted: unknown,
+  provider: unknown,
+): unknown {
+  if (
+    !submitted ||
+    typeof submitted !== "object" ||
+    !provider ||
+    typeof provider !== "object"
+  ) {
+    return provider;
+  }
+  const timestamp = timestampOf(submitted);
+  return {
+    ...submitted,
+    ...provider,
+    content: Reflect.get(submitted, "content"),
+    ...(timestamp !== null ? { timestamp } : {}),
+    overtchatSubmissionId: submissionIdOf(submitted),
+  };
+}
+
+function submittedUserMessage(message: unknown): boolean {
+  return roleOf(message) === "user" && submissionIdOf(message) !== null;
+}
+
+function closestMessageIndex(
+  messages: readonly unknown[],
+  targetIndex: number,
+  claimedIndexes: ReadonlySet<number>,
+  matches: (message: unknown) => boolean,
+): number {
+  let closest = -1;
+  let distance = Number.POSITIVE_INFINITY;
+  for (const [index, message] of messages.entries()) {
+    if (claimedIndexes.has(index) || !matches(message)) continue;
+    const candidateDistance = Math.abs(index - targetIndex);
+    if (candidateDistance < distance) {
+      closest = index;
+      distance = candidateDistance;
+    }
+  }
+  return closest;
+}
+
+/** Keep OvertChat's accepted user-message presentation while adopting the
+ * provider's native identity and history metadata. */
+export function reconcileSubmittedUserMessages(
+  submitted: readonly unknown[],
+  provider: readonly unknown[],
+): unknown[] {
+  const messages = [...provider];
+  const claimedProviderIndexes = new Set<number>();
+
+  for (const [submittedIndex, message] of submitted.entries()) {
+    if (!submittedUserMessage(message)) continue;
+    const submissionId = submissionIdOf(message);
+    const nativeId = idOf(message);
+    const text = textOf(message);
+    let providerIndex = messages.findIndex(
+      (candidate, index) =>
+        !claimedProviderIndexes.has(index) &&
+        roleOf(candidate) === "user" &&
+        submissionIdOf(candidate) === submissionId,
+    );
+    if (providerIndex < 0 && nativeId) {
+      providerIndex = messages.findIndex(
+        (candidate, index) =>
+          !claimedProviderIndexes.has(index) &&
+          roleOf(candidate) === "user" &&
+          idOf(candidate) === nativeId,
+      );
+    }
+    if (providerIndex < 0) {
+      providerIndex = closestMessageIndex(
+        messages,
+        submittedIndex,
+        claimedProviderIndexes,
+        (candidate) =>
+          roleOf(candidate) === "user" &&
+          submissionIdOf(candidate) === null &&
+          textOf(candidate) === text,
+      );
+    }
+    if (providerIndex < 0) continue;
+    claimedProviderIndexes.add(providerIndex);
+    messages[providerIndex] = withSubmittedUserPresentation(
+      message,
+      messages[providerIndex],
+    );
+  }
+  return messages;
+}
+
 function replaceTurnMessages(
   messages: unknown[],
   turnId: string,
@@ -72,8 +166,18 @@ function replaceTurnMessages(
 ): unknown[] {
   // The provider projection owns order within a turn. Replace that block as one
   // unit so neither connector nor browser delivery timing can reorder its rows.
+  const projected = incoming.map((message) => {
+    const submissionId = submissionIdOf(message);
+    if (!submissionId) return message;
+    const submitted = messages.find(
+      (candidate) => submissionIdOf(candidate) === submissionId,
+    );
+    return submitted
+      ? withSubmittedUserPresentation(submitted, message)
+      : message;
+  });
   const incomingSubmissionIds = new Set(
-    incoming.flatMap((message) => {
+    projected.flatMap((message) => {
       const id = submissionIdOf(message);
       return id ? [id] : [];
     }),
@@ -93,7 +197,7 @@ function replaceTurnMessages(
   );
   return [
     ...remaining.slice(0, insertionIndex),
-    ...incoming,
+    ...projected,
     ...remaining.slice(insertionIndex),
   ];
 }
@@ -109,7 +213,10 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
         (candidate) => submissionIdOf(candidate) === submissionId,
       );
       if (submissionIndex >= 0) {
-        next[submissionIndex] = message;
+        next[submissionIndex] = withSubmittedUserPresentation(
+          next[submissionIndex],
+          message,
+        );
         return next;
       }
       next.push(message);
@@ -124,7 +231,10 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
           textOf(candidate) === text,
       );
       if (pendingIndex >= 0) {
-        next[pendingIndex] = message;
+        next[pendingIndex] = withSubmittedUserPresentation(
+          next[pendingIndex],
+          message,
+        );
         return next;
       }
     }
@@ -333,12 +443,16 @@ export function reconcileAgentRuntimeSnapshot(
   durable: AgentRuntimeSnapshot,
   fresh: AgentRuntimeSnapshot,
 ): AgentRuntimeSnapshot {
+  const providerMessages = reconcileSubmittedUserMessages(
+    durable.messages,
+    fresh.messages,
+  );
   const connectorRowsByProviderUnit = new Map<number, unknown[]>();
   let providerUnit = 0;
   for (let index = 0; index < durable.messages.length; index += 1) {
     const message = durable.messages[index];
     if (isConnectorCheckpointMessage(message)) {
-      if (!freshContainsConnectorMessage(fresh.messages, message)) {
+      if (!freshContainsConnectorMessage(providerMessages, message)) {
         const rows = connectorRowsByProviderUnit.get(providerUnit) ?? [];
         rows.push(message);
         connectorRowsByProviderUnit.set(providerUnit, rows);
@@ -356,13 +470,13 @@ export function reconcileAgentRuntimeSnapshot(
     messages.push(...(connectorRowsByProviderUnit.get(providerUnit) ?? []));
     insertedUnits.add(providerUnit);
   };
-  for (let index = 0; index < fresh.messages.length; index += 1) {
-    const message = fresh.messages[index];
+  for (let index = 0; index < providerMessages.length; index += 1) {
+    const message = providerMessages[index];
     if (!isConnectorCheckpointMessage(message)) insertConnectorRows();
     messages.push(message);
     if (
       !isConnectorCheckpointMessage(message) &&
-      endsProviderHistoryUnit(fresh.messages, index)
+      endsProviderHistoryUnit(providerMessages, index)
     ) {
       providerUnit += 1;
     }
