@@ -606,6 +606,9 @@ function ChatSurface({
             }}
             onRemoveAttachment={removeAttachment}
             onDismissUploadError={dismissUploadError}
+            onPasteImages={(uris) => {
+              void addFiles(uris.map(pastedImageToPickedFile));
+            }}
             onSubmit={handleSubmit}
             onStop={handleStop}
           />
@@ -691,4 +694,16 @@ function assetToPickedFile(asset: ImagePicker.ImagePickerAsset): PickedFile {
     asset.mimeType ??
     (filename.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
   return { uri: asset.uri, name: filename, type };
+}
+
+function pastedImageToPickedFile(uri: string, index: number): PickedFile {
+  const fallback = `pasted-image-${Date.now()}-${index}.png`;
+  const name = uri.split("/").pop()?.split("?")[0] || fallback;
+  const lower = name.toLowerCase();
+  const type = lower.endsWith(".gif")
+    ? "image/gif"
+    : lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+      ? "image/jpeg"
+      : "image/png";
+  return { uri, name, type };
 }
