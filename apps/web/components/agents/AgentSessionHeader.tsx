@@ -3,6 +3,7 @@
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { Menu } from "@base-ui/react/menu";
 import { Popover } from "@base-ui/react/popover";
+import Image from "next/image";
 import {
   Coins,
   Copy,
@@ -15,15 +16,19 @@ import {
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import type {
+  AgentProviderId,
   AgentSessionStats,
   AgentWorkspaceGitStatus,
 } from "@overtchat/agent-bridge";
+import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
 import { motionClasses } from "@/lib/motion";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/toast";
 
 export function AgentSessionHeader({
+  provider,
   workspaceId,
   workspaceName,
   workspacePath,
@@ -34,6 +39,7 @@ export function AgentSessionHeader({
   onRename,
   onCompact,
 }: {
+  provider: AgentProviderId;
   workspaceId: string;
   workspaceName: string;
   workspacePath: string;
@@ -44,6 +50,8 @@ export function AgentSessionHeader({
   onRename: () => void;
   onCompact: () => void;
 }) {
+  const providerMetadata = agentProviderMetadata(provider);
+  const providerVisual = AGENT_PROVIDER_VISUALS[provider];
   const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
     active: true,
     running,
@@ -65,11 +73,33 @@ export function AgentSessionHeader({
       className="flex h-12 shrink-0 items-center gap-1 border-b px-3"
     >
       <SidebarToggle />
-      <span
-        className="hidden max-w-40 truncate px-1 text-sm font-medium lg:block"
-        title={workspaceName}
+      <div
+        data-testid="agent-provider-identity"
+        aria-label={`${providerMetadata.label} agent`}
+        title={`${providerMetadata.label} agent`}
+        className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs font-medium"
       >
-        {workspaceName}
+        <span
+          className={cn(
+            "flex size-6 items-center justify-center rounded-md border bg-background",
+            providerVisual.darkSurface && "bg-zinc-950",
+          )}
+          aria-hidden="true"
+        >
+          <Image
+            src={providerVisual.icon}
+            alt=""
+            className="size-4 object-contain"
+          />
+        </span>
+        <span className="hidden sm:inline">{providerMetadata.label}</span>
+      </div>
+      <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
+      <span
+        className="hidden max-w-40 truncate px-1 font-mono text-xs text-muted-foreground md:block"
+        title={workspacePath}
+      >
+        ~/{workspaceName}
       </span>
       <WorkspaceGitSummary status={gitStatus} />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">

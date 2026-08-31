@@ -23,6 +23,7 @@ import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
   STREAMDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
+import { remarkAgentLinks } from "@/lib/agents/links";
 import {
   agentActivitySequencePosition,
   describeAgentActivity,
@@ -40,10 +41,34 @@ import {
   type AgentRunActivity,
 } from "./AgentActivity";
 import { AgentTaskProgressCard } from "./AgentTaskList";
+import { AgentLinkIcon } from "./AgentLinkIcon";
+import { AgentWorkspaceLink } from "./AgentWorkspaceLink";
 
 export type { AgentRunActivity } from "./AgentActivity";
 
 type UnknownRecord = Record<string, unknown>;
+
+const AGENT_REMARK_PLUGINS = [
+  ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
+  remarkAgentLinks,
+];
+
+const AGENT_MARKDOWN_ALLOWED_TAGS = {
+  "agent-link-icon": ["kind"],
+  "agent-workspace-link": ["path", "linestart", "lineend"],
+};
+
+const AGENT_MARKDOWN_COMPONENTS = {
+  "agent-link-icon": AgentLinkIcon,
+  "agent-workspace-link": AgentWorkspaceLink,
+};
+
+const AGENT_MARKDOWN_CLASSES = cn(
+  "font-sans space-y-3 text-[15px] leading-relaxed",
+  "[&_[data-streamdown=link]]:inline-flex [&_[data-streamdown=link]]:max-w-full [&_[data-streamdown=link]]:items-baseline",
+  "[&_[data-streamdown=link]]:font-medium [&_[data-streamdown=link]]:text-primary [&_[data-streamdown=link]]:no-underline",
+  "[&_[data-streamdown=link]]:motion-colors [&_[data-streamdown=link]]:hover:underline",
+);
 
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -606,9 +631,11 @@ function Markdown({
 }) {
   return (
     <Streamdown
-      className="font-sans space-y-3 text-[15px] leading-relaxed"
+      className={AGENT_MARKDOWN_CLASSES}
       plugins={STREAMDOWN_PLUGINS}
-      remarkPlugins={STREAMDOWN_DEFAULT_REMARK_PLUGINS}
+      remarkPlugins={AGENT_REMARK_PLUGINS}
+      allowedTags={AGENT_MARKDOWN_ALLOWED_TAGS}
+      components={AGENT_MARKDOWN_COMPONENTS}
       isAnimating={streaming}
       caret={streaming ? "block" : undefined}
     >
