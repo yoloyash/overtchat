@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Stack } from "expo-router";
+import { router, Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
 import {
   Linking,
@@ -83,6 +83,17 @@ export default function SettingsScreen() {
           </Section>
 
           <Section
+            title="Preferences"
+            description="Settings tied to your account on this server."
+          >
+            <NavigationRow
+              label="Personalization"
+              sub="Tell OvertChat about you and manage saved memories."
+              onPress={() => router.push("./personalization")}
+            />
+          </Section>
+
+          <Section
             title="Appearance"
             description="Choose how overtchat looks and reads."
           >
@@ -139,8 +150,15 @@ export default function SettingsScreen() {
             description="Open settings that are managed on the web."
           >
             <LinkRow
-              label="Account"
-              sub="Name and password."
+              label="Profile"
+              sub="Display name, avatar, and activity profile."
+              onPress={() => openOnWeb("/settings/profile")}
+              colors={colors}
+              fonts={fonts}
+            />
+            <LinkRow
+              label="Security"
+              sub="Email address and password."
               onPress={() => openOnWeb("/settings/account")}
               colors={colors}
               fonts={fonts}
@@ -152,12 +170,33 @@ export default function SettingsScreen() {
               colors={colors}
               fonts={fonts}
             />
+            <LinkRow
+              label="Connected tools"
+              sub="Browse and configure MCP servers."
+              onPress={() => openOnWeb("/settings/tools")}
+              colors={colors}
+              fonts={fonts}
+            />
             {isAdmin ? (
               <>
                 <LinkRow
                   label="Models"
                   sub="Models available in chat."
                   onPress={() => openOnWeb("/settings/models")}
+                  colors={colors}
+                  fonts={fonts}
+                />
+                <LinkRow
+                  label="Services"
+                  sub="Search, speech, and voice services."
+                  onPress={() => openOnWeb("/settings/services")}
+                  colors={colors}
+                  fonts={fonts}
+                />
+                <LinkRow
+                  label="Agents"
+                  sub="Host Connector and coding-agent workspaces."
+                  onPress={() => openOnWeb("/settings/connections")}
                   colors={colors}
                   fonts={fonts}
                 />
@@ -423,6 +462,49 @@ function LinkRow({
         </Text>
       </View>
       <Ionicons name="open-outline" size={18} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
+function NavigationRow({
+  label,
+  sub,
+  onPress,
+}: {
+  label: string;
+  sub: string;
+  onPress: () => void;
+}) {
+  const { colors, fonts } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
+    >
+      <View style={styles.rowText}>
+        <Text
+          style={[
+            styles.rowLabel,
+            { color: colors.foreground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {label}
+        </Text>
+        <Text
+          style={[
+            styles.rowSub,
+            { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
+          ]}
+        >
+          {sub}
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={18}
+        color={colors.mutedForeground}
+      />
     </Pressable>
   );
 }

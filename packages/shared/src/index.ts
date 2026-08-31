@@ -8,4 +8,5 @@ export * from "./citations";
 export * from "./search";
 export * from "./mcp";
 export * from "./voice";
+export * from "./personalization";
 export * from "./theme/tokens";

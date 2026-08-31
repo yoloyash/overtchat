@@ -45,6 +45,7 @@ export default function AuthedLayout() {
       >
         <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="personalization" />
         <Stack.Screen name="search" />
         <Stack.Screen name="projects/[id]" />
       </Stack>
