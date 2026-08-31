@@ -53,7 +53,8 @@ export function defaultInstallationConfig(
     format: 1,
     appVersion,
     appImage,
-    voiceImage: `${VOICE_IMAGE}:${appVersion}`,
+    voiceVersion: manifest.voiceVersion,
+    voiceImage: `${VOICE_IMAGE}:${manifest.voiceVersion}`,
     connectorVersion: manifest.connectorVersion,
     sttVersion: manifest.sttVersion,
     redisImage: manifest.redisImage,
@@ -137,7 +138,12 @@ export async function readInstallationConfig(
         environmentFlag(process.env.DISABLE_UPDATE_CHECK) ??
         config.disableUpdateCheck ??
         false,
-      voiceImage: config.voiceImage ?? `${VOICE_IMAGE}:${config.appVersion}`,
+      // Voice was first released with independent versioning. Treat state from
+      // pre-release builds as older so the next manifest selects a published image.
+      voiceVersion: config.voiceVersion ?? "0.0.0",
+      voiceImage:
+        config.voiceImage ??
+        `${VOICE_IMAGE}:${config.voiceVersion ?? "0.0.0"}`,
       voice: config.voice ?? { installed: false },
     });
   } catch (error) {

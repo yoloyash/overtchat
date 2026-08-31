@@ -34,7 +34,7 @@ services:
         condition: service_healthy
 
   voice:
-    image: ghcr.io/yoloyash/overtchat-voice:${APP_VERSION:-0.18.1}
+    image: ghcr.io/yoloyash/overtchat-voice:${VOICE_VERSION:-0.1.0}
     build: ./voice
     container_name: overtchat-voice
     restart: unless-stopped

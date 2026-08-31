@@ -47,6 +47,7 @@ export function renderStackEnvironment(
   const values: Array<[string, string | number]> = [
     ["APP_VERSION", config.appVersion],
     ["OVERTCHAT_APP_IMAGE", config.appImage],
+    ["VOICE_VERSION", config.voiceVersion],
     ["OVERTCHAT_VOICE_IMAGE", config.voiceImage],
     ["STT_VERSION", config.sttVersion],
     ["OVERTCHAT_REDIS_IMAGE", config.redisImage],

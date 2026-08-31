@@ -59,7 +59,7 @@ jobs:
           const manifest = require("./apps/site/public/install-manifest.json");
           const version = /^\d+\.\d+\.\d+$/;
           if (manifest.format !== 1) throw new Error("Unsupported release manifest format.");
-          for (const field of ["cliVersion", "appVersion", "connectorVersion", "sttVersion"]) {
+          for (const field of ["cliVersion", "appVersion", "voiceVersion", "connectorVersion", "sttVersion"]) {
             if (typeof manifest[field] !== "string" || !version.test(manifest[field])) {
               throw new Error(`Invalid ${field} in release manifest.`);
             }
@@ -85,7 +85,7 @@ jobs:
           }
           const managedDefaults = [
             `ghcr.io/yoloyash/overtchat-app:\${APP_VERSION:-${manifest.appVersion}}`,
-            `ghcr.io/yoloyash/overtchat-voice:\${APP_VERSION:-${manifest.appVersion}}`,
+            `ghcr.io/yoloyash/overtchat-voice:\${VOICE_VERSION:-${manifest.voiceVersion}}`,
             `ghcr.io/yoloyash/overtchat-stt-cpu:\${STT_VERSION:-${manifest.sttVersion}}`,
             `ghcr.io/yoloyash/overtchat-stt-gpu:\${STT_VERSION:-${manifest.sttVersion}}`,
           ];
@@ -97,6 +97,7 @@ jobs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, [
             `cli=${manifest.cliVersion}`,
             `app=${manifest.appVersion}`,
+            `voice=${manifest.voiceVersion}`,
             `connector=${manifest.connectorVersion}`,
             `stt=${manifest.sttVersion}`,
             `redis_image=${manifest.redisImage}`,
@@ -185,6 +186,7 @@ jobs:
               (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
         env:
           APP_VERSION: ${{ steps.manifest.outputs.app }}
+          VOICE_VERSION: ${{ steps.manifest.outputs.voice }}
           STT_VERSION: ${{ steps.manifest.outputs.stt }}
           REDIS_IMAGE: ${{ steps.manifest.outputs.redis_image }}
           SEARXNG_IMAGE: ${{ steps.manifest.outputs.searxng_image }}
@@ -210,7 +212,7 @@ jobs:
           node .github/scripts/assert-image-platforms.mjs \
             "$verification_directory/app.json" linux/amd64 linux/arm64
 
-          inspect_image "ghcr.io/yoloyash/overtchat-voice:$APP_VERSION" \
+          inspect_image "ghcr.io/yoloyash/overtchat-voice:$VOICE_VERSION" \
             "$verification_directory/voice.json"
           node .github/scripts/assert-image-platforms.mjs \
             "$verification_directory/voice.json" linux/amd64 linux/arm64
@@ -297,9 +299,12 @@ jobs:
         if: steps.readiness.outputs.ready == 'true'
         env:
           APP_VERSION: ${{ steps.manifest.outputs.app }}
+          VOICE_VERSION: ${{ steps.manifest.outputs.voice }}
         run: |
-          for repository in overtchat-app overtchat-voice; do
-            versioned_image="ghcr.io/yoloyash/$repository:$APP_VERSION"
+          for component in "overtchat-app:$APP_VERSION" "overtchat-voice:$VOICE_VERSION"; do
+            repository="${component%%:*}"
+            version="${component#*:}"
+            versioned_image="ghcr.io/yoloyash/$repository:$version"
             latest_image="ghcr.io/yoloyash/$repository:latest"
             versioned_digest=$(docker buildx imagetools inspect \
               "$versioned_image" --format '{{.Manifest.Digest}}')

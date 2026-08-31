@@ -1,15 +1,21 @@
-name: Build and publish app image
+name: Build and publish voice image
 
-# Tag a release with `v<semver>` (e.g. `v0.2.0`) to trigger.
+# Tag a release with `voice-v<semver>` (e.g. `voice-v0.1.0`) to trigger.
 # Built for linux/amd64 + linux/arm64.
 on:
   push:
-    tags: ["v*"]
+    tags: ["voice-v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing voice-v* tag to publish
+        required: true
+        type: string
 
 permissions: {}
 
 concurrency:
-  group: app-image-${{ github.ref }}
+  group: voice-image-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -17,7 +23,7 @@ env:
   IMAGE_OWNER: ${{ github.repository_owner }}
 
 jobs:
-  app:
+  voice:
     outputs:
       version: ${{ steps.version.outputs.version }}
     runs-on: ubuntu-latest
@@ -27,27 +33,26 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
 
       - name: Validate release tag
         id: version
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          if [[ ! "$RELEASE_TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
-            echo "release tag must be a semantic version such as v0.13.5" >&2
+          if [[ ! "$RELEASE_TAG" =~ ^voice-v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "release tag must be a semantic version such as voice-v0.1.0" >&2
             exit 1
           fi
-
           version="${BASH_REMATCH[1]}"
           # Match the literal Compose interpolation.
           # shellcheck disable=SC2016
-          compose_version="$(sed -n 's/.*${APP_VERSION:-\([^}]*\)}.*/\1/p' compose.yml)"
+          compose_version="$(sed -n 's/.*${VOICE_VERSION:-\([^}]*\)}.*/\1/p' compose.yml)"
           if [[ "$compose_version" != "$version" ]]; then
             echo "compose.yml defaults to $compose_version, but the release tag is $RELEASE_TAG" >&2
             exit 1
           fi
-          manifest_version=$(node -p "require('./apps/site/public/install-manifest.json').appVersion")
+          manifest_version=$(node -p "require('./apps/site/public/install-manifest.json').voiceVersion")
           if [[ "$manifest_version" != "$version" ]]; then
             echo "release manifest selects $manifest_version, but the release tag is $RELEASE_TAG" >&2
             exit 1
@@ -67,20 +72,21 @@ jobs:
         id: image
         uses: ./.github/actions/resolve-owned-image
         with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-app:${{ steps.version.outputs.version }}
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-voice:${{ steps.version.outputs.version }}
           revision: ${{ steps.version.outputs.revision }}
           version: ${{ steps.version.outputs.version }}
           platforms: linux/amd64 linux/arm64
           registry-username: ${{ github.actor }}
           registry-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+      - if: steps.image.outputs.should_build == 'true'
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
 
       - id: meta
         if: steps.image.outputs.should_build == 'true'
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-app
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/overtchat-voice
           flavor: latest=false
           tags: type=raw,value=${{ steps.version.outputs.version }}
           labels: org.opencontainers.image.revision=${{ steps.version.outputs.revision }}
@@ -88,49 +94,22 @@ jobs:
       - if: steps.image.outputs.should_build == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./voice
+          file: ./voice/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=app
-          cache-to: type=gha,scope=app,mode=max
-
-  release:
-    needs: app
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Publish GitHub release after the image is public
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-          VERSION: ${{ needs.app.outputs.version }}
-        run: |
-          if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-draft; then
-            if [ "$(cat release-draft)" = "true" ]; then
-              gh release edit "$TAG" --draft=false --latest
-            else
-              echo "Release $TAG is already public."
-            fi
-          else
-            gh release create "$TAG" \
-              --title "OvertChat v$VERSION" \
-              --generate-notes \
-              --latest \
-              --verify-tag
-          fi
+          cache-from: type=gha,scope=voice
+          cache-to: type=gha,scope=voice,mode=max
 
   promote:
-    needs: release
+    needs: voice
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
-      - name: Promote release after the app image is public
+      - name: Promote release after the voice image is public
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

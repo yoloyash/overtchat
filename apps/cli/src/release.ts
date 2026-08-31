@@ -23,6 +23,7 @@ export type ReleaseManifest = {
   format: 1;
   cliVersion: string;
   appVersion: string;
+  voiceVersion: string;
   connectorVersion: string;
   sttVersion: string;
   redisImage: string;
@@ -57,6 +58,10 @@ export function applyReleaseManifest(
     compareVersions(manifest.connectorVersion, config.connectorVersion) > 0
       ? manifest.connectorVersion
       : config.connectorVersion;
+  const voiceVersion =
+    compareVersions(manifest.voiceVersion, config.voiceVersion) > 0
+      ? manifest.voiceVersion
+      : config.voiceVersion;
   const sttVersion =
     compareVersions(manifest.sttVersion, config.sttVersion) > 0
       ? manifest.sttVersion
@@ -72,7 +77,8 @@ export function applyReleaseManifest(
     voiceImage:
       config.voiceImage === "overtchat-voice:setup-dev"
         ? config.voiceImage
-        : `${VOICE_IMAGE}:${appVersion}`,
+        : `${VOICE_IMAGE}:${voiceVersion}`,
+    voiceVersion,
     connectorVersion,
     sttVersion,
     redisImage: manifest.redisImage,
@@ -108,6 +114,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   }
   const cliVersion = Reflect.get(value, "cliVersion");
   const appVersion = Reflect.get(value, "appVersion");
+  const voiceVersion = Reflect.get(value, "voiceVersion");
   const connectorVersion = Reflect.get(value, "connectorVersion");
   const sttVersion = Reflect.get(value, "sttVersion");
   const redisImage = Reflect.get(value, "redisImage");
@@ -115,6 +122,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
   const kokoroImage = Reflect.get(value, "kokoroImage");
   assertVersion(cliVersion, "CLI version");
   assertVersion(appVersion, "app version");
+  assertVersion(voiceVersion, "voice version");
   assertVersion(connectorVersion, "connector version");
   assertVersion(sttVersion, "STT version");
   assertDigestImage(redisImage, "Redis image", "docker.io/library/redis");
@@ -128,6 +136,7 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     format: 1,
     cliVersion,
     appVersion,
+    voiceVersion,
     connectorVersion,
     sttVersion,
     redisImage,

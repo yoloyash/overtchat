@@ -48,6 +48,7 @@ export type InstallationConfig = {
   format: 1;
   appVersion: string;
   appImage: string;
+  voiceVersion: string;
   voiceImage: string;
   connectorVersion: string;
   sttVersion: string;

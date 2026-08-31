@@ -18,7 +18,8 @@ function config(): InstallationConfig {
     format: 1,
     appVersion: "1.2.3",
     appImage: "ghcr.io/example/overtchat:1.2.3",
-    voiceImage: "ghcr.io/example/overtchat-voice:1.2.3",
+    voiceVersion: "0.1.0",
+    voiceImage: "ghcr.io/example/overtchat-voice:0.1.0",
     connectorVersion: "2.0.0",
     sttVersion: "3.0.0",
     redisImage: `docker.io/library/redis@sha256:${"a".repeat(64)}`,
@@ -82,6 +83,7 @@ describe("managed Compose configuration", () => {
     );
     expect(environment).toContain('DISABLE_UPDATE_CHECK="false"');
     expect(environment).toContain('STT_GPU_DEVICE_ID="GPU-abc"');
+    expect(environment).toContain('VOICE_VERSION="0.1.0"');
     expect(environment).toContain(`OVERTCHAT_REDIS_IMAGE="${config().redisImage}"`);
     expect(environment).toContain(`OVERTCHAT_SEARXNG_IMAGE="${config().searxngImage}"`);
     expect(environment).toContain(`OVERTCHAT_KOKORO_IMAGE="${config().kokoroImage}"`);
