@@ -9,4 +9,6 @@ export * from "./search";
 export * from "./mcp";
 export * from "./voice";
 export * from "./personalization";
+export * from "./memory-tools";
+export * from "./message-parts";
 export * from "./theme/tokens";

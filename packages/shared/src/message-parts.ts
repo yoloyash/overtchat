@@ -1,9 +1,6 @@
 import type { UIMessage } from "ai";
-import { isMcpToolName } from "@overtchat/shared";
-import {
-  isMemoryToolPart,
-  type MemoryToolPart,
-} from "@/lib/personalization/tool-parts";
+import { isMcpToolName } from "./mcp";
+import { isMemoryToolPart, type MemoryToolPart } from "./memory-tools";
 
 type AnyPart = UIMessage["parts"][number];
 
@@ -20,21 +17,21 @@ export function isActivityPart(part: AnyPart): boolean {
   );
 }
 
-export type Segment =
+export type MessageSegment =
   | { kind: "text"; part: AnyPart; index: number }
   | { kind: "activity"; parts: AnyPart[]; startIndex: number }
   | { kind: "memory"; parts: MemoryToolPart[]; startIndex: number };
 
 /**
- * Fold a message's flat parts list into ordered segments. Each contiguous run
- * of reasoning/general tools becomes an `activity`; memory mutations become a
- * dedicated `memory` artifact; answer text remains `text`. Unrenderable parts
- * (sources, files, step markers) are dropped. Original indexes provide stable
- * keys and let callers identify the last, potentially streaming segment.
+ * Fold a message's flat parts into ordered render segments shared by web and
+ * mobile. Blank step-boundary text and other non-renderable parts are omitted.
  */
-export function groupMessageParts(parts: readonly AnyPart[]): Segment[] {
-  const segments: Segment[] = [];
-  let run: Extract<Segment, { kind: "activity" | "memory" }> | null = null;
+export function groupMessageParts(
+  parts: readonly AnyPart[],
+): MessageSegment[] {
+  const segments: MessageSegment[] = [];
+  let run: Extract<MessageSegment, { kind: "activity" | "memory" }> | null =
+    null;
 
   const flush = () => {
     if (run) {
@@ -61,13 +58,8 @@ export function groupMessageParts(parts: readonly AnyPart[]): Segment[] {
 
   parts.forEach((part, index) => {
     if (part.type === "text") {
-      // Multi-step tool calling emits blank `text` parts at step boundaries.
-      // They aren't a real answer, so they must NOT break the activity run —
-      // otherwise contiguous tool calls split into several "Searched the web"
-      // blocks separated by invisible empty text. Drop them; only text with
-      // real content flushes the run and renders as prose.
       const text = (part as { text?: string }).text;
-      if (!text || !text.trim()) return;
+      if (!text?.trim()) return;
       flush();
       segments.push({ kind: "text", part, index });
       return;
@@ -76,9 +68,7 @@ export function groupMessageParts(parts: readonly AnyPart[]): Segment[] {
       appendMemory(part, index);
       return;
     }
-    if (isActivityPart(part)) {
-      appendActivity(part, index);
-    }
+    if (isActivityPart(part)) appendActivity(part, index);
   });
 
   flush();

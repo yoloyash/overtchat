@@ -14,7 +14,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { isToolSettled } from "@overtchat/shared";
+import { groupMessageParts, isToolSettled } from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
@@ -24,7 +24,6 @@ import {
   STREAMDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
-import { groupMessageParts } from "@/lib/chat/parts";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
 import { unicodeCitation } from "@/lib/citations-remark";
 import type { MessageStats } from "@/lib/chat/stats";

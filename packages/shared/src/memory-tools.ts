@@ -104,3 +104,41 @@ export function hasSuccessfulMemoryMutation(message: UIMessage): boolean {
       describeMemoryToolPart(part).status === "success",
   );
 }
+
+export function memoryToolStatusLabel(detail: MemoryToolDisplay): string {
+  if (detail.status === "running") {
+    return detail.action === "set" ? "Updating…" : "Removing…";
+  }
+  if (detail.status === "error") return "Failed";
+  if (detail.status === "missing") return "Not found";
+  if (detail.status === "incomplete") return "Did not complete";
+  return detail.action === "set" ? "Updated" : "Removed";
+}
+
+export function memoryToolArtifactLabel(
+  details: readonly MemoryToolDisplay[],
+): string {
+  if (details.some((detail) => detail.status === "running")) {
+    if (details.length > 1) return "Updating memories…";
+    return details[0]?.action === "delete"
+      ? "Removing memory…"
+      : "Updating memory…";
+  }
+  if (details.some((detail) => detail.status === "error")) {
+    return details.some((detail) => detail.status === "success")
+      ? "Memories updated with errors"
+      : "Memory update failed";
+  }
+  if (details.every((detail) => detail.status === "missing")) {
+    return details.length > 1 ? "Memories not found" : "Memory not found";
+  }
+  if (details.some((detail) => detail.status === "incomplete")) {
+    return "Memory update did not complete";
+  }
+  if (details.length > 1) {
+    return details.every((detail) => detail.action === "delete")
+      ? "Memories removed"
+      : "Memories updated";
+  }
+  return details[0]?.action === "delete" ? "Memory removed" : "Memory updated";
+}
