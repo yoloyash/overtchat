@@ -182,7 +182,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
             id: "answer",
             type: "text",
             text:
-              "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), and [the fixture](./fixtures/custom.xyz).",
+              "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
           },
         ],
         timestamp: 2.2,
@@ -194,7 +194,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         role: "turnFooter",
         messageId: "turn-1:assistant",
         content:
-          "I'm auditing the release state before merging anything.\n\nI will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), and [the fixture](./fixtures/custom.xyz).",
+          "I'm auditing the release state before merging anything.\n\nI will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
         durationMs: 246_000,
         timestamp: 2.3,
       },
@@ -779,6 +779,8 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(page.getByTestId("agent-link-icon-github")).toBeVisible();
   await expect(page.getByTestId("agent-link-icon-typescript")).toBeVisible();
   await expect(page.getByTestId("agent-link-icon-web")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-json")).toBeVisible();
+  await expect(page.getByTestId("agent-link-icon-csharp")).toBeVisible();
   await expect(page.getByTestId("agent-link-icon-file")).toBeVisible();
   const agentViewLink = page
     .getByTestId("agent-workspace-link")

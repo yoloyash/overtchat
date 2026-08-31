@@ -68,7 +68,12 @@ describe("agentLinkIconKind", () => {
     ["config/settings.json", "json"],
     ["docs/README.md", "markdown"],
     ["scripts/release.py", "python"],
-    ["src/main.rs", "code"],
+    ["src/main.c", "c"],
+    ["src/main.cpp", "cplusplus"],
+    ["src/App.cs", "csharp"],
+    ["cmd/server.go", "go"],
+    ["src/main.rs", "rust"],
+    ["src/Main.java", "code"],
     ["./fixtures/custom.xyz", "file"],
   ] as const)("maps %s to the %s icon", (href, icon) => {
     expect(agentLinkIconKind(classifyAgentLink({ href }))).toBe(icon);

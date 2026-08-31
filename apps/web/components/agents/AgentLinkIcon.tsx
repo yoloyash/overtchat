@@ -1,10 +1,14 @@
-import { File, FileCode2, Globe2, Link2 } from "lucide-react";
+import CsharpPlain from "devicons-react/icons/CsharpPlain";
+import { Braces, File, FileCode2, Globe2, Link2 } from "lucide-react";
 import {
+  siC,
+  siCplusplus,
   siGithub,
+  siGo,
   siJavascript,
-  siJson,
   siMarkdown,
   siPython,
+  siRust,
   siTypescript,
   type SimpleIcon,
 } from "simple-icons";
@@ -48,13 +52,28 @@ export function AgentLinkIcon({ kind }: { kind?: unknown }) {
       icon = <BrandMark icon={siJavascript} />;
       break;
     case "json":
-      icon = <BrandMark icon={siJson} />;
+      icon = <Braces className="size-3.5" />;
       break;
     case "markdown":
       icon = <BrandMark icon={siMarkdown} />;
       break;
     case "python":
       icon = <BrandMark icon={siPython} />;
+      break;
+    case "c":
+      icon = <BrandMark icon={siC} />;
+      break;
+    case "cplusplus":
+      icon = <BrandMark icon={siCplusplus} />;
+      break;
+    case "csharp":
+      icon = <CsharpPlain size="0.875rem" color="currentColor" />;
+      break;
+    case "go":
+      icon = <BrandMark icon={siGo} />;
+      break;
+    case "rust":
+      icon = <BrandMark icon={siRust} />;
       break;
     case "code":
       icon = <FileCode2 className="size-3.5" />;

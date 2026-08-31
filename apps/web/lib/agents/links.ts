@@ -25,6 +25,11 @@ export const AGENT_LINK_ICON_KINDS = [
   "json",
   "markdown",
   "python",
+  "c",
+  "cplusplus",
+  "csharp",
+  "go",
+  "rust",
   "code",
   "file",
   "link",
@@ -300,6 +305,11 @@ export function agentLinkIconKind(target: AgentLinkTarget): AgentLinkIconKind {
   if (extension === "json" || extension === "jsonc") return "json";
   if (extension === "md" || extension === "mdx") return "markdown";
   if (extension === "py") return "python";
+  if (extension === "c") return "c";
+  if (["cc", "cpp", "cxx"].includes(extension ?? "")) return "cplusplus";
+  if (extension === "cs") return "csharp";
+  if (extension === "go") return "go";
+  if (extension === "rs") return "rust";
   if (extension && CODING_FILE_EXTENSIONS.has(extension)) return "code";
   return "file";
 }
