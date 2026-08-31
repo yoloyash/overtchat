@@ -167,6 +167,7 @@ describe("agent runtime event reducer", () => {
           role: "user",
           content: submittedContent,
           timestamp: 100,
+          overtchatProviderTimestamp: 200,
           overtchatSubmissionId: "submission-1",
         },
       ],
@@ -198,6 +199,7 @@ describe("agent runtime event reducer", () => {
         role: "user",
         content: submittedContent,
         timestamp: 100,
+        overtchatProviderTimestamp: 200,
         overtchatSubmissionId: "submission-1",
       },
     ]);
@@ -210,7 +212,7 @@ describe("agent runtime event reducer", () => {
     ]);
   });
 
-  it("reconciles repeated prompt text with the nearest provider row", () => {
+  it("does not infer submission identity from repeated prompt text", () => {
     const submittedContent = [
       { type: "text", text: "Inspect this" },
       {
@@ -258,9 +260,11 @@ describe("agent runtime event reducer", () => {
       {
         id: "provider-user-2",
         role: "user",
-        content: submittedContent,
-        timestamp: 100,
-        overtchatSubmissionId: "submission-1",
+        content: [
+          { type: "text", text: "Inspect this" },
+          { data: "aW1hZ2U=", mimeType: "image/png" },
+        ],
+        timestamp: 200,
       },
     ]);
   });
@@ -773,6 +777,7 @@ describe("agent runtime event reducer", () => {
           role: "user",
           content: "Next prompt",
           timestamp: 200,
+          overtchatSubmissionId: "submission:1",
         },
       }),
     )!;
@@ -783,6 +788,7 @@ describe("agent runtime event reducer", () => {
         role: "user",
         content: "Next prompt",
         timestamp: 100,
+        overtchatProviderTimestamp: 200,
         overtchatSubmissionId: "submission:1",
       },
     ]);

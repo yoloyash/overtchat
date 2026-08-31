@@ -122,6 +122,61 @@ describe("PiClient", () => {
     await client.stop();
   });
 
+  it("attaches submission identity to provider user-message echoes", async () => {
+    const process = new FakeAgentProcess((command, fake) => {
+      const clientMessageId =
+        command.type === "prompt" ? "client-prompt" : "client-steer";
+      const message = {
+        role: "user",
+        content: command.message,
+        timestamp: command.type === "prompt" ? 100 : 200,
+      };
+      fake.stdout.write(
+        `${JSON.stringify({ type: "message_start", message })}\n`,
+      );
+      fake.stdout.write(`${JSON.stringify({ type: "message_end", message })}\n`);
+      fake.reply(command, { clientMessageId });
+    });
+    const client = new PiClient(process);
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+
+    await client.prompt("Start", [], { clientMessageId: "client-prompt" });
+    await client.steer("Adjust", [], { clientMessageId: "client-steer" });
+
+    expect(events).toEqual([
+      {
+        type: "message_start",
+        message: expect.objectContaining({
+          content: "Start",
+          overtchatSubmissionId: "client-prompt",
+        }),
+      },
+      {
+        type: "message_end",
+        message: expect.objectContaining({
+          content: "Start",
+          overtchatSubmissionId: "client-prompt",
+        }),
+      },
+      {
+        type: "message_start",
+        message: expect.objectContaining({
+          content: "Adjust",
+          overtchatSubmissionId: "client-steer",
+        }),
+      },
+      {
+        type: "message_end",
+        message: expect.objectContaining({
+          content: "Adjust",
+          overtchatSubmissionId: "client-steer",
+        }),
+      },
+    ]);
+    await client.stop();
+  });
+
   it("sends native image attachments with prompts and steering", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       fake.reply(command);

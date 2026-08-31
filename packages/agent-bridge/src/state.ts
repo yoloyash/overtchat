@@ -65,6 +65,12 @@ function turnIdOf(message: unknown): string | null {
   return typeof id === "string" && id ? id : null;
 }
 
+function providerTimestampOf(message: unknown): number | null {
+  if (!message || typeof message !== "object") return null;
+  const timestamp = Reflect.get(message, "overtchatProviderTimestamp");
+  return typeof timestamp === "number" ? timestamp : null;
+}
+
 function withSubmittedUserPresentation(
   submitted: unknown,
   provider: unknown,
@@ -78,36 +84,21 @@ function withSubmittedUserPresentation(
     return provider;
   }
   const timestamp = timestampOf(submitted);
+  const providerTimestamp = providerTimestampOf(provider) ?? timestampOf(provider);
   return {
     ...submitted,
     ...provider,
     content: Reflect.get(submitted, "content"),
     ...(timestamp !== null ? { timestamp } : {}),
+    ...(providerTimestamp !== null
+      ? { overtchatProviderTimestamp: providerTimestamp }
+      : {}),
     overtchatSubmissionId: submissionIdOf(submitted),
   };
 }
 
 function submittedUserMessage(message: unknown): boolean {
   return roleOf(message) === "user" && submissionIdOf(message) !== null;
-}
-
-function closestMessageIndex(
-  messages: readonly unknown[],
-  targetIndex: number,
-  claimedIndexes: ReadonlySet<number>,
-  matches: (message: unknown) => boolean,
-): number {
-  let closest = -1;
-  let distance = Number.POSITIVE_INFINITY;
-  for (const [index, message] of messages.entries()) {
-    if (claimedIndexes.has(index) || !matches(message)) continue;
-    const candidateDistance = Math.abs(index - targetIndex);
-    if (candidateDistance < distance) {
-      closest = index;
-      distance = candidateDistance;
-    }
-  }
-  return closest;
 }
 
 /** Keep OvertChat's accepted user-message presentation while adopting the
@@ -119,11 +110,11 @@ export function reconcileSubmittedUserMessages(
   const messages = [...provider];
   const claimedProviderIndexes = new Set<number>();
 
-  for (const [submittedIndex, message] of submitted.entries()) {
+  for (const message of submitted) {
     if (!submittedUserMessage(message)) continue;
     const submissionId = submissionIdOf(message);
     const nativeId = idOf(message);
-    const text = textOf(message);
+    const providerTimestamp = providerTimestampOf(message);
     let providerIndex = messages.findIndex(
       (candidate, index) =>
         !claimedProviderIndexes.has(index) &&
@@ -138,15 +129,12 @@ export function reconcileSubmittedUserMessages(
           idOf(candidate) === nativeId,
       );
     }
-    if (providerIndex < 0) {
-      providerIndex = closestMessageIndex(
-        messages,
-        submittedIndex,
-        claimedProviderIndexes,
-        (candidate) =>
+    if (providerIndex < 0 && providerTimestamp !== null) {
+      providerIndex = messages.findIndex(
+        (candidate, index) =>
+          !claimedProviderIndexes.has(index) &&
           roleOf(candidate) === "user" &&
-          submissionIdOf(candidate) === null &&
-          textOf(candidate) === text,
+          timestampOf(candidate) === providerTimestamp,
       );
     }
     if (providerIndex < 0) continue;
@@ -221,22 +209,6 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
       }
       next.push(message);
       return next;
-    }
-    if (!submissionId) {
-      const text = textOf(message);
-      const pendingIndex = next.findIndex(
-        (candidate) =>
-          roleOf(candidate) === "user" &&
-          submissionIdOf(candidate) !== null &&
-          textOf(candidate) === text,
-      );
-      if (pendingIndex >= 0) {
-        next[pendingIndex] = withSubmittedUserPresentation(
-          next[pendingIndex],
-          message,
-        );
-        return next;
-      }
     }
   }
   const id = idOf(message);

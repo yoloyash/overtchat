@@ -1101,7 +1101,7 @@ describe("agent runtime", () => {
   );
 
   it("publishes one canonical user message when a provider echoes before accepting", async () => {
-    mocks.prompt.mockImplementation(async () => {
+    mocks.prompt.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
         type: "message_start",
         message: {
@@ -1109,6 +1109,7 @@ describe("agent runtime", () => {
           role: "user",
           content: "Continue the task",
           timestamp: 123,
+          overtchatSubmissionId: options?.clientMessageId,
         },
       });
       return { accepted: true };
@@ -1140,6 +1141,7 @@ describe("agent runtime", () => {
         role: "user",
         content: "Continue the task",
         timestamp: expect.any(Number),
+        overtchatProviderTimestamp: 123,
         overtchatSubmissionId: "client-message",
       },
     ]);
@@ -1176,6 +1178,22 @@ describe("agent runtime", () => {
           },
         ],
       });
+    mocks.prompt.mockImplementation(async (_message, _images, options) => {
+      mocks.eventSubscriber?.({
+        type: "message_start",
+        message: {
+          id: "provider-message",
+          role: "user",
+          content: [
+            { type: "text", text: "Inspect this" },
+            { data: "aW1hZ2U=", mimeType: "image/png" },
+          ],
+          timestamp: 200,
+          overtchatSubmissionId: options?.clientMessageId,
+        },
+      });
+      return { accepted: true };
+    });
     const registry = new AgentRuntimeRegistry({
       resolveImages: async () => [
         {
@@ -1224,6 +1242,7 @@ describe("agent runtime", () => {
         role: "user",
         content: submitted.content,
         timestamp: submitted.timestamp,
+        overtchatProviderTimestamp: 200,
         overtchatSubmissionId: "client-message",
       },
     ]);
@@ -1306,7 +1325,7 @@ describe("agent runtime", () => {
   });
 
   it("reconciles a native steering echo with the canonical steer message", async () => {
-    mocks.prompt.mockImplementation(async () => {
+    mocks.prompt.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
         type: "message_start",
         message: {
@@ -1314,11 +1333,12 @@ describe("agent runtime", () => {
           role: "user",
           content: "Start the task",
           timestamp: 123,
+          overtchatSubmissionId: options?.clientMessageId,
         },
       });
       return { accepted: true };
     });
-    mocks.steer.mockImplementation(async () => {
+    mocks.steer.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
         type: "message_start",
         message: {
@@ -1326,6 +1346,7 @@ describe("agent runtime", () => {
           role: "user",
           content: "Use the other approach",
           timestamp: 124,
+          overtchatSubmissionId: options?.clientMessageId,
         },
       });
       return { accepted: true };
