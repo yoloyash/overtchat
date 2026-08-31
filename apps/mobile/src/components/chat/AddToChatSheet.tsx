@@ -12,12 +12,17 @@ import { useTheme } from "@/lib/theme";
 
 export type AddToChatSheetRef = BottomSheetModal;
 
-type ToolKey = "camera" | "photos" | "files";
+export type AddToChatTool = "camera" | "photos" | "files" | "paste";
 
-const TOOLS: { key: ToolKey; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+const TOOLS: {
+  key: AddToChatTool;
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
   { key: "camera", label: "Camera", icon: "camera-outline" },
   { key: "photos", label: "Photos", icon: "image-outline" },
   { key: "files", label: "Files", icon: "document-outline" },
+  { key: "paste", label: "Paste", icon: "clipboard-outline" },
 ];
 
 export const AddToChatSheet = forwardRef<
@@ -27,7 +32,7 @@ export const AddToChatSheet = forwardRef<
     searchUnavailableReason: string;
     searchRequested: boolean;
     onToggleSearchRequested: (next: boolean) => void;
-    onPickTool?: (tool: ToolKey) => void;
+    onPickTool?: (tool: AddToChatTool) => void;
   }
 >(function AddToChatSheet(
   {
