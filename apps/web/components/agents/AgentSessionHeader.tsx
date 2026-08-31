@@ -30,7 +30,6 @@ import { toast } from "@/components/ui/toast";
 export function AgentSessionHeader({
   provider,
   workspaceId,
-  workspaceName,
   workspacePath,
   stats,
   running,
@@ -41,7 +40,6 @@ export function AgentSessionHeader({
 }: {
   provider: AgentProviderId;
   workspaceId: string;
-  workspaceName: string;
   workspacePath: string;
   stats: AgentSessionStats;
   running: boolean;
@@ -96,10 +94,11 @@ export function AgentSessionHeader({
       </div>
       <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
       <span
-        className="hidden max-w-40 truncate px-1 font-mono text-xs text-muted-foreground md:block"
+        data-testid="agent-workspace-path"
+        className="hidden max-w-40 truncate px-1 font-mono text-xs text-muted-foreground md:block lg:max-w-64 xl:max-w-96"
         title={workspacePath}
       >
-        ~/{workspaceName}
+        {workspacePath}
       </span>
       <WorkspaceGitSummary status={gitStatus} />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">

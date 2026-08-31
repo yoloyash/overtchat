@@ -773,6 +773,13 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     agentHeader.getByTestId("agent-provider-identity"),
   ).toHaveAccessibleName("Codex agent");
+  await expect(agentHeader.getByTestId("agent-workspace-path")).toHaveText(
+    "/tmp/runtime-test",
+  );
+  await expect(agentHeader.getByTestId("agent-workspace-path")).toHaveAttribute(
+    "title",
+    "/tmp/runtime-test",
+  );
   await expect(
     page.getByRole("button", { name: /overtchat\/overtchat PR #232/u }),
   ).toBeVisible();

@@ -393,7 +393,6 @@ export function AgentSessionView({
       <AgentSessionHeader
         provider={provider}
         workspaceId={workspaceId}
-        workspaceName={workspaceName}
         workspacePath={workspacePath}
         stats={snapshot.stats}
         running={running}
