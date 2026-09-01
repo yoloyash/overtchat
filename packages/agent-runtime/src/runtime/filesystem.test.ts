@@ -10,8 +10,6 @@ vi.mock("@overtchat/agent-runtime/runtime/process", () => ({
 
 import { listAgentDirectories } from "./filesystem";
 
-const connectorId = "11111111-1111-4111-8111-111111111111";
-
 describe("agent directory browsing", () => {
   beforeEach(() => {
     vi.clearAllMocks();

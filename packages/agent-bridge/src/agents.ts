@@ -175,7 +175,43 @@ export type AgentWorkspaceGitStatus = {
   additions: number;
   deletions: number;
   lineStatsComplete: boolean;
+  /** Present when the connector supports workspace-files-v1. */
+  files?: AgentWorkspaceGitFile[];
 };
+
+export type AgentWorkspaceGitFile = {
+  path: string;
+  originalPath: string | null;
+  indexStatus: string | null;
+  worktreeStatus: string | null;
+};
+
+export type AgentWorkspaceDirectoryEntry = {
+  name: string;
+  path: string;
+  kind: "file" | "directory" | "symlink";
+  symlink: boolean;
+  /** True when Git ignores this visible workspace entry. */
+  ignored?: boolean;
+};
+
+export type AgentWorkspaceDirectoryListing = {
+  path: string;
+  entries: AgentWorkspaceDirectoryEntry[];
+  truncated: boolean;
+};
+
+export type AgentWorkspaceTextFilePreview = {
+  kind: "text";
+  encoding: "utf-8";
+  path: string;
+  content: string;
+  size: number;
+  modifiedAt: number;
+};
+
+/** Extensible read-only preview payload; future content kinds add union members. */
+export type AgentWorkspaceFilePreview = AgentWorkspaceTextFilePreview;
 
 export type AgentConnectionListItem = {
   id: string;

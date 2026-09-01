@@ -69,6 +69,12 @@ export const agentWorkspaceKeys = {
   all: () => ["agentWorkspaces"] as const,
   gitStatus: (id: string) =>
     [...agentWorkspaceKeys.all(), "gitStatus", id] as const,
+  directories: (id: string) =>
+    [...agentWorkspaceKeys.all(), "directory", id] as const,
+  directory: (id: string, path: string) =>
+    [...agentWorkspaceKeys.directories(id), path] as const,
+  file: (id: string, path: string) =>
+    [...agentWorkspaceKeys.all(), "file", id, path] as const,
 };
 
 export const modelConfigKeys = {

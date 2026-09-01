@@ -23,6 +23,7 @@ import {
   inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
   probeAgentWorkspace,
+  workspaceFilesService,
   type AgentSessionRuntime,
   type HostTarget,
   type ResolvedAgentImage,
@@ -370,6 +371,18 @@ export class ConnectorDaemon {
       case "git_status":
         return inspectAgentWorkspaceGitStatus(
           hostTarget(request.target),
+          request.path,
+        );
+      case "list_workspace_directory":
+        return workspaceFilesService.listDirectory(
+          hostTarget(request.target),
+          request.root,
+          request.path,
+        );
+      case "read_workspace_file":
+        return workspaceFilesService.readFile(
+          hostTarget(request.target),
+          request.root,
           request.path,
         );
       case "create_session": {

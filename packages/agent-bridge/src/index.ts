@@ -28,6 +28,7 @@ export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
+  "workspace-files-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -98,6 +99,18 @@ export type AgentDaemonRequest =
   | { type: "list_directories"; target: AgentDaemonTarget; path?: string }
   | { type: "probe_workspace"; target: AgentDaemonTarget; path: string }
   | { type: "git_status"; target: AgentDaemonTarget; path: string }
+  | {
+      type: "list_workspace_directory";
+      target: AgentDaemonTarget;
+      root: string;
+      path: string;
+    }
+  | {
+      type: "read_workspace_file";
+      target: AgentDaemonTarget;
+      root: string;
+      path: string;
+    }
   | {
       type: "create_session";
       sessionId: string;
@@ -315,6 +328,14 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
       return isAgentDaemonTarget(value.target) && typeof value.path === "string";
     case "git_status":
       return isAgentDaemonTarget(value.target) && typeof value.path === "string";
+    case "list_workspace_directory":
+    case "read_workspace_file":
+      return (
+        isAgentDaemonTarget(value.target) &&
+        typeof value.root === "string" &&
+        value.root.length > 0 &&
+        typeof value.path === "string"
+      );
     case "create_session":
       return (
         isNonEmptyString(value.sessionId) &&

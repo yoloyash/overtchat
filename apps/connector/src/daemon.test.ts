@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   observe: vi.fn(),
   acquireLease: vi.fn(),
+  listWorkspaceDirectory: vi.fn(),
+  readWorkspaceFile: vi.fn(),
   registryOptions: null as {
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
@@ -42,6 +44,10 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
   return {
     ...original,
     configureProcessSpawner: mocks.configureProcessSpawner,
+    workspaceFilesService: {
+      listDirectory: mocks.listWorkspaceDirectory,
+      readFile: mocks.readWorkspaceFile,
+    },
     AgentRuntimeRegistry: class {
       constructor(options: NonNullable<typeof mocks.registryOptions>) {
         mocks.registryOptions = options;
@@ -210,6 +216,19 @@ beforeEach(() => {
   mocks.stopSession.mockResolvedValue(undefined);
   mocks.stopWorkspace.mockResolvedValue(undefined);
   mocks.stopConnection.mockResolvedValue(undefined);
+  mocks.listWorkspaceDirectory.mockResolvedValue({
+    path: ".",
+    entries: [],
+    truncated: false,
+  });
+  mocks.readWorkspaceFile.mockResolvedValue({
+    kind: "text",
+    encoding: "utf-8",
+    path: "README.md",
+    content: "OvertChat",
+    size: 8,
+    modifiedAt: 1,
+  });
   mocks.registryOptions = null;
 });
 
@@ -222,6 +241,64 @@ afterEach(async () => {
 });
 
 describe("connector daemon command identity", () => {
+  it("dispatches provider-neutral workspace file operations", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "list-files",
+      request: {
+        type: "list_workspace_directory",
+        target: { transport: "ssh", alias: "workstation" },
+        root: "/srv/project",
+        path: "src",
+      },
+    });
+    await daemon.handle({
+      type: "request",
+      requestId: "read-file",
+      request: {
+        type: "read_workspace_file",
+        target: { transport: "local" },
+        root: "/srv/project",
+        path: "README.md",
+      },
+    });
+
+    expect(mocks.listWorkspaceDirectory).toHaveBeenCalledWith(
+      { transport: "ssh", alias: "workstation" },
+      "/srv/project",
+      "src",
+    );
+    expect(mocks.readWorkspaceFile).toHaveBeenCalledWith(
+      { transport: "local" },
+      "/srv/project",
+      "README.md",
+    );
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: "response",
+        requestId: "list-files",
+        success: true,
+      }),
+      expect.objectContaining({
+        type: "response",
+        requestId: "read-file",
+        success: true,
+      }),
+    ]);
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("reads usage without entering the durable provider-command ledger", async () => {
     const { journal, timelines } = await openJournal();
     const events: HostConnectorEventPayload[] = [];

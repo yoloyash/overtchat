@@ -10,6 +10,7 @@ import {
   FileDiff,
   GitBranch,
   MoreHorizontal,
+  PanelRight,
   Pencil,
   Sparkles,
 } from "lucide-react";
@@ -37,6 +38,8 @@ export function AgentSessionHeader({
   readOnly,
   onRename,
   onCompact,
+  filesOpen,
+  onToggleFiles,
 }: {
   provider: AgentProviderId;
   workspaceId: string;
@@ -47,6 +50,8 @@ export function AgentSessionHeader({
   readOnly: boolean;
   onRename: () => void;
   onCompact: () => void;
+  filesOpen: boolean;
+  onToggleFiles: () => void;
 }) {
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
@@ -102,6 +107,16 @@ export function AgentSessionHeader({
       </span>
       <WorkspaceGitSummary status={gitStatus} />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={filesOpen ? "Close workspace files" : "Open workspace files"}
+          title={filesOpen ? "Close workspace files" : "Open workspace files"}
+          aria-pressed={filesOpen}
+          onClick={onToggleFiles}
+        >
+          <PanelRight />
+        </Button>
         <SessionStats stats={stats} />
         <Menu.Root>
           <Menu.Trigger
