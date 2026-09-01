@@ -2204,29 +2204,6 @@
       "reasoning": true,
       "temperature": true
     },
-    "gemini-robotics-er-1.6-preview": {
-      "context": 131072,
-      "output": 65536,
-      "cost": {
-        "input": 1,
-        "input_audio": 2,
-        "output": 5
-      },
-      "input_modalities": [
-        "text",
-        "image",
-        "video",
-        "audio"
-      ],
-      "output_modalities": [
-        "text"
-      ],
-      "attachment": true,
-      "tool_call": true,
-      "reasoning": true,
-      "structured_output": true,
-      "temperature": true
-    },
     "gemma-4-26b-a4b-it": {
       "context": 262144,
       "output": 32768,
