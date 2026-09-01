@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -57,6 +66,12 @@ import {
 } from "./AgentWorkspaceNavigationContext";
 
 type UnknownRecord = Record<string, unknown>;
+
+const DEFAULT_WORKSPACE_PANE_WIDTH = 512;
+const MIN_WORKSPACE_PANE_WIDTH = 352;
+const MAX_WORKSPACE_PANE_WIDTH = 960;
+const MIN_TRANSCRIPT_WIDTH = 480;
+const WORKSPACE_PANE_WIDTH_KEY = "overtchat:agent-workspace-pane-width";
 
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -175,6 +190,27 @@ function workspaceFileSelection(value: unknown): AgentWorkspaceFileSelection | n
   };
 }
 
+function workspaceFileSelections(value: unknown): AgentWorkspaceFileSelection[] {
+  if (!Array.isArray(value)) return [];
+  const selections = value.flatMap((entry) => {
+    const selection = workspaceFileSelection(entry);
+    return selection ? [selection] : [];
+  });
+  return selections.filter(
+    (selection, index) =>
+      selections.findIndex((candidate) => candidate.path === selection.path) ===
+      index,
+  );
+}
+
+function clampWorkspacePaneWidth(width: number, viewportWidth: number): number {
+  const maximum = Math.max(
+    MIN_WORKSPACE_PANE_WIDTH,
+    Math.min(MAX_WORKSPACE_PANE_WIDTH, viewportWidth - MIN_TRANSCRIPT_WIDTH),
+  );
+  return Math.min(maximum, Math.max(MIN_WORKSPACE_PANE_WIDTH, width));
+}
+
 export function AgentSessionView({
   sessionId,
   provider,
@@ -223,17 +259,140 @@ export function AgentSessionView({
       `overtchat:agent-workspace-file:${sessionId}`,
       null,
     );
+  const [storedOpenFiles, setStoredOpenFiles] = useLocalStorage<unknown>(
+    `overtchat:agent-workspace-tabs:${sessionId}`,
+    [],
+  );
+  const [storedPaneWidth, setStoredPaneWidth] = useLocalStorage<unknown>(
+    WORKSPACE_PANE_WIDTH_KEY,
+    DEFAULT_WORKSPACE_PANE_WIDTH,
+  );
   const selectedFile = useMemo(
     () => workspaceFileSelection(storedFileSelection),
     [storedFileSelection],
   );
+  const openFiles = useMemo(
+    () => workspaceFileSelections(storedOpenFiles),
+    [storedOpenFiles],
+  );
+  const [viewportWidth, setViewportWidth] = useState(1440);
+  const [dragPaneWidth, setDragPaneWidth] = useState<number | null>(null);
+  const [resizingPane, setResizingPane] = useState(false);
+  const resizeStart = useRef<{ pointerX: number; width: number } | null>(null);
+  const preferredPaneWidth =
+    typeof storedPaneWidth === "number" && Number.isFinite(storedPaneWidth)
+      ? storedPaneWidth
+      : DEFAULT_WORKSPACE_PANE_WIDTH;
+  const paneWidth =
+    dragPaneWidth ?? clampWorkspacePaneWidth(preferredPaneWidth, viewportWidth);
+
+  useEffect(() => {
+    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
+    updateViewportWidth();
+    window.addEventListener("resize", updateViewportWidth);
+    return () => window.removeEventListener("resize", updateViewportWidth);
+  }, []);
+
+  useEffect(() => {
+    if (
+      !selectedFile ||
+      openFiles.some((candidate) => candidate.path === selectedFile.path)
+    ) {
+      return;
+    }
+    setStoredOpenFiles([...openFiles, selectedFile]);
+  }, [openFiles, selectedFile, setStoredOpenFiles]);
+
   const openWorkspaceFile = useCallback(
     (selection: AgentWorkspaceFileSelection) => {
+      const existing = openFiles.findIndex(
+        (candidate) => candidate.path === selection.path,
+      );
+      const next = [...openFiles];
+      if (existing >= 0) next[existing] = selection;
+      else next.push(selection);
+      setStoredOpenFiles(next);
       setStoredFileSelection(selection);
       setFilesOpen(true);
     },
-    [setFilesOpen, setStoredFileSelection],
+    [openFiles, setFilesOpen, setStoredFileSelection, setStoredOpenFiles],
   );
+  const activateWorkspaceFile = useCallback(
+    (path: string) => {
+      const selection = openFiles.find((candidate) => candidate.path === path);
+      if (selection) setStoredFileSelection(selection);
+    },
+    [openFiles, setStoredFileSelection],
+  );
+  const closeWorkspaceFile = useCallback(
+    (path: string) => {
+      const index = openFiles.findIndex((candidate) => candidate.path === path);
+      if (index < 0) return;
+      const next = openFiles.filter((candidate) => candidate.path !== path);
+      setStoredOpenFiles(next);
+      if (selectedFile?.path === path) {
+        setStoredFileSelection(next[index] ?? next[index - 1] ?? null);
+      }
+    },
+    [openFiles, selectedFile?.path, setStoredFileSelection, setStoredOpenFiles],
+  );
+
+  function paneWidthFromPointer(pointerX: number): number {
+    const start = resizeStart.current;
+    if (!start) return paneWidth;
+    return clampWorkspacePaneWidth(
+      start.width + start.pointerX - pointerX,
+      viewportWidth,
+    );
+  }
+
+  function startPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    resizeStart.current = { pointerX: event.clientX, width: paneWidth };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragPaneWidth(paneWidth);
+    setResizingPane(true);
+  }
+
+  function movePaneResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizeStart.current) return;
+    event.preventDefault();
+    setDragPaneWidth(paneWidthFromPointer(event.clientX));
+  }
+
+  function finishPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!resizeStart.current) return;
+    const width = paneWidthFromPointer(event.clientX);
+    resizeStart.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setStoredPaneWidth(width);
+    setDragPaneWidth(null);
+    setResizingPane(false);
+  }
+
+  function cancelPaneResize(event: ReactPointerEvent<HTMLDivElement>) {
+    resizeStart.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragPaneWidth(null);
+    setResizingPane(false);
+  }
+
+  function resizePaneWithKeyboard(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const step = event.shiftKey ? 64 : 24;
+    let width: number | null = null;
+    if (event.key === "ArrowLeft") width = paneWidth + step;
+    if (event.key === "ArrowRight") width = paneWidth - step;
+    if (event.key === "Home") width = MIN_WORKSPACE_PANE_WIDTH;
+    if (event.key === "End") width = MAX_WORKSPACE_PANE_WIDTH;
+    if (width === null) return;
+    event.preventDefault();
+    setStoredPaneWidth(clampWorkspacePaneWidth(width, viewportWidth));
+  }
   const workspaceNavigation = useMemo(
     () => ({ openFile: openWorkspaceFile }),
     [openWorkspaceFile],
@@ -716,16 +875,54 @@ export function AgentSessionView({
         <div
           aria-hidden={!filesOpen}
           inert={!filesOpen}
+          style={
+            {
+              "--workspace-pane-width": `${paneWidth}px`,
+            } as CSSProperties
+          }
           className={cn(
-            "absolute inset-y-0 right-0 z-30 w-[min(34rem,calc(100%-1rem))] overflow-hidden xl:relative xl:z-auto xl:w-0 xl:shrink-0 xl:shadow-none xl:motion-width",
+            "absolute inset-y-0 right-0 z-30 w-[min(34rem,calc(100%-1rem))] overflow-hidden xl:relative xl:z-auto xl:w-0 xl:shrink-0 xl:shadow-none",
+            !resizingPane && "xl:motion-width",
             filesOpen
-              ? "pointer-events-auto xl:w-[32rem]"
+              ? "pointer-events-auto xl:w-(--workspace-pane-width)"
               : "pointer-events-none xl:w-0",
           )}
         >
           <div
+            role="separator"
+            aria-label="Resize workspace files"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_WORKSPACE_PANE_WIDTH}
+            aria-valuemax={clampWorkspacePaneWidth(
+              MAX_WORKSPACE_PANE_WIDTH,
+              viewportWidth,
+            )}
+            aria-valuenow={Math.round(paneWidth)}
+            tabIndex={filesOpen ? 0 : -1}
+            data-testid="agent-workspace-resize-handle"
+            onPointerDown={startPaneResize}
+            onPointerMove={movePaneResize}
+            onPointerUp={finishPaneResize}
+            onPointerCancel={cancelPaneResize}
+            onDoubleClick={() =>
+              setStoredPaneWidth(DEFAULT_WORKSPACE_PANE_WIDTH)
+            }
+            onKeyDown={resizePaneWithKeyboard}
             className={cn(
-              "absolute inset-y-0 right-0 h-full w-full bg-background shadow-xl motion-transform xl:w-[32rem] xl:shadow-none",
+              "group absolute inset-y-0 left-0 z-40 hidden w-2 touch-none cursor-col-resize outline-none select-none xl:block",
+              resizingPane && "cursor-col-resize",
+            )}
+          >
+            <span
+              className={cn(
+                "absolute inset-y-0 left-0 w-px bg-border motion-colors group-hover:bg-primary/70 group-focus-visible:w-0.5 group-focus-visible:bg-primary",
+                resizingPane && "w-0.5 bg-primary",
+              )}
+            />
+          </div>
+          <div
+            className={cn(
+              "absolute inset-y-0 right-0 h-full w-full bg-background shadow-xl motion-transform xl:w-(--workspace-pane-width) xl:shadow-none",
               filesOpen ? "translate-x-0" : "translate-x-full",
             )}
           >
@@ -733,9 +930,12 @@ export function AgentSessionView({
               workspaceId={workspaceId}
               workspaceName={workspaceName}
               selection={selectedFile}
+              openFiles={openFiles}
               running={running}
               onSelect={openWorkspaceFile}
-              onCloseFile={() => setStoredFileSelection(null)}
+              onActivateFiles={() => setStoredFileSelection(null)}
+              onActivateFile={activateWorkspaceFile}
+              onCloseFile={closeWorkspaceFile}
               onClose={() => setFilesOpen(false)}
             />
           </div>

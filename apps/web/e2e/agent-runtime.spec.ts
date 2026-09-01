@@ -875,9 +875,11 @@ test("shows durable turn activity without changing completed tool status", async
   await agentViewLink.click();
   const workspacePane = page.getByTestId("agent-workspace-pane");
   await expect(workspacePane).toBeVisible();
-  await expect(workspacePane).toContainText(
-    "apps/web/components/agents/AgentSessionView.tsx",
-  );
+  await expect(
+    workspacePane.getByLabel(
+      "File path: Runtime test/apps/web/components/agents/AgentSessionView.tsx",
+    ),
+  ).toBeVisible();
   await expect(workspacePane).toContainText("AgentSessionView");
   const codeToken = workspacePane.locator("[data-workspace-code-token]").first();
   const themeWasDark = await page.evaluate(() =>
@@ -902,7 +904,12 @@ test("shows durable turn activity without changing completed tool status", async
   if (!themeWasDark) {
     await page.evaluate(() => document.documentElement.classList.remove("dark"));
   }
-  await workspacePane.getByRole("button", { name: "Back to workspace files" }).click();
+  await expect(
+    workspacePane.getByRole("tab", {
+      name: "Open apps/web/components/agents/AgentSessionView.tsx",
+    }),
+  ).toHaveAttribute("aria-selected", "true");
+  await workspacePane.getByRole("tab", { name: "Files" }).click();
   await expect(workspacePane.getByRole("heading", { name: "Changes" })).toBeVisible();
   await expect(workspacePane.getByRole("heading", { name: "Files" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "src", exact: true }).click();
@@ -936,13 +943,81 @@ test("shows durable turn activity without changing completed tool status", async
   await workspacePane
     .getByRole("button", { name: "index.ts", exact: true })
     .click();
-  await expect(workspacePane).toContainText("src/index.ts");
+  await expect(
+    workspacePane.getByLabel("File path: Runtime test/src/index.ts"),
+  ).toBeVisible();
+  await expect(
+    workspacePane.getByRole("tab", {
+      name: "Open apps/web/components/agents/AgentSessionView.tsx",
+    }),
+  ).toBeVisible();
+  const indexTab = workspacePane.getByRole("tab", {
+    name: "Open src/index.ts",
+  });
+  await expect(indexTab).toHaveAttribute("aria-selected", "true");
+  await page.screenshot({
+    path: testInfo.outputPath("runtime-workspace-tabs.png"),
+    fullPage: true,
+  });
+  await workspacePane
+    .getByRole("button", { name: "Close src/index.ts" })
+    .click();
+  await expect(indexTab).toHaveCount(0);
+  await expect(
+    workspacePane.getByRole("tab", {
+      name: "Open apps/web/components/agents/AgentSessionView.tsx",
+    }),
+  ).toHaveAttribute("aria-selected", "true");
+
+  const workspaceResizeHandle = page.getByRole("separator", {
+    name: "Resize workspace files",
+  });
+  const paneWidthBeforeResize = await workspacePane.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  const resizeBox = await workspaceResizeHandle.boundingBox();
+  expect(resizeBox).not.toBeNull();
+  await page.mouse.move(resizeBox!.x + resizeBox!.width / 2, resizeBox!.y + 100);
+  await page.mouse.down();
+  await page.mouse.move(resizeBox!.x - 96, resizeBox!.y + 100, { steps: 4 });
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      workspacePane.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(paneWidthBeforeResize + 70);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        JSON.parse(
+          window.localStorage.getItem("overtchat:agent-workspace-pane-width") ??
+            "0",
+        ),
+      ),
+    )
+    .toBeGreaterThan(paneWidthBeforeResize + 70);
+
   await workspacePane
     .getByRole("button", { name: "Close workspace files" })
     .click();
   await expect(
     agentHeader.getByRole("button", { name: "Open workspace files" }),
   ).toHaveAttribute("aria-pressed", "false");
+  await agentHeader.getByRole("button", { name: "Open workspace files" }).click();
+  await expect
+    .poll(() =>
+      workspacePane.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeGreaterThan(paneWidthBeforeResize + 70);
+  await workspaceResizeHandle.dblclick();
+  await expect
+    .poll(() =>
+      workspacePane.evaluate((element) => element.getBoundingClientRect().width),
+    )
+    .toBeCloseTo(512, 0);
+  await workspacePane
+    .getByRole("button", { name: "Close workspace files" })
+    .click();
   await expect(
     page.getByRole("button", { name: "the docs", exact: true }),
   ).toBeVisible();
@@ -1376,6 +1451,20 @@ test("shows durable turn activity without changing completed tool status", async
         document.documentElement.clientWidth,
     ),
   ).toBe(true);
+  await agentHeader.getByRole("button", { name: "Open workspace files" }).click();
+  await expect(workspacePane).toBeVisible();
+  await expect(workspacePane.getByRole("tab", { name: "Files" })).toBeVisible();
+  await expect(workspaceResizeHandle).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth <=
+        document.documentElement.clientWidth,
+    ),
+  ).toBe(true);
+  await workspacePane
+    .getByRole("button", { name: "Close workspace files" })
+    .click();
   await page.screenshot({
     path: testInfo.outputPath("runtime-activity-mobile-main.png"),
     fullPage: true,

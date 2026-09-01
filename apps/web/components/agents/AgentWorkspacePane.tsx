@@ -11,7 +11,6 @@ import { code, type HighlightResult } from "@streamdown/code";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
-  ArrowLeft,
   ChevronDown,
   ChevronRight,
   File,
@@ -44,29 +43,146 @@ export function AgentWorkspacePane({
   workspaceId,
   workspaceName,
   selection,
+  openFiles,
   running,
   onSelect,
+  onActivateFiles,
+  onActivateFile,
   onCloseFile,
   onClose,
 }: {
   workspaceId: string;
   workspaceName: string;
   selection: AgentWorkspaceFileSelection | null;
+  openFiles: AgentWorkspaceFileSelection[];
   running: boolean;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
-  onCloseFile: () => void;
+  onActivateFiles: () => void;
+  onActivateFile: (path: string) => void;
+  onCloseFile: (path: string) => void;
   onClose: () => void;
 }) {
   return (
     <aside
       className="flex h-full w-full flex-col border-l bg-background"
       data-testid="agent-workspace-pane"
-      aria-label="Workspace files"
+      aria-label={`${workspaceName} workspace`}
     >
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
-        <div className="min-w-0 flex-1 truncate text-sm font-medium">
-          {workspaceName}
-        </div>
+      <WorkspaceTabs
+        selection={selection}
+        openFiles={openFiles}
+        onActivateFiles={onActivateFiles}
+        onActivateFile={onActivateFile}
+        onCloseFile={onCloseFile}
+        onClose={onClose}
+      />
+      {selection ? (
+        <WorkspaceFilePreview
+          workspaceId={workspaceId}
+          workspaceName={workspaceName}
+          selection={selection}
+          running={running}
+        />
+      ) : (
+        <WorkspaceExplorer
+          workspaceId={workspaceId}
+          running={running}
+          onSelect={onSelect}
+        />
+      )}
+    </aside>
+  );
+}
+
+function fileName(filePath: string): string {
+  return filePath.split("/").filter(Boolean).at(-1) ?? filePath;
+}
+
+function WorkspaceTabs({
+  selection,
+  openFiles,
+  onActivateFiles,
+  onActivateFile,
+  onCloseFile,
+  onClose,
+}: {
+  selection: AgentWorkspaceFileSelection | null;
+  openFiles: AgentWorkspaceFileSelection[];
+  onActivateFiles: () => void;
+  onActivateFile: (path: string) => void;
+  onCloseFile: (path: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <header className="flex h-12 shrink-0 border-b bg-muted/15">
+      <div
+        role="tablist"
+        aria-label="Workspace views"
+        className="flex min-w-0 flex-1 overflow-x-auto overscroll-x-contain"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selection === null}
+          title="Browse workspace files"
+          onClick={onActivateFiles}
+          className={cn(
+            "relative flex h-full shrink-0 items-center gap-2 border-r px-3 text-xs outline-none motion-colors hover:bg-muted/50 focus-visible:bg-muted/60",
+            selection === null
+              ? "bg-background font-medium text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary"
+              : "text-muted-foreground",
+          )}
+        >
+          <FolderOpen className="size-3.5" />
+          Files
+        </button>
+        {openFiles.map((file) => {
+          const active = selection?.path === file.path;
+          const name = fileName(file.path);
+          return (
+            <div
+              key={file.path}
+              className={cn(
+                "group relative flex h-full min-w-0 max-w-56 shrink-0 items-center border-r motion-colors hover:bg-muted/50 focus-within:bg-muted/60",
+                active
+                  ? "bg-background text-foreground after:absolute after:inset-x-0 after:bottom-0 after:h-0.5 after:bg-primary"
+                  : "text-muted-foreground",
+              )}
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-label={`Open ${file.path}`}
+                title={file.path}
+                onClick={() => onActivateFile(file.path)}
+                className={cn(
+                  "flex h-full min-w-0 items-center gap-2 py-0 pr-1 pl-3 text-xs outline-none",
+                  active && "font-medium",
+                )}
+              >
+                <FileCode2 className="size-3.5 shrink-0" />
+                <span className="truncate">{name}</span>
+              </button>
+              <button
+                type="button"
+                aria-label={`Close ${file.path}`}
+                title={`Close ${file.path}`}
+                onClick={() => onCloseFile(file.path)}
+                className={cn(
+                  "mr-1 flex size-6 shrink-0 items-center justify-center rounded-md outline-none motion-colors hover:bg-muted focus-visible:bg-muted",
+                  active
+                    ? "text-muted-foreground"
+                    : "text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground [@media(hover:none)]:text-muted-foreground",
+                )}
+              >
+                <X className="size-3" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex shrink-0 items-center border-l bg-background px-1">
         <Button
           type="button"
           variant="ghost"
@@ -77,22 +193,8 @@ export function AgentWorkspacePane({
         >
           <X />
         </Button>
-      </header>
-      {selection ? (
-        <WorkspaceFilePreview
-          workspaceId={workspaceId}
-          selection={selection}
-          running={running}
-          onBack={onCloseFile}
-        />
-      ) : (
-        <WorkspaceExplorer
-          workspaceId={workspaceId}
-          running={running}
-          onSelect={onSelect}
-        />
-      )}
-    </aside>
+      </div>
+    </header>
   );
 }
 
@@ -376,33 +478,44 @@ function WorkspaceEntryRow({
 
 function WorkspaceFilePreview({
   workspaceId,
+  workspaceName,
   selection,
   running,
-  onBack,
 }: {
   workspaceId: string;
+  workspaceName: string;
   selection: AgentWorkspaceFileSelection;
   running: boolean;
-  onBack: () => void;
 }) {
   const file = useAgentWorkspaceFile(workspaceId, selection.path, { running });
   const displayPath = file.data?.path ?? selection.path;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          aria-label="Back to workspace files"
-          title="Back to workspace files"
-          onClick={onBack}
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
+        <div
+          className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs text-muted-foreground"
+          title={`${workspaceName}/${displayPath}`}
+          aria-label={`File path: ${workspaceName}/${displayPath}`}
         >
-          <ArrowLeft />
-        </Button>
-        <div className="min-w-0 flex-1 truncate px-1 font-mono text-xs" title={displayPath}>
-          {displayPath}
+          <span className="shrink-0 truncate">{workspaceName}</span>
+          {displayPath.split("/").filter(Boolean).map((segment, index, parts) => (
+            <span
+              key={`${index}:${segment}`}
+              className="flex min-w-0 items-center gap-1"
+            >
+              <ChevronRight className="size-3 shrink-0 opacity-60" />
+              <span
+                className={cn(
+                  "truncate",
+                  index === parts.length - 1 &&
+                    "font-medium text-foreground",
+                )}
+              >
+                {segment}
+              </span>
+            </span>
+          ))}
         </div>
         <Button
           type="button"
