@@ -15,6 +15,13 @@ import { cn } from "@/lib/utils";
 
 type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error";
 
+let terminalControlSequence = 0;
+
+function createTerminalControlId(): string {
+  terminalControlSequence += 1;
+  return `${Date.now().toString(36)}-${terminalControlSequence.toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
 function terminalTheme(element: HTMLElement) {
   const styles = getComputedStyle(element);
   return {
@@ -145,7 +152,7 @@ export function AgentTerminalPane({
     let inputBuffer = "";
     let inputChain = Promise.resolve();
     let lastSize = sizeRef.current;
-    const controlId = crypto.randomUUID();
+    const controlId = createTerminalControlId();
 
     const post = async (body: unknown) => {
       const response = await fetch(controlUrl, {
