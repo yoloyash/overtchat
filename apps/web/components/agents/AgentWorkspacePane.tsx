@@ -8,6 +8,7 @@ import {
   type CSSProperties,
 } from "react";
 import { code, type HighlightResult } from "@streamdown/code";
+import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -35,6 +36,7 @@ import {
   useAgentWorkspaceGitStatus,
 } from "@/lib/queries/agentWorkspaces";
 import { motionClasses } from "@/lib/motion";
+import { agentWorkspaceKeys } from "@/lib/queries/keys";
 import { cn } from "@/lib/utils";
 import type { AgentWorkspaceFileSelection } from "./AgentWorkspaceNavigationContext";
 
@@ -108,6 +110,10 @@ function WorkspaceExplorer({
     running,
   });
   const changedFiles = gitStatus.data?.files ?? [];
+  const queryClient = useQueryClient();
+  const directoryQueries = agentWorkspaceKeys.directories(workspaceId);
+  const refreshingDirectories =
+    useIsFetching({ queryKey: directoryQueries }) > 0;
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["."]));
 
   function toggle(path: string) {
@@ -153,13 +159,30 @@ function WorkspaceExplorer({
           <h2 id="workspace-files-heading" className="text-xs font-medium">
             Files
           </h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="ml-auto"
+            aria-label="Refresh workspace files"
+            title="Refresh workspace files"
+            disabled={refreshingDirectories}
+            onClick={() =>
+              void queryClient.invalidateQueries({ queryKey: directoryQueries })
+            }
+          >
+            <RefreshCw
+              className={
+                refreshingDirectories ? motionClasses.spinner : undefined
+              }
+            />
+          </Button>
         </div>
         <WorkspaceDirectory
           workspaceId={workspaceId}
           path="."
           depth={0}
           expanded={expanded}
-          running={running}
           onToggle={toggle}
           onSelect={onSelect}
         />
@@ -219,7 +242,6 @@ function WorkspaceDirectory({
   path,
   depth,
   expanded,
-  running,
   onToggle,
   onSelect,
 }: {
@@ -227,14 +249,12 @@ function WorkspaceDirectory({
   path: string;
   depth: number;
   expanded: Set<string>;
-  running: boolean;
   onToggle: (path: string) => void;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
   const isExpanded = expanded.has(path);
   const directory = useAgentWorkspaceDirectory(workspaceId, path, {
     enabled: isExpanded,
-    running,
   });
 
   if (!isExpanded) return null;
@@ -263,7 +283,6 @@ function WorkspaceDirectory({
           workspaceId={workspaceId}
           depth={depth}
           expanded={expanded}
-          running={running}
           onToggle={onToggle}
           onSelect={onSelect}
         />
@@ -287,7 +306,6 @@ function WorkspaceEntryRow({
   workspaceId,
   depth,
   expanded,
-  running,
   onToggle,
   onSelect,
 }: {
@@ -295,7 +313,6 @@ function WorkspaceEntryRow({
   workspaceId: string;
   depth: number;
   expanded: Set<string>;
-  running: boolean;
   onToggle: (path: string) => void;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
@@ -349,7 +366,6 @@ function WorkspaceEntryRow({
           path={entry.path}
           depth={depth + 1}
           expanded={expanded}
-          running={running}
           onToggle={onToggle}
           onSelect={onSelect}
         />

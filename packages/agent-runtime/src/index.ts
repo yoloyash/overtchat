@@ -9,3 +9,7 @@ export * from "./runtime/git";
 export * from "./runtime/process";
 export * from "./runtime/provider-snapshots";
 export * from "./runtime/registry";
+export {
+  workspaceFilesService,
+  type WorkspaceFilesService,
+} from "./runtime/workspace-files";

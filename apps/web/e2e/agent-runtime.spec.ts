@@ -457,6 +457,7 @@ test("shows durable turn activity without changing completed tool status", async
   let interactionResponse: Record<string, unknown> | null = null;
   let runtimeAvailable = true;
   const submittedCommands: Array<Record<string, unknown>> = [];
+  const workspaceDirectoryRequests: string[] = [];
   await page.exposeFunction(
     "__setAgentRuntimeAvailable",
     (available: boolean) => {
@@ -667,7 +668,9 @@ test("shows durable turn activity without changing completed tool status", async
   await page.route(
     new RegExp("/api/agent-workspaces/workspace/files(?:\\?.*)?$"),
     async (route) => {
-      const directoryPath = new URL(route.request().url()).searchParams.get("path");
+      const directoryPath =
+        new URL(route.request().url()).searchParams.get("path") ?? ".";
+      workspaceDirectoryRequests.push(directoryPath);
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -716,6 +719,8 @@ test("shows durable turn activity without changing completed tool status", async
         contentType: "application/json",
         body: JSON.stringify({
           file: {
+            kind: "text",
+            encoding: "utf-8",
             path: filePath,
             content: "export function AgentSessionView() {\n  return null;\n}\n",
             size: 56,
@@ -901,6 +906,33 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(workspacePane.getByRole("heading", { name: "Changes" })).toBeVisible();
   await expect(workspacePane.getByRole("heading", { name: "Files" })).toBeVisible();
   await workspacePane.getByRole("button", { name: "src", exact: true }).click();
+  await expect(
+    workspacePane.getByRole("button", { name: "index.ts", exact: true }),
+  ).toBeVisible();
+  const requestsBeforeIdle = [...workspaceDirectoryRequests];
+  await page.waitForTimeout(3_200);
+  expect(workspaceDirectoryRequests).toEqual(requestsBeforeIdle);
+  const rootRequestsBeforeRefresh = workspaceDirectoryRequests.filter(
+    (path) => path === ".",
+  ).length;
+  const sourceRequestsBeforeRefresh = workspaceDirectoryRequests.filter(
+    (path) => path === "src",
+  ).length;
+  await workspacePane
+    .getByRole("button", { name: "Refresh workspace files" })
+    .click();
+  await expect
+    .poll(
+      () =>
+        workspaceDirectoryRequests.filter((path) => path === ".").length,
+    )
+    .toBeGreaterThan(rootRequestsBeforeRefresh);
+  await expect
+    .poll(
+      () =>
+        workspaceDirectoryRequests.filter((path) => path === "src").length,
+    )
+    .toBeGreaterThan(sourceRequestsBeforeRefresh);
   await workspacePane
     .getByRole("button", { name: "index.ts", exact: true })
     .click();

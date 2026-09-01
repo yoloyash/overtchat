@@ -199,12 +199,17 @@ export type AgentWorkspaceDirectoryListing = {
   truncated: boolean;
 };
 
-export type AgentWorkspaceFilePreview = {
+export type AgentWorkspaceTextFilePreview = {
+  kind: "text";
+  encoding: "utf-8";
   path: string;
   content: string;
   size: number;
   modifiedAt: number;
 };
+
+/** Extensible read-only preview payload; future content kinds add union members. */
+export type AgentWorkspaceFilePreview = AgentWorkspaceTextFilePreview;
 
 export type AgentConnectionListItem = {
   id: string;

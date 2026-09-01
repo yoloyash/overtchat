@@ -22,9 +22,8 @@ import {
   configureTcpTunnelOpener,
   inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
-  listAgentWorkspaceDirectory,
   probeAgentWorkspace,
-  readAgentWorkspaceFile,
+  workspaceFilesService,
   type AgentSessionRuntime,
   type HostTarget,
   type ResolvedAgentImage,
@@ -375,13 +374,13 @@ export class ConnectorDaemon {
           request.path,
         );
       case "list_workspace_directory":
-        return listAgentWorkspaceDirectory(
+        return workspaceFilesService.listDirectory(
           hostTarget(request.target),
           request.root,
           request.path,
         );
       case "read_workspace_file":
-        return readAgentWorkspaceFile(
+        return workspaceFilesService.readFile(
           hostTarget(request.target),
           request.root,
           request.path,

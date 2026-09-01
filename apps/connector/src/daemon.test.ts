@@ -26,8 +26,8 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   observe: vi.fn(),
   acquireLease: vi.fn(),
-  listAgentWorkspaceDirectory: vi.fn(),
-  readAgentWorkspaceFile: vi.fn(),
+  listWorkspaceDirectory: vi.fn(),
+  readWorkspaceFile: vi.fn(),
   registryOptions: null as {
     runtimeExited?: (sessionId: string, runtime: unknown) => void | Promise<void>;
     saveQueuedMessages?: (
@@ -44,8 +44,10 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
   return {
     ...original,
     configureProcessSpawner: mocks.configureProcessSpawner,
-    listAgentWorkspaceDirectory: mocks.listAgentWorkspaceDirectory,
-    readAgentWorkspaceFile: mocks.readAgentWorkspaceFile,
+    workspaceFilesService: {
+      listDirectory: mocks.listWorkspaceDirectory,
+      readFile: mocks.readWorkspaceFile,
+    },
     AgentRuntimeRegistry: class {
       constructor(options: NonNullable<typeof mocks.registryOptions>) {
         mocks.registryOptions = options;
@@ -214,12 +216,14 @@ beforeEach(() => {
   mocks.stopSession.mockResolvedValue(undefined);
   mocks.stopWorkspace.mockResolvedValue(undefined);
   mocks.stopConnection.mockResolvedValue(undefined);
-  mocks.listAgentWorkspaceDirectory.mockResolvedValue({
+  mocks.listWorkspaceDirectory.mockResolvedValue({
     path: ".",
     entries: [],
     truncated: false,
   });
-  mocks.readAgentWorkspaceFile.mockResolvedValue({
+  mocks.readWorkspaceFile.mockResolvedValue({
+    kind: "text",
+    encoding: "utf-8",
     path: "README.md",
     content: "OvertChat",
     size: 8,
@@ -268,12 +272,12 @@ describe("connector daemon command identity", () => {
       },
     });
 
-    expect(mocks.listAgentWorkspaceDirectory).toHaveBeenCalledWith(
+    expect(mocks.listWorkspaceDirectory).toHaveBeenCalledWith(
       { transport: "ssh", alias: "workstation" },
       "/srv/project",
       "src",
     );
-    expect(mocks.readAgentWorkspaceFile).toHaveBeenCalledWith(
+    expect(mocks.readWorkspaceFile).toHaveBeenCalledWith(
       { transport: "local" },
       "/srv/project",
       "README.md",

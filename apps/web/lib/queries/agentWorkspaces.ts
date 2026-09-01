@@ -60,7 +60,7 @@ async function fetchAgentWorkspaceDirectory(
 export function useAgentWorkspaceDirectory(
   id: string,
   path: string,
-  { enabled = true, running = false } = {},
+  { enabled = true } = {},
 ) {
   return useQuery({
     queryKey: agentWorkspaceKeys.directory(id, path),
@@ -68,7 +68,6 @@ export function useAgentWorkspaceDirectory(
     enabled: Boolean(id) && enabled,
     retry: false,
     staleTime: 4_000,
-    refetchInterval: running && enabled ? 3_000 : false,
   });
 }
 

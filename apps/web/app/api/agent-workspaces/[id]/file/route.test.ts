@@ -46,6 +46,8 @@ describe("agent workspace file route", () => {
     mocks.isOnline.mockReturnValue(true);
     mocks.supports.mockReturnValue(true);
     mocks.daemonRequest.mockResolvedValue({
+      kind: "text",
+      encoding: "utf-8",
       path: "src/index.ts",
       content: "export {};",
       size: 10,
