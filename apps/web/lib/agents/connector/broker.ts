@@ -76,6 +76,8 @@ type SessionSubscription = {
 type TerminalSubscription = {
   connectorId: string;
   session: AgentDaemonSessionDescriptor;
+  controlId: string;
+  size: AgentTerminalSize;
   revision: number;
   subscriber: (event: AgentTerminalEvent) => void;
   disconnect: (error: Error) => void;
@@ -99,6 +101,7 @@ export class HostConnectorBroker {
     string,
     TerminalSubscription
   >();
+  private readonly terminalControlOwners = new Map<string, string>();
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }
@@ -382,6 +385,7 @@ export class HostConnectorBroker {
   async subscribeTerminal(
     connectorId: string,
     session: AgentDaemonSessionDescriptor,
+    controlId: string,
     size: AgentTerminalSize,
     subscriber: (event: AgentTerminalEvent) => void,
     disconnect: (error: Error) => void,
@@ -395,6 +399,8 @@ export class HostConnectorBroker {
     const subscription: TerminalSubscription = {
       connectorId,
       session,
+      controlId,
+      size,
       revision: 0,
       subscriber,
       disconnect,
@@ -436,6 +442,10 @@ export class HostConnectorBroker {
       throw error;
     }
 
+    this.terminalControlOwners.set(
+      this.terminalControlKey(connectorId, session.sessionId),
+      subscriptionId,
+    );
     subscription.replayBuffer = null;
     for (const event of replayBuffer) {
       if (!this.deliverTerminalEvent(subscriptionId, subscription, event)) {
@@ -447,6 +457,7 @@ export class HostConnectorBroker {
       unsubscribe: () => {
         if (!this.terminalSubscriptions.delete(subscriptionId)) return;
         this.sendTerminalUnsubscribe(connectorId, subscriptionId);
+        this.releaseTerminalControl(subscriptionId, subscription);
       },
     };
   }
@@ -463,9 +474,22 @@ export class HostConnectorBroker {
   resizeTerminal(
     connectorId: string,
     sessionId: string,
+    controlId: string,
     size: AgentTerminalSize,
   ): void {
     const channel = this.requireTerminalChannel(connectorId);
+    const ownerId = this.terminalControlOwners.get(
+      this.terminalControlKey(connectorId, sessionId),
+    );
+    const owner = ownerId
+      ? this.terminalSubscriptions.get(ownerId)
+      : undefined;
+    if (!owner || owner.controlId !== controlId) {
+      throw new Error(
+        "Another open terminal view currently controls the terminal size.",
+      );
+    }
+    owner.size = size;
     channel.send({ type: "terminal_resize", sessionId, size });
   }
 
@@ -784,6 +808,7 @@ export class HostConnectorBroker {
       if (this.terminalSubscriptions.get(subscriptionId) === subscription) {
         this.terminalSubscriptions.delete(subscriptionId);
         this.sendTerminalUnsubscribe(subscription.connectorId, subscriptionId);
+        this.releaseTerminalControl(subscriptionId, subscription);
       }
       subscription.disconnect(
         new Error(
@@ -811,6 +836,7 @@ export class HostConnectorBroker {
       }
       this.terminalSubscriptions.delete(subscriptionId);
       this.sendTerminalUnsubscribe(connectorId, subscriptionId);
+      this.releaseTerminalControl(subscriptionId, subscription);
       subscription.disconnect(error);
     }
   }
@@ -823,7 +849,47 @@ export class HostConnectorBroker {
       if (subscription.connectorId !== connectorId) continue;
       this.terminalSubscriptions.delete(subscriptionId);
       this.sendTerminalUnsubscribe(connectorId, subscriptionId);
+      this.releaseTerminalControl(subscriptionId, subscription);
       subscription.disconnect(error);
+    }
+  }
+
+  private terminalControlKey(connectorId: string, sessionId: string): string {
+    return `${connectorId}\u0000${sessionId}`;
+  }
+
+  private releaseTerminalControl(
+    subscriptionId: string,
+    subscription: TerminalSubscription,
+  ): void {
+    const key = this.terminalControlKey(
+      subscription.connectorId,
+      subscription.session.sessionId,
+    );
+    if (this.terminalControlOwners.get(key) !== subscriptionId) return;
+    const fallback = [...this.terminalSubscriptions.entries()]
+      .filter(
+        ([, candidate]) =>
+          candidate.connectorId === subscription.connectorId &&
+          candidate.session.sessionId === subscription.session.sessionId,
+      )
+      .at(-1);
+    if (!fallback) {
+      this.terminalControlOwners.delete(key);
+      return;
+    }
+    const [fallbackId, candidate] = fallback;
+    this.terminalControlOwners.set(key, fallbackId);
+    const channel = this.channels.get(candidate.connectorId);
+    if (!channel?.capabilities.has("workspace-terminal-v1")) return;
+    try {
+      channel.send({
+        type: "terminal_resize",
+        sessionId: candidate.session.sessionId,
+        size: candidate.size,
+      });
+    } catch {
+      // A reconnect will establish a fresh terminal size owner.
     }
   }
 

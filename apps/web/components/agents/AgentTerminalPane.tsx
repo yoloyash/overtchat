@@ -145,12 +145,17 @@ export function AgentTerminalPane({
     let inputBuffer = "";
     let inputChain = Promise.resolve();
     let lastSize = sizeRef.current;
+    const controlId = crypto.randomUUID();
 
     const post = async (body: unknown) => {
       const response = await fetch(controlUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(
+          body && typeof body === "object"
+            ? { ...body, controlId }
+            : body,
+        ),
       });
       if (!response.ok) throw new Error(await responseError(response));
       return response;
@@ -250,7 +255,7 @@ export function AgentTerminalPane({
       lastSize = size;
       sizeRef.current = size;
       source = new EventSource(
-        `${controlUrl}/events?cols=${size.cols}&rows=${size.rows}`,
+        `${controlUrl}/events?cols=${size.cols}&rows=${size.rows}&controlId=${encodeURIComponent(controlId)}`,
       );
       source.onopen = () => {
         if (!disposed) setStatus(hasSnapshot ? "connected" : "connecting");

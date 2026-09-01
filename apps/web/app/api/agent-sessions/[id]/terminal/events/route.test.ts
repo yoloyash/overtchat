@@ -63,6 +63,7 @@ describe("agent terminal event stream", () => {
       async (
         _connectorId: string,
         _session: unknown,
+        _controlId: string,
         _size: unknown,
         listener: (event: unknown) => void,
       ) => {
@@ -86,7 +87,9 @@ describe("agent terminal event stream", () => {
 
   it("emits the snapshot before buffered terminal output", async () => {
     const response = await GET(
-      new Request("http://server.test/events?cols=90&rows=28"),
+      new Request(
+        "http://server.test/events?cols=90&rows=28&controlId=control-one",
+      ),
       context,
     );
     expect(response.status).toBe(200);
@@ -102,6 +105,7 @@ describe("agent terminal event stream", () => {
     expect(mocks.subscribeTerminal).toHaveBeenCalledWith(
       "connector",
       expect.objectContaining({ sessionId: "session", cwd: "/workspace" }),
+      "control-one",
       { cols: 90, rows: 28 },
       expect.any(Function),
       expect.any(Function),
@@ -114,7 +118,7 @@ describe("agent terminal event stream", () => {
     mocks.supports.mockReturnValue(false);
 
     const response = await GET(
-      new Request("http://server.test/events"),
+      new Request("http://server.test/events?controlId=control-one"),
       context,
     );
 
@@ -123,5 +127,58 @@ describe("agent terminal event stream", () => {
       error: "Update the OvertChat Host Connector to use workspace terminals.",
     });
     expect(mocks.subscribeTerminal).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing terminal control identifier", async () => {
+    const response = await GET(
+      new Request("http://server.test/events?cols=90&rows=28"),
+      context,
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.subscribeTerminal).not.toHaveBeenCalled();
+  });
+
+  it("bounds output buffered before the terminal snapshot", async () => {
+    mocks.subscribeTerminal.mockImplementationOnce(
+      async (
+        _connectorId: string,
+        _session: unknown,
+        _controlId: string,
+        _size: unknown,
+        listener: (event: unknown) => void,
+      ) => {
+        for (let revision = 1; revision <= 20; revision += 1) {
+          listener({
+            type: "output",
+            revision,
+            data: "x".repeat(256 * 1_024),
+          });
+        }
+        return {
+          snapshot: {
+            sessionId: "session",
+            revision: 0,
+            data: "",
+            cols: 90,
+            rows: 28,
+            exited: false,
+            exitCode: null,
+            signal: null,
+          },
+          unsubscribe: mocks.unsubscribe,
+        };
+      },
+    );
+
+    const response = await GET(
+      new Request(
+        "http://server.test/events?cols=90&rows=28&controlId=control-one",
+      ),
+      context,
+    );
+
+    expect(response.status).toBe(503);
+    expect(mocks.unsubscribe).toHaveBeenCalled();
   });
 });

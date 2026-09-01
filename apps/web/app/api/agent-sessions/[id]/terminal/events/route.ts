@@ -4,6 +4,7 @@ import { hostConnectorBroker } from "@/lib/agents/connector/broker";
 import { daemonSession } from "@/lib/agents/connector/descriptors";
 import { getOwnedAgentSession } from "@/lib/db/agentConnections";
 import {
+  AGENT_TERMINAL_MAX_SNAPSHOT_CHARS,
   isAgentTerminalSize,
   type AgentTerminalEvent,
   type AgentTerminalSnapshot,
@@ -11,6 +12,9 @@ import {
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
+
+const MAX_TERMINAL_STREAM_BUFFER_BYTES =
+  AGENT_TERMINAL_MAX_SNAPSHOT_CHARS + 512 * 1_024;
 
 type StreamItem =
   | { type: "snapshot"; snapshot: AgentTerminalSnapshot }
@@ -59,6 +63,13 @@ export async function GET(
   }
 
   const url = new URL(req.url);
+  const controlId = url.searchParams.get("controlId")?.trim() ?? "";
+  if (!controlId || controlId.length > 128) {
+    return Response.json(
+      { error: "Invalid terminal control identifier." },
+      { status: 400 },
+    );
+  }
   const size = {
     cols: Number(url.searchParams.get("cols") ?? 80),
     rows: Number(url.searchParams.get("rows") ?? 24),
@@ -67,7 +78,8 @@ export async function GET(
     return Response.json({ error: "Invalid terminal size." }, { status: 400 });
   }
 
-  const pending: StreamItem[] = [];
+  const pending: Uint8Array[] = [];
+  let pendingBytes = 0;
   let controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   let closed = false;
   let closeRequested = req.signal.aborted;
@@ -80,12 +92,26 @@ export async function GET(
   try {
     const enqueue = (item: StreamItem) => {
       if (closed) return;
+      const encoded = encode(item);
       if (!controller) {
-        pending.push(item);
+        if (
+          pendingBytes + encoded.byteLength >
+          MAX_TERMINAL_STREAM_BUFFER_BYTES
+        ) {
+          closeStream();
+          return;
+        }
+        pending.push(encoded);
+        pendingBytes += encoded.byteLength;
         return;
       }
       try {
-        controller.enqueue(encode(item));
+        const capacity = controller.desiredSize;
+        if (capacity !== null && capacity < encoded.byteLength) {
+          closeStream();
+          return;
+        }
+        controller.enqueue(encoded);
       } catch {
         closeStream();
       }
@@ -93,6 +119,7 @@ export async function GET(
     const subscription = await hostConnectorBroker.subscribeTerminal(
       owned.host.connectorId,
       daemonSession(owned),
+      controlId,
       size,
       (event) => enqueue({ type: "event", event }),
       () => closeStream(),
@@ -103,42 +130,52 @@ export async function GET(
       return new Response(null, { status: 503 });
     }
 
-    const body = new ReadableStream<Uint8Array>({
-      start(streamController) {
-        controller = streamController;
-        streamController.enqueue(
-          encode({ type: "snapshot", snapshot: subscription.snapshot }),
-        );
-        for (const item of pending.splice(0)) {
-          streamController.enqueue(encode(item));
-        }
-        const keepAlive = setInterval(() => {
-          if (closed) return;
-          try {
-            streamController.enqueue(
-              new TextEncoder().encode(": keepalive\n\n"),
-            );
-          } catch {
-            closeStream();
+    const body = new ReadableStream<Uint8Array>(
+      {
+        start(streamController) {
+          controller = streamController;
+          streamController.enqueue(
+            encode({ type: "snapshot", snapshot: subscription.snapshot }),
+          );
+          for (const item of pending.splice(0)) {
+            streamController.enqueue(item);
           }
-        }, 15_000);
-        closeStream = () => {
-          if (closed) return;
-          closed = true;
-          clearInterval(keepAlive);
-          req.signal.removeEventListener("abort", handleAbort);
-          subscription.unsubscribe();
-          try {
-            streamController.close();
-          } catch {
-            // The browser may already have closed the stream.
-          }
-        };
+          pendingBytes = 0;
+          const keepAlive = setInterval(() => {
+            if (closed) return;
+            try {
+              const keepAliveFrame = new TextEncoder().encode(": keepalive\n\n");
+              const capacity = streamController.desiredSize;
+              if (capacity !== null && capacity < keepAliveFrame.byteLength) {
+                closeStream();
+                return;
+              }
+              streamController.enqueue(keepAliveFrame);
+            } catch {
+              closeStream();
+            }
+          }, 15_000);
+          closeStream = () => {
+            if (closed) return;
+            closed = true;
+            clearInterval(keepAlive);
+            req.signal.removeEventListener("abort", handleAbort);
+            subscription.unsubscribe();
+            try {
+              streamController.close();
+            } catch {
+              // The browser may already have closed the stream.
+            }
+          };
+        },
+        cancel() {
+          closeStream();
+        },
       },
-      cancel() {
-        closeStream();
-      },
-    });
+      new ByteLengthQueuingStrategy({
+        highWaterMark: MAX_TERMINAL_STREAM_BUFFER_BYTES,
+      }),
+    );
     return new Response(body, {
       headers: {
         "Content-Type": "text/event-stream",

@@ -40,6 +40,7 @@ afterEach(async () => {
   delete process.env.OVERTCHAT_CONNECTOR_STATE;
   delete process.env.OVERTCHAT_CONNECTOR_TIMELINES;
   delete process.env.OVERTCHAT_CONNECTOR_LOCK;
+  delete process.env.OVERTCHAT_DISABLE_AGENT_TERMINAL;
   await Promise.all(
     directories.splice(0).map((directory) =>
       rm(directory, { recursive: true, force: true }),
@@ -140,6 +141,31 @@ describe.sequential("connector client compatibility", () => {
     expect(headers.get("x-overtchat-connector-capabilities")).toBe(
       HOST_CONNECTOR_CAPABILITIES.join(","),
     );
+    await client.stop();
+    await running;
+  });
+
+  it("keeps ordinary connector capabilities when terminals are disabled", async () => {
+    process.env.OVERTCHAT_DISABLE_AGENT_TERMINAL = "1";
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        requests.push({ url: String(input), init });
+        return emptyChannel();
+      }),
+    );
+    const client = await ConnectorClient.create(await config());
+    const running = client.run();
+    await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0));
+
+    const headers = new Headers(requests[0]!.init?.headers);
+    expect(headers.get("x-overtchat-connector-capabilities")?.split(","))
+      .toEqual(
+        HOST_CONNECTOR_CAPABILITIES.filter(
+          (capability) => capability !== "workspace-terminal-v1",
+        ),
+      );
     await client.stop();
     await running;
   });

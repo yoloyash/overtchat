@@ -11,7 +11,7 @@ import {
 
 type TerminalControl =
   | { type: "input"; data: string }
-  | { type: "resize"; size: AgentTerminalSize }
+  | { type: "resize"; controlId: string; size: AgentTerminalSize }
   | { type: "restart"; size: AgentTerminalSize }
   | { type: "kill" };
 
@@ -27,10 +27,20 @@ function parseControl(value: unknown): TerminalControl | null {
     return { type: "input", data: record.data };
   }
   if (
-    (record.type === "resize" || record.type === "restart") &&
+    record.type === "resize" &&
+    typeof record.controlId === "string" &&
+    record.controlId.length > 0 &&
+    record.controlId.length <= 128 &&
     isAgentTerminalSize(record.size)
   ) {
-    return { type: record.type, size: record.size };
+    return {
+      type: "resize",
+      controlId: record.controlId,
+      size: record.size,
+    };
+  }
+  if (record.type === "restart" && isAgentTerminalSize(record.size)) {
+    return { type: "restart", size: record.size };
   }
   return record.type === "kill" ? { type: "kill" } : null;
 }
@@ -123,6 +133,7 @@ export async function POST(
       hostConnectorBroker.resizeTerminal(
         owned.host.connectorId,
         id,
+        control.controlId,
         control.size,
       );
       return new Response(null, { status: 204 });

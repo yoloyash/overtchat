@@ -8,6 +8,7 @@ import {
   type HostConnectorEventAck,
   type HostConnectorEventBatch,
   type HostConnectorEventPayload,
+  type HostConnectorCapability,
 } from "@overtchat/agent-bridge";
 import type { ResolvedAgentImage } from "@overtchat/agent-runtime";
 import {
@@ -20,6 +21,7 @@ import { ConnectorDaemon } from "./daemon.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
+import { connectorTerminalSupport } from "./terminal.js";
 import { CONNECTOR_VERSION } from "./version.js";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -63,8 +65,17 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
   });
 }
 
+function availableCapabilities(): HostConnectorCapability[] {
+  const terminalSupport = connectorTerminalSupport();
+  return HOST_CONNECTOR_CAPABILITIES.filter(
+    (capability) =>
+      capability !== "workspace-terminal-v1" || terminalSupport.available,
+  );
+}
+
 export class ConnectorClient {
   private readonly daemon: ConnectorDaemon;
+  private readonly capabilities = availableCapabilities();
   private readonly stopAbort = new AbortController();
   private commandStreamAbort: AbortController | undefined;
   private eventRequestAbort: AbortController | undefined;
@@ -200,8 +211,7 @@ export class ConnectorClient {
         headers: {
           Authorization: `Bearer ${this.config.token}`,
           "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
-          "X-OvertChat-Connector-Capabilities":
-            HOST_CONNECTOR_CAPABILITIES.join(","),
+          "X-OvertChat-Connector-Capabilities": this.capabilities.join(","),
           "X-OvertChat-Connector-Protocol": String(
             HOST_CONNECTOR_PROTOCOL_VERSION,
           ),
@@ -315,8 +325,7 @@ export class ConnectorClient {
             Authorization: `Bearer ${this.config.token}`,
             "Content-Type": "application/json",
             "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
-            "X-OvertChat-Connector-Capabilities":
-              HOST_CONNECTOR_CAPABILITIES.join(","),
+            "X-OvertChat-Connector-Capabilities": this.capabilities.join(","),
             "X-OvertChat-Connector-Protocol": String(
               HOST_CONNECTOR_PROTOCOL_VERSION,
             ),

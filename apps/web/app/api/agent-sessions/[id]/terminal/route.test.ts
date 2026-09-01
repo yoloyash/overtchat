@@ -83,7 +83,11 @@ describe("agent terminal controls", () => {
       context,
     );
     const resize = await POST(
-      request({ type: "resize", size: { cols: 100, rows: 32 } }),
+      request({
+        type: "resize",
+        controlId: "control-one",
+        size: { cols: 100, rows: 32 },
+      }),
       context,
     );
 
@@ -94,10 +98,12 @@ describe("agent terminal controls", () => {
       "session",
       "pwd\r",
     );
-    expect(mocks.resizeTerminal).toHaveBeenCalledWith("connector", "session", {
-      cols: 100,
-      rows: 32,
-    });
+    expect(mocks.resizeTerminal).toHaveBeenCalledWith(
+      "connector",
+      "session",
+      "control-one",
+      { cols: 100, rows: 32 },
+    );
   });
 
   it("restarts the workspace terminal with the session descriptor", async () => {
@@ -136,5 +142,35 @@ describe("agent terminal controls", () => {
     await expect(response.json()).resolves.toEqual({
       error: "Update the OvertChat Host Connector to use workspace terminals.",
     });
+  });
+
+  it("does not expose terminal controls for an unowned session", async () => {
+    mocks.getOwnedAgentSession.mockResolvedValue(null);
+
+    const response = await POST(
+      request({ type: "input", data: "pwd\r" }),
+      context,
+    );
+
+    expect(response.status).toBe(404);
+    expect(mocks.sendTerminalInput).not.toHaveBeenCalled();
+    expect(mocks.resizeTerminal).not.toHaveBeenCalled();
+    expect(mocks.restartTerminal).not.toHaveBeenCalled();
+    expect(mocks.killTerminal).not.toHaveBeenCalled();
+  });
+
+  it("keeps terminal controls admin-only", async () => {
+    mocks.getSession.mockResolvedValue({
+      user: { id: "owner", role: "user" },
+    });
+
+    const response = await POST(
+      request({ type: "input", data: "pwd\r" }),
+      context,
+    );
+
+    expect(response.status).toBe(403);
+    expect(mocks.getOwnedAgentSession).not.toHaveBeenCalled();
+    expect(mocks.sendTerminalInput).not.toHaveBeenCalled();
   });
 });

@@ -16,7 +16,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 ## Version map
 
 | Component | Change | Tag |
-| -------------- | -------------------------------------------------------------------------------------------------------------- | ------------------ |
+| --- | --- | --- |
 | App | Manifest `appVersion`; `compose.yml` default | `vX.Y.Z` |
 | Realtime voice | Manifest `voiceVersion`; `compose.yml` default | `voice-vX.Y.Z` |
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
