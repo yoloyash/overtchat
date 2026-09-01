@@ -191,6 +191,8 @@ export type AgentWorkspaceDirectoryEntry = {
   path: string;
   kind: "file" | "directory" | "symlink";
   symlink: boolean;
+  /** True when Git ignores this visible workspace entry. */
+  ignored?: boolean;
 };
 
 export type AgentWorkspaceDirectoryListing = {

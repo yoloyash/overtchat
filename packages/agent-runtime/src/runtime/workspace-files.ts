@@ -15,9 +15,11 @@ const INVALID_FILE_MESSAGE =
 export const AGENT_WORKSPACE_FILES_SCRIPT = `
 const fs = require("node:fs");
 const path = require("node:path");
+const { spawnSync } = require("node:child_process");
 
 const MAX_DIRECTORY_ENTRIES = 1000;
 const MAX_PREVIEW_BYTES = 512 * 1024;
+const MAX_GIT_OUTPUT_BYTES = 1024 * 1024;
 const READ_FLAGS = process.platform === "win32"
   ? fs.constants.O_RDONLY
   : fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW;
@@ -53,6 +55,20 @@ function resolveTarget(root) {
 function relativePath(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative ? relative.split(path.sep).join("/") : ".";
+}
+
+function ignoredPaths(root, entries) {
+  if (entries.length === 0) return new Set();
+  const result = spawnSync("git", ["check-ignore", "-z", "--stdin"], {
+    cwd: root,
+    input: entries.map((entry) => entry.path).join("\\0") + "\\0",
+    encoding: "utf8",
+    maxBuffer: MAX_GIT_OUTPUT_BYTES,
+  });
+  if (result.error || (result.status !== 0 && result.status !== 1)) {
+    return new Set();
+  }
+  return new Set(String(result.stdout || "").split("\\0").filter(Boolean));
 }
 
 function list(root, target) {
@@ -95,9 +111,13 @@ function list(root, target) {
     const rightDirectory = right.kind === "directory" ? 0 : 1;
     return leftDirectory - rightDirectory || left.name.localeCompare(right.name);
   });
+  const visibleEntries = entries.slice(0, MAX_DIRECTORY_ENTRIES);
+  const ignored = ignoredPaths(root, visibleEntries);
   return {
     path: relativePath(root, target.lexical),
-    entries: entries.slice(0, MAX_DIRECTORY_ENTRIES),
+    entries: visibleEntries.map((entry) =>
+      ignored.has(entry.path) ? { ...entry, ignored: true } : entry
+    ),
     truncated: entries.length > MAX_DIRECTORY_ENTRIES,
   };
 }
@@ -173,7 +193,9 @@ function isWorkspaceDirectoryListing(
         ["file", "directory", "symlink"].includes(
           String(Reflect.get(entry, "kind")),
         ) &&
-        typeof Reflect.get(entry, "symlink") === "boolean",
+        typeof Reflect.get(entry, "symlink") === "boolean" &&
+        (Reflect.get(entry, "ignored") === undefined ||
+          typeof Reflect.get(entry, "ignored") === "boolean"),
     )
   );
 }

@@ -183,10 +183,12 @@ function workspaceFileSelection(value: unknown): AgentWorkspaceFileSelection | n
     typeof record.lineEnd === "number" && record.lineEnd >= (lineStart ?? 1)
       ? record.lineEnd
       : undefined;
+  const gitIgnored = record.gitIgnored === true;
   return {
     path: record.path,
     ...(lineStart ? { lineStart } : {}),
     ...(lineEnd ? { lineEnd } : {}),
+    ...(gitIgnored ? { gitIgnored: true } : {}),
   };
 }
 
@@ -309,10 +311,18 @@ export function AgentSessionView({
         (candidate) => candidate.path === selection.path,
       );
       const next = [...openFiles];
-      if (existing >= 0) next[existing] = selection;
-      else next.push(selection);
+      if (existing >= 0) {
+        next[existing] = {
+          ...selection,
+          ...(selection.gitIgnored === undefined &&
+            openFiles[existing]?.gitIgnored
+            ? { gitIgnored: true }
+            : {}),
+        };
+      } else next.push(selection);
+      const selected = existing >= 0 ? next[existing] : selection;
       setStoredOpenFiles(next);
-      setStoredFileSelection(selection);
+      setStoredFileSelection(selected);
       setFilesOpen(true);
     },
     [openFiles, setFilesOpen, setStoredFileSelection, setStoredOpenFiles],

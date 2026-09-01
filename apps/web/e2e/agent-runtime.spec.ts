@@ -703,6 +703,13 @@ test("shows durable turn activity without changing completed tool status", async
                       kind: "file",
                       symlink: false,
                     },
+                    {
+                      name: "generated.log",
+                      path: "generated.log",
+                      kind: "file",
+                      symlink: false,
+                      ignored: true,
+                    },
                   ],
                   truncated: false,
                 },
@@ -912,10 +919,27 @@ test("shows durable turn activity without changing completed tool status", async
   await workspacePane.getByRole("tab", { name: "Files" }).click();
   await expect(workspacePane.getByRole("heading", { name: "Changes" })).toBeVisible();
   await expect(workspacePane.getByRole("heading", { name: "Files" })).toBeVisible();
-  await workspacePane.getByRole("button", { name: "src", exact: true }).click();
   await expect(
-    workspacePane.getByRole("button", { name: "index.ts", exact: true }),
-  ).toBeVisible();
+    workspacePane.getByRole("button", {
+      name: "src/index.ts Modified",
+      exact: true,
+    }),
+  ).toHaveAttribute("data-git-status", "modified");
+  const sourceDirectory = workspacePane.getByRole("button", {
+    name: "src",
+    exact: true,
+  });
+  await expect(sourceDirectory).toHaveAttribute("data-git-status", "modified");
+  await expect(
+    workspacePane.getByRole("button", { name: "generated.log", exact: true }),
+  ).toHaveAttribute("data-git-status", "ignored");
+  await sourceDirectory.click();
+  await expect(
+    workspacePane.getByRole("button", {
+      name: "index.ts Modified",
+      exact: true,
+    }),
+  ).toHaveAttribute("data-git-status", "modified");
   const requestsBeforeIdle = [...workspaceDirectoryRequests];
   await page.waitForTimeout(3_200);
   expect(workspaceDirectoryRequests).toEqual(requestsBeforeIdle);
@@ -941,11 +965,11 @@ test("shows durable turn activity without changing completed tool status", async
     )
     .toBeGreaterThan(sourceRequestsBeforeRefresh);
   await workspacePane
-    .getByRole("button", { name: "index.ts", exact: true })
+    .getByRole("button", { name: "index.ts Modified", exact: true })
     .click();
   await expect(
     workspacePane.getByLabel("File path: Runtime test/src/index.ts"),
-  ).toBeVisible();
+  ).toHaveAttribute("data-git-status", "modified");
   await expect(
     workspacePane.getByRole("tab", {
       name: "Open apps/web/components/agents/AgentSessionView.tsx",
@@ -955,6 +979,10 @@ test("shows durable turn activity without changing completed tool status", async
     name: "Open src/index.ts",
   });
   await expect(indexTab).toHaveAttribute("aria-selected", "true");
+  await expect(indexTab.locator("..")).toHaveAttribute(
+    "data-git-status",
+    "modified",
+  );
   await page.screenshot({
     path: testInfo.outputPath("runtime-workspace-tabs.png"),
     fullPage: true,

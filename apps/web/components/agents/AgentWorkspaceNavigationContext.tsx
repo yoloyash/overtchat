@@ -6,6 +6,7 @@ export type AgentWorkspaceFileSelection = {
   path: string;
   lineStart?: number;
   lineEnd?: number;
+  gitIgnored?: boolean;
 };
 
 type AgentWorkspaceNavigation = {

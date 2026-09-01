@@ -35,9 +35,17 @@ import {
   useAgentWorkspaceGitStatus,
 } from "@/lib/queries/agentWorkspaces";
 import { motionClasses } from "@/lib/motion";
+import {
+  agentWorkspaceGitDecorationMap,
+  agentWorkspaceGitFileDecoration,
+  ignoredGitDecoration,
+  type AgentWorkspaceGitDecoration,
+} from "@/lib/agents/workspaceGitDecorations";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 import { cn } from "@/lib/utils";
 import type { AgentWorkspaceFileSelection } from "./AgentWorkspaceNavigationContext";
+
+const EMPTY_CHANGED_FILES: AgentWorkspaceGitFile[] = [];
 
 export function AgentWorkspacePane({
   workspaceId,
@@ -62,6 +70,16 @@ export function AgentWorkspacePane({
   onCloseFile: (path: string) => void;
   onClose: () => void;
 }) {
+  const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
+    active: true,
+    running,
+  });
+  const changedFiles = gitStatus.data?.files ?? EMPTY_CHANGED_FILES;
+  const gitDecorations = useMemo(
+    () => agentWorkspaceGitDecorationMap(changedFiles),
+    [changedFiles],
+  );
+
   return (
     <aside
       className="flex h-full w-full flex-col border-l bg-background"
@@ -71,6 +89,7 @@ export function AgentWorkspacePane({
       <WorkspaceTabs
         selection={selection}
         openFiles={openFiles}
+        gitDecorations={gitDecorations}
         onActivateFiles={onActivateFiles}
         onActivateFile={onActivateFile}
         onCloseFile={onCloseFile}
@@ -81,12 +100,18 @@ export function AgentWorkspacePane({
           workspaceId={workspaceId}
           workspaceName={workspaceName}
           selection={selection}
+          decoration={
+            gitDecorations.get(selection.path) ??
+            (selection.gitIgnored ? ignoredGitDecoration : undefined)
+          }
           running={running}
         />
       ) : (
         <WorkspaceExplorer
           workspaceId={workspaceId}
-          running={running}
+          isGit={gitStatus.data?.isGit === true}
+          changedFiles={changedFiles}
+          gitDecorations={gitDecorations}
           onSelect={onSelect}
         />
       )}
@@ -98,9 +123,36 @@ function fileName(filePath: string): string {
   return filePath.split("/").filter(Boolean).at(-1) ?? filePath;
 }
 
+function gitDecorationTextClass(
+  decoration: AgentWorkspaceGitDecoration | undefined,
+): string | undefined {
+  switch (decoration?.kind) {
+    case "added":
+      return "text-emerald-700 dark:text-emerald-300";
+    case "modified":
+    case "renamed":
+      return "text-amber-700 dark:text-amber-300";
+    case "conflicted":
+    case "deleted":
+      return "text-red-700 dark:text-red-300";
+    case "ignored":
+      return "text-muted-foreground/50";
+    default:
+      return undefined;
+  }
+}
+
+function gitDecoratedTitle(
+  path: string,
+  decoration: AgentWorkspaceGitDecoration | undefined,
+): string {
+  return decoration ? `${path} — ${decoration.label}` : path;
+}
+
 function WorkspaceTabs({
   selection,
   openFiles,
+  gitDecorations,
   onActivateFiles,
   onActivateFile,
   onCloseFile,
@@ -108,6 +160,7 @@ function WorkspaceTabs({
 }: {
   selection: AgentWorkspaceFileSelection | null;
   openFiles: AgentWorkspaceFileSelection[];
+  gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
   onActivateFiles: () => void;
   onActivateFile: (path: string) => void;
   onCloseFile: (path: string) => void;
@@ -139,9 +192,13 @@ function WorkspaceTabs({
         {openFiles.map((file) => {
           const active = selection?.path === file.path;
           const name = fileName(file.path);
+          const decoration =
+            gitDecorations.get(file.path) ??
+            (file.gitIgnored ? ignoredGitDecoration : undefined);
           return (
             <div
               key={file.path}
+              data-git-status={decoration?.kind}
               className={cn(
                 "group relative flex h-full min-w-0 max-w-56 shrink-0 items-center border-r motion-colors hover:bg-muted/50 focus-within:bg-muted/60",
                 active
@@ -154,15 +211,35 @@ function WorkspaceTabs({
                 role="tab"
                 aria-selected={active}
                 aria-label={`Open ${file.path}`}
-                title={file.path}
+                title={gitDecoratedTitle(file.path, decoration)}
                 onClick={() => onActivateFile(file.path)}
                 className={cn(
                   "flex h-full min-w-0 items-center gap-2 py-0 pr-1 pl-3 text-xs outline-none",
                   active && "font-medium",
                 )}
               >
-                <FileCode2 className="size-3.5 shrink-0" />
-                <span className="truncate">{name}</span>
+                <FileCode2
+                  className={cn(
+                    "size-3.5 shrink-0",
+                    gitDecorationTextClass(decoration),
+                  )}
+                />
+                <span
+                  className={cn("truncate", gitDecorationTextClass(decoration))}
+                >
+                  {name}
+                </span>
+                {decoration?.code && (
+                  <span
+                    aria-label={decoration.label}
+                    className={cn(
+                      "shrink-0 text-[10px] font-semibold",
+                      gitDecorationTextClass(decoration),
+                    )}
+                  >
+                    {decoration.code}
+                  </span>
+                )}
               </button>
               <button
                 type="button"
@@ -200,18 +277,17 @@ function WorkspaceTabs({
 
 function WorkspaceExplorer({
   workspaceId,
-  running,
+  isGit,
+  changedFiles,
+  gitDecorations,
   onSelect,
 }: {
   workspaceId: string;
-  running: boolean;
+  isGit: boolean;
+  changedFiles: AgentWorkspaceGitFile[];
+  gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
-  const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
-    active: true,
-    running,
-  });
-  const changedFiles = gitStatus.data?.files ?? [];
   const queryClient = useQueryClient();
   const directoryQueries = agentWorkspaceKeys.directories(workspaceId);
   const refreshingDirectories =
@@ -229,7 +305,7 @@ function WorkspaceExplorer({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
-      {gitStatus.data?.isGit && changedFiles.length > 0 && (
+      {isGit && changedFiles.length > 0 && (
         <section className="pb-3" aria-labelledby="workspace-changes-heading">
           <div className="flex h-8 items-center gap-2 px-3">
             <FileDiff className="size-3.5 text-muted-foreground" />
@@ -285,6 +361,7 @@ function WorkspaceExplorer({
           path="."
           depth={0}
           expanded={expanded}
+          gitDecorations={gitDecorations}
           onToggle={toggle}
           onSelect={onSelect}
         />
@@ -300,40 +377,36 @@ function ChangedFileRow({
   file: AgentWorkspaceGitFile;
   onSelect: () => void;
 }) {
-  const status = file.worktreeStatus ?? file.indexStatus ?? "M";
-  const label =
-    status === "?" || status === "A"
-      ? "Added"
-      : status === "D"
-        ? "Deleted"
-        : status === "R"
-          ? "Renamed"
-          : status === "U"
-            ? "Conflicted"
-            : "Modified";
-  const deleted = status === "D";
+  const decoration = agentWorkspaceGitFileDecoration(file);
+  const deleted = decoration.kind === "deleted";
 
   return (
     <button
       type="button"
       disabled={deleted}
       onClick={onSelect}
-      title={deleted ? `${file.path} was deleted` : file.path}
+      title={gitDecoratedTitle(file.path, decoration)}
+      data-git-status={decoration.kind}
       className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none motion-colors hover:bg-muted disabled:cursor-default disabled:opacity-60"
     >
-      <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+      <FileCode2
+        className={cn("size-3.5 shrink-0", gitDecorationTextClass(decoration))}
+      />
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate font-mono",
+          gitDecorationTextClass(decoration),
+        )}
+      >
+        {file.path}
+      </span>
       <span
         className={cn(
           "shrink-0 text-[10px] font-medium",
-          label === "Added" && "text-emerald-700 dark:text-emerald-300",
-          label === "Deleted" && "text-red-700 dark:text-red-300",
-          label === "Conflicted" && "text-amber-700 dark:text-amber-300",
-          (label === "Modified" || label === "Renamed") &&
-            "text-muted-foreground",
+          gitDecorationTextClass(decoration),
         )}
       >
-        {label}
+        {decoration.label}
       </span>
     </button>
   );
@@ -344,6 +417,7 @@ function WorkspaceDirectory({
   path,
   depth,
   expanded,
+  gitDecorations,
   onToggle,
   onSelect,
 }: {
@@ -351,6 +425,7 @@ function WorkspaceDirectory({
   path: string;
   depth: number;
   expanded: Set<string>;
+  gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
   onToggle: (path: string) => void;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
@@ -385,6 +460,7 @@ function WorkspaceDirectory({
           workspaceId={workspaceId}
           depth={depth}
           expanded={expanded}
+          gitDecorations={gitDecorations}
           onToggle={onToggle}
           onSelect={onSelect}
         />
@@ -408,6 +484,7 @@ function WorkspaceEntryRow({
   workspaceId,
   depth,
   expanded,
+  gitDecorations,
   onToggle,
   onSelect,
 }: {
@@ -415,12 +492,19 @@ function WorkspaceEntryRow({
   workspaceId: string;
   depth: number;
   expanded: Set<string>;
+  gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
   onToggle: (path: string) => void;
   onSelect: (selection: AgentWorkspaceFileSelection) => void;
 }) {
   const directory = entry.kind === "directory" && !entry.symlink;
   const open = directory && expanded.has(entry.path);
   const disabled = entry.kind === "symlink" || entry.symlink;
+  const decoration =
+    gitDecorations.get(entry.path) ??
+    (entry.ignored ? ignoredGitDecoration : undefined);
+  const title = disabled
+    ? `${entry.path} is a symbolic link and cannot be previewed`
+    : gitDecoratedTitle(entry.path, decoration);
 
   return (
     <div>
@@ -430,13 +514,13 @@ function WorkspaceEntryRow({
         onClick={() =>
           directory
             ? onToggle(entry.path)
-            : onSelect({ path: entry.path })
+            : onSelect({
+                path: entry.path,
+                ...(decoration?.kind === "ignored" ? { gitIgnored: true } : {}),
+              })
         }
-        title={
-          disabled
-            ? `${entry.path} is a symbolic link and cannot be previewed`
-            : entry.path
-        }
+        title={title}
+        data-git-status={decoration?.kind}
         className="flex min-h-8 w-full items-center gap-1.5 pr-2 text-left text-xs outline-none motion-colors hover:bg-muted disabled:cursor-default disabled:opacity-60"
         style={{ paddingLeft: `${12 + depth * 16}px` }}
       >
@@ -453,14 +537,47 @@ function WorkspaceEntryRow({
           <Link className="size-3.5 shrink-0 text-muted-foreground" />
         ) : directory ? (
           open ? (
-            <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
+            <FolderOpen
+              className={cn(
+                "size-3.5 shrink-0",
+                gitDecorationTextClass(decoration) ?? "text-muted-foreground",
+              )}
+            />
           ) : (
-            <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+            <Folder
+              className={cn(
+                "size-3.5 shrink-0",
+                gitDecorationTextClass(decoration) ?? "text-muted-foreground",
+              )}
+            />
           )
         ) : (
-          <File className="size-3.5 shrink-0 text-muted-foreground" />
+          <File
+            className={cn(
+              "size-3.5 shrink-0",
+              gitDecorationTextClass(decoration) ?? "text-muted-foreground",
+            )}
+          />
         )}
-        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+        <span
+          className={cn(
+            "min-w-0 flex-1 truncate",
+            gitDecorationTextClass(decoration),
+          )}
+        >
+          {entry.name}
+        </span>
+        {!directory && decoration?.code && (
+          <span
+            aria-label={decoration.label}
+            className={cn(
+              "shrink-0 text-[10px] font-semibold",
+              gitDecorationTextClass(decoration),
+            )}
+          >
+            {decoration.code}
+          </span>
+        )}
       </button>
       {open && (
         <WorkspaceDirectory
@@ -468,6 +585,7 @@ function WorkspaceEntryRow({
           path={entry.path}
           depth={depth + 1}
           expanded={expanded}
+          gitDecorations={gitDecorations}
           onToggle={onToggle}
           onSelect={onSelect}
         />
@@ -480,11 +598,13 @@ function WorkspaceFilePreview({
   workspaceId,
   workspaceName,
   selection,
+  decoration,
   running,
 }: {
   workspaceId: string;
   workspaceName: string;
   selection: AgentWorkspaceFileSelection;
+  decoration?: AgentWorkspaceGitDecoration;
   running: boolean;
 }) {
   const file = useAgentWorkspaceFile(workspaceId, selection.path, { running });
@@ -495,8 +615,12 @@ function WorkspaceFilePreview({
       <div className="flex h-10 shrink-0 items-center gap-1 border-b px-3">
         <div
           className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-xs text-muted-foreground"
-          title={`${workspaceName}/${displayPath}`}
+          title={gitDecoratedTitle(
+            `${workspaceName}/${displayPath}`,
+            decoration,
+          )}
           aria-label={`File path: ${workspaceName}/${displayPath}`}
+          data-git-status={decoration?.kind}
         >
           <span className="shrink-0 truncate">{workspaceName}</span>
           {displayPath.split("/").filter(Boolean).map((segment, index, parts) => (
@@ -509,11 +633,25 @@ function WorkspaceFilePreview({
                 className={cn(
                   "truncate",
                   index === parts.length - 1 &&
-                    "font-medium text-foreground",
+                    cn(
+                      "font-medium text-foreground",
+                      gitDecorationTextClass(decoration),
+                    ),
                 )}
               >
                 {segment}
               </span>
+              {index === parts.length - 1 && decoration?.code && (
+                <span
+                  aria-label={decoration.label}
+                  className={cn(
+                    "shrink-0 text-[10px] font-semibold",
+                    gitDecorationTextClass(decoration),
+                  )}
+                >
+                  {decoration.code}
+                </span>
+              )}
             </span>
           ))}
         </div>

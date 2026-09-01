@@ -101,6 +101,31 @@ describe("workspace-confined file service", () => {
     expect(listing.entries.some((entry) => entry.name === "zzzz-last")).toBe(false);
   });
 
+  it("marks only visible Git-ignored entries without enumerating ignored trees", () => {
+    const root = temporaryDirectory("overtchat-files-ignored-");
+    execFileSync("git", ["init", "--quiet", root]);
+    writeFileSync(path.join(root, ".gitignore"), "*.log\ncache/\n");
+    writeFileSync(path.join(root, "kept.ts"), "export {};\n");
+    writeFileSync(path.join(root, "debug.log"), "ignored\n");
+    writeFileSync(path.join(root, "tracked.log"), "tracked despite the pattern\n");
+    execFileSync("git", ["-C", root, "add", "-f", "tracked.log"]);
+    mkdirSync(path.join(root, "cache"));
+    writeFileSync(path.join(root, "cache", "artifact.txt"), "ignored\n");
+
+    const listing = runWorkspaceFiles("list", root, ".") as {
+      entries: Array<{ name: string; ignored?: boolean }>;
+    };
+
+    expect(listing.entries.find((entry) => entry.name === "debug.log")).toMatchObject({
+      ignored: true,
+    });
+    expect(listing.entries.find((entry) => entry.name === "cache")).toMatchObject({
+      ignored: true,
+    });
+    expect(listing.entries.find((entry) => entry.name === "kept.ts")?.ignored).toBeUndefined();
+    expect(listing.entries.find((entry) => entry.name === "tracked.log")?.ignored).toBeUndefined();
+  });
+
   it("rejects traversal, escaping symlinks, binary data, invalid UTF-8, and large files", () => {
     const root = temporaryDirectory("overtchat-files-");
     const outside = temporaryDirectory("overtchat-outside-");
