@@ -98,6 +98,13 @@ export class HostConnectorBroker {
     return this.channels.has(connectorId);
   }
 
+  supports(
+    connectorId: string,
+    capability: HostConnectorCapability,
+  ): boolean {
+    return this.channels.get(connectorId)?.capabilities.has(capability) ?? false;
+  }
+
   runtimeStatusForSession(
     sessionId: string,
   ): AgentSessionDirectoryEntry["runtimeStatus"] {

@@ -46,6 +46,26 @@ describe("Host Connector protocol compatibility", () => {
     ).toBe(true);
   });
 
+  it("validates provider-neutral workspace file requests", () => {
+    for (const type of [
+      "list_workspace_directory",
+      "read_workspace_file",
+    ] as const) {
+      expect(
+        isHostConnectorCommand({
+          type: "request",
+          requestId: "request",
+          request: {
+            type,
+            target: { transport: "ssh", alias: "workstation" },
+            root: "/srv/project",
+            path: "apps/web",
+          },
+        }),
+      ).toBe(true);
+    }
+  });
+
   it("accepts a session-directory snapshot and provider-independent upserts", () => {
     expect(
       isHostConnectorEvent({

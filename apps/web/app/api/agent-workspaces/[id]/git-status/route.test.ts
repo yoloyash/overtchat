@@ -50,6 +50,14 @@ describe("agent workspace Git status route", () => {
       additions: 8,
       deletions: 3,
       lineStatsComplete: true,
+      files: [
+        {
+          path: "src/index.ts",
+          originalPath: null,
+          indexStatus: null,
+          worktreeStatus: "M",
+        },
+      ],
     });
   });
 

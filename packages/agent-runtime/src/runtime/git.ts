@@ -43,6 +43,22 @@ function parseStatus(value) {
   let initial = false;
   let changedFiles = 0;
   const untrackedPaths = [];
+  const files = [];
+
+  function statusValue(value) {
+    return value && value !== "." && value !== " " ? value : null;
+  }
+
+  function trackedFile(record, fieldCount, originalPath = null) {
+    const fields = record.split(" ");
+    const xy = fields[1] || "..";
+    return {
+      path: fields.slice(fieldCount).join(" "),
+      originalPath,
+      indexStatus: statusValue(xy[0]),
+      worktreeStatus: statusValue(xy[1]),
+    };
+  }
 
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index];
@@ -70,18 +86,31 @@ function parseStatus(value) {
     }
     if (record.startsWith("2 ")) {
       changedFiles += 1;
+      const originalPath = records[index + 1] || null;
+      files.push(trackedFile(record, 9, originalPath));
       index += 1;
       continue;
     }
-    if (
-      record.startsWith("1 ") ||
-      record.startsWith("u ") ||
-      record.startsWith("? ")
-    ) {
+    if (record.startsWith("1 ")) {
       changedFiles += 1;
-      if (record.startsWith("? ")) {
-        untrackedPaths.push(record.slice(2));
-      }
+      files.push(trackedFile(record, 8));
+      continue;
+    }
+    if (record.startsWith("u ")) {
+      changedFiles += 1;
+      files.push(trackedFile(record, 10));
+      continue;
+    }
+    if (record.startsWith("? ")) {
+      changedFiles += 1;
+      const filePath = record.slice(2);
+      untrackedPaths.push(filePath);
+      files.push({
+        path: filePath,
+        originalPath: null,
+        indexStatus: null,
+        worktreeStatus: "?",
+      });
     }
   }
 
@@ -93,6 +122,7 @@ function parseStatus(value) {
     initial,
     changedFiles,
     untrackedPaths,
+    files,
   };
 }
 
@@ -190,6 +220,17 @@ try {
     throw error;
   }
 
+  const workspacePrefix = path
+    .relative(repositoryRoot, process.cwd())
+    .split(path.sep)
+    .join("/");
+  const workspacePathspec = workspacePrefix || ".";
+  const scopedPath = (filePath) => {
+    if (!workspacePrefix) return filePath;
+    const prefix = workspacePrefix + "/";
+    return filePath.startsWith(prefix) ? filePath.slice(prefix.length) : null;
+  };
+
   const rawStatus = runGit(
     [
       "status",
@@ -197,17 +238,31 @@ try {
       "--branch",
       "-z",
       "--untracked-files=all",
+      "--",
+      workspacePathspec,
     ],
     repositoryRoot,
   );
   const status = parseStatus(rawStatus);
+  status.files = status.files.flatMap((file) => {
+    const filePath = scopedPath(file.path);
+    if (filePath === null) return [];
+    const originalPath = file.originalPath === null
+      ? null
+      : scopedPath(file.originalPath);
+    return [{ ...file, path: filePath, originalPath }];
+  });
+  status.changedFiles = status.files.length;
   const rawNumstat = status.initial
     ? ""
-    : runGit(["diff", "--numstat", "-z", "HEAD", "--"], repositoryRoot);
+    : runGit(
+        ["diff", "--numstat", "-z", "HEAD", "--", workspacePathspec],
+        repositoryRoot,
+      );
   const numstat = parseNumstat(rawNumstat);
   const supplementalPaths = status.initial
     ? runGit(
-        ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        ["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", workspacePathspec],
         repositoryRoot,
       )
         .split("\\0")
@@ -226,6 +281,7 @@ try {
     additions: numstat.additions + supplemental.additions,
     deletions: numstat.deletions,
     lineStatsComplete: numstat.complete && supplemental.complete,
+    files: status.files,
   });
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
@@ -272,6 +328,7 @@ function parseGitProbe(value: unknown): AgentWorkspaceGitStatus {
       additions: 0,
       deletions: 0,
       lineStatsComplete: true,
+      files: [],
     };
   }
 
@@ -284,6 +341,7 @@ function parseGitProbe(value: unknown): AgentWorkspaceGitStatus {
   const additions = Reflect.get(value, "additions");
   const deletions = Reflect.get(value, "deletions");
   const lineStatsComplete = Reflect.get(value, "lineStatsComplete");
+  const files = Reflect.get(value, "files");
   if (
     Reflect.get(value, "isGit") !== true ||
     typeof repositoryRoot !== "string" ||
@@ -295,7 +353,17 @@ function parseGitProbe(value: unknown): AgentWorkspaceGitStatus {
     !isCount(changedFiles) ||
     !isCount(additions) ||
     !isCount(deletions) ||
-    typeof lineStatsComplete !== "boolean"
+    typeof lineStatsComplete !== "boolean" ||
+    !Array.isArray(files) ||
+    !files.every(
+      (file) =>
+        file &&
+        typeof file === "object" &&
+        typeof Reflect.get(file, "path") === "string" &&
+        isNullableString(Reflect.get(file, "originalPath")) &&
+        isNullableString(Reflect.get(file, "indexStatus")) &&
+        isNullableString(Reflect.get(file, "worktreeStatus")),
+    )
   ) {
     throw new Error("The remote machine returned invalid Git metadata.");
   }
@@ -312,6 +380,12 @@ function parseGitProbe(value: unknown): AgentWorkspaceGitStatus {
     additions,
     deletions,
     lineStatsComplete,
+    files: files.map((file) => ({
+      path: Reflect.get(file, "path") as string,
+      originalPath: Reflect.get(file, "originalPath") as string | null,
+      indexStatus: Reflect.get(file, "indexStatus") as string | null,
+      worktreeStatus: Reflect.get(file, "worktreeStatus") as string | null,
+    })),
   };
 }
 

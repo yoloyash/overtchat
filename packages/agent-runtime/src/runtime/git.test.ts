@@ -72,6 +72,20 @@ describe("agent workspace Git status", () => {
       additions: 4,
       deletions: 1,
       lineStatsComplete: true,
+      files: expect.arrayContaining([
+        {
+          path: "tracked.txt",
+          originalPath: null,
+          indexStatus: null,
+          worktreeStatus: "M",
+        },
+        {
+          path: "new.txt",
+          originalPath: null,
+          indexStatus: null,
+          worktreeStatus: "?",
+        },
+      ]),
     });
   });
 
@@ -124,6 +138,14 @@ describe("agent workspace Git status", () => {
         additions: 12,
         deletions: 4,
         lineStatsComplete: true,
+        files: [
+          {
+            path: "src/index.ts",
+            originalPath: null,
+            indexStatus: null,
+            worktreeStatus: "M",
+          },
+        ],
       }),
       stderr: "",
     });
@@ -145,6 +167,14 @@ describe("agent workspace Git status", () => {
       additions: 12,
       deletions: 4,
       lineStatsComplete: true,
+      files: [
+        {
+          path: "src/index.ts",
+          originalPath: null,
+          indexStatus: null,
+          worktreeStatus: "M",
+        },
+      ],
     });
     expect(mocks.executeOnHost).toHaveBeenCalledWith(
       { transport: "local" },
