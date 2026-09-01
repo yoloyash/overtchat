@@ -458,6 +458,7 @@ test("shows durable turn activity without changing completed tool status", async
   let runtimeAvailable = true;
   const submittedCommands: Array<Record<string, unknown>> = [];
   const workspaceDirectoryRequests: string[] = [];
+  const workspaceFileRequests: string[] = [];
   await page.exposeFunction(
     "__setAgentRuntimeAvailable",
     (available: boolean) => {
@@ -722,6 +723,7 @@ test("shows durable turn activity without changing completed tool status", async
     async (route) => {
       const filePath =
         new URL(route.request().url()).searchParams.get("path") ?? "README.md";
+      workspaceFileRequests.push(filePath);
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
@@ -879,6 +881,8 @@ test("shows durable turn activity without changing completed tool status", async
     "apps/web/components/agents/AgentSessionView.tsx",
   );
   await expect(agentViewLink).toHaveAttribute("data-line-start", "391");
+  expect(workspaceDirectoryRequests).toEqual([]);
+  expect(workspaceFileRequests).toEqual([]);
   await agentViewLink.click();
   const workspacePane = page.getByTestId("agent-workspace-pane");
   await expect(workspacePane).toBeVisible();
@@ -1046,6 +1050,10 @@ test("shows durable turn activity without changing completed tool status", async
   await workspacePane
     .getByRole("button", { name: "Close workspace files" })
     .click();
+  const fileRequestsAfterClose = [...workspaceFileRequests];
+  expect(fileRequestsAfterClose.length).toBeGreaterThan(0);
+  await page.waitForTimeout(2_200);
+  expect(workspaceFileRequests).toEqual(fileRequestsAfterClose);
   await expect(
     page.getByRole("button", { name: "the docs", exact: true }),
   ).toBeVisible();

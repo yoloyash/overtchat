@@ -86,14 +86,14 @@ async function fetchAgentWorkspaceFile(
 export function useAgentWorkspaceFile(
   id: string,
   path: string | null,
-  { running = false } = {},
+  { enabled = true, running = false } = {},
 ) {
   return useQuery({
     queryKey: agentWorkspaceKeys.file(id, path ?? ""),
     queryFn: () => fetchAgentWorkspaceFile(id, path!),
-    enabled: Boolean(id && path),
+    enabled: Boolean(id && path) && enabled,
     retry: false,
     staleTime: running ? 1_000 : 4_000,
-    refetchInterval: running && path ? 2_000 : false,
+    refetchInterval: enabled && running && path ? 2_000 : false,
   });
 }

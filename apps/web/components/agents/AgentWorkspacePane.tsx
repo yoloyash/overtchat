@@ -50,6 +50,7 @@ const EMPTY_CHANGED_FILES: AgentWorkspaceGitFile[] = [];
 export function AgentWorkspacePane({
   workspaceId,
   workspaceName,
+  active,
   selection,
   openFiles,
   running,
@@ -61,6 +62,7 @@ export function AgentWorkspacePane({
 }: {
   workspaceId: string;
   workspaceName: string;
+  active: boolean;
   selection: AgentWorkspaceFileSelection | null;
   openFiles: AgentWorkspaceFileSelection[];
   running: boolean;
@@ -99,6 +101,7 @@ export function AgentWorkspacePane({
         <WorkspaceFilePreview
           workspaceId={workspaceId}
           workspaceName={workspaceName}
+          active={active}
           selection={selection}
           decoration={
             gitDecorations.get(selection.path) ??
@@ -109,6 +112,7 @@ export function AgentWorkspacePane({
       ) : (
         <WorkspaceExplorer
           workspaceId={workspaceId}
+          active={active}
           isGit={gitStatus.data?.isGit === true}
           changedFiles={changedFiles}
           gitDecorations={gitDecorations}
@@ -277,12 +281,14 @@ function WorkspaceTabs({
 
 function WorkspaceExplorer({
   workspaceId,
+  active,
   isGit,
   changedFiles,
   gitDecorations,
   onSelect,
 }: {
   workspaceId: string;
+  active: boolean;
   isGit: boolean;
   changedFiles: AgentWorkspaceGitFile[];
   gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
@@ -358,6 +364,7 @@ function WorkspaceExplorer({
         </div>
         <WorkspaceDirectory
           workspaceId={workspaceId}
+          active={active}
           path="."
           depth={0}
           expanded={expanded}
@@ -414,6 +421,7 @@ function ChangedFileRow({
 
 function WorkspaceDirectory({
   workspaceId,
+  active,
   path,
   depth,
   expanded,
@@ -422,6 +430,7 @@ function WorkspaceDirectory({
   onSelect,
 }: {
   workspaceId: string;
+  active: boolean;
   path: string;
   depth: number;
   expanded: Set<string>;
@@ -431,7 +440,7 @@ function WorkspaceDirectory({
 }) {
   const isExpanded = expanded.has(path);
   const directory = useAgentWorkspaceDirectory(workspaceId, path, {
-    enabled: isExpanded,
+    enabled: active && isExpanded,
   });
 
   if (!isExpanded) return null;
@@ -458,6 +467,7 @@ function WorkspaceDirectory({
           key={entry.path}
           entry={entry}
           workspaceId={workspaceId}
+          active={active}
           depth={depth}
           expanded={expanded}
           gitDecorations={gitDecorations}
@@ -482,6 +492,7 @@ function WorkspaceDirectory({
 function WorkspaceEntryRow({
   entry,
   workspaceId,
+  active,
   depth,
   expanded,
   gitDecorations,
@@ -490,6 +501,7 @@ function WorkspaceEntryRow({
 }: {
   entry: AgentWorkspaceDirectoryEntry;
   workspaceId: string;
+  active: boolean;
   depth: number;
   expanded: Set<string>;
   gitDecorations: Map<string, AgentWorkspaceGitDecoration>;
@@ -582,6 +594,7 @@ function WorkspaceEntryRow({
       {open && (
         <WorkspaceDirectory
           workspaceId={workspaceId}
+          active={active}
           path={entry.path}
           depth={depth + 1}
           expanded={expanded}
@@ -597,17 +610,22 @@ function WorkspaceEntryRow({
 function WorkspaceFilePreview({
   workspaceId,
   workspaceName,
+  active,
   selection,
   decoration,
   running,
 }: {
   workspaceId: string;
   workspaceName: string;
+  active: boolean;
   selection: AgentWorkspaceFileSelection;
   decoration?: AgentWorkspaceGitDecoration;
   running: boolean;
 }) {
-  const file = useAgentWorkspaceFile(workspaceId, selection.path, { running });
+  const file = useAgentWorkspaceFile(workspaceId, selection.path, {
+    enabled: active,
+    running,
+  });
   const displayPath = file.data?.path ?? selection.path;
 
   return (

@@ -939,6 +939,7 @@ export function AgentSessionView({
             <AgentWorkspacePane
               workspaceId={workspaceId}
               workspaceName={workspaceName}
+              active={filesOpen}
               selection={selectedFile}
               openFiles={openFiles}
               running={running}
