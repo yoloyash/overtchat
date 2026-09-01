@@ -217,7 +217,7 @@ function safeEnvironment(): Record<string, string | undefined> {
   // environment as command prefixes would both override remote credentials
   // and expose local secrets in process arguments.
   return {
-    CLAUDE_AGENT_SDK_CLIENT_APP: "overtchat/0.9.0",
+    CLAUDE_AGENT_SDK_CLIENT_APP: "overtchat/0.10.0",
     TERM: "dumb",
     NO_COLOR: "1",
   };
