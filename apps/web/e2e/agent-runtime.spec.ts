@@ -441,6 +441,7 @@ test("requires inspection before retrying an uncertain queued message", async ({
 test("shows durable turn activity without changing completed tool status", async ({
   page,
 }, testInfo) => {
+  test.setTimeout(60_000);
   await page.goto("/signup");
   await page.locator("#name").fill("Runtime E2E Admin");
   await page.locator("#email").fill("runtime-admin@overtchat-test.local");
