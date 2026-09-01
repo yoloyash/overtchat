@@ -83,7 +83,7 @@ describe("Host Connectors route", () => {
       pairCode: "ocp_pair.secret",
       expiresAt: 10_000,
       command:
-        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.9.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
+        "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.10.0 | sh -s -- --server 'http://127.0.0.1:9000' --pair-code 'ocp_pair.secret'",
     });
     expect(mocks.createPairing).toHaveBeenCalledWith("admin");
   });
@@ -157,9 +157,9 @@ describe("Host Connectors route", () => {
           lastSeenAt: 12_000,
           online: true,
           upgrade: {
-            version: "0.9.0",
+            version: "0.10.0",
             command:
-              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.9.0 | sh -s -- --upgrade",
+              "curl --proto '=https' --tlsv1.2 -fsSL https://overtchat.com/install/connector/0.10.0 | sh -s -- --upgrade",
           },
         },
       ],
@@ -172,14 +172,14 @@ describe("Host Connectors route", () => {
         id: "current",
         name: "Current",
         managed: false,
-        version: "0.9.0",
+        version: "0.10.0",
         lastSeenAt: null,
       },
       {
         id: "newer",
         name: "Newer",
         managed: false,
-        version: "0.9.0",
+        version: "0.11.0",
         lastSeenAt: null,
       },
     ]);
