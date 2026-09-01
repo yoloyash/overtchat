@@ -175,6 +175,35 @@ export type AgentWorkspaceGitStatus = {
   additions: number;
   deletions: number;
   lineStatsComplete: boolean;
+  /** Present when the connector supports workspace-files-v1. */
+  files?: AgentWorkspaceGitFile[];
+};
+
+export type AgentWorkspaceGitFile = {
+  path: string;
+  originalPath: string | null;
+  indexStatus: string | null;
+  worktreeStatus: string | null;
+};
+
+export type AgentWorkspaceDirectoryEntry = {
+  name: string;
+  path: string;
+  kind: "file" | "directory" | "symlink";
+  symlink: boolean;
+};
+
+export type AgentWorkspaceDirectoryListing = {
+  path: string;
+  entries: AgentWorkspaceDirectoryEntry[];
+  truncated: boolean;
+};
+
+export type AgentWorkspaceFilePreview = {
+  path: string;
+  content: string;
+  size: number;
+  modifiedAt: number;
 };
 
 export type AgentConnectionListItem = {

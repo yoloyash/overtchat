@@ -22,7 +22,9 @@ import {
   configureTcpTunnelOpener,
   inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
+  listAgentWorkspaceDirectory,
   probeAgentWorkspace,
+  readAgentWorkspaceFile,
   type AgentSessionRuntime,
   type HostTarget,
   type ResolvedAgentImage,
@@ -370,6 +372,18 @@ export class ConnectorDaemon {
       case "git_status":
         return inspectAgentWorkspaceGitStatus(
           hostTarget(request.target),
+          request.path,
+        );
+      case "list_workspace_directory":
+        return listAgentWorkspaceDirectory(
+          hostTarget(request.target),
+          request.root,
+          request.path,
+        );
+      case "read_workspace_file":
+        return readAgentWorkspaceFile(
+          hostTarget(request.target),
+          request.root,
           request.path,
         );
       case "create_session": {

@@ -1,0 +1,570 @@
+"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { code, type HighlightResult } from "@streamdown/code";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  File,
+  FileCode2,
+  FileDiff,
+  Folder,
+  FolderOpen,
+  Link,
+  Loader2,
+  RefreshCw,
+  X,
+} from "lucide-react";
+import type {
+  AgentWorkspaceDirectoryEntry,
+  AgentWorkspaceFilePreview,
+  AgentWorkspaceGitFile,
+} from "@overtchat/agent-bridge";
+import { Button } from "@/components/ui/button";
+import {
+  useAgentWorkspaceDirectory,
+  useAgentWorkspaceFile,
+  useAgentWorkspaceGitStatus,
+} from "@/lib/queries/agentWorkspaces";
+import { motionClasses } from "@/lib/motion";
+import { cn } from "@/lib/utils";
+import type { AgentWorkspaceFileSelection } from "./AgentWorkspaceNavigationContext";
+
+export function AgentWorkspacePane({
+  workspaceId,
+  workspaceName,
+  selection,
+  running,
+  onSelect,
+  onCloseFile,
+  onClose,
+}: {
+  workspaceId: string;
+  workspaceName: string;
+  selection: AgentWorkspaceFileSelection | null;
+  running: boolean;
+  onSelect: (selection: AgentWorkspaceFileSelection) => void;
+  onCloseFile: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <aside
+      className="flex h-full w-full flex-col border-l bg-background"
+      data-testid="agent-workspace-pane"
+      aria-label="Workspace files"
+    >
+      <header className="flex h-12 shrink-0 items-center gap-2 border-b px-3">
+        <div className="min-w-0 flex-1 truncate text-sm font-medium">
+          {workspaceName}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Close workspace files"
+          title="Close workspace files"
+          onClick={onClose}
+        >
+          <X />
+        </Button>
+      </header>
+      {selection ? (
+        <WorkspaceFilePreview
+          workspaceId={workspaceId}
+          selection={selection}
+          running={running}
+          onBack={onCloseFile}
+        />
+      ) : (
+        <WorkspaceExplorer
+          workspaceId={workspaceId}
+          running={running}
+          onSelect={onSelect}
+        />
+      )}
+    </aside>
+  );
+}
+
+function WorkspaceExplorer({
+  workspaceId,
+  running,
+  onSelect,
+}: {
+  workspaceId: string;
+  running: boolean;
+  onSelect: (selection: AgentWorkspaceFileSelection) => void;
+}) {
+  const gitStatus = useAgentWorkspaceGitStatus(workspaceId, {
+    active: true,
+    running,
+  });
+  const changedFiles = gitStatus.data?.files ?? [];
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["."]));
+
+  function toggle(path: string) {
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
+      {gitStatus.data?.isGit && changedFiles.length > 0 && (
+        <section className="pb-3" aria-labelledby="workspace-changes-heading">
+          <div className="flex h-8 items-center gap-2 px-3">
+            <FileDiff className="size-3.5 text-muted-foreground" />
+            <h2
+              id="workspace-changes-heading"
+              className="text-xs font-medium"
+            >
+              Changes
+            </h2>
+            <span className="text-[11px] tabular-nums text-muted-foreground">
+              {changedFiles.length}
+            </span>
+          </div>
+          <div className="px-1.5">
+            {changedFiles.map((file) => (
+              <ChangedFileRow
+                key={`${file.originalPath ?? ""}:${file.path}`}
+                file={file}
+                onSelect={() => onSelect({ path: file.path })}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section aria-labelledby="workspace-files-heading">
+        <div className="flex h-8 items-center gap-2 px-3">
+          <Folder className="size-3.5 text-muted-foreground" />
+          <h2 id="workspace-files-heading" className="text-xs font-medium">
+            Files
+          </h2>
+        </div>
+        <WorkspaceDirectory
+          workspaceId={workspaceId}
+          path="."
+          depth={0}
+          expanded={expanded}
+          running={running}
+          onToggle={toggle}
+          onSelect={onSelect}
+        />
+      </section>
+    </div>
+  );
+}
+
+function ChangedFileRow({
+  file,
+  onSelect,
+}: {
+  file: AgentWorkspaceGitFile;
+  onSelect: () => void;
+}) {
+  const status = file.worktreeStatus ?? file.indexStatus ?? "M";
+  const label =
+    status === "?" || status === "A"
+      ? "Added"
+      : status === "D"
+        ? "Deleted"
+        : status === "R"
+          ? "Renamed"
+          : status === "U"
+            ? "Conflicted"
+            : "Modified";
+  const deleted = status === "D";
+
+  return (
+    <button
+      type="button"
+      disabled={deleted}
+      onClick={onSelect}
+      title={deleted ? `${file.path} was deleted` : file.path}
+      className="group flex min-h-8 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none motion-colors hover:bg-muted disabled:cursor-default disabled:opacity-60"
+    >
+      <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate font-mono">{file.path}</span>
+      <span
+        className={cn(
+          "shrink-0 text-[10px] font-medium",
+          label === "Added" && "text-emerald-700 dark:text-emerald-300",
+          label === "Deleted" && "text-red-700 dark:text-red-300",
+          label === "Conflicted" && "text-amber-700 dark:text-amber-300",
+          (label === "Modified" || label === "Renamed") &&
+            "text-muted-foreground",
+        )}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function WorkspaceDirectory({
+  workspaceId,
+  path,
+  depth,
+  expanded,
+  running,
+  onToggle,
+  onSelect,
+}: {
+  workspaceId: string;
+  path: string;
+  depth: number;
+  expanded: Set<string>;
+  running: boolean;
+  onToggle: (path: string) => void;
+  onSelect: (selection: AgentWorkspaceFileSelection) => void;
+}) {
+  const isExpanded = expanded.has(path);
+  const directory = useAgentWorkspaceDirectory(workspaceId, path, {
+    enabled: isExpanded,
+    running,
+  });
+
+  if (!isExpanded) return null;
+  if (directory.isPending) {
+    return (
+      <div className="flex h-8 items-center gap-2 px-3 text-xs text-muted-foreground">
+        <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+        Loading files…
+      </div>
+    );
+  }
+  if (directory.error) {
+    return (
+      <div className="mx-3 my-1 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+        {directory.error.message}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {directory.data?.entries.map((entry) => (
+        <WorkspaceEntryRow
+          key={entry.path}
+          entry={entry}
+          workspaceId={workspaceId}
+          depth={depth}
+          expanded={expanded}
+          running={running}
+          onToggle={onToggle}
+          onSelect={onSelect}
+        />
+      ))}
+      {directory.data?.entries.length === 0 && depth === 0 && (
+        <p className="px-3 py-4 text-xs text-muted-foreground">
+          This workspace is empty.
+        </p>
+      )}
+      {directory.data?.truncated && (
+        <p className="px-3 py-2 text-[11px] text-muted-foreground">
+          Showing the first 1,000 entries.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceEntryRow({
+  entry,
+  workspaceId,
+  depth,
+  expanded,
+  running,
+  onToggle,
+  onSelect,
+}: {
+  entry: AgentWorkspaceDirectoryEntry;
+  workspaceId: string;
+  depth: number;
+  expanded: Set<string>;
+  running: boolean;
+  onToggle: (path: string) => void;
+  onSelect: (selection: AgentWorkspaceFileSelection) => void;
+}) {
+  const directory = entry.kind === "directory" && !entry.symlink;
+  const open = directory && expanded.has(entry.path);
+  const disabled = entry.kind === "symlink" || entry.symlink;
+
+  return (
+    <div>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() =>
+          directory
+            ? onToggle(entry.path)
+            : onSelect({ path: entry.path })
+        }
+        title={
+          disabled
+            ? `${entry.path} is a symbolic link and cannot be previewed`
+            : entry.path
+        }
+        className="flex min-h-8 w-full items-center gap-1.5 pr-2 text-left text-xs outline-none motion-colors hover:bg-muted disabled:cursor-default disabled:opacity-60"
+        style={{ paddingLeft: `${12 + depth * 16}px` }}
+      >
+        {directory ? (
+          open ? (
+            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+          )
+        ) : (
+          <span className="w-3.5 shrink-0" />
+        )}
+        {disabled ? (
+          <Link className="size-3.5 shrink-0 text-muted-foreground" />
+        ) : directory ? (
+          open ? (
+            <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <Folder className="size-3.5 shrink-0 text-muted-foreground" />
+          )
+        ) : (
+          <File className="size-3.5 shrink-0 text-muted-foreground" />
+        )}
+        <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+      </button>
+      {open && (
+        <WorkspaceDirectory
+          workspaceId={workspaceId}
+          path={entry.path}
+          depth={depth + 1}
+          expanded={expanded}
+          running={running}
+          onToggle={onToggle}
+          onSelect={onSelect}
+        />
+      )}
+    </div>
+  );
+}
+
+function WorkspaceFilePreview({
+  workspaceId,
+  selection,
+  running,
+  onBack,
+}: {
+  workspaceId: string;
+  selection: AgentWorkspaceFileSelection;
+  running: boolean;
+  onBack: () => void;
+}) {
+  const file = useAgentWorkspaceFile(workspaceId, selection.path, { running });
+  const displayPath = file.data?.path ?? selection.path;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b px-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Back to workspace files"
+          title="Back to workspace files"
+          onClick={onBack}
+        >
+          <ArrowLeft />
+        </Button>
+        <div className="min-w-0 flex-1 truncate px-1 font-mono text-xs" title={displayPath}>
+          {displayPath}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Refresh file"
+          title="Refresh file"
+          disabled={file.isFetching}
+          onClick={() => void file.refetch()}
+        >
+          <RefreshCw className={file.isFetching ? motionClasses.spinner : undefined} />
+        </Button>
+      </div>
+      {file.isPending ? (
+        <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground">
+          <Loader2 className={cn("size-4", motionClasses.spinner)} />
+          Loading file…
+        </div>
+      ) : file.error ? (
+        <div className="flex flex-1 items-center justify-center p-6 text-center">
+          <div className="max-w-xs">
+            <AlertTriangle className="mx-auto size-5 text-destructive" />
+            <p className="mt-3 text-sm font-medium">File cannot be previewed</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {file.error.message}
+            </p>
+          </div>
+        </div>
+      ) : file.data ? (
+        <HighlightedFile
+          file={file.data}
+          lineStart={selection.lineStart}
+          lineEnd={selection.lineEnd}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function languageForPath(filePath: string): string {
+  const name = filePath.split("/").at(-1)?.toLowerCase() ?? "";
+  const extension = name.includes(".") ? name.split(".").at(-1) ?? "" : "";
+  const aliases: Record<string, string> = {
+    cjs: "javascript",
+    cts: "typescript",
+    h: "c",
+    hpp: "cpp",
+    js: "javascript",
+    jsx: "jsx",
+    md: "markdown",
+    mdx: "mdx",
+    mjs: "javascript",
+    mts: "typescript",
+    py: "python",
+    rb: "ruby",
+    rs: "rust",
+    sh: "shellscript",
+    ts: "typescript",
+    tsx: "tsx",
+    yml: "yaml",
+  };
+  if (name === "dockerfile") return "dockerfile";
+  if (name === "makefile") return "makefile";
+  const language = aliases[extension] ?? extension;
+  return language && code.supportsLanguage(language as never) ? language : "text";
+}
+
+function HighlightedFile({
+  file,
+  lineStart,
+  lineEnd,
+}: {
+  file: AgentWorkspaceFilePreview;
+  lineStart?: number;
+  lineEnd?: number;
+}) {
+  const [highlighted, setHighlighted] = useState<HighlightResult | null>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const language = useMemo(() => languageForPath(file.path), [file.path]);
+
+  useEffect(() => {
+    let active = true;
+    const update = (result: HighlightResult) => {
+      if (active) setHighlighted(result);
+    };
+    const result = code.highlight(
+      {
+        code: file.content,
+        language: language as never,
+        themes: code.getThemes(),
+      },
+      update,
+    );
+    if (result) update(result);
+    return () => {
+      active = false;
+    };
+  }, [file.content, language]);
+
+  useEffect(() => {
+    if (!highlighted || !lineStart) return;
+    scrollerRef.current
+      ?.querySelector(`[data-line="${lineStart}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }, [highlighted, lineStart]);
+
+  const fallbackLines = file.content.split("\n");
+  const lines: HighlightResult["tokens"] =
+    highlighted?.tokens ??
+    fallbackLines.map((content) => [{ content, offset: 0 }]);
+
+  return (
+    <div ref={scrollerRef} className="min-h-0 flex-1 overflow-auto bg-muted/10">
+      <pre className="min-w-max py-3 font-mono text-xs leading-5 text-foreground tab-size-4">
+        <code>
+          {lines.map((tokens, index) => {
+            const line = index + 1;
+            const selected =
+              lineStart !== undefined &&
+              line >= lineStart &&
+              line <= (lineEnd ?? lineStart);
+            return (
+              <span
+                key={line}
+                data-line={line}
+                className={cn(
+                  "flex min-h-5 px-3",
+                  selected && "bg-primary/10 ring-1 ring-inset ring-primary/15",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className="mr-4 w-8 shrink-0 select-none text-right text-muted-foreground/60"
+                >
+                  {line}
+                </span>
+                <span className="whitespace-pre">
+                  {tokens.map((token, tokenIndex) => {
+                    const {
+                      color: htmlColor,
+                      "background-color": htmlBackground,
+                      ...htmlStyle
+                    } = token.htmlStyle ?? {};
+                    return (
+                      <span
+                        key={`${line}:${tokenIndex}`}
+                        data-workspace-code-token
+                        className="text-[var(--workspace-token-color,inherit)] dark:text-[var(--shiki-dark,var(--workspace-token-color,inherit))] bg-[var(--workspace-token-background,transparent)] dark:bg-[var(--shiki-dark-bg,var(--workspace-token-background,transparent))]"
+                        style={{
+                          "--workspace-token-color":
+                            htmlColor ?? token.color ?? "inherit",
+                          "--workspace-token-background":
+                            htmlBackground ?? token.bgColor ?? "transparent",
+                          fontStyle:
+                            token.fontStyle && token.fontStyle & 1
+                              ? "italic"
+                              : undefined,
+                          fontWeight:
+                            token.fontStyle && token.fontStyle & 2
+                              ? "bold"
+                              : undefined,
+                          textDecoration:
+                            token.fontStyle && token.fontStyle & 4
+                              ? "underline"
+                              : undefined,
+                          ...htmlStyle,
+                        } as CSSProperties}
+                      >
+                        {token.content || " "}
+                      </span>
+                    );
+                  })}
+                </span>
+              </span>
+            );
+          })}
+        </code>
+      </pre>
+    </div>
+  );
+}

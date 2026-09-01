@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -22,9 +22,7 @@ import type {
   AgentSessionCommand,
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
-import {
-  agentProviderMetadata,
-} from "@overtchat/agent-bridge";
+import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   useAgentSession,
   useAgentSessionCommand,
@@ -40,6 +38,7 @@ import {
 } from "@/lib/agents/createPreferences";
 import { motionClasses } from "@/lib/motion";
 import { useLocalStorage } from "@/lib/useLocalStorage";
+import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
 import {
   AgentInteractionDialog,
@@ -51,6 +50,11 @@ import { AgentMessageList } from "./AgentMessageList";
 import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
+import { AgentWorkspacePane } from "./AgentWorkspacePane";
+import {
+  AgentWorkspaceNavigationProvider,
+  type AgentWorkspaceFileSelection,
+} from "./AgentWorkspaceNavigationContext";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -153,6 +157,24 @@ function forkDraftKey(sessionId: string): string {
   return `overtchat:agent-fork-draft:${sessionId}`;
 }
 
+function workspaceFileSelection(value: unknown): AgentWorkspaceFileSelection | null {
+  const record = recordOf(value);
+  if (!record || typeof record.path !== "string" || !record.path) return null;
+  const lineStart =
+    typeof record.lineStart === "number" && record.lineStart > 0
+      ? record.lineStart
+      : undefined;
+  const lineEnd =
+    typeof record.lineEnd === "number" && record.lineEnd >= (lineStart ?? 1)
+      ? record.lineEnd
+      : undefined;
+  return {
+    path: record.path,
+    ...(lineStart ? { lineStart } : {}),
+    ...(lineEnd ? { lineEnd } : {}),
+  };
+}
+
 export function AgentSessionView({
   sessionId,
   provider,
@@ -192,6 +214,30 @@ export function AgentSessionView({
     revision: number;
     text: string;
   } | null>(null);
+  const [filesOpen, setFilesOpen] = useLocalStorage<boolean>(
+    `overtchat:agent-workspace-pane:${sessionId}`,
+    false,
+  );
+  const [storedFileSelection, setStoredFileSelection] =
+    useLocalStorage<unknown>(
+      `overtchat:agent-workspace-file:${sessionId}`,
+      null,
+    );
+  const selectedFile = useMemo(
+    () => workspaceFileSelection(storedFileSelection),
+    [storedFileSelection],
+  );
+  const openWorkspaceFile = useCallback(
+    (selection: AgentWorkspaceFileSelection) => {
+      setStoredFileSelection(selection);
+      setFilesOpen(true);
+    },
+    [setFilesOpen, setStoredFileSelection],
+  );
+  const workspaceNavigation = useMemo(
+    () => ({ openFile: openWorkspaceFile }),
+    [openWorkspaceFile],
+  );
   const snapshot = session.data;
 
   useEffect(() => {
@@ -389,269 +435,313 @@ export function AgentSessionView({
   const controlsDisabled = composerDisabled || command.isPending;
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <AgentSessionHeader
-        provider={provider}
-        workspaceId={workspaceId}
-        workspacePath={workspacePath}
-        stats={snapshot.stats}
-        running={running}
-        commandPending={command.isPending}
-        readOnly={Boolean(readOnly)}
-        onRename={() => {
-          setDialogError("");
-          setRenameOpen(true);
-        }}
-        onCompact={() => {
-          setDialogError("");
-          setCompactOpen(true);
-        }}
-      />
+    <AgentWorkspaceNavigationProvider value={workspaceNavigation}>
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <AgentSessionHeader
+            provider={provider}
+            workspaceId={workspaceId}
+            workspacePath={workspacePath}
+            stats={snapshot.stats}
+            running={running}
+            commandPending={command.isPending}
+            readOnly={Boolean(readOnly)}
+            filesOpen={filesOpen}
+            onToggleFiles={() => setFilesOpen(!filesOpen)}
+            onRename={() => {
+              setDialogError("");
+              setRenameOpen(true);
+            }}
+            onCompact={() => {
+              setDialogError("");
+              setCompactOpen(true);
+            }}
+          />
 
-      {readOnly && (
-        <section
-          aria-label={`Read-only ${providerLabel} session`}
-          className="border-b bg-muted/30 px-4 py-3"
-        >
-          <div className="mx-auto flex max-w-3xl items-start gap-3">
-            <LockKeyhole className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-            <p className="min-w-0 flex-1 text-sm text-muted-foreground">
-              {readOnly.reason}
-            </p>
-            {readOnly.retryable && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={command.isPending}
-                onClick={() => void run({ type: "retry_interactive" })}
-              >
-                <RefreshCw
-                  className={
-                    pendingCommand === "retry_interactive"
-                      ? motionClasses.spinner
-                      : undefined
-                  }
-                />
-                Retry
-              </Button>
-            )}
+          {readOnly && (
+            <section
+              aria-label={`Read-only ${providerLabel} session`}
+              className="border-b bg-muted/30 px-4 py-3"
+            >
+              <div className="mx-auto flex max-w-3xl items-start gap-3">
+                <LockKeyhole className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+                  {readOnly.reason}
+                </p>
+                {readOnly.retryable && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={command.isPending}
+                    onClick={() => void run({ type: "retry_interactive" })}
+                  >
+                    <RefreshCw
+                      className={
+                        pendingCommand === "retry_interactive"
+                          ? motionClasses.spinner
+                          : undefined
+                      }
+                    />
+                    Retry
+                  </Button>
+                )}
+              </div>
+            </section>
+          )}
+
+          <AgentMessageList
+            providerLabel={providerLabel}
+            messages={snapshot.messages}
+            streaming={running}
+            activity={activity}
+            activityStartedAt={activityStartedAt}
+            error={runtimeError}
+            workspaceName={workspaceName}
+            canEditMessages={
+              snapshot.capabilities.editSentMessages === true
+            }
+            canForkMessages={snapshot.capabilities.forkMessages === true}
+            actionsDisabled={
+              running ||
+              exited ||
+              command.isPending ||
+              Boolean(snapshot.pendingInteraction)
+            }
+            suppressScrollButton={composerMenuOpen}
+            onEditMessage={(messageId) =>
+              void run({ type: "edit_message", messageId })
+            }
+            onForkMessage={(messageId) =>
+              void run({ type: "fork_message", messageId })
+            }
+            onImplementPlan={(plan) =>
+              void run({ type: "implement_plan", plan })
+            }
+          />
+
+          <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto max-w-3xl">
+              <AgentSessionContext
+                goal={goal}
+                tasks={tasks}
+                goalActionsDisabled={Boolean(readOnly) || command.isPending}
+                onPauseGoal={() =>
+                  void run(
+                    { type: "update_goal", action: "pause" },
+                    { toastTitle: "Goal paused" },
+                  )
+                }
+                onResumeGoal={() =>
+                  void run(
+                    { type: "update_goal", action: "resume" },
+                    { toastTitle: "Goal resumed" },
+                  )
+                }
+                onClearGoal={() =>
+                  void run(
+                    { type: "update_goal", action: "clear" },
+                    { toastTitle: "Goal cleared" },
+                  )
+                }
+              />
+              <AgentComposer
+                key={sessionId}
+                providerLabel={providerLabel}
+                commands={snapshot.commands}
+                queuedMessages={snapshot.queuedMessages}
+                supportsSteer={snapshot.capabilities.steer}
+                supportsImages={selectedModel?.input.includes("image") === true}
+                running={running}
+                pending={command.isPending}
+                stopping={pendingCommand === "abort"}
+                disabled={composerDisabled}
+                controls={{
+                  providerLabel,
+                  models: snapshot.models,
+                  currentModel: model,
+                  thinkingLevel: thinking,
+                  thinkingOptions: selectedModel?.thinkingOptions ?? [],
+                  collaborationMode,
+                  collaborationModes: availableCollaborationModes,
+                  fastModeEnabled,
+                  fastModeAvailable,
+                  modeId,
+                  modes: availableModes,
+                  disabled: controlsDisabled,
+                  onSelectModel: (selected) => {
+                    void run({
+                      type: "set_model",
+                      modelId: selected.id,
+                    }).then((changed) => {
+                      if (!changed) return;
+                      setStoredPreferences(
+                        mergeAgentProviderPreferences({
+                          preferences,
+                          provider,
+                          updates: { model: selected.id },
+                        }),
+                      );
+                    });
+                  },
+                  onSelectThinking: (level) => {
+                    if (selectedModel) {
+                      setStoredPreferences(
+                        mergeAgentProviderPreferences({
+                          preferences,
+                          provider,
+                          updates: {
+                            model: selectedModel.id,
+                            thinkingByModel: { [selectedModel.id]: level },
+                          },
+                        }),
+                      );
+                    }
+                    void run({ type: "set_thinking_level", level });
+                  },
+                  onSelectCollaborationMode: (mode) =>
+                    void run({ type: "set_collaboration_mode", mode }),
+                  onToggleFastMode: (enabled) =>
+                    void run({ type: "set_fast_mode", enabled }),
+                  onSelectMode: (selectedModeId) => {
+                    setStoredPreferences(
+                      mergeAgentProviderPreferences({
+                        preferences,
+                        provider,
+                        updates: { mode: selectedModeId },
+                      }),
+                    );
+                    if (running && provider !== "omp") {
+                      toast.success("Permission mode applies next turn");
+                    }
+                    void run({ type: "set_mode", modeId: selectedModeId });
+                  },
+                  onMenuOpenChange: setComposerMenuOpen,
+                }}
+                contextUsage={snapshot.stats.contextUsage}
+                onSubmit={submit}
+                onStop={() => void run({ type: "abort" })}
+                onEditQueued={(id) =>
+                  run({ type: "remove_queued_message", id })
+                }
+                onDeleteQueued={(id) =>
+                  run({ type: "remove_queued_message", id })
+                }
+                onSteerQueued={(id) =>
+                  run({ type: "steer_queued_message", id })
+                }
+                restoreDraftKey={forkDraftKey(sessionId)}
+                restoredDraft={restoredDraft}
+              />
+            </div>
           </div>
-        </section>
-      )}
 
-      <AgentMessageList
-        providerLabel={providerLabel}
-        messages={snapshot.messages}
-        streaming={running}
-        activity={activity}
-        activityStartedAt={activityStartedAt}
-        error={runtimeError}
-        workspaceName={workspaceName}
-        canEditMessages={
-          snapshot.capabilities.editSentMessages === true
-        }
-        canForkMessages={snapshot.capabilities.forkMessages === true}
-        actionsDisabled={
-          running ||
-          exited ||
-          command.isPending ||
-          Boolean(snapshot.pendingInteraction)
-        }
-        suppressScrollButton={composerMenuOpen}
-        onEditMessage={(messageId) =>
-          void run({ type: "edit_message", messageId })
-        }
-        onForkMessage={(messageId) =>
-          void run({ type: "fork_message", messageId })
-        }
-        onImplementPlan={(plan) =>
-          void run({ type: "implement_plan", plan })
-        }
-      />
-
-      <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-        <div className="mx-auto max-w-3xl">
-          <AgentSessionContext
-            goal={goal}
-            tasks={tasks}
-            goalActionsDisabled={Boolean(readOnly) || command.isPending}
-            onPauseGoal={() =>
+          <RenameAgentSessionDialog
+            providerLabel={providerLabel}
+            open={renameOpen}
+            initialName={currentName}
+            pending={command.isPending}
+            error={dialogError}
+            onOpenChange={(open) => {
+              setDialogError("");
+              setRenameOpen(open);
+            }}
+            onSubmit={(name) =>
               void run(
-                { type: "update_goal", action: "pause" },
-                { toastTitle: "Goal paused" },
-              )
-            }
-            onResumeGoal={() =>
-              void run(
-                { type: "update_goal", action: "resume" },
-                { toastTitle: "Goal resumed" },
-              )
-            }
-            onClearGoal={() =>
-              void run(
-                { type: "update_goal", action: "clear" },
-                { toastTitle: "Goal cleared" },
+                { type: "set_session_name", name },
+                { closeRename: true, toastTitle: "Session renamed" },
               )
             }
           />
-          <AgentComposer
-            key={sessionId}
+          <CompactAgentSessionDialog
             providerLabel={providerLabel}
-            commands={snapshot.commands}
-            queuedMessages={snapshot.queuedMessages}
-            supportsSteer={snapshot.capabilities.steer}
-            supportsImages={selectedModel?.input.includes("image") === true}
-            running={running}
+            supportsCustomInstructions={
+              snapshot.capabilities.customCompactionInstructions === true
+            }
+            open={compactOpen}
             pending={command.isPending}
-            stopping={pendingCommand === "abort"}
-            disabled={composerDisabled}
-            controls={{
-              providerLabel,
-              models: snapshot.models,
-              currentModel: model,
-              thinkingLevel: thinking,
-              thinkingOptions: selectedModel?.thinkingOptions ?? [],
-              collaborationMode,
-              collaborationModes: availableCollaborationModes,
-              fastModeEnabled,
-              fastModeAvailable,
-              modeId,
-              modes: availableModes,
-              disabled: controlsDisabled,
-              onSelectModel: (selected) => {
-                void run({
-                  type: "set_model",
-                  modelId: selected.id,
-                }).then((changed) => {
-                  if (!changed) return;
-                  setStoredPreferences(
-                    mergeAgentProviderPreferences({
-                      preferences,
-                      provider,
-                      updates: { model: selected.id },
-                    }),
-                  );
-                });
-              },
-              onSelectThinking: (level) => {
-                if (selectedModel) {
-                  setStoredPreferences(
-                    mergeAgentProviderPreferences({
-                      preferences,
-                      provider,
-                      updates: {
-                        model: selectedModel.id,
-                        thinkingByModel: { [selectedModel.id]: level },
-                      },
-                    }),
-                  );
-                }
-                void run({ type: "set_thinking_level", level });
-              },
-              onSelectCollaborationMode: (mode) =>
-                void run({ type: "set_collaboration_mode", mode }),
-              onToggleFastMode: (enabled) =>
-                void run({ type: "set_fast_mode", enabled }),
-              onSelectMode: (selectedModeId) => {
-                setStoredPreferences(
-                  mergeAgentProviderPreferences({
-                    preferences,
-                    provider,
-                    updates: { mode: selectedModeId },
-                  }),
-                );
-                if (running && provider !== "omp") {
-                  toast.success("Permission mode applies next turn");
-                }
-                void run({ type: "set_mode", modeId: selectedModeId });
-              },
-              onMenuOpenChange: setComposerMenuOpen,
+            error={dialogError}
+            onOpenChange={(open) => {
+              setDialogError("");
+              setCompactOpen(open);
             }}
-            contextUsage={snapshot.stats.contextUsage}
-            onSubmit={submit}
-            onStop={() => void run({ type: "abort" })}
-            onEditQueued={(id) =>
-              run({ type: "remove_queued_message", id })
+            onSubmit={(customInstructions) =>
+              void run(
+                {
+                  type: "compact",
+                  ...(customInstructions ? { customInstructions } : {}),
+                },
+                { closeCompact: true, toastTitle: "Compaction started" },
+              )
             }
-            onDeleteQueued={(id) =>
-              run({ type: "remove_queued_message", id })
+          />
+          <AgentInteractionDialog
+            providerLabel={providerLabel}
+            request={snapshot.pendingInteraction}
+            pending={command.isPending}
+            error={dialogError}
+            onRespond={(response) =>
+              void run({
+                type: "interaction_response",
+                id: snapshot.pendingInteraction!.id,
+                ...response,
+              })
             }
-            onSteerQueued={(id) =>
-              run({ type: "steer_queued_message", id })
-            }
-            restoreDraftKey={forkDraftKey(sessionId)}
-            restoredDraft={restoredDraft}
+          />
+          <AgentUsageDialog
+            open={usageOpen}
+            usage={usage}
+            pending={usageCommand.isPending}
+            error={usageError}
+            onOpenChange={(open) => {
+              setUsageOpen(open);
+              if (!open) {
+                setUsage(null);
+                setUsageError("");
+              }
+            }}
           />
         </div>
-      </div>
 
-      <RenameAgentSessionDialog
-        providerLabel={providerLabel}
-        open={renameOpen}
-        initialName={currentName}
-        pending={command.isPending}
-        error={dialogError}
-        onOpenChange={(open) => {
-          setDialogError("");
-          setRenameOpen(open);
-        }}
-        onSubmit={(name) =>
-          void run(
-            { type: "set_session_name", name },
-            { closeRename: true, toastTitle: "Session renamed" },
-          )
-        }
-      />
-      <CompactAgentSessionDialog
-        providerLabel={providerLabel}
-        supportsCustomInstructions={
-          snapshot.capabilities.customCompactionInstructions === true
-        }
-        open={compactOpen}
-        pending={command.isPending}
-        error={dialogError}
-        onOpenChange={(open) => {
-          setDialogError("");
-          setCompactOpen(open);
-        }}
-        onSubmit={(customInstructions) =>
-          void run(
-            {
-              type: "compact",
-              ...(customInstructions ? { customInstructions } : {}),
-            },
-            { closeCompact: true, toastTitle: "Compaction started" },
-          )
-        }
-      />
-      <AgentInteractionDialog
-        providerLabel={providerLabel}
-        request={snapshot.pendingInteraction}
-        pending={command.isPending}
-        error={dialogError}
-        onRespond={(response) =>
-          void run({
-            type: "interaction_response",
-            id: snapshot.pendingInteraction!.id,
-            ...response,
-          })
-        }
-      />
-      <AgentUsageDialog
-        open={usageOpen}
-        usage={usage}
-        pending={usageCommand.isPending}
-        error={usageError}
-        onOpenChange={(open) => {
-          setUsageOpen(open);
-          if (!open) {
-            setUsage(null);
-            setUsageError("");
-          }
-        }}
-      />
-    </div>
+        <button
+          type="button"
+          aria-label="Close workspace files"
+          tabIndex={filesOpen ? 0 : -1}
+          onClick={() => setFilesOpen(false)}
+          className={cn(
+            "absolute inset-0 z-20 bg-black/35 motion-overlay xl:hidden",
+            filesOpen ? "opacity-100" : "pointer-events-none opacity-0",
+          )}
+        />
+        <div
+          aria-hidden={!filesOpen}
+          inert={!filesOpen}
+          className={cn(
+            "absolute inset-y-0 right-0 z-30 w-[min(34rem,calc(100%-1rem))] overflow-hidden xl:relative xl:z-auto xl:w-0 xl:shrink-0 xl:shadow-none xl:motion-width",
+            filesOpen
+              ? "pointer-events-auto xl:w-[32rem]"
+              : "pointer-events-none xl:w-0",
+          )}
+        >
+          <div
+            className={cn(
+              "absolute inset-y-0 right-0 h-full w-full bg-background shadow-xl motion-transform xl:w-[32rem] xl:shadow-none",
+              filesOpen ? "translate-x-0" : "translate-x-full",
+            )}
+          >
+            <AgentWorkspacePane
+              workspaceId={workspaceId}
+              workspaceName={workspaceName}
+              selection={selectedFile}
+              running={running}
+              onSelect={openWorkspaceFile}
+              onCloseFile={() => setStoredFileSelection(null)}
+              onClose={() => setFilesOpen(false)}
+            />
+          </div>
+        </div>
+      </div>
+    </AgentWorkspaceNavigationProvider>
   );
 }
 

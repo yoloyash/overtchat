@@ -1,7 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { AgentWorkspaceGitStatus } from "@overtchat/agent-bridge";
+import type {
+  AgentWorkspaceDirectoryListing,
+  AgentWorkspaceFilePreview,
+  AgentWorkspaceGitStatus,
+} from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
 
 async function responseError(response: Response): Promise<Error> {
@@ -36,5 +40,61 @@ export function useAgentWorkspaceGitStatus(
     retry: false,
     staleTime: 4_000,
     refetchInterval: running ? 2_000 : active ? 5_000 : false,
+  });
+}
+
+async function fetchAgentWorkspaceDirectory(
+  id: string,
+  path: string,
+): Promise<AgentWorkspaceDirectoryListing> {
+  const params = new URLSearchParams({ path });
+  const response = await fetch(
+    `/api/agent-workspaces/${encodeURIComponent(id)}/files?${params}`,
+  );
+  if (!response.ok) throw await responseError(response);
+  return ((await response.json()) as {
+    listing: AgentWorkspaceDirectoryListing;
+  }).listing;
+}
+
+export function useAgentWorkspaceDirectory(
+  id: string,
+  path: string,
+  { enabled = true, running = false } = {},
+) {
+  return useQuery({
+    queryKey: agentWorkspaceKeys.directory(id, path),
+    queryFn: () => fetchAgentWorkspaceDirectory(id, path),
+    enabled: Boolean(id) && enabled,
+    retry: false,
+    staleTime: 4_000,
+    refetchInterval: running && enabled ? 3_000 : false,
+  });
+}
+
+async function fetchAgentWorkspaceFile(
+  id: string,
+  path: string,
+): Promise<AgentWorkspaceFilePreview> {
+  const params = new URLSearchParams({ path });
+  const response = await fetch(
+    `/api/agent-workspaces/${encodeURIComponent(id)}/file?${params}`,
+  );
+  if (!response.ok) throw await responseError(response);
+  return ((await response.json()) as { file: AgentWorkspaceFilePreview }).file;
+}
+
+export function useAgentWorkspaceFile(
+  id: string,
+  path: string | null,
+  { running = false } = {},
+) {
+  return useQuery({
+    queryKey: agentWorkspaceKeys.file(id, path ?? ""),
+    queryFn: () => fetchAgentWorkspaceFile(id, path!),
+    enabled: Boolean(id && path),
+    retry: false,
+    staleTime: running ? 1_000 : 4_000,
+    refetchInterval: running && path ? 2_000 : false,
   });
 }

@@ -62,6 +62,17 @@ function response(
 }
 
 describe("host connector daemon broker", () => {
+  it("reports negotiated connector capabilities", () => {
+    const broker = new HostConnectorBroker();
+    expect(broker.supports("connector", "workspace-files-v1")).toBe(false);
+
+    broker.register("connector", [], vi.fn(), ["workspace-files-v1"]);
+
+    expect(broker.isOnline("connector")).toBe(true);
+    expect(broker.supports("connector", "workspace-files-v1")).toBe(true);
+    expect(broker.supports("connector", "command-wal-v1")).toBe(false);
+  });
+
   it("projects the global session directory without a detail subscription", async () => {
     const listener = vi.fn();
     const broker = new HostConnectorBroker(0);
