@@ -16,7 +16,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 ## Version map
 
 | Component | Change | Tag |
-| --- | --- | --- |
+| -------------- | -------------------------------------------------------------------------------------------------------------- | ------------------ |
 | App | Manifest `appVersion`; `compose.yml` default | `vX.Y.Z` |
 | Realtime voice | Manifest `voiceVersion`; `compose.yml` default | `voice-vX.Y.Z` |
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
@@ -118,6 +118,23 @@ For a CLI release, build the CLI workspace and then verify the bundled version:
 ```bash
 npm run build -w apps/cli --
 node apps/cli/dist/overtchat.mjs version
+```
+
+For a connector release, compile each native Bun target on a runner with arm64
+emulation enabled and execute the PTY smoke test in both artifacts. This gate is
+required because the terminal support embeds an architecture-specific native
+`node-pty` addon:
+
+```bash
+bun build apps/connector/src/cli.ts --compile --target=bun-linux-x64-baseline \
+  --outfile dist/overtchat-connector-linux-amd64
+bun build apps/connector/src/cli.ts --compile --target=bun-linux-arm64 \
+  --outfile dist/overtchat-connector-linux-arm64
+dist/overtchat-connector-linux-amd64 terminal-smoke
+docker run --rm --platform linux/arm64 \
+  --volume "$PWD/dist/overtchat-connector-linux-arm64:/usr/local/bin/overtchat-connector:ro" \
+  debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 \
+  /usr/local/bin/overtchat-connector terminal-smoke
 ```
 
 `promote-release.yml` is the only CI production deploy path. It verifies CLI

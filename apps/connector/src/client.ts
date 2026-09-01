@@ -29,7 +29,7 @@ const MAX_BUFFERED_LIVE_EVENTS = 2_048;
 
 type LiveEventPayload = Extract<
   HostConnectorEventPayload,
-  { type: "session_event" }
+  { type: "session_event" | "terminal_event" }
 >;
 
 type LiveEventBatch = {
@@ -247,12 +247,13 @@ export class ConnectorClient {
   }
 
   private enqueue(payload: HostConnectorEventPayload): void {
-    if (payload.type === "session_event") {
+    if (payload.type === "session_event" || payload.type === "terminal_event") {
       if (this.stopped) return;
-      // The per-session timeline is already synced to disk before the daemon
-      // emits this live hint. Keeping a second durable copy here caused stale
-      // connectors to accumulate hundreds of megabytes. A lost/bounded hint is
-      // recovered through the authoritative session sync.
+      // Session events are recovered through authoritative timeline sync. A
+      // terminal event carries its own revision, so a lost/bounded hint makes
+      // the browser reattach from the connector's headless terminal snapshot.
+      // Keeping either high-volume stream in the durable journal would let an
+      // offline server grow connector state without bound.
       this.liveEvents.push(payload);
       if (this.liveEvents.length > MAX_BUFFERED_LIVE_EVENTS) {
         const displaced = this.liveEvents.splice(

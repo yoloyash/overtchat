@@ -11,6 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import {
   AlertTriangle,
   Loader2,
@@ -72,6 +73,17 @@ const MIN_WORKSPACE_PANE_WIDTH = 352;
 const MAX_WORKSPACE_PANE_WIDTH = 960;
 const MIN_TRANSCRIPT_WIDTH = 480;
 const WORKSPACE_PANE_WIDTH_KEY = "overtchat:agent-workspace-pane-width";
+const DEFAULT_TERMINAL_PANE_HEIGHT = 288;
+const MIN_TERMINAL_PANE_HEIGHT = 160;
+const MAX_TERMINAL_PANE_HEIGHT = 720;
+const MIN_TRANSCRIPT_HEIGHT = 240;
+const TERMINAL_PANE_HEIGHT_KEY = "overtchat:agent-terminal-pane-height";
+
+const AgentTerminalPane = dynamic(
+  () =>
+    import("./AgentTerminalPane").then((module) => module.AgentTerminalPane),
+  { ssr: false },
+);
 
 function recordOf(value: unknown): UnknownRecord | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -213,6 +225,17 @@ function clampWorkspacePaneWidth(width: number, viewportWidth: number): number {
   return Math.min(maximum, Math.max(MIN_WORKSPACE_PANE_WIDTH, width));
 }
 
+function clampTerminalPaneHeight(
+  height: number,
+  viewportHeight: number,
+): number {
+  const maximum = Math.max(
+    MIN_TERMINAL_PANE_HEIGHT,
+    Math.min(MAX_TERMINAL_PANE_HEIGHT, viewportHeight - MIN_TRANSCRIPT_HEIGHT),
+  );
+  return Math.min(maximum, Math.max(MIN_TERMINAL_PANE_HEIGHT, height));
+}
+
 export function AgentSessionView({
   sessionId,
   provider,
@@ -256,6 +279,15 @@ export function AgentSessionView({
     `overtchat:agent-workspace-pane:${sessionId}`,
     false,
   );
+  const [terminalOpen, setTerminalOpen] = useLocalStorage<boolean>(
+    `overtchat:agent-terminal-pane:${sessionId}`,
+    false,
+  );
+  const [storedTerminalHeight, setStoredTerminalHeight] =
+    useLocalStorage<unknown>(
+      TERMINAL_PANE_HEIGHT_KEY,
+      DEFAULT_TERMINAL_PANE_HEIGHT,
+    );
   const [storedFileSelection, setStoredFileSelection] =
     useLocalStorage<unknown>(
       `overtchat:agent-workspace-file:${sessionId}`,
@@ -278,21 +310,41 @@ export function AgentSessionView({
     [storedOpenFiles],
   );
   const [viewportWidth, setViewportWidth] = useState(1440);
+  const [viewportHeight, setViewportHeight] = useState(900);
   const [dragPaneWidth, setDragPaneWidth] = useState<number | null>(null);
   const [resizingPane, setResizingPane] = useState(false);
   const resizeStart = useRef<{ pointerX: number; width: number } | null>(null);
+  const [dragTerminalHeight, setDragTerminalHeight] = useState<number | null>(
+    null,
+  );
+  const [resizingTerminal, setResizingTerminal] = useState(false);
+  const terminalResizeStart = useRef<{
+    pointerY: number;
+    height: number;
+  } | null>(null);
   const preferredPaneWidth =
     typeof storedPaneWidth === "number" && Number.isFinite(storedPaneWidth)
       ? storedPaneWidth
       : DEFAULT_WORKSPACE_PANE_WIDTH;
   const paneWidth =
     dragPaneWidth ?? clampWorkspacePaneWidth(preferredPaneWidth, viewportWidth);
+  const preferredTerminalHeight =
+    typeof storedTerminalHeight === "number" &&
+    Number.isFinite(storedTerminalHeight)
+      ? storedTerminalHeight
+      : DEFAULT_TERMINAL_PANE_HEIGHT;
+  const terminalHeight =
+    dragTerminalHeight ??
+    clampTerminalPaneHeight(preferredTerminalHeight, viewportHeight);
 
   useEffect(() => {
-    const updateViewportWidth = () => setViewportWidth(window.innerWidth);
-    updateViewportWidth();
-    window.addEventListener("resize", updateViewportWidth);
-    return () => window.removeEventListener("resize", updateViewportWidth);
+    const updateViewport = () => {
+      setViewportWidth(window.innerWidth);
+      setViewportHeight(window.innerHeight);
+    };
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
   }, []);
 
   useEffect(() => {
@@ -402,6 +454,68 @@ export function AgentSessionView({
     if (width === null) return;
     event.preventDefault();
     setStoredPaneWidth(clampWorkspacePaneWidth(width, viewportWidth));
+  }
+
+  function terminalHeightFromPointer(pointerY: number): number {
+    const start = terminalResizeStart.current;
+    if (!start) return terminalHeight;
+    return clampTerminalPaneHeight(
+      start.height + start.pointerY - pointerY,
+      viewportHeight,
+    );
+  }
+
+  function startTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    terminalResizeStart.current = {
+      pointerY: event.clientY,
+      height: terminalHeight,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setDragTerminalHeight(terminalHeight);
+    setResizingTerminal(true);
+  }
+
+  function moveTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!terminalResizeStart.current) return;
+    event.preventDefault();
+    setDragTerminalHeight(terminalHeightFromPointer(event.clientY));
+  }
+
+  function finishTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!terminalResizeStart.current) return;
+    const height = terminalHeightFromPointer(event.clientY);
+    terminalResizeStart.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setStoredTerminalHeight(height);
+    setDragTerminalHeight(null);
+    setResizingTerminal(false);
+  }
+
+  function cancelTerminalResize(event: ReactPointerEvent<HTMLDivElement>) {
+    terminalResizeStart.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDragTerminalHeight(null);
+    setResizingTerminal(false);
+  }
+
+  function resizeTerminalWithKeyboard(
+    event: ReactKeyboardEvent<HTMLDivElement>,
+  ) {
+    const step = event.shiftKey ? 64 : 24;
+    let height: number | null = null;
+    if (event.key === "ArrowUp") height = terminalHeight + step;
+    if (event.key === "ArrowDown") height = terminalHeight - step;
+    if (event.key === "Home") height = MIN_TERMINAL_PANE_HEIGHT;
+    if (event.key === "End") height = MAX_TERMINAL_PANE_HEIGHT;
+    if (height === null) return;
+    event.preventDefault();
+    setStoredTerminalHeight(clampTerminalPaneHeight(height, viewportHeight));
   }
   const workspaceNavigation = useMemo(
     () => ({ openFile: openWorkspaceFile }),
@@ -606,7 +720,7 @@ export function AgentSessionView({
   return (
     <AgentWorkspaceNavigationProvider value={workspaceNavigation}>
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <AgentSessionHeader
             provider={provider}
             workspaceId={workspaceId}
@@ -617,6 +731,8 @@ export function AgentSessionView({
             readOnly={Boolean(readOnly)}
             filesOpen={filesOpen}
             onToggleFiles={() => setFilesOpen(!filesOpen)}
+            terminalOpen={terminalOpen}
+            onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
             onRename={() => {
               setDialogError("");
               setRenameOpen(true);
@@ -804,6 +920,51 @@ export function AgentSessionView({
               />
             </div>
           </div>
+
+          {terminalOpen && (
+            <div
+              data-testid="agent-terminal-pane"
+              style={{ height: `${terminalHeight}px` }}
+              className="relative shrink-0 border-t bg-background"
+            >
+              <div
+                role="separator"
+                aria-label="Resize workspace terminal"
+                aria-orientation="horizontal"
+                aria-valuemin={MIN_TERMINAL_PANE_HEIGHT}
+                aria-valuemax={clampTerminalPaneHeight(
+                  MAX_TERMINAL_PANE_HEIGHT,
+                  viewportHeight,
+                )}
+                aria-valuenow={Math.round(terminalHeight)}
+                tabIndex={0}
+                onPointerDown={startTerminalResize}
+                onPointerMove={moveTerminalResize}
+                onPointerUp={finishTerminalResize}
+                onPointerCancel={cancelTerminalResize}
+                onDoubleClick={() =>
+                  setStoredTerminalHeight(DEFAULT_TERMINAL_PANE_HEIGHT)
+                }
+                onKeyDown={resizeTerminalWithKeyboard}
+                className={cn(
+                  "group absolute inset-x-0 top-0 z-10 h-2 -translate-y-1/2 touch-none cursor-row-resize outline-none select-none",
+                  resizingTerminal && "cursor-row-resize",
+                )}
+              >
+                <span
+                  className={cn(
+                    "absolute inset-x-0 top-1/2 h-px bg-border motion-colors group-hover:bg-primary/70 group-focus-visible:h-0.5 group-focus-visible:bg-primary",
+                    resizingTerminal && "h-0.5 bg-primary",
+                  )}
+                />
+              </div>
+              <AgentTerminalPane
+                sessionId={sessionId}
+                active={terminalOpen}
+                onClose={() => setTerminalOpen(false)}
+              />
+            </div>
+          )}
 
           <RenameAgentSessionDialog
             providerLabel={providerLabel}

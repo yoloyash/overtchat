@@ -7,6 +7,7 @@ import {
   listSshHosts,
   parseSshExpansion,
   sshSpawnArgs,
+  sshTerminalArgs,
   sshTunnelArgs,
 } from "./ssh.js";
 
@@ -103,6 +104,21 @@ describe("SSH process launching", () => {
     expect(() => sshTunnelArgs("macbook", 0, 4096)).toThrow(
       "Invalid SSH tunnel port",
     );
+  });
+
+  it("allocates a remote login terminal in the workspace", () => {
+    const args = sshTerminalArgs("macbook", "/Users/yash/project's files");
+
+    expect(args).toEqual([
+      "-tt",
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "ConnectTimeout=10",
+      "macbook",
+      expect.stringContaining('exec "${SHELL:-/bin/sh}" -il'),
+    ]);
+    expect(args.at(-1)).toContain("cd -- '/Users/yash/project'\\''s files'");
   });
 });
 

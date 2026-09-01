@@ -65,6 +65,10 @@ jobs:
         with:
           bun-version: 1.3.14
 
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4
+        with:
+          platforms: arm64
+
       - name: Build Linux binaries
         run: |
           mkdir -p dist/connector-release
@@ -76,6 +80,11 @@ jobs:
             --compile \
             --target=bun-linux-arm64 \
             --outfile dist/connector-release/overtchat-connector-linux-arm64
+          dist/connector-release/overtchat-connector-linux-amd64 terminal-smoke
+          docker run --rm --platform linux/arm64 \
+            --volume "$PWD/dist/connector-release/overtchat-connector-linux-arm64:/usr/local/bin/overtchat-connector:ro" \
+            debian:bookworm-slim@sha256:88200866dfff7ea7f5cbcb6ec7c8a701889efe6fe859fe64d6990e4b07ea4171 \
+            /usr/local/bin/overtchat-connector terminal-smoke
           cp scripts/install-connector.sh dist/connector-release/
           (
             cd dist/connector-release

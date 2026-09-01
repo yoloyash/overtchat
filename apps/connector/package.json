@@ -8,15 +8,18 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/overtchat-connector.mjs",
+    "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --external:node-pty --external:node-pty/* --banner:js=\"import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);\" --outfile=dist/overtchat-connector.mjs",
     "build:binary": "bun build src/cli.ts --compile --outfile dist/overtchat-connector",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
     "@overtchat/agent-bridge": "*",
-    "@overtchat/agent-runtime": "*"
+    "@overtchat/agent-runtime": "*",
+    "node-pty": "1.2.0-beta.15"
   },
   "devDependencies": {
     "@eslint/js": "^9",
