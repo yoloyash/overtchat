@@ -546,6 +546,7 @@ function ChatSurface({
         </View>
       ) : (
         <MessageList
+          key={chatId}
           messages={messages}
           streaming={streaming}
           status={status}

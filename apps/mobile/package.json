@@ -10,7 +10,7 @@
     "ios": "expo start --ios --host=lan",
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"(no tests)\" && exit 0",
+    "test": "vitest run",
     "build": "echo \"(mobile is dev-only; no build step)\" && exit 0",
     "build:android:aab": "mkdir -p ../../dist/mobile && npx eas-cli@20 build --local --non-interactive --platform android --profile production --output ../../dist/mobile/overtchat.aab",
     "build:android:apk": "mkdir -p ../../dist/mobile && npx eas-cli@20 build --local --non-interactive --platform android --profile production-apk --output ../../dist/mobile/overtchat.apk",
@@ -77,6 +77,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.6"
   }
 }
