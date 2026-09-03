@@ -993,6 +993,48 @@ describe("connector daemon command identity", () => {
     );
   });
 
+  it("invalidates the shared provider catalog after a failed launch", async () => {
+    const { journal, timelines } = await openJournal();
+    mocks.create.mockRejectedValueOnce(new Error("launch failed"));
+    const emitted: HostConnectorEventPayload[] = [];
+    const daemon = new ConnectorDaemon(
+      (event) => emitted.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    const catalogs = Reflect.get(daemon, "providerCatalogs") as {
+      invalidate: (descriptor: unknown) => void;
+    };
+    const invalidate = vi.spyOn(catalogs, "invalidate");
+
+    await daemon.handle({
+      type: "request",
+      requestId: "create",
+      request: {
+        type: "create_session",
+        sessionId: "session",
+        workspace,
+        launchConfig: {},
+      },
+    });
+
+    expect(invalidate).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "workspace" }),
+    );
+    expect(emitted).toContainEqual(
+      expect.objectContaining({
+        type: "response",
+        requestId: "create",
+        success: false,
+        error: "launch failed",
+      }),
+    );
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("discards a subscription that resolves after bounded shutdown", async () => {
     const { journal, timelines } = await openJournal();
     const subscribed = deferred<

@@ -21,6 +21,10 @@ import { ConnectorInstanceLock } from "./lock.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
 import { CONNECTOR_VERSION } from "./version.js";
+import {
+  ConnectorCommandScheduler,
+  isConnectorCommandBarrier,
+} from "./command-scheduler.js";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
@@ -65,6 +69,7 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
 
 export class ConnectorClient {
   private readonly daemon: ConnectorDaemon;
+  private readonly commandScheduler: ConnectorCommandScheduler;
   private readonly stopAbort = new AbortController();
   private commandStreamAbort: AbortController | undefined;
   private eventRequestAbort: AbortController | undefined;
@@ -100,6 +105,9 @@ export class ConnectorClient {
       journal,
       timelines,
       (error) => this.fail(error),
+    );
+    this.commandScheduler = new ConnectorCommandScheduler((command) =>
+      this.daemon.handle(command),
     );
   }
 
@@ -166,6 +174,10 @@ export class ConnectorClient {
       this.eventRequestAbort?.abort();
       let failure: unknown;
       for (const close of [
+        async () => {
+          this.commandScheduler.close();
+          await this.commandScheduler.drain();
+        },
         () => this.daemon.stop(),
         // Requests already accepted by the daemon may finish while stop is
         // draining them. Their responses are durable protocol events, so
@@ -234,7 +246,15 @@ export class ConnectorClient {
             if (!isHostConnectorCommand(command)) {
               throw new Error("OvertChat sent an invalid connector command.");
             }
-            await this.daemon.handle(command);
+            if (command.type === "sync") {
+              await this.commandScheduler.drain();
+              await this.daemon.handle(command);
+            } else if (isConnectorCommandBarrier(command)) {
+              await this.commandScheduler.drain();
+              await this.daemon.handle(command);
+            } else {
+              this.commandScheduler.enqueue(command);
+            }
           }
           newline = buffered.indexOf("\n");
         }

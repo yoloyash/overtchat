@@ -1,5 +1,6 @@
 import type {
   AgentModel,
+  AgentProviderCatalog,
   AgentPromptImage,
   AgentProviderSessionMetadata,
   AgentProviderId,
@@ -99,6 +100,9 @@ export type AgentRuntimeRegistryOptions = {
     sessionId: string,
     runtime: AgentSessionRuntime,
   ) => void | Promise<void>;
+  resolveCatalog?: (
+    descriptor: AgentWorkspaceDescriptor,
+  ) => Promise<AgentProviderCatalog>;
 };
 
 function emptyStats(): AgentSessionStats {
@@ -1913,11 +1917,13 @@ export class AgentRuntimeRegistry {
     descriptor: AgentWorkspaceDescriptor,
     requested: AgentSessionLaunchConfig,
   ): Promise<AgentSessionLaunchConfig> {
-    const catalog = await adapter.fetchCatalog(descriptor.target, {
-      executable: descriptor.executable,
-      cwd: descriptor.cwd,
-      detectedVersion: descriptor.detectedVersion,
-    });
+    const catalog = this.options.resolveCatalog
+      ? await this.options.resolveCatalog(descriptor)
+      : await adapter.fetchCatalog(descriptor.target, {
+          executable: descriptor.executable,
+          cwd: descriptor.cwd,
+          detectedVersion: descriptor.detectedVersion,
+        });
     const model = requested.model
       ? catalog.models.find((candidate) => candidate.id === requested.model)
       : catalog.models.find((candidate) => candidate.isDefault) ??

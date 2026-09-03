@@ -16,6 +16,7 @@ import {
 } from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
+  AgentProviderCatalogManager,
   AgentProviderSnapshotManager,
   agentProviderAdapter,
   configureProcessSpawner,
@@ -126,6 +127,7 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 export class ConnectorDaemon {
   private readonly processHost = new ConnectorProcessHost();
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
+  private readonly providerCatalogs = new AgentProviderCatalogManager();
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
@@ -182,6 +184,8 @@ export class ConnectorDaemon {
           );
         });
       },
+      resolveCatalog: (descriptor) =>
+        this.providerCatalogs.getCatalog(descriptor),
     });
   }
 
@@ -203,6 +207,7 @@ export class ConnectorDaemon {
       );
       return;
     }
+    const startedAt = Date.now();
     try {
       const data = await this.handleRequest(command.request);
       this.emit({
@@ -218,6 +223,13 @@ export class ConnectorDaemon {
         success: false,
         error: errorMessage(error),
       });
+    } finally {
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= 250) {
+        console.info(
+          `[connector:timing] request type=${command.request.type} elapsed_ms=${elapsedMs}`,
+        );
+      }
     }
   }
 
@@ -355,14 +367,7 @@ export class ConnectorDaemon {
       }
       case "get_catalog": {
         const workspace = workspaceDescriptor(request.workspace);
-        return agentProviderAdapter(workspace.provider).fetchCatalog(
-          workspace.target,
-          {
-            executable: workspace.executable,
-            cwd: workspace.cwd,
-            detectedVersion: workspace.detectedVersion,
-          },
-        );
+        return this.providerCatalogs.getCatalog(workspace);
       }
       case "list_directories":
         return listAgentDirectories(hostTarget(request.target), request.path);
@@ -386,12 +391,19 @@ export class ConnectorDaemon {
           request.path,
         );
       case "create_session": {
+        const workspace = workspaceDescriptor(request.workspace);
         const created = await this.serializeSession(request.sessionId, async () => {
-          const result = await this.registry.create(
-            request.sessionId,
-            workspaceDescriptor(request.workspace),
-            request.launchConfig,
-          );
+          let result;
+          try {
+            result = await this.registry.create(
+              request.sessionId,
+              workspace,
+              request.launchConfig,
+            );
+          } catch (error) {
+            this.providerCatalogs.invalidate(workspace);
+            throw error;
+          }
           await this.assertRuntimeAccepted(request.sessionId);
           await this.journal.recordSession({
             ...request.workspace,

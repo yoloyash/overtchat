@@ -16,6 +16,7 @@ import { startCodexRuntime } from "@overtchat/agent-runtime/codex/client";
 import {
   probeCodexConnection,
   probeCodexTarget,
+  fetchCodexModels,
 } from "@overtchat/agent-runtime/codex/probe";
 import { CODEX_MODES } from "@overtchat/agent-runtime/codex/client";
 import { listCodexWorkspaceSessions } from "@overtchat/agent-runtime/codex/sessions";
@@ -170,7 +171,7 @@ export const codexProviderAdapter: AgentProviderAdapter = {
   listWorkspaceSessions: listCodexWorkspaceSessions,
   fetchCatalog: async (target, launch) => ({
     provider: "codex",
-    models: (await probeCodexTarget(target, launch.executable)).models,
+    models: await fetchCodexModels(target, launch.executable),
     modes: CODEX_MODES,
     defaultModeId: "auto",
   }),

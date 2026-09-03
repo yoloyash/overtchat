@@ -86,6 +86,7 @@ function WorkspaceNode({
     agentConnectionTarget(representativeTarget.connection),
   );
   const gitStatus = useAgentWorkspaceGitStatus(representativeWorkspace.id, {
+    enabled: open || hasActiveSession,
     active: hasActiveSession,
     running: hasRunningSession,
   }).data;
@@ -160,14 +161,12 @@ function WorkspaceNode({
         <button
           type="button"
           onClick={() => setCreateOpen(true)}
-          disabled={providerSnapshot.isPending || sessionTargets.length === 0}
+          disabled={sessionTargets.length === 0}
           aria-label={`New session in ${group.name}`}
           title={
             sessionTargets.length > 0
               ? `New session in ${group.name}`
-              : providerSnapshot.isPending
-                ? "Detecting agents on this machine"
-                : "No agents are currently available on this machine"
+              : "No agents are currently available on this machine"
           }
           className={cn(
             "flex min-h-11 w-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
