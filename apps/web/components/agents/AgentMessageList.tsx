@@ -287,6 +287,9 @@ function AgentTranscriptRow({
   if (item.type === "assistant_error") {
     return <AgentErrorNotice error={item.error} />;
   }
+  if (item.type === "notification") {
+    return <AgentNotificationNotice notification={item.notification} />;
+  }
   if (item.type === "turn_footer") {
     return (
       <AgentTurnFooter
@@ -315,6 +318,36 @@ function AgentTranscriptRow({
       active={active}
       sequencePosition={activitySequencePosition ?? "single"}
     />
+  );
+}
+
+function AgentNotificationNotice({
+  notification,
+}: {
+  notification: Extract<
+    AgentTranscriptItem,
+    { type: "notification" }
+  >["notification"];
+}) {
+  const warning = notification.level === "warning";
+  const error = notification.level === "error";
+  const Icon = warning || error ? AlertTriangle : Info;
+  return (
+    <div
+      className="flex items-start gap-2 py-1 text-sm text-muted-foreground"
+      role={error ? "alert" : "status"}
+    >
+      <Icon
+        className={cn(
+          "mt-0.5 size-4 shrink-0",
+          warning && "text-amber-500",
+          error && "text-destructive",
+        )}
+      />
+      <span className="min-w-0 flex-1 text-foreground/90">
+        {notification.message}
+      </span>
+    </div>
   );
 }
 
