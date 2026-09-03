@@ -124,6 +124,13 @@ connector with Ctrl-C; stop the retained development Redis container with
 `npm run dev:down`. Disposable connector state lives under `.overtchat-dev/`
 and never uses the installed production connector.
 
+Chat generations are owned by the server rather than by one browser or mobile
+connection. SQLite records each generation's identity and terminal status;
+Redis buffers in-flight stream events so a client can detach and resume after
+backgrounding or a network change. Without Redis, generation and final-message
+persistence still continue, and clients reconcile the completed response from
+SQLite, but missed live deltas cannot be replayed.
+
 Safe defaults are tracked in `apps/web/.env.development`; machine-specific
 values belong in `apps/web/.env.local`. The root `.env` is source-development
 configuration, and `apps/web/.env` must remain a symlink to `../../.env`. For

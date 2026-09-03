@@ -31,7 +31,11 @@ import {
 } from "@/lib/tools";
 import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
-import { ChatRequestError, parseChatRequest } from "@/lib/chat/request";
+import {
+  chatRequestFingerprint,
+  ChatRequestError,
+  parseChatRequest,
+} from "@/lib/chat/request";
 import {
   ChatHistoryConflictError,
   reconstructPersistedMessages,
@@ -42,6 +46,10 @@ import {
   clearActiveStreamId,
   commitChatTurn,
   completeChatStream,
+  failChatStream,
+  getChatGeneration,
+  getChatGenerationByRequestId,
+  type ChatGenerationRow,
   type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
@@ -74,6 +82,7 @@ import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 import { readLlamaCppInferenceActivity } from "@/lib/providers/server/llamacpp-activity";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 import { getStreamContext } from "@/lib/streams/context";
+import { resumeChatStreamResponse } from "@/lib/streams/http";
 
 export const maxDuration = 300;
 
@@ -95,6 +104,7 @@ async function handlePost(req: Request): Promise<Response> {
     return withCors(req, new Response("Unauthorized", { status: 401 }));
   }
   const userId = session.user.id;
+  const parsedRequest = await parseChatRequest(req);
   const {
     messages: requestMessages,
     modelConfigId,
@@ -105,7 +115,24 @@ async function handlePost(req: Request): Promise<Response> {
     projectId,
     action,
     temporary,
-  } = await parseChatRequest(req);
+    clientRequestId,
+  } = parsedRequest;
+  const requestFingerprint = chatRequestFingerprint(parsedRequest);
+
+  if (!temporary) {
+    const existingGeneration = await getChatGenerationByRequestId(
+      userId,
+      clientRequestId,
+    );
+    if (existingGeneration) {
+      return duplicateGenerationResponse({
+        req,
+        generation: existingGeneration,
+        chatId,
+        requestFingerprint,
+      });
+    }
+  }
 
   const modelConfig = await getModelConfig(modelConfigId);
   if (!modelConfig || !modelConfig.enabled) {
@@ -126,7 +153,14 @@ async function handlePost(req: Request): Promise<Response> {
   }
   let staleStreamId: string | null = null;
   if (existingChat?.activeStreamId) {
-    if (cancelRegistry.has(existingChat.activeStreamId)) {
+    const activeGeneration = await getChatGeneration(
+      existingChat.activeStreamId,
+      userId,
+    );
+    if (
+      cancelRegistry.has(existingChat.activeStreamId) ||
+      activeGeneration?.status === "running"
+    ) {
       return withCors(
         req,
         new Response("Stream already in progress for this chat", {
@@ -279,6 +313,8 @@ async function handlePost(req: Request): Promise<Response> {
         userId,
         projectId: resolvedProjectId,
         streamId,
+        clientRequestId,
+        requestFingerprint,
         staleStreamId,
         truncateFromMessageId,
         userMessage: persistUserMessage
@@ -288,6 +324,29 @@ async function handlePost(req: Request): Promise<Response> {
 
       if (commitResult === "committed") {
         streamClaimed = true;
+      } else if (commitResult === "duplicate") {
+        cancelRegistry.unregister(streamId);
+        await mcpBinding?.release();
+        const generation = await getChatGenerationByRequestId(
+          userId,
+          clientRequestId,
+        );
+        if (!generation) {
+          throw new Error("Idempotent generation claim disappeared");
+        }
+        return duplicateGenerationResponse({
+          req,
+          generation,
+          chatId,
+          requestFingerprint,
+        });
+      } else if (commitResult === "idempotency-conflict") {
+        cancelRegistry.unregister(streamId);
+        await mcpBinding?.release();
+        return withCors(
+          req,
+          new Response("Client request ID was already used", { status: 409 }),
+        );
       } else if (commitResult === "stream-active") {
         cancelRegistry.unregister(streamId);
         await mcpBinding?.release();
@@ -526,7 +585,7 @@ async function handlePost(req: Request): Promise<Response> {
 
         return { stats };
       },
-      onEnd: async ({ responseMessage }) => {
+      onEnd: async ({ responseMessage, isAborted }) => {
         if (temporary) return;
         // Stop is an intentional user abort, so retain whatever the model
         // produced. Provider stream errors still discard broken fragments.
@@ -535,12 +594,16 @@ async function handlePost(req: Request): Promise<Response> {
             ? {
                 id: responseMessage.id,
                 parts: responseMessage.parts,
-                metadata:
-                  responseMessage.metadata &&
-                  typeof responseMessage.metadata === "object" &&
-                  !Array.isArray(responseMessage.metadata)
-                    ? (responseMessage.metadata as Record<string, unknown>)
-                    : undefined,
+                ...(responseMessage.metadata &&
+                typeof responseMessage.metadata === "object" &&
+                !Array.isArray(responseMessage.metadata)
+                  ? {
+                      metadata: responseMessage.metadata as Record<
+                        string,
+                        unknown
+                      >,
+                    }
+                  : {}),
               }
             : undefined;
 
@@ -549,6 +612,15 @@ async function handlePost(req: Request): Promise<Response> {
             chatId,
             streamId,
             assistantMessage,
+            status: streamError ? "error" : isAborted ? "aborted" : "complete",
+            ...(streamError
+              ? {
+                  error:
+                    streamError instanceof Error
+                      ? streamError.message
+                      : "Provider stream failed.",
+                }
+              : {}),
             ...(assistantMessage && completedGenerationUsage
               ? { usage: completedGenerationUsage }
               : {}),
@@ -615,13 +687,59 @@ async function handlePost(req: Request): Promise<Response> {
     if (controller) cancelRegistry.unregister(streamId);
     if (streamClaimed) {
       try {
-        await clearActiveStreamId(chatId, streamId);
+        failChatStream({
+          chatId,
+          streamId,
+          error: error instanceof Error ? error.message : "Generation setup failed.",
+        });
       } catch (cleanupError) {
         console.error("[clear-active-stream]", cleanupError);
       }
     }
     throw error;
   }
+}
+
+async function duplicateGenerationResponse({
+  req,
+  generation,
+  chatId,
+  requestFingerprint,
+}: {
+  req: Request;
+  generation: ChatGenerationRow;
+  chatId: string;
+  requestFingerprint: string;
+}): Promise<Response> {
+  if (
+    generation.chatId !== chatId ||
+    generation.requestFingerprint !== requestFingerprint
+  ) {
+    return withCors(
+      req,
+      new Response("Client request ID was already used", { status: 409 }),
+    );
+  }
+  if (generation.status !== "running") {
+    return withCors(
+      req,
+      new Response("Generation request was already completed", { status: 409 }),
+    );
+  }
+
+  try {
+    const response = await resumeChatStreamResponse(req, generation.id);
+    if (response) {
+      response.headers.set("X-OvertChat-Generation", "resumed");
+      return response;
+    }
+  } catch (error) {
+    console.warn("[generation-idempotency] failed to attach duplicate", error);
+  }
+  return withCors(
+    req,
+    new Response("Generation is already in progress", { status: 409 }),
+  );
 }
 
 function observeChatStream(

@@ -1,10 +1,9 @@
-import { UI_MESSAGE_STREAM_HEADERS } from "ai";
 import { auth } from "@/lib/auth/server";
-import { corsHeaders, preflight, withCors } from "@/lib/cors";
+import { preflight, withCors } from "@/lib/cors";
 import { getActiveStreamId, getChat } from "@/lib/db/chats";
-import { clearActiveStreamId } from "@/lib/db/chatTurns";
+import { failChatStream } from "@/lib/db/chatTurns";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
-import { getStreamContext } from "@/lib/streams/context";
+import { resumeChatStreamResponse } from "@/lib/streams/http";
 
 export const maxDuration = 300;
 
@@ -27,36 +26,29 @@ export async function GET(
   const streamId = await getActiveStreamId(id);
   if (!streamId) return withCors(req, new Response(null, { status: 204 }));
 
-  const streamContext = getStreamContext();
-  if (!streamContext) {
-    if (!cancelRegistry.has(streamId)) {
-      await clearActiveStreamId(id, streamId);
-    }
-    return withCors(req, new Response(null, { status: 204 }));
-  }
-
-  let replay: Awaited<ReturnType<typeof streamContext.resumeExistingStream>>;
+  let response: Response | null;
   try {
-    replay = await streamContext.resumeExistingStream(streamId);
-  } catch (err) {
-    console.warn("[resumable-stream] failed to resume stream", err);
+    response = await resumeChatStreamResponse(req, streamId);
+  } catch (error) {
+    console.warn("[resumable-stream] failed to resume stream", error);
     if (!cancelRegistry.has(streamId)) {
-      await clearActiveStreamId(id, streamId);
+      failChatStream({
+        chatId: id,
+        streamId,
+        error: "Generation stream could not be resumed.",
+      });
     }
     return withCors(req, new Response(null, { status: 204 }));
   }
-  if (!replay) {
+  if (!response) {
     if (!cancelRegistry.has(streamId)) {
-      await clearActiveStreamId(id, streamId);
+      failChatStream({
+        chatId: id,
+        streamId,
+        error: "Generation stream was no longer available.",
+      });
     }
     return withCors(req, new Response(null, { status: 204 }));
   }
-
-  const headers = corsHeaders(req);
-  for (const [k, v] of Object.entries(UI_MESSAGE_STREAM_HEADERS)) {
-    headers.set(k, v);
-  }
-  headers.set("Content-Encoding", "none");
-
-  return new Response(replay, { headers });
+  return response;
 }

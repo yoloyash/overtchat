@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ChatRequestError, parseChatRequest } from "./request";
+import {
+  chatRequestFingerprint,
+  ChatRequestError,
+  parseChatRequest,
+} from "./request";
 
 function request(body: unknown): Request {
   return new Request("http://example.test/api/chat", {
@@ -35,6 +39,40 @@ describe("chat request parsing", () => {
       temporary: false,
       action: { type: "submit" },
     });
+  });
+
+  it("preserves a submission receipt and creates one for legacy clients", async () => {
+    await expect(
+      parseChatRequest(
+        request({ ...validBody, clientRequestId: "request-one" }),
+      ),
+    ).resolves.toMatchObject({ clientRequestId: "request-one" });
+
+    const legacy = await parseChatRequest(request(validBody));
+    expect(legacy.clientRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    );
+  });
+
+  it("fingerprints the intent independently of its retry receipt", async () => {
+    const first = await parseChatRequest(
+      request({ ...validBody, clientRequestId: "request-one" }),
+    );
+    const retry = await parseChatRequest(
+      request({ ...validBody, clientRequestId: "request-two" }),
+    );
+    const changed = await parseChatRequest(
+      request({
+        ...validBody,
+        clientRequestId: "request-one",
+        forceSearch: true,
+      }),
+    );
+
+    expect(chatRequestFingerprint(first)).toBe(chatRequestFingerprint(retry));
+    expect(chatRequestFingerprint(changed)).not.toBe(
+      chatRequestFingerprint(first),
+    );
   });
 
   it("rejects malformed JSON", async () => {

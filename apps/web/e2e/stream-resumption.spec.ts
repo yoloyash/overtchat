@@ -20,11 +20,13 @@ let modelServer: Server;
 let modelBaseUrl: string;
 let firstChunk = deferred();
 let continueStream = deferred();
+let streamingRequests = 0;
 
 test.beforeEach(() => {
   resetE2eDatabase();
   firstChunk = deferred();
   continueStream = deferred();
+  streamingRequests = 0;
 });
 
 test.beforeAll(async () => {
@@ -60,6 +62,8 @@ test.beforeAll(async () => {
       );
       return;
     }
+
+    streamingRequests += 1;
 
     response.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -171,4 +175,51 @@ test("reload resumes an active chat stream through Redis", async ({ page }) => {
     page.getByText("Before reload. After reload.", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
   await page.getByLabel("Send message").waitFor({ state: "visible" });
+});
+
+test("network restoration reconciles the same generation without restarting it", async ({
+  page,
+  context,
+}) => {
+  test.skip(!process.env.REDIS_URL, "REDIS_URL is required for resumption.");
+
+  await page.goto("/signup");
+  await page.locator("#name").fill("Foreground Tester");
+  await page.locator("#email").fill("foreground@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+  seedModel();
+  await page.reload();
+
+  await page.getByPlaceholder("Message…").fill("Finish while I am offline.");
+  await page.getByLabel("Send message").click();
+  await firstChunk.promise;
+  await expect(page.getByText("Before reload.", { exact: false })).toBeVisible();
+
+  await context.setOffline(true);
+  continueStream.resolve();
+  await expect
+    .poll(() => {
+      const database = openE2eDatabase();
+      try {
+        return (
+          database
+            .prepare(
+              "SELECT status FROM chat_generations ORDER BY started_at DESC LIMIT 1",
+            )
+            .get() as { status?: string } | undefined
+        )?.status;
+      } finally {
+        database.close();
+      }
+    })
+    .toBe("complete");
+
+  await context.setOffline(false);
+  await expect(
+    page.getByText("Before reload. After reload.", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(streamingRequests).toBe(1);
+  await expect(page.getByRole("button", { name: "Reconnect" })).toHaveCount(0);
 });
