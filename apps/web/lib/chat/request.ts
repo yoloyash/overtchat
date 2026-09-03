@@ -1,5 +1,6 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
 import type { ChatRequestAction } from "@overtchat/shared";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 const ChatRequestActionSchema = z.discriminatedUnion("type", [
@@ -22,6 +23,10 @@ const ChatRequestEnvelopeSchema = z.object({
   messages: z.unknown(),
   modelConfigId: z.string().trim().min(1, "Missing modelConfigId"),
   chatId: z.string().trim().min(1, "Missing chatId"),
+  // Optional for wire compatibility with released clients. Current clients
+  // mint one UUID per user intent so a repeated POST can attach to the same
+  // generation instead of starting a second model call.
+  clientRequestId: z.string().trim().min(1).max(200).optional(),
   webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
   // Accepted during the mobile rollout. `true` maps cleanly to the new
@@ -44,6 +49,7 @@ export interface ParsedChatRequest {
   messages: UIMessage[];
   modelConfigId: string;
   chatId: string;
+  clientRequestId: string;
   webSearchEnabled: boolean;
   forceSearch: boolean;
   timeZone?: string;
@@ -60,6 +66,34 @@ export class ChatRequestError extends Error {
     this.name = "ChatRequestError";
     this.status = status;
   }
+}
+
+export function chatRequestFingerprint({
+  messages,
+  modelConfigId,
+  chatId,
+  webSearchEnabled,
+  forceSearch,
+  timeZone,
+  projectId,
+  action,
+  temporary,
+}: ParsedChatRequest): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        messages,
+        modelConfigId,
+        chatId,
+        webSearchEnabled,
+        forceSearch,
+        timeZone: timeZone ?? null,
+        projectId: projectId ?? null,
+        action,
+        temporary,
+      }),
+    )
+    .digest("hex");
 }
 
 export async function parseChatRequest(
@@ -114,6 +148,7 @@ export async function parseChatRequest(
     messages: validated.data,
     modelConfigId: envelope.data.modelConfigId,
     chatId: envelope.data.chatId,
+    clientRequestId: envelope.data.clientRequestId ?? crypto.randomUUID(),
     webSearchEnabled: envelope.data.webSearchEnabled,
     forceSearch: envelope.data.webSearchEnabled && forceSearch,
     timeZone: envelope.data.timeZone,

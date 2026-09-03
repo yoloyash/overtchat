@@ -9,7 +9,9 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
+  CHAT_GENERATION_STATUSES,
   CHAT_KINDS,
+  type ChatGenerationStatus,
   type ChatKind,
   type ModelCapabilities,
 } from "@overtchat/shared";
@@ -381,6 +383,46 @@ export const chats = sqliteTable(
   ],
 );
 
+/**
+ * Durable identity and lifecycle for a model generation. Stream chunks remain
+ * ephemeral (Redis when configured); SQLite is the authority for whether a
+ * user intent is already running or has reached a terminal state.
+ */
+export const chatGenerations = sqliteTable(
+  "chat_generations",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    clientRequestId: text("client_request_id").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    status: text("status", { enum: CHAT_GENERATION_STATUSES })
+      .$type<ChatGenerationStatus>()
+      .default("running")
+      .notNull(),
+    error: text("error"),
+    responseMessageId: text("response_message_id"),
+    startedAt: integer("started_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    uniqueIndex("chat_generations_userId_clientRequestId_idx").on(
+      table.userId,
+      table.clientRequestId,
+    ),
+    index("chat_generations_chatId_startedAt_idx").on(
+      table.chatId,
+      table.startedAt,
+    ),
+  ],
+);
+
 export const messages = sqliteTable(
   "messages",
   {
@@ -513,8 +555,23 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
     references: [projects.id],
   }),
   messages: many(messages),
+  generations: many(chatGenerations),
   generationUsage: many(generationUsage),
 }));
+
+export const chatGenerationsRelations = relations(
+  chatGenerations,
+  ({ one }) => ({
+    chat: one(chats, {
+      fields: [chatGenerations.chatId],
+      references: [chats.id],
+    }),
+    user: one(user, {
+      fields: [chatGenerations.userId],
+      references: [user.id],
+    }),
+  }),
+);
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(user, {

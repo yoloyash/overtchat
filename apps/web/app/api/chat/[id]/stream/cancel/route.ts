@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth/server";
 import { preflight, withCors } from "@/lib/cors";
 import { getActiveStreamId, getChat } from "@/lib/db/chats";
-import { clearActiveStreamId } from "@/lib/db/chatTurns";
+import { completeChatStream } from "@/lib/db/chatTurns";
 import * as cancelRegistry from "@/lib/streams/cancel-registry";
 
 export function OPTIONS(req: Request) {
@@ -22,7 +22,7 @@ export async function POST(
 
   const streamId = await getActiveStreamId(id);
   if (streamId && !cancelRegistry.cancel(streamId)) {
-    await clearActiveStreamId(id, streamId);
+    completeChatStream({ chatId: id, streamId, status: "aborted" });
   }
 
   return withCors(req, new Response(null, { status: 204 }));

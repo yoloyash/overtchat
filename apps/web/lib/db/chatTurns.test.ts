@@ -37,6 +37,22 @@ raw.exec(`
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
   );
+  CREATE TABLE chat_generations (
+    id TEXT PRIMARY KEY NOT NULL,
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    client_request_id TEXT NOT NULL,
+    request_fingerprint TEXT NOT NULL,
+    status TEXT DEFAULT 'running' NOT NULL,
+    error TEXT,
+    response_message_id TEXT,
+    started_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    completed_at INTEGER,
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+  );
+  CREATE UNIQUE INDEX chat_generations_userId_clientRequestId_idx
+    ON chat_generations (user_id, client_request_id);
   CREATE TABLE messages (
     id TEXT PRIMARY KEY NOT NULL,
     chat_id TEXT NOT NULL,
@@ -94,6 +110,7 @@ beforeAll(async () => {
 beforeEach(() => {
   raw.exec(`
     DELETE FROM generation_usage;
+    DELETE FROM chat_generations;
     DELETE FROM messages;
     DELETE FROM messages_fts;
     DELETE FROM chats;
@@ -146,6 +163,78 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("returns the original generation for an exact duplicate submission", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Hello" }],
+        },
+      }),
+    ).toBe("committed");
+
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-two",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message-two",
+          parts: [{ type: "text", text: "Duplicate" }],
+        },
+      }),
+    ).toBe("duplicate");
+
+    expect(messageIds()).toEqual(["user-message"]);
+    expect(
+      raw
+        .prepare("SELECT id FROM chat_generations ORDER BY started_at")
+        .all(),
+    ).toEqual([{ id: "stream-one" }]);
+    expect(
+      raw
+        .prepare("SELECT active_stream_id AS id FROM chats WHERE id = 'chat'")
+        .get(),
+    ).toEqual({ id: "stream-one" });
+  });
+
+  it("rejects reuse of a receipt for a different intent", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+      }),
+    ).toBe("committed");
+
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-two",
+        clientRequestId: "request-one",
+        requestFingerprint: "different-intent",
+        staleStreamId: null,
+      }),
+    ).toBe("idempotency-conflict");
+  });
+
   it("rolls back branch deletion when replacement insertion fails", () => {
     seedChat();
 
@@ -155,6 +244,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream",
+        clientRequestId: "request-stream",
+        requestFingerprint: "fingerprint-stream",
         staleStreamId: null,
         truncateFromMessageId: "edit",
         userMessage: {
@@ -181,6 +272,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream",
+        clientRequestId: "request-stream",
+        requestFingerprint: "fingerprint-stream",
         staleStreamId: null,
         truncateFromMessageId: "edit",
         userMessage: {
@@ -208,6 +301,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream-one",
+        clientRequestId: "request-stream-one",
+        requestFingerprint: "fingerprint-stream-one",
         staleStreamId: null,
         userMessage: {
           id: "user-message",
@@ -222,6 +317,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream-two",
+        clientRequestId: "request-stream-two",
+        requestFingerprint: "fingerprint-stream-two",
         staleStreamId: null,
         userMessage: {
           id: "second-user-message",
@@ -270,6 +367,19 @@ describe("transactional chat turns", () => {
         .get(),
     ).toEqual({ id: null });
     expect(messageIds()).toEqual(["user-message", "assistant-message"]);
+    expect(
+      raw
+        .prepare(
+          `SELECT status, response_message_id AS responseMessageId,
+                  completed_at AS completedAt
+           FROM chat_generations WHERE id = 'stream-one'`,
+        )
+        .get(),
+    ).toEqual({
+      status: "complete",
+      responseMessageId: "assistant-message",
+      completedAt: expect.any(Number),
+    });
     expect(
       raw.prepare("SELECT message_id FROM messages_fts ORDER BY rowid").all(),
     ).toEqual([
@@ -346,6 +456,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream",
+        clientRequestId: "request-stream",
+        requestFingerprint: "fingerprint-stream",
         staleStreamId: null,
         userMessage: {
           id: "user-message",
@@ -431,6 +543,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "new-stream",
+        clientRequestId: "request-new-stream",
+        requestFingerprint: "fingerprint-new-stream",
         staleStreamId: null,
         truncateFromMessageId: "edit",
         userMessage: {

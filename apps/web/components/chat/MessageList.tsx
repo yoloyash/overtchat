@@ -37,7 +37,7 @@ export function MessageList({
   onLoadOlderMessages,
   onRegenerate,
   onEdit,
-  onRetry,
+  onReconnect,
 }: {
   messages: UIMessage[];
   streaming: boolean;
@@ -53,7 +53,7 @@ export function MessageList({
   onLoadOlderMessages: () => void;
   onRegenerate: (id: string) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
-  onRetry: () => void;
+  onReconnect: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollCompleteRef = useRef(false);
@@ -185,7 +185,9 @@ export function MessageList({
                 </>
               );
             } else if (error && item.index === errorOffset) {
-              content = <ChatErrorBubble error={error} onRetry={onRetry} />;
+              content = (
+                <ChatErrorBubble error={error} onReconnect={onReconnect} />
+              );
             }
 
             return (
@@ -319,10 +321,10 @@ function PendingDots() {
 
 function ChatErrorBubble({
   error,
-  onRetry,
+  onReconnect,
 }: {
   error: Error;
-  onRetry: () => void;
+  onReconnect: () => void;
 }) {
   return (
     <div
@@ -336,10 +338,10 @@ function ChatErrorBubble({
       <Button
         variant="outline"
         size="sm"
-        onClick={onRetry}
+        onClick={onReconnect}
         className="shrink-0"
       >
-        <RotateCcw /> Retry
+        <RotateCcw /> Reconnect
       </Button>
     </div>
   );

@@ -11,11 +11,15 @@ const mocks = vi.hoisted(() => {
   return {
     getSession: vi.fn(),
     parseChatRequest: vi.fn(),
+    chatRequestFingerprint: vi.fn(),
     getChat: vi.fn(),
     getMessages: vi.fn(),
     clearActiveStreamId: vi.fn(),
     commitChatTurn: vi.fn(),
     completeChatStream: vi.fn(),
+    failChatStream: vi.fn(),
+    getChatGeneration: vi.fn(),
+    getChatGenerationByRequestId: vi.fn(),
     inlineUploads: vi.fn(),
     getModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
@@ -36,6 +40,7 @@ const mocks = vi.hoisted(() => {
     cancelUnregister: vi.fn(),
     cancelHas: vi.fn(),
     getStreamContext: vi.fn(),
+    resumeChatStreamResponse: vi.fn(),
     currentDateSystemPrompt: vi.fn(),
     consumeStream: vi.fn(),
     convertToModelMessages: vi.fn(),
@@ -112,6 +117,7 @@ vi.mock("@/lib/chat/request", () => {
     }
   }
   return {
+    chatRequestFingerprint: mocks.chatRequestFingerprint,
     ChatRequestError,
     parseChatRequest: mocks.parseChatRequest,
   };
@@ -124,6 +130,9 @@ vi.mock("@/lib/db/chatTurns", () => ({
   clearActiveStreamId: mocks.clearActiveStreamId,
   commitChatTurn: mocks.commitChatTurn,
   completeChatStream: mocks.completeChatStream,
+  failChatStream: mocks.failChatStream,
+  getChatGeneration: mocks.getChatGeneration,
+  getChatGenerationByRequestId: mocks.getChatGenerationByRequestId,
 }));
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
 vi.mock("@/lib/db/modelConfigs", () => ({
@@ -166,6 +175,9 @@ vi.mock("@/lib/streams/cancel-registry", () => ({
 vi.mock("@/lib/streams/context", () => ({
   getStreamContext: mocks.getStreamContext,
 }));
+vi.mock("@/lib/streams/http", () => ({
+  resumeChatStreamResponse: mocks.resumeChatStreamResponse,
+}));
 
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import { POST } from "./route";
@@ -183,6 +195,7 @@ const parsedRequest = {
   messages,
   modelConfigId: "model-config",
   chatId: "chat",
+  clientRequestId: "client-request",
   webSearchEnabled: true,
   forceSearch: false,
   timeZone: "America/Los_Angeles",
@@ -245,6 +258,7 @@ describe("chat route setup boundary", () => {
 
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
+    mocks.chatRequestFingerprint.mockReturnValue("request-fingerprint");
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
     mocks.getServerCapability.mockReturnValue({ provider: "bundled" });
     mocks.listEffectiveMcpServers.mockResolvedValue([]);
@@ -254,6 +268,8 @@ describe("chat route setup boundary", () => {
       release: mocks.releaseMcpBinding,
     });
     mocks.getChat.mockResolvedValue(null);
+    mocks.getChatGenerationByRequestId.mockResolvedValue(null);
+    mocks.getChatGeneration.mockResolvedValue(null);
     mocks.getMessages.mockResolvedValue([]);
     mocks.getProject.mockResolvedValue(null);
     mocks.getActivePersonalization.mockResolvedValue(null);
@@ -277,6 +293,8 @@ describe("chat route setup boundary", () => {
     mocks.cancelHas.mockReturnValue(false);
     mocks.commitChatTurn.mockReturnValue("committed");
     mocks.completeChatStream.mockReturnValue(true);
+    mocks.failChatStream.mockReturnValue(true);
+    mocks.resumeChatStreamResponse.mockResolvedValue(null);
     mocks.clearActiveStreamId.mockResolvedValue(undefined);
     mocks.ensureChatTitle.mockResolvedValue(null);
     mocks.getStreamContext.mockReturnValue(null);
@@ -613,10 +631,11 @@ describe("chat route setup boundary", () => {
 
     expect(response.status).toBe(500);
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
-    expect(mocks.clearActiveStreamId).toHaveBeenCalledWith(
-      "chat",
-      claim.streamId,
-    );
+    expect(mocks.failChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: claim.streamId,
+      error: "stream setup failed",
+    });
     consoleSpy.mockRestore();
   });
 
@@ -643,6 +662,7 @@ describe("chat route setup boundary", () => {
         id: "assistant-message",
         parts: [{ type: "text", text: "Partial" }],
       },
+      status: "aborted",
     });
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
   });
@@ -688,6 +708,8 @@ describe("chat route setup boundary", () => {
       chatId: "chat",
       streamId: claim.streamId,
       assistantMessage: undefined,
+      status: "error",
+      error: "provider failed",
     });
     consoleSpy.mockRestore();
   });
@@ -719,6 +741,7 @@ describe("chat route setup boundary", () => {
         id: "assistant-message",
         parts: [{ type: "text", text: "Recovered answer" }],
       },
+      status: "complete",
     });
   });
 
@@ -781,6 +804,84 @@ describe("chat route setup boundary", () => {
     expect(response.status).toBe(409);
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("blocks a second request when another server owns the durable run", async () => {
+    mocks.getChat.mockResolvedValue(existingChat("existing-stream"));
+    mocks.getChatGeneration.mockResolvedValue({
+      id: "existing-stream",
+      chatId: "chat",
+      userId: "user",
+      clientRequestId: "other-client-request",
+      requestFingerprint: "other-request-fingerprint",
+      status: "running",
+      error: null,
+      responseMessageId: null,
+      startedAt: new Date(),
+      completedAt: null,
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    expect(mocks.cancelHas).toHaveBeenCalledWith("existing-stream");
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("reattaches an exact duplicate start without invoking the model", async () => {
+    mocks.getChatGenerationByRequestId.mockResolvedValue({
+      id: "existing-stream",
+      chatId: "chat",
+      userId: "user",
+      clientRequestId: "client-request",
+      requestFingerprint: "request-fingerprint",
+      status: "running",
+      error: null,
+      responseMessageId: null,
+      startedAt: new Date(),
+      completedAt: null,
+    });
+    mocks.resumeChatStreamResponse.mockResolvedValue(
+      new Response("resumed", { status: 200 }),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-OvertChat-Generation")).toBe("resumed");
+    expect(mocks.resumeChatStreamResponse).toHaveBeenCalledWith(
+      expect.any(Request),
+      "existing-stream",
+    );
+    expect(mocks.getModelConfig).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("never restarts a completed duplicate submission", async () => {
+    mocks.getChatGenerationByRequestId.mockResolvedValue({
+      id: "completed-stream",
+      chatId: "chat",
+      userId: "user",
+      clientRequestId: "client-request",
+      requestFingerprint: "request-fingerprint",
+      status: "complete",
+      error: null,
+      responseMessageId: "assistant-message",
+      startedAt: new Date(),
+      completedAt: new Date(),
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    await expect(response.text()).resolves.toBe(
+      "Generation request was already completed",
+    );
+    expect(mocks.resumeChatStreamResponse).not.toHaveBeenCalled();
+    expect(mocks.getModelConfig).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
   it("does not continue a voice chat through the text generation route", async () => {
@@ -1330,6 +1431,7 @@ describe("chat route setup boundary", () => {
         id: "assistant-message",
         parts: [{ type: "text", text: "Hello" }],
       },
+      status: "complete",
       usage: {
         occurredAt: expect.any(Date),
         providerId: "custom",
@@ -1551,6 +1653,7 @@ describe("chat route setup boundary", () => {
           stats: { contextTokens: 110, contextWindow: 128_000 },
         },
       },
+      status: "complete",
     });
   });
 });

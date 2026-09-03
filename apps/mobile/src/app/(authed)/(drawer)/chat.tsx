@@ -9,6 +9,7 @@ import {
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
+import * as Crypto from "expo-crypto";
 import * as ImagePicker from "expo-image-picker";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
@@ -45,6 +46,7 @@ import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
+import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
@@ -181,6 +183,7 @@ function ChatSurface({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchRequested, setSearchRequested] = useState(false);
+  const [chatPersisted, setChatPersisted] = useState(!isNew);
   const webSearchEnabled = useWebSearchEnabled();
   const pickerRef = useRef<BottomSheetModal>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
@@ -220,12 +223,14 @@ function ChatSurface({
     status,
     stop,
     error,
+    resumeStream,
+    clearError,
   } = useChat({
     id: chatId,
     // Rendering every provider delta makes the React Native tree contend with
     // scrolling and touch handling. The AI SDK coalesces subscriber updates.
     throttle: 60,
-    resume: !isNew,
+    resume: false,
     transport,
     messages: initialMessages,
     onFinish: ({ message, isAbort }) => {
@@ -233,9 +238,27 @@ function ChatSurface({
         void qc.invalidateQueries({ queryKey: queryKeys.personalization() });
       }
       if (isAbort) return;
+      setChatPersisted(true);
       void qc.invalidateQueries({ queryKey: queryKeys.chats() });
       void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
     },
+  });
+
+  const handleGenerationSettled = useCallback(() => {
+    setChatPersisted(true);
+    void qc.invalidateQueries({ queryKey: queryKeys.chats() });
+    void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
+  }, [chatId, qc]);
+  const reconcileGeneration = useChatGenerationRecovery({
+    baseURL,
+    chatId,
+    enabled: chatPersisted,
+    recoverOnMount: !isNew,
+    stopLocalStream: stop,
+    resumeStream,
+    clearError,
+    setMessages,
+    onSettled: handleGenerationSettled,
   });
 
   const handleStop = useCallback(() => {
@@ -403,6 +426,7 @@ function ChatSurface({
       searchEnabled: requested,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       chatId,
+      clientRequestId: Crypto.randomUUID(),
       projectId,
       temporary: false,
       action,
@@ -417,10 +441,14 @@ function ChatSurface({
   const lastErrorRef = useRef<Error | undefined>(undefined);
   useEffect(() => {
     if (error && error !== lastErrorRef.current) {
-      toastError("Chat error", error);
+      if (/abort|connection|fetch|network|socket/i.test(error.message)) {
+        void reconcileGeneration();
+      } else {
+        toastError("Chat error", error);
+      }
     }
     lastErrorRef.current = error;
-  }, [error]);
+  }, [error, reconcileGeneration]);
 
   const userRefreshingMessages = useRef(false);
   const wasFetchingMessages = useRef(false);
@@ -450,6 +478,7 @@ function ChatSurface({
     const wasNew = isNewRef.current;
     if (wasNew) {
       isNewRef.current = false;
+      setChatPersisted(true);
       qc.setQueryData<ChatListItem[]>(queryKeys.chats(), (prev) => {
         const next: ChatListItem = {
           id: chatId,

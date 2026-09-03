@@ -42,6 +42,7 @@ import {
   type StoredMessageStats,
 } from "@/lib/chat/stats";
 import { messagesForChatRequest } from "@/lib/chat/history";
+import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { stripCitationMarkers } from "@/lib/citations";
 import { voiceHistoryToUiMessages } from "@/lib/voice/history";
 import {
@@ -82,13 +83,6 @@ const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 
 function shouldAutofocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-}
-
-function lastUserMessageId(messages: UIMessage[]): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].role === "user") return messages[index].id;
-  }
-  return undefined;
 }
 
 interface Props {
@@ -240,9 +234,11 @@ export function ChatArea({
     status,
     stop,
     error,
+    resumeStream,
+    clearError,
   } = useChat({
     id: temporary ? undefined : chatId,
-    resume: !temporary && !isNew,
+    resume: false,
     transport,
     messages: initialMessages,
     throttle: 32,
@@ -277,6 +273,25 @@ export function ChatArea({
         qc.invalidateQueries({ queryKey: activityKeys.all() }),
       ]);
     },
+  });
+  const handleGenerationSettled = useCallback(() => {
+    setInferenceActivity(null);
+    setChatPersisted(true);
+    void Promise.all([
+      qc.invalidateQueries({ queryKey: chatKeys.list() }),
+      qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
+      qc.invalidateQueries({ queryKey: activityKeys.all() }),
+    ]);
+  }, [chatId, qc]);
+  const reconcileGeneration = useChatGenerationRecovery({
+    chatId,
+    enabled: !temporary && chatPersisted,
+    recoverOnMount: !isNew,
+    stopLocalStream: stop,
+    resumeStream,
+    clearError,
+    setMessages,
+    onSettled: handleGenerationSettled,
   });
   const [olderMessageCursor, setOlderMessageCursor] = useState(
     initialMessageCursor ?? null,
@@ -327,6 +342,7 @@ export function ChatArea({
     forceSearch: searchAvailable && forceSearch,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
+    clientRequestId: crypto.randomUUID(),
     projectId: projectId ?? null,
     temporary,
     action,
@@ -379,6 +395,7 @@ export function ChatArea({
   const markNewChatPersisted = useCallback(() => {
     if (!isNewRef.current) return false;
     isNewRef.current = false;
+    setChatPersisted(true);
     setComposerDraftScope(chatComposerDraftScope(chatId));
     window.history.replaceState(null, "", `/chat/${chatId}`);
     return true;
@@ -437,14 +454,10 @@ export function ChatArea({
     });
   }
 
-  function handleRetry() {
+  function handleReconnect() {
     if (streaming || !configured) return;
-    const userMessageId = lastUserMessageId(messages);
-    if (!userMessageId) return;
     setInferenceActivity(null);
-    regenerate({
-      body: requestBody({ type: "retry", userMessageId }),
-    });
+    void reconcileGeneration();
   }
 
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
@@ -692,7 +705,7 @@ export function ChatArea({
             onLoadOlderMessages={handleLoadOlderMessages}
             onRegenerate={handleRegenerate}
             onEdit={handleEdit}
-            onRetry={handleRetry}
+            onReconnect={handleReconnect}
           />
 
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
