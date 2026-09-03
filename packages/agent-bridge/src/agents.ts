@@ -213,6 +213,41 @@ export type AgentWorkspaceTextFilePreview = {
 /** Extensible read-only preview payload; future content kinds add union members. */
 export type AgentWorkspaceFilePreview = AgentWorkspaceTextFilePreview;
 
+export const AGENT_TERMINAL_MIN_COLUMNS = 2;
+export const AGENT_TERMINAL_MAX_COLUMNS = 1_000;
+export const AGENT_TERMINAL_MIN_ROWS = 1;
+export const AGENT_TERMINAL_MAX_ROWS = 1_000;
+export const AGENT_TERMINAL_MAX_INPUT_CHARS = 64 * 1_024;
+export const AGENT_TERMINAL_MAX_OUTPUT_CHARS = 256 * 1_024;
+export const AGENT_TERMINAL_MAX_SNAPSHOT_CHARS = 4 * 1_024 * 1_024;
+
+export type AgentTerminalSize = {
+  cols: number;
+  rows: number;
+};
+
+export type AgentTerminalSnapshot = AgentTerminalSize & {
+  sessionId: string;
+  revision: number;
+  data: string;
+  exited: boolean;
+  exitCode: number | null;
+  signal: number | null;
+};
+
+export type AgentTerminalEvent =
+  | {
+      type: "output";
+      revision: number;
+      data: string;
+    }
+  | {
+      type: "exit";
+      revision: number;
+      exitCode: number | null;
+      signal: number | null;
+    };
+
 export type AgentConnectionListItem = {
   id: string;
   provider: AgentProviderId;

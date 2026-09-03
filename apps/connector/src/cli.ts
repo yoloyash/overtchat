@@ -11,6 +11,7 @@ import {
   installUserService,
 } from "./service.js";
 import { CONNECTOR_VERSION } from "./version.js";
+import { runConnectorTerminalSmoke } from "./terminal.js";
 
 type ParsedArgs = {
   command: string;
@@ -187,9 +188,16 @@ async function main(): Promise<void> {
       }
       console.log(CONNECTOR_VERSION);
       return;
+    case "terminal-smoke":
+      if (parsed.values.size > 0) {
+        throw new Error("The terminal-smoke command does not accept arguments.");
+      }
+      await runConnectorTerminalSmoke();
+      console.log("Terminal PTY smoke test passed.");
+      return;
     default:
       throw new Error(
-        "Usage: overtchat-connector <install|install-managed|pair|preflight|run|version>",
+        "Usage: overtchat-connector <install|install-managed|pair|preflight|run|terminal-smoke|version>",
       );
   }
 }

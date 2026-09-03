@@ -73,6 +73,244 @@ describe("host connector daemon broker", () => {
     expect(broker.supports("connector", "command-wal-v1")).toBe(false);
   });
 
+  it("streams terminal snapshots and contiguous live output", async () => {
+    const commands: HostConnectorCommand[] = [];
+    const received = vi.fn();
+    const disconnected = vi.fn();
+    const broker = new HostConnectorBroker();
+    broker.register(
+      "connector",
+      ["session"],
+      (command) => commands.push(command),
+      ["workspace-terminal-v1"],
+    );
+    const subscribing = broker.subscribeTerminal(
+      "connector",
+      session,
+      "control-one",
+      { cols: 80, rows: 24 },
+      received,
+      disconnected,
+    );
+    const request = commands.at(-1);
+    if (
+      request?.type !== "request" ||
+      request.request.type !== "subscribe_terminal"
+    ) {
+      throw new Error("missing terminal subscription");
+    }
+
+    await broker.acceptBatch("connector", "live", [
+      {
+        sequence: 1,
+        payload: {
+          type: "terminal_event",
+          subscriptionId: request.request.subscriptionId,
+          sessionId: "session",
+          event: { type: "output", revision: 2, data: "after snapshot" },
+        },
+      },
+    ]);
+    await broker.acceptBatch("connector", "durable", [
+      response(1, request.requestId, {
+        subscribed: true,
+        snapshot: {
+          sessionId: "session",
+          revision: 1,
+          data: "snapshot",
+          cols: 80,
+          rows: 24,
+          exited: false,
+          exitCode: null,
+          signal: null,
+        },
+      }),
+    ]);
+    const subscription = await subscribing;
+
+    expect(subscription.snapshot.data).toBe("snapshot");
+    expect(received).toHaveBeenCalledWith({
+      type: "output",
+      revision: 2,
+      data: "after snapshot",
+    });
+    await broker.acceptBatch("connector", "live", [
+      {
+        sequence: 2,
+        payload: {
+          type: "terminal_event",
+          subscriptionId: request.request.subscriptionId,
+          sessionId: "session",
+          event: { type: "output", revision: 2, data: "duplicate" },
+        },
+      },
+      {
+        sequence: 3,
+        payload: {
+          type: "terminal_event",
+          subscriptionId: request.request.subscriptionId,
+          sessionId: "session",
+          event: { type: "output", revision: 4, data: "gap" },
+        },
+      },
+    ]);
+    expect(received).toHaveBeenCalledTimes(1);
+    expect(disconnected).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining("snapshot") }),
+    );
+    subscription.unsubscribe();
+  });
+
+  it("sends terminal input and owner resize as volatile connector commands", async () => {
+    const commands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register(
+      "connector",
+      ["session"],
+      (command) => commands.push(command),
+      ["workspace-terminal-v1"],
+    );
+    const subscribing = broker.subscribeTerminal(
+      "connector",
+      session,
+      "control-one",
+      { cols: 80, rows: 24 },
+      vi.fn(),
+      vi.fn(),
+    );
+    const subscribe = commands.at(-1);
+    if (
+      subscribe?.type !== "request" ||
+      subscribe.request.type !== "subscribe_terminal"
+    ) {
+      throw new Error("missing terminal subscription");
+    }
+    await broker.acceptBatch("connector", "durable", [
+      response(1, subscribe.requestId, {
+        subscribed: true,
+        snapshot: {
+          sessionId: "session",
+          revision: 0,
+          data: "",
+          cols: 80,
+          rows: 24,
+          exited: false,
+          exitCode: null,
+          signal: null,
+        },
+      }),
+    ]);
+    const subscription = await subscribing;
+
+    broker.sendTerminalInput("connector", "session", "echo hello\r");
+    broker.resizeTerminal("connector", "session", "control-one", {
+      cols: 120,
+      rows: 40,
+    });
+
+    expect(commands.slice(-2)).toEqual([
+      { type: "terminal_input", sessionId: "session", data: "echo hello\r" },
+      {
+        type: "terminal_resize",
+        sessionId: "session",
+        size: { cols: 120, rows: 40 },
+      },
+    ]);
+    subscription.unsubscribe();
+  });
+
+  it("gives the newest terminal view deterministic resize ownership", async () => {
+    const commands: HostConnectorCommand[] = [];
+    const broker = new HostConnectorBroker();
+    broker.register(
+      "connector",
+      ["session"],
+      (command) => commands.push(command),
+      ["workspace-terminal-v1"],
+    );
+
+    const attach = async (controlId: string, cols: number) => {
+      const subscribing = broker.subscribeTerminal(
+        "connector",
+        session,
+        controlId,
+        { cols, rows: 24 },
+        vi.fn(),
+        vi.fn(),
+      );
+      const request = commands.at(-1);
+      if (
+        request?.type !== "request" ||
+        request.request.type !== "subscribe_terminal"
+      ) {
+        throw new Error("missing terminal subscription");
+      }
+      await broker.acceptBatch("connector", crypto.randomUUID(), [
+        response(1, request.requestId, {
+          subscribed: true,
+          snapshot: {
+            sessionId: "session",
+            revision: 0,
+            data: "",
+            cols,
+            rows: 24,
+            exited: false,
+            exitCode: null,
+            signal: null,
+          },
+        }),
+      ]);
+      return subscribing;
+    };
+
+    const first = await attach("first", 80);
+    const second = await attach("second", 100);
+
+    expect(() =>
+      broker.resizeTerminal("connector", "session", "first", {
+        cols: 90,
+        rows: 24,
+      }),
+    ).toThrow("Another open terminal view");
+    broker.resizeTerminal("connector", "session", "second", {
+      cols: 120,
+      rows: 40,
+    });
+    second.unsubscribe();
+
+    expect(commands.at(-1)).toEqual({
+      type: "terminal_resize",
+      sessionId: "session",
+      size: { cols: 80, rows: 24 },
+    });
+    expect(() =>
+      broker.resizeTerminal("connector", "session", "first", {
+        cols: 90,
+        rows: 24,
+      }),
+    ).not.toThrow();
+    first.unsubscribe();
+  });
+
+  it("rejects terminal use when the connector lacks the capability", async () => {
+    const broker = new HostConnectorBroker();
+    broker.register("connector", ["session"], vi.fn());
+
+    await expect(
+      broker.subscribeTerminal(
+        "connector",
+        session,
+        "control-one",
+        { cols: 80, rows: 24 },
+        vi.fn(),
+        vi.fn(),
+      ),
+    ).rejects.toThrow("Update the OvertChat Host Connector");
+    expect(() =>
+      broker.sendTerminalInput("connector", "session", "pwd\r"),
+    ).toThrow("Update the OvertChat Host Connector");
+  });
+
   it("projects the global session directory without a detail subscription", async () => {
     const listener = vi.fn();
     const broker = new HostConnectorBroker(0);

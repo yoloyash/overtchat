@@ -32,6 +32,7 @@ import { listSshHosts } from "./ssh.js";
 import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
+import { ConnectorTerminalManager } from "./terminal.js";
 
 type Emit = (event: HostConnectorEventPayload) => void;
 type ResolveImages = (
@@ -126,6 +127,7 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 export class ConnectorDaemon {
   private readonly processHost = new ConnectorProcessHost();
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
+  private readonly terminals = new ConnectorTerminalManager();
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
@@ -203,6 +205,14 @@ export class ConnectorDaemon {
       );
       return;
     }
+    if (command.type === "terminal_input") {
+      this.terminals.write(command.sessionId, command.data);
+      return;
+    }
+    if (command.type === "terminal_resize") {
+      this.terminals.resize(command.sessionId, command.size);
+      return;
+    }
     try {
       const data = await this.handleRequest(command.request);
       this.emit({
@@ -236,6 +246,7 @@ export class ConnectorDaemon {
     // or timeline operation. The stores are closed by the client immediately
     // after this method returns.
     this.storesClosing = true;
+    this.terminals.stopAll();
     for (const subscription of this.subscriptions.values()) {
       this.closeSubscription(subscription);
     }
@@ -316,6 +327,7 @@ export class ConnectorDaemon {
         this.closeSubscription(subscription);
       }
       this.subscriptions.clear();
+      this.terminals.disconnectSubscribers();
     }
     const active = new Set(activeSessionIds);
     const removed = this.journal
@@ -324,6 +336,7 @@ export class ConnectorDaemon {
     await Promise.all(
       removed.map((sessionId) => this.registry.stopSession(sessionId)),
     );
+    for (const sessionId of removed) this.terminals.stopSession(sessionId);
     this.assertAccepting();
     await Promise.all(
       removed.map((sessionId) => this.finishCapture(sessionId, true)),
@@ -385,6 +398,31 @@ export class ConnectorDaemon {
           request.root,
           request.path,
         );
+      case "subscribe_terminal": {
+        const snapshot = await this.terminals.subscribe(
+          request.subscriptionId,
+          request.session,
+          request.size,
+          (event) => {
+            this.emit({
+              type: "terminal_event",
+              subscriptionId: request.subscriptionId,
+              sessionId: request.session.sessionId,
+              event,
+            });
+          },
+        );
+        return { subscribed: true, snapshot };
+      }
+      case "unsubscribe_terminal":
+        this.terminals.unsubscribe(request.subscriptionId);
+        return { subscribed: false };
+      case "restart_terminal":
+        return {
+          snapshot: await this.terminals.restart(request.session, request.size),
+        };
+      case "kill_terminal":
+        return { killed: this.terminals.kill(request.sessionId) };
       case "create_session": {
         const created = await this.serializeSession(request.sessionId, async () => {
           const result = await this.registry.create(
@@ -485,6 +523,7 @@ export class ConnectorDaemon {
         this.subscriptions.delete(request.subscriptionId);
         return { subscribed: false };
       case "stop_session":
+        this.terminals.stopSession(request.sessionId);
         await this.registry.stopSession(request.sessionId);
         this.assertAccepting();
         await this.finishCapture(request.sessionId, true);
@@ -492,6 +531,7 @@ export class ConnectorDaemon {
         await this.journal.deleteSession(request.sessionId);
         return { stopped: true };
       case "stop_workspace": {
+        this.terminals.stopWorkspace(request.workspaceId);
         const removed = this.journal.sessionIdsForWorkspace(request.workspaceId);
         await this.registry.stopWorkspace(request.workspaceId);
         this.assertAccepting();
@@ -503,6 +543,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_connection": {
+        this.terminals.stopConnection(request.connectionId);
         const removed = this.journal.sessionIdsForConnection(request.connectionId);
         await this.registry.stopConnection(request.connectionId);
         this.assertAccepting();
@@ -514,6 +555,7 @@ export class ConnectorDaemon {
         return { stopped: true };
       }
       case "stop_all": {
+        this.terminals.stopAll();
         const removed = this.journal.sessionIds();
         await this.registry.stopAll();
         this.assertAccepting();

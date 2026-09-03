@@ -50,6 +50,23 @@ export function sshSpawnArgs(
   ];
 }
 
+export function sshTerminalArgs(alias: string, cwd: string): string[] {
+  if (!SAFE_ALIAS.test(alias)) throw new Error("Invalid SSH host alias.");
+  const remote = [
+    `cd -- ${shellQuote(cwd)}`,
+    'exec "${SHELL:-/bin/sh}" -il',
+  ].join(" && ");
+  return [
+    "-tt",
+    "-o",
+    "BatchMode=yes",
+    "-o",
+    "ConnectTimeout=10",
+    alias,
+    remote,
+  ];
+}
+
 export function sshTunnelArgs(
   alias: string,
   localPort: number,

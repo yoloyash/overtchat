@@ -8,6 +8,7 @@ import {
   type HostConnectorEventAck,
   type HostConnectorEventBatch,
   type HostConnectorEventPayload,
+  type HostConnectorCapability,
 } from "@overtchat/agent-bridge";
 import type { ResolvedAgentImage } from "@overtchat/agent-runtime";
 import {
@@ -20,6 +21,7 @@ import { ConnectorDaemon } from "./daemon.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
+import { connectorTerminalSupport } from "./terminal.js";
 import { CONNECTOR_VERSION } from "./version.js";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -29,7 +31,7 @@ const MAX_BUFFERED_LIVE_EVENTS = 2_048;
 
 type LiveEventPayload = Extract<
   HostConnectorEventPayload,
-  { type: "session_event" }
+  { type: "session_event" | "terminal_event" }
 >;
 
 type LiveEventBatch = {
@@ -63,8 +65,17 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
   });
 }
 
+function availableCapabilities(): HostConnectorCapability[] {
+  const terminalSupport = connectorTerminalSupport();
+  return HOST_CONNECTOR_CAPABILITIES.filter(
+    (capability) =>
+      capability !== "workspace-terminal-v1" || terminalSupport.available,
+  );
+}
+
 export class ConnectorClient {
   private readonly daemon: ConnectorDaemon;
+  private readonly capabilities = availableCapabilities();
   private readonly stopAbort = new AbortController();
   private commandStreamAbort: AbortController | undefined;
   private eventRequestAbort: AbortController | undefined;
@@ -200,8 +211,7 @@ export class ConnectorClient {
         headers: {
           Authorization: `Bearer ${this.config.token}`,
           "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
-          "X-OvertChat-Connector-Capabilities":
-            HOST_CONNECTOR_CAPABILITIES.join(","),
+          "X-OvertChat-Connector-Capabilities": this.capabilities.join(","),
           "X-OvertChat-Connector-Protocol": String(
             HOST_CONNECTOR_PROTOCOL_VERSION,
           ),
@@ -247,12 +257,13 @@ export class ConnectorClient {
   }
 
   private enqueue(payload: HostConnectorEventPayload): void {
-    if (payload.type === "session_event") {
+    if (payload.type === "session_event" || payload.type === "terminal_event") {
       if (this.stopped) return;
-      // The per-session timeline is already synced to disk before the daemon
-      // emits this live hint. Keeping a second durable copy here caused stale
-      // connectors to accumulate hundreds of megabytes. A lost/bounded hint is
-      // recovered through the authoritative session sync.
+      // Session events are recovered through authoritative timeline sync. A
+      // terminal event carries its own revision, so a lost/bounded hint makes
+      // the browser reattach from the connector's headless terminal snapshot.
+      // Keeping either high-volume stream in the durable journal would let an
+      // offline server grow connector state without bound.
       this.liveEvents.push(payload);
       if (this.liveEvents.length > MAX_BUFFERED_LIVE_EVENTS) {
         const displaced = this.liveEvents.splice(
@@ -314,8 +325,7 @@ export class ConnectorClient {
             Authorization: `Bearer ${this.config.token}`,
             "Content-Type": "application/json",
             "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
-            "X-OvertChat-Connector-Capabilities":
-              HOST_CONNECTOR_CAPABILITIES.join(","),
+            "X-OvertChat-Connector-Capabilities": this.capabilities.join(","),
             "X-OvertChat-Connector-Protocol": String(
               HOST_CONNECTOR_PROTOCOL_VERSION,
             ),

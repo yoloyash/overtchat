@@ -241,6 +241,74 @@ afterEach(async () => {
 });
 
 describe("connector daemon command identity", () => {
+  it("routes terminal subscriptions, input, and output through the daemon", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    const terminalSession = {
+      ...session,
+      cwd: process.cwd(),
+      sessionId: "terminal-daemon",
+    };
+    const marker = `terminal-daemon-${process.pid}`;
+
+    await daemon.handle({
+      type: "request",
+      requestId: "subscribe-terminal",
+      request: {
+        type: "subscribe_terminal",
+        subscriptionId: "terminal-subscription",
+        session: terminalSession,
+        size: { cols: 80, rows: 24 },
+      },
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "response",
+        requestId: "subscribe-terminal",
+        success: true,
+        data: expect.objectContaining({
+          subscribed: true,
+          snapshot: expect.objectContaining({
+            sessionId: "terminal-daemon",
+            cols: 80,
+            rows: 24,
+          }),
+        }),
+      }),
+    );
+
+    await daemon.handle({
+      type: "terminal_input",
+      sessionId: "terminal-daemon",
+      data: `printf '${marker}\\n'; exit\r`,
+    });
+    await vi.waitFor(
+      () => {
+        expect(events).toContainEqual(
+          expect.objectContaining({
+            type: "terminal_event",
+            subscriptionId: "terminal-subscription",
+            sessionId: "terminal-daemon",
+            event: expect.objectContaining({
+              type: "output",
+              data: expect.stringContaining(marker),
+            }),
+          }),
+        );
+      },
+      { timeout: 5_000 },
+    );
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("dispatches provider-neutral workspace file operations", async () => {
     const { journal, timelines } = await openJournal();
     const events: HostConnectorEventPayload[] = [];

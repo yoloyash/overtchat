@@ -13,6 +13,7 @@ import {
   PanelRight,
   Pencil,
   Sparkles,
+  SquareTerminal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
@@ -40,6 +41,8 @@ export function AgentSessionHeader({
   onCompact,
   filesOpen,
   onToggleFiles,
+  terminalOpen,
+  onToggleTerminal,
 }: {
   provider: AgentProviderId;
   workspaceId: string;
@@ -52,6 +55,8 @@ export function AgentSessionHeader({
   onCompact: () => void;
   filesOpen: boolean;
   onToggleFiles: () => void;
+  terminalOpen: boolean;
+  onToggleTerminal: () => void;
 }) {
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
@@ -107,6 +112,24 @@ export function AgentSessionHeader({
       </span>
       <WorkspaceGitSummary status={gitStatus} />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          title={
+            terminalOpen
+              ? "Close workspace terminal"
+              : "Open workspace terminal"
+          }
+          aria-pressed={terminalOpen}
+          onClick={onToggleTerminal}
+        >
+          <SquareTerminal />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"

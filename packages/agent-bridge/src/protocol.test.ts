@@ -66,6 +66,58 @@ describe("Host Connector protocol compatibility", () => {
     }
   });
 
+  it("validates additive workspace terminal commands and live events", () => {
+    const session = {
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/srv/project",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    } as const;
+    expect(
+      isHostConnectorCommand({
+        type: "request",
+        requestId: "request",
+        request: {
+          type: "subscribe_terminal",
+          subscriptionId: "terminal-subscription",
+          session,
+          size: { cols: 120, rows: 30 },
+        },
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorCommand({
+        type: "terminal_input",
+        sessionId: "session",
+        data: "npm test\r",
+      }),
+    ).toBe(true);
+    expect(
+      isHostConnectorCommand({
+        type: "terminal_resize",
+        sessionId: "session",
+        size: { cols: 0, rows: 30 },
+      }),
+    ).toBe(false);
+    expect(
+      isHostConnectorEvent({
+        sequence: 1,
+        payload: {
+          type: "terminal_event",
+          subscriptionId: "terminal-subscription",
+          sessionId: "session",
+          event: { type: "output", revision: 1, data: "ready\r\n" },
+        },
+      }),
+    ).toBe(true);
+  });
+
   it("accepts a session-directory snapshot and provider-independent upserts", () => {
     expect(
       isHostConnectorEvent({
