@@ -222,6 +222,9 @@ function ChatSurface({
     error,
   } = useChat({
     id: chatId,
+    // Rendering every provider delta makes the React Native tree contend with
+    // scrolling and touch handling. The AI SDK coalesces subscriber updates.
+    throttle: 60,
     resume: !isNew,
     transport,
     messages: initialMessages,
@@ -409,6 +412,7 @@ function ChatSurface({
   const isNewRef = useRef(isNew);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [localAnchorRequestKey, setLocalAnchorRequestKey] = useState(0);
 
   const lastErrorRef = useRef<Error | undefined>(undefined);
   useEffect(() => {
@@ -459,6 +463,7 @@ function ChatSurface({
         return [next, ...prev];
       });
     }
+    setLocalAnchorRequestKey((key) => key + 1);
     sendMessage(
       { text, files },
       { body: requestBody({ type: "submit" }, searchRequested) },
@@ -469,6 +474,7 @@ function ChatSurface({
 
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
+    setLocalAnchorRequestKey((key) => key + 1);
     regenerate({
       messageId,
       body: requestBody({
@@ -488,6 +494,7 @@ function ChatSurface({
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
     Keyboard.dismiss();
+    setLocalAnchorRequestKey((key) => key + 1);
     sendMessage(
       { text: trimmed, files, messageId },
       {
@@ -558,6 +565,7 @@ function ChatSurface({
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
+          localAnchorRequestKey={localAnchorRequestKey}
           readOnly={voiceReadOnly}
         />
       )}
