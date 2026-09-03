@@ -1,10 +1,7 @@
-import { getCookie } from "@better-auth/expo/client";
 import { File as FsFile } from "expo-file-system";
-import * as SecureStore from "expo-secure-store";
 import { fetch as expoFetch } from "expo/fetch";
+import { getAuthClient } from "@/lib/auth/client";
 import { getServerUrl } from "@/lib/server-url";
-
-const COOKIE_STORAGE_KEY = "overtchat_cookie";
 
 export function getApiBase(): string {
   const url = getServerUrl();
@@ -13,7 +10,7 @@ export function getApiBase(): string {
 }
 
 export function getAuthCookie(): string {
-  return getCookie(SecureStore.getItem(COOKIE_STORAGE_KEY) ?? "{}");
+  return getAuthClient().getCookie();
 }
 
 export function authFetch(
@@ -23,7 +20,9 @@ export function authFetch(
   const cookie = getAuthCookie();
   const headers = new Headers(init.headers as HeadersInit | undefined);
   if (cookie && !headers.has("Cookie")) headers.set("Cookie", cookie);
-  return expoFetch(input, { ...init, headers });
+  // Better Auth owns the cookie in SecureStore. Letting NSURLSession also add
+  // cookies from its shared jar can send duplicate (and stale) session tokens.
+  return expoFetch(input, { ...init, credentials: "omit", headers });
 }
 
 export type UploadCategory = "image" | "document" | "text" | "spreadsheet";
@@ -50,6 +49,7 @@ export async function uploadFile(file: {
   const res = await expoFetch(`${getApiBase()}/api/uploads`, {
     method: "POST",
     body: form,
+    credentials: "omit",
     headers: { Cookie: getAuthCookie() },
   });
 
