@@ -29,17 +29,24 @@ async function fetchAgentWorkspaceGitStatus(
 export function useAgentWorkspaceGitStatus(
   id: string,
   {
+    enabled = true,
     active = false,
     running = false,
-  }: { active?: boolean; running?: boolean } = {},
+  }: { enabled?: boolean; active?: boolean; running?: boolean } = {},
 ) {
   return useQuery({
     queryKey: agentWorkspaceKeys.gitStatus(id),
     queryFn: () => fetchAgentWorkspaceGitStatus(id),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && enabled,
     retry: false,
     staleTime: 4_000,
-    refetchInterval: running ? 2_000 : active ? 5_000 : false,
+    refetchInterval: enabled
+      ? running
+        ? 2_000
+        : active
+          ? 5_000
+          : false
+      : false,
   });
 }
 

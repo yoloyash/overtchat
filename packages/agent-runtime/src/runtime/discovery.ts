@@ -16,12 +16,61 @@ const AGENT_SHELL_MODES = [
   "login",
 ] as const satisfies readonly ConnectorShellMode[];
 
-const EXECUTABLE_DISCOVERY = String.raw`
+export const AGENT_INSTALLATION_DISCOVERY_SCRIPT = String.raw`
+set -u
+directory=$(mktemp -d "${"$"}{TMPDIR:-/tmp}/overtchat-agent-discovery.XXXXXX") || exit 1
+cleanup() { rm -rf -- "$directory"; }
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+i=0
 for candidate do
   resolved=$(command -v "$candidate" 2>/dev/null) || continue
   case "$resolved" in
-    /*) printf '%s\0%s\0' "$candidate" "$resolved" ;;
+    /*)
+      printf '%s\0%s\0' "$candidate" "$resolved" > "$directory/meta.$i"
+      "$resolved" --version > "$directory/version.$i" 2>&1 &
+      printf '%s' "$!" > "$directory/pid.$i"
+      i=$((i + 1))
+      ;;
   esac
+done
+
+ticks=0
+while [ "$ticks" -lt 100 ]; do
+  running=0
+  for pid_file in "$directory"/pid.*; do
+    [ -f "$pid_file" ] || continue
+    pid=$(cat "$pid_file")
+    if kill -0 "$pid" 2>/dev/null; then
+      running=1
+      break
+    fi
+  done
+  [ "$running" -eq 0 ] && break
+  sleep 0.1
+  ticks=$((ticks + 1))
+done
+
+for pid_file in "$directory"/pid.*; do
+  [ -f "$pid_file" ] || continue
+  index=${"$"}{pid_file##*.}
+  pid=$(cat "$pid_file")
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -TERM "$pid" 2>/dev/null || true
+    sleep 0.1
+    kill -KILL "$pid" 2>/dev/null || true
+  fi
+  if wait "$pid"; then
+    {
+      cat "$directory/meta.$index"
+      cat "$directory/version.$index"
+      printf '\0'
+    } > "$directory/result.$index"
+  fi
+done
+for file in "$directory"/result.*; do
+  [ -f "$file" ] || continue
+  cat "$file"
 done
 `.trim();
 
@@ -74,48 +123,40 @@ async function discoverAgentInstallationsInMode(
     command: "/bin/sh",
     args: [
       "-c",
-      EXECUTABLE_DISCOVERY,
+      AGENT_INSTALLATION_DISCOVERY_SCRIPT,
       "overtchat-agent-discovery",
       ...providers.map(({ executable }) => executable),
     ],
   });
   const fields = result.stdout.split("\0");
   if (fields.at(-1) === "") fields.pop();
-  const resolved = new Map<string, string>();
-  for (let index = 0; index + 1 < fields.length; index += 2) {
+  const installations = new Map<AgentProviderId, DetectedAgentInstallation>();
+  for (let index = 0; index + 2 < fields.length; index += 3) {
     const command = fields[index];
     const executable = fields[index + 1];
+    const versionOutput = fields[index + 2];
+    const provider = providers.find(
+      (candidate) => candidate.executable === command,
+    );
+    const version = parseAgentVersion(versionOutput ?? "");
     if (
-      command &&
+      provider &&
       executable?.startsWith("/") &&
-      executable.length <= 500
+      executable.length <= 500 &&
+      version
     ) {
-      resolved.set(command, executable);
+      installations.set(provider.id, {
+        provider: provider.id,
+        executable,
+        version,
+        shellMode,
+      });
     }
   }
-
-  const installations = await Promise.all(
-    providers.map(async ({ id, executable: command }) => {
-      const executable = resolved.get(command);
-      if (!executable) return null;
-      try {
-        const versionResult = await executeOnHost(resolvedTarget, {
-          command: executable,
-          args: ["--version"],
-        });
-        const version = parseAgentVersion(versionResult.stdout);
-        return version
-          ? { provider: id, executable, version, shellMode }
-          : null;
-      } catch {
-        return null;
-      }
-    }),
-  );
-  return installations.filter(
-    (installation): installation is DetectedAgentInstallation =>
-      installation !== null,
-  );
+  return providers.flatMap(({ id }) => {
+    const installation = installations.get(id);
+    return installation ? [installation] : [];
+  });
 }
 
 export async function discoverAgentInstallations(

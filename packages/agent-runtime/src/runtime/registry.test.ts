@@ -1676,6 +1676,47 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
+  it("uses a connector-supplied catalog without probing the provider again", async () => {
+    const resolveCatalog = vi.fn().mockResolvedValue({
+      provider: "codex",
+      models: [
+        {
+          provider: "codex",
+          id: "cached-model",
+          label: "Cached model",
+          isDefault: true,
+          api: "codex-app-server",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: null,
+          maxTokens: null,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      modes: [],
+      defaultModeId: null,
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      resolveCatalog,
+    });
+
+    const created = await registry.create("session", {
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+    });
+
+    expect(resolveCatalog).toHaveBeenCalledOnce();
+    expect(mocks.fetchCatalog).not.toHaveBeenCalled();
+    expect(created.launchConfig.model).toBe("cached-model");
+    await registry.stopAll();
+  });
+
   it("persists live model, thinking, and mode selections into resume metadata", async () => {
     const updateSessionMetadata = vi.fn();
     const registry = new AgentRuntimeRegistry({
