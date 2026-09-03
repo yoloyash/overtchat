@@ -46,4 +46,32 @@ describe("OMP provider adapter", () => {
       expect.objectContaining({ modeId: "full" }),
     );
   });
+
+  it("waits for OMP's terminal agent end across async continuations", () => {
+    const classifier = ompProviderAdapter.createEventClassifier();
+
+    expect(classifier.classify({ type: "agent_start" })).toMatchObject({
+      started: true,
+      terminal: false,
+    });
+    classifier.classify({
+      type: "message_end",
+      message: { role: "assistant", content: "First pass" },
+    });
+
+    expect(
+      classifier.classify({
+        type: "agent_end",
+        isTerminal: false,
+        messages: [{ role: "assistant", content: "First pass" }],
+      }),
+    ).toMatchObject({ terminal: false });
+    expect(
+      classifier.classify({
+        type: "agent_end",
+        isTerminal: true,
+        messages: [{ role: "assistant", content: "Final pass" }],
+      }),
+    ).toMatchObject({ terminal: true });
+  });
 });

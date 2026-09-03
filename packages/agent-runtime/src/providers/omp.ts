@@ -61,6 +61,7 @@ class OmpEventClassifier implements AgentRuntimeEventClassifier {
     }
     const terminal =
       (event.type === "agent_end" &&
+        event.isTerminal !== false &&
         (this.sawAssistant ||
           (Array.isArray(event.messages) &&
             event.messages.some((message) => messageRole(message) === "assistant")))) ||
@@ -116,6 +117,10 @@ async function fetchCatalog(
 
 export const ompProviderAdapter: AgentProviderAdapter = {
   provider: "omp",
+  // OMP's live events preserve display chronology across async-result
+  // continuations. Replacing them at settle time with its mutable model-context
+  // snapshot can move already-rendered tool and custom-message rows.
+  refreshMessagesAfterTerminal: false,
   startSession(target, launch) {
     return startOmp(target, {
       executable: launch.executable,
