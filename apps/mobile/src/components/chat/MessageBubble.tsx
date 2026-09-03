@@ -43,6 +43,7 @@ export function MessageBubble({
   const [copied, setCopied] = useState(false);
   const menu = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
 
   useEffect(() => {
     return () => {
@@ -152,8 +153,6 @@ export function MessageBubble({
         ? ["copy"]
         : ["copy", "regenerate"]
       : [];
-  const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
-
   function onAssistantMenuSelect(action: MessageAction) {
     if (action === "copy") copyText(text);
     else if (action === "regenerate") onRegenerate(message.id);

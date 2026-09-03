@@ -3,12 +3,12 @@ import {
   Ionicons,
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
+import { useLayoutState } from "@shopify/flash-list";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Image,
-  LayoutAnimation,
   Linking,
   Pressable,
   StyleSheet,
@@ -67,7 +67,7 @@ export function ChainOfThought({
   active: boolean;
 }) {
   const { colors, fonts } = useTheme();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useLayoutState(false);
   const [duration, setDuration] = useState(0);
   const startedAtRef = useRef<number | null>(null);
   const settledRef = useRef(false);
@@ -106,9 +106,6 @@ export function ChainOfThought({
   const label = active ? activeLabel(last) : settledLabel(parts, duration);
 
   function toggle() {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(180, "easeInEaseOut", "opacity"),
-    );
     setOpen((o) => !o);
   }
 
@@ -400,7 +397,7 @@ const RESULTS_PREVIEW = 5;
 
 function SearchStep({ part }: { part: WebSearchPart }) {
   const { colors, fonts } = useTheme();
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useLayoutState(false);
   const query = part.input?.query?.trim();
   const results = webSearchResults(part.output);
   const provider = webSearchProviderLabel(part.output);
@@ -412,9 +409,6 @@ function SearchStep({ part }: { part: WebSearchPart }) {
   const hidden = results.length - visible.length;
 
   function toggleShowAll() {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(180, "easeInEaseOut", "opacity"),
-    );
     setShowAll((s) => !s);
   }
 
