@@ -1618,6 +1618,9 @@ test("shows durable turn activity without changing completed tool status", async
     name: "Model and effort: GPT-5.6, High",
   });
   await expect(modelEffortControl).toBeEnabled();
+  await expect(
+    modelEffortControl.getByTestId("agent-effort-label"),
+  ).toHaveText("· High");
   await modelEffortControl.click();
   await expect(
     page.getByRole("button", { name: "Scroll to bottom" }),
@@ -1702,6 +1705,12 @@ test("shows durable turn activity without changing completed tool status", async
       },
     });
   }, imageModel);
+  const lowModelEffortControl = agentComposer.getByRole("button", {
+    name: "Model and effort: GPT-5.6, Low",
+  });
+  await expect(
+    lowModelEffortControl.getByTestId("agent-effort-label"),
+  ).toHaveText("· Low");
   const planModeControl = agentComposer.getByRole("button", {
     name: "Plan mode",
   });
@@ -1718,11 +1727,7 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(planModeControl).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 720 });
-  await agentComposer
-    .getByRole("button", {
-      name: "Model and effort: GPT-5.6, Low",
-    })
-    .click();
+  await lowModelEffortControl.click();
   await page
     .getByRole("menu", { name: "Model and effort" })
     .getByRole("menuitem", { name: /Model.*GPT-5\.6/u })

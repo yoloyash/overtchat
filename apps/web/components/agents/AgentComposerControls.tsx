@@ -247,7 +247,9 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   const modelLabel =
     selectedModel?.label ?? props.currentModel?.id ?? props.providerLabel;
   const effortLabel = props.thinkingLevel
-    ? thinkingLabel(props.thinkingLevel)
+    ? (props.thinkingOptions.find(
+        (option) => option.id === props.thinkingLevel,
+      )?.label ?? thinkingLabel(props.thinkingLevel))
     : null;
   const accessibleLabel = effortLabel
     ? `Model and effort: ${modelLabel}, ${effortLabel}`
@@ -289,7 +291,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="min-w-0 max-w-32 gap-1.5 px-2 @lg:max-w-48 @2xl:max-w-56"
+            className="min-w-0 shrink max-w-32 gap-1.5 px-2 @lg:max-w-48 @2xl:max-w-56"
             disabled={props.disabled}
             aria-label={accessibleLabel}
             data-testid="agent-model-effort-trigger"
@@ -298,10 +300,18 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
       >
         <ModelBrandIcon
           iconId={iconForModel(selectedModel)}
-          className="size-4"
+          className="size-4 shrink-0"
         />
-        <span className="truncate">{modelLabel}</span>
-        <ChevronDown className="text-muted-foreground" />
+        <span className="min-w-0 truncate">{modelLabel}</span>
+        {showEffort && effortLabel && (
+          <span
+            className="shrink-0 text-muted-foreground"
+            data-testid="agent-effort-label"
+          >
+            · {effortLabel}
+          </span>
+        )}
+        <ChevronDown className="shrink-0 text-muted-foreground" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
