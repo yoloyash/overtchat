@@ -442,6 +442,17 @@ export class ConnectorDaemon {
           ...(this.serverCapabilities.has("session-sync-v1") ? { sync } : {}),
         };
       }
+      case "restart_session":
+        return this.serializeSession(request.session.sessionId, async () => {
+          // Freeze the old runtime's timeline before stopping it so its
+          // synthetic exit snapshot cannot briefly replace the resumed state.
+          await this.finishCapture(request.session.sessionId, false);
+          this.assertAccepting();
+          await this.registry.stopSession(request.session.sessionId);
+          this.assertAccepting();
+          const runtime = await this.openRuntime(request.session);
+          return { restarted: true, snapshot: runtime.snapshot() };
+        });
       case "session_command":
         if (request.command.type === "show_usage") {
           const runtime =

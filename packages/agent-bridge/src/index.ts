@@ -29,6 +29,7 @@ export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
   "command-wal-v1",
   "workspace-files-v1",
+  "restart-session-v1",
 ] as const;
 export type HostConnectorCapability =
   (typeof HOST_CONNECTOR_CAPABILITIES)[number];
@@ -121,6 +122,10 @@ export type AgentDaemonRequest =
       type: "open_session";
       session: AgentDaemonSessionDescriptor;
       after?: AgentRuntimeCursor;
+    }
+  | {
+      type: "restart_session";
+      session: AgentDaemonSessionDescriptor;
     }
   | {
       type: "session_command";
@@ -347,6 +352,8 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
         isAgentDaemonSessionDescriptor(value.session) &&
         (value.after === undefined || isAgentRuntimeCursor(value.after))
       );
+    case "restart_session":
+      return isAgentDaemonSessionDescriptor(value.session);
     case "session_command":
       return (
         isNonEmptyString(value.commandId) &&

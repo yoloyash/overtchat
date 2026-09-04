@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type {
   AgentInteractionValue,
   AgentRuntimeSnapshot,
+  AgentSessionStats,
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
@@ -405,6 +407,139 @@ export function AgentUsageDialog({
       </Dialog.Portal>
     </Dialog.Root>
   );
+}
+
+export function AgentSessionStatsDialog({
+  open,
+  stats,
+  onOpenChange,
+}: {
+  open: boolean;
+  stats: AgentSessionStats;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!open) return null;
+  const rows = [
+    ["Input", formatInteger(stats.tokens.input)],
+    ["Output", formatInteger(stats.tokens.output)],
+    ["Cache read", formatInteger(stats.tokens.cacheRead)],
+    ["Total", formatInteger(stats.tokens.total)],
+    ["Estimated cost", formatCost(stats.cost)],
+    ["Tool calls", formatInteger(stats.toolCalls)],
+  ];
+
+  return (
+    <Dialog.Root open onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Backdrop className={dialogBackdrop} />
+        <Dialog.Popup className={dialogPopup}>
+          <Dialog.Title className="text-lg font-semibold tracking-tight">
+            Session usage
+          </Dialog.Title>
+          <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+            Tokens, tool calls, and estimated cost for this session.
+          </Dialog.Description>
+          <dl className="mt-5 space-y-3 text-sm">
+            {rows.map(([label, value]) => (
+              <div
+                key={label}
+                className="flex items-center justify-between gap-4"
+              >
+                <dt className="text-muted-foreground">{label}</dt>
+                <dd className="font-mono tabular-nums">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <DialogActions>
+            <Button type="button" size="sm" onClick={() => onOpenChange(false)}>
+              Done
+            </Button>
+          </DialogActions>
+        </Dialog.Popup>
+      </Dialog.Portal>
+    </Dialog.Root>
+  );
+}
+
+export function RestartAgentSessionDialog({
+  providerLabel,
+  open,
+  running,
+  pending,
+  error,
+  onOpenChange,
+  onConfirm,
+}: {
+  providerLabel: string;
+  open: boolean;
+  running: boolean;
+  pending: boolean;
+  error?: string;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <AlertDialog.Root
+      open
+      onOpenChange={(next) => {
+        if (!pending) onOpenChange(next);
+      }}
+    >
+      <AlertDialog.Portal>
+        <AlertDialog.Backdrop className={dialogBackdrop} />
+        <AlertDialog.Popup className={dialogPopup}>
+          <AlertDialog.Title className="text-lg font-semibold tracking-tight">
+            Restart {providerLabel}?
+          </AlertDialog.Title>
+          <AlertDialog.Description className="mt-1 text-sm text-muted-foreground">
+            This closes and relaunches {providerLabel} for this session, then
+            resumes the same conversation. Your other sessions aren&apos;t
+            affected.
+            {running ? " The current response will stop." : ""}
+          </AlertDialog.Description>
+          {error && <DialogError>{error}</DialogError>}
+          <DialogActions>
+            <AlertDialog.Close
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={pending}
+                />
+              }
+            >
+              Cancel
+            </AlertDialog.Close>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={pending}
+              onClick={onConfirm}
+            >
+              {pending && <PendingIcon />}
+              Restart {providerLabel}
+            </Button>
+          </DialogActions>
+        </AlertDialog.Popup>
+      </AlertDialog.Portal>
+    </AlertDialog.Root>
+  );
+}
+
+function formatInteger(value: number): string {
+  return new Intl.NumberFormat().format(value);
+}
+
+function formatCost(value: number): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 2,
+    maximumFractionDigits: value > 0 && value < 0.01 ? 4 : 2,
+  }).format(value);
 }
 
 function formatPlanType(value: string): string {

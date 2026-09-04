@@ -893,8 +893,12 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
     await expect(
       page.getByTestId("agent-composer").getByRole("combobox"),
     ).toBeVisible();
-    await expect(page.getByLabel("Session usage")).toBeVisible();
     await expect(page.getByLabel("Session actions")).toBeVisible();
+    await page.getByLabel("Session actions").click();
+    await expect(
+      page.getByRole("menuitem", { name: "Session usage" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 
   await test.step("select and execute a built-in slash command", async () => {

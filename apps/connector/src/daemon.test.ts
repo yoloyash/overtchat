@@ -563,6 +563,37 @@ describe("connector daemon command identity", () => {
     await journal.close();
   });
 
+  it("restarts one provider process and keeps its durable session", async () => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    await journal.recordSession(session);
+    const daemon = new ConnectorDaemon(
+      (event) => events.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+
+    await daemon.handle({
+      type: "request",
+      requestId: "restart-request",
+      request: { type: "restart_session", session },
+    });
+
+    expect(mocks.stopSession).toHaveBeenCalledWith("session");
+    expect(mocks.getOrStart).toHaveBeenCalledOnce();
+    expect(journal.sessionIds()).toEqual(["session"]);
+    expect(events).toContainEqual({
+      type: "response",
+      requestId: "restart-request",
+      success: true,
+      data: { restarted: true, snapshot: mocks.snapshot() },
+    });
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("persists runtime events before forwarding them to a subscriber", async () => {
     const { journal, timelines } = await openJournal();
     const emitted: HostConnectorEventPayload[] = [];

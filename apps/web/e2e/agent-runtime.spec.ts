@@ -1125,6 +1125,34 @@ test("shows durable turn activity without changing completed tool status", async
     "title",
     "feature/runtime-status · 2 changed files · +8 −3",
   );
+  const accountUsageButton = page.getByRole("button", {
+    name: "Account usage",
+  });
+  const sessionActionsButton = page.getByRole("button", {
+    name: "Session actions",
+  });
+  const workspaceFilesButton = page.getByRole("button", {
+    name: "Open workspace files",
+  });
+  await expect(accountUsageButton).toBeVisible();
+  const [accountUsageBox, sessionActionsBox, workspaceFilesBox] =
+    await Promise.all([
+      accountUsageButton.boundingBox(),
+      sessionActionsButton.boundingBox(),
+      workspaceFilesButton.boundingBox(),
+    ]);
+  expect(accountUsageBox).not.toBeNull();
+  expect(sessionActionsBox).not.toBeNull();
+  expect(workspaceFilesBox).not.toBeNull();
+  expect(accountUsageBox!.x).toBeLessThan(sessionActionsBox!.x);
+  expect(sessionActionsBox!.x).toBeLessThan(workspaceFilesBox!.x);
+  await accountUsageButton.click();
+  const accountUsage = page.getByRole("dialog", { name: "Codex usage" });
+  await expect(accountUsage).toBeVisible();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "show_usage",
+  });
+  await accountUsage.getByRole("button", { name: "Done" }).click();
   await page.getByRole("button", { name: "Session actions" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Copy workspace path" }),
@@ -1132,7 +1160,24 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("menuitem", { name: "Copy branch name" }),
   ).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByRole("menuitem", { name: "Session usage" }).click();
+  const sessionUsage = page.getByRole("dialog", { name: "Session usage" });
+  await expect(sessionUsage).toContainText("Tool calls");
+  await sessionUsage.getByRole("button", { name: "Done" }).click();
+  await sessionActionsButton.click();
+  await page.getByRole("menuitem", { name: "Restart Codex" }).click();
+  const restartDialog = page.getByRole("alertdialog", {
+    name: "Restart Codex?",
+  });
+  await expect(restartDialog).toContainText(
+    "Your other sessions aren't affected",
+  );
+  await expect(restartDialog).toContainText("current response will stop");
+  await restartDialog.getByRole("button", { name: "Restart Codex" }).click();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "restart_agent",
+  });
+  await expect(page.getByText("Codex restarted")).toBeVisible();
   const newSessionButton = page.getByRole("button", {
     name: "New session in Runtime test",
   });

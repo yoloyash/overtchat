@@ -467,3 +467,25 @@ export function useAgentSessionUsage(id: string) {
     },
   });
 }
+
+export function useAgentSessionRestart(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (): Promise<void> => {
+      const response = await fetch(`/api/agent-sessions/${id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "restart_agent" }),
+      });
+      if (!response.ok) throw await responseError(response);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: agentSessionKeys.detail(id),
+      });
+      void queryClient.invalidateQueries({
+        queryKey: agentConnectionKeys.list(),
+      });
+    },
+  });
+}
