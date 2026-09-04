@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -458,74 +457,6 @@ export function AgentSessionStatsDialog({
         </Dialog.Popup>
       </Dialog.Portal>
     </Dialog.Root>
-  );
-}
-
-export function RestartAgentSessionDialog({
-  providerLabel,
-  open,
-  running,
-  pending,
-  error,
-  onOpenChange,
-  onConfirm,
-}: {
-  providerLabel: string;
-  open: boolean;
-  running: boolean;
-  pending: boolean;
-  error?: string;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-}) {
-  if (!open) return null;
-  return (
-    <AlertDialog.Root
-      open
-      onOpenChange={(next) => {
-        if (!pending) onOpenChange(next);
-      }}
-    >
-      <AlertDialog.Portal>
-        <AlertDialog.Backdrop className={dialogBackdrop} />
-        <AlertDialog.Popup className={dialogPopup}>
-          <AlertDialog.Title className="text-lg font-semibold tracking-tight">
-            Restart {providerLabel}?
-          </AlertDialog.Title>
-          <AlertDialog.Description className="mt-1 text-sm text-muted-foreground">
-            This closes and relaunches {providerLabel} for this session, then
-            resumes the same conversation. Your other sessions aren&apos;t
-            affected.
-            {running ? " The current response will stop." : ""}
-          </AlertDialog.Description>
-          {error && <DialogError>{error}</DialogError>}
-          <DialogActions>
-            <AlertDialog.Close
-              render={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={pending}
-                />
-              }
-            >
-              Cancel
-            </AlertDialog.Close>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              disabled={pending}
-              onClick={onConfirm}
-            >
-              {pending && <PendingIcon />}
-              Restart {providerLabel}
-            </Button>
-          </DialogActions>
-        </AlertDialog.Popup>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
   );
 }
 

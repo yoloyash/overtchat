@@ -33,7 +33,6 @@ export function isConnectorCommandBarrier(
     (command.type === "request" &&
       [
         "stop_session",
-        "restart_session",
         "stop_workspace",
         "stop_connection",
         "stop_all",

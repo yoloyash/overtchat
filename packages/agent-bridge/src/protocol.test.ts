@@ -66,30 +66,6 @@ describe("Host Connector protocol compatibility", () => {
     }
   });
 
-  it("validates provider-session restart requests", () => {
-    expect(
-      isHostConnectorCommand({
-        type: "request",
-        requestId: "restart",
-        request: {
-          type: "restart_session",
-          session: {
-            connectionId: "connection",
-            workspaceId: "workspace",
-            provider: "codex",
-            target: { transport: "local" },
-            executable: "codex",
-            cwd: "/workspace",
-            sessionId: "session",
-            providerSessionId: "provider-session",
-            providerSessionPath: "/sessions/provider-session.jsonl",
-            launchConfig: {},
-          },
-        },
-      }),
-    ).toBe(true);
-  });
-
   it("accepts a session-directory snapshot and provider-independent upserts", () => {
     expect(
       isHostConnectorEvent({

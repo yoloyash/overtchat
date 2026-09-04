@@ -12,7 +12,6 @@ import {
   MoreHorizontal,
   PanelRight,
   Pencil,
-  RefreshCw,
   Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,8 +40,6 @@ export function AgentSessionHeader({
   accountUsageAvailable,
   accountUsagePending,
   onShowAccountUsage,
-  restartPending,
-  onRestart,
   filesOpen,
   onToggleFiles,
 }: {
@@ -58,8 +55,6 @@ export function AgentSessionHeader({
   accountUsageAvailable: boolean;
   accountUsagePending: boolean;
   onShowAccountUsage: () => void;
-  restartPending: boolean;
-  onRestart: () => void;
   filesOpen: boolean;
   onToggleFiles: () => void;
 }) {
@@ -197,15 +192,6 @@ export function AgentSessionHeader({
                 >
                   <Sparkles className="size-3.5 text-muted-foreground" />
                   Compact context
-                </Menu.Item>
-                <Menu.Separator className="my-1 h-px bg-border" />
-                <Menu.Item
-                  disabled={commandPending || restartPending}
-                  onClick={onRestart}
-                  className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 text-destructive outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-destructive/10"
-                >
-                  <RefreshCw className="size-3.5" />
-                  Restart {providerMetadata.label}…
                 </Menu.Item>
               </Menu.Popup>
             </Menu.Positioner>

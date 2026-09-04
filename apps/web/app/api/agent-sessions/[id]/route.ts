@@ -117,52 +117,8 @@ export async function POST(
   const { id } = await params;
   const authorized = await authorize(req, id);
   if ("error" in authorized) return authorized.error;
-  const body = await req.json().catch(() => null);
-  if (
-    body &&
-    typeof body === "object" &&
-    !Array.isArray(body) &&
-    Reflect.get(body, "type") === "restart_agent"
-  ) {
-    if (
-      !hostConnectorBroker.supports(
-        authorized.owned.host.connectorId,
-        "restart-session-v1",
-      )
-    ) {
-      return Response.json(
-        { error: "Update the Host Connector to restart agent sessions." },
-        { status: 409 },
-      );
-    }
-    try {
-      const result = await hostConnectorBroker.request<{
-        restarted?: boolean;
-        snapshot?: AgentRuntimeSnapshot;
-      }>(authorized.owned.host.connectorId, {
-        type: "restart_session",
-        session: daemonSession(authorized.owned),
-      });
-      if (!result.restarted || result.snapshot?.sessionId !== id) {
-        throw new Error("The Host Connector did not restart this session.");
-      }
-      return Response.json({ accepted: true });
-    } catch (error) {
-      return Response.json(
-        {
-          error: connectionErrorMessage(
-            error,
-            isAgentProviderId(authorized.owned.connection.provider)
-              ? authorized.owned.connection.provider
-              : "pi",
-          ),
-        },
-        { status: 400 },
-      );
-    }
-  }
   const parsed = agentSessionCommandSchema.safeParse(
-    body,
+    await req.json().catch(() => null),
   );
   if (!parsed.success) {
     return Response.json(

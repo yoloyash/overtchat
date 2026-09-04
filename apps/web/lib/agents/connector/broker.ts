@@ -49,7 +49,6 @@ function sessionIdForRequest(request: AgentDaemonRequest): string | undefined {
     case "stop_session":
       return request.sessionId;
     case "open_session":
-    case "restart_session":
     case "session_command":
     case "subscribe_session":
       return request.session.sessionId;

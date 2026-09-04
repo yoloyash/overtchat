@@ -35,7 +35,6 @@ import { agentProviderMetadata } from "@overtchat/agent-bridge";
 import {
   useAgentSession,
   useAgentSessionCommand,
-  useAgentSessionRestart,
   useAgentSessionUsage,
 } from "@/lib/queries/agentSessions";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
@@ -57,7 +56,6 @@ import {
   AgentUsageDialog,
   CompactAgentSessionDialog,
   RenameAgentSessionDialog,
-  RestartAgentSessionDialog,
 } from "./AgentSessionDialogs";
 import { AgentMessageList } from "./AgentMessageList";
 import type { AgentRunActivity } from "./AgentActivity";
@@ -233,7 +231,6 @@ export function AgentSessionView({
   const session = useAgentSession(sessionId);
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
-  const restartCommand = useAgentSessionRestart(sessionId);
   const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
     AGENT_CREATE_PREFERENCES_KEY,
     DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -248,8 +245,6 @@ export function AgentSessionView({
   const [usageOpen, setUsageOpen] = useState(false);
   const [usageError, setUsageError] = useState("");
   const [sessionUsageOpen, setSessionUsageOpen] = useState(false);
-  const [restartOpen, setRestartOpen] = useState(false);
-  const [restartError, setRestartError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [restoredDraft, setRestoredDraft] = useState<{
@@ -504,22 +499,6 @@ export function AgentSessionView({
     }
   }
 
-  async function restartAgent(): Promise<void> {
-    if (restartCommand.isPending) return;
-    setRestartError("");
-    try {
-      await restartCommand.mutateAsync();
-      setRestartOpen(false);
-      toast.success({ title: `${providerLabel} restarted` });
-    } catch (cause) {
-      setRestartError(
-        cause instanceof Error
-          ? cause.message
-          : `${providerLabel} could not be restarted.`,
-      );
-    }
-  }
-
   async function submit(
     message: string,
     images: AgentPromptImage[],
@@ -636,15 +615,10 @@ export function AgentSessionView({
             readOnly={Boolean(readOnly)}
             accountUsageAvailable={snapshot.capabilities.usage === true}
             accountUsagePending={usageCommand.isPending}
-            restartPending={restartCommand.isPending}
             filesOpen={filesOpen}
             onToggleFiles={() => setFilesOpen(!filesOpen)}
             onShowSessionUsage={() => setSessionUsageOpen(true)}
             onShowAccountUsage={() => void showUsage()}
-            onRestart={() => {
-              setRestartError("");
-              setRestartOpen(true);
-            }}
             onRename={() => {
               setDialogError("");
               setRenameOpen(true);
@@ -902,18 +876,6 @@ export function AgentSessionView({
             open={sessionUsageOpen}
             stats={snapshot.stats}
             onOpenChange={setSessionUsageOpen}
-          />
-          <RestartAgentSessionDialog
-            providerLabel={providerLabel}
-            open={restartOpen}
-            running={running}
-            pending={restartCommand.isPending}
-            error={restartError}
-            onOpenChange={(open) => {
-              setRestartError("");
-              setRestartOpen(open);
-            }}
-            onConfirm={() => void restartAgent()}
           />
         </div>
 

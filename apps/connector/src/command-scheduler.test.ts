@@ -105,27 +105,6 @@ describe("ConnectorCommandScheduler", () => {
     expect(
       isConnectorCommandBarrier({
         type: "request",
-        requestId: "restart",
-        request: {
-          type: "restart_session",
-          session: {
-            connectionId: "connection",
-            workspaceId: "workspace",
-            provider: "codex",
-            target: { transport: "local" },
-            executable: "codex",
-            cwd: "/workspace",
-            sessionId: "session",
-            providerSessionId: "provider-session",
-            providerSessionPath: "/sessions/provider-session.jsonl",
-            launchConfig: {},
-          },
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isConnectorCommandBarrier({
-        type: "request",
         requestId: "stop",
         request: { type: "stop_all" },
       }),

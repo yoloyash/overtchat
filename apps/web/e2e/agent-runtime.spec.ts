@@ -1164,20 +1164,6 @@ test("shows durable turn activity without changing completed tool status", async
   const sessionUsage = page.getByRole("dialog", { name: "Session usage" });
   await expect(sessionUsage).toContainText("Tool calls");
   await sessionUsage.getByRole("button", { name: "Done" }).click();
-  await sessionActionsButton.click();
-  await page.getByRole("menuitem", { name: "Restart Codex" }).click();
-  const restartDialog = page.getByRole("alertdialog", {
-    name: "Restart Codex?",
-  });
-  await expect(restartDialog).toContainText(
-    "Your other sessions aren't affected",
-  );
-  await expect(restartDialog).toContainText("current response will stop");
-  await restartDialog.getByRole("button", { name: "Restart Codex" }).click();
-  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "restart_agent",
-  });
-  await expect(page.getByText("Codex restarted")).toBeVisible();
   const newSessionButton = page.getByRole("button", {
     name: "New session in Runtime test",
   });

@@ -8,7 +8,6 @@ const mocks = vi.hoisted(() => ({
   updateAgentSessionMetadata: vi.fn(),
   upsertAgentSession: vi.fn(),
   daemonRequest: vi.fn(),
-  connectorSupports: vi.fn(),
   replaceBrokerSession: vi.fn(),
 }));
 
@@ -26,7 +25,6 @@ vi.mock("@/lib/db/agentConnections", () => ({
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
     request: mocks.daemonRequest,
-    supports: mocks.connectorSupports,
     replaceSessionProviderSession: mocks.replaceBrokerSession,
   },
 }));
@@ -97,7 +95,6 @@ describe("agent session route", () => {
       user: { id: "owner", role: "admin" },
     });
     mocks.getOwnedAgentSession.mockResolvedValue(owned);
-    mocks.connectorSupports.mockReturnValue(true);
     mocks.daemonRequest.mockImplementation(
       async (_connectorId: string, command: { type: string }) =>
         command.type === "open_session"
@@ -310,41 +307,6 @@ describe("agent session route", () => {
       command: { type: "show_usage" },
     });
     expect(mocks.updateAgentSessionMetadata).not.toHaveBeenCalled();
-  });
-
-  it("restarts only the current provider session", async () => {
-    mocks.daemonRequest.mockResolvedValue({ restarted: true, snapshot });
-
-    const response = await POST(
-      request("POST", { type: "restart_agent" }),
-      context,
-    );
-
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ accepted: true });
-    expect(mocks.connectorSupports).toHaveBeenCalledWith(
-      "connector",
-      "restart-session-v1",
-    );
-    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
-      type: "restart_session",
-      session: sessionDescriptor,
-    });
-  });
-
-  it("asks for a connector update when session restart is unavailable", async () => {
-    mocks.connectorSupports.mockReturnValue(false);
-
-    const response = await POST(
-      request("POST", { type: "restart_agent" }),
-      context,
-    );
-
-    expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({
-      error: "Update the Host Connector to restart agent sessions.",
-    });
-    expect(mocks.daemonRequest).not.toHaveBeenCalled();
   });
 
   it("keeps the OvertChat session id when an edit replaces its provider thread", async () => {
