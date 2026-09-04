@@ -164,6 +164,17 @@ test("sidebar tracks generation after leaving the active chat", async ({
     });
     await expect(generating).toBeVisible();
 
+    const generatingRow = generating.locator("xpath=ancestor::li[1]");
+    const chatActions = generatingRow.getByRole("button", {
+      name: "Chat actions",
+    });
+    await expect(chatActions).toHaveCSS("opacity", "0");
+    await generatingRow.hover();
+    await expect(generating).toHaveCSS("opacity", "0");
+    await expect(chatActions).toHaveCSS("opacity", "1");
+    await page.getByRole("link", { name: /New chat/u }).hover();
+    await expect(generating).toHaveCSS("opacity", "1");
+
     await page.getByRole("link", { name: /New chat/u }).click();
     await expect(page).toHaveURL(/\/$/u);
     await expect(generating).toBeVisible();

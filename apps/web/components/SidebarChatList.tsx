@@ -199,15 +199,27 @@ export function SidebarItem({
           href={`/chat/${chat.id}`}
           onClick={closeMobile}
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
             active && "bg-sidebar-accent",
           )}
         >
+          {chat.title ? (
+            <RevealedTitle
+              key={chat.title}
+              title={chat.title}
+              reveal={revealNextTitle}
+              onComplete={markTitleRevealComplete}
+            />
+          ) : (
+            "Untitled"
+          )}
+        </Link>
+        <div className="relative mr-0.5 size-5.5 shrink-0 max-md:size-7.5">
           {generating && (
             <span
               role="status"
               aria-label={`Generating response for ${chat.title?.trim() || "Untitled"}`}
-              className="shrink-0 text-muted-foreground"
+              className="pointer-events-none absolute inset-0 flex items-center justify-center text-muted-foreground motion-opacity group-hover:opacity-0 group-focus-within:opacity-0"
             >
               <LoaderCircle
                 aria-hidden="true"
@@ -215,21 +227,7 @@ export function SidebarItem({
               />
             </span>
           )}
-          <span className="min-w-0 truncate">
-            {chat.title ? (
-              <RevealedTitle
-                key={chat.title}
-                title={chat.title}
-                reveal={revealNextTitle}
-                onComplete={markTitleRevealComplete}
-              />
-            ) : (
-              "Untitled"
-            )}
-          </span>
-        </Link>
-        <div className="relative mr-0.5 size-5.5 shrink-0 max-md:size-7.5">
-          {chat.kind === "voice" && (
+          {chat.kind === "voice" && !generating && (
             <AudioWaveform
               aria-label="Voice chat"
               className="pointer-events-none absolute inset-0 m-auto size-3.5 text-muted-foreground group-hover:hidden group-focus-within:hidden max-md:hidden"
@@ -240,7 +238,9 @@ export function SidebarItem({
               aria-label="Chat actions"
               className={cn(
                 "absolute inset-0 flex items-center justify-center rounded hover:bg-sidebar-accent",
-                motionClasses.hoverReveal,
+                generating
+                  ? "opacity-0 motion-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[popup-open]:opacity-100"
+                  : motionClasses.hoverReveal,
               )}
             >
               <MoreHorizontal className="size-3.5 text-muted-foreground" />
