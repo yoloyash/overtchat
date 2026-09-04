@@ -39,6 +39,7 @@ import {
 } from "@/lib/queries/agentSessions";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
 import { latestAgentTaskList } from "@/lib/agents/presentation";
+import { agentSessionDraftRestoreKey } from "@/lib/agents/sessionDraft";
 import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -166,10 +167,6 @@ function currentGoal(snapshot: AgentRuntimeSnapshot): AgentGoal | null {
     createdAt: typeof goal.createdAt === "number" ? goal.createdAt : 0,
     updatedAt: typeof goal.updatedAt === "number" ? goal.updatedAt : 0,
   };
-}
-
-function forkDraftKey(sessionId: string): string {
-  return `overtchat:agent-fork-draft:${sessionId}`;
 }
 
 function workspaceFileSelection(value: unknown): AgentWorkspaceFileSelection | null {
@@ -447,7 +444,7 @@ export function AgentSessionView({
             return true;
           }
           window.sessionStorage.setItem(
-            forkDraftKey(result.sessionId),
+            agentSessionDraftRestoreKey(result.sessionId),
             draft,
           );
         }
@@ -799,7 +796,7 @@ export function AgentSessionView({
                 onSteerQueued={(id) =>
                   run({ type: "steer_queued_message", id })
                 }
-                restoreDraftKey={forkDraftKey(sessionId)}
+                restoreDraftKey={agentSessionDraftRestoreKey(sessionId)}
                 restoredDraft={restoredDraft}
               />
             </div>
