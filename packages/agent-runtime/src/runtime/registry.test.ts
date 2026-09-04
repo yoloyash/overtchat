@@ -41,6 +41,7 @@ const stats = {
 vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
   agentProviderAdapter: (provider: AgentProviderId) => ({
     provider,
+    refreshMessagesAfterTerminal: provider !== "omp",
     capabilities: { steer: true },
     probeConnection: vi.fn(),
     probeTarget: vi.fn(),
@@ -617,6 +618,83 @@ describe("agent runtime", () => {
       ]);
     });
     expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it("preserves OMP live transcript order when the provider settles", async () => {
+    mocks.getMessages
+      .mockResolvedValueOnce({ messages: [] })
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "final", role: "assistant", content: [{ type: "text", text: "Done" }] },
+          {
+            id: "tools",
+            role: "assistant",
+            content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: {} }],
+          },
+        ],
+      });
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "omp",
+      target: { transport: "local" },
+      executable: "omp",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+
+    mocks.eventSubscriber?.({
+      type: "message_end",
+      message: {
+        id: "tools",
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "call-1", name: "bash", arguments: {} },
+        ],
+      },
+    });
+    mocks.eventSubscriber?.({
+      type: "tool_execution_end",
+      toolCallId: "call-1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "output" }] },
+    });
+    mocks.eventSubscriber?.({
+      type: "message_end",
+      message: {
+        role: "custom",
+        customType: "async-result",
+        content: "<system-notice>Background job bg_4 completed</system-notice>",
+        timestamp: 2,
+      },
+    });
+    mocks.eventSubscriber?.({
+      type: "message_end",
+      message: {
+        id: "final",
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      },
+    });
+    mocks.eventSubscriber?.({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: "Done" }],
+    });
+
+    await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+    expect(mocks.getMessages).toHaveBeenCalledOnce();
+    expect(
+      runtime.snapshot().messages.map((message) =>
+        message && typeof message === "object"
+          ? Reflect.get(message, "role")
+          : null,
+      ),
+    ).toEqual(["assistant", "toolResult", "custom", "assistant"]);
     await registry.stopAll();
   });
 

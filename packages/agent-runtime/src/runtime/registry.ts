@@ -900,28 +900,34 @@ export class AgentSessionRuntime {
     await this.client.discardForkedSession?.(session);
   }
 
-  async refresh(): Promise<void> {
+  async refresh(options: { messages?: boolean } = {}): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       const [state, messageData, stats, commands] =
         await Promise.all([
           this.client.getState(),
-          this.client.getMessages(),
+          options.messages === false
+            ? Promise.resolve(null)
+            : this.client.getMessages(),
           this.client.getSessionStats().catch(() => emptyStats()),
           this.client.getCommands().catch(() => this.commands),
         ]);
       this.state = state;
-      this.messages = reconcileSubmittedUserMessages(
-        this.messages,
-        messageData.messages,
-      );
+      if (messageData) {
+        this.messages = reconcileSubmittedUserMessages(
+          this.messages,
+          messageData.messages,
+        );
+      }
       this.stats = stats;
       this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
-      const reconciledQueue = reconcileRestoredQueuedMessages(
-        this.queuedMessages,
-        messageData.messages,
-      );
+      const reconciledQueue = messageData
+        ? reconcileRestoredQueuedMessages(
+            this.queuedMessages,
+            messageData.messages,
+          )
+        : { messages: this.queuedMessages, changed: false };
       if (reconciledQueue.changed) {
         this.queuedMessages = reconciledQueue.messages;
         await this.publishQueueUpdate();
@@ -1310,7 +1316,9 @@ export class AgentSessionRuntime {
       isCompacting: false,
     };
     try {
-      await this.refresh();
+      await this.refresh({
+        messages: this.adapter.refreshMessagesAfterTerminal !== false,
+      });
     } catch (error) {
       this.error = errorMessage(error);
       this.publish({

@@ -60,6 +60,11 @@ export type AgentErrorPresentation = {
   details: string | null;
 };
 
+export type AgentNotificationPresentation = {
+  level: "info" | "warning" | "error";
+  message: string;
+};
+
 export type AgentTaskStatus = "pending" | "in_progress" | "completed";
 
 export type AgentTask = {
@@ -91,6 +96,11 @@ export type AgentTranscriptItem =
       type: "assistant_error";
       key: string;
       error: AgentErrorPresentation;
+    }
+  | {
+      type: "notification";
+      key: string;
+      notification: AgentNotificationPresentation;
     }
   | {
       type: "activity";
@@ -298,6 +308,89 @@ function textOfContent(content: unknown): string {
         : [];
     })
     .join("\n");
+}
+
+const OMP_SYSTEM_NOTICE_OPEN_TAG = "<system-notice>";
+const OMP_SYSTEM_NOTICE_CLOSE_TAG = "</system-notice>";
+const OMP_TASK_RESULT_TAG_PATTERN = /<task-result\b([^>]*)>/iu;
+const OMP_TASK_RESULT_ATTRIBUTE_PATTERN =
+  /([\w-]+)=["'“‘]([^"'“”‘’]*)["'”’]/gu;
+const OMP_BACKGROUND_JOB_PATTERN =
+  /^Background job\s+(.+?)\s+has\s+(completed|failed|errored|canceled|cancelled|stopped)\b/iu;
+
+function ompNotificationLevel(
+  status: string | null,
+): AgentNotificationPresentation["level"] {
+  const normalized = status?.toLowerCase() ?? null;
+  if (normalized === "failed" || normalized === "error" || normalized === "errored") {
+    return "error";
+  }
+  if (
+    normalized === "canceled" ||
+    normalized === "cancelled" ||
+    normalized === "stopped"
+  ) {
+    return "warning";
+  }
+  return "info";
+}
+
+function normalizedOmpJobStatus(status: string | null): string {
+  const normalized = status?.toLowerCase() ?? "completed";
+  if (normalized === "error" || normalized === "errored") return "failed";
+  if (normalized === "cancelled") return "canceled";
+  return normalized;
+}
+
+function ompNoticeFirstLine(text: string): string | null {
+  const openIndex = text.indexOf(OMP_SYSTEM_NOTICE_OPEN_TAG);
+  const closeIndex = text.indexOf(OMP_SYSTEM_NOTICE_CLOSE_TAG);
+  const body = text.slice(
+    openIndex + OMP_SYSTEM_NOTICE_OPEN_TAG.length,
+    closeIndex === -1 ? undefined : closeIndex,
+  );
+  return (
+    body
+      .split(/\r?\n/u)
+      .map((line) => line.trim())
+      .find((line) => line && !line.startsWith("<")) ?? null
+  );
+}
+
+export function presentOmpSystemNotice(
+  text: string,
+): AgentNotificationPresentation | null {
+  if (!text.trimStart().startsWith(OMP_SYSTEM_NOTICE_OPEN_TAG)) return null;
+
+  const taskResult = text.match(OMP_TASK_RESULT_TAG_PATTERN);
+  if (taskResult) {
+    const attributes = new Map<string, string>();
+    for (const match of (taskResult[1] ?? "").matchAll(
+      OMP_TASK_RESULT_ATTRIBUTE_PATTERN,
+    )) {
+      const name = match[1];
+      const value = match[2];
+      if (name && value !== undefined) attributes.set(name, value.trim());
+    }
+    const id = attributes.get("id") || null;
+    const status = attributes.get("status") || null;
+    if (id) {
+      return {
+        level: ompNotificationLevel(status),
+        message: `Background job ${id} ${normalizedOmpJobStatus(status)}`,
+      };
+    }
+  }
+
+  const firstLine = ompNoticeFirstLine(text);
+  const backgroundJob = firstLine?.match(OMP_BACKGROUND_JOB_PATTERN);
+  if (backgroundJob?.[1] && backgroundJob[2]) {
+    return {
+      level: ompNotificationLevel(backgroundJob[2]),
+      message: `Background job ${backgroundJob[1]} ${normalizedOmpJobStatus(backgroundJob[2])}`,
+    };
+  }
+  return firstLine ? { level: "info", message: firstLine } : null;
 }
 
 const MAX_ERROR_SUMMARY_LENGTH = 240;
@@ -726,6 +819,17 @@ export function projectAgentTranscript(
     }
 
     if (role === "custom" && record.display === false) return;
+    if (role === "custom") {
+      const notification = presentOmpSystemNotice(textOfContent(record.content));
+      if (notification) {
+        items.push({
+          type: "notification",
+          key: `notification:${identity}`,
+          notification,
+        });
+        return;
+      }
+    }
 
     items.push({
       type: "message",

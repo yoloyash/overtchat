@@ -7,6 +7,7 @@ import {
   formatAgentToolDetail,
   latestAgentTaskList,
   presentAgentError,
+  presentOmpSystemNotice,
   projectAgentTranscript,
   type AgentToolActivity,
 } from "./presentation";
@@ -62,6 +63,52 @@ function projectedTools(messages: unknown[]) {
 }
 
 describe("projectAgentTranscript", () => {
+  it("renders OMP background results as concise notifications", () => {
+    const notice = [
+      "<system-notice>",
+      "Background job bg_4 has completed. Resume your work using the result below.",
+      "verbose command output",
+      "</system-notice>",
+    ].join("\n");
+
+    expect(
+      projectAgentTranscript([
+        {
+          role: "custom",
+          customType: "async-result",
+          content: notice,
+          display: true,
+          timestamp: 4,
+        },
+      ]),
+    ).toEqual([
+      {
+        type: "notification",
+        key: "notification:4",
+        notification: {
+          level: "info",
+          message: "Background job bg_4 completed",
+        },
+      },
+    ]);
+  });
+
+  it("uses OMP task-result status for restored background notices", () => {
+    const notice = [
+      "<system-notice>",
+      "Background job DocsSmokeTwo has failed.",
+      '<task-result id=“DocsSmokeTwo” agent=“explore” status=“failed”>',
+      "<output>boom</output>",
+      "</task-result>",
+      "</system-notice>",
+    ].join("\n");
+
+    expect(presentOmpSystemNotice(notice)).toEqual({
+      level: "error",
+      message: "Background job DocsSmokeTwo failed",
+    });
+  });
+
   it("keeps reasoning distinct while grouping consecutive tool activity", () => {
     const projected = projectAgentTranscript([
       { role: "user", content: "Remove the old image", timestamp: 1 },

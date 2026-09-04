@@ -122,6 +122,13 @@ export interface AgentRuntimeEventClassifier {
 
 export interface AgentProviderAdapter {
   readonly provider: AgentProviderId;
+  /**
+   * Whether a normal provider-terminal transition should replace the live
+   * transcript with a freshly fetched history snapshot. Providers whose live
+   * event stream is the canonical display order should disable this and leave
+   * full history hydration to session startup and explicit refreshes.
+   */
+  readonly refreshMessagesAfterTerminal?: boolean;
   startSession(
     target: HostTarget,
     launch: AgentSessionLaunch,
