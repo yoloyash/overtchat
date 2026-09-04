@@ -1,4 +1,5 @@
 import type {
+  AgentModel,
   AgentProviderCatalog,
   AgentSlashCommand,
 } from "@overtchat/agent-bridge";
@@ -91,6 +92,47 @@ function sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity {
   };
 }
 
+function applyStateDefaults(
+  models: AgentModel[],
+  state: Record<string, unknown>,
+): AgentModel[] {
+  const stateModel = state.model;
+  const defaultModelId =
+    stateModel && typeof stateModel === "object"
+      ? Reflect.get(stateModel, "id")
+      : undefined;
+  if (
+    typeof defaultModelId !== "string" ||
+    !models.some((model) => model.id === defaultModelId)
+  ) {
+    return models;
+  }
+
+  const stateThinkingLevel = state.thinkingLevel;
+  return models.map((model) => {
+    const updated = { ...model };
+    delete updated.isDefault;
+    if (model.id !== defaultModelId) return updated;
+
+    updated.isDefault = true;
+    if (
+      typeof stateThinkingLevel === "string" &&
+      model.thinkingOptions?.some(
+        (option) => option.id === stateThinkingLevel,
+      )
+    ) {
+      updated.defaultThinkingOptionId = stateThinkingLevel;
+      updated.thinkingOptions = model.thinkingOptions.map((option) => {
+        const next = { ...option };
+        delete next.isDefault;
+        if (option.id === stateThinkingLevel) next.isDefault = true;
+        return next;
+      });
+    }
+    return updated;
+  });
+}
+
 async function fetchCatalog(
   target: HostTarget,
   launch: Omit<AgentSessionLaunch, "resume">,
@@ -103,10 +145,11 @@ async function fetchCatalog(
     extraArgs: ["--no-extensions", "--no-skills", "--no-rules"],
   });
   try {
-    await client.getState();
+    const state = await client.getState();
+    const models = await client.getAvailableModels(120_000);
     return {
       provider: "omp",
-      models: await client.getAvailableModels(120_000),
+      models: applyStateDefaults(models, state),
       modes: OMP_MODES,
       defaultModeId: "full",
     };

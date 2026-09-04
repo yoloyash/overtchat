@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -36,6 +36,7 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 import { motionClasses } from "@/lib/motion";
 import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
+import { newAgentSessionHref } from "@/lib/agents/sessionDraft";
 import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
@@ -71,6 +72,8 @@ function WorkspaceNode({
   providerFilter: AgentProviderId | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { closeMobile } = useSidebar();
   const [createOpen, setCreateOpen] = useState(false);
   const hasActiveSession = group.sessions.some(
     ({ session }) => pathname === `/agents/${session.id}`,
@@ -118,6 +121,17 @@ function WorkspaceNode({
     };
   });
 
+  function startNewSession() {
+    const target = sessionTargets[0];
+    if (sessionTargets.length !== 1 || !target) {
+      setCreateOpen(true);
+      return;
+    }
+    setOpen(true);
+    closeMobile();
+    router.push(newAgentSessionHref(target.workspace.id, target.provider));
+  }
+
   return (
     <li>
       <div className="group flex min-w-0 rounded-md motion-colors hover:bg-sidebar-accent">
@@ -160,7 +174,7 @@ function WorkspaceNode({
         </button>
         <button
           type="button"
-          onClick={() => setCreateOpen(true)}
+          onClick={startNewSession}
           disabled={sessionTargets.length === 0}
           aria-label={`New session in ${group.name}`}
           title={
@@ -209,7 +223,7 @@ function WorkspaceNode({
             )}
         </ul>
       )}
-      {sessionTargets.length > 0 && (
+      {sessionTargets.length > 1 && (
         <NewAgentSessionDialog
           open={createOpen}
           onOpenChange={(next) => {

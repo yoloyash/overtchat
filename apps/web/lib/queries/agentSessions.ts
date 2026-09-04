@@ -49,6 +49,27 @@ async function responseError(response: Response): Promise<Error> {
   );
 }
 
+export type AgentSessionCommandResult = {
+  sessionId?: string;
+  draft?: string;
+  queuedMessages?: AgentQueuedMessage[];
+  usage?: AgentUsageSnapshot;
+  notice?: AgentProviderNotice;
+};
+
+export async function sendAgentSessionCommand(
+  id: string,
+  command: AgentSessionCommand,
+): Promise<AgentSessionCommandResult> {
+  const response = await fetch(`/api/agent-sessions/${id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(command),
+  });
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as AgentSessionCommandResult;
+}
+
 function isRetryableSessionOpenError(error: unknown): boolean {
   if (error instanceof AgentSessionHttpError) {
     return (
@@ -336,13 +357,7 @@ export function useAgentSessionCommand(id: string) {
   return useMutation({
     mutationFn: async (
       command: AgentSessionCommand,
-    ): Promise<{
-      sessionId?: string;
-      draft?: string;
-      queuedMessages?: AgentQueuedMessage[];
-      usage?: AgentUsageSnapshot;
-      notice?: AgentProviderNotice;
-    }> => {
+    ): Promise<AgentSessionCommandResult> => {
       const needsIdentity =
         (command.type === "prompt" ||
           command.type === "queue" ||
@@ -363,15 +378,18 @@ export function useAgentSessionCommand(id: string) {
       const wireCommand = generatedClientMessageId
         ? { ...command, clientMessageId: generatedClientMessageId }
         : command;
-      let response: Response;
       try {
-        response = await fetch(`/api/agent-sessions/${id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(wireCommand),
-        });
+        const result = await sendAgentSessionCommand(id, wireCommand);
+        if (
+          fingerprint &&
+          retainedIdentity.current?.fingerprint === fingerprint &&
+          retainedIdentity.current.clientMessageId === generatedClientMessageId
+        ) {
+          retainedIdentity.current = null;
+        }
+        return result;
       } catch (cause) {
-        if (generatedClientMessageId) {
+        if (generatedClientMessageId && cause instanceof TypeError) {
           throw new Error(
             "The connection was lost while sending, so the command outcome is unknown. Inspect the session before retrying; an unchanged retry will reuse the same command identity.",
             { cause },
@@ -379,22 +397,6 @@ export function useAgentSessionCommand(id: string) {
         }
         throw cause;
       }
-      if (!response.ok) throw await responseError(response);
-      const result = (await response.json()) as {
-        sessionId?: string;
-        draft?: string;
-        queuedMessages?: AgentQueuedMessage[];
-        usage?: AgentUsageSnapshot;
-        notice?: AgentProviderNotice;
-      };
-      if (
-        fingerprint &&
-        retainedIdentity.current?.fingerprint === fingerprint &&
-        retainedIdentity.current.clientMessageId === generatedClientMessageId
-      ) {
-        retainedIdentity.current = null;
-      }
-      return result;
     },
     onSuccess: (data, command) => {
       if (data.queuedMessages) {

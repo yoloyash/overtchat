@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   ListTodo,
+  Loader2,
   ShieldAlert,
   ShieldCheck,
   X,
@@ -25,6 +26,7 @@ import type {
 } from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { modelIconForModel } from "@/lib/providers/catalog";
+import { AGENT_MODEL_DEFAULTS_LOADING_MESSAGE } from "@/lib/agents/sessionDraft";
 import { cn } from "@/lib/utils";
 
 export interface AgentComposerControlsProps {
@@ -40,6 +42,7 @@ export interface AgentComposerControlsProps {
   modeId: string;
   modes: AgentMode[];
   disabled: boolean;
+  modelLoading?: boolean;
   onSelectModel: (model: AgentModel) => void;
   onSelectThinking: (level: string) => void;
   onSelectCollaborationMode: (mode: AgentCollaborationMode) => void;
@@ -56,6 +59,7 @@ const choiceItemClassName =
 
 export function AgentComposerControls(props: AgentComposerControlsProps) {
   const hasModelOrEffort =
+    props.modelLoading === true ||
     props.models.length > 0 ||
     (props.thinkingOptions.length > 1 && props.thinkingLevel !== null);
   const hasControls =
@@ -203,7 +207,7 @@ function ModeControl(props: AgentComposerControlsProps) {
               Enable Full access?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              Codex will be able to run commands and modify files without
+              {props.providerLabel} will be able to run commands and modify files without
               sandbox restrictions or approval prompts.
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
@@ -250,6 +254,28 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
     : `Model: ${modelLabel}`;
   const showEffort =
     props.thinkingOptions.length > 1 && props.thinkingLevel !== null;
+
+  if (props.modelLoading && props.models.length === 0) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="min-w-0 max-w-48 gap-1.5 px-2"
+        disabled
+        aria-label={AGENT_MODEL_DEFAULTS_LOADING_MESSAGE}
+        data-testid="agent-model-effort-trigger"
+      >
+        <Loader2
+          className={cn(
+            "size-4 text-muted-foreground",
+            motionClasses.spinner,
+          )}
+        />
+        <span className="truncate">Loading model…</span>
+      </Button>
+    );
+  }
 
   return (
     <Menu.Root

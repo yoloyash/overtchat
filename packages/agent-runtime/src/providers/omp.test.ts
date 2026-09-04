@@ -47,6 +47,55 @@ describe("OMP provider adapter", () => {
     );
   });
 
+  it("uses OMP's resolved model and thinking defaults in its catalog", async () => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    mocks.startOmp.mockReturnValue({
+      getState: vi.fn().mockResolvedValue({
+        model: { provider: "omp", id: "vllm/configured" },
+        thinkingLevel: "high",
+      }),
+      getAvailableModels: vi.fn().mockResolvedValue([
+        {
+          provider: "omp",
+          id: "vllm/first",
+          label: "First",
+          thinkingOptions: [{ id: "low", label: "Low", isDefault: true }],
+        },
+        {
+          provider: "omp",
+          id: "vllm/configured",
+          label: "Configured",
+          defaultThinkingOptionId: "low",
+          thinkingOptions: [
+            { id: "low", label: "Low", isDefault: true },
+            { id: "high", label: "High" },
+          ],
+        },
+      ]),
+      stop,
+    });
+
+    const catalog = await ompProviderAdapter.fetchCatalog(
+      { transport: "local" },
+      { executable: "omp", cwd: "/workspace" },
+    );
+
+    expect(catalog.models[0]).not.toHaveProperty("isDefault");
+    expect(catalog.models[1]).toMatchObject({
+      id: "vllm/configured",
+      isDefault: true,
+      defaultThinkingOptionId: "high",
+      thinkingOptions: [
+        expect.objectContaining({ id: "low" }),
+        expect.objectContaining({ id: "high", isDefault: true }),
+      ],
+    });
+    expect(catalog.models[1]?.thinkingOptions?.[0]).not.toHaveProperty(
+      "isDefault",
+    );
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
   it("waits for OMP's terminal agent end across async continuations", () => {
     const classifier = ompProviderAdapter.createEventClassifier();
 
