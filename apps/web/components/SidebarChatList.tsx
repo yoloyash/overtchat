@@ -10,6 +10,7 @@ import {
   AudioWaveform,
   FolderInput,
   MoreHorizontal,
+  LoaderCircle,
   Pencil,
   Trash2,
 } from "lucide-react";
@@ -46,9 +47,11 @@ export interface ProjectOption {
 export function SidebarChatList({
   chats,
   projects,
+  activeChatIds,
 }: {
   chats: DatedChat[];
   projects: ProjectOption[];
+  activeChatIds: ReadonlySet<string>;
 }) {
   if (chats.length === 0) {
     return (
@@ -72,7 +75,12 @@ export function SidebarChatList({
           </div>
           <ul className="flex flex-col gap-0.5">
             {g.items.map((c) => (
-              <SidebarItem key={c.id} chat={c} projects={projects} />
+              <SidebarItem
+                key={c.id}
+                chat={c}
+                projects={projects}
+                generating={activeChatIds.has(c.id)}
+              />
             ))}
           </ul>
         </div>
@@ -85,10 +93,12 @@ export function SidebarItem({
   chat,
   projects,
   currentProjectId = null,
+  generating = false,
 }: {
   chat: Chat;
   projects: ProjectOption[];
   currentProjectId?: string | null;
+  generating?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -189,20 +199,34 @@ export function SidebarItem({
           href={`/chat/${chat.id}`}
           onClick={closeMobile}
           className={cn(
-            "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
             active && "bg-sidebar-accent",
           )}
         >
-          {chat.title ? (
-            <RevealedTitle
-              key={chat.title}
-              title={chat.title}
-              reveal={revealNextTitle}
-              onComplete={markTitleRevealComplete}
-            />
-          ) : (
-            "Untitled"
+          {generating && (
+            <span
+              role="status"
+              aria-label={`Generating response for ${chat.title?.trim() || "Untitled"}`}
+              className="shrink-0 text-muted-foreground"
+            >
+              <LoaderCircle
+                aria-hidden="true"
+                className={cn("size-3.5", motionClasses.spinner)}
+              />
+            </span>
           )}
+          <span className="min-w-0 truncate">
+            {chat.title ? (
+              <RevealedTitle
+                key={chat.title}
+                title={chat.title}
+                reveal={revealNextTitle}
+                onComplete={markTitleRevealComplete}
+              />
+            ) : (
+              "Untitled"
+            )}
+          </span>
         </Link>
         <div className="relative mr-0.5 size-5.5 shrink-0 max-md:size-7.5">
           {chat.kind === "voice" && (

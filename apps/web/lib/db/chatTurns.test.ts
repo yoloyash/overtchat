@@ -163,6 +163,37 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("lists only generations that still own a running chat stream", async () => {
+    seedChat();
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Hello" }],
+        },
+      }),
+    ).toBe("committed");
+
+    await expect(chatDb.listActiveChatIds("user")).resolves.toEqual(["chat"]);
+
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "stream-one",
+        status: "error",
+        error: "Generation failed",
+      }),
+    ).toBe(true);
+    await expect(chatDb.listActiveChatIds("user")).resolves.toEqual([]);
+  });
+
   it("returns the original generation for an exact duplicate submission", () => {
     expect(
       chatTurns.commitChatTurn({

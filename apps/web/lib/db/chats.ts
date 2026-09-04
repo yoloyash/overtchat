@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
-import { chats, messages } from "@/lib/db/schema";
+import { chatGenerations, chats, messages } from "@/lib/db/schema";
 import {
   CHAT_MESSAGE_PAGE_SIZE,
   type ChatMessagePage,
@@ -87,6 +87,21 @@ export async function listChats(
     .where(eq(chats.userId, userId))
     .orderBy(desc(chats.updatedAt))
     .limit(limit);
+}
+
+export async function listActiveChatIds(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: chats.id })
+    .from(chats)
+    .innerJoin(chatGenerations, eq(chats.activeStreamId, chatGenerations.id))
+    .where(
+      and(
+        eq(chats.userId, userId),
+        eq(chatGenerations.userId, userId),
+        eq(chatGenerations.status, "running"),
+      ),
+    );
+  return rows.map(({ id }) => id);
 }
 
 export async function listChatsByProject(

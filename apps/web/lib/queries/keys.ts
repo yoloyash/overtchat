@@ -1,6 +1,7 @@
 export const chatKeys = {
   all: () => ["chats"] as const,
   list: () => [...chatKeys.all(), "list"] as const,
+  active: () => [...chatKeys.all(), "active"] as const,
   detail: (id: string) => [...chatKeys.all(), "detail", id] as const,
   usage: (id: string) => [...chatKeys.detail(id), "usage"] as const,
 };
