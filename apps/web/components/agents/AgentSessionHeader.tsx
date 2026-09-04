@@ -40,6 +40,7 @@ export function AgentSessionHeader({
   accountUsageAvailable,
   accountUsagePending,
   onShowAccountUsage,
+  onShowWorkspaceChanges,
   filesOpen,
   onToggleFiles,
 }: {
@@ -55,6 +56,7 @@ export function AgentSessionHeader({
   accountUsageAvailable: boolean;
   accountUsagePending: boolean;
   onShowAccountUsage: () => void;
+  onShowWorkspaceChanges: () => void;
   filesOpen: boolean;
   onToggleFiles: () => void;
 }) {
@@ -110,7 +112,10 @@ export function AgentSessionHeader({
       >
         {workspacePath}
       </span>
-      <WorkspaceGitSummary status={gitStatus} />
+      <WorkspaceGitSummary
+        status={gitStatus}
+        onShowChanges={onShowWorkspaceChanges}
+      />
       <div className="ml-auto flex shrink-0 items-center gap-0.5">
         {accountUsageAvailable && (
           <Button
@@ -214,8 +219,10 @@ export function AgentSessionHeader({
 
 function WorkspaceGitSummary({
   status,
+  onShowChanges,
 }: {
   status: AgentWorkspaceGitStatus | undefined;
+  onShowChanges: () => void;
 }) {
   if (!status?.isGit) return null;
   const branch = status.branch ?? "Detached HEAD";
@@ -242,7 +249,13 @@ function WorkspaceGitSummary({
         <span className="max-w-28 truncate">{branch}</span>
       </span>
       {status.dirty && (
-        <span className="flex shrink-0 items-center gap-1.5 tabular-nums">
+        <button
+          type="button"
+          aria-label={`View ${status.changedFiles} changed ${status.changedFiles === 1 ? "file" : "files"}`}
+          title="View workspace changes"
+          onClick={onShowChanges}
+          className="flex shrink-0 items-center gap-1.5 rounded-md px-1.5 py-1 tabular-nums outline-none motion-colors hover:bg-muted hover:text-foreground focus-visible:bg-muted focus-visible:text-foreground"
+        >
           <FileDiff className="size-3.5" />
           <span>
             {status.changedFiles}{" "}
@@ -258,7 +271,7 @@ function WorkspaceGitSummary({
               </span>
             </>
           )}
-        </span>
+        </button>
       )}
     </div>
   );

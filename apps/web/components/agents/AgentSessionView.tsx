@@ -617,6 +617,10 @@ export function AgentSessionView({
             accountUsagePending={usageCommand.isPending}
             filesOpen={filesOpen}
             onToggleFiles={() => setFilesOpen(!filesOpen)}
+            onShowWorkspaceChanges={() => {
+              setStoredFileSelection(null);
+              setFilesOpen(true);
+            }}
             onShowSessionUsage={() => setSessionUsageOpen(true)}
             onShowAccountUsage={() => void showUsage()}
             onRename={() => {

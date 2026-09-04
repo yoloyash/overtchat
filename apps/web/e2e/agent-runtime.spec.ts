@@ -1117,6 +1117,17 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(headerGitStatus).toContainText("2 files");
   await expect(headerGitStatus).toContainText("+8");
   await expect(headerGitStatus).toContainText("-3");
+  await headerGitStatus
+    .getByRole("button", { name: "View 2 changed files" })
+    .click();
+  await expect(workspacePane.getByRole("heading", { name: "Changes" })).toBeVisible();
+  await expect(workspacePane.getByRole("tab", { name: "Files" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await workspacePane
+    .getByRole("button", { name: "Close workspace files" })
+    .click();
   const sidebarGitStatus = page.locator(
     '[data-testid="sidebar-workspace-git-status-workspace"]:visible',
   );
