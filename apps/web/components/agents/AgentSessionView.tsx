@@ -52,6 +52,7 @@ import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
 import {
   AgentInteractionDialog,
+  AgentSessionStatsDialog,
   AgentUsageDialog,
   CompactAgentSessionDialog,
   RenameAgentSessionDialog,
@@ -243,6 +244,7 @@ export function AgentSessionView({
   const [usage, setUsage] = useState<AgentUsageSnapshot | null>(null);
   const [usageOpen, setUsageOpen] = useState(false);
   const [usageError, setUsageError] = useState("");
+  const [sessionUsageOpen, setSessionUsageOpen] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [restoredDraft, setRestoredDraft] = useState<{
@@ -608,12 +610,19 @@ export function AgentSessionView({
             provider={provider}
             workspaceId={workspaceId}
             workspacePath={workspacePath}
-            stats={snapshot.stats}
             running={running}
             commandPending={command.isPending}
             readOnly={Boolean(readOnly)}
+            accountUsageAvailable={snapshot.capabilities.usage === true}
+            accountUsagePending={usageCommand.isPending}
             filesOpen={filesOpen}
             onToggleFiles={() => setFilesOpen(!filesOpen)}
+            onShowWorkspaceChanges={() => {
+              setStoredFileSelection(null);
+              setFilesOpen(true);
+            }}
+            onShowSessionUsage={() => setSessionUsageOpen(true)}
+            onShowAccountUsage={() => void showUsage()}
             onRename={() => {
               setDialogError("");
               setRenameOpen(true);
@@ -866,6 +875,11 @@ export function AgentSessionView({
                 setUsageError("");
               }
             }}
+          />
+          <AgentSessionStatsDialog
+            open={sessionUsageOpen}
+            stats={snapshot.stats}
+            onOpenChange={setSessionUsageOpen}
           />
         </div>
 
