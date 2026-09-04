@@ -23,6 +23,7 @@ import {
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import {
   useChats,
+  setActiveChatInCache,
   useChatUsage,
   useLoadOlderChatMessages,
   type ChatListItem,
@@ -250,7 +251,12 @@ export function ChatArea({
         setInferenceActivity(part.data);
       }
     },
-    onError: () => setInferenceActivity(null),
+    onError: () => {
+      setInferenceActivity(null);
+      if (!temporaryRef.current) {
+        void qc.invalidateQueries({ queryKey: chatKeys.active() });
+      }
+    },
     onFinish: ({ message, isError }) => {
       setInferenceActivity(null);
       const stats = readMessageStats(message);
@@ -262,6 +268,7 @@ export function ChatArea({
         });
       }
       if (temporaryRef.current) return;
+      setActiveChatInCache(qc, chatId, false);
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       }
@@ -269,6 +276,7 @@ export function ChatArea({
       setChatPersisted(true);
       void Promise.all([
         qc.invalidateQueries({ queryKey: chatKeys.list() }),
+        qc.invalidateQueries({ queryKey: chatKeys.active() }),
         qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
         qc.invalidateQueries({ queryKey: activityKeys.all() }),
       ]);
@@ -277,8 +285,10 @@ export function ChatArea({
   const handleGenerationSettled = useCallback(() => {
     setInferenceActivity(null);
     setChatPersisted(true);
+    setActiveChatInCache(qc, chatId, false);
     void Promise.all([
       qc.invalidateQueries({ queryKey: chatKeys.list() }),
+      qc.invalidateQueries({ queryKey: chatKeys.active() }),
       qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
       qc.invalidateQueries({ queryKey: activityKeys.all() }),
     ]);
@@ -401,6 +411,12 @@ export function ChatArea({
     return true;
   }, [chatId]);
 
+  const markGenerationStarted = useCallback(() => {
+    if (!temporaryRef.current) {
+      setActiveChatInCache(qc, chatId, true);
+    }
+  }, [chatId, qc]);
+
   function handleSubmit(text: string, attachments: FileUIPart[]) {
     if (voiceActive) {
       voiceSessionRef.current?.sendMessage(text);
@@ -423,6 +439,7 @@ export function ChatArea({
         return [next, ...prev];
       });
     }
+    markGenerationStarted();
     sendMessage(
       { text, files: attachments },
       { body: requestBody({ type: "submit" }, searchRequested) },
@@ -445,6 +462,7 @@ export function ChatArea({
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    markGenerationStarted();
     regenerate({
       messageId,
       body: requestBody({
@@ -463,6 +481,7 @@ export function ChatArea({
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    markGenerationStarted();
     sendMessage(
       { text, files, messageId },
       {

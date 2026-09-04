@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  type QueryClient,
   useMutation,
   useQuery,
   useQueryClient,
@@ -19,6 +20,12 @@ export type ChatListItem = {
   updatedAt: number;
 };
 
+export type ActiveChatIdsResponse = {
+  activeChatIds: string[];
+};
+
+export const ACTIVE_CHATS_POLL_MS = 2_000;
+
 async function fetchChats(): Promise<ChatListItem[]> {
   const r = await fetch("/api/chats");
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -30,6 +37,45 @@ export function useChats() {
   return useQuery({
     queryKey: chatKeys.list(),
     queryFn: fetchChats,
+  });
+}
+
+async function fetchActiveChatIds(): Promise<string[]> {
+  const response = await fetch("/api/chats/active", { cache: "no-store" });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const body = (await response.json()) as ActiveChatIdsResponse;
+  return body.activeChatIds;
+}
+
+export function activeChatsRefetchInterval(
+  activeChatIds: string[] | undefined,
+): number | false {
+  return activeChatIds && activeChatIds.length > 0
+    ? ACTIVE_CHATS_POLL_MS
+    : false;
+}
+
+export function useActiveChatIds() {
+  return useQuery({
+    queryKey: chatKeys.active(),
+    queryFn: fetchActiveChatIds,
+    staleTime: 1_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
+    refetchInterval: (query) => activeChatsRefetchInterval(query.state.data),
+    retry: false,
+  });
+}
+
+export function setActiveChatInCache(
+  queryClient: QueryClient,
+  chatId: string,
+  active: boolean,
+) {
+  queryClient.setQueryData<string[]>(chatKeys.active(), (current = []) => {
+    const containsChat = current.includes(chatId);
+    if (active) return containsChat ? current : [...current, chatId];
+    return containsChat ? current.filter((id) => id !== chatId) : current;
   });
 }
 

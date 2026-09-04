@@ -140,6 +140,52 @@ function seedModel() {
   }
 }
 
+test("sidebar tracks generation after leaving the active chat", async ({
+  page,
+}) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Sidebar Generation Tester");
+  await page.locator("#email").fill("sidebar-generation@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+  seedModel();
+  await page.reload();
+
+  try {
+    await page
+      .getByPlaceholder("Message…")
+      .fill("Keep generating in the background.");
+    await page.getByLabel("Send message").click();
+    await firstChunk.promise;
+
+    const generating = page.getByRole("status", {
+      name: /Generating response for/u,
+    });
+    await expect(generating).toBeVisible();
+
+    const generatingRow = generating.locator("xpath=ancestor::li[1]");
+    const chatActions = generatingRow.getByRole("button", {
+      name: "Chat actions",
+    });
+    await expect(chatActions).toHaveCSS("opacity", "0");
+    await generatingRow.hover();
+    await expect(generating).toHaveCSS("opacity", "0");
+    await expect(chatActions).toHaveCSS("opacity", "1");
+    await page.getByRole("link", { name: /New chat/u }).hover();
+    await expect(generating).toHaveCSS("opacity", "1");
+
+    await page.getByRole("link", { name: /New chat/u }).click();
+    await expect(page).toHaveURL(/\/$/u);
+    await expect(generating).toBeVisible();
+
+    continueStream.resolve();
+    await expect(generating).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    continueStream.resolve();
+  }
+});
+
 test("reload resumes an active chat stream through Redis", async ({ page }) => {
   test.skip(!process.env.REDIS_URL, "REDIS_URL is required for resumption.");
 

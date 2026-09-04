@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { dehydrate, HydrationBoundary } from "@tanstack/react-query";
 import { auth } from "@/lib/auth/server";
-import { listChats } from "@/lib/db/chats";
+import { listActiveChatIds, listChats } from "@/lib/db/chats";
 import { listProjects } from "@/lib/db/projects";
 import { listAgentConnections } from "@/lib/db/agentConnections";
 import { withConnectorSessionDirectory } from "@/lib/agents/connector/directory";
@@ -41,6 +41,10 @@ export default async function AppLayout({
           updatedAt: c.updatedAt.getTime(),
         }));
       },
+    }),
+    qc.prefetchQuery({
+      queryKey: chatKeys.active(),
+      queryFn: () => listActiveChatIds(session.user.id),
     }),
     qc.prefetchQuery({
       queryKey: projectKeys.list(),

@@ -23,7 +23,7 @@ import {
 } from "@/components/SidebarProjects";
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { useSidebar } from "@/components/sidebar-context";
-import { useChats } from "@/lib/queries/chats";
+import { useActiveChatIds, useChats } from "@/lib/queries/chats";
 import { useProjects } from "@/lib/queries/projects";
 import {
   useAgentConnectionSessionDirectory,
@@ -42,7 +42,9 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
 
   const { data: chats = [] } = useChats();
+  const { data: activeChatIds = [] } = useActiveChatIds();
   const { data: projects = [] } = useProjects();
+  const activeChats = useMemo(() => new Set(activeChatIds), [activeChatIds]);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),
@@ -138,7 +140,10 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         </nav>
 
         <SectionLabel>Projects</SectionLabel>
-        <SidebarProjects projects={projectsWithChats} />
+        <SidebarProjects
+          projects={projectsWithChats}
+          activeChatIds={activeChats}
+        />
         <button
           type="button"
           onClick={() => setCreatingProject(true)}
@@ -150,7 +155,11 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
         {isAdmin && <AdminAgentWorkspaces />}
 
-        <SidebarChatList chats={unprojected} projects={projectOptions} />
+        <SidebarChatList
+          chats={unprojected}
+          projects={projectOptions}
+          activeChatIds={activeChats}
+        />
       </div>
 
       <CreateProjectDialog

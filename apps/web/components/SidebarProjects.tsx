@@ -26,8 +26,10 @@ interface ProjectWithChats extends ProjectOption {
 
 export function SidebarProjects({
   projects,
+  activeChatIds,
 }: {
   projects: ProjectWithChats[];
+  activeChatIds: ReadonlySet<string>;
 }) {
   const projectOptions: ProjectOption[] = projects.map((p) => ({
     id: p.id,
@@ -43,6 +45,7 @@ export function SidebarProjects({
           key={p.id}
           project={p}
           projectOptions={projectOptions}
+          activeChatIds={activeChatIds}
         />
       ))}
     </ul>
@@ -52,9 +55,11 @@ export function SidebarProjects({
 function ProjectNode({
   project,
   projectOptions,
+  activeChatIds,
 }: {
   project: ProjectWithChats;
   projectOptions: ProjectOption[];
+  activeChatIds: ReadonlySet<string>;
 }) {
   const pathname = usePathname();
   const { closeMobile } = useSidebar();
@@ -115,6 +120,7 @@ function ProjectNode({
                 chat={c}
                 projects={projectOptions}
                 currentProjectId={project.id}
+                generating={activeChatIds.has(c.id)}
               />
             ))
           )}
