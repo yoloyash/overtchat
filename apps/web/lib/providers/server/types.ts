@@ -1,6 +1,6 @@
 import type { LanguageModelV4 } from "@ai-sdk/provider";
 import type { AnthropicProviderOptions } from "@ai-sdk/anthropic";
-import type { ModelCapabilities } from "@overtchat/shared";
+import type { ChatReasoningLevel, ModelCapabilities } from "@overtchat/shared";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
 
 export interface ProviderConnection {
@@ -16,6 +16,8 @@ export interface ProviderModelConfig extends ProviderConnection {
   /** App capability policy; provider adapters do not infer this from model IDs. */
   toolCallingEnabled?: boolean;
   supportsImageInput?: boolean;
+  /** Per-chat local-runtime override. `default` leaves the request untouched. */
+  reasoningLevel?: ChatReasoningLevel;
 }
 
 export interface ResolvedLanguageModel {

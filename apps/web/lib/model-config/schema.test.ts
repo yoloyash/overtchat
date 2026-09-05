@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { modelSupportsToolCalling } from "@overtchat/shared";
+import {
+  modelSupportsChatReasoningLevel,
+  modelSupportsToolCalling,
+  type ModelCapabilities,
+} from "@overtchat/shared";
 
 import { ModelConfigSchema, ProviderConnectionSchema } from "./schema";
 
@@ -170,6 +174,11 @@ describe("provider configuration", () => {
         maxOutputTokens: 8192,
         inputModalities: ["text", "image"],
         toolCalling: false,
+        reasoningControls: {
+          toggle: true,
+          defaultLevel: "xhigh",
+          efforts: ["low", "medium", "xhigh"],
+        },
       },
     });
 
@@ -177,11 +186,28 @@ describe("provider configuration", () => {
       maxOutputTokens: 8192,
       inputModalities: ["text", "image"],
       toolCalling: false,
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "xhigh",
+        efforts: ["low", "medium", "xhigh"],
+      },
     });
     expect(
       ModelConfigSchema.safeParse({
         ...result,
         discoveredCapabilities: { maxOutputTokens: -1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ModelConfigSchema.safeParse({
+        ...result,
+        discoveredCapabilities: {
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "on",
+            efforts: ["ultra"],
+          },
+        },
       }).success,
     ).toBe(false);
   });
@@ -239,5 +265,20 @@ describe("provider configuration", () => {
     expect(modelSupportsToolCalling({ toolCallingEnabled: false })).toBe(false);
     expect(modelSupportsToolCalling({})).toBe(true);
     expect(modelSupportsToolCalling(null)).toBe(false);
+  });
+
+  it("accepts only reasoning levels discovered for a model", () => {
+    const capabilities: ModelCapabilities = {
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "xhigh",
+        efforts: ["low", "xhigh"],
+      },
+    };
+    expect(modelSupportsChatReasoningLevel(capabilities, "default")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "on")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "off")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "xhigh")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "medium")).toBe(false);
   });
 });

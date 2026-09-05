@@ -1,5 +1,9 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
-import type { ChatRequestAction } from "@overtchat/shared";
+import {
+  REASONING_EFFORTS,
+  type ChatReasoningLevel,
+  type ChatRequestAction,
+} from "@overtchat/shared";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 
@@ -35,6 +39,10 @@ const ChatRequestEnvelopeSchema = z.object({
   timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
   action: ChatRequestActionSchema.optional(),
+  reasoningLevel: z
+    .enum(["default", "off", "on", ...REASONING_EFFORTS])
+    .optional()
+    .default("default"),
   // Kept as a wire-compatibility input for already-open web clients and
   // released mobile clients. New clients send `action` explicitly.
   trigger: z
@@ -55,6 +63,7 @@ export interface ParsedChatRequest {
   timeZone?: string;
   projectId?: string | null;
   action: ChatRequestAction;
+  reasoningLevel: ChatReasoningLevel;
   temporary: boolean;
 }
 
@@ -77,6 +86,7 @@ export function chatRequestFingerprint({
   timeZone,
   projectId,
   action,
+  reasoningLevel,
   temporary,
 }: ParsedChatRequest): string {
   return createHash("sha256")
@@ -90,6 +100,7 @@ export function chatRequestFingerprint({
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
         action,
+        reasoningLevel,
         temporary,
       }),
     )
@@ -154,6 +165,7 @@ export async function parseChatRequest(
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,
     action,
+    reasoningLevel: envelope.data.reasoningLevel,
     temporary: envelope.data.temporary,
   };
 }

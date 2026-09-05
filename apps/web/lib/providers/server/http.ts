@@ -1,5 +1,10 @@
 import "server-only";
-import type { ModelCapabilities } from "@overtchat/shared";
+import {
+  REASONING_EFFORTS,
+  type ModelCapabilities,
+  type ModelReasoningControls,
+  type ReasoningEffort,
+} from "@overtchat/shared";
 import type { DiscoveredModel } from "@/lib/providers/server/types";
 
 const MODEL_LIST_TIMEOUT_MS = 10_000;
@@ -53,6 +58,10 @@ interface LlamaCppProps {
   modalities?: unknown;
 }
 
+interface RenderProbeResult {
+  key: string;
+}
+
 export function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "");
 }
@@ -73,6 +82,29 @@ export async function listLlamaCppModels(
   apiKey: string | null | undefined,
 ): Promise<DiscoveredModel[]> {
   return listOpenAIModelsWithOptions(baseUrl, apiKey, true);
+}
+
+export async function listVllmModels(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+): Promise<DiscoveredModel[]> {
+  const models = await listOpenAIModelsWithOptions(baseUrl, apiKey, false);
+  return Promise.all(
+    models.map(async (model) => {
+      const reasoningControls = await discoverReasoningControls((level) =>
+        renderVllmChatTemplate(baseUrl, apiKey, model.id, level),
+      );
+      return reasoningControls
+        ? {
+            ...model,
+            capabilities: mergeCapabilities(model.capabilities, {
+              reasoning: true,
+              reasoningControls,
+            }),
+          }
+        : model;
+    }),
+  );
 }
 
 async function listOpenAIModelsWithOptions(
@@ -115,6 +147,14 @@ async function listOpenAIModelsWithOptions(
       if (!llamaModelIds.has(model.id)) return model;
       const props = await readLlamaCppProps(baseUrl, apiKey, model.id);
       if (!props) return model;
+      const reasoningControls = probeAllLlamaCppProps
+        ? await discoverLlamaCppReasoningControls(
+            baseUrl,
+            apiKey,
+            model.id,
+            props,
+          )
+        : undefined;
       return {
         ...model,
         contextWindow:
@@ -122,7 +162,7 @@ async function listOpenAIModelsWithOptions(
           model.contextWindow,
         capabilities: mergeCapabilities(
           model.capabilities,
-          llamaCppCapabilities(props),
+          llamaCppCapabilities(props, reasoningControls),
         ),
       };
     }),
@@ -379,6 +419,7 @@ function openAIServiceRoot(baseUrl: string): string {
 
 function llamaCppCapabilities(
   props: LlamaCppProps,
+  reasoningControls?: ModelReasoningControls,
 ): ModelCapabilities | undefined {
   const template = isRecord(props.chat_template_caps)
     ? props.chat_template_caps
@@ -394,9 +435,225 @@ function llamaCppCapabilities(
     outputModalities: vision === undefined ? undefined : ["text"],
     attachment: vision,
     toolCalling: readSupportedBoolean(template?.supports_tools),
-    reasoning: readSupportedBoolean(template?.supports_preserve_reasoning),
+    reasoning:
+      reasoningControls !== undefined
+        ? true
+        : readSupportedBoolean(template?.supports_preserve_reasoning),
+    reasoningControls,
     temperature: true,
   });
+}
+
+async function discoverLlamaCppReasoningControls(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  model: string,
+  props: LlamaCppProps,
+): Promise<ModelReasoningControls | undefined> {
+  const templateCaps = isRecord(props.chat_template_caps)
+    ? props.chat_template_caps
+    : undefined;
+  const supportsEffort =
+    readSupportedBoolean(templateCaps?.supports_reasoning_effort) === true;
+  return discoverReasoningControls(
+    (level) =>
+      renderLlamaCppChatTemplate(baseUrl, apiKey, model, level),
+    supportsEffort,
+  );
+}
+
+type ProbeLevel = "default" | "off" | "on" | ReasoningEffort | "invalid";
+
+async function discoverReasoningControls(
+  render: (level: ProbeLevel) => Promise<RenderProbeResult | undefined>,
+  probeEfforts = true,
+): Promise<ModelReasoningControls | undefined> {
+  const [defaultPrompt, offPrompt, onPrompt] = await Promise.all([
+    render("default"),
+    render("off"),
+    render("on"),
+  ]);
+  if (
+    !defaultPrompt ||
+    !offPrompt ||
+    !onPrompt ||
+    onPrompt.key === offPrompt.key
+  ) {
+    return undefined;
+  }
+
+  const defaultToggleLevel =
+    defaultPrompt.key === offPrompt.key
+      ? "off"
+      : defaultPrompt.key === onPrompt.key
+        ? "on"
+        : undefined;
+
+  if (!probeEfforts) {
+    return defaultToggleLevel
+      ? { toggle: true, defaultLevel: defaultToggleLevel }
+      : undefined;
+  }
+
+  const [invalidPrompt, ...effortPrompts] = await Promise.all([
+    render("invalid"),
+    ...REASONING_EFFORTS.map((effort) => render(effort)),
+  ]);
+  const groups = new Map<string, ReasoningEffort[]>();
+  for (let index = 0; index < REASONING_EFFORTS.length; index += 1) {
+    const prompt = effortPrompts[index];
+    if (!prompt || prompt.key === invalidPrompt?.key) continue;
+    const effort = REASONING_EFFORTS[index];
+    const group = groups.get(prompt.key) ?? [];
+    group.push(effort);
+    groups.set(prompt.key, group);
+  }
+
+  const hasDistinctEffort = [...groups.keys()].some(
+    (key) => key !== onPrompt.key,
+  );
+  if (!hasDistinctEffort) {
+    return defaultToggleLevel
+      ? { toggle: true, defaultLevel: defaultToggleLevel }
+      : undefined;
+  }
+
+  const selectedByPrompt = new Map(
+    [...groups].map(
+      ([key, aliases]) =>
+        [key, selectCanonicalEffortAlias(aliases)] as const,
+    ),
+  );
+  const defaultLevel =
+    selectedByPrompt.get(defaultPrompt.key) ?? defaultToggleLevel;
+  if (!defaultLevel) return undefined;
+  const selected = new Set(selectedByPrompt.values());
+  const efforts = REASONING_EFFORTS.filter((effort) => selected.has(effort));
+  return efforts.length > 0
+    ? { toggle: true, defaultLevel, efforts }
+    : { toggle: true, defaultLevel };
+}
+
+const EFFORT_ALIAS_PREFERENCE: readonly ReasoningEffort[] = [
+  "low",
+  "medium",
+  "xhigh",
+  "high",
+  "max",
+  "minimal",
+];
+
+function selectCanonicalEffortAlias(
+  aliases: ReasoningEffort[],
+): ReasoningEffort {
+  return (
+    EFFORT_ALIAS_PREFERENCE.find((effort) => aliases.includes(effort)) ??
+    aliases[0]
+  );
+}
+
+async function renderLlamaCppChatTemplate(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  model: string,
+  level: ProbeLevel,
+): Promise<RenderProbeResult | undefined> {
+  const body = reasoningProbeBody(model, level);
+  const json = await tryFetchJson<Record<string, unknown>>(
+    appendPath(openAIServiceRoot(baseUrl), "apply-template"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  return renderedPromptKey(json);
+}
+
+async function renderVllmChatTemplate(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  model: string,
+  level: ProbeLevel,
+): Promise<RenderProbeResult | undefined> {
+  const json = await tryFetchJson<Record<string, unknown>>(
+    appendPath(baseUrl, "chat/completions/render"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        ...reasoningProbeBody(model, level),
+        return_prompt_text: true,
+        max_tokens: 1,
+      }),
+    },
+  );
+  return renderedPromptKey(json);
+}
+
+function reasoningProbeBody(model: string, level: ProbeLevel) {
+  return {
+    model,
+    messages: [{ role: "user", content: "hi" }],
+    ...(level === "default"
+      ? {}
+      : level === "on"
+        ? { chat_template_kwargs: { enable_thinking: true } }
+        : {
+            reasoning_effort:
+              level === "off"
+                ? "none"
+                : level === "invalid"
+                  ? "overtchat-invalid-effort"
+                  : level,
+            chat_template_kwargs: {
+              enable_thinking: level !== "off",
+            },
+          }),
+  };
+}
+
+function renderedPromptKey(
+  json: Record<string, unknown> | undefined,
+): RenderProbeResult | undefined {
+  if (!json) return undefined;
+  if (typeof json.prompt === "string") return { key: `text:${json.prompt}` };
+  if (typeof json.prompt_text === "string") {
+    return { key: `text:${json.prompt_text}` };
+  }
+  const tokenIds = Array.isArray(json.token_ids)
+    ? json.token_ids
+    : Array.isArray(json.prompt_token_ids)
+      ? json.prompt_token_ids
+      : undefined;
+  if (
+    tokenIds &&
+    tokenIds.every(
+      (token) => typeof token === "number" && Number.isInteger(token),
+    )
+  ) {
+    return { key: `tokens:${JSON.stringify(tokenIds)}` };
+  }
+  return undefined;
+}
+
+async function tryFetchJson<T>(
+  url: string,
+  init: Omit<RequestInit, "signal">,
+): Promise<T | undefined> {
+  try {
+    return await fetchJson<T>(url, init);
+  } catch {
+    // Render endpoints are runtime extensions and older servers may omit them.
+    // Discovery fails closed so an unverified control is never shown.
+    return undefined;
+  }
 }
 
 function mergeCapabilities(

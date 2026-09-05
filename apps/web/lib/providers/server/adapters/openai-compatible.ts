@@ -14,6 +14,7 @@ type ListModels = (
 
 type TransformRequestBody = (
   body: Record<string, unknown>,
+  config: Parameters<ProviderAdapter["createLanguageModel"]>[0],
 ) => Record<string, unknown>;
 
 export function createOpenAICompatibleAdapter(
@@ -32,7 +33,12 @@ export function createOpenAICompatibleAdapter(
           apiKey: config.apiKey,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
-          transformRequestBody,
+          ...(transformRequestBody
+            ? {
+                transformRequestBody: (body: Record<string, unknown>) =>
+                  transformRequestBody(body, config),
+              }
+            : {}),
         }),
         providerOptionsKey: id,
       };

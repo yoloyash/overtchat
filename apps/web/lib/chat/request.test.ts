@@ -38,7 +38,17 @@ describe("chat request parsing", () => {
       forceSearch: false,
       temporary: false,
       action: { type: "submit" },
+      reasoningLevel: "default",
     });
+  });
+
+  it("accepts supported reasoning levels and rejects unknown values", async () => {
+    await expect(
+      parseChatRequest(request({ ...validBody, reasoningLevel: "xhigh" })),
+    ).resolves.toMatchObject({ reasoningLevel: "xhigh" });
+    await expect(
+      parseChatRequest(request({ ...validBody, reasoningLevel: "ultra" })),
+    ).rejects.toBeInstanceOf(ChatRequestError);
   });
 
   it("preserves a submission receipt and creates one for legacy clients", async () => {
@@ -68,9 +78,19 @@ describe("chat request parsing", () => {
         forceSearch: true,
       }),
     );
+    const changedReasoning = await parseChatRequest(
+      request({
+        ...validBody,
+        clientRequestId: "request-one",
+        reasoningLevel: "low",
+      }),
+    );
 
     expect(chatRequestFingerprint(first)).toBe(chatRequestFingerprint(retry));
     expect(chatRequestFingerprint(changed)).not.toBe(
+      chatRequestFingerprint(first),
+    );
+    expect(chatRequestFingerprint(changedReasoning)).not.toBe(
       chatRequestFingerprint(first),
     );
   });

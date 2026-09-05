@@ -7,6 +7,7 @@ import {
   listGoogleModels,
   listLlamaCppModels,
   listOpenAIModels,
+  listVllmModels,
 } from "./http";
 
 afterEach(() => {
@@ -274,6 +275,147 @@ describe("provider model discovery", () => {
       "http://localhost:8080/props?model=proxied-model",
       expect.objectContaining({
         headers: { Authorization: "Bearer local-secret" },
+      }),
+    );
+  });
+
+  it("discovers Qwen 3.8 llama.cpp effort aliases from rendered prompts", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return Response.json({ data: [{ id: "qwen3.8-27b" }] });
+      }
+      if (url.includes("/props?")) {
+        return Response.json({
+          chat_template_caps: { supports_reasoning_effort: true },
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        reasoning_effort?: string;
+      };
+      const effort = body.reasoning_effort;
+      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
+        return new Response("unsupported effort", {
+          status: 500,
+          statusText: "Internal Server Error",
+        });
+      }
+      const prompt =
+        effort === "none"
+          ? "thinking:off"
+          : effort === "low"
+            ? "thinking:low"
+            : effort === "medium"
+              ? "thinking:medium"
+              : "thinking:xhigh";
+      return Response.json({ prompt });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listLlamaCppModels("http://localhost:8080/v1", null),
+    ).resolves.toEqual([
+      {
+        id: "qwen3.8-27b",
+        capabilities: {
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "xhigh",
+            efforts: ["low", "medium", "xhigh"],
+          },
+          temperature: true,
+        },
+      },
+    ]);
+  });
+
+  it("discovers toggle-only Qwen 3.6 behavior when effort values are ignored", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return Response.json({ data: [{ id: "qwen3.6-35b-a3b" }] });
+      }
+      if (url.includes("/props?")) {
+        return Response.json({
+          chat_template_caps: { supports_reasoning_effort: false },
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        reasoning_effort?: string;
+      };
+      return Response.json({
+        prompt:
+          body.reasoning_effort === "none" ? "thinking:off" : "thinking:on",
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listLlamaCppModels("http://localhost:8080/v1", null),
+    ).resolves.toEqual([
+      {
+        id: "qwen3.6-35b-a3b",
+        capabilities: {
+          reasoning: true,
+          reasoningControls: { toggle: true, defaultLevel: "on" },
+          temperature: true,
+        },
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("discovers vLLM controls from deterministic render token IDs", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return Response.json({ data: [{ id: "served-model" }] });
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        reasoning_effort?: string;
+      };
+      const effort = body.reasoning_effort;
+      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
+        return new Response("unsupported effort", {
+          status: 400,
+          statusText: "Bad Request",
+        });
+      }
+      const token =
+        effort === "none"
+          ? 0
+          : effort === "low"
+            ? 1
+            : effort === "medium"
+              ? 2
+              : 3;
+      return Response.json({ token_ids: [100, token] });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listVllmModels("http://localhost:8000/v1", "nerdtastic"),
+    ).resolves.toEqual([
+      {
+        id: "served-model",
+        capabilities: {
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "xhigh",
+            efforts: ["low", "medium", "xhigh"],
+          },
+        },
+      },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/v1/chat/completions/render",
+      expect.objectContaining({
+        headers: {
+          Authorization: "Bearer nerdtastic",
+          "Content-Type": "application/json",
+        },
       }),
     );
   });
