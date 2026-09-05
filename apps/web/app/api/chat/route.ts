@@ -10,6 +10,7 @@ import {
   type TextStreamPart,
   type ToolSet,
 } from "ai";
+import { modelSupportsChatReasoningLevel } from "@overtchat/shared";
 import type { MessageStats } from "@/lib/chat/stats";
 import {
   INFERENCE_ACTIVITY_DATA_TYPE,
@@ -114,6 +115,7 @@ async function handlePost(req: Request): Promise<Response> {
     chatId,
     projectId,
     action,
+    reasoningLevel = "default",
     temporary,
     clientRequestId,
   } = parsedRequest;
@@ -221,6 +223,14 @@ async function handlePost(req: Request): Promise<Response> {
     modelConfig.providerId,
     modelConfig.model,
   );
+  if (
+    reasoningLevel !== "default" &&
+    !modelSupportsChatReasoningLevel(modelCapabilities, reasoningLevel)
+  ) {
+    throw new ChatRequestError(
+      `Reasoning level ${reasoningLevel} is unavailable for this model`,
+    );
+  }
   const supportsImageInput = modelCapabilities?.inputModalities
     ? modelCapabilities.inputModalities.includes("image")
     : modelCapabilities?.attachment !== false;
@@ -234,6 +244,7 @@ async function handlePost(req: Request): Promise<Response> {
       providerOptions: modelConfig.providerOptions,
       toolCallingEnabled: modelConfig.toolCallingEnabled,
       supportsImageInput,
+      reasoningLevel,
     });
   const chatTools = createWebTools({ userId, supportsImageInput });
   const inlined = await inlineUploads(messages, userId);

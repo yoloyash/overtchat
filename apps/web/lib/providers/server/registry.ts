@@ -50,6 +50,15 @@ export function createConfiguredLanguageModel(
 ): ConfiguredLanguageModel {
   validateProviderModelConfig(config);
   const adapter = getProviderAdapter(config.providerId);
+  if (
+    config.reasoningLevel &&
+    config.reasoningLevel !== "default" &&
+    !adapter.acceptsReasoningLevel
+  ) {
+    throw new ProviderConfigurationError(
+      `${getProvider(config.providerId).label} does not support per-chat reasoning levels.`,
+    );
+  }
   let resolved: ReturnType<ProviderAdapter["createLanguageModel"]>;
   try {
     resolved = adapter.createLanguageModel(config);

@@ -1,6 +1,11 @@
 "use client";
 
-import type { ModelCapabilities } from "@overtchat/shared";
+import {
+  REASONING_EFFORTS,
+  type ModelCapabilities,
+  type ModelReasoningLevel,
+  type ReasoningEffort,
+} from "@overtchat/shared";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import type {
   CatalogModelPricing,
@@ -139,5 +144,38 @@ function readCapabilities(value: unknown): ModelCapabilities | undefined {
     const candidate = record[key];
     if (typeof candidate === "boolean") result[key] = candidate;
   }
+  const reasoningControls = readReasoningControls(record.reasoningControls);
+  if (reasoningControls) result.reasoningControls = reasoningControls;
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function readReasoningControls(
+  value: unknown,
+): ModelCapabilities["reasoningControls"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.toggle !== "boolean") return undefined;
+  const defaultLevel = readReasoningLevel(record.defaultLevel);
+  if (!defaultLevel) return undefined;
+  const efforts = Array.isArray(record.efforts)
+    ? record.efforts.filter((effort): effort is ReasoningEffort =>
+        REASONING_EFFORTS.includes(effort as ReasoningEffort),
+      )
+    : undefined;
+  return {
+    toggle: record.toggle,
+    defaultLevel,
+    ...(efforts && efforts.length > 0
+      ? { efforts: [...new Set(efforts)] }
+      : {}),
+  };
+}
+
+function readReasoningLevel(value: unknown): ModelReasoningLevel | undefined {
+  if (value === "off" || value === "on") return value;
+  return REASONING_EFFORTS.includes(value as ReasoningEffort)
+    ? (value as ReasoningEffort)
+    : undefined;
 }

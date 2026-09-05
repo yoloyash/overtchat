@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ModelCapabilities } from "@overtchat/shared";
+import { REASONING_EFFORTS, type ModelCapabilities } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -97,6 +97,13 @@ const ModelCapabilitiesSchema = z
     attachment: z.boolean().optional(),
     toolCalling: z.boolean().optional(),
     reasoning: z.boolean().optional(),
+    reasoningControls: z
+      .object({
+        toggle: z.boolean(),
+        defaultLevel: z.enum(["off", "on", ...REASONING_EFFORTS]),
+        efforts: z.array(z.enum(REASONING_EFFORTS)).optional(),
+      })
+      .optional(),
     structuredOutput: z.boolean().optional(),
     temperature: z.boolean().optional(),
   })

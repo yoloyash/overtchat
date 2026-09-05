@@ -240,6 +240,16 @@ describe("provider registry", () => {
     ).toThrow("manages its API format automatically");
   });
 
+  it("rejects reasoning levels in adapters that do not consume them", () => {
+    expect(() =>
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openai",
+        reasoningLevel: "low",
+      }),
+    ).toThrow("does not support per-chat reasoning levels");
+  });
+
   it.each(["vllm", "llamacpp", "sglang"] as const)(
     "uses the shared OpenAI-compatible transport for %s without requiring a key",
     (providerId) => {
@@ -258,6 +268,52 @@ describe("provider registry", () => {
           apiKey: "",
         }),
       ).not.toThrow();
+    },
+  );
+
+  it.each(["vllm", "llamacpp"] as const)(
+    "serializes a per-chat effort for %s while preserving other params",
+    async (providerId) => {
+      let requestBody: Record<string, unknown> | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          return Response.json(
+            { error: { message: "intentional test response" } },
+            { status: 400 },
+          );
+        }),
+      );
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId,
+        reasoningLevel: "xhigh",
+        providerOptions: {
+          min_p: 0.1,
+          chat_template_kwargs: { custom: "value" },
+        },
+      });
+
+      await expect(
+        generateText({
+          model: configured.model,
+          prompt: "Hello",
+          providerOptions: configured.providerOptions,
+        }),
+      ).rejects.toThrow("intentional test response");
+
+      expect(requestBody).toMatchObject({
+        min_p: 0.1,
+        reasoning_effort: "xhigh",
+        chat_template_kwargs: {
+          custom: "value",
+          enable_thinking: true,
+        },
+      });
     },
   );
 

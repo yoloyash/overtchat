@@ -965,6 +965,57 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("forwards a discovered reasoning level to a local runtime", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "low",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "llamacpp",
+      apiFormat: "auto",
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "low",
+        efforts: ["low"],
+      },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "llamacpp",
+        reasoningLevel: "low",
+      }),
+    );
+  });
+
+  it("rejects reasoning levels absent from discovered controls", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "low",
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "medium",
+        efforts: ["medium"],
+      },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe(
+      "Reasoning level low is unavailable for this model",
+    );
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
+  });
+
   it("removes web tools when the capability is disabled", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,

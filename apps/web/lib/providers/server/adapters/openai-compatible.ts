@@ -14,16 +14,27 @@ type ListModels = (
 
 type TransformRequestBody = (
   body: Record<string, unknown>,
+  config: Parameters<ProviderAdapter["createLanguageModel"]>[0],
 ) => Record<string, unknown>;
+
+interface OpenAICompatibleAdapterOptions {
+  listModels?: ListModels;
+  transformRequestBody?: TransformRequestBody;
+  acceptsReasoningLevel?: boolean;
+}
 
 export function createOpenAICompatibleAdapter(
   id: ProviderId,
-  listModels: ListModels = (connection) =>
-    listOpenAIModels(connection.baseUrl, connection.apiKey),
-  transformRequestBody?: TransformRequestBody,
+  options: OpenAICompatibleAdapterOptions = {},
 ): ProviderAdapter {
+  const listModels =
+    options.listModels ??
+    ((connection: ProviderConnection) =>
+      listOpenAIModels(connection.baseUrl, connection.apiKey));
+  const transformRequestBody = options.transformRequestBody;
   return {
     id,
+    acceptsReasoningLevel: options.acceptsReasoningLevel,
     createLanguageModel(config) {
       return {
         model: createOpenAICompatibleChatModel({
@@ -32,7 +43,12 @@ export function createOpenAICompatibleAdapter(
           apiKey: config.apiKey,
           model: config.model,
           supportsImageInput: config.supportsImageInput,
-          transformRequestBody,
+          ...(transformRequestBody
+            ? {
+                transformRequestBody: (body: Record<string, unknown>) =>
+                  transformRequestBody(body, config),
+              }
+            : {}),
         }),
         providerOptionsKey: id,
       };

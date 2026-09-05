@@ -7,8 +7,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
 import {
   hasSuccessfulMemoryMutation,
+  modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
   type ChatKind,
+  type ChatReasoningLevel,
   type ChatRequestAction,
   type VoiceHistoryItem,
 } from "@overtchat/shared";
@@ -81,6 +83,7 @@ import {
 import type { VoiceTranscriptUpdate } from "@/lib/voice/client";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
+const REASONING_LEVELS_STORAGE_KEY = "overtchat_reasoning_levels";
 
 function shouldAutofocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
@@ -124,6 +127,19 @@ export function ChatArea({
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
   const selectedModel = models?.find((model) => model.id === selectedId);
+  const reasoningControls = selectedModel?.capabilities?.reasoningControls;
+  const [reasoningLevels, setReasoningLevels] = useLocalStorage<
+    Record<string, ChatReasoningLevel>
+  >(REASONING_LEVELS_STORAGE_KEY, {});
+  const storedReasoningLevel = reasoningLevels[selectedId];
+  const reasoningLevel: ChatReasoningLevel =
+    storedReasoningLevel !== "default" &&
+    modelSupportsChatReasoningLevel(
+      selectedModel?.capabilities,
+      storedReasoningLevel,
+    )
+      ? storedReasoningLevel
+      : (reasoningControls?.defaultLevel ?? "default");
   const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
   const [webSearchEnabled] = useLocalStorage<boolean>(
     WEB_SEARCH_ENABLED_STORAGE_KEY,
@@ -356,6 +372,7 @@ export function ChatArea({
     projectId: projectId ?? null,
     temporary,
     action,
+    reasoningLevel,
   });
 
   const streaming = status === "streaming" || status === "submitted";
@@ -653,6 +670,11 @@ export function ChatArea({
         models={models}
         selectedId={selectedId}
         onSelectModel={handleSelectModel}
+        reasoningControls={reasoningControls}
+        reasoningLevel={reasoningLevel}
+        onSelectReasoningLevel={(level) =>
+          setReasoningLevels({ ...reasoningLevels, [selectedId]: level })
+        }
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
