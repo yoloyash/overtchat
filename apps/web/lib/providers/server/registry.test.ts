@@ -244,11 +244,103 @@ describe("provider registry", () => {
     expect(() =>
       createConfiguredLanguageModel({
         ...baseConfig,
-        providerId: "openai",
+        providerId: "custom",
+        apiFormat: "openai-chat",
         reasoningLevel: "low",
       }),
     ).toThrow("does not support per-chat reasoning levels");
   });
+
+  it.each([
+    {
+      providerId: "openai" as const,
+      model: "gpt-5.4",
+      reasoningLevel: "xhigh" as const,
+      providerOptions: { reasoningEffort: "low", reasoningSummary: "auto" },
+      expectedBody: { reasoning: { effort: "xhigh", summary: "auto" } },
+    },
+    {
+      providerId: "anthropic" as const,
+      model: "claude-opus-4-7",
+      reasoningLevel: "max" as const,
+      providerOptions: {
+        effort: "low",
+        thinking: { type: "enabled", budgetTokens: 4096 },
+      },
+      expectedBody: {
+        thinking: { type: "adaptive" },
+        output_config: { effort: "max" },
+      },
+    },
+    {
+      providerId: "google" as const,
+      model: "gemini-3.1-pro-preview",
+      reasoningLevel: "high" as const,
+      providerOptions: {
+        thinkingConfig: { thinkingBudget: 4096, includeThoughts: false },
+      },
+      expectedBody: {
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: "high",
+            includeThoughts: false,
+          },
+        },
+      },
+    },
+    {
+      providerId: "deepseek" as const,
+      model: "deepseek-v4-flash",
+      reasoningLevel: "max" as const,
+      providerOptions: { reasoningEffort: "low", custom: true },
+      expectedBody: {
+        reasoning_effort: "max",
+        thinking: { type: "enabled" },
+        custom: true,
+      },
+    },
+  ])(
+    "serializes an explicit $providerId selection over saved reasoning params",
+    async ({
+      providerId,
+      model,
+      reasoningLevel,
+      providerOptions,
+      expectedBody,
+    }) => {
+      let requestBody: Record<string, unknown> | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          return Response.json(
+            { error: { message: "intentional test response" } },
+            { status: 400 },
+          );
+        }),
+      );
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId,
+        model,
+        reasoningLevel,
+        providerOptions,
+      });
+
+      await expect(
+        generateText({
+          model: configured.model,
+          prompt: "Hello",
+          providerOptions: configured.providerOptions,
+        }),
+      ).rejects.toThrow();
+
+      expect(requestBody).toMatchObject(expectedBody);
+    },
+  );
 
   it.each(["vllm", "llamacpp", "sglang"] as const)(
     "uses the shared OpenAI-compatible transport for %s without requiring a key",

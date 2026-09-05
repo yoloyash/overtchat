@@ -264,7 +264,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gpt-5-mini": {
       "context": 400000,
@@ -286,7 +296,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gpt-5-nano": {
       "context": 400000,
@@ -308,7 +328,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gpt-5-pro": {
       "context": 400000,
@@ -329,7 +359,14 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "high"
+        ]
+      }
     },
     "gpt-5.1": {
       "context": 400000,
@@ -351,7 +388,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gpt-5.2": {
       "context": 400000,
@@ -373,7 +419,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.2-chat-latest": {
       "context": 128000,
@@ -394,7 +450,14 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "medium"
+        ]
+      }
     },
     "gpt-5.2-pro": {
       "context": 400000,
@@ -415,7 +478,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": false,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.3-chat-latest": {
       "context": 128000,
@@ -459,7 +531,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.3-codex-spark": {
       "context": 128000,
@@ -482,7 +564,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.4": {
       "context": 1050000,
@@ -521,7 +613,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.4-mini": {
       "context": 400000,
@@ -543,7 +645,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.4-nano": {
       "context": 400000,
@@ -565,7 +677,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.4-pro": {
       "context": 1050000,
@@ -600,7 +722,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": false,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.5": {
       "context": 1050000,
@@ -639,7 +770,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.5-pro": {
       "context": 1050000,
@@ -675,7 +816,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "gpt-5.6": {
       "context": 1050000,
@@ -717,7 +867,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "gpt-5.6-luna": {
       "context": 1050000,
@@ -759,7 +920,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "gpt-5.6-sol": {
       "context": 1050000,
@@ -801,7 +973,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "gpt-5.6-terra": {
       "context": 1050000,
@@ -843,7 +1026,71 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
+    "gpt-6-astra": {
+      "context": 1050000,
+      "input": 922000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 1,
+        "cache_write": 12.5,
+        "context_over_200k": {
+          "cache_read": 2,
+          "cache_write": 25,
+          "input": 20,
+          "output": 75
+        },
+        "input": 10,
+        "output": 50,
+        "tiers": [
+          {
+            "cache_read": 2,
+            "cache_write": 25,
+            "input": 20,
+            "output": 75,
+            "tier": {
+              "size": 272000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "gpt-image-1": {
       "input_modalities": [
@@ -928,7 +1175,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": false,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
     },
     "o1": {
       "context": 200000,
@@ -950,7 +1208,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "o1-pro": {
       "context": 200000,
@@ -970,7 +1237,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "o3": {
       "context": 200000,
@@ -992,7 +1268,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "o3-mini": {
       "context": 200000,
@@ -1012,7 +1297,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "o3-pro": {
       "context": 200000,
@@ -1032,7 +1326,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "o4-mini": {
       "context": 200000,
@@ -1053,7 +1356,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "medium",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "text-embedding-3-large": {
       "context": 8191,
@@ -1132,7 +1444,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "claude-fable-5-1": {
       "context": 1000000,
@@ -1155,7 +1478,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "claude-haiku-4-5": {
       "context": 200000,
@@ -1293,7 +1627,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "claude-opus-4-8": {
       "context": 1000000,
@@ -1316,7 +1661,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "claude-opus-5": {
       "context": 1000000,
@@ -1339,7 +1695,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     },
     "claude-sonnet-4-5": {
       "context": 1000000,
@@ -1431,7 +1798,18 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": false
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
     }
   },
   "google": {
@@ -1718,7 +2096,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3-pro-image": {
       "context": 131072,
@@ -1738,7 +2126,15 @@
       "attachment": true,
       "tool_call": false,
       "reasoning": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "high"
+        ]
+      }
     },
     "gemini-3-pro-image-preview": {
       "context": 131072,
@@ -1780,7 +2176,15 @@
       "attachment": true,
       "tool_call": false,
       "reasoning": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-flash-image-preview": {
       "context": 65536,
@@ -1801,7 +2205,15 @@
       "attachment": true,
       "tool_call": false,
       "reasoning": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-flash-lite": {
       "context": 1048576,
@@ -1826,7 +2238,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-flash-lite-image": {
       "context": 65536,
@@ -1847,7 +2269,15 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": false,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-flash-lite-preview": {
       "context": 1048576,
@@ -1872,7 +2302,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-flash-live-preview": {
       "context": 131072,
@@ -1897,7 +2337,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": false,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-flash-tts-preview": {
       "context": 8192,
@@ -1955,7 +2405,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.1-pro-preview-customtools": {
       "context": 1048576,
@@ -1995,7 +2454,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.5-flash": {
       "context": 1048576,
@@ -2020,7 +2488,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.5-flash-lite": {
       "context": 1048576,
@@ -2044,7 +2522,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.5-live-translate-preview": {
       "context": 16384,
@@ -2090,7 +2578,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.7-flash": {
       "context": 1048576,
@@ -2115,7 +2613,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-3.8-flash": {
       "context": 1048576,
@@ -2140,7 +2647,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-embedding-001": {
       "context": 2048,
@@ -2206,7 +2722,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-flash-lite-latest": {
       "context": 1048576,
@@ -2230,7 +2755,17 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
     },
     "gemini-omni-flash-preview": {
       "context": 131072,
@@ -2393,7 +2928,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "max",
+        "efforts": [
+          "low",
+          "high",
+          "max"
+        ]
+      }
     },
     "deepseek-v4-flash-vision-exp": {
       "context": 1000000,
@@ -2415,7 +2959,16 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "max",
+        "efforts": [
+          "low",
+          "high",
+          "max"
+        ]
+      }
     },
     "deepseek-v4-pro": {
       "context": 1000000,
@@ -2436,7 +2989,15 @@
       "tool_call": true,
       "reasoning": true,
       "structured_output": true,
-      "temperature": true
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "max",
+        "efforts": [
+          "high",
+          "max"
+        ]
+      }
     }
   },
   "bedrock": {
