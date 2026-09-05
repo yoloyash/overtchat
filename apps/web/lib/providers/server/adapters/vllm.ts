@@ -5,6 +5,11 @@ import { listVllmModels } from "@/lib/providers/server/http";
 
 export const vllmAdapter = createOpenAICompatibleAdapter(
   "vllm",
-  (connection) => listVllmModels(connection.baseUrl, connection.apiKey),
-  (body, config) => applyLocalReasoningLevel(body, config.reasoningLevel),
+  {
+    listModels: (connection) =>
+      listVllmModels(connection.baseUrl, connection.apiKey),
+    transformRequestBody: (body, config) =>
+      applyLocalReasoningLevel(body, config.reasoningLevel),
+    acceptsReasoningLevel: true,
+  },
 );

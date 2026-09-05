@@ -5,20 +5,24 @@ import { listLlamaCppModels } from "@/lib/providers/server/http";
 
 export const llamaCppAdapter = createOpenAICompatibleAdapter(
   "llamacpp",
-  (connection) => listLlamaCppModels(connection.baseUrl, connection.apiKey),
-  (body, config) => {
-    const withRuntimeExtensions = body.stream === true
-      ? {
-          ...body,
-          // llama.cpp extensions that emit progress and timings in the same
-          // SSE stream as the OpenAI-compatible response.
-          return_progress: true,
-          timings_per_token: true,
-        }
-      : body;
-    return applyLocalReasoningLevel(
-      withRuntimeExtensions,
-      config.reasoningLevel,
-    );
+  {
+    listModels: (connection) =>
+      listLlamaCppModels(connection.baseUrl, connection.apiKey),
+    transformRequestBody: (body, config) => {
+      const withRuntimeExtensions = body.stream === true
+        ? {
+            ...body,
+            // llama.cpp extensions that emit progress and timings in the same
+            // SSE stream as the OpenAI-compatible response.
+            return_progress: true,
+            timings_per_token: true,
+          }
+        : body;
+      return applyLocalReasoningLevel(
+        withRuntimeExtensions,
+        config.reasoningLevel,
+      );
+    },
+    acceptsReasoningLevel: true,
   },
 );

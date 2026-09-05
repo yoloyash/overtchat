@@ -60,6 +60,8 @@ interface LlamaCppProps {
 
 interface RenderProbeResult {
   key: string;
+  text?: string;
+  tokenIds?: number[];
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {
@@ -91,8 +93,11 @@ export async function listVllmModels(
   const models = await listOpenAIModelsWithOptions(baseUrl, apiKey, false);
   return Promise.all(
     models.map(async (model) => {
-      const reasoningControls = await discoverReasoningControls((level) =>
-        renderVllmChatTemplate(baseUrl, apiKey, model.id, level),
+      const reasoningControls = await discoverReasoningControls(
+        (level) => renderVllmChatTemplate(baseUrl, apiKey, model.id, level),
+        true,
+        (prompt) =>
+          detokenizeVllmPrompt(baseUrl, apiKey, model.id, prompt.tokenIds),
       );
       return reasoningControls
         ? {
@@ -467,6 +472,9 @@ type ProbeLevel = "default" | "off" | "on" | ReasoningEffort | "invalid";
 async function discoverReasoningControls(
   render: (level: ProbeLevel) => Promise<RenderProbeResult | undefined>,
   probeEfforts = true,
+  resolvePromptText?: (
+    prompt: RenderProbeResult,
+  ) => Promise<string | undefined>,
 ): Promise<ModelReasoningControls | undefined> {
   const [defaultPrompt, offPrompt, onPrompt] = await Promise.all([
     render("default"),
@@ -499,13 +507,16 @@ async function discoverReasoningControls(
     render("invalid"),
     ...REASONING_EFFORTS.map((effort) => render(effort)),
   ]);
-  const groups = new Map<string, ReasoningEffort[]>();
+  const groups = new Map<
+    string,
+    { aliases: ReasoningEffort[]; prompt: RenderProbeResult }
+  >();
   for (let index = 0; index < REASONING_EFFORTS.length; index += 1) {
     const prompt = effortPrompts[index];
     if (!prompt || prompt.key === invalidPrompt?.key) continue;
     const effort = REASONING_EFFORTS[index];
-    const group = groups.get(prompt.key) ?? [];
-    group.push(effort);
+    const group = groups.get(prompt.key) ?? { aliases: [], prompt };
+    group.aliases.push(effort);
     groups.set(prompt.key, group);
   }
 
@@ -518,10 +529,20 @@ async function discoverReasoningControls(
       : undefined;
   }
 
+  const projectedGroups = await Promise.all(
+    [...groups].map(async ([key, group]) => {
+      if (group.aliases.length === 1) {
+        return [key, group.aliases[0]] as const;
+      }
+      const promptText =
+        group.prompt.text ?? (await resolvePromptText?.(group.prompt));
+      const projected = projectedEffortAlias(group.aliases, promptText);
+      return projected ? ([key, projected] as const) : undefined;
+    }),
+  );
   const selectedByPrompt = new Map(
-    [...groups].map(
-      ([key, aliases]) =>
-        [key, selectCanonicalEffortAlias(aliases)] as const,
+    projectedGroups.filter(
+      (group): group is readonly [string, ReasoningEffort] => group !== undefined,
     ),
   );
   const defaultLevel =
@@ -534,22 +555,15 @@ async function discoverReasoningControls(
     : { toggle: true, defaultLevel };
 }
 
-const EFFORT_ALIAS_PREFERENCE: readonly ReasoningEffort[] = [
-  "low",
-  "medium",
-  "xhigh",
-  "high",
-  "max",
-  "minimal",
-];
-
-function selectCanonicalEffortAlias(
+function projectedEffortAlias(
   aliases: ReasoningEffort[],
-): ReasoningEffort {
-  return (
-    EFFORT_ALIAS_PREFERENCE.find((effort) => aliases.includes(effort)) ??
-    aliases[0]
+  prompt: string | undefined,
+): ReasoningEffort | undefined {
+  if (!prompt) return undefined;
+  const matches = aliases.filter((alias) =>
+    new RegExp(`(^|[^a-z0-9_])${alias}([^a-z0-9_]|$)`, "iu").test(prompt),
   );
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 async function renderLlamaCppChatTemplate(
@@ -597,6 +611,27 @@ async function renderVllmChatTemplate(
   return renderedPromptKey(json);
 }
 
+async function detokenizeVllmPrompt(
+  baseUrl: string,
+  apiKey: string | null | undefined,
+  model: string,
+  tokenIds: number[] | undefined,
+): Promise<string | undefined> {
+  if (!tokenIds) return undefined;
+  const json = await tryFetchJson<Record<string, unknown>>(
+    appendPath(openAIServiceRoot(baseUrl), "detokenize"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+      },
+      body: JSON.stringify({ model, tokens: tokenIds }),
+    },
+  );
+  return typeof json?.prompt === "string" ? json.prompt : undefined;
+}
+
 function reasoningProbeBody(model: string, level: ProbeLevel) {
   return {
     model,
@@ -623,9 +658,11 @@ function renderedPromptKey(
   json: Record<string, unknown> | undefined,
 ): RenderProbeResult | undefined {
   if (!json) return undefined;
-  if (typeof json.prompt === "string") return { key: `text:${json.prompt}` };
+  if (typeof json.prompt === "string") {
+    return { key: `text:${json.prompt}`, text: json.prompt };
+  }
   if (typeof json.prompt_text === "string") {
-    return { key: `text:${json.prompt_text}` };
+    return { key: `text:${json.prompt_text}`, text: json.prompt_text };
   }
   const tokenIds = Array.isArray(json.token_ids)
     ? json.token_ids
@@ -638,7 +675,7 @@ function renderedPromptKey(
       (token) => typeof token === "number" && Number.isInteger(token),
     )
   ) {
-    return { key: `tokens:${JSON.stringify(tokenIds)}` };
+    return { key: `tokens:${JSON.stringify(tokenIds)}`, tokenIds };
   }
   return undefined;
 }

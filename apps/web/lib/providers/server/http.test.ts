@@ -366,6 +366,52 @@ describe("provider model discovery", () => {
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
+  it("drops an equivalent effort group when the runtime does not identify its projection", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return Response.json({ data: [{ id: "ambiguous-model" }] });
+      }
+      if (url.includes("/props?")) {
+        return Response.json({
+          chat_template_caps: { supports_reasoning_effort: true },
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        reasoning_effort?: string;
+      };
+      const effort = body.reasoning_effort;
+      if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
+        return new Response("unsupported effort", { status: 400 });
+      }
+      const prompt =
+        effort === "none"
+          ? "thinking:off"
+          : effort === "high" || effort === "xhigh"
+            ? "thinking:deep"
+            : "thinking:low";
+      return Response.json({ prompt });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listLlamaCppModels("http://localhost:8080/v1", null),
+    ).resolves.toEqual([
+      {
+        id: "ambiguous-model",
+        capabilities: {
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "low",
+            efforts: ["low"],
+          },
+          temperature: true,
+        },
+      },
+    ]);
+  });
+
   it("discovers vLLM controls from deterministic render token IDs", async () => {
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);
@@ -374,7 +420,21 @@ describe("provider model discovery", () => {
       }
       const body = JSON.parse(String(init?.body)) as {
         reasoning_effort?: string;
+        tokens?: number[];
       };
+      if (url.endsWith("/detokenize")) {
+        const token = body.tokens?.at(-1);
+        return Response.json({
+          prompt:
+            token === 0
+              ? "thinking:off"
+              : token === 1
+                ? "thinking:low"
+                : token === 2
+                  ? "thinking:medium"
+                  : "thinking:xhigh",
+        });
+      }
       const effort = body.reasoning_effort;
       if (["overtchat-invalid-effort", "minimal", "max"].includes(effort ?? "")) {
         return new Response("unsupported effort", {
@@ -416,6 +476,12 @@ describe("provider model discovery", () => {
           Authorization: "Bearer nerdtastic",
           "Content-Type": "application/json",
         },
+      }),
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/detokenize",
+      expect.objectContaining({
+        body: JSON.stringify({ model: "served-model", tokens: [100, 3] }),
       }),
     );
   });

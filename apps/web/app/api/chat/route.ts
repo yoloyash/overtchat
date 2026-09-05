@@ -223,12 +223,9 @@ async function handlePost(req: Request): Promise<Response> {
     modelConfig.providerId,
     modelConfig.model,
   );
-  const localReasoningProvider =
-    modelConfig.providerId === "llamacpp" || modelConfig.providerId === "vllm";
   if (
     reasoningLevel !== "default" &&
-    (!localReasoningProvider ||
-      !modelSupportsChatReasoningLevel(modelCapabilities, reasoningLevel))
+    !modelSupportsChatReasoningLevel(modelCapabilities, reasoningLevel)
   ) {
     throw new ChatRequestError(
       `Reasoning level ${reasoningLevel} is unavailable for this model`,

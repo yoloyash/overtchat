@@ -994,7 +994,7 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("rejects reasoning overrides for non-local providers", async () => {
+  it("rejects reasoning levels absent from discovered controls", async () => {
     mocks.parseChatRequest.mockResolvedValue({
       ...parsedRequest,
       reasoningLevel: "low",
@@ -1002,8 +1002,8 @@ describe("chat route setup boundary", () => {
     mocks.resolveModelCapabilities.mockReturnValue({
       reasoningControls: {
         toggle: true,
-        defaultLevel: "low",
-        efforts: ["low"],
+        defaultLevel: "medium",
+        efforts: ["medium"],
       },
     });
 

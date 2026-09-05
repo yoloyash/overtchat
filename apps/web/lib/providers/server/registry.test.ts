@@ -240,6 +240,16 @@ describe("provider registry", () => {
     ).toThrow("manages its API format automatically");
   });
 
+  it("rejects reasoning levels in adapters that do not consume them", () => {
+    expect(() =>
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "openai",
+        reasoningLevel: "low",
+      }),
+    ).toThrow("does not support per-chat reasoning levels");
+  });
+
   it.each(["vllm", "llamacpp", "sglang"] as const)(
     "uses the shared OpenAI-compatible transport for %s without requiring a key",
     (providerId) => {
