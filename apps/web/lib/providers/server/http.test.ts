@@ -366,6 +366,92 @@ describe("provider model discovery", () => {
     expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
+  it("discovers GLM 5.3 effort levels without inventing a thinking toggle", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return Response.json({ data: [{ id: "glm-5.3-flash" }] });
+      }
+      if (url.includes("/props?")) {
+        return Response.json({
+          chat_template_caps: { supports_reasoning_effort: true },
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        reasoning_effort?: string;
+      };
+      const effort = body.reasoning_effort;
+      const projected =
+        effort === "low" ? "Low" : effort === "high" ? "High" : "Max";
+      return Response.json({ prompt: `Reasoning Effort: ${projected}` });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listLlamaCppModels("http://localhost:8080/v1", null),
+    ).resolves.toEqual([
+      {
+        id: "glm-5.3-flash",
+        capabilities: {
+          reasoning: true,
+          reasoningControls: {
+            toggle: false,
+            defaultLevel: "max",
+            efforts: ["low", "high", "max"],
+          },
+          temperature: true,
+        },
+      },
+    ]);
+  });
+
+  it("keeps DeepSeek V4 toggles when its low effort matches unknown values", async () => {
+    const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/v1/models")) {
+        return Response.json({ data: [{ id: "deepseek-v4-flash-0731" }] });
+      }
+      if (url.includes("/props?")) {
+        return Response.json({
+          chat_template_caps: { supports_reasoning_effort: true },
+        });
+      }
+      const body = JSON.parse(String(init?.body)) as {
+        reasoning_effort?: string;
+        chat_template_kwargs?: { enable_thinking?: boolean };
+      };
+      if (body.chat_template_kwargs?.enable_thinking === false) {
+        return Response.json({ prompt: "thinking:off" });
+      }
+      const effort = body.reasoning_effort;
+      const prompt =
+        effort === "high"
+          ? "Reasoning Effort: Absolute maximum"
+          : effort === "max"
+            ? "Reasoning Effort: Beyond maximum"
+            : "thinking:on";
+      return Response.json({ prompt });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      listLlamaCppModels("http://localhost:8080/v1", null),
+    ).resolves.toEqual([
+      {
+        id: "deepseek-v4-flash-0731",
+        capabilities: {
+          reasoning: true,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "on",
+            efforts: ["high", "max"],
+          },
+          temperature: true,
+        },
+      },
+    ]);
+  });
+
   it("drops an equivalent effort group when the runtime does not identify its projection", async () => {
     const fetchMock = vi.fn(async (input: string | URL, init?: RequestInit) => {
       const url = String(input);

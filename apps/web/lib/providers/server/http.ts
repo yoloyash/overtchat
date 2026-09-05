@@ -481,19 +481,16 @@ async function discoverReasoningControls(
     render("off"),
     render("on"),
   ]);
-  if (
-    !defaultPrompt ||
-    !offPrompt ||
-    !onPrompt ||
-    onPrompt.key === offPrompt.key
-  ) {
-    return undefined;
-  }
+  if (!defaultPrompt) return undefined;
 
-  const defaultToggleLevel =
-    defaultPrompt.key === offPrompt.key
+  const toggle = Boolean(
+    offPrompt && onPrompt && onPrompt.key !== offPrompt.key,
+  );
+  const defaultToggleLevel = !toggle
+    ? undefined
+    : defaultPrompt.key === offPrompt?.key
       ? "off"
-      : defaultPrompt.key === onPrompt.key
+      : defaultPrompt.key === onPrompt?.key
         ? "on"
         : undefined;
 
@@ -513,25 +510,17 @@ async function discoverReasoningControls(
   >();
   for (let index = 0; index < REASONING_EFFORTS.length; index += 1) {
     const prompt = effortPrompts[index];
-    if (!prompt || prompt.key === invalidPrompt?.key) continue;
+    if (!prompt) continue;
     const effort = REASONING_EFFORTS[index];
     const group = groups.get(prompt.key) ?? { aliases: [], prompt };
     group.aliases.push(effort);
     groups.set(prompt.key, group);
   }
 
-  const hasDistinctEffort = [...groups.keys()].some(
-    (key) => key !== onPrompt.key,
-  );
-  if (!hasDistinctEffort) {
-    return defaultToggleLevel
-      ? { toggle: true, defaultLevel: defaultToggleLevel }
-      : undefined;
-  }
-
   const projectedGroups = await Promise.all(
     [...groups].map(async ([key, group]) => {
-      if (group.aliases.length === 1) {
+      const matchesInvalid = key === invalidPrompt?.key;
+      if (group.aliases.length === 1 && !matchesInvalid) {
         return [key, group.aliases[0]] as const;
       }
       const promptText =
@@ -550,9 +539,10 @@ async function discoverReasoningControls(
   if (!defaultLevel) return undefined;
   const selected = new Set(selectedByPrompt.values());
   const efforts = REASONING_EFFORTS.filter((effort) => selected.has(effort));
-  return efforts.length > 0
-    ? { toggle: true, defaultLevel, efforts }
-    : { toggle: true, defaultLevel };
+  if (efforts.length > 0) return { toggle, defaultLevel, efforts };
+  return defaultToggleLevel
+    ? { toggle: true, defaultLevel: defaultToggleLevel }
+    : undefined;
 }
 
 function projectedEffortAlias(
