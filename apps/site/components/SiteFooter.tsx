@@ -6,7 +6,7 @@ export function SiteFooter() {
       <div className="site-container footer-inner">
         <div>
           <div className="footer-wordmark">overtchat</div>
-          <p>A complete, self-hosted chat client that runs on a server you own.</p>
+          <p>Your AI chat, running on your side of the internet.</p>
         </div>
         <nav className="footer-links" aria-label="Footer navigation">
           <Link href="/releases/">Releases</Link>
@@ -19,7 +19,7 @@ export function SiteFooter() {
       </div>
       <div className="site-container footer-meta">
         <span>MIT licensed.</span>
-        <span>No usage analytics. No hosted backend.</span>
+        <span>No usage analytics. No OvertChat cloud.</span>
       </div>
     </footer>
   );

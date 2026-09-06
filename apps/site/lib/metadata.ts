@@ -3,9 +3,9 @@ import { absoluteSiteUrl } from "./site";
 
 export const SITE_NAME = "overtchat";
 export const DEFAULT_SITE_TITLE =
-  "overtchat — chat you actually own";
+  "overtchat — your AI chat, actually yours";
 export const DEFAULT_SITE_DESCRIPTION =
-  "A complete, self-hosted chat client for hosted and local language models. One Docker command brings up the whole stack, and your chat history is stored on your server.";
+  "A polished, privacy-first Open WebUI alternative for local and hosted models, with multi-user accounts, realtime local voice, files, search, memory, and mobile.";
 
 export function createPageMetadata({
   title,

@@ -2,22 +2,27 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
+  AudioLines,
   ArrowDown,
   ArrowRight,
+  Bot,
   Boxes,
   Braces,
   Check,
   Database,
-  EyeOff,
   Globe2,
   HardDrive,
+  KeyRound,
+  MemoryStick,
   MessageSquareText,
+  Mic2,
   Search,
+  Server,
   ShieldCheck,
   Smartphone,
+  Users,
   Volume2,
   WandSparkles,
-  WifiOff,
 } from "lucide-react";
 import Link from "next/link";
 import { CopyButton } from "@/components/CopyButton";
@@ -47,18 +52,18 @@ const steps: Array<{
 }> = [
   {
     number: "01",
-    title: "Start your server",
-    body: "Run one install command. The guided setup detects Docker and lets you choose local or API-backed search, speech, and coding-agent connections.",
+    title: "Bring any model",
+    body: "Connect vLLM, llama.cpp, SGLang, Ollama, LM Studio, a hosted provider, or any OpenAI-compatible endpoint once at the server.",
   },
   {
     number: "02",
-    title: "Connect your models",
-    body: "Create the first admin account, then add a hosted provider or an OpenAI-compatible local endpoint. OvertChat checks the connection before you begin.",
+    title: "Choose who gets in",
+    body: "Create accounts for people you trust. Public signup stays closed, and every person gets private history, projects, files, and memories.",
   },
   {
     number: "03",
-    title: "Chat from anywhere",
-    body: "Use the responsive web app or connect the native mobile client to the server you control. Your account, chat history, and files stay on that server.",
+    title: "Let them just chat",
+    body: "They sign in from the web or Android app. Nobody else needs an inference URL, a shared API key, or a lesson in your model stack.",
   },
 ];
 
@@ -69,8 +74,8 @@ const features: Array<{
 }> = [
   {
     icon: MessageSquareText,
-    title: "Fast, persistent chat",
-    body: "Streaming replies, resumable generations, editable messages, projects, and automatically titled history.",
+    title: "Leave. The reply won’t.",
+    body: "Generations keep running on the server when a tab closes or a phone backgrounds, then reconnect when you return.",
   },
   {
     icon: Search,
@@ -79,33 +84,33 @@ const features: Array<{
   },
   {
     icon: HardDrive,
-    title: "Rich attachments",
-    body: "Work with images, PDFs, Word and Excel documents, CSV files, and source code directly in a conversation.",
+    title: "Files, not just prompts",
+    body: "Work with images, PDFs, Word and Excel documents, CSV files, and source code directly in a chat.",
   },
   {
-    icon: Volume2,
-    title: "Voice, both ways",
-    body: "Bundled text-to-speech works out of the box. Optional local speech-to-text keeps dictation on your hardware.",
+    icon: MemoryStick,
+    title: "One server, personal to everyone",
+    body: "Private history, projects, saved memories, and preferences make a shared installation feel like each person’s own app.",
   },
   {
     icon: WandSparkles,
-    title: "Model flexibility",
-    body: "Native support for OpenAI, Anthropic, Google Gemini, and Amazon Bedrock, plus any OpenAI-compatible endpoint—hosted or on hardware you own.",
+    title: "Tools and reasoning included",
+    body: "Connect standard MCP servers, use built-in web search, and expose the reasoning controls supported by each local or hosted model.",
   },
   {
-    icon: ShieldCheck,
-    title: "Private by construction",
-    body: "No usage analytics, advertising SDK, or hosted account system. The server belongs to you.",
+    icon: Bot,
+    title: "A side door to coding agents",
+    body: "When useful, admins can run Codex, Claude Code, OpenCode, Pi, and Oh My Pi locally or over SSH without leaving the chat app.",
   },
 ];
 
 const principles = [
-  "One application process",
   "One portable SQLite file",
-  "A small Redis resume buffer",
-  "No RAG or embeddings stack",
-  "No plugin runtime",
   "No hosted control plane",
+  "No usage analytics",
+  "Optional local speech and search",
+  "Standard MCP support",
+  "One-command managed updates",
 ];
 
 function HomePageShell({ children }: { children: ReactNode }) {
@@ -130,16 +135,16 @@ export default function HomePage() {
           <p className="eyebrow">Open source · self-hosted</p>
           <h1 className="hero-headline">
             <span className="hero-headline-setup">
-              Your therapist has confidentiality.
+              Your AI chat.
             </span>
             <span className="hero-headline-punch">
-              Now your chat app does too.
+              Actually yours.
             </span>
           </h1>
           <p className="hero-lede">
-            OvertChat is a complete chat client for hosted and local models,
-            running on a server you own. Your account and chat history stay
-            there; model requests go only to the endpoints you choose.
+            OvertChat brings local and hosted models into one polished,
+            self-hosted app. You decide where requests go; accounts,
+            conversations, files, and memories stay on your server.
           </p>
           <div className="button-row">
             <a
@@ -155,15 +160,15 @@ export default function HomePage() {
             </a>
           </div>
           <div className="hero-facts" aria-label="Project highlights">
-            <span><WifiOff aria-hidden="true" /> Fully offline-capable</span>
-            <span><EyeOff aria-hidden="true" /> No usage analytics</span>
-            <span><Smartphone aria-hidden="true" /> Native mobile app</span>
+            <span><ShieldCheck aria-hidden="true" /> No OvertChat cloud</span>
+            <span><Users aria-hidden="true" /> Multi-user</span>
+            <span><AudioLines aria-hidden="true" /> Realtime local voice</span>
           </div>
         </div>
         <HeroVignette />
         <a
           className="hero-scroll-cue"
-          href={`#${HOME_SECTION_IDS.howItWorks}`}
+          href={`#${HOME_SECTION_IDS.sharing}`}
         >
           Continue
           <ArrowDown aria-hidden="true" />
@@ -177,30 +182,61 @@ export default function HomePage() {
           aria-label="Supported model endpoints"
           tabIndex={0}
         >
-          <span className="trust-strip-label">Connects to</span>
+          <span className="trust-strip-label">Bring your models</span>
           <span>Ollama</span>
           <span>vLLM</span>
           <span>llama.cpp</span>
+          <span>SGLang</span>
+          <span>LM Studio</span>
           <span>Hosted APIs</span>
-          <span>Any OpenAI-compatible endpoint</span>
         </div>
       </section>
 
       <section
         className="site-section site-container"
-        id={HOME_SECTION_IDS.howItWorks}
+        id={HOME_SECTION_IDS.sharing}
       >
         <div className="section-heading">
           <div>
-            <p className="eyebrow">How it works</p>
-            <h2 className="section-title">Your server is the product.</h2>
+            <p className="eyebrow">Built to be used</p>
+            <h2 className="section-title">Your models deserve an actual front door.</h2>
           </div>
           <p className="section-lede">
-            OvertChat keeps your account, chat history, and files on your
-            server. Model requests go directly to the local or hosted endpoints
-            you configure—never through an OvertChat-operated relay or control
-            plane.
+            An inference server is infrastructure. OvertChat is the part people
+            use: you configure the models once, then everyone you trust gets an
+            account and a private space of their own.
           </p>
+        </div>
+        <div
+          className="access-card"
+          role="img"
+          aria-label="A private model server connected through OvertChat to separate user accounts"
+        >
+          <div className="access-node">
+            <span className="access-node-icon"><Server /></span>
+            <div>
+              <strong>Your model server</strong>
+              <small>One private endpoint</small>
+            </div>
+          </div>
+          <span className="access-arrow"><ArrowRight /></span>
+          <div className="access-node access-node-primary">
+            <span className="access-node-icon"><Boxes /></span>
+            <div>
+              <strong>OvertChat</strong>
+              <small>Accounts, chat, voice, files</small>
+            </div>
+          </div>
+          <span className="access-arrow"><ArrowRight /></span>
+          <div className="access-people">
+            <div className="access-person"><span>Y</span><div><strong>You</strong><small>Admin</small></div></div>
+            <div className="access-person"><span>M</span><div><strong>Maya</strong><small>Private history</small></div></div>
+            <div className="access-person"><span>S</span><div><strong>Sam</strong><small>Private history</small></div></div>
+          </div>
+          <div className="access-safety">
+            <span><KeyRound /> Admin-created accounts</span>
+            <span><ShieldCheck /> Public signup closed</span>
+          </div>
         </div>
         <div className="steps-grid">
           {steps.map((step) => (
@@ -215,13 +251,73 @@ export default function HomePage() {
 
       <section
         className="site-section site-container"
+        id={HOME_SECTION_IDS.voice}
+      >
+        <div className="voice-showcase">
+          <div className="voice-copy">
+            <p className="eyebrow">Beyond the text box</p>
+            <h2 className="section-title">Local voice, at conversation speed.</h2>
+            <p className="section-lede">
+              Speak naturally. Cut in mid-answer. Change direction and keep
+              going. OvertChat wraps local Parakeet and Kokoro around the model
+              you choose, with web search and a saved transcript along for the
+              conversation.
+            </p>
+            <div className="voice-proof">
+              <strong>&lt;8 GB</strong>
+              <span>VRAM for the entire speech layer in our current NVIDIA testing. The rest belongs to the model.</span>
+            </div>
+            <p className="voice-hardware-note">
+              A 24 GB card can still have room for a capable quantized model.
+              Speech can also run on CPU or a second GPU when you want to go
+              bigger.
+            </p>
+          </div>
+          <div
+            className="voice-console"
+            role="img"
+            aria-label="Realtime voice moving from Parakeet speech recognition through the selected language model to Kokoro speech synthesis"
+          >
+            <div className="voice-console-header">
+              <span><span className="voice-live-dot" /> Listening</span>
+              <small>Realtime voice</small>
+            </div>
+            <div className="voice-orb">
+              <Mic2 />
+              <div className="voice-wave" aria-hidden="true">
+                {Array.from({ length: 15 }, (_, index) => <span key={index} />)}
+              </div>
+            </div>
+            <div className="voice-pipeline">
+              <div><AudioLines /><strong>Parakeet</strong><small>Speech to text</small></div>
+              <ArrowRight />
+              <div><Braces /><strong>Your model</strong><small>Local or hosted</small></div>
+              <ArrowRight />
+              <div><Volume2 /><strong>Kokoro</strong><small>Text to speech</small></div>
+            </div>
+            <div className="voice-console-footer">
+              <span>Interruptible</span>
+              <span>Search-aware</span>
+              <span>Transcript saved</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        className="site-section site-container"
         id={HOME_SECTION_IDS.features}
       >
-        <div className="section-heading compact-heading">
+        <div className="section-heading">
           <div>
-            <p className="eyebrow">What’s in the box</p>
-            <h2 className="section-title">The whole client, already wired up.</h2>
+            <p className="eyebrow">A focused Open WebUI alternative</p>
+            <h2 className="section-title">Everything around the model matters too.</h2>
           </div>
+          <p className="section-lede">
+            OvertChat stays focused on a fast, complete chat experience instead
+            of becoming another platform to maintain. The everyday details are
+            already handled.
+          </p>
         </div>
         <div className="feature-grid">
           {features.map(({ icon: Icon, title, body }) => (
@@ -240,12 +336,13 @@ export default function HomePage() {
       >
         <div className="site-container architecture-grid">
           <div className="architecture-copy">
-            <p className="eyebrow">Deliberately boring infrastructure</p>
-            <h2 className="section-title">Easy to understand. Easier to keep.</h2>
+            <p className="eyebrow">What “yours” means</p>
+            <h2 className="section-title">No mystery cloud in the middle.</h2>
             <p className="section-lede">
-              There is no distributed services diagram hiding behind the chat
-              box. Back up one database file, update one container image, and
-              keep operating on your terms.
+              Accounts, conversations, files, memories, and settings stay in
+              one portable SQLite database on your server. Model requests go
+              directly to the endpoints you configure. OvertChat operates no
+              account system, API relay, or hosted control plane.
             </p>
             <a
               className="text-link"
@@ -266,8 +363,8 @@ export default function HomePage() {
                 <span>OvertChat</span>
               </div>
               <div className="architecture-split">
-                <div className="architecture-node"><Database /><span>SQLite</span></div>
-                <div className="architecture-node"><Braces /><span>Your models</span></div>
+                <div className="architecture-node"><Database /><span>Your data</span></div>
+                <div className="architecture-node"><Braces /><span>Your endpoints</span></div>
               </div>
             </div>
             <ul className="principle-list">
@@ -286,11 +383,12 @@ export default function HomePage() {
         <div className="client-card client-card-web">
           <span className="client-icon"><Globe2 aria-hidden="true" /></span>
           <div className="client-card-body">
-            <p className="eyebrow">On the web</p>
-            <h2>Open it and get to work.</h2>
+            <p className="eyebrow">Wherever there’s a browser</p>
+            <h2>Open it. Pick up where you left off.</h2>
             <p>
-              A responsive interface for long conversations, projects, files,
-              web research, voice, and every model connected to your server.
+              Long conversations stay responsive, active replies survive a
+              disconnect, and every project, file, search, memory, and model is
+              waiting on the server.
             </p>
             <a href="https://github.com/yoloyash/overtchat#quick-start" className="text-link">
               Self-host the web app <ArrowRight aria-hidden="true" />
@@ -300,11 +398,12 @@ export default function HomePage() {
         <div className="client-card client-card-mobile">
           <span className="client-icon"><Smartphone aria-hidden="true" /></span>
           <div className="client-card-body">
-            <p className="eyebrow">On mobile</p>
-            <h2>Your server, in your pocket.</h2>
+            <p className="eyebrow">Away from the desk</p>
+            <h2>Same server. Smaller screen.</h2>
             <p>
-              The native client connects directly to your OvertChat instance.
-              Chats and attachments stay on that server—not in a hosted mobile backend.
+              The native Android app connects straight to OvertChat. Chats,
+              attachments, projects, search, and voice follow without moving
+              into a separate mobile backend.
             </p>
             <a
               href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"
@@ -321,12 +420,12 @@ export default function HomePage() {
         id={HOME_SECTION_IDS.quickStart}
       >
         <div className="quick-start-copy">
-          <p className="eyebrow">Quick start</p>
-          <h2 className="section-title">From clone to chat in one stack.</h2>
+          <p className="eyebrow">Your turn</p>
+          <h2 className="section-title">One command between here and yours.</h2>
           <p className="section-lede">
-            Docker and an LLM endpoint are the only real prerequisites. The
-            first account becomes the administrator and the setup wizard handles
-            the rest.
+            The guided setup handles Docker, secrets, updates, and optional
+            search, speech, and Agent Connections. Bring a model endpoint; the
+            first account becomes the administrator.
           </p>
           <div className="button-row">
             <a
@@ -355,13 +454,13 @@ export default function HomePage() {
         id={HOME_SECTION_IDS.releases}
       >
         <div>
-          <p className="eyebrow">Built in public</p>
-          <h2 className="section-title">See what changed, without digging.</h2>
+          <p className="eyebrow">Still becoming yours</p>
+          <h2 className="section-title">Built in public. Shipped in the open.</h2>
         </div>
         <div className="release-cta-copy">
           <p className="section-lede">
-            Web and mobile releases live in one chronological log, generated
-            directly from the project’s GitHub Releases.
+            Follow every stable web and mobile release in one chronological log,
+            generated directly from the project’s GitHub Releases.
           </p>
           <Link className="button button-primary" href="/releases/">
             Browse releases

@@ -10,6 +10,7 @@ export function SiteHeader() {
           overtchat
         </Link>
         <nav className="site-nav" aria-label="Primary navigation">
+          <Link href="/#quick-start">Install</Link>
           <Link href="/releases/">Releases</Link>
           <a
             className="icon-button"
