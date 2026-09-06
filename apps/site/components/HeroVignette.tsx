@@ -1,6 +1,7 @@
 import { MODEL_BRAND_ICONS } from "@overtchat/shared";
 import {
   ArrowUp,
+  Bot,
   ChevronDown,
   ChevronUp,
   FileText,
@@ -21,7 +22,7 @@ export function HeroVignette() {
     <div
       className="vignette"
       role="img"
-      aria-label="Illustration closely matching the OvertChat conversation interface"
+      aria-label="OvertChat conversation interface with personal projects and Codex and Claude Code agent workspaces"
     >
       <div className="vignette-glow" aria-hidden="true" />
       <div className="vignette-window" aria-hidden="true">
@@ -46,23 +47,35 @@ export function HeroVignette() {
           <div className="vignette-sidebar-label">Projects</div>
           <div className="vignette-project">
             <Folder />
-            <span>OvertChat launch</span>
+            <span>Household</span>
             <ChevronDown />
           </div>
           <div className="vignette-project-thread is-active">
-            Project architecture
+            Weeknight meals
+          </div>
+
+          <div className="vignette-sidebar-label">Agent workspaces</div>
+          <div className="vignette-agent-workspace">
+            <Bot />
+            <span>OvertChat</span>
+            <small>Codex</small>
+          </div>
+          <div className="vignette-agent-workspace">
+            <Bot />
+            <span>Notes</span>
+            <small>Claude Code</small>
           </div>
 
           <div className="vignette-sidebar-label">Today</div>
-          <div className="vignette-thread">Weekend reading</div>
-          <div className="vignette-thread">Model comparison</div>
+          <div className="vignette-thread">Homework helper</div>
+          <div className="vignette-thread">Weekend plans</div>
 
           <div className="vignette-sidebar-spacer" />
           <div className="vignette-profile">
             <span><User /></span>
             <div>
-              <strong>Yash</strong>
-              <small>yash@example.com</small>
+              <strong>Maya</strong>
+              <small>maya@home</small>
             </div>
             <ChevronUp />
           </div>
@@ -83,31 +96,31 @@ export function HeroVignette() {
                   ))}
                 </svg>
               </span>
-              <strong>Qwen 3.6 27B (Q6)</strong>
+              <strong>Qwen 3.8 27B</strong>
               <ChevronDown />
             </div>
           </header>
 
           <div className="vignette-messages">
             <div className="vignette-message vignette-message-user">
-              How do hosted and local models differ for privacy?
+              Plan a vegetarian dinner for six and make a shopping list.
             </div>
             <div className="vignette-tool">
               <Search />
-              <span>Searched 5 sources</span>
-              <span className="vignette-tool-time">1.4s</span>
+              <span>Searched 4 recipes</span>
+              <span className="vignette-tool-time">1.2s</span>
             </div>
             <div className="vignette-message vignette-message-assistant">
-              <p>Mostly in where requests go:</p>
+              <p>Here’s a low-stress menu everyone can share:</p>
               <ul>
-                <li>A hosted model receives prompts at its API</li>
-                <li>A local model can process them on your hardware</li>
-                <li>OvertChat stores chat history on your server</li>
+                <li>Roasted tomato and chickpea pasta</li>
+                <li>Arugula salad with lemon dressing</li>
+                <li>Garlic bread and berry crumble</li>
               </ul>
-              <p>You choose the endpoint for each conversation.</p>
+              <p>I grouped the shopping list by aisle below.</p>
               <div className="vignette-citations">
-                <span><Globe /> ollama.com</span>
-                <span><FileText /> openai.com</span>
+                <span><Globe /> 4 sources</span>
+                <span><FileText /> Shopping list</span>
               </div>
             </div>
           </div>

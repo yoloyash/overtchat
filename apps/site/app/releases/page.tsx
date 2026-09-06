@@ -7,7 +7,8 @@ import { fetchGithubReleases } from "@/lib/releases.server";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Releases",
-  description: "Web and mobile release notes for OvertChat.",
+  description:
+    "Every stable OvertChat web and mobile release, with notes and downloads in one chronological log.",
   path: "/releases/",
 });
 
@@ -20,13 +21,13 @@ export default async function ReleasesPage() {
     <main className="site-main" id="main-content" tabIndex={-1}>
       <section className="page-hero site-container release-page-hero">
         <div>
-          <p className="eyebrow">Changelog</p>
+          <p className="eyebrow">Built in public</p>
           <h1 className="page-title">What shipped.</h1>
         </div>
         <div>
           <p className="page-lede">
-            Every stable web and mobile release, in one place. This page is
-            generated directly from GitHub Releases whenever the project ships.
+            Follow OvertChat as it gets faster, more capable, and easier to run.
+            Every stable web and mobile release lands here directly from GitHub.
           </p>
           <a
             className="text-link"

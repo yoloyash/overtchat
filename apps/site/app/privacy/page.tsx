@@ -19,12 +19,11 @@ export default function PrivacyPage() {
         <header className="legal-header">
           <p className="eyebrow">Legal</p>
           <h1 className="page-title">Privacy Policy</h1>
-          <p className="legal-updated">Last updated 22 August 2026</p>
+          <p className="legal-updated">Last updated 6 September 2026</p>
           <p className="page-lede">
-            OvertChat is an open-source chat client that connects to a server you
-            choose. The short version: we do not operate a hosted chat service,
-            and the server you point the app at is governed by whoever operates
-            it—which may be you.
+            OvertChat is open-source software that runs on a server you choose.
+            The short version: we do not operate a hosted chat service, and the
+            server you use is governed by whoever operates it—which may be you.
           </p>
         </header>
 
@@ -53,8 +52,9 @@ export default function PrivacyPage() {
                 locally on your device),
               </li>
               <li>
-                send your messages, attachments, and voice dictation audio to
-                your server so it can talk to a language model on your behalf,
+                send your messages, attachments, voice dictation, and realtime
+                voice audio to your server so it can use the speech and language
+                model providers configured by its administrator,
               </li>
               <li>
                 load chat history, projects, and settings you have created on
@@ -64,7 +64,10 @@ export default function PrivacyPage() {
             <p>
               How that server stores, retains, or shares that data is governed by
               whoever administers it—that is a separate policy from this one. If
-              you self-host, you are that administrator.
+              you self-host, you are that administrator. Local providers can keep
+              processing on infrastructure the administrator controls; hosted
+              providers receive the requests routed to them under their own
+              policies.
             </p>
           </section>
 
@@ -184,10 +187,12 @@ export default function PrivacyPage() {
             <h2>Permissions and why we ask for them</h2>
             <ul>
               <li>
-                <strong>Microphone</strong>—used only when you tap the dictation
-                button. The recording is sent to your configured server for
-                transcription when you stop recording and is deleted from the
-                app cache after transcription completes.
+                <strong>Microphone</strong>—used only after you start dictation or
+                a realtime voice conversation. Dictation is sent to your server
+                for transcription when you stop recording and is deleted from
+                the mobile app cache afterward. During browser realtime voice,
+                audio streams to your server while the session is active; its
+                transcript is saved there as a chat.
               </li>
               <li>
                 <strong>Camera</strong>—used only when you choose “Take Photo” to
@@ -208,8 +213,9 @@ export default function PrivacyPage() {
               Data selected through them leaves the device only when you choose
               an app action that uses it—for example, selecting an attachment
               uploads it to your server, and stopping dictation sends the
-              recording for transcription. Crash diagnostics are a separate
-              data flow to Sentry, described above.
+              recording for transcription. Realtime microphone streaming stops
+              when you mute or end the voice session. Crash diagnostics are a
+              separate data flow to Sentry, described above.
             </p>
           </section>
 
