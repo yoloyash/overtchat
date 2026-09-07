@@ -1,9 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
+import type { ModelBrandIconId } from "@overtchat/shared";
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AttachmentMeta } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { useTheme } from "@/lib/theme";
@@ -16,12 +18,16 @@ export function Composer({
   streaming,
   searchAvailable,
   searchRequested,
+  modelLabel,
+  modelIconId,
+  thinkingLevelLabel,
   attachments,
   attachmentMeta,
   uploading,
   uploadError,
   isAdmin,
   onClearSearch,
+  onOpenModelPicker,
   onOpenAddSheet,
   onRemoveAttachment,
   onDismissUploadError,
@@ -33,12 +39,16 @@ export function Composer({
   streaming: boolean;
   searchAvailable: boolean;
   searchRequested: boolean;
+  modelLabel?: string;
+  modelIconId?: ModelBrandIconId;
+  thinkingLevelLabel?: string;
   attachments: FileUIPart[];
   attachmentMeta: Record<string, AttachmentMeta>;
   uploading: boolean;
   uploadError: string | null;
   isAdmin: boolean;
   onClearSearch: () => void;
+  onOpenModelPicker: () => void;
   onOpenAddSheet: () => void;
   onRemoveAttachment: (index: number) => void;
   onDismissUploadError: () => void;
@@ -90,12 +100,16 @@ export function Composer({
     onClearSearch();
   }
 
+  function openModelPicker() {
+    Haptics.selectionAsync().catch(() => {});
+    onOpenModelPicker();
+  }
+
   const canSend =
     (input.trim().length > 0 || attachments.length > 0) &&
     !streaming &&
     !uploading &&
     configured;
-  const showPillsRow = searchRequested;
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
   return (
@@ -179,42 +193,27 @@ export function Composer({
           </View>
         )}
 
-        {showPillsRow && (
-          <View style={styles.pillsRow}>
-            {searchRequested && (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove Search from this message"
-                onPress={clearSearch}
-                style={({ pressed }) => [
-                  styles.pill,
-                  {
-                    backgroundColor: colors.accent,
-                    borderRadius: radii.pill,
-                    opacity: pressed ? 0.8 : 1,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="globe-outline"
-                  size={14}
-                  color={colors.foreground}
-                />
-                <Text
-                  style={[
-                    styles.pillLabel,
-                    { color: colors.foreground, fontFamily: fonts.sansMedium },
-                  ]}
-                >
-                  Search
-                </Text>
-                <Ionicons name="close" size={14} color={colors.foreground} />
-              </Pressable>
-            )}
-          </View>
-        )}
+        <TextInputWrapper
+          style={styles.inputWrapper}
+          onPaste={(payload) => {
+            if (payload.type === "images") onPasteImages(payload.uris);
+          }}
+        >
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            editable={configured && dictation.status !== "transcribing"}
+            multiline
+            placeholder={configured ? "Message…" : "No models configured"}
+            placeholderTextColor={colors.mutedForeground}
+            style={[
+              styles.input,
+              { color: colors.foreground, fontFamily: fonts.sansRegular },
+            ]}
+          />
+        </TextInputWrapper>
 
-        <View style={styles.inputRow}>
+        <View style={styles.controlsRow}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={
@@ -224,37 +223,114 @@ export function Composer({
             }
             onPress={openAdd}
             style={({ pressed }) => [
-              styles.iconButton,
-              {
-                backgroundColor: "transparent",
-                borderColor: colors.border,
-                borderRadius: radii.pill,
-                opacity: pressed ? 0.7 : 1,
-              },
+              styles.iconHitTarget,
+              { opacity: pressed ? 0.7 : 1 },
             ]}
           >
-            <Ionicons name="add" size={20} color={colors.mutedForeground} />
+            <View
+              style={[
+                styles.secondaryButtonSurface,
+                {
+                  borderColor: colors.border,
+                  borderRadius: radii.pill,
+                },
+              ]}
+            >
+              <Ionicons name="add" size={19} color={colors.mutedForeground} />
+            </View>
           </Pressable>
 
-          <TextInputWrapper
-            style={styles.inputWrapper}
-            onPaste={(payload) => {
-              if (payload.type === "images") onPasteImages(payload.uris);
-            }}
-          >
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              editable={configured && dictation.status !== "transcribing"}
-              multiline
-              placeholder={configured ? "Message…" : "No models configured"}
-              placeholderTextColor={colors.mutedForeground}
-              style={[
-                styles.input,
-                { color: colors.foreground, fontFamily: fonts.sansRegular },
+          {searchRequested ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Turn off Search for this message"
+              accessibilityState={{ selected: true }}
+              onPress={clearSearch}
+              style={({ pressed }) => [
+                styles.iconHitTarget,
+                { opacity: pressed ? 0.7 : 1 },
               ]}
-            />
-          </TextInputWrapper>
+            >
+              <View
+                style={[
+                  styles.secondaryButtonSurface,
+                  {
+                    backgroundColor: colors.accent,
+                    borderColor: "transparent",
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="globe-outline"
+                  size={18}
+                  color={colors.foreground}
+                />
+              </View>
+            </Pressable>
+          ) : null}
+
+          {modelLabel ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                thinkingLevelLabel
+                  ? `Model and thinking: ${modelLabel}, ${thinkingLevelLabel}`
+                  : `Model: ${modelLabel}`
+              }
+              onPress={openModelPicker}
+              style={({ pressed }) => [
+                styles.modelHitTarget,
+                { opacity: pressed ? 0.8 : 1 },
+              ]}
+            >
+              <View
+                style={[
+                  styles.modelButtonSurface,
+                  {
+                    backgroundColor: colors.muted,
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <ModelBrandIcon
+                  iconId={modelIconId}
+                  color={colors.mutedForeground}
+                  size={15}
+                  style={styles.modelButtonIcon}
+                />
+                <Text
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                  style={[
+                    styles.modelButtonLabel,
+                    {
+                      color: colors.foreground,
+                      fontFamily: fonts.sansMedium,
+                    },
+                  ]}
+                >
+                  {modelLabel}
+                </Text>
+                {thinkingLevelLabel ? (
+                  <Text
+                    numberOfLines={1}
+                    style={[
+                      styles.modelButtonThinking,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansMedium,
+                      },
+                    ]}
+                  >
+                    {thinkingLevelLabel}
+                  </Text>
+                ) : null}
+              </View>
+            </Pressable>
+          ) : null}
+
+          <View style={styles.controlsSpacer} />
 
           {!streaming && !canSend ? (
             <Pressable
@@ -269,17 +345,8 @@ export function Composer({
               disabled={dictation.status === "transcribing"}
               onPress={toggleMic}
               style={({ pressed }) => [
-                styles.iconButton,
+                styles.iconHitTarget,
                 {
-                  backgroundColor:
-                    dictation.status === "recording"
-                      ? colors.destructive
-                      : "transparent",
-                  borderColor:
-                    dictation.status === "recording"
-                      ? "transparent"
-                      : colors.border,
-                  borderRadius: radii.pill,
                   opacity:
                     dictation.status === "transcribing"
                       ? 0.6
@@ -289,15 +356,32 @@ export function Composer({
                 },
               ]}
             >
-              <Ionicons
-                name={dictation.status === "recording" ? "stop" : "mic"}
-                size={dictation.status === "recording" ? 16 : 20}
-                color={
-                  dictation.status === "recording"
-                    ? colors.background
-                    : colors.mutedForeground
-                }
-              />
+              <View
+                style={[
+                  styles.secondaryButtonSurface,
+                  {
+                    backgroundColor:
+                      dictation.status === "recording"
+                        ? colors.destructive
+                        : "transparent",
+                    borderColor:
+                      dictation.status === "recording"
+                        ? "transparent"
+                        : colors.border,
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={dictation.status === "recording" ? "stop" : "mic"}
+                  size={dictation.status === "recording" ? 15 : 19}
+                  color={
+                    dictation.status === "recording"
+                      ? colors.background
+                      : colors.mutedForeground
+                  }
+                />
+              </View>
             </Pressable>
           ) : null}
 
@@ -307,16 +391,25 @@ export function Composer({
               accessibilityLabel="Stop generating"
               onPress={onStop}
               style={({ pressed }) => [
-                styles.iconButton,
-                {
-                  backgroundColor: colors.secondary,
-                  borderRadius: radii.pill,
-                  borderColor: "transparent",
-                  opacity: pressed ? 0.85 : 1,
-                },
+                styles.iconHitTarget,
+                { opacity: pressed ? 0.85 : 1 },
               ]}
             >
-              <Ionicons name="stop" size={16} color={colors.secondaryForeground} />
+              <View
+                style={[
+                  styles.primaryButtonSurface,
+                  {
+                    backgroundColor: colors.secondary,
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="stop"
+                  size={15}
+                  color={colors.secondaryForeground}
+                />
+              </View>
             </Pressable>
           ) : (
             <Pressable
@@ -325,16 +418,27 @@ export function Composer({
               disabled={!canSend}
               onPress={submit}
               style={({ pressed }) => [
-                styles.iconButton,
+                styles.iconHitTarget,
                 {
-                  backgroundColor: colors.primary,
-                  borderRadius: radii.pill,
-                  borderColor: "transparent",
                   opacity: !canSend ? 0.4 : pressed ? 0.85 : 1,
                 },
               ]}
             >
-              <Ionicons name="arrow-up" size={20} color={colors.primaryForeground} />
+              <View
+                style={[
+                  styles.primaryButtonSurface,
+                  {
+                    backgroundColor: colors.primary,
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="arrow-up"
+                  size={19}
+                  color={colors.primaryForeground}
+                />
+              </View>
             </Pressable>
           )}
         </View>
@@ -346,6 +450,8 @@ export function Composer({
 const styles = StyleSheet.create({
   wrapper: { gap: 6 },
   errorBanner: {
+    minHeight: 48,
+    justifyContent: "center",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderWidth: StyleSheet.hairlineWidth,
@@ -374,34 +480,49 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   uploadingText: { fontSize: 12 },
-  pillsRow: {
+  controlsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
+    alignItems: "center",
     gap: 6,
-    paddingHorizontal: 6,
-    paddingTop: 4,
   },
-  pill: {
+  inputWrapper: { alignSelf: "stretch" },
+  modelHitTarget: {
+    height: 48,
+    maxWidth: 210,
+    minWidth: 0,
+    flexShrink: 1,
+    justifyContent: "center",
+  },
+  modelButtonSurface: {
+    height: 36,
+    minWidth: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingLeft: 9,
-    paddingRight: 7,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
   },
-  pillLabel: { fontSize: 14 },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 6,
+  modelButtonIcon: { flexShrink: 0 },
+  modelButtonLabel: { flexShrink: 1, minWidth: 0, fontSize: 13 },
+  modelButtonThinking: { flexShrink: 0, fontSize: 13 },
+  controlsSpacer: { flex: 1 },
+  iconHitTarget: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  inputWrapper: { flex: 1 },
-  iconButton: {
-    width: 42,
-    height: 42,
+  secondaryButtonSurface: {
+    width: 38,
+    height: 38,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
+  },
+  primaryButtonSurface: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
   },
   input: {
     minHeight: 42,

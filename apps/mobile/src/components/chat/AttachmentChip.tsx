@@ -115,7 +115,9 @@ export function AttachmentChip({
             accessibilityLabel={label}
           />
         </Pressable>
-        {onRemove && <RemoveButton onPress={onRemove} label={label} />}
+        {onRemove && (
+          <RemoveButton onPress={onRemove} label={label} compact />
+        )}
         <ImageView
           images={[source]}
           imageIndex={0}
@@ -166,7 +168,7 @@ export function AttachmentChip({
       borderColor: colors.border,
       backgroundColor: colors.muted,
       borderRadius: radii.md,
-      paddingRight: onRemove ? 30 : 14,
+      paddingRight: onRemove ? 48 : 14,
     },
   ];
   const docContent = (
@@ -227,27 +229,35 @@ export function AttachmentChip({
 function RemoveButton({
   onPress,
   label,
+  compact = false,
 }: {
   onPress: () => void;
   label: string;
+  compact?: boolean;
 }) {
   const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={`Remove ${label}`}
       style={({ pressed }) => [
-        styles.removeBtn,
-        {
-          backgroundColor: colors.background,
-          borderColor: colors.border,
-          opacity: pressed ? 0.7 : 1,
-        },
+        styles.removeButtonTarget,
+        compact && styles.removeButtonTargetCompact,
+        { opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      <Ionicons name="close" size={12} color={colors.foreground} />
+      <View
+        style={[
+          styles.removeButtonSurface,
+          {
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <Ionicons name="close" size={12} color={colors.foreground} />
+      </View>
     </Pressable>
   );
 }
@@ -282,7 +292,18 @@ const styles = StyleSheet.create({
   docMeta: { flex: 1, minWidth: 0 },
   docLabel: { fontSize: 13 },
   docSub: { fontSize: 11, marginTop: 2 },
-  removeBtn: {
+  removeButtonTarget: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 48,
+    height: 48,
+  },
+  removeButtonTargetCompact: {
+    width: 32,
+    height: 32,
+  },
+  removeButtonSurface: {
     position: "absolute",
     top: 4,
     right: 4,

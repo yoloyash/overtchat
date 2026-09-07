@@ -2,8 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { useChat } from "@ai-sdk/react";
 import {
   hasSuccessfulMemoryMutation,
+  modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
   type ChatKind,
+  type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
@@ -40,8 +42,12 @@ import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
-import { ModelPickerSheet } from "@/components/chat/ModelPickerSheet";
-import { ModelBrandIcon } from "@/components/ModelBrandIcon";
+import {
+  ModelPickerSheet,
+  reasoningLabel,
+  reasoningOptionsForControls,
+  type ModelPickerSheetRef,
+} from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
@@ -51,6 +57,10 @@ import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
+import {
+  setReasoningLevel,
+  useReasoningLevels,
+} from "@/lib/reasoningPreferences";
 import { useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
@@ -185,7 +195,8 @@ function ChatSurface({
   const [searchRequested, setSearchRequested] = useState(false);
   const [chatPersisted, setChatPersisted] = useState(!isNew);
   const webSearchEnabled = useWebSearchEnabled();
-  const pickerRef = useRef<BottomSheetModal>(null);
+  const reasoningLevels = useReasoningLevels();
+  const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
 
   useEffect(() => {
@@ -271,6 +282,22 @@ function ChatSurface({
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
+  const reasoningControls = selectedModel?.capabilities?.reasoningControls;
+  const storedReasoningLevel = selectedId
+    ? reasoningLevels[selectedId]
+    : undefined;
+  const reasoningLevel: ChatReasoningLevel =
+    storedReasoningLevel !== "default" &&
+    modelSupportsChatReasoningLevel(
+      selectedModel?.capabilities,
+      storedReasoningLevel,
+    )
+      ? storedReasoningLevel
+      : (reasoningControls?.defaultLevel ?? "default");
+  const thinkingLevelLabel =
+    reasoningOptionsForControls(reasoningControls).length > 1
+      ? reasoningLabel(reasoningLevel)
+      : undefined;
   const searchAvailable =
     webSearchEnabled && modelSupportsToolCalling(selectedModel);
   const searchUnavailableReason = !webSearchEnabled
@@ -356,42 +383,7 @@ function ChatSurface({
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerTitle: () => (
-        <Pressable
-          onPress={() => pickerRef.current?.present()}
-          style={styles.headerTitle}
-        >
-          {modelsPending ? (
-            <ActivityIndicator color={colors.mutedForeground} size="small" />
-          ) : (
-            <>
-              <ModelBrandIcon
-                iconId={
-                  selectedModel?.modelIconId ?? selectedModel?.providerIconId
-                }
-                color={colors.mutedForeground}
-                size={16}
-                style={styles.headerTitleIcon}
-              />
-              <Text
-                numberOfLines={1}
-                style={[
-                  styles.headerTitleText,
-                  { color: colors.foreground, fontFamily: fonts.sansSemiBold },
-                ]}
-              >
-                {selectedModel?.label ?? "Select model"}
-              </Text>
-              <Ionicons
-                name="chevron-down"
-                size={16}
-                color={colors.mutedForeground}
-                style={styles.headerTitleCaret}
-              />
-            </>
-          )}
-        </Pressable>
-      ),
+      headerTitle: "",
       headerRight: () => (
         <Pressable
           accessibilityRole="button"
@@ -403,17 +395,7 @@ function ChatSurface({
         </Pressable>
       ),
     });
-  }, [
-    navigation,
-    modelsPending,
-    selectedModel?.id,
-    selectedModel?.label,
-    selectedModel?.modelIconId,
-    selectedModel?.providerIconId,
-    colors,
-    fonts,
-    onNewChat,
-  ]);
+  }, [navigation, colors, onNewChat]);
 
   function requestBody(action: ChatRequestAction, forceSearch = false) {
     const requested = searchAvailable && forceSearch;
@@ -430,6 +412,7 @@ function ChatSurface({
       projectId,
       temporary: false,
       action,
+      ...(reasoningControls ? { reasoningLevel } : {}),
     };
   }
 
@@ -635,12 +618,21 @@ function ChatSurface({
             streaming={streaming}
             searchAvailable={searchAvailable}
             searchRequested={searchAvailable && searchRequested}
+            modelLabel={selectedModel?.label}
+            modelIconId={
+              selectedModel?.modelIconId ?? selectedModel?.providerIconId
+            }
+            thinkingLevelLabel={thinkingLevelLabel}
             attachments={attachments}
             attachmentMeta={attachmentMeta}
             uploading={uploading}
             uploadError={uploadError}
             isAdmin={isAdmin}
             onClearSearch={() => setSearchRequested(false)}
+            onOpenModelPicker={() => {
+              Keyboard.dismiss();
+              pickerRef.current?.present();
+            }}
             onOpenAddSheet={() => {
               Keyboard.dismiss();
               addSheetRef.current?.present();
@@ -662,9 +654,14 @@ function ChatSurface({
         selectedId={selectedId}
         loading={modelsPending}
         error={modelsError}
+        reasoningControls={reasoningControls}
+        reasoningLevel={reasoningLevel}
         onSelect={(modelId) => {
           setSearchRequested(false);
           setSelectedId(modelId);
+        }}
+        onSelectReasoningLevel={(level) => {
+          if (selectedId) setReasoningLevel(selectedId, level);
         }}
       />
 
@@ -682,10 +679,6 @@ function ChatSurface({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  headerTitle: { flexDirection: "row", alignItems: "center", maxWidth: 240 },
-  headerTitleIcon: { marginRight: 7 },
-  headerTitleText: { flexShrink: 1, fontSize: 16, maxWidth: 190 },
-  headerTitleCaret: { marginLeft: 4 },
   headerRight: { paddingHorizontal: 12 },
   gate: {
     flex: 1,
