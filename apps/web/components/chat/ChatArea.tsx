@@ -171,6 +171,12 @@ export function ChatArea({
   );
 
   const [temporary, setTemporary] = useState(false);
+  const persistedTitle = chats
+    ?.find((chat) => chat.id === chatId)
+    ?.title?.trim();
+  const headerTitle = temporary
+    ? "Temporary chat"
+    : persistedTitle || (isNew ? "New chat" : "Untitled");
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()
@@ -672,6 +678,7 @@ export function ChatArea({
       onDrop={handleDrop}
     >
       <ChatHeader
+        title={headerTitle}
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
