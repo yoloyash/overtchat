@@ -38,6 +38,27 @@ describe("DeepSeek adapter", () => {
     expect(prepareDeepSeekRequest(nonThinking)).toBe(nonThinking);
   });
 
+  it("applies explicit effort and toggle selections", () => {
+    expect(
+      prepareDeepSeekRequest(
+        {
+          reasoning_effort: "max",
+          thinking: { type: "disabled", custom: true },
+        },
+        "max",
+      ),
+    ).toEqual({
+      reasoning_effort: "max",
+      thinking: { type: "enabled", custom: true },
+    });
+    expect(
+      prepareDeepSeekRequest(
+        { reasoning_effort: "max", thinking: { type: "enabled" } },
+        "off",
+      ),
+    ).toEqual({ thinking: { type: "disabled" } });
+  });
+
   it("discovers models through the authenticated OpenAI-compatible endpoint", async () => {
     const fetchMock = vi.fn(async () =>
       Response.json({

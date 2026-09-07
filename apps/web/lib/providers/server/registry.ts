@@ -70,10 +70,13 @@ export function createConfiguredLanguageModel(
       { cause: error },
     );
   }
-  const options = {
+  const configuredOptions = {
     ...(resolved.defaultProviderOptions ?? {}),
     ...(config.providerOptions ?? {}),
   };
+  const options = resolved.transformProviderOptions
+    ? resolved.transformProviderOptions(configuredOptions)
+    : configuredOptions;
 
   return {
     model: wrapLanguageModel({

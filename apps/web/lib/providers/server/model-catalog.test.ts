@@ -69,6 +69,46 @@ describe("vendored model catalog", () => {
     });
   });
 
+  it("exposes exact cloud reasoning controls without Bedrock fallback", () => {
+    expect(catalogCapabilitiesFor("openai", "gpt-5.4")).toMatchObject({
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "medium",
+        efforts: ["low", "medium", "high", "xhigh"],
+      },
+    });
+    expect(
+      catalogCapabilitiesFor("anthropic", "claude-opus-4-7"),
+    ).toMatchObject({
+      reasoningControls: {
+        toggle: false,
+        defaultLevel: "high",
+        efforts: ["low", "medium", "high", "xhigh", "max"],
+      },
+    });
+    expect(
+      catalogCapabilitiesFor("google", "gemini-3.1-pro-preview"),
+    ).toMatchObject({
+      reasoningControls: {
+        toggle: false,
+        defaultLevel: "high",
+        efforts: ["low", "medium", "high"],
+      },
+    });
+    expect(
+      catalogCapabilitiesFor("deepseek", "deepseek-v4-flash"),
+    ).toMatchObject({
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "max",
+        efforts: ["low", "high", "max"],
+      },
+    });
+    expect(
+      catalogCapabilitiesFor("bedrock", "openai.gpt-5.4"),
+    ).not.toHaveProperty("reasoningControls");
+  });
+
   it("normalizes base pricing and identifies context tiers", () => {
     expect(catalogPricingFor("openai", "gpt-4")).toEqual({
       input: 30,

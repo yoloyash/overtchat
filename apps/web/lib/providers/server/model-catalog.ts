@@ -1,5 +1,8 @@
 import "server-only";
-import type { ModelCapabilities } from "@overtchat/shared";
+import type {
+  ModelCapabilities,
+  ModelReasoningControls,
+} from "@overtchat/shared";
 import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import catalogJson from "@/lib/providers/server/model-catalog.json";
@@ -14,6 +17,7 @@ export interface ModelCatalogEntry {
   attachment?: boolean;
   tool_call?: boolean;
   reasoning?: boolean;
+  reasoning_controls?: ModelReasoningControls;
   structured_output?: boolean;
   temperature?: boolean;
 }
@@ -82,6 +86,7 @@ export function catalogCapabilitiesFor(
     attachment: entry.attachment,
     toolCalling: entry.tool_call,
     reasoning: entry.reasoning,
+    reasoningControls: entry.reasoning_controls,
     structuredOutput: entry.structured_output,
     temperature: entry.temperature,
   });

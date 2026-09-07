@@ -14,11 +14,13 @@ import {
   writeFileSync,
 } from "node:fs";
 import { resolve } from "node:path";
+import type { ModelReasoningControls } from "@overtchat/shared";
 import {
   createModelCatalogManifest,
   MODEL_CATALOG_SOURCE_URL,
   validateModelCatalogArtifacts,
 } from "../lib/providers/server/model-catalog-artifacts";
+import { catalogReasoningControlsFor } from "../lib/providers/server/model-catalog-reasoning";
 
 const PROVIDERS = [
   ["openai", "openai"],
@@ -46,6 +48,7 @@ interface CatalogEntry {
   attachment?: boolean;
   tool_call?: boolean;
   reasoning?: boolean;
+  reasoning_controls?: ModelReasoningControls;
   structured_output?: boolean;
   temperature?: boolean;
 }
@@ -134,6 +137,14 @@ async function main() {
       copyBoolean(sourceModel, entry, "reasoning");
       copyBoolean(sourceModel, entry, "structured_output");
       copyBoolean(sourceModel, entry, "temperature");
+
+      if (sourceModel.reasoning === true) {
+        const reasoningControls = catalogReasoningControlsFor(
+          providerId,
+          sourceModel.reasoning_options,
+        );
+        if (reasoningControls) entry.reasoning_controls = reasoningControls;
+      }
 
       if (models[id]) {
         throw new Error(`Duplicate models.dev model ID "${providerId}/${id}"`);
