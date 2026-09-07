@@ -13,7 +13,7 @@ function seedModels() {
     );
     insert.run({
       id: "reasoning-model",
-      label: "Reasoning Model",
+      label: "deepseek-v4-flash-preview-long-name",
       baseUrl: "https://example.invalid/v1",
       apiKey: "test-key",
       model: "reasoning-model",
@@ -60,18 +60,23 @@ test("model and thinking controls live together in the composer", async ({
 
   const textarea = page.getByPlaceholder("Message… or / for commands");
   const picker = page.getByRole("button", {
-    name: /Reasoning Model, thinking medium/,
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
   });
   await expect(textarea).toBeVisible();
   await expect(picker).toBeVisible();
 
-  const [textareaBox, pickerBox] = await Promise.all([
+  const dictate = page.getByRole("button", { name: "Dictate" });
+  const [textareaBox, pickerBox, dictateBox] = await Promise.all([
     textarea.boundingBox(),
     picker.boundingBox(),
+    dictate.boundingBox(),
   ]);
   expect(textareaBox).not.toBeNull();
   expect(pickerBox).not.toBeNull();
+  expect(dictateBox).not.toBeNull();
   expect(pickerBox!.y).toBeGreaterThan(textareaBox!.y);
+  expect(pickerBox!.x + pickerBox!.width).toBeLessThanOrEqual(dictateBox!.x);
+  await expect(picker).toContainText("medium");
 
   await picker.click();
   const menu = page.getByRole("menu");
@@ -79,10 +84,16 @@ test("model and thinking controls live together in the composer", async ({
   await expect(menu).toContainText("Model");
   await menu.getByRole("menuitem", { name: "high", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: /Reasoning Model, thinking high/ }),
+    page.getByRole("button", {
+      name: /deepseek-v4-flash-preview-long-name, thinking high/,
+    }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: /Reasoning Model, thinking high/ }).click();
+  await page
+    .getByRole("button", {
+      name: /deepseek-v4-flash-preview-long-name, thinking high/,
+    })
+    .click();
   await menu.getByText("Fast Model", { exact: true }).click();
   await expect(
     page.getByRole("button", { name: "Fast Model", exact: true }),

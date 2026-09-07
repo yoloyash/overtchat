@@ -85,7 +85,7 @@ export function ModelPicker({
             variant="ghost"
             size="sm"
             className={cn(
-              "h-8 min-w-0 max-w-[min(70vw,28rem)] gap-1.5 rounded-full px-2.5 text-muted-foreground hover:text-foreground",
+              "h-8 min-w-0 max-w-[28rem] shrink gap-1.5 overflow-hidden rounded-full px-2.5 text-muted-foreground hover:text-foreground max-md:px-1.5",
               !selected && "text-muted-foreground",
             )}
             disabled={loading || !models || models.length === 0}
@@ -97,7 +97,7 @@ export function ModelPicker({
           iconId={selected?.modelIconId ?? selected?.providerIconId}
           className="size-4"
         />
-        <span className="truncate text-foreground">{label}</span>
+        <span className="min-w-0 truncate text-foreground">{label}</span>
         {effectiveReasoningLevel && (
           <>
             <span aria-hidden="true" className="text-border">

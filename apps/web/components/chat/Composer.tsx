@@ -614,12 +614,12 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <button
                   type="button"
                   onClick={onToggleSearch}
-                  className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:px-3"
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
                   aria-label="Remove Web search from this message"
                 >
                   <Globe className="size-3.5" />
-                  <span>Web search</span>
-                  <X className="size-3" />
+                  <span className="max-md:hidden">Web search</span>
+                  <X className="size-3 max-md:hidden" />
                 </button>
               )}
               <ModelPicker
