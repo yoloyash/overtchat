@@ -8,12 +8,14 @@ import type { UsageTotals } from "@/lib/usage/types";
 import { UsageIndicator } from "./UsageIndicator";
 
 export function ChatHeader({
+  title,
   contextUsage,
   sessionUsage,
   showTempToggle,
   temporary,
   onToggleTemporary,
 }: {
+  title: string | null;
   contextUsage?: { usedTokens: number; contextWindow?: number };
   sessionUsage?: UsageTotals;
   showTempToggle: boolean;
@@ -23,7 +25,17 @@ export function ChatHeader({
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
       <SidebarToggle />
-      <div className="ml-auto flex items-center">
+      {title ? (
+        <h1
+          className="min-w-0 flex-1 truncate px-1 text-sm font-medium"
+          title={title}
+        >
+          {title}
+        </h1>
+      ) : (
+        <div className="flex-1" />
+      )}
+      <div className="flex shrink-0 items-center">
         <UsageIndicator
           contextUsage={contextUsage}
           sessionUsage={sessionUsage}
