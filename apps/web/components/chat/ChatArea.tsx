@@ -176,7 +176,7 @@ export function ChatArea({
     ?.title?.trim();
   const headerTitle = temporary
     ? "Temporary chat"
-    : persistedTitle || (isNew ? "New chat" : "Untitled");
+    : persistedTitle || (isNew ? null : "Untitled");
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()

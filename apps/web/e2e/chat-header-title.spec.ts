@@ -13,8 +13,7 @@ test("shows the current chat title in the header", async ({ page }) => {
   await page.waitForURL("**/");
 
   const header = page.locator("header");
-  const newChatTitle = header.getByRole("heading", { name: "New chat" });
-  await expect(newChatTitle).toBeVisible();
+  await expect(header.getByRole("heading")).toHaveCount(0);
 
   await page.getByRole("button", { name: "Enable temporary chat" }).click();
   await expect(

@@ -15,7 +15,7 @@ export function ChatHeader({
   temporary,
   onToggleTemporary,
 }: {
-  title: string;
+  title: string | null;
   contextUsage?: { usedTokens: number; contextWindow?: number };
   sessionUsage?: UsageTotals;
   showTempToggle: boolean;
@@ -25,12 +25,16 @@ export function ChatHeader({
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
       <SidebarToggle />
-      <h1
-        className="min-w-0 flex-1 truncate px-1 text-sm font-medium"
-        title={title}
-      >
-        {title}
-      </h1>
+      {title ? (
+        <h1
+          className="min-w-0 flex-1 truncate px-1 text-sm font-medium"
+          title={title}
+        >
+          {title}
+        </h1>
+      ) : (
+        <div className="flex-1" />
+      )}
       <div className="flex shrink-0 items-center">
         <UsageIndicator
           contextUsage={contextUsage}
