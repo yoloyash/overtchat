@@ -11,6 +11,10 @@ import {
   useState,
 } from "react";
 import type { FileUIPart } from "ai";
+import type {
+  ChatReasoningLevel,
+  ModelReasoningControls,
+} from "@overtchat/shared";
 import {
   AlertCircle,
   AudioLines,
@@ -31,6 +35,7 @@ import {
 } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
+import { ModelPicker } from "@/components/ModelPicker";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
@@ -90,6 +95,8 @@ interface ComposerProps {
   dropActive: boolean;
   models: PublicModelConfig[] | null;
   selectedModelId: string;
+  reasoningControls?: ModelReasoningControls;
+  reasoningLevel: ChatReasoningLevel;
   voiceInstalled: boolean;
   voiceEligible: boolean;
   voiceAvailable: boolean;
@@ -98,6 +105,7 @@ interface ComposerProps {
   attachmentsEnabled: boolean;
   textInputDisabled: boolean;
   commandActions: ComposerCommandActions;
+  onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
   onToggleSearch: () => void;
   onSubmit: (input: string, attachments: FileUIPart[]) => void;
   onStop: () => void;
@@ -118,6 +126,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   dropActive,
   models,
   selectedModelId,
+  reasoningControls,
+  reasoningLevel,
   voiceInstalled,
   voiceEligible,
   voiceAvailable,
@@ -126,6 +136,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   attachmentsEnabled,
   textInputDisabled,
   commandActions,
+  onSelectReasoningLevel,
   onToggleSearch,
   onSubmit,
   onStop,
@@ -528,7 +539,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             aria-autocomplete="list"
           />
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -603,16 +614,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <button
                   type="button"
                   onClick={onToggleSearch}
-                  className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:px-3"
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
                   aria-label="Remove Web search from this message"
                 >
                   <Globe className="size-3.5" />
-                  <span>Web search</span>
-                  <X className="size-3" />
+                  <span className="max-md:hidden">Web search</span>
+                  <X className="size-3 max-md:hidden" />
                 </button>
               )}
+              <ModelPicker
+                models={models}
+                selectedId={selectedModelId}
+                onSelect={commandActions.onSelectModel}
+                reasoningControls={reasoningControls}
+                reasoningLevel={reasoningLevel}
+                onSelectReasoningLevel={onSelectReasoningLevel}
+              />
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex shrink-0 items-center gap-1">
               <Button
                 type="button"
                 variant="ghost"

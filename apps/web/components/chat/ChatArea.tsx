@@ -615,6 +615,8 @@ export function ChatArea({
       dropActive={dropActive}
       models={models}
       selectedModelId={selectedId}
+      reasoningControls={reasoningControls}
+      reasoningLevel={reasoningLevel}
       voiceInstalled={voiceCapability?.installed ?? false}
       voiceEligible={
         resolvedChatKind === "voice" ||
@@ -644,6 +646,9 @@ export function ChatArea({
         onOpenSettings: () => router.push("/settings"),
         onSelectModel: handleSelectModel,
       }}
+      onSelectReasoningLevel={(level) =>
+        setReasoningLevels({ ...reasoningLevels, [selectedId]: level })
+      }
       onToggleSearch={() => {
         if (searchAvailable) setSearchRequested((selected) => !selected);
       }}
@@ -667,14 +672,6 @@ export function ChatArea({
       onDrop={handleDrop}
     >
       <ChatHeader
-        models={models}
-        selectedId={selectedId}
-        onSelectModel={handleSelectModel}
-        reasoningControls={reasoningControls}
-        reasoningLevel={reasoningLevel}
-        onSelectReasoningLevel={(level) =>
-          setReasoningLevels({ ...reasoningLevels, [selectedId]: level })
-        }
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}

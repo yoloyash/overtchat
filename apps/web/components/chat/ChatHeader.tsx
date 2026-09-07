@@ -1,38 +1,19 @@
 "use client";
 
 import { Ghost } from "lucide-react";
-import type {
-  ChatReasoningLevel,
-  ModelReasoningControls,
-} from "@overtchat/shared";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ModelPicker } from "@/components/ModelPicker";
 import { SidebarToggle } from "@/components/SidebarToggle";
-import type { PublicModelConfig } from "@/lib/model-config/schema";
 import type { UsageTotals } from "@/lib/usage/types";
-import { ReasoningPicker } from "./ReasoningPicker";
 import { UsageIndicator } from "./UsageIndicator";
 
 export function ChatHeader({
-  models,
-  selectedId,
-  onSelectModel,
-  reasoningControls,
-  reasoningLevel,
-  onSelectReasoningLevel,
   contextUsage,
   sessionUsage,
   showTempToggle,
   temporary,
   onToggleTemporary,
 }: {
-  models: PublicModelConfig[] | null;
-  selectedId: string;
-  onSelectModel: (id: string) => void;
-  reasoningControls?: ModelReasoningControls;
-  reasoningLevel: ChatReasoningLevel;
-  onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
   contextUsage?: { usedTokens: number; contextWindow?: number };
   sessionUsage?: UsageTotals;
   showTempToggle: boolean;
@@ -42,16 +23,6 @@ export function ChatHeader({
   return (
     <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
       <SidebarToggle />
-      <ModelPicker
-        models={models}
-        selectedId={selectedId}
-        onSelect={onSelectModel}
-      />
-      <ReasoningPicker
-        controls={reasoningControls}
-        value={reasoningLevel}
-        onChange={onSelectReasoningLevel}
-      />
       <div className="ml-auto flex items-center">
         <UsageIndicator
           contextUsage={contextUsage}
