@@ -592,7 +592,7 @@ function InteractionDialogContent({
               {request.message}
             </Dialog.Description>
           )}
-          {toolApproval && toolApprovalDetail(request.toolDetail) && (
+          {toolApprovalDetail(request.toolDetail) && (
             <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-3 font-mono text-xs">
               {toolApprovalDetail(request.toolDetail)}
             </pre>
@@ -761,6 +761,28 @@ function toolApprovalDetail(value: unknown): string | null {
   const detail = value as Record<string, unknown>;
   if (detail.type === "shell" && typeof detail.command === "string") {
     return detail.command;
+  }
+  if (detail.type === "edit" && Array.isArray(detail.changes)) {
+    return (
+      detail.changes
+        .flatMap((value) => {
+          if (!value || typeof value !== "object") return [];
+          const change = value as Record<string, unknown>;
+          if (typeof change.filePath !== "string") return [];
+          const path =
+            typeof change.movePath === "string"
+              ? `${change.filePath} → ${change.movePath}`
+              : change.filePath;
+          return [
+            `${path}\n${
+              typeof change.patch === "string" && change.patch
+                ? change.patch
+                : "No change preview was provided for this file."
+            }`,
+          ];
+        })
+        .join("\n\n") || null
+    );
   }
   if (detail.type === "edit" && typeof detail.filePath === "string") {
     return detail.filePath;

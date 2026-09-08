@@ -10,7 +10,7 @@
     "ios": "expo start --ios --host=lan",
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"(no tests)\" && exit 0",
+    "test": "vitest run",
     "build": "echo \"(mobile is dev-only; no build step)\" && exit 0",
     "build:android:aab": "mkdir -p ../../dist/mobile && npx eas-cli@20 build --local --non-interactive --platform android --profile production --output ../../dist/mobile/overtchat.aab",
     "build:android:apk": "mkdir -p ../../dist/mobile && npx eas-cli@20 build --local --non-interactive --platform android --profile production-apk --output ../../dist/mobile/overtchat.apk",
@@ -28,6 +28,7 @@
     "@expo-google-fonts/roboto": "^0.4.3",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.14",
+    "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
     "@react-native-community/slider": "5.2.0",
     "@sentry/react-native": "~7.11.0",
@@ -77,6 +78,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+    "linkedom": "^0.18.12",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.6"
   }
 }

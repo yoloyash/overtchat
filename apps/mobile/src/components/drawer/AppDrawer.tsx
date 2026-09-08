@@ -329,6 +329,15 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
+      <Pressable accessibilityRole="button" accessibilityLabel="Agent Connections" onPress={() => {
+        props.navigation.closeDrawer();
+        router.push("/agents");
+      }} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48,
+        paddingHorizontal: 20, backgroundColor: pressed ? colors.accent : "transparent" })}>
+        <Ionicons name="terminal-outline" size={20} color={colors.foreground} />
+        <Text style={{ color: colors.foreground, fontFamily: fonts.sansMedium, fontSize: 14 }}>Agent Connections</Text>
+      </Pressable>
+
       <View style={styles.list}>
         {isPending ? (
           <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />

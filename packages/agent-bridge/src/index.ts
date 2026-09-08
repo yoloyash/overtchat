@@ -42,6 +42,7 @@ export * from "./agents";
 export * from "./catalog";
 export * from "./commands";
 export * from "./state";
+export * from "./replica";
 
 export type ConnectorTarget =
   | { transport: "local" }

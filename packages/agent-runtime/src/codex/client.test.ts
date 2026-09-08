@@ -2012,6 +2012,104 @@ describe("CodexRuntimeClient", () => {
     });
   });
 
+  it("attaches only the requested file item's patches and refreshes pending approval previews", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: { id: "turn-1", status: "inProgress", items: [] },
+    });
+    for (const [id, path] of [
+      ["edit-1", "one.ts"],
+      ["edit-2", "two.ts"],
+    ]) {
+      server.emit("item/started", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        item: {
+          id,
+          type: "fileChange",
+          status: "inProgress",
+          changes: [{ path, kind: "update", diff: "@@\n-old\n+new" }],
+        },
+      });
+    }
+    server.ask("file-approval", "item/fileChange/requestApproval", {
+      turnId: "turn-1",
+      itemId: "edit-1",
+    });
+    const approval = () =>
+      events.filter((e) => e.type === "interaction_request").at(-1)!;
+    expect(approval()).toMatchObject({
+      id: "codex:file-approval",
+      toolDetail: {
+        type: "edit",
+        changes: [{ filePath: "one.ts", patch: "@@\n-old\n+new" }],
+      },
+    });
+    expect(JSON.stringify(approval())).not.toContain("two.ts");
+    server.emit("item/fileChange/patchUpdated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "edit-1",
+      changes: [
+        {
+          path: "one.ts",
+          kind: { type: "update", movePath: "renamed.ts" },
+          diff: "@@\n-old\n+revised",
+        },
+      ],
+    });
+    expect(approval()).toMatchObject({
+      toolDetail: {
+        changes: [
+          {
+            filePath: "one.ts",
+            movePath: "renamed.ts",
+            patch: "@@\n-old\n+revised",
+          },
+        ],
+      },
+    });
+    client.respondToInteraction("codex:file-approval", { value: "Deny" });
+    expect(server.responses.at(-1)).toMatchObject({
+      id: "file-approval",
+      result: { decision: "decline" },
+    });
+    const count = events.filter((e) => e.type === "interaction_request").length;
+    server.emit("item/fileChange/patchUpdated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "edit-1",
+      changes: [],
+    });
+    expect(events.filter((e) => e.type === "interaction_request")).toHaveLength(
+      count,
+    );
+  });
+
+  it("does not substitute another file's patch when the requested item is unavailable", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    server.ask("missing", "item/fileChange/requestApproval", {
+      turnId: "missing",
+      itemId: "unknown",
+    });
+    expect(events.at(-1)).toMatchObject({
+      toolDetail: { type: "edit", changes: [] },
+    });
+  });
+
   it("waits for the interrupted turn to become terminal", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },
