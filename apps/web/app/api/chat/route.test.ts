@@ -380,7 +380,7 @@ describe("chat route setup boundary", () => {
     });
     const response = await POST(request());
     expect(response.status).toBe(400);
-    expect(await response.text()).toContain("Upload the file again");
+    expect(await response.text()).toContain("Edit the original message");
     expect(mocks.inlineUploads).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
     expect(mocks.agentStream).not.toHaveBeenCalled();
@@ -391,7 +391,7 @@ describe("chat route setup boundary", () => {
     await POST(request());
     const download = mocks.agentSettings[0]?.experimental_download as (urls: unknown[]) => Promise<unknown>;
     await expect(download([{ url: new URL("http://internal/image.png"), isUrlSupportedByModel: true }]))
-      .rejects.toThrow("Upload the file again");
+      .rejects.toThrow("must provide file data instead");
   });
 
   it.each([

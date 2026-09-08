@@ -1,7 +1,36 @@
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
 import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
+
+let modelServer: Server;
+let modelBaseUrl: string;
+const modelRequests: unknown[] = [];
+
+test.beforeAll(async () => {
+  modelServer = createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    modelRequests.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+    response.writeHead(200, { "Content-Type": "text/event-stream" });
+    const event = {
+      id: "attachment-response", object: "chat.completion.chunk",
+      created: Math.floor(Date.now() / 1000), model: "attachment-test",
+      choices: [{ index: 0, delta: { role: "assistant", content: "Inline attachment accepted" }, finish_reason: null }],
+    };
+    response.write(`data: ${JSON.stringify(event)}\n\n`);
+    response.write(`data: ${JSON.stringify({ ...event, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`);
+    response.end("data: [DONE]\n\n");
+  });
+  await new Promise<void>((resolve) => modelServer.listen(0, "127.0.0.1", resolve));
+  modelBaseUrl = `http://127.0.0.1:${(modelServer.address() as AddressInfo).port}/v1`;
+});
+
+test.afterAll(async () => {
+  await new Promise<void>((resolve, reject) => modelServer.close((error) => error ? reject(error) : resolve()));
+});
 
 test("HTML uploads download safely, images display, and remote chat attachments are rejected", async ({ page, playwright }) => {
   await page.goto("/signup");
@@ -56,7 +85,7 @@ test("HTML uploads download safely, images display, and remote chat attachments 
 
   const model = await page.request.post("/api/model-configs", { data: {
     label: "Attachment test", providerId: "custom", apiFormat: "openai-chat",
-    baseUrl: "http://127.0.0.1:9999/v1", model: "attachment-test", toolCallingEnabled: false,
+    baseUrl: modelBaseUrl, model: "attachment-test", toolCallingEnabled: false,
   } });
   expect(model.ok()).toBeTruthy();
   const { modelConfig } = await model.json();
@@ -66,7 +95,7 @@ test("HTML uploads download safely, images display, and remote chat attachments 
     messages: [{ id: "turn", role: "user", parts: [remoteFile, { type: "text", text: "Inspect this" }] }],
   } });
   expect(rejected.status()).toBe(400);
-  expect(await rejected.text()).toContain("Upload the file again");
+  expect(await rejected.text()).toContain("Edit the original message");
 
   // Imported history must pass the same boundary as a new attachment.
   const imported = await page.request.post("/api/import", { multipart: { file: {
@@ -86,8 +115,30 @@ test("HTML uploads download safely, images display, and remote chat attachments 
       messages: [{ id: "continuation", role: "user", parts: [{ type: "text", text: "Continue" }] }],
     } });
     expect(continued.status()).toBe(400);
-    expect(await continued.text()).toContain("Upload the file again");
+    expect(await continued.text()).toContain("Edit the original message");
     expect(database.prepare("SELECT COUNT(*) AS count FROM messages").get()).toEqual({ count: 1 });
+    expect(modelRequests).toHaveLength(0);
+
+    // Inline data in imported history is already local and needs no URL fetch.
+    const inlineUrl = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=";
+    const inlineImport = await page.request.post("/api/import", { multipart: { file: {
+      name: "inline.json", mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify({ format: "overtchat", chats: [{
+        title: "Imported inline attachment",
+        messages: [{ role: "user", parts: [{ type: "file", mediaType: "image/png", url: inlineUrl }] }],
+      }] })),
+    } } });
+    expect(inlineImport.ok()).toBeTruthy();
+    const inlineChat = database.prepare("SELECT id FROM chats WHERE title = ?")
+      .get("Imported inline attachment") as { id: string };
+    const accepted = await page.request.post("/api/chat", { data: {
+      chatId: inlineChat.id, modelConfigId: modelConfig.id,
+      messages: [{ id: "inline-continuation", role: "user", parts: [{ type: "text", text: "Describe the image" }] }],
+    } });
+    expect(accepted.status()).toBe(200);
+    expect(await accepted.text()).toContain("Inline attachment accepted");
+    expect(modelRequests).toHaveLength(1);
+    expect(JSON.stringify(modelRequests[0])).toContain(inlineUrl);
   } finally {
     database.close();
   }

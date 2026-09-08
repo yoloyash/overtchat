@@ -18,7 +18,7 @@ import {
 } from "@/lib/chat/inference-activity";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
-  assertUploadedAttachments,
+  assertChatAttachments,
   rejectAttachmentDownloads,
 } from "@/lib/chat/attachment-security";
 import { projectSystemPrompt } from "@/lib/chat/project-prompt";
@@ -251,7 +251,7 @@ async function handlePost(req: Request): Promise<Response> {
       reasoningLevel,
     });
   const chatTools = createWebTools({ userId, supportsImageInput });
-  assertUploadedAttachments(messages);
+  assertChatAttachments(messages);
   const inlined = await inlineUploads(messages, userId);
   const convertedMessages = await convertToModelMessages(inlined, {
     tools: chatTools,
