@@ -370,6 +370,30 @@ describe("chat route setup boundary", () => {
     consoleSpy.mockRestore();
   });
 
+  it("rejects remote attachments before saving or starting a generation", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      messages: [{
+        ...messages[0],
+        parts: [{ type: "file", mediaType: "image/png", url: "http://internal/image.png" }],
+      }],
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Edit the original message");
+    expect(mocks.inlineUploads).not.toHaveBeenCalled();
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("disables automatic attachment downloads with tools enabled=%s", async (toolCallingEnabled) => {
+    mocks.getModelConfig.mockResolvedValue({ ...modelConfig, toolCallingEnabled });
+    await POST(request());
+    const download = mocks.agentSettings[0]?.experimental_download as (urls: unknown[]) => Promise<unknown>;
+    await expect(download([{ url: new URL("http://internal/image.png"), isUrlSupportedByModel: true }]))
+      .rejects.toThrow("must provide file data instead");
+  });
+
   it.each([
     [
       "upload",
