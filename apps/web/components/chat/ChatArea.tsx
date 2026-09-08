@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { DefaultChatTransport, generateId, type FileUIPart, type UIMessage } from "ai";
 import {
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
@@ -374,7 +374,7 @@ export function ChatArea({
     forceSearch: searchAvailable && forceSearch,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
-    clientRequestId: crypto.randomUUID(),
+    clientRequestId: generateId(),
     projectId: projectId ?? null,
     temporary,
     action,

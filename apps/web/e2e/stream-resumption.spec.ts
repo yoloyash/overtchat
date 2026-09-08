@@ -140,6 +140,45 @@ function seedModel() {
   }
 }
 
+test("new chats submit without crypto.randomUUID on HTTP origins", async ({ page }) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("HTTP Chat Tester");
+  await page.locator("#email").fill("http-chat@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedModel();
+  await page.reload();
+
+  // Localhost is a secure context even over HTTP. Remove the API to reproduce
+  // the browser capabilities of a plain HTTP LAN origin.
+  await page.evaluate(() => {
+    Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  continueStream.resolve();
+
+  const requestIds: string[] = [];
+  for (const text of ["First message over HTTP", "Second message over HTTP"]) {
+    const requestPromise = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/chat" && request.method() === "POST",
+    );
+    await page.getByPlaceholder("Message…").fill(text);
+    await page.getByLabel("Send message").click();
+    const body = (await requestPromise).postDataJSON();
+    expect(body.clientRequestId).toEqual(expect.any(String));
+    expect(body.clientRequestId.length).toBeGreaterThan(0);
+    requestIds.push(body.clientRequestId);
+    await expect(page.getByLabel("Send message")).toBeVisible();
+    await expect(page.getByText("Before reload. After reload.", { exact: true }))
+      .toHaveCount(requestIds.length);
+  }
+  expect(new Set(requestIds).size).toBe(2);
+  expect(streamingRequests).toBe(2);
+  expect(errors).toEqual([]);
+});
+
 test("sidebar tracks generation after leaving the active chat", async ({
   page,
 }) => {
