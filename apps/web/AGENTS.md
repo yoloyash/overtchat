@@ -90,8 +90,9 @@ chat-deletion cleanup.
 reconnect handling, and subscriptions. It is process-local; durable connection,
 workspace, and session metadata belongs in `lib/db`.
 
-`lib/agents/sessionReplica.ts` projects connector snapshots and ordered events
-for the browser UI. It is not an independent runtime or persistence layer.
+`lib/agents/sessionReplica.ts` re-exports the bridge's shared client replica
+helpers for connector snapshots and ordered events. It is not an independent
+runtime or persistence layer.
 Preserve cursor, epoch, and sequence reconciliation when changing the
 agent-session APIs or SSE client.
 
@@ -100,8 +101,10 @@ automatically replay it unless the connector command journal makes that
 operation replay-safe.
 
 Protocol payloads come from `@overtchat/agent-bridge`. Provider transcript
-normalization remains in the runtime/connector; web-specific presentation
-belongs in `lib/agents/presentation.ts`.
+normalization remains in the runtime/connector. `lib/agents/presentation.ts`
+re-exports the shared transcript projection from
+`@overtchat/shared/agent-presentation`; browser-specific rendering stays in
+`components/agents`.
 
 ## Database and startup
 

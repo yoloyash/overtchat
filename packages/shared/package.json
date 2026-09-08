@@ -8,14 +8,18 @@
   "exports": {
     ".": "./src/index.ts",
     "./theme.css": "./src/theme.css",
-    "./theme.rn": "./src/theme.rn.ts"
+    "./theme.rn": "./src/theme.rn.ts",
+    "./agent-presentation": "./src/agent-presentation.ts",
+    "./agent-creation": "./src/agent-creation.ts",
+    "./context-meter": "./src/context-meter.ts"
   },
   "scripts": {
     "theme:generate": "tsx scripts/generate-theme-css.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "ai": "^7.0.84"
+    "ai": "^7.0.84",
+    "@overtchat/agent-bridge": "*"
   },
   "devDependencies": {
     "@types/culori": "^4.0.0",

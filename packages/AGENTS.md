@@ -16,6 +16,8 @@ state model used by the web app, connector, and runtime.
   snapshot, cursor, and synchronization contracts.
 - `src/state.ts` owns the pure reducers that apply runtime envelopes and
   reconcile snapshots; `src/commands.ts` owns shared command normalization.
+- `src/replica.ts` owns transport-neutral client cursor/epoch reconciliation
+  shared by web and mobile. It contains no subscription or UI lifecycle.
 - Keep this package transport-neutral and free of filesystem, network, process,
   database, UI, or provider implementations.
 - Wire types, Zod schemas, runtime guards, reducers, and tests must evolve
@@ -56,6 +58,13 @@ and theme contracts used by web, mobile, and the static site.
   `npm run theme:generate -w packages/shared --`.
 - Shared contracts must remain valid for every consumer. Put app-specific
   extensions in the consuming workspace rather than weakening a shared type.
+- `src/agent-presentation.ts`, exported through `./agent-presentation`, projects
+  normalized agent transcripts for both clients. Keep it independent of UI,
+  transports, and agent provider implementations.
+
+- `src/agent-creation.ts`, exported through `./agent-creation`, resolves initial
+  model, reasoning, and permission selections for web and mobile from bridge
+  catalogs. Keep browser storage and native persistence in the clients.
 
 ## Validation
 

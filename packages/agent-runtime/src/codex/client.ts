@@ -119,11 +119,34 @@ type CompletionWaiter<T> = {
   cancel: () => void;
 };
 
+// Keep approval previews tied to the exact requested item, never the last
+// file operation in a turn (which may belong to a different approval).
+function codexFileApprovalDetail(value: unknown) {
+  return {
+    type: "edit",
+    changes: Array.isArray(value)
+      ? value.flatMap((candidate) => {
+          const change = recordOf(candidate);
+          const filePath = stringOf(change, "path");
+          if (!filePath) return [];
+          return [
+            {
+              filePath,
+              patch: stringOf(change, "diff"),
+              movePath: stringOf(recordOf(change?.kind), "movePath"),
+            },
+          ];
+        })
+      : [],
+  };
+}
+
 type PendingInteraction =
   | {
       kind: "approval";
       rpcId: JsonRpcId;
       method: string;
+      fileChange?: { turnId: string; itemId: string; event: AgentRuntimeEvent };
     }
   | {
       kind: "permissions";
@@ -2004,6 +2027,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       if (turn && item && Array.isArray(data?.changes)) {
         item.changes = data.changes;
         this.emitTurn(turn);
+        for (const pending of this.pendingInteractions.values()) {
+          if (
+            pending.kind !== "approval" ||
+            pending.fileChange?.turnId !== turnId ||
+            pending.fileChange.itemId !== itemId
+          )
+            continue;
+          pending.fileChange.event = {
+            ...pending.fileChange.event,
+            toolDetail: codexFileApprovalDetail(item.changes),
+          };
+          this.emit(pending.fileChange.event);
+        }
       }
       return;
     }
@@ -2183,19 +2219,22 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       const reason = stringOf(params, "reason");
       const network = recordOf(params?.networkApprovalContext);
       const id = `codex:${request.id}`;
-      this.pendingInteractions.set(id, {
-        kind: "approval",
-        rpcId: request.id,
-        method: request.method,
-      });
-      this.emit({
+      const turnId = stringOf(params, "turnId");
+      const itemId = stringOf(params, "itemId");
+      const fileChange = request.method === "item/fileChange/requestApproval";
+      const item =
+        turnId && itemId
+          ? this.turns
+              .get(turnId)
+              ?.items.find((candidate) => candidate.id === itemId)
+          : undefined;
+      const event: AgentRuntimeEvent = {
         type: "interaction_request",
         id,
         method: "select",
-        title:
-          network
-            ? "Approve network access?"
-            : request.method === "item/fileChange/requestApproval"
+        title: network
+          ? "Approve network access?"
+          : request.method === "item/fileChange/requestApproval"
             ? "Approve file changes?"
             : "Approve command?",
         message:
@@ -2215,7 +2254,25 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
             .filter(Boolean)
             .join("\n\n") || "Codex needs approval to continue.",
         options: ["Allow once", "Allow for session", "Deny"],
+        ...(fileChange
+          ? {
+              toolDetail: codexFileApprovalDetail(
+                item?.changes ?? params?.changes,
+              ),
+            }
+          : {}),
+      };
+      this.pendingInteractions.set(id, {
+        kind: "approval",
+        rpcId: request.id,
+        method: request.method,
+        ...(fileChange && turnId && itemId
+          ? {
+              fileChange: { turnId, itemId, event },
+            }
+          : {}),
       });
+      this.emit(event);
       return;
     }
     if (

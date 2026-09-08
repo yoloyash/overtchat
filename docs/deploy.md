@@ -145,6 +145,23 @@ npm run dev:mobile
 npm run dev:site
 ```
 
+For mobile Agent Connections changes, run `npm run typecheck -w apps/mobile --`
+and `npm run test -w apps/mobile --`. The tests cover event stream recovery,
+message retry identities, explicit delivery recovery, draft persistence and
+server/account isolation, image authentication, and interaction forms. When
+shared agent projections or replicas change, also run the affected web and
+bridge tests and typechecks. From `apps/mobile`, `npx expo export --platform
+android --platform ios --output-dir /tmp/overtchat-mobile-export` validates both
+native bundles without publishing them.
+
+On Android and iOS, verify resuming and starting sessions, streaming while
+switching between web and mobile, background/foreground recovery, network
+changes, model/permission controls, slash commands, approvals/questions, image
+paste/picking, approval details, and tool output sheets. Check keyboard clearance
+and back gestures.
+Use an existing development client; no new native modules are needed for agent
+chat. User instructions are in [the Android guide](android.md#agent-connections).
+
 Set `OVERTCHAT_DEV_PORT` or `OVERTCHAT_DEV_REDIS_PORT` for custom ports. Run
 `npm run dev:reset-connector` after an incompatible disposable journal change.
 To exercise the production provisioning path from the current worktree, run

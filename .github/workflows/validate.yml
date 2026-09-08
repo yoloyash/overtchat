@@ -49,10 +49,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # apps/mobile ships no build and no tests, so type-checking is the only
-      # signal it produces. Running tsc across every workspace also keeps a
-      # dependency update that breaks types legible here rather than surfacing
-      # it later as a failed Playwright run.
+      # Running tsc across every workspace catches native and shared-package
+      # type errors before they surface in application or release builds.
       - name: Typecheck
         run: npm run typecheck
 
