@@ -17,6 +17,10 @@ import {
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
+import {
+  assertUploadedAttachments,
+  rejectAttachmentDownloads,
+} from "@/lib/chat/attachment-security";
 import { projectSystemPrompt } from "@/lib/chat/project-prompt";
 import {
   markAnthropicConversationCacheBoundary,
@@ -247,6 +251,7 @@ async function handlePost(req: Request): Promise<Response> {
       reasoningLevel,
     });
   const chatTools = createWebTools({ userId, supportsImageInput });
+  assertUploadedAttachments(messages);
   const inlined = await inlineUploads(messages, userId);
   const convertedMessages = await convertToModelMessages(inlined, {
     tools: chatTools,
@@ -428,6 +433,7 @@ async function handlePost(req: Request): Promise<Response> {
     const result = toolsEnabled
       ? await new ToolLoopAgent<never, ToolSet>({
           model,
+          experimental_download: rejectAttachmentDownloads,
           instructions,
           tools: agentTools,
           toolOrder,
@@ -447,6 +453,7 @@ async function handlePost(req: Request): Promise<Response> {
         }).stream({ messages: modelMessages, abortSignal })
       : await new ToolLoopAgent<never, Record<string, never>>({
           model,
+          experimental_download: rejectAttachmentDownloads,
           instructions,
           providerOptions: requestProviderOptions,
           ...(streamInclude ? { include: streamInclude } : {}),

@@ -23,6 +23,7 @@ describe("authenticated upload response", () => {
     mocks.getSession.mockResolvedValue({ user: { id: "user-id" } });
     mocks.getUpload.mockResolvedValue({
       mediaType: "image/png",
+      filename: "image.png",
     });
     mocks.readFile.mockResolvedValue(Uint8Array.from([1, 2, 3]));
   });
@@ -35,5 +36,29 @@ describe("authenticated upload response", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("image/png");
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Content-Disposition")).toContain("inline;");
+  });
+
+  it.each(["text/html", "image/svg+xml", "application/xhtml+xml"])(
+    "forces existing %s uploads to download with a safely encoded filename",
+    async (mediaType) => {
+      mocks.getUpload.mockResolvedValue({ mediaType, filename: "résumé's\r\n.html" });
+      const response = await GET(new Request("http://localhost/api/uploads/id"), {
+        params: Promise.resolve({ id: "upload-id" }),
+      });
+      expect(response.headers.get("Content-Disposition")).toBe(
+        "attachment; filename*=UTF-8''r%C3%A9sum%C3%A9%27s%0D%0A.html",
+      );
+    },
+  );
+
+  it("does not read a file when it belongs to another user", async () => {
+    mocks.getUpload.mockResolvedValue(null);
+    const response = await GET(new Request("http://localhost/api/uploads/id"), {
+      params: Promise.resolve({ id: "upload-id" }),
+    });
+    expect(response.status).toBe(404);
+    expect(mocks.getUpload).toHaveBeenCalledWith("upload-id", "user-id");
+    expect(mocks.readFile).not.toHaveBeenCalled();
   });
 });
