@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
 import {
   chatKeys,
+  libraryKeys,
   personalizationKeys,
   projectKeys,
 } from "@/lib/queries/keys";
@@ -57,6 +58,7 @@ export function DataForm() {
       }
       const result = body as ImportResult;
       qc.invalidateQueries({ queryKey: chatKeys.list() });
+      qc.invalidateQueries({ queryKey: libraryKeys.all() });
       qc.invalidateQueries({ queryKey: projectKeys.list() });
       qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       toast.success({

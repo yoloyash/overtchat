@@ -145,6 +145,14 @@ npm run dev:mobile
 npm run dev:site
 ```
 
+To measure Library query performance, run `npm run bench:library -w apps/web --`.
+It creates and removes a temporary database using the production migrations and
+synthetic chat histories; it ignores the configured `DATABASE_URL`. Results
+report median and maximum query times across seven calls after a warm-up, for
+2,000–200,000 total messages and two message sizes. Run it without competing
+builds or tests. These timings exclude HTTP, rendering, concurrent users, and
+cold operating-system caches; compare results on the intended server hardware.
+
 For mobile Agent Connections changes, run `npm run typecheck -w apps/mobile --`
 and `npm run test -w apps/mobile --`. The tests cover event stream recovery,
 message retry identities, explicit delivery recovery, draft persistence and

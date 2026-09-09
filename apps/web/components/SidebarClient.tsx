@@ -8,6 +8,7 @@ import {
   Activity,
   Check,
   FolderPlus,
+  Library,
   MoreHorizontal,
   PanelLeft,
   Pencil,
@@ -125,6 +126,19 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
             <span className="flex-1 text-left">Search chats</span>
             <Shortcut keys={["Ctrl", "K"]} />
           </button>
+          <Link
+            href="/library"
+            onClick={closeMobile}
+            aria-current={pathname === "/library" ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+              pathname === "/library" && "bg-sidebar-accent",
+            )}
+          >
+            <Library className="size-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1">Library</span>
+            <LinkPendingIndicator />
+          </Link>
           <Link
             href="/activity"
             onClick={closeMobile}

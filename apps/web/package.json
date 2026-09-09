@@ -11,6 +11,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "bench:library": "node --conditions=react-server --import tsx scripts/benchmark-library.ts",
     "test:e2e": "rm -f data/test.db* && playwright test",
     "test:e2e:ui": "rm -f data/test.db* && playwright test --ui",
     "catalog:generate": "tsx scripts/generate-model-catalog.ts",

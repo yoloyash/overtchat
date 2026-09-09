@@ -20,6 +20,7 @@ import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import {
   activityKeys,
   chatKeys,
+  libraryKeys,
   personalizationKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
@@ -277,6 +278,7 @@ export function ChatArea({
       setInferenceActivity(null);
       if (!temporaryRef.current) {
         void qc.invalidateQueries({ queryKey: chatKeys.active() });
+        void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       }
     },
     onFinish: ({ message, isError }) => {
@@ -290,6 +292,7 @@ export function ChatArea({
         });
       }
       if (temporaryRef.current) return;
+      void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       setActiveChatInCache(qc, chatId, false);
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
@@ -309,6 +312,7 @@ export function ChatArea({
     setChatPersisted(true);
     setActiveChatInCache(qc, chatId, false);
     void Promise.all([
+      qc.invalidateQueries({ queryKey: libraryKeys.all() }),
       qc.invalidateQueries({ queryKey: chatKeys.list() }),
       qc.invalidateQueries({ queryKey: chatKeys.active() }),
       qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),

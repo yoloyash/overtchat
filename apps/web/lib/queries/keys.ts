@@ -1,3 +1,8 @@
+export const libraryKeys = {
+  all: () => ["library"] as const,
+  list: (query: string) => [...libraryKeys.all(), "list", query] as const,
+};
+
 export const chatKeys = {
   all: () => ["chats"] as const,
   list: () => [...chatKeys.all(), "list"] as const,
