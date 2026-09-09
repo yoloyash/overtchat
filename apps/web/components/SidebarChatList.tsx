@@ -365,6 +365,9 @@ export function SidebarItem({
               ) : (
                 "This chat will be permanently deleted."
               )}
+              <span className="mt-2 block text-xs">
+                Files used only in this chat will also be removed from your library.
+              </span>
             </AlertDialog.Description>
             {deleteError && (
               <p className="mt-3 text-xs text-destructive">{deleteError}</p>

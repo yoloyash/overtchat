@@ -72,7 +72,10 @@ export function useChatAttachments() {
     });
   }
 
-  function addReadyParts(parts: readonly FileUIPart[]): void {
+  function addReadyParts(
+    parts: readonly FileUIPart[],
+    metadata?: ReadonlyMap<string, AttachmentMeta>,
+  ): void {
     const next = parts.map((part) => ({
       id: nextIdRef.current++,
       status: "ready" as const,
@@ -83,6 +86,7 @@ export function useChatAttachments() {
         category: part.mediaType.startsWith("image/")
           ? ("image" as const)
           : undefined,
+        ...metadata?.get(part.url),
       },
     }));
     setAttachments((prev) => [...prev, ...next]);

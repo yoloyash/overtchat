@@ -9,7 +9,7 @@ import {
 import type { UIMessage } from "ai";
 import type { ChatKind } from "@overtchat/shared";
 import { CHAT_MESSAGE_PAGE_SIZE } from "@/lib/chat/history";
-import { chatKeys } from "@/lib/queries/keys";
+import { chatKeys, libraryKeys } from "@/lib/queries/keys";
 import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
 
 export type ChatListItem = {
@@ -137,7 +137,10 @@ export function useDeleteChat() {
       const r = await fetch(`/api/chats/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.list() }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: chatKeys.list() }),
+      qc.invalidateQueries({ queryKey: libraryKeys.all() }),
+    ]),
   });
 }
 

@@ -24,6 +24,7 @@ import {
   Ghost,
   Globe,
   Loader2,
+  Library,
   Mic,
   Paperclip,
   Pencil,
@@ -36,6 +37,7 @@ import {
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
 import { ModelPicker } from "@/components/ModelPicker";
+import { LibraryPicker } from "@/components/library/LibraryPicker";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
@@ -148,6 +150,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   draftEnabled,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleDraftRestore = useCallback(() => {
     requestAnimationFrame(() => {
@@ -172,6 +175,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     addFiles,
     removeAttachment,
     clearAttachments,
+    addReadyParts,
   } = useChatAttachments();
 
   useImperativeHandle(
@@ -586,6 +590,17 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           </span>
                         </span>
                       </Menu.Item>
+                      <Menu.Item
+                        onClick={() => setLibraryOpen(true)}
+                        disabled={!attachmentsEnabled}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <Library className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">Add from library</span>
+                          <span className="block text-xs text-muted-foreground">Reuse files from your chats</span>
+                        </span>
+                      </Menu.Item>
                       <Menu.CheckboxItem
                         checked={searchRequested}
                         onCheckedChange={onToggleSearch}
@@ -724,6 +739,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </div>
         </div>
       </div>
+      {libraryOpen && attachmentsEnabled && (
+        <LibraryPicker
+          attachedUrls={new Set(readyParts.map((part) => part.url))}
+          onClose={() => {
+            setLibraryOpen(false);
+            textareaRef.current?.focus({ preventScroll: true });
+          }}
+          onAdd={(items) => addReadyParts(
+            items.map((item) => ({
+              type: "file" as const,
+              url: item.url,
+              filename: item.filename,
+              mediaType: item.mediaType,
+            })),
+            new Map(items.map((item) => [item.url, item])),
+          )}
+        />
+      )}
     </>
   );
 });
