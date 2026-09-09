@@ -384,6 +384,15 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
       page.getByRole("gridcell", { name: /500 chat tokens/ }),
     ).toBeVisible();
     await expect(page.getByText("1.5K").first()).toBeVisible();
+    const grid = page.getByRole("grid");
+    await expect(grid.getByRole("row")).toHaveCount(7);
+    await expect(grid.getByRole("gridcell")).toHaveCount(365);
+    const day = grid.getByRole("gridcell", { name: /500 chat tokens/ });
+    await day.hover();
+    await expect(page.getByRole("tooltip")).toContainText("500 tokens");
+    await day.focus();
+    await page.keyboard.press("ArrowLeft");
+    await expect(day).not.toBeFocused();
   });
 
   await test.step("edit the personal profile and open its activity page", async () => {
@@ -435,13 +444,16 @@ test("leaderboard, activity profiles, and personal profile are verifiable", asyn
     await expect(
       page.getByRole("heading", { name: "Taylor" }),
     ).toBeVisible();
-    const heatmapScroller = page.getByRole("grid").locator("..");
+    const heatmapScroller = page.getByRole("grid").locator("../..");
     await expect
       .poll(() => heatmapScroller.evaluate((element) => element.scrollLeft))
       .toBeGreaterThan(0);
     await expect(
       page.getByRole("gridcell", { name: /500 chat tokens/ }),
     ).toBeVisible();
+
+    await page.getByRole("gridcell", { name: /500 chat tokens/ }).click();
+    await expect(page.getByRole("tooltip")).toContainText("500 tokens");
 
     await page.goto("/settings/profile");
     await expect(page.getByRole("heading", { name: "Profile" })).toBeVisible();

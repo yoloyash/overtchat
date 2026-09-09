@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ChevronRight, Trophy } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import {
   ACTIVITY_PERIODS,
   type ActivityPeriod,
@@ -11,6 +11,7 @@ import {
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { useActivityLeaderboard } from "@/lib/queries/activity";
 import { cn } from "@/lib/utils";
+import { ActivityMetric } from "./ActivityMetric";
 import { formatCompact, formatDate, formatExact } from "./activity-format";
 
 const PERIOD_LABELS: Record<ActivityPeriod, string> = {
@@ -66,8 +67,8 @@ export function ActivityLeaderboard() {
     data?.entries.filter((entry) => entry.generations > 0).length ?? 0;
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 md:px-8 md:py-10">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+    <div className="@container mx-auto w-full max-w-5xl px-4 py-8 md:px-8 md:py-10">
+      <div className="flex flex-col gap-5 @xl:flex-row @xl:items-end @xl:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Leaderboard
@@ -81,7 +82,7 @@ export function ActivityLeaderboard() {
         <div
           role="group"
           aria-label="Leaderboard period"
-          className="grid grid-cols-3 rounded-md bg-muted p-1"
+          className="grid grid-cols-3 rounded-lg border border-border/70 bg-muted/50 p-1"
         >
           {ACTIVITY_PERIODS.map((value) => (
             <button
@@ -90,7 +91,7 @@ export function ActivityLeaderboard() {
               aria-pressed={period === value}
               onClick={() => setPeriod(value)}
               className={cn(
-                "min-w-20 rounded px-3 py-1.5 text-xs font-medium motion-colors",
+                "min-w-20 rounded-md px-3 py-2 text-xs font-medium motion-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
                 period === value
                   ? "bg-background text-foreground shadow-sm"
                   : "text-muted-foreground hover:text-foreground",
@@ -102,16 +103,31 @@ export function ActivityLeaderboard() {
         </div>
       </div>
 
-      <dl className="mt-8 grid grid-cols-3 divide-x border-y">
-        <Metric label="Chat tokens" value={totals.totalTokens} />
-        <Metric label="Responses" value={totals.generations} />
-        <Metric label="Active people" value={activePeople} />
+      <dl className="mt-7 grid grid-cols-3 gap-2 sm:gap-3">
+        <ActivityMetric
+          label="Chat tokens"
+          value={isError ? undefined : totals.totalTokens}
+          pending={isPending}
+        />
+        <ActivityMetric
+          label="Responses"
+          value={isError ? undefined : totals.generations}
+          pending={isPending}
+        />
+        <ActivityMetric
+          label="Active people"
+          value={isError ? undefined : activePeople}
+          pending={isPending}
+        />
       </dl>
 
       <section className="mt-9">
-        <h2 className="mb-3 text-sm font-semibold">People</h2>
-        <div className="border-y">
-          <div className="hidden grid-cols-[3rem_minmax(12rem,1fr)_8rem_7rem_8rem_8rem_1.5rem] items-center border-b bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+        <div className="mb-4 flex items-baseline justify-between gap-3">
+          <h2 className="text-sm font-semibold">People</h2>
+          <span className="text-xs text-muted-foreground">Ranked by chat tokens</span>
+        </div>
+        <div className="overflow-hidden rounded-lg border border-border/70 bg-card">
+          <div className="hidden grid-cols-[2.5rem_minmax(0,1fr)_6rem_5.5rem_5.5rem_5.5rem_1.5rem] items-center border-b bg-muted/40 px-4 py-3 text-xs font-medium text-muted-foreground @3xl:grid">
             <span>Rank</span>
             <span>Person</span>
             <span className="text-right">Chat tokens</span>
@@ -127,81 +143,56 @@ export function ActivityLeaderboard() {
             <p className="px-3 py-10 text-center text-sm text-destructive">
               Activity could not be loaded.
             </p>
+          ) : data?.entries.length === 0 ? (
+            <p className="px-4 py-12 text-center text-sm text-muted-foreground">
+              No activity to show for this period.
+            </p>
           ) : (
             data?.entries.map((entry, index) => (
               <Link
                 key={entry.userId}
                 href={`/activity/${entry.userId}`}
-                className="grid min-h-16 grid-cols-[2.25rem_minmax(0,1fr)_auto_1.25rem] items-center gap-2 border-b px-3 py-2.5 motion-colors last:border-b-0 hover:bg-muted/45 md:grid-cols-[3rem_minmax(12rem,1fr)_8rem_7rem_8rem_8rem_1.5rem] md:gap-0"
+                className="group grid min-h-20 grid-cols-[2.25rem_minmax(0,1fr)_auto_1.25rem] items-center gap-2 border-b border-border/60 px-4 py-4 motion-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring last:border-b-0 hover:bg-muted/45 @3xl:grid-cols-[2.5rem_minmax(0,1fr)_6rem_5.5rem_5.5rem_5.5rem_1.5rem] @3xl:gap-0"
               >
-                <Rank
-                  value={index + 1}
-                  active={entry.generations > 0}
-                />
+                <span
+                  aria-label={`Rank ${index + 1}`}
+                  className="text-center text-xs tabular-nums text-muted-foreground"
+                >
+                  {String(index + 1).padStart(2, "0")}
+                </span>
                 <span className="flex min-w-0 items-center gap-3">
                   <ProfileAvatar
                     id={entry.userId}
                     name={entry.name}
                     image={entry.image}
+                    tone="muted"
                   />
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium">
                       {entry.name}
                     </span>
-                    <span className="block text-xs text-muted-foreground md:hidden">
+                    <span className="block text-xs text-muted-foreground @3xl:hidden">
                       {formatCompact(entry.generations)} responses
                     </span>
                   </span>
                 </span>
                 <Value value={entry.totalTokens} />
-                <span className="hidden text-right text-sm text-muted-foreground md:block">
+                <span className="hidden text-right text-sm tabular-nums text-muted-foreground @3xl:block">
                   {formatCompact(entry.generations)}
                 </span>
-                <span className="hidden text-right text-sm text-muted-foreground md:block">
+                <span className="hidden text-right text-sm tabular-nums text-muted-foreground @3xl:block">
                   {formatCompact(entry.inputTokens)}
                 </span>
-                <span className="hidden text-right text-sm text-muted-foreground md:block">
+                <span className="hidden text-right text-sm tabular-nums text-muted-foreground @3xl:block">
                   {formatCompact(entry.outputTokens)}
                 </span>
-                <ChevronRight className="size-4 text-muted-foreground" />
+                <ChevronRight className="size-4 text-muted-foreground/50 motion-colors group-hover:text-foreground" />
               </Link>
             ))
           )}
         </div>
       </section>
     </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="min-w-0 px-3 py-4 sm:px-5">
-      <dt className="truncate text-xs text-muted-foreground">{label}</dt>
-      <dd
-        className="mt-1 truncate text-lg font-semibold tabular-nums sm:text-xl"
-        title={formatExact(value)}
-      >
-        {formatCompact(value)}
-      </dd>
-    </div>
-  );
-}
-
-function Rank({ value, active }: { value: number; active: boolean }) {
-  if (value === 1 && active) {
-    return (
-      <span
-        className="flex size-7 items-center justify-center text-amber-600 dark:text-amber-400"
-        aria-label="Rank 1"
-      >
-        <Trophy className="size-4" />
-      </span>
-    );
-  }
-  return (
-    <span className="pl-2 text-sm tabular-nums text-muted-foreground">
-      {value}
-    </span>
   );
 }
 
@@ -222,7 +213,7 @@ function LeaderboardSkeleton() {
       {Array.from({ length: 4 }).map((_, index) => (
         <div
           key={index}
-          className="flex h-16 items-center gap-3 border-b px-3 last:border-b-0"
+          className="flex h-20 items-center gap-3 border-b px-4 last:border-b-0"
         >
           <div className="h-4 w-5 rounded motion-skeleton" />
           <div className="size-9 rounded-full motion-skeleton" />
