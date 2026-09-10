@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -138,7 +139,7 @@ export function ModelsPanel() {
   }
 
   return (
-    <div className="@container max-w-4xl space-y-6">
+    <SettingsPage>
       <SettingsPageHeader
         title="Models"
         description="Manage models used in chat and background tasks."
@@ -169,7 +170,7 @@ export function ModelsPanel() {
             >
               <SelectTrigger
                 aria-label="Task model"
-                className="w-full @2xl:w-72"
+                className="w-full"
               >
                 <SelectValue>
                   {taskModel ? taskModel.label : "Same as chat model"}
@@ -393,7 +394,7 @@ export function ModelsPanel() {
           </AlertDialog.Popup>
         </AlertDialog.Portal>
       </AlertDialog.Root>
-    </div>
+    </SettingsPage>
   );
 }
 

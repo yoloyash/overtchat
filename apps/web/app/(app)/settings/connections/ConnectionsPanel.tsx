@@ -53,6 +53,7 @@ import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsSection,
 } from "../_components/SettingsRows";
@@ -179,7 +180,7 @@ export function ConnectionsPanel({
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <SettingsPage>
       <SettingsPageHeader
         title={
           <span className="inline-flex items-center gap-2">
@@ -502,7 +503,7 @@ export function ConnectionsPanel({
           </AlertDialog.Popup>
         </AlertDialog.Portal>
       </AlertDialog.Root>
-    </div>
+    </SettingsPage>
   );
 }
 

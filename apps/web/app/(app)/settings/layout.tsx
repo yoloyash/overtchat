@@ -25,10 +25,10 @@ export default function SettingsLayout({
         </Button>
       </header>
       <div className="flex flex-1 flex-col overflow-hidden md:flex-row">
-        <aside className="shrink-0 overflow-y-auto border-b p-3 md:w-52 md:border-r md:border-b-0 md:p-4">
+        <aside className="shrink-0 overflow-y-auto border-b bg-muted/15 p-3 md:w-52 md:border-r md:border-b-0 md:p-4">
           <SettingsNav />
         </aside>
-        <div className="min-w-0 flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+        <div className="min-w-0 flex-1 overflow-y-auto overscroll-contain p-4 pb-8 md:p-6 md:pb-12 lg:p-8 lg:pb-12">
           {children}
         </div>
       </div>

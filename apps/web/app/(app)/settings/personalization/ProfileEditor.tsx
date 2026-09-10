@@ -68,6 +68,7 @@ export function ProfileEditor({
           htmlFor="personalization-enabled"
           align="center"
           controlAlign="end"
+          layout="toggle"
         >
           <Switch
             id="personalization-enabled"
@@ -99,6 +100,7 @@ export function ProfileEditor({
         </SettingsRow>
         <SettingsRow
           title="More about you"
+          align="start"
           description="Interests, values, or preferences to keep in mind."
           htmlFor="about-user"
         >

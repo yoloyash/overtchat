@@ -116,7 +116,7 @@ export function AdvancedFields({
               min={1}
               step={1}
               inputMode="numeric"
-              className="w-full font-mono @2xl:max-w-xl"
+              className="w-full font-mono"
               placeholder={
                 contextWindowPlaceholder === undefined &&
                 resolvedContextWindow === undefined
@@ -135,6 +135,7 @@ export function AdvancedFields({
 
           <SettingsRow
             title="System prompt"
+            align="start"
             description="Optional instructions sent before each chat."
             htmlFor="p-system-prompt"
           >
@@ -154,7 +155,7 @@ export function AdvancedFields({
             align={pricing || catalogPricing ? "start" : "center"}
             controlAlign="end"
           >
-            <div className="w-full @2xl:max-w-xl">
+            <div className="w-full">
               <div className="flex min-h-8 items-center justify-between gap-3">
                 <span className="text-xs text-muted-foreground">
                   {pricing
@@ -187,7 +188,7 @@ export function AdvancedFields({
                 </div>
               </div>
               {pricing || catalogPricing ? (
-                <div className="mt-3 grid grid-cols-2 gap-3 @xl:grid-cols-4">
+                <div className="mt-3 grid grid-cols-2 gap-3">
                   <PricingInput
                     id="p-price-input"
                     label="Input"
@@ -268,6 +269,7 @@ export function AdvancedFields({
 
           <SettingsRow
             title="Provider options"
+            align="start"
             description="Optional AI SDK options for the selected provider."
             htmlFor="p-provider-options"
           >

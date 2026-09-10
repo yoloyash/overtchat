@@ -14,10 +14,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
-import type {
-  McpServer,
-  McpServerAvailability,
-} from "@/lib/mcp/schema";
+import type { McpServer, McpServerAvailability } from "@/lib/mcp/schema";
 import { motionClasses } from "@/lib/motion";
 import {
   useDeleteMcpServer,
@@ -26,13 +23,14 @@ import {
 } from "@/lib/queries/mcpServers";
 import { cn } from "@/lib/utils";
 import {
+  SettingsEmptyState,
   SettingsNotice,
   SettingsSection,
 } from "../_components/SettingsRows";
 import { McpHealthBadge } from "./McpHealthBadge";
 
 export function McpServersPanel() {
-  const { data: servers = [] } = useMcpServers();
+  const { data: servers = [], isPending, error } = useMcpServers();
   const updateServer = useUpdateMcpServer();
   const deleteServer = useDeleteMcpServer();
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -80,26 +78,28 @@ export function McpServersPanel() {
         title="Manage MCP servers"
         description="Connect external tool servers and choose who can use them. Commands run inside the OvertChat server environment."
         action={
-          <Button
-            render={<Link href="/settings/tools/mcp/new" />}
-            size="sm"
-          >
+          <Button render={<Link href="/settings/tools/mcp/new" />} size="sm">
             <Plus /> Add server
           </Button>
         }
       >
-        {servers.length === 0 ? (
-          <div className="py-8 text-center">
-            <p className="text-sm text-muted-foreground">
-              No MCP servers configured.
-            </p>
-          </div>
+        {isPending ? (
+          <SettingsNotice className="py-6">Loading MCP servers…</SettingsNotice>
+        ) : error ? (
+          <SettingsNotice tone="error" className="py-6">
+            {getErrorMessage(error, "Unable to load MCP servers.")}
+          </SettingsNotice>
+        ) : servers.length === 0 ? (
+          <SettingsEmptyState
+            title="No MCP servers available"
+            description="Connect a server to make its tools available in chats."
+          />
         ) : (
           servers.map((server) => (
             <div
               key={server.id}
               className={cn(
-                "grid gap-3 py-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
+                "grid gap-3 py-4 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
                 server.availability === "disabled" && "opacity-65",
               )}
             >
@@ -109,7 +109,9 @@ export function McpServersPanel() {
                 </div>
                 <div className="min-w-0">
                   <div className="flex min-w-0 items-center gap-2">
-                    <p className="truncate text-sm font-medium">{server.name}</p>
+                    <p className="truncate text-sm font-medium">
+                      {server.name}
+                    </p>
                     <McpHealthBadge id={server.id} />
                   </div>
                   <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
@@ -125,7 +127,7 @@ export function McpServersPanel() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-2">
                 <span className="hidden text-xs text-muted-foreground @2xl:inline">
                   Available to
                 </span>

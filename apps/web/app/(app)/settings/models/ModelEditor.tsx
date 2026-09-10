@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
-import { ArrowLeft, XCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
@@ -32,6 +32,8 @@ import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
 import {
   SettingsActions,
+  SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -275,9 +277,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   }
 
   return (
-    <div className="max-w-4xl">
+    <SettingsPage>
       <SettingsPageHeader
-        className="mb-6"
         title={isEditing ? "Edit model" : "Add model"}
         description="Configure a model that everyone on this server can use."
         leading={
@@ -359,6 +360,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             description={toolCallingDescription(capabilitiesHint)}
             align="center"
             controlAlign="end"
+            layout="toggle"
           >
             <Switch
               checked={draft.toolCallingEnabled}
@@ -403,7 +405,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           >
             <Input
               id="p-label"
-              className="w-full @2xl:max-w-xl"
+              className="w-full"
               placeholder={
                 draft.model
                   ? defaultLabelFor(draft.model)
@@ -421,6 +423,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             description="Turn off to keep this model saved without showing it in chat."
             align="center"
             controlAlign="end"
+            layout="toggle"
           >
             <Switch
               checked={draft.enabled}
@@ -461,28 +464,22 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           defaultOpen={advancedDefaultOpen}
         />
 
-        {saveError && (
-          <div className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-            <XCircle className="size-3.5 shrink-0 mt-0.5" />
-            <span className="break-words">{saveError}</span>
-          </div>
-        )}
+        {saveError && <SettingsNotice tone="error">{saveError}</SettingsNotice>}
 
         <SettingsActions>
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
+            variant="outline"
             render={<Link href="/settings/models" />}
           >
             Cancel
           </Button>
-          <Button type="submit" size="sm" disabled={!canSave}>
-            {saving ? "Saving…" : isEditing ? "Save" : "Create"}
+          <Button type="submit" disabled={!canSave}>
+            {saving ? "Saving…" : isEditing ? "Save changes" : "Add model"}
           </Button>
         </SettingsActions>
       </form>
-    </div>
+    </SettingsPage>
   );
 }
 

@@ -7,6 +7,7 @@ import { authClient } from "@/lib/auth/client";
 import {
   SettingsActions,
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -40,7 +41,7 @@ export function AccountForm({ email }: { email: string }) {
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="Security"
         description={
@@ -71,7 +72,7 @@ export function AccountForm({ email }: { email: string }) {
             align="center"
             controlAlign="end"
           >
-            <div className="w-full @2xl:max-w-sm">
+            <div className="w-full">
               <PasswordInput
                 id="current"
                 autoComplete="current-password"
@@ -93,7 +94,7 @@ export function AccountForm({ email }: { email: string }) {
             align="center"
             controlAlign="end"
           >
-            <div className="w-full @2xl:max-w-sm">
+            <div className="w-full">
               <PasswordInput
                 id="new"
                 autoComplete="new-password"
@@ -123,6 +124,6 @@ export function AccountForm({ email }: { email: string }) {
           </Button>
         </SettingsActions>
       </form>
-    </div>
+    </SettingsPage>
   );
 }

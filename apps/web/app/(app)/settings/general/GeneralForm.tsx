@@ -11,10 +11,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SettingsChoiceGroup } from "../_components/SettingsChoiceGroup";
 import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 import {
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -50,23 +50,28 @@ const getServerSnapshot = () => false;
 
 export function GeneralForm() {
   const { theme, setTheme } = useTheme();
-  const mounted = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
-  const current = (mounted ? theme : undefined) as ThemeValue | undefined;
-  const [messageStatsEnabled, setMessageStatsEnabled] = useLocalStorage<boolean>(
-    MESSAGE_STATS_STORAGE_KEY,
-    false,
+  const mounted = useSyncExternalStore(
+    subscribe,
+    getSnapshot,
+    getServerSnapshot,
   );
+  // Keep the radio group controlled during hydration so it follows the saved theme.
+  const current = (mounted ? (theme ?? "system") : "system") as ThemeValue;
+  const [messageStatsEnabled, setMessageStatsEnabled] =
+    useLocalStorage<boolean>(MESSAGE_STATS_STORAGE_KEY, false);
   const [contextMeterEnabled, setContextMeterEnabled] =
     useLocalStorage<boolean>(
       CONTEXT_METER_STORAGE_KEY,
       DEFAULT_CONTEXT_METER_ENABLED,
     );
-  const [sessionCostEnabled, setSessionCostEnabled] =
-    useLocalStorage<boolean>(
-      SESSION_COST_STORAGE_KEY,
-      DEFAULT_SESSION_COST_ENABLED,
-    );
-  const [fontId, setFontId] = useLocalStorage<FontId>(FONT_STORAGE_KEY, DEFAULT_FONT_ID);
+  const [sessionCostEnabled, setSessionCostEnabled] = useLocalStorage<boolean>(
+    SESSION_COST_STORAGE_KEY,
+    DEFAULT_SESSION_COST_ENABLED,
+  );
+  const [fontId, setFontId] = useLocalStorage<FontId>(
+    FONT_STORAGE_KEY,
+    DEFAULT_FONT_ID,
+  );
   const currentFont = mounted ? fontId : DEFAULT_FONT_ID;
 
   function selectFont(next: FontId) {
@@ -74,12 +79,13 @@ export function GeneralForm() {
     // The blocking script only runs on page load; apply the change live too.
     const opt = FONT_OPTIONS.find((f) => f.id === next);
     const root = document.documentElement;
-    if (!opt || opt.cssValue === null) root.style.removeProperty("--app-font-sans");
+    if (!opt || opt.cssValue === null)
+      root.style.removeProperty("--app-font-sans");
     else root.style.setProperty("--app-font-sans", opt.cssValue);
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="General"
         description="Preferences saved for this browser."
@@ -87,7 +93,7 @@ export function GeneralForm() {
 
       <SettingsSection
         title="Appearance"
-        description="Choose how overtchat looks and reads."
+        description="Choose how OvertChat looks and reads."
       >
         <SettingsRow
           title="Theme"
@@ -95,41 +101,46 @@ export function GeneralForm() {
           align="center"
           controlAlign="end"
         >
-          <RadioGroup
-            aria-label="Theme"
+          <SettingsChoiceGroup
+            label="Theme"
             value={current}
-            onValueChange={(next) => setTheme(next as ThemeValue)}
-            className="grid w-full grid-cols-3 gap-1 rounded-lg border bg-muted/30 p-1 @2xl:max-w-xs"
-          >
-            {OPTIONS.map(({ value, label, icon: Icon }) => (
-              <Label
-                key={value}
-                className="flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md px-2 text-sm font-medium text-muted-foreground motion-colors outline-none has-data-[checked]:bg-background has-data-[checked]:text-foreground has-data-[checked]:shadow-xs has-focus-visible:ring-3 has-focus-visible:ring-ring/50 not-has-data-[checked]:hover:text-foreground"
-              >
-                <RadioGroupItem value={value} className="sr-only" />
-                <Icon className="size-3.5" />
-                <span>{label}</span>
-              </Label>
-            ))}
-          </RadioGroup>
+            onValueChange={setTheme}
+            options={OPTIONS.map(({ value, label, icon: Icon }) => ({
+              value,
+              label: (
+                <>
+                  <Icon aria-hidden="true" />
+                  <span>{label}</span>
+                </>
+              ),
+            }))}
+          />
         </SettingsRow>
 
         <SettingsRow
-          title="Chat font"
+          title="Interface font"
           description="Choose the font used throughout the app."
+          htmlFor="interface-font"
           align="center"
           controlAlign="end"
         >
-          <Select value={currentFont} onValueChange={(next) => selectFont(next as FontId)}>
-            <SelectTrigger aria-label="Chat font" className="w-full @2xl:w-64">
-              <SelectValue />
+          <Select
+            value={currentFont}
+            onValueChange={(next) => selectFont(next as FontId)}
+          >
+            <SelectTrigger id="interface-font" className="w-full">
+              <SelectValue>
+                {FONT_OPTIONS.find((font) => font.id === currentFont)?.label}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {FONT_OPTIONS.map(({ id, label, cssValue }) => (
                 <SelectItem
                   key={id}
                   value={id}
-                  style={{ fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)" }}
+                  style={{
+                    fontFamily: cssValue ?? "var(--font-plus-jakarta-sans)",
+                  }}
                 >
                   {label}
                 </SelectItem>
@@ -141,7 +152,7 @@ export function GeneralForm() {
 
       <SettingsSection
         title="Messages"
-        description="Message display preferences saved for this browser."
+        description="Choose which details appear in your conversations."
       >
         <SettingsRow
           title="Message stats"
@@ -149,6 +160,7 @@ export function GeneralForm() {
           htmlFor="message-stats"
           align="center"
           controlAlign="end"
+          layout="toggle"
         >
           <Switch
             id="message-stats"
@@ -164,6 +176,7 @@ export function GeneralForm() {
           htmlFor="context-meter"
           align="center"
           controlAlign="end"
+          layout="toggle"
         >
           <Switch
             id="context-meter"
@@ -179,6 +192,7 @@ export function GeneralForm() {
           htmlFor="session-cost"
           align="center"
           controlAlign="end"
+          layout="toggle"
         >
           <Switch
             id="session-cost"
@@ -188,6 +202,6 @@ export function GeneralForm() {
           />
         </SettingsRow>
       </SettingsSection>
-    </div>
+    </SettingsPage>
   );
 }

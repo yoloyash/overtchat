@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
 import { getErrorMessage } from "@/lib/errors";
 import {
@@ -19,12 +18,16 @@ import {
   useCreateMcpServer,
   useUpdateMcpServer,
 } from "@/lib/queries/mcpServers";
-import { cn } from "@/lib/utils";
 import {
   SettingsActions,
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
+  SettingsRow,
+  SettingsSection,
 } from "../../_components/SettingsRows";
+
+import { SettingsChoiceGroup } from "../../_components/SettingsChoiceGroup";
 
 type Pair = { id: string; key: string; value: string };
 type ValueRow = { id: string; value: string };
@@ -140,7 +143,9 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
       config: configFromForm(),
     });
     if (parsed.success) return parsed.data;
-    setError(parsed.error.issues[0]?.message ?? "Check the server configuration.");
+    setError(
+      parsed.error.issues[0]?.message ?? "Check the server configuration.",
+    );
     return null;
   }
 
@@ -166,63 +171,66 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
   }
 
   return (
-    <form onSubmit={save} className="max-w-4xl space-y-5">
-      <SettingsPageHeader
-        leading={
-          <Button
-            render={<Link href="/settings/tools" />}
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Back to tools"
-          >
-            <ArrowLeft />
-          </Button>
-        }
-        title={server ? "Edit custom MCP" : "Connect to a custom MCP"}
-        description={
-          <a
-            href="https://modelcontextprotocol.io/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 hover:text-foreground"
-          >
-            Docs <Globe2 className="size-3.5" />
-          </a>
-        }
-      />
-
-      <FieldCard>
-        <Field label="Name" htmlFor="mcp-name">
-          <Input
-            id="mcp-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="MCP server name"
-            autoComplete="off"
-          />
-        </Field>
-        <div className="flex items-center justify-between gap-4 border-t pt-4">
-          <Label>Type</Label>
-          <div className="flex rounded-lg bg-muted p-0.5">
-            <TransportButton
-              active={transport === "stdio"}
-              onClick={() => setTransport("stdio")}
+    <SettingsPage>
+      <form onSubmit={save} className="space-y-8">
+        <SettingsPageHeader
+          leading={
+            <Button
+              render={<Link href="/settings/tools" />}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to tools"
             >
-              STDIO
-            </TransportButton>
-            <TransportButton
-              active={transport === "http"}
-              onClick={() => setTransport("http")}
+              <ArrowLeft />
+            </Button>
+          }
+          title={server ? "Edit MCP server" : "Add MCP server"}
+          description={
+            <a
+              href="https://modelcontextprotocol.io/docs"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 hover:text-foreground"
             >
-              Streamable HTTP
-            </TransportButton>
-          </div>
-        </div>
-      </FieldCard>
+              MCP documentation <Globe2 className="size-3.5" />
+            </a>
+          }
+        />
 
-      {transport === "stdio" ? (
-        <>
-          <FieldCard>
+        <SettingsSection
+          title="Connection"
+          description="Name this server and choose how OvertChat connects to it."
+        >
+          <Field label="Name" htmlFor="mcp-name">
+            <Input
+              id="mcp-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="MCP server name"
+              autoComplete="off"
+            />
+          </Field>
+          <SettingsRow
+            title="Transport"
+            description="Run a local process or connect to an HTTP server."
+          >
+            <SettingsChoiceGroup
+              label="Transport"
+              value={transport}
+              onValueChange={(next) => setTransport(next as "stdio" | "http")}
+              options={[
+                { value: "stdio", label: "STDIO" },
+                { value: "http", label: "Streamable HTTP" },
+              ]}
+            />
+          </SettingsRow>
+        </SettingsSection>
+
+        {transport === "stdio" ? (
+          <SettingsSection
+            title="Local process"
+            description="Configure the command and environment used to start this server."
+          >
             <Field label="Command to launch" htmlFor="mcp-command">
               <Input
                 id="mcp-command"
@@ -233,9 +241,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
                 className="font-mono"
               />
             </Field>
-          </FieldCard>
 
-          <FieldCard>
             <RepeatableValues
               label="Arguments"
               rows={args}
@@ -243,9 +249,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               addLabel="Add argument"
               onChange={setArgs}
             />
-          </FieldCard>
 
-          <FieldCard>
             <RepeatablePairs
               label="Environment variables"
               rows={environment}
@@ -254,9 +258,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               addLabel="Add environment variable"
               onChange={setEnvironment}
             />
-          </FieldCard>
 
-          <FieldCard>
             <RepeatableValues
               label="Environment variable passthrough"
               rows={passthrough}
@@ -264,9 +266,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               addLabel="Add variable"
               onChange={setPassthrough}
             />
-          </FieldCard>
 
-          <FieldCard>
             <Field label="Working directory" htmlFor="mcp-cwd">
               <Input
                 id="mcp-cwd"
@@ -277,11 +277,12 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
                 className="font-mono"
               />
             </Field>
-          </FieldCard>
-        </>
-      ) : (
-        <>
-          <FieldCard>
+          </SettingsSection>
+        ) : (
+          <SettingsSection
+            title="HTTP connection"
+            description="Configure the server address and optional authentication."
+          >
             <Field label="Server URL" htmlFor="mcp-url">
               <Input
                 id="mcp-url"
@@ -292,9 +293,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
                 className="font-mono"
               />
             </Field>
-          </FieldCard>
 
-          <FieldCard>
             <RepeatablePairs
               label="HTTP headers"
               rows={headers}
@@ -303,9 +302,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               addLabel="Add header"
               onChange={setHeaders}
             />
-          </FieldCard>
 
-          <FieldCard>
             <RepeatablePairs
               label="Environment variable HTTP headers"
               rows={envHeaders}
@@ -314,9 +311,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
               addLabel="Add environment header"
               onChange={setEnvHeaders}
             />
-          </FieldCard>
 
-          <FieldCard>
             <Field
               label="Bearer token environment variable"
               htmlFor="mcp-bearer-env"
@@ -330,26 +325,21 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
                 className="font-mono"
               />
             </Field>
-          </FieldCard>
-        </>
-      )}
+          </SettingsSection>
+        )}
 
-      {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
+        {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
 
-      <SettingsActions>
-        <Button type="submit" disabled={saving}>
-          {saving ? "Saving…" : "Save"}
-        </Button>
-      </SettingsActions>
-    </form>
-  );
-}
-
-function FieldCard({ children }: { children: React.ReactNode }) {
-  return (
-    <section className="space-y-4 rounded-2xl border bg-card/40 p-4">
-      {children}
-    </section>
+        <SettingsActions>
+          <Button variant="outline" render={<Link href="/settings/tools" />}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            {saving ? "Saving…" : server ? "Save changes" : "Add server"}
+          </Button>
+        </SettingsActions>
+      </form>
+    </SettingsPage>
   );
 }
 
@@ -363,35 +353,9 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2">
-      <Label htmlFor={htmlFor}>{label}</Label>
+    <SettingsRow title={label} htmlFor={htmlFor}>
       {children}
-    </div>
-  );
-}
-
-function TransportButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick(): void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "rounded-md px-3 py-1.5 text-sm motion-colors",
-        active
-          ? "bg-background text-foreground shadow-sm"
-          : "text-muted-foreground hover:text-foreground",
-      )}
-    >
-      {children}
-    </button>
+    </SettingsRow>
   );
 }
 
@@ -409,41 +373,45 @@ function RepeatableValues({
   onChange(rows: ValueRow[]): void;
 }) {
   return (
-    <div className="space-y-3">
-      <Label>{label}</Label>
-      {rows.map((row) => (
-        <div key={row.id} className="flex items-center gap-2">
-          <Input
-            value={row.value}
-            onChange={(event) =>
-              onChange(
-                rows.map((item) =>
-                  item.id === row.id
-                    ? { ...item, value: event.target.value }
-                    : item,
-                ),
-              )
-            }
-            placeholder={placeholder}
-            autoComplete="off"
-            className="font-mono"
-          />
-          <RemoveButton
-            label={`Remove ${label.toLowerCase()} row`}
-            disabled={rows.length === 1 && row.value === ""}
-            onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
-          />
-        </div>
-      ))}
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        onClick={() => onChange([...rows, { id: rowId(), value: "" }])}
-      >
-        <Plus /> {addLabel}
-      </Button>
-    </div>
+    <SettingsRow title={label} align="start">
+      <div className="space-y-3">
+        {rows.map((row, index) => (
+          <div key={row.id} className="flex items-center gap-2">
+            <Input
+              value={row.value}
+              aria-label={`${label} value ${index + 1}`}
+              onChange={(event) =>
+                onChange(
+                  rows.map((item) =>
+                    item.id === row.id
+                      ? { ...item, value: event.target.value }
+                      : item,
+                  ),
+                )
+              }
+              placeholder={placeholder}
+              autoComplete="off"
+              className="font-mono"
+            />
+            <RemoveButton
+              label={`Remove ${label.toLowerCase()} row`}
+              disabled={rows.length === 1 && row.value === ""}
+              onClick={() =>
+                onChange(rows.filter((item) => item.id !== row.id))
+              }
+            />
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() => onChange([...rows, { id: rowId(), value: "" }])}
+        >
+          <Plus /> {addLabel}
+        </Button>
+      </div>
+    </SettingsRow>
   );
 }
 
@@ -463,58 +431,66 @@ function RepeatablePairs({
   onChange(rows: Pair[]): void;
 }) {
   return (
-    <div className="space-y-3">
-      <Label>{label}</Label>
-      {rows.map((row) => (
-        <div key={row.id} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2">
-          <Input
-            value={row.key}
-            onChange={(event) =>
-              onChange(
-                rows.map((item) =>
-                  item.id === row.id
-                    ? { ...item, key: event.target.value }
-                    : item,
-                ),
-              )
-            }
-            placeholder={keyPlaceholder}
-            autoComplete="off"
-            className="font-mono"
-          />
-          <Input
-            value={row.value}
-            onChange={(event) =>
-              onChange(
-                rows.map((item) =>
-                  item.id === row.id
-                    ? { ...item, value: event.target.value }
-                    : item,
-                ),
-              )
-            }
-            placeholder={valuePlaceholder}
-            autoComplete="off"
-            className="font-mono"
-          />
-          <RemoveButton
-            label={`Remove ${label.toLowerCase()} row`}
-            disabled={rows.length === 1 && row.key === "" && row.value === ""}
-            onClick={() => onChange(rows.filter((item) => item.id !== row.id))}
-          />
-        </div>
-      ))}
-      <Button
-        type="button"
-        variant="secondary"
-        className="w-full"
-        onClick={() =>
-          onChange([...rows, { id: rowId(), key: "", value: "" }])
-        }
-      >
-        <Plus /> {addLabel}
-      </Button>
-    </div>
+    <SettingsRow title={label} align="start">
+      <div className="space-y-3">
+        {rows.map((row, index) => (
+          <div
+            key={row.id}
+            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-2"
+          >
+            <Input
+              value={row.key}
+              aria-label={`${label} key ${index + 1}`}
+              onChange={(event) =>
+                onChange(
+                  rows.map((item) =>
+                    item.id === row.id
+                      ? { ...item, key: event.target.value }
+                      : item,
+                  ),
+                )
+              }
+              placeholder={keyPlaceholder}
+              autoComplete="off"
+              className="font-mono"
+            />
+            <Input
+              value={row.value}
+              aria-label={`${label} value ${index + 1}`}
+              onChange={(event) =>
+                onChange(
+                  rows.map((item) =>
+                    item.id === row.id
+                      ? { ...item, value: event.target.value }
+                      : item,
+                  ),
+                )
+              }
+              placeholder={valuePlaceholder}
+              autoComplete="off"
+              className="font-mono"
+            />
+            <RemoveButton
+              label={`Remove ${label.toLowerCase()} row`}
+              disabled={rows.length === 1 && row.key === "" && row.value === ""}
+              onClick={() =>
+                onChange(rows.filter((item) => item.id !== row.id))
+              }
+            />
+          </div>
+        ))}
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={() =>
+            onChange([...rows, { id: rowId(), key: "", value: "" }])
+          }
+        >
+          <Plus /> {addLabel}
+        </Button>
+      </div>
+    </SettingsRow>
   );
 }
 

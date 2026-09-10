@@ -13,6 +13,7 @@ import { activityKeys } from "@/lib/queries/keys";
 import {
   SettingsActions,
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -84,7 +85,7 @@ export function ProfileForm({
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="Profile"
         description="Choose how you appear to other people on this server."
@@ -110,7 +111,7 @@ export function ProfileForm({
             align="center"
             controlAlign="end"
           >
-            <div className="flex w-full items-center gap-4 @2xl:max-w-sm">
+            <div className="flex w-full items-center gap-4">
               <ProfileAvatar
                 id={userId}
                 name={previewName}
@@ -137,7 +138,7 @@ export function ProfileForm({
               id="display-name"
               type="text"
               autoComplete="name"
-              className="w-full @2xl:max-w-sm"
+              className="w-full"
               maxLength={80}
               required
               value={name}
@@ -155,7 +156,7 @@ export function ProfileForm({
             align="center"
             controlAlign="end"
           >
-            <div className="relative w-full @2xl:max-w-sm">
+            <div className="relative w-full">
               <ImageIcon className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="avatar-url"
@@ -190,7 +191,7 @@ export function ProfileForm({
           </Button>
         </SettingsActions>
       </form>
-    </div>
+    </SettingsPage>
   );
 }
 

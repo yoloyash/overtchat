@@ -23,6 +23,7 @@ import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import {
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsSection,
 } from "../_components/SettingsRows";
@@ -91,7 +92,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   }
 
   return (
-    <div className="max-w-4xl space-y-6">
+    <SettingsPage>
       <SettingsPageHeader
         title="Users"
         description="Manage who can sign in to this server."
@@ -321,7 +322,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
           </AlertDialog.Popup>
         </AlertDialog.Portal>
       </AlertDialog.Root>
-    </div>
+    </SettingsPage>
   );
 }
 
