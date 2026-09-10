@@ -25,6 +25,7 @@ import {
 import {
   SettingsActions,
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -93,7 +94,8 @@ export function voiceServicePresentation(
     case "not-installed":
       return {
         label: "Not installed",
-        description: "Run overtchat setup and enable realtime voice conversations.",
+        description:
+          "Run overtchat setup and enable realtime voice conversations.",
         configured: false,
       };
     case "stt-unavailable":
@@ -112,7 +114,8 @@ export function voiceServicePresentation(
     default:
       return {
         label: "Incomplete setup",
-        description: "Run overtchat setup to repair the realtime voice configuration.",
+        description:
+          "Run overtchat setup to repair the realtime voice configuration.",
         configured: false,
       };
   }
@@ -194,11 +197,11 @@ function CapabilitySection({
                   model:
                     current.provider !== "openai-compatible"
                       ? "tts-1"
-                      : current.model ?? "tts-1",
+                      : (current.model ?? "tts-1"),
                   voice:
                     current.provider !== "openai-compatible"
                       ? "alloy"
-                      : current.voice ?? "alloy",
+                      : (current.voice ?? "alloy"),
                 };
               }
               if (current.id === "stt" && provider === "bundled") {
@@ -215,15 +218,24 @@ function CapabilitySection({
                   model:
                     current.provider !== "openai-compatible"
                       ? "whisper-1"
-                      : current.model ?? "whisper-1",
+                      : (current.model ?? "whisper-1"),
                 };
               }
               return { ...current, provider };
             });
           }}
         >
-          <SelectTrigger className="w-full" aria-label={`${TITLES[draft.id]} provider`}>
-            <SelectValue />
+          <SelectTrigger
+            className="w-full"
+            aria-label={`${TITLES[draft.id]} provider`}
+          >
+            <SelectValue>
+              {
+                PROVIDERS[draft.id].find(
+                  (provider) => provider.value === draft.provider,
+                )?.label
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {PROVIDERS[draft.id].map((provider) => (
@@ -350,12 +362,10 @@ function CapabilitySection({
 export function ServicesPanel() {
   const { data, isPending, error } = useServerCapabilities();
   const capabilities = data?.capabilities ?? [];
-  const voiceStatus = data?.voice
-    ? voiceServicePresentation(data.voice)
-    : null;
+  const voiceStatus = data?.voice ? voiceServicePresentation(data.voice) : null;
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="Services"
         description="Manage search and speech providers for this server. Local services are installed with overtchat setup."
@@ -394,6 +404,6 @@ export function ServicesPanel() {
           </SettingsRow>
         </SettingsSection>
       )}
-    </div>
+    </SettingsPage>
   );
 }

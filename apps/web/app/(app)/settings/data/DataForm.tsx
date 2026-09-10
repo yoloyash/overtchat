@@ -14,6 +14,7 @@ import {
 } from "@/lib/queries/keys";
 import {
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -80,7 +81,7 @@ export function DataForm() {
   }
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="Data"
         description="Import chats from other platforms, or export your own."
@@ -141,6 +142,6 @@ export function DataForm() {
           </Button>
         </SettingsRow>
       </SettingsSection>
-    </div>
+    </SettingsPage>
   );
 }

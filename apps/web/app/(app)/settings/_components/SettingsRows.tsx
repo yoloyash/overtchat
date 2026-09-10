@@ -1,6 +1,47 @@
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
+export function SettingsPage({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "@container/settings w-full max-w-4xl space-y-8 [&_[data-slot=input]]:h-10 [&_[data-slot=select-trigger]]:h-10",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function SettingsEmptyState({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="px-4 py-10 text-center">
+      <p className="text-sm font-medium">{title}</p>
+      {description && (
+        <p className="mx-auto mt-1 max-w-md text-xs leading-5 text-muted-foreground">
+          {description}
+        </p>
+      )}
+      {children && <div className="mt-4 flex justify-center">{children}</div>}
+    </div>
+  );
+}
+
 interface SettingsSectionProps {
   title: string;
   description?: string;
@@ -20,9 +61,11 @@ export function SettingsSection({
 }: SettingsSectionProps) {
   return (
     <section className={cn("@container space-y-3", className)}>
-      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
+      <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
         <div className="min-w-0">
-          <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+          <h2 className="text-sm font-semibold leading-6 tracking-tight">
+            {title}
+          </h2>
           {description && (
             <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
               {description}
@@ -32,7 +75,9 @@ export function SettingsSection({
         {action && <div className="shrink-0">{action}</div>}
       </div>
       {children ? (
-        <div className={cn("divide-y divide-border/70 border-y", contentClassName)}>
+        <div
+          className={cn("divide-y divide-border/70 border-y", contentClassName)}
+        >
           {children}
         </div>
       ) : null}
@@ -57,13 +102,13 @@ export function SettingsPageHeader({
 }: SettingsPageHeaderProps) {
   return (
     <header className={cn("@container", className)}>
-      <div className="flex flex-col gap-3 @xl:flex-row @xl:items-start @xl:justify-between">
+      <div className="flex flex-col gap-3 @2xl:flex-row @2xl:items-start @2xl:justify-between">
         <div className="flex min-w-0 items-start gap-2">
           {leading && <div className="shrink-0">{leading}</div>}
           <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
             {description && (
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              <p className="mt-1 break-words text-sm leading-6 text-muted-foreground">
                 {description}
               </p>
             )}
@@ -83,6 +128,7 @@ interface SettingsRowProps {
   align?: "start" | "center";
   controlAlign?: "start" | "end" | "stretch";
   controlClassName?: string;
+  layout?: "field" | "toggle";
   className?: string;
 }
 
@@ -91,9 +137,10 @@ export function SettingsRow({
   description,
   htmlFor,
   children,
-  align = "start",
+  align = "center",
   controlAlign = "stretch",
   controlClassName,
+  layout = "field",
   className,
 }: SettingsRowProps) {
   const titleClass = "text-sm font-medium leading-5 text-foreground";
@@ -108,12 +155,15 @@ export function SettingsRow({
   return (
     <div
       className={cn(
-        "grid gap-3 py-4 @2xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)] @2xl:gap-6",
-        align === "center" && "@2xl:items-center",
+        "grid gap-3 py-4 @2xl:gap-8",
+        layout === "toggle"
+          ? "grid-cols-[minmax(0,1fr)_auto] items-center"
+          : "@2xl:grid-cols-2",
+        align === "center" && "items-center",
         className,
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 break-words">
         {titleNode}
         {description && (
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
@@ -124,8 +174,8 @@ export function SettingsRow({
       <div
         className={cn(
           "min-w-0",
-          controlAlign === "start" && "@2xl:flex @2xl:justify-start",
-          controlAlign === "end" && "@2xl:flex @2xl:justify-end",
+          controlAlign === "start" && "flex justify-start",
+          controlAlign === "end" && "flex justify-end",
           controlClassName,
         )}
       >
@@ -172,6 +222,9 @@ export function SettingsNotice({
 }: SettingsNoticeProps) {
   return (
     <p
+      role={
+        tone === "error" ? "alert" : tone === "success" ? "status" : undefined
+      }
       className={cn(
         "text-sm leading-5",
         tone === "muted" && "text-muted-foreground",

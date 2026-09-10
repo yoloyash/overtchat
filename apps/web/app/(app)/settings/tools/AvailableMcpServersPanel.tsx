@@ -10,10 +10,14 @@ import {
   useAvailableMcpServers,
   useSetMcpServerPreference,
 } from "@/lib/queries/mcpServers";
-import { SettingsSection } from "../_components/SettingsRows";
+import {
+  SettingsEmptyState,
+  SettingsNotice,
+  SettingsSection,
+} from "../_components/SettingsRows";
 
 export function AvailableMcpServersPanel() {
-  const { data: servers = [] } = useAvailableMcpServers();
+  const { data: servers = [], isPending, error } = useAvailableMcpServers();
   const setPreference = useSetMcpServerPreference();
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
@@ -36,17 +40,22 @@ export function AvailableMcpServersPanel() {
       title="MCP servers"
       description="Choose which available MCP servers can provide tools in your chats."
     >
-      {servers.length === 0 ? (
-        <div className="py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No MCP servers are available to you.
-          </p>
-        </div>
+      {isPending ? (
+        <SettingsNotice className="py-6">Loading MCP servers…</SettingsNotice>
+      ) : error ? (
+        <SettingsNotice tone="error" className="py-6">
+          {getErrorMessage(error, "Unable to load MCP servers.")}
+        </SettingsNotice>
+      ) : servers.length === 0 ? (
+        <SettingsEmptyState
+          title="No MCP servers available"
+          description="Ask an administrator to connect a tool server."
+        />
       ) : (
         servers.map((server) => (
           <div
             key={server.id}
-            className="flex items-center justify-between gap-4 py-3"
+            className="flex items-center justify-between gap-4 py-4"
           >
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">

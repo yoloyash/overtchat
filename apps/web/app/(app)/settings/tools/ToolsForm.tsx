@@ -7,6 +7,7 @@ import {
 } from "@/lib/tool-preferences";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
+  SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
@@ -21,7 +22,7 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
   );
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="Tools"
         description="Control model capabilities and connect external tool servers."
@@ -37,6 +38,7 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
           htmlFor="web-search-enabled"
           align="center"
           controlAlign="end"
+          layout="toggle"
         >
           <Switch
             id="web-search-enabled"
@@ -50,6 +52,6 @@ export function ToolsForm({ isAdmin }: { isAdmin: boolean }) {
       <AvailableMcpServersPanel />
 
       {isAdmin && <McpServersPanel />}
-    </div>
+    </SettingsPage>
   );
 }

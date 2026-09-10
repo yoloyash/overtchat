@@ -4,6 +4,7 @@ import { getErrorMessage } from "@/lib/errors";
 import { usePersonalization } from "@/lib/queries/personalization";
 import {
   SettingsNotice,
+  SettingsPage,
   SettingsPageHeader,
 } from "../_components/SettingsRows";
 import { MemoryManager } from "./MemoryManager";
@@ -12,34 +13,28 @@ import { ProfileEditor } from "./ProfileEditor";
 export function PersonalizationForm() {
   const { data, isPending, error: loadError } = usePersonalization();
 
-  if (isPending) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        Loading personalization…
-      </p>
-    );
-  }
-  if (loadError || !data) {
-    return (
-      <SettingsNotice tone="error">
-        {getErrorMessage(loadError, "Unable to load personalization.")}
-      </SettingsNotice>
-    );
-  }
-
   return (
-    <div className="max-w-3xl space-y-8">
+    <SettingsPage>
       <SettingsPageHeader
         title="Personalization"
         description="Tell OvertChat about you and manage what it remembers between chats."
       />
 
-      <ProfileEditor
-        key={JSON.stringify(data.personalization)}
-        personalization={data.personalization}
-      />
-
-      <MemoryManager memories={data.memories} usage={data.contextUsage} />
-    </div>
+      {isPending ? (
+        <SettingsNotice>Loading personalization…</SettingsNotice>
+      ) : loadError || !data ? (
+        <SettingsNotice tone="error">
+          {getErrorMessage(loadError, "Unable to load personalization.")}
+        </SettingsNotice>
+      ) : (
+        <>
+          <ProfileEditor
+            key={JSON.stringify(data.personalization)}
+            personalization={data.personalization}
+          />
+          <MemoryManager memories={data.memories} usage={data.contextUsage} />
+        </>
+      )}
+    </SettingsPage>
   );
 }

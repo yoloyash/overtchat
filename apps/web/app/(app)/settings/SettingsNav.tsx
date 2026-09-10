@@ -170,10 +170,11 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
   return (
     <Link
       href={item.href}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "flex shrink-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors",
+        "flex min-h-9 shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-sm motion-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
         active
-          ? "bg-accent text-accent-foreground"
+          ? "bg-accent font-medium text-accent-foreground"
           : "text-muted-foreground hover:bg-accent/50 hover:text-foreground",
       )}
     >

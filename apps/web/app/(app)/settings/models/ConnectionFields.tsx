@@ -237,9 +237,9 @@ export function ConnectionFields({
             clearProbeState();
           }}
         >
-          <SelectTrigger id="p-provider" className="w-full @2xl:max-w-xl">
+          <SelectTrigger id="p-provider" className="w-full">
             <ModelBrandIcon iconId={provider.iconId} />
-            <SelectValue />
+            <SelectValue>{provider.label}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {PROVIDER_IDS.map((id) => (
@@ -272,8 +272,12 @@ export function ConnectionFields({
               clearProbeState();
             }}
           >
-            <SelectTrigger id="p-api-format" className="w-full @2xl:max-w-xl">
-              <SelectValue />
+            <SelectTrigger id="p-api-format" className="w-full">
+              <SelectValue>
+                {draft.apiFormat === "auto"
+                  ? "Automatic"
+                  : API_FORMATS[draft.apiFormat].label}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {EXPLICIT_API_FORMAT_IDS.map((id) => (
@@ -299,7 +303,7 @@ export function ConnectionFields({
       >
         <Input
           id="p-base-url"
-          className="w-full @2xl:max-w-xl"
+          className="w-full"
           placeholder={provider.defaultBaseUrl || "https://api.example.com/v1"}
           required
           autoFocus={draft.providerId === "custom"}
@@ -322,7 +326,7 @@ export function ConnectionFields({
         align="center"
         controlAlign="end"
       >
-        <div className="w-full @2xl:max-w-xl">
+        <div className="w-full">
           <PasswordInput
             id="p-api-key"
             autoComplete="new-password"
@@ -343,7 +347,7 @@ export function ConnectionFields({
         htmlFor="p-model"
         controlAlign="end"
       >
-        <div className="w-full space-y-2 @2xl:max-w-xl">
+        <div className="w-full space-y-2">
           <div className="flex flex-col gap-2 @lg:flex-row">
             {showList ? (
               <Select
@@ -356,7 +360,7 @@ export function ConnectionFields({
               >
                 <SelectTrigger id="p-model" className="min-w-0 flex-1">
                   <ModelBrandIcon iconId={modelIconForModel(draft.model)} />
-                  <SelectValue />
+                  <SelectValue>{draft.model}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {models.map((model) => (

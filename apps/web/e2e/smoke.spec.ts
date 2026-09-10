@@ -39,7 +39,7 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
     }
 
     await page.locator("#p-label").fill("Gemini Lite Smoke Test");
-    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await page.getByRole("button", { name: "Add model", exact: true }).click();
     await page.waitForURL("**/settings/models");
   });
 
