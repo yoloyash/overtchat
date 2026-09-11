@@ -7,11 +7,12 @@ OpenCode sessions locally or over SSH.
 
 ## Sources of truth
 
-- `docs/deploy.md` owns development setup, environment loading, managed
-  installation, deployment, and operator procedures.
+- `docs/deploy.md` owns managed installation, deployment, and operator procedures.
+- `docs/development.md` owns development setup, environment loading, and
+  development validation.
 - `docs/release.md` owns version, tag, artifact, promotion, and release-specific
   validation procedures.
-- `docs/android.md` is the end-user Android installation guide.
+- `docs/deploy.md#android` owns Android installation and sideloading.
 
 Update a runbook when its process changes. In `AGENTS.md`, link to the owning
 runbook instead of copying its instructions.

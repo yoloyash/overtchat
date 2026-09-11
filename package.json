@@ -12,6 +12,9 @@
     "npm": "10.x"
   },
   "scripts": {
+    "media:generate": "node scripts/readme-media.mjs generate",
+    "media:serve": "node scripts/readme-media.mjs serve",
+    "media:android": "node scripts/readme-android.mjs",
     "dev": "node scripts/dev.mjs",
     "dev:web": "node scripts/dev.mjs --web-only",
     "dev:mobile": "npm run dev -w apps/mobile --",
