@@ -56,5 +56,5 @@ drawer behavior currently relies on `predictiveBackGestureEnabled: false` in
 Use `@/*` for `src` imports and `@overtchat/shared/theme.rn` for shared theme
 tokens. Run the mobile typecheck before finishing.
 Agent transport and command changes also require `npm run test -w apps/mobile --`.
-See `docs/deploy.md` for development validation and `docs/android.md` for the
-user-facing Agent Connections workflow.
+See `docs/development.md` for development validation and `docs/deploy.md#android`
+for Android installation.

@@ -1,187 +1,95 @@
 # Deploy
 
-The guided manager is the supported production installation and update path.
-It runs OvertChat with Docker Compose on x86-64 or arm64 Linux.
+Requires x86-64 or arm64 Linux. The guided manager installs and updates
+OvertChat with Docker Compose.
 
-## Install and configure
+## Install
 
-```bash
+```sh
 curl -fsSL https://overtchat.com/install | sh
 ```
 
-The wizard installs Docker when needed and configures the app, optional local
-services, realtime voice, and Agent Connections. Realtime voice requires both
-speech-to-text and text-to-speech; the wizard offers it after those providers.
-Bundled Kokoro and Parakeet services can independently use the CPU or a
-detected NVIDIA GPU. GPU services require NVIDIA Container Toolkit; setup can
-install it on supported Linux distributions. Kokoro uses roughly 3–4 GB of
-VRAM when loaded, so keep one or both speech services on CPU when GPU memory is
-limited.
-Open the printed URL; the first signup becomes the administrator.
+Choose local search, speech, and voice services in the wizard. It installs
+Docker if needed. Open the printed URL, create the administrator account,
+and add your model endpoint in the web app.
 
-Use the manager for later changes:
-
-```bash
-overtchat setup     # reconfigure services or Agent Connections
-overtchat status    # show the installed version, URL, and service status
+```sh
+overtchat setup     # change services, URL, port, or Agent Connections
+overtchat status    # check versions and service status
+overtchat update    # update the managed stack
 ```
 
-Model endpoints and product settings remain in the web app. Bundled services
-must first be installed with `overtchat setup`.
+Voice requires both STT and TTS. Bundled Parakeet and Kokoro can each use CPU or
+NVIDIA GPU; setup can install NVIDIA Container Toolkit on supported systems.
+Kokoro needs roughly 3–4 GB VRAM, so choose CPU if GPU memory is limited.
 
-Managed configuration lives under `~/.config/overtchat`; generated stack files
-and service data live under `~/.local/share/overtchat`. Manual edits to generated
-files may be replaced by the next setup or update.
+## Connect models and services
 
-## Adopt an existing installation
+Service URLs must be reachable **from the app container**:
 
-Run `overtchat setup` on a machine with a standard `overtchat-app` container to
-adopt it. The manager preserves its `/app/data` volume or bind mount, public
-port, auth secret, and standard SearXNG configuration. It creates and verifies
-a SQLite snapshot before replacing the app or running migrations.
+- On the same host: `http://host.docker.internal:<port>`.
+- On another machine: its LAN URL.
+- Existing search or speech: select it in `overtchat setup`.
+- MCP: configure under **Settings → Tools**. STDIO commands run in the container.
 
-If the old containers are stopped, setup can recover one standard Compose data
-volume by its Docker labels. If it finds multiple candidates, start the stack
-you want to adopt and run setup again. Setup also converts an existing manually
-paired connector into a managed connector.
+Use HTTPS for browser microphone access outside localhost. Reverse proxies
+must support WebSocket upgrades; realtime voice uses the app's existing origin.
 
-Custom layouts and source deployments are outside the supported production
-update path. Back up their data before migrating to a standard installation.
+Coding-agent executables and credentials belong on the Host Connector machine
+or selected SSH host. Configure connections on the web before using them on
+Android.
 
-## Update
+## Share with your family
 
-```bash
-overtchat update
-```
+Add accounts under **Settings → Users → Add user**, then share their login
+details and your server's LAN or HTTPS URL. Everyone uses the enabled models
+with their own chats and projects. Only the first account uses public signup;
+administrators create subsequent accounts.
 
-This updates the management CLI, app and voice images, selected sidecars, and
-managed Host Connector as one coordinated release. Database migrations run
-when the app starts without replacing its data mount. If an update stops
-partway through, run the command again to reconcile every managed component.
+## Android
 
-The web app reports newer releases from the public OvertChat manifest. To
-disable that check, run `DISABLE_UPDATE_CHECK=true overtchat setup` once.
+Install from [Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile),
+enter your server URL, and sign in. Use an address reachable from the phone;
+`localhost` refers to the phone itself.
 
-## Connect other services
+### Sideload an APK
 
-Addresses configured in OvertChat must be reachable from the app container:
+1. Open [Releases](https://github.com/yoloyash/overtchat/releases) and choose the
+   newest **`mobile-v*`** release (`v*` releases are for the server).
+2. Download and open `overtchat-v<version>.apk`. Allow installation from your
+   browser or file manager if prompted.
 
-- For an LLM or another service on the OvertChat host, use
-  `http://host.docker.internal:<port>`.
-- For existing SearXNG or speech services, run `overtchat setup` and select the
-  existing or OpenAI-compatible option. Use a LAN URL for another machine.
-- Configure MCP servers under **Settings → Tools**. STDIO commands run inside
-  the app container; HTTP servers need a container-reachable URL.
+Repeat for updates; sideloaded builds do not auto-update.
 
-The realtime voice container has no published host port. Browsers connect to
-the normal OvertChat origin at `/api/voice/realtime`, and the app proxies that
-WebSocket over the private Compose network. HTTPS deployments therefore become
-`wss://` automatically and need no second public hostname; the existing reverse
-proxy only needs its normal WebSocket-upgrade support for the OvertChat app.
+## Update or adopt an existing installation
 
-Claude Code connections use the `claude` executable and credentials already
-configured on the Host Connector machine. For SSH connections, install and
-authenticate Claude Code on the remote host as that SSH user. OvertChat does
-not copy or store Claude credentials; each execution target owns its Claude
-settings, skills, hooks, and MCP configuration.
+`overtchat update` updates the CLI, app, selected services, and managed
+connector while preserving data. Rerun it if interrupted. To disable update
+notifications, run `DISABLE_UPDATE_CHECK=true overtchat setup` once.
 
-## Status, logs, and backup
+To adopt a standard existing `overtchat-app` container, run `overtchat setup`.
+It preserves the data mount, port, auth secret, and standard SearXNG settings,
+and verifies a database snapshot before migrating. It also adopts manually
+paired connectors. For stopped stacks, setup can recover one Compose data
+volume; if several are found, start the intended stack first. Back up custom
+or source installations before migrating to the managed layout.
 
-```bash
-# Installation status
-overtchat status
+## Logs and backup
 
-# App logs
+```sh
 docker logs -f overtchat-app
+docker logs -f overtchat-voice  # when installed
 
-# Realtime voice logs, when installed
-docker logs -f overtchat-voice
-
-# Backup the SQLite database while the app is running
+# Snapshot the live database and copy it to the host
 docker exec overtchat-app sqlite3 /app/data/chat.db ".backup /app/data/backup.db"
 docker cp overtchat-app:/app/data/backup.db ./backup.db
 ```
 
-Common checks:
+Configuration is in `~/.config/overtchat`; generated stack files and service
+data are in `~/.local/share/overtchat`. Use the manager to change configuration;
+setup and updates may replace manual edits to generated files.
 
-- An HTTP `307` from `http://localhost:4718` is the healthy login redirect.
-- If login redirects back to itself, run `overtchat setup` and correct the
-  public URL.
-- If the port is occupied, run `overtchat setup` and select another port.
+A `307` redirect to login is normal. For login loops or port conflicts, run
+`overtchat setup` and correct the public URL or port.
 
-## Development
-
-Install dependencies and start the web app, isolated Redis container, and
-source Host Connector:
-
-```bash
-npm install
-npm run dev
-```
-
-Open [http://localhost:4717](http://localhost:4717). Stop the web app and
-connector with Ctrl-C; stop the retained development Redis container with
-`npm run dev:down`. Disposable connector state lives under `.overtchat-dev/`
-and never uses the installed production connector.
-
-Chat generations are owned by the server rather than by one browser or mobile
-connection. SQLite records each generation's identity and terminal status;
-Redis buffers in-flight stream events so a client can detach and resume after
-backgrounding or a network change. Without Redis, generation and final-message
-persistence still continue, and clients reconcile the completed response from
-SQLite, but missed live deltas cannot be replayed.
-
-Safe defaults are tracked in `apps/web/.env.development`; machine-specific
-values belong in `apps/web/.env.local`. The root `.env` is source-development
-configuration, and `apps/web/.env` must remain a symlink to `../../.env`. For
-another development origin, configure both `EXTRA_TRUSTED_ORIGINS` and Next.js
-`allowedDevOrigins`.
-
-Use a narrower process when the full stack is unnecessary:
-
-```bash
-npm run dev:web
-npm run dev:mobile
-npm run dev:site
-```
-
-To measure Library query performance, run `npm run bench:library -w apps/web --`.
-It creates and removes a temporary database using the production migrations and
-synthetic chat histories; it ignores the configured `DATABASE_URL`. Results
-report median and maximum query times across seven calls after a warm-up, for
-2,000–200,000 total messages and two message sizes. Run it without competing
-builds or tests. These timings exclude HTTP, rendering, concurrent users, and
-cold operating-system caches; compare results on the intended server hardware.
-
-For mobile Agent Connections changes, run `npm run typecheck -w apps/mobile --`
-and `npm run test -w apps/mobile --`. The tests cover event stream recovery,
-message retry identities, explicit delivery recovery, draft persistence and
-server/account isolation, image authentication, and interaction forms. When
-shared agent projections or replicas change, also run the affected web and
-bridge tests and typechecks. From `apps/mobile`, `npx expo export --platform
-android --platform ios --output-dir /tmp/overtchat-mobile-export` validates both
-native bundles without publishing them.
-
-On Android and iOS, verify resuming and starting sessions, streaming while
-switching between web and mobile, background/foreground recovery, network
-changes, model/permission controls, slash commands, approvals/questions, image
-paste/picking, approval details, and tool output sheets. Check keyboard clearance
-and back gestures.
-Use an existing development client; no new native modules are needed for agent
-chat. User instructions are in [the Android guide](android.md#agent-connections).
-
-Set `OVERTCHAT_DEV_PORT` or `OVERTCHAT_DEV_REDIS_PORT` for custom ports. Run
-`npm run dev:reset-connector` after an incompatible disposable journal change.
-To exercise the production provisioning path from the current worktree, run
-`npm run dev:managed`.
-
-## Mobile push notifications
-
-The web server needs outbound HTTPS access to `exp.host` for Expo Push Service.
-Opening a notification still requires the phone to reach the OvertChat server.
-Standard app builds require no additional server credentials. Custom Expo
-projects with enhanced push security need `EXPO_PUSH_ACCESS_TOKEN` in the web
-process environment.
-
-See [mobile build setup](release.md#mobile-push-credentials) for publisher
-credentials and [Android notifications](android.md#notifications) for app settings.
+[Development setup](development.md) · [Release process](release.md)

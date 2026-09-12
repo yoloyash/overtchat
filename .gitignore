@@ -43,6 +43,9 @@ CLAUDE.md
 !/scripts/install-connector.sh
 !/scripts/dev.mjs
 !/scripts/dev.test.mjs
+!/scripts/readme-media.mjs
+!/scripts/readme-android.mjs
+/.readme-media/
 /apps/web/scripts/seed.ts
 
 # generated local-development credentials and Host Connector runtime state
