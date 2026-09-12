@@ -18,8 +18,8 @@ type ExpoTicket = {
   details?: { error?: string };
 };
 
-// Like Paseo's push sender, submit directly in batches and handle immediate
-// tickets. Delivery is best-effort: there is no retry queue or receipt polling.
+// Submit directly in batches and handle immediate Expo tickets.
+// Delivery is best-effort: there is no retry queue or receipt polling.
 export async function sendPushNotification(notification: PushNotification) {
   const { userId, kind, targetId, eventId, body } = notification;
   const devices = notificationDevices(userId, kind, targetId);
