@@ -46,6 +46,36 @@ retry. Choose **Already delivered** to clear a draft you found in the chat. If
 you have checked that it was not delivered and retry cannot recover it,
 **Send again…** lets you confirm a separate send. Connection setup and administration remain on the web.
 
+## Notifications
+
+After your first login, **Know when it’s ready** offers to enable notifications.
+Choose **Enable notifications**, then allow notifications when Android asks.
+**Not now** skips the prompt without repeated reminders. You can change this
+later in **Settings → Notifications**, which has two controls: **Response
+notifications** (chat responses and agent idle together) and **Show previews**.
+These settings apply only to this device and your account on the selected
+server. Existing users with notifications enabled are not prompted again.
+
+Chat alerts say **Your response is ready** when a saved response finishes.
+Temporary chats, errors, and cancelled responses do not send that alert.
+Agent alerts say **Agent is idle** after it stops working for five seconds;
+this is a cue to check the session, not a guarantee of success. They do not
+report approval requests or catch up after a server/connector interruption.
+Tap an alert to open its conversation. The app suppresses alerts for the
+conversation you're currently viewing.
+
+**Show previews** is off by default. Turn it on to include chat answer text or
+an agent session name; that content passes through Expo and Apple/Google push
+services and may be visible on your lock screen. Turn it off for generic alerts.
+Use **Phone notification settings** to manage Android permissions and sounds.
+Signing out stops future delivery for that login.
+
+Your server may remain private, but both it and the phone need internet access
+for push delivery. To open a conversation, reconnect to the server's LAN or VPN
+if needed. Android force-stop prevents notifications until you reopen the app.
+If settings report a registration failure, see the
+[push setup guide](release.md#mobile-push-credentials).
+
 ## Sideload (APK)
 
 Prefer not to use Google Play? Every release ships a universal APK you can

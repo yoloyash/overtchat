@@ -9,6 +9,9 @@ export async function register() {
   );
   ensureServerCapabilityConfigs();
 
+  const { startPushWorker } = await import("@/lib/notifications/worker");
+  startPushWorker();
+
   const { sweepOrphanedUploads } = await import("@/lib/db/uploads");
   sweepOrphanedUploads().catch((err) =>
     console.error("[sweep-orphan-uploads]", err),

@@ -174,3 +174,50 @@ Set `OVERTCHAT_DEV_PORT` or `OVERTCHAT_DEV_REDIS_PORT` for custom ports. Run
 `npm run dev:reset-connector` after an incompatible disposable journal change.
 To exercise the production provisioning path from the current worktree, run
 `npm run dev:managed`.
+
+## Mobile push notifications
+
+Push notifications are opt-in per device and server account. Mobile asks once
+after the first login, with an Enable/Not now choice before Android's permission
+prompt. **Settings → Notifications** contains **Response notifications** (chat
+and agent idle together) and **Show previews**. The web process sends through Expo Push Service;
+it needs outbound HTTPS access to `exp.host`. The phone needs internet access
+to Apple/Google push services. The OvertChat server can remain on a private LAN
+or VPN; opening a notification still requires the phone to reach that server.
+There is no separate worker service, Redis requirement, or connector protocol
+change. SQLite stores device registrations and a bounded-retry notification
+queue; the web process starts delivery after migrations.
+
+Chat alerts are queued after a successful saved response. Temporary chats,
+failed generations, and cancelled generations do not generate response-ready
+alerts. Agent alerts observe live `running → idle` changes, wait five seconds,
+and cancel if work resumes or an explicit Stop is sent. Initial/reconnect
+snapshots and `exited` states do not trigger alerts. Agent alerts intentionally
+do not catch up across server restarts or connector outages and do not mean the
+task succeeded. They do not include agent answer previews or approval requests.
+
+Registrations are tied to the authenticated login. Signing out, revoking that
+login, or its expiry stops delivery; signing in again and opening the app
+refreshes an enabled registration. Disabling response notifications
+also suppresses queued deliveries. Foreground notifications for the conversation
+currently on screen are suppressed by the phone, without relying on a stale
+server presence flag. Delivery uses normal OS notifications, so Android
+force-stop, notification permissions, and OS delivery policies still apply.
+Pushes may be delayed or duplicated by upstream delivery services.
+
+The standard Expo sender API uses the device push token; application FCM/APNs
+credentials belong to the app's EAS project, not individual OvertChat servers.
+For a custom app project with Expo's enhanced push security enabled, supply
+`EXPO_PUSH_ACCESS_TOKEN` in the web process environment (for source development,
+`apps/web/.env.local`). The managed installer does not provision custom Expo
+credentials. Never distribute an app publisher's Expo access token to other
+self-hosted servers. See [mobile build setup](release.md#mobile-push-credentials)
+for native credentials and rebuild instructions.
+
+Previews default off. Enabling them includes a short visible chat answer or
+agent session name in the push payload, which passes through Expo and
+Apple/Google and may appear on the lock screen. Reasoning and tool payloads are
+never included. Tokens and message bodies are not logged by the sender. Queue
+entries expire after one hour; receipts are checked after fifteen minutes and
+invalid registrations are removed. `[push]` warnings identify queue or delivery
+failures without logging credentials or conversation content.
