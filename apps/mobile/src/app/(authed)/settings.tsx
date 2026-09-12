@@ -1,3 +1,11 @@
+import { getAuthCookie } from "@/lib/api";
+import {
+  changeNotificationPreferences,
+  revokeNotifications,
+  useNotificationSettings,
+  type NotificationPreferences,
+} from "@/lib/notifications/client";
+import { toastError } from "@/lib/toast";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Stack } from "expo-router";
 import { useState, type ReactNode } from "react";
@@ -17,7 +25,10 @@ import { FONT_OPTIONS, FONT_SANS } from "@/lib/fonts";
 import { setFontPref, useFontPref } from "@/lib/fontPref";
 import { getServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
-import { setWebSearchEnabled, useWebSearchEnabled } from "@/lib/toolPreferences";
+import {
+  setWebSearchEnabled,
+  useWebSearchEnabled,
+} from "@/lib/toolPreferences";
 
 export default function SettingsScreen() {
   const { colors, radii, fonts } = useTheme();
@@ -32,6 +43,27 @@ export default function SettingsScreen() {
   const webSearchEnabled = useWebSearchEnabled();
   const [signingOut, setSigningOut] = useState(false);
   const serverUrl = getServerUrl();
+  const notificationScope = {
+    server: serverUrl ?? "",
+    userId: session.data?.user.id ?? "",
+    cookie: getAuthCookie(),
+  };
+  const { settings: notificationPrefs, error: notificationError } =
+    useNotificationSettings(notificationScope);
+  const [savingNotifications, setSavingNotifications] = useState(false);
+  async function setNotificationPreference(
+    patch: Partial<NotificationPreferences>,
+  ) {
+    if (savingNotifications) return;
+    setSavingNotifications(true);
+    try {
+      await changeNotificationPreferences(notificationScope, patch);
+    } catch (error) {
+      toastError("Couldn't update notifications", error);
+    } finally {
+      setSavingNotifications(false);
+    }
+  }
   const serverHost = serverUrl ? safeHost(serverUrl) : null;
 
   function openOnWeb(path: string) {
@@ -43,6 +75,8 @@ export default function SettingsScreen() {
     if (signingOut) return;
     setSigningOut(true);
     try {
+      // Revoking the auth session also revokes server-side push registration.
+      await revokeNotifications(notificationScope).catch(() => {});
       await getAuthClient().signOut();
       await session.refetch();
     } finally {
@@ -90,6 +124,49 @@ export default function SettingsScreen() {
               label="Personalization"
               sub="Tell OvertChat about you and manage saved memories."
               onPress={() => router.push("./personalization")}
+            />
+          </Section>
+
+          <Section
+            title="Notifications"
+            description="Only for this device and account on this server."
+          >
+            <SwitchRow
+              label="Response notifications"
+              sub="Notify me when a saved chat response is ready or an agent becomes idle."
+              value={notificationPrefs.chats || notificationPrefs.agents}
+              onValueChange={(enabled) =>
+                void setNotificationPreference({
+                  chats: enabled,
+                  agents: enabled,
+                })
+              }
+              accessibilityLabel="Response notifications"
+              disabled={savingNotifications}
+            />
+            <Divider />
+            <SwitchRow
+              label="Show previews"
+              sub="Include chat text and agent session names. Previews pass through Expo and Apple or Google and may appear on your lock screen."
+              value={notificationPrefs.previews}
+              onValueChange={(previews) =>
+                void setNotificationPreference({ previews })
+              }
+              accessibilityLabel="Notification previews"
+              disabled={savingNotifications}
+            />
+            {notificationError ? (
+              <GroupHeader
+                label="Notifications need attention"
+                sub={notificationError}
+              />
+            ) : null}
+            <LinkRow
+              label="Phone notification settings"
+              sub="Manage permission, sounds, and lock-screen visibility."
+              onPress={() => void Linking.openSettings()}
+              colors={colors}
+              fonts={fonts}
             />
           </Section>
 
@@ -367,7 +444,9 @@ function RadioRow({
         ]}
       >
         {selected ? (
-          <View style={[styles.radioDot, { backgroundColor: colors.primary }]} />
+          <View
+            style={[styles.radioDot, { backgroundColor: colors.primary }]}
+          />
         ) : null}
       </View>
     </Pressable>
@@ -380,12 +459,14 @@ function SwitchRow({
   value,
   onValueChange,
   accessibilityLabel,
+  disabled = false,
 }: {
   label: string;
   sub: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
   accessibilityLabel: string;
+  disabled?: boolean;
 }) {
   const { colors, fonts } = useTheme();
   return (
@@ -412,6 +493,7 @@ function SwitchRow({
         value={value}
         onValueChange={onValueChange}
         accessibilityLabel={accessibilityLabel}
+        disabled={disabled}
         trackColor={{ true: colors.primary, false: colors.border }}
         thumbColor={colors.background}
       />
@@ -562,7 +644,7 @@ function Row({
           {right}
         </Text>
       ) : (
-        right ?? null
+        (right ?? null)
       )}
     </View>
   );
@@ -570,7 +652,12 @@ function Row({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
-  content: { paddingHorizontal: 16, paddingVertical: 16, gap: 24, paddingBottom: 32 },
+  content: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    gap: 24,
+    paddingBottom: 32,
+  },
   section: { gap: 10 },
   sectionHeader: { gap: 2, paddingHorizontal: 4 },
   sectionTitle: {

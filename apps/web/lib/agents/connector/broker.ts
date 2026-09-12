@@ -1,3 +1,5 @@
+import { AgentIdleNotifications } from "@/lib/notifications/agentIdle";
+import { notifyAgentIdle } from "@/lib/notifications/sender";
 import "server-only";
 import {
   HOST_CONNECTOR_CAPABILITIES,
@@ -38,8 +40,7 @@ type PendingRequest = {
 
 function isLedgerProtectedCommand(request: AgentDaemonRequest): boolean {
   return (
-    request.type === "session_command" &&
-    request.command.type !== "show_usage"
+    request.type === "session_command" && request.command.type !== "show_usage"
   );
 }
 
@@ -82,6 +83,15 @@ export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly subscriptions = new Map<string, SessionSubscription>();
+  private readonly notificationSequences = new Map<
+    string,
+    { epoch: string; sequence: number }
+  >();
+  private readonly idleNotifications = new AgentIdleNotifications((id) => {
+    void notifyAgentIdle(id).catch(() =>
+      console.error("[push] Could not send agent notification."),
+    );
+  });
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }
@@ -98,11 +108,10 @@ export class HostConnectorBroker {
     return this.channels.has(connectorId);
   }
 
-  supports(
-    connectorId: string,
-    capability: HostConnectorCapability,
-  ): boolean {
-    return this.channels.get(connectorId)?.capabilities.has(capability) ?? false;
+  supports(connectorId: string, capability: HostConnectorCapability): boolean {
+    return (
+      this.channels.get(connectorId)?.capabilities.has(capability) ?? false
+    );
   }
 
   runtimeStatusForSession(
@@ -168,6 +177,7 @@ export class HostConnectorBroker {
       connectorCapabilities.filter((capability) => supported.has(capability)),
     );
     const sessionIds = new Set(activeSessionIds);
+    for (const id of sessionIds) this.idleNotifications.reset(id);
     const channel = { send, capabilities, sessionIds };
     this.channels.set(connectorId, channel);
     for (const sessionId of sessionIds) {
@@ -193,6 +203,7 @@ export class HostConnectorBroker {
     return () => {
       if (this.channels.get(connectorId) !== channel) return;
       this.channels.delete(connectorId);
+      for (const id of channel.sessionIds) this.idleNotifications.reset(id);
       this.scheduleDisconnect(connectorId);
     };
   }
@@ -210,6 +221,15 @@ export class HostConnectorBroker {
     const requestId = crypto.randomUUID();
     const sessionId = sessionIdForRequest(request);
     if (sessionId) channel.sessionIds.add(sessionId);
+    if (
+      request.type === "session_command" &&
+      request.command.type === "abort"
+    ) {
+      this.idleNotifications.suppress(request.session.sessionId);
+    }
+    if (request.type === "stop_session")
+      this.idleNotifications.suppress(request.sessionId);
+
     const replaySafe =
       isLedgerProtectedCommand(request) &&
       channel.capabilities.has("command-wal-v1");
@@ -372,7 +392,19 @@ export class HostConnectorBroker {
       }
     }
     for (const event of events) {
-      await this.accept(connectorId, event.payload);
+      const cursor = this.notificationSequences.get(connectorId);
+      const fresh =
+        !cursor ||
+        cursor.epoch !== connectorEpoch ||
+        event.sequence > cursor.sequence;
+      // Claim the notification cursor before yielding: overlapping retry
+      // batches must not replay status transitions while metadata is awaited.
+      if (fresh)
+        this.notificationSequences.set(connectorId, {
+          epoch: connectorEpoch,
+          sequence: event.sequence,
+        });
+      await this.accept(connectorId, event.payload, fresh);
     }
     return {
       connectorEpoch,
@@ -391,6 +423,7 @@ export class HostConnectorBroker {
   private async accept(
     connectorId: string,
     event: HostConnectorEventPayload,
+    freshNotification = true,
   ): Promise<void> {
     if (event.type === "response") {
       const pending = this.pending.get(event.requestId);
@@ -402,11 +435,25 @@ export class HostConnectorBroker {
       return;
     }
     if (event.type === "session_directory") {
-      this.acceptSessionDirectory(connectorId, event.sessions);
+      this.acceptSessionDirectory(
+        connectorId,
+        event.sessions,
+        freshNotification,
+      );
       return;
     }
     if (event.type === "session_update") {
-      this.acceptSessionDirectory(connectorId, [event.session]);
+      const channel = this.channels.get(connectorId);
+      if (
+        freshNotification &&
+        channel?.sessionIds.has(event.session.sessionId)
+      ) {
+        this.idleNotifications.update(
+          event.session.sessionId,
+          event.session.runtimeStatus,
+        );
+      }
+      this.acceptSessionDirectory(connectorId, [event.session], false);
       return;
     }
     if (event.type === "session_metadata") {
@@ -539,11 +586,14 @@ export class HostConnectorBroker {
   private acceptSessionDirectory(
     connectorId: string,
     sessions: readonly AgentSessionDirectoryEntry[],
+    baseline = true,
   ): void {
     const channel = this.channels.get(connectorId);
     if (!channel) return;
     for (const session of sessions) {
       if (!channel.sessionIds.has(session.sessionId)) continue;
+      if (baseline)
+        this.idleNotifications.reset(session.sessionId, session.runtimeStatus);
       this.upsertSessionDirectory(connectorId, session);
     }
   }
@@ -588,11 +638,7 @@ export class HostConnectorBroker {
     value: unknown,
   ): AgentSessionSync | undefined {
     if (value === undefined) {
-      if (
-        this.channels
-          .get(connectorId)
-          ?.capabilities.has("session-sync-v1")
-      ) {
+      if (this.channels.get(connectorId)?.capabilities.has("session-sync-v1")) {
         throw new Error(
           "The Host Connector omitted the authoritative session sync.",
         );
@@ -647,9 +693,7 @@ export class HostConnectorBroker {
       const error = new Error("The OvertChat Host Connector is offline.");
       for (const [requestId, request] of this.pending) {
         if (request.connectorId !== connectorId) continue;
-        if (
-          isLedgerProtectedCommand(request.request) && request.replaySafe
-        ) {
+        if (isLedgerProtectedCommand(request.request) && request.replaySafe) {
           continue;
         }
         clearTimeout(request.timeout);

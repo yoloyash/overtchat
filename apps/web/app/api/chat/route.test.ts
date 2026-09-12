@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/notifications/chat", () => ({ notifyChatComplete: mocks.notifyChatComplete }));
 import type { MessageStats } from "@/lib/chat/stats";
 
 const mocks = vi.hoisted(() => {
@@ -9,6 +10,7 @@ const mocks = vi.hoisted(() => {
   const chatTools = { ...webTools };
 
   return {
+    notifyChatComplete: vi.fn().mockResolvedValue(undefined),
     getSession: vi.fn(),
     parseChatRequest: vi.fn(),
     chatRequestFingerprint: vi.fn(),
@@ -663,6 +665,72 @@ describe("chat route setup boundary", () => {
     consoleSpy.mockRestore();
   });
 
+  it.each([true, false])(
+    "notifies only when completion owns the saved stream (committed=%s)",
+    async (committed) => {
+      mocks.completeChatStream.mockReturnValue(committed);
+      await POST(request());
+      const onEnd = mocks.uiStreamOptions?.onEnd as (
+        event: unknown,
+      ) => Promise<void>;
+      await onEnd({
+        isAborted: false,
+        responseMessage: {
+          id: "answer",
+          role: "assistant",
+          parts: [{ type: "text", text: "Done" }],
+        },
+      });
+      expect(mocks.notifyChatComplete).toHaveBeenCalledTimes(committed ? 1 : 0);
+      if (committed)
+        expect(
+          mocks.completeChatStream.mock.invocationCallOrder[0],
+        ).toBeLessThan(mocks.notifyChatComplete.mock.invocationCallOrder[0]);
+    },
+  );
+
+  it.each(["pending", "rejected"])(
+    "finishes saving and cleaning up the stream when push submission is %s",
+    async (status) => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let finishPush!: () => void;
+      const push = new Promise<void>((resolve) => {
+        finishPush = resolve;
+      });
+      mocks.notifyChatComplete.mockImplementationOnce(() =>
+        status === "pending"
+          ? push
+          : Promise.reject(new Error("push unavailable")),
+      );
+      try {
+        await POST(request());
+        const claim = mocks.commitChatTurn.mock.calls[0][0];
+        const onEnd = mocks.uiStreamOptions?.onEnd as (
+          event: unknown,
+        ) => Promise<void>;
+        await onEnd({
+          isAborted: false,
+          responseMessage: {
+            id: "answer",
+            role: "assistant",
+            parts: [{ type: "text", text: "Done" }],
+          },
+        });
+        expect(mocks.completeChatStream).toHaveBeenCalledTimes(1);
+        expect(mocks.notifyChatComplete).toHaveBeenCalledTimes(1);
+        expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
+        expect(mocks.failChatStream).not.toHaveBeenCalled();
+        if (status === "rejected")
+          expect(consoleSpy).toHaveBeenCalledWith(
+            "[push] Could not send chat notification.",
+          );
+      } finally {
+        finishPush();
+        consoleSpy.mockRestore();
+      }
+    },
+  );
+
   it("persists a partial assistant when the user aborts", async () => {
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];
@@ -688,6 +756,7 @@ describe("chat route setup boundary", () => {
       },
       status: "aborted",
     });
+    expect(mocks.notifyChatComplete).not.toHaveBeenCalled();
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
   });
 
@@ -735,6 +804,7 @@ describe("chat route setup boundary", () => {
       status: "error",
       error: "provider failed",
     });
+    expect(mocks.notifyChatComplete).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 

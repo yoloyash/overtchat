@@ -61,6 +61,36 @@ enter your server URL, and sign in. Use an address reachable from the phone;
 
 Repeat for updates; sideloaded builds do not auto-update.
 
+### Notifications
+
+After your first login, **Know when it’s ready** offers to enable notifications.
+Choose **Enable notifications**, then allow notifications when Android asks.
+**Not now** skips the prompt without repeated reminders. You can change this
+later in **Settings → Notifications**, which has two controls: **Response
+notifications** (chat responses and agent idle together) and **Show previews**.
+These settings apply only to this device and your account on the selected
+server. Existing users with notifications enabled are not prompted again.
+
+Chat alerts say **Your response is ready** when a saved response finishes.
+Temporary chats, errors, and cancelled responses do not send that alert.
+Agent alerts say **Agent is idle** after it stops working for five seconds;
+this is a cue to check the session, not a guarantee of success. They do not
+report approval requests or catch up after a server/connector interruption.
+Tap an alert to open its conversation. The app suppresses alerts for the
+conversation you're currently viewing.
+
+**Show previews** is off by default. Turn it on to include chat answer text or
+an agent session name; that content passes through Expo and Apple/Google push
+services and may be visible on your lock screen. Turn it off for generic alerts.
+Use **Phone notification settings** to manage Android permissions and sounds.
+Signing out stops future delivery for that login.
+
+Your server may remain private, but both it and the phone need internet access
+for push delivery. To open a conversation, reconnect to the server's LAN or VPN
+if needed. Android force-stop prevents notifications until you reopen the app.
+If settings report a registration failure, see the
+[push setup guide](release.md#mobile-push-credentials).
+
 ## Update or adopt an existing installation
 
 `overtchat update` updates the CLI, app, selected services, and managed
@@ -91,5 +121,16 @@ setup and updates may replace manual edits to generated files.
 
 A `307` redirect to login is normal. For login loops or port conflicts, run
 `overtchat setup` and correct the public URL or port.
+
+## Mobile push service
+
+The web server needs outbound HTTPS access to `exp.host` for Expo Push Service.
+Opening a notification still requires the phone to reach the OvertChat server.
+Standard app builds require no additional server credentials. Custom Expo
+projects with enhanced push security need `EXPO_PUSH_ACCESS_TOKEN` in the web
+process environment.
+
+See [mobile build setup](release.md#mobile-push-credentials) for publisher
+credentials and [Android notifications](#notifications) for app settings.
 
 [Development setup](development.md) · [Release process](release.md)

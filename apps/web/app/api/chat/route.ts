@@ -1,3 +1,4 @@
+import { notifyChatComplete } from "@/lib/notifications/chat";
 import {
   consumeStream,
   convertToModelMessages,
@@ -626,7 +627,7 @@ async function handlePost(req: Request): Promise<Response> {
             : undefined;
 
         try {
-          completeChatStream({
+          const completed = completeChatStream({
             chatId,
             streamId,
             assistantMessage,
@@ -643,6 +644,20 @@ async function handlePost(req: Request): Promise<Response> {
               ? { usage: completedGenerationUsage }
               : {}),
           });
+          if (completed && !streamError && !isAborted && assistantMessage) {
+            try {
+              void notifyChatComplete(
+                userId,
+                chatId,
+                streamId,
+                assistantMessage.parts,
+              ).catch(() =>
+                console.error("[push] Could not send chat notification."),
+              );
+            } catch {
+              console.error("[push] Could not send chat notification.");
+            }
+          }
         } catch (error) {
           console.error("[persist-assistant]", error);
           try {
