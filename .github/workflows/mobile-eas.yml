@@ -57,6 +57,19 @@ jobs:
             echo "expected_tag=$EXPECTED_TAG"
           } >> "$GITHUB_OUTPUT"
 
+      # The gate below evaluates the Expo config, so gitignored mobile secret
+      # material must be installed before any config evaluation.
+      - name: Install local Android credentials
+        run: |
+          CREDENTIALS_DIR="${OVERTCHAT_MOBILE_CREDENTIALS_DIR:-$HOME/.overtchat/mobile-credentials}"
+          if [[ ! -f apps/mobile/credentials.json ]]; then
+            cp "$CREDENTIALS_DIR/credentials.json" apps/mobile/credentials.json
+            cp -R "$CREDENTIALS_DIR/credentials" apps/mobile/credentials
+          fi
+          if [[ ! -f apps/mobile/google-services.json ]]; then
+            cp "$CREDENTIALS_DIR/google-services.json" apps/mobile/google-services.json
+          fi
+
       # A secret-visibility DSN is unreadable here and ships crash reporting
       # silently disabled, which is how 1.2.3 went out.
       - name: Check crash reporting and push configuration
@@ -78,16 +91,6 @@ jobs:
             echo "Crash reporting is configured."
             node ../../.github/scripts/check-mobile-push.mjs
           '
-
-      - name: Install local Android credentials
-        run: |
-          if [[ -f apps/mobile/credentials.json ]]; then
-            exit 0
-          fi
-
-          CREDENTIALS_DIR="${OVERTCHAT_MOBILE_CREDENTIALS_DIR:-$HOME/.overtchat/mobile-credentials}"
-          cp "$CREDENTIALS_DIR/credentials.json" apps/mobile/credentials.json
-          cp -R "$CREDENTIALS_DIR/credentials" apps/mobile/credentials
 
       - name: Build AAB locally
         working-directory: apps/mobile

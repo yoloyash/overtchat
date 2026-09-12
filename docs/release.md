@@ -64,11 +64,13 @@ Do not change unrelated manifest fields.
 automatic increments disabled unless this release model is deliberately
 replaced.
 
-Android signing files are local and gitignored at
-`apps/mobile/credentials.json` and
-`apps/mobile/credentials/android/keystore.jks`. A self-hosted runner may supply
-them from `$HOME/.overtchat/mobile-credentials`. Retrieve a missing local copy
-through EAS credentials rather than committing it.
+Android signing files and the Android Firebase push configuration are local and
+gitignored at `apps/mobile/credentials.json`,
+`apps/mobile/credentials/android/keystore.jks`, and
+`apps/mobile/google-services.json`. A self-hosted runner supplies them from
+`$HOME/.overtchat/mobile-credentials`, including `google-services.json`, because
+the release workflow installs and evaluates them before the build. Retrieve a
+missing local copy through EAS credentials rather than committing it.
 
 `.github/workflows/mobile-eas.yml` owns the Android release pipeline:
 
