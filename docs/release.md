@@ -126,3 +126,35 @@ atomically deploying the site and manifest. After deployment, it updates the
 app and voice `latest` aliases to the versions selected by `appVersion` and
 `voiceVersion`; the manifest remains the stable source of truth. Versioned
 container tags are immutable.
+
+## Mobile push credentials
+
+This is one-time **Android app publisher setup**, not setup for people
+self-hosting OvertChat. Firebase Cloud Messaging and Expo push delivery are free.
+
+- Register `com.overtchat.mobile` in Firebase. Place its client configuration at
+  `apps/mobile/google-services.json` (gitignored), or provide the file path via
+  `GOOGLE_SERVICES_JSON`. `app.config.js` merges it into the app configuration.
+  Ensure this file is available on the release build machine; EAS local builds
+  cannot read secret-visibility variables. The release preflight rejects missing,
+  malformed, or mismatched Android Firebase client configuration before building.
+- Upload the matching FCM v1 service-account key to the existing Expo project
+  with `npx eas-cli@20 credentials --platform android`. Keep this private key
+  outside the repository. [Expo setup instructions](https://docs.expo.dev/push-notifications/fcm-credentials/).
+- Rebuild the native app: `expo-notifications` and Firebase configuration cannot
+  be added through a JavaScript reload. For an existing local Android project,
+  run `npx expo prebuild --platform android --no-install`, then
+  `npx expo run:android --device <device>` from `apps/mobile`. Use the existing
+  build scripts for release binaries. No Host Connector update is required.
+
+Before release, verify the first-login prompt, Enable/Not now, Android permission
+allow/deny, and the two Settings controls. Test chat completion and agent idle
+while backgrounded, previews off/on, and notification taps from warm/cold starts.
+Check foreground suppression, queued agent work, explicit Stop, reconnect,
+logout, and account/server changes. Initial idle snapshots and agent exits must
+not alert. The Android notification permission must be granted for delivery.
+
+Run mobile typecheck/tests and web notification, chat-route, and connector-broker
+tests, plus web typecheck/lint/build. Native JS bundle export is documented in
+[development validation](deploy.md#development); it does not verify device
+permissions, FCM credentials, or OS delivery.

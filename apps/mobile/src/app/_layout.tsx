@@ -1,4 +1,5 @@
 import "@/polyfills";
+import "@/lib/notifications/client";
 
 import * as Sentry from "@sentry/react-native";
 import {

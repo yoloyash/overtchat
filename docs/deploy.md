@@ -174,3 +174,14 @@ Set `OVERTCHAT_DEV_PORT` or `OVERTCHAT_DEV_REDIS_PORT` for custom ports. Run
 `npm run dev:reset-connector` after an incompatible disposable journal change.
 To exercise the production provisioning path from the current worktree, run
 `npm run dev:managed`.
+
+## Mobile push notifications
+
+The web server needs outbound HTTPS access to `exp.host` for Expo Push Service.
+Opening a notification still requires the phone to reach the OvertChat server.
+Standard app builds require no additional server credentials. Custom Expo
+projects with enhanced push security need `EXPO_PUSH_ACCESS_TOKEN` in the web
+process environment.
+
+See [mobile build setup](release.md#mobile-push-credentials) for publisher
+credentials and [Android notifications](android.md#notifications) for app settings.

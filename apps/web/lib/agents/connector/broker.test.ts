@@ -7,6 +7,10 @@ import type {
 } from "@overtchat/agent-bridge";
 
 vi.mock("server-only", () => ({}));
+const notifications = vi.hoisted(() => ({
+  notifyAgentIdle: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/lib/notifications/sender", () => notifications);
 vi.mock("@/lib/db/agentConnections", () => ({
   updateAgentSessionMetadata: vi.fn(),
 }));
@@ -1055,5 +1059,50 @@ describe("host connector daemon broker", () => {
         },
       }),
     );
+  });
+});
+
+describe("broker idle notification integration", () => {
+  it("uses live updates without a detail subscription and ignores batch replays", async () => {
+    vi.useFakeTimers();
+    try {
+      notifications.notifyAgentIdle.mockClear();
+      const broker = new HostConnectorBroker();
+      const disconnect = broker.register("connector", ["session"], vi.fn());
+      const batch: HostConnectorEvent[] = [
+        {
+          sequence: 1,
+          payload: {
+            type: "session_directory",
+            sessions: [{ sessionId: "session", runtimeStatus: "idle" }],
+          },
+        },
+        {
+          sequence: 2,
+          payload: {
+            type: "session_update",
+            session: { sessionId: "session", runtimeStatus: "running" },
+          },
+        },
+        {
+          sequence: 3,
+          payload: {
+            type: "session_update",
+            session: { sessionId: "session", runtimeStatus: "idle" },
+          },
+        },
+      ];
+      await broker.acceptBatch("connector", "epoch", batch);
+      vi.advanceTimersByTime(5000);
+      expect(notifications.notifyAgentIdle).toHaveBeenCalledExactlyOnceWith(
+        "session",
+      );
+      await broker.acceptBatch("connector", "epoch", batch);
+      vi.advanceTimersByTime(5000);
+      expect(notifications.notifyAgentIdle).toHaveBeenCalledTimes(1);
+      disconnect();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

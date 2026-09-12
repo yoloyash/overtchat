@@ -59,7 +59,7 @@ jobs:
 
       # A secret-visibility DSN is unreadable here and ships crash reporting
       # silently disabled, which is how 1.2.3 went out.
-      - name: Check crash reporting is configured
+      - name: Check crash reporting and push configuration
         working-directory: apps/mobile
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
@@ -76,6 +76,7 @@ jobs:
               exit 1
             fi
             echo "Crash reporting is configured."
+            node ../../.github/scripts/check-mobile-push.mjs
           '
 
       - name: Install local Android credentials

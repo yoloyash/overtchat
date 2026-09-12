@@ -1,3 +1,4 @@
+import { useNotifications } from "@/lib/notifications/useNotifications";
 import * as Crypto from "expo-crypto";
 import { Stack } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
@@ -32,6 +33,8 @@ export default function AuthedLayout() {
     }),
     [state, startNewChat, openChat],
   );
+
+  useNotifications(session);
 
   return (
     <ChatSessionContext.Provider value={session}>

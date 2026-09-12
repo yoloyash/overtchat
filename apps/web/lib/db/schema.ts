@@ -65,6 +65,26 @@ export const session = sqliteTable(
   (table) => [index("session_userId_idx").on(table.userId)],
 );
 
+// Registrations belong to a login as well as a user: revoking the login also
+// revokes delivery, even if the device cannot unregister before signing out.
+export const pushDevices = sqliteTable(
+  "push_devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => session.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    chats: integer("chats", { mode: "boolean" }).notNull().default(false),
+    agents: integer("agents", { mode: "boolean" }).notNull().default(false),
+    previews: integer("previews", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [index("push_devices_user_idx").on(table.userId)],
+);
+
 export const account = sqliteTable(
   "account",
   {
