@@ -11,6 +11,7 @@ export type RunOptions = {
   environment?: NodeJS.ProcessEnv;
   input?: string;
   inherit?: boolean;
+  timeoutMs?: number;
 };
 
 export async function runCommand(
@@ -23,6 +24,7 @@ export async function runCommand(
       cwd: options.cwd,
       env: options.environment ?? process.env,
       stdio: options.inherit ? ["pipe", "inherit", "inherit"] : "pipe",
+      timeout: options.timeoutMs,
     });
     let stdout = "";
     let stderr = "";

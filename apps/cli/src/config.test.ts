@@ -281,4 +281,35 @@ describe("managed installation state", () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it("round-trips access choices, aliases, and ownership of a pending Serve route", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-access-state-"));
+    try {
+      const paths = pathsFor(directory);
+      const config = defaultInstallationConfig(null, manifest);
+      config.bindAddress = "127.0.0.1";
+      config.publicUrl = "https://server.example.ts.net:8443";
+      config.extraTrustedOrigins = ["https://chat.example.com"];
+      config.access = {
+        mode: "tailscale",
+        connectionStatus: "pending",
+        tailscaleRoute: {
+          hostname: "server.example.ts.net",
+          port: 8443,
+          target: "http://127.0.0.1:4718",
+        },
+      };
+      config.managedTailscaleRoute = config.access.tailscaleRoute;
+      await writeInstallationConfig(paths, config);
+      expect(await readInstallationConfig(paths)).toMatchObject({
+        access: config.access,
+        bindAddress: config.bindAddress,
+        publicUrl: config.publicUrl,
+        extraTrustedOrigins: config.extraTrustedOrigins,
+        managedTailscaleRoute: config.managedTailscaleRoute,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });

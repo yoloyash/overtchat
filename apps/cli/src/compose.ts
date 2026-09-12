@@ -70,6 +70,7 @@ export function renderStackEnvironment(
         : config.kokoroGpuImage,
     ],
     ["APP_PORT", config.appPort],
+    ["OVERTCHAT_INSTANCE_ID", config.instanceId ?? ""],
     ["APP_BIND_ADDRESS", composeBindAddress(config.bindAddress)],
     ["BETTER_AUTH_URL", config.publicUrl],
     ["EXTRA_TRUSTED_ORIGINS", trustedOrigins.join(",")],
@@ -159,6 +160,7 @@ services:
     environment:
       BETTER_AUTH_SECRET: \${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: \${BETTER_AUTH_URL}
+      OVERTCHAT_INSTANCE_ID: \${OVERTCHAT_INSTANCE_ID:-}
       EXTRA_TRUSTED_ORIGINS: \${EXTRA_TRUSTED_ORIGINS:-}
       HOST_CONNECTOR_URL: \${HOST_CONNECTOR_URL}
       DISABLE_UPDATE_CHECK: \${DISABLE_UPDATE_CHECK:-false}

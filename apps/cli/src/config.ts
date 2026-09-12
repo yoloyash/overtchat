@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
@@ -53,6 +53,7 @@ export function defaultInstallationConfig(
     : `${APP_IMAGE}:${manifest.appVersion}`;
   return {
     format: 1,
+    instanceId: randomUUID(),
     appVersion,
     appImage,
     voiceVersion: manifest.voiceVersion,
@@ -140,6 +141,7 @@ export async function readInstallationConfig(
     const config = parsed as InstallationConfig;
     const migrated = {
       ...config,
+      instanceId: config.instanceId ?? randomUUID(),
       // State written by the first installer draft only supported volumes.
       dataMountType: config.dataMountType ?? "volume",
       bindAddress: config.bindAddress ?? "0.0.0.0",
