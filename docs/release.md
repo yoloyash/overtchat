@@ -136,7 +136,8 @@ self-hosting OvertChat. Firebase Cloud Messaging and Expo push delivery are free
   `apps/mobile/google-services.json` (gitignored), or provide the file path via
   `GOOGLE_SERVICES_JSON`. `app.config.js` merges it into the app configuration.
   Ensure this file is available on the release build machine; EAS local builds
-  cannot read secret-visibility variables.
+  cannot read secret-visibility variables. The release preflight rejects missing,
+  malformed, or mismatched Android Firebase client configuration before building.
 - Upload the matching FCM v1 service-account key to the existing Expo project
   with `npx eas-cli@20 credentials --platform android`. Keep this private key
   outside the repository. [Expo setup instructions](https://docs.expo.dev/push-notifications/fcm-credentials/).
