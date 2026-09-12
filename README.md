@@ -61,13 +61,14 @@ overtchat update    # update the managed installation
 - **Local models feel at home.** Dedicated setup and model discovery for vLLM,
   llama.cpp, and SGLang. Hosted providers and custom compatible endpoints fit
   alongside them.
-- **Speech and search are part of setup.** The manager can install SearXNG,
-  Kokoro text-to-speech, and Parakeet speech-to-text. Use your own compatible
-  speech services instead if you prefer. No paid API keys are needed for the
-  bundled services.
-- **A server you own.** Conversations live in SQLite. The managed stack adds
-  Redis for reconnecting to live responses, and optional services as you need
-  them. No OvertChat cloud account or usage analytics.
+- **Bundled speech and search. Zero API keys.** Select SearXNG search,
+  Kokoro text-to-speech, and Parakeet speech-to-text in the installer; it
+  installs and connects them for you. With your local model, no provider
+  accounts or API keys are needed. Search includes free fallbacks if the
+  primary provider fails. You can also use your own compatible speech services.
+- **A server you own.** Keep your conversations on your server, choose who
+  gets access, and manage your own backups. No OvertChat cloud account or
+  usage analytics.
 - **One setup for the household.** Add accounts for your family and share your
   local models. Each person gets their own chats and projects on web and Android.
   [Set up family access.](docs/deploy.md#share-with-your-family)
@@ -142,9 +143,10 @@ and voice brought together by a guided installer.
 
 | Your priority | What OvertChat offers |
 | --- | --- |
-| Less to configure for everyday chat | A focused interface and managed local search and speech services |
-| Control over the stack | Your inference servers, SQLite history, and optional sidecars |
-| Freedom to adapt the product | MIT, with no added branding or user-count restrictions |
+| Speech and search ready at setup | Bundled STT, TTS, and SearXNG, with no provider API keys needed |
+| Search that can recover from provider failures | Automatic fallbacks, including free providers without API keys |
+| Control over your data | Choose your providers, keep your chat history, and manage access and backups |
+| Freedom to adapt the product | MIT permission to modify, redistribute, and rebrand the app |
 | Local AI for the family | Shared models with separate accounts, conversations, and projects |
 
 [Compare OvertChat, Open WebUI, and LibreChat →](docs/comparison.md)
