@@ -6,11 +6,9 @@ describe("agent idle notifications", () => {
   afterEach(() => vi.useRealTimers());
   function setup() {
     const notify = vi.fn();
-    const cancel = vi.fn();
     return {
       notify,
-      cancel,
-      tracker: new AgentIdleNotifications(notify, cancel),
+      tracker: new AgentIdleNotifications(notify),
     };
   }
   it("notifies once for a live running-to-idle transition after settling", () => {
@@ -25,14 +23,13 @@ describe("agent idle notifications", () => {
     expect(notify).toHaveBeenCalledExactlyOnceWith("a");
   });
   it("cancels the alert when queued work resumes", () => {
-    const { tracker, notify, cancel } = setup();
+    const { tracker, notify } = setup();
     tracker.reset("a", "running");
     tracker.update("a", "idle");
     vi.advanceTimersByTime(3000);
     tracker.update("a", "running");
     vi.advanceTimersByTime(5000);
     expect(notify).not.toHaveBeenCalled();
-    expect(cancel).toHaveBeenCalledWith("a");
     tracker.update("a", "idle");
     vi.advanceTimersByTime(5000);
     expect(notify).toHaveBeenCalledTimes(1);

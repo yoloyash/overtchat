@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c25c1429-9a4f-4671-a337-485f00ba3256",
+  "id": "022b42c1-bfa6-42e7-8fe5-9669718557b7",
   "prevId": "e3b068dc-3fa2-4077-8f01-191272f1b0ba",
   "tables": {
     "account": {
@@ -1747,102 +1747,6 @@
           "tableTo": "session",
           "columnsFrom": [
             "session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "push_jobs": {
-      "name": "push_jobs",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "device_id": {
-          "name": "device_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "target_id": {
-          "name": "target_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "body": {
-          "name": "body",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "attempts": {
-          "name": "attempts",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "next_attempt_at": {
-          "name": "next_attempt_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "receipt_id": {
-          "name": "receipt_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "push_jobs_due_idx": {
-          "name": "push_jobs_due_idx",
-          "columns": [
-            "next_attempt_at"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "push_jobs_device_id_push_devices_id_fk": {
-          "name": "push_jobs_device_id_push_devices_id_fk",
-          "tableFrom": "push_jobs",
-          "tableTo": "push_devices",
-          "columnsFrom": [
-            "device_id"
           ],
           "columnsTo": [
             "id"

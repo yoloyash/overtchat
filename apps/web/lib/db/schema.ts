@@ -85,24 +85,6 @@ export const pushDevices = sqliteTable(
   (table) => [index("push_devices_user_idx").on(table.userId)],
 );
 
-export const pushJobs = sqliteTable(
-  "push_jobs",
-  {
-    id: text("id").primaryKey(),
-    deviceId: text("device_id")
-      .notNull()
-      .references(() => pushDevices.id, { onDelete: "cascade" }),
-    kind: text("kind", { enum: ["chat", "agent"] }).notNull(),
-    targetId: text("target_id").notNull(),
-    body: text("body").notNull(),
-    attempts: integer("attempts").notNull().default(0),
-    nextAttemptAt: integer("next_attempt_at").notNull(),
-    expiresAt: integer("expires_at").notNull(),
-    receiptId: text("receipt_id"),
-  },
-  (table) => [index("push_jobs_due_idx").on(table.nextAttemptAt)],
-);
-
 export const account = sqliteTable(
   "account",
   {

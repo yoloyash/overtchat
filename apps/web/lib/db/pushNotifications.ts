@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gt, isNull, ne } from "drizzle-orm";
+import { and, eq, gt, ne } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import {
   agentConnections,
@@ -8,7 +8,6 @@ import {
   agentWorkspaces,
   chats,
   pushDevices,
-  pushJobs,
   session,
   user,
 } from "@/lib/db/schema";
@@ -66,101 +65,47 @@ export function agentNotificationOwner(id: string) {
     .get();
 }
 
-export function enqueuePush({
-  userId,
-  kind,
-  targetId,
-  eventId,
-  body,
-}: {
-  userId: string;
-  kind: "chat" | "agent";
-  targetId: string;
-  eventId: string;
-  body: string;
-}) {
-  const now = Date.now();
-  const devices = db
-    .select({ device: pushDevices })
-    .from(pushDevices)
-    .innerJoin(session, eq(session.id, pushDevices.sessionId))
-    .where(
-      and(
-        eq(pushDevices.userId, userId),
-        gt(session.expiresAt, new Date(now)),
-        eq(kind === "chat" ? pushDevices.chats : pushDevices.agents, true),
-      ),
-    )
-    .all();
-  for (const { device } of devices) {
-    db.insert(pushJobs)
-      .values({
-        id: `${kind}:${eventId}:${device.id}`,
-        deviceId: device.id,
-        kind,
-        targetId,
-        body: device.previews ? body : "",
-        nextAttemptAt: now,
-        expiresAt: now + 3_600_000,
-      })
-      .onConflictDoNothing()
-      .run();
-  }
-}
-
-export function enqueueAgentIdle(id: string) {
-  const owner = agentNotificationOwner(id);
-  if (!owner) return;
-  enqueuePush({
-    userId: owner.userId,
-    kind: "agent",
-    targetId: id,
-    eventId: crypto.randomUUID(),
-    body: owner.name?.slice(0, 120) ?? "",
-  });
-}
-
-export function cancelAgentPush(id: string) {
-  db.delete(pushJobs)
-    .where(
-      and(
-        eq(pushJobs.kind, "agent"),
-        eq(pushJobs.targetId, id),
-        isNull(pushJobs.receiptId),
-      ),
-    )
-    .run();
-}
-
-export function deliveryDevice(job: typeof pushJobs.$inferSelect) {
-  const now = Date.now();
-  const row = db
-    .select({ device: pushDevices, banned: user.banned, role: user.role })
-    .from(pushDevices)
-    .innerJoin(session, eq(session.id, pushDevices.sessionId))
-    .innerJoin(user, eq(user.id, pushDevices.userId))
-    .where(
-      and(
-        eq(pushDevices.id, job.deviceId),
-        gt(session.expiresAt, new Date(now)),
-      ),
-    )
-    .get();
-  if (!row || row.banned) return null;
-  const { device } = row;
-  if (!(job.kind === "chat" ? device.chats : device.agents)) return null;
+// Resolve access and device preferences immediately before submitting a push.
+export function notificationDevices(
+  userId: string,
+  kind: "chat" | "agent",
+  targetId: string,
+) {
   const owner =
-    job.kind === "chat"
+    kind === "chat"
       ? db
           .select({ userId: chats.userId })
           .from(chats)
-          .where(eq(chats.id, job.targetId))
+          .where(eq(chats.id, targetId))
           .get()
-      : agentNotificationOwner(job.targetId);
-  if (
-    owner?.userId !== device.userId ||
-    (job.kind === "agent" && row.role !== "admin")
-  )
-    return null;
-  return device;
+      : agentNotificationOwner(targetId);
+  if (owner?.userId !== userId) return [];
+  return db
+    .select({ device: pushDevices, banned: user.banned, role: user.role })
+    .from(pushDevices)
+    .innerJoin(
+      session,
+      and(
+        eq(session.id, pushDevices.sessionId),
+        eq(session.userId, pushDevices.userId),
+      ),
+    )
+    .innerJoin(user, eq(user.id, pushDevices.userId))
+    .where(
+      and(
+        eq(pushDevices.userId, userId),
+        gt(session.expiresAt, new Date()),
+        eq(kind === "chat" ? pushDevices.chats : pushDevices.agents, true),
+      ),
+    )
+    .all()
+    .filter((row) => !row.banned && (kind !== "agent" || row.role === "admin"))
+    .map((row) => row.device);
+}
+
+export function removeInvalidPushDevice(id: string, token: string) {
+  // A registration may have refreshed while the send was in flight.
+  db.delete(pushDevices)
+    .where(and(eq(pushDevices.id, id), eq(pushDevices.token, token)))
+    .run();
 }

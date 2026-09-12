@@ -1,5 +1,5 @@
 import { AgentIdleNotifications } from "@/lib/notifications/agentIdle";
-import { enqueueAgentIdle, cancelAgentPush } from "@/lib/db/pushNotifications";
+import { notifyAgentIdle } from "@/lib/notifications/sender";
 import "server-only";
 import {
   HOST_CONNECTOR_CAPABILITIES,
@@ -87,22 +87,11 @@ export class HostConnectorBroker {
     string,
     { epoch: string; sequence: number }
   >();
-  private readonly idleNotifications = new AgentIdleNotifications(
-    (id) => {
-      try {
-        enqueueAgentIdle(id);
-      } catch {
-        console.error("[push] Could not queue agent notification.");
-      }
-    },
-    (id) => {
-      try {
-        cancelAgentPush(id);
-      } catch {
-        console.error("[push] Could not cancel agent notification.");
-      }
-    },
-  );
+  private readonly idleNotifications = new AgentIdleNotifications((id) => {
+    void notifyAgentIdle(id).catch(() =>
+      console.error("[push] Could not send agent notification."),
+    );
+  });
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }

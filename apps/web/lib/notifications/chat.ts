@@ -1,5 +1,5 @@
 import "server-only";
-import { enqueuePush } from "@/lib/db/pushNotifications";
+import { sendPushNotification } from "./sender";
 
 export function notifyChatComplete(
   userId: string,
@@ -15,7 +15,7 @@ export function notifyChatComplete(
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240);
-  enqueuePush({
+  return sendPushNotification({
     userId,
     kind: "chat",
     targetId: chatId,

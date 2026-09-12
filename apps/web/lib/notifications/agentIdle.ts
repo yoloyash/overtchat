@@ -12,7 +12,6 @@ export class AgentIdleNotifications {
   >();
   constructor(
     private readonly notify: (id: string) => void,
-    private readonly cancel: (id: string) => void,
     private readonly delayMs = 5_000,
   ) {}
 
@@ -20,7 +19,6 @@ export class AgentIdleNotifications {
     const previous = this.states.get(id);
     if (previous?.timer) clearTimeout(previous.timer);
     this.states.delete(id);
-    this.cancel(id);
     if (status) this.states.set(id, { status, suppressed: false });
   }
 
@@ -30,7 +28,6 @@ export class AgentIdleNotifications {
       state.suppressed = true;
       if (state.timer) clearTimeout(state.timer);
     }
-    this.cancel(id);
   }
 
   update(id: string, status: AgentRuntimeStatus) {
@@ -47,7 +44,6 @@ export class AgentIdleNotifications {
       timer: undefined as ReturnType<typeof setTimeout> | undefined,
     };
     this.states.set(id, state);
-    this.cancel(id);
     if (
       previous.status === "running" &&
       status === "idle" &&

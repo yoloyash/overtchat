@@ -24,7 +24,7 @@ process.env.DATABASE_URL = path.join(directory, "chat.db");
 let db: typeof import("@/lib/db/client").db;
 let schema: typeof import("@/lib/db/schema");
 let repository: typeof import("@/lib/db/pushNotifications");
-let worker: typeof import("./worker");
+let sender: typeof import("./sender");
 let chat: typeof import("./chat");
 let route: typeof import("@/app/api/push-devices/route");
 const id = "00000000-0000-4000-8000-000000000001";
@@ -42,14 +42,11 @@ function request(method: string, body: unknown) {
     body: JSON.stringify(body),
   });
 }
-function jobs() {
-  return db.select().from(schema.pushJobs).all();
-}
 function register() {
   repository.registerPushDevice("alice", "login-alice", input);
 }
-function enqueue() {
-  chat.notifyChatComplete("alice", "chat", "generation", [
+function send() {
+  return chat.notifyChatComplete("alice", "chat", "generation", [
     { type: "text", text: "The answer" },
   ]);
 }
@@ -59,7 +56,7 @@ beforeAll(async () => {
   schema = await import("@/lib/db/schema");
   (await import("@/lib/db/migrate")).runMigrations();
   repository = await import("@/lib/db/pushNotifications");
-  worker = await import("./worker");
+  sender = await import("./sender");
   chat = await import("./chat");
   route = await import("@/app/api/push-devices/route");
 });
@@ -69,8 +66,13 @@ beforeEach(() => {
   vi.stubGlobal("fetch", fetchMock);
   fetchMock
     .mockReset()
-    .mockResolvedValue(
-      Response.json({ data: { status: "ok", id: "receipt" } }),
+    .mockImplementation(async (_url, options) =>
+      Response.json({
+        data: JSON.parse(options.body).map(() => ({
+          status: "ok",
+          id: "receipt",
+        })),
+      }),
     );
   db.delete(schema.user).run();
   for (const userId of ["alice", "bob"]) {
@@ -182,70 +184,80 @@ describe("push registration and delivery through the production migration", () =
     await route.DELETE(request("DELETE", { id }));
     expect(db.select().from(schema.pushDevices).get()?.userId).toBe("alice");
   });
-  it("replaces the previous account registration for the same device token", () => {
+  it("migrates device storage without creating a notification queue", () => {
+    const tables = db.$client
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+      .all() as { name: string }[];
+    expect(tables.map((table) => table.name)).toContain("push_devices");
+    expect(tables.map((table) => table.name)).not.toContain("push_jobs");
+  });
+  it("replaces the previous account registration for the same device token", async () => {
     register();
-    enqueue();
     repository.registerPushDevice("bob", "login-bob", {
       ...input,
       id: crypto.randomUUID(),
     });
     expect(db.select().from(schema.pushDevices).all()).toHaveLength(1);
-    expect(jobs()).toHaveLength(0);
+    await send();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
-  it("sends only the owning user's enabled devices, once per generation, with visible text only", async () => {
+  it("sends only the owning user's enabled devices, with visible text only", async () => {
     register();
     repository.registerPushDevice("bob", "login-bob", {
       ...input,
       id: crypto.randomUUID(),
       token: "ExpoPushToken[bob]",
     });
-    const parts = [
+    repository.registerPushDevice("alice", "login-alice", {
+      ...input,
+      id: crypto.randomUUID(),
+      token: "ExpoPushToken[disabled]",
+      chats: false,
+    });
+    await chat.notifyChatComplete("alice", "chat", "g", [
       { type: "reasoning", text: "secret reasoning" },
       { type: "text", text: "Hello\nworld" },
       { type: "tool-result", text: "secret tool output" },
-    ];
-    chat.notifyChatComplete("alice", "chat", "g", parts);
-    chat.notifyChatComplete("alice", "chat", "g", parts);
-    expect(jobs()).toHaveLength(1);
-    await worker.flushPushNotifications();
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      "https://exp.host/--/api/v2/push/send",
+    );
     const sent = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(sent).toMatchObject({
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
       to: input.token,
       title: "Your response is ready",
       body: "Hello world",
-      data: { kind: "chat", targetId: "chat", registrationId: id },
+      data: {
+        kind: "chat",
+        targetId: "chat",
+        registrationId: id,
+        notificationId: `chat:g:${id}`,
+      },
     });
-    expect(jobs()[0].receiptId).toBe("receipt");
   });
-  it("keeps preview text out of the queue when previews are disabled", async () => {
+  it("does not send a chat belonging to a different user", async () => {
+    repository.registerPushDevice("bob", "login-bob", input);
+    await chat.notifyChatComplete("bob", "chat", "g", [
+      { type: "text", text: "private" },
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("keeps previews out of the payload when disabled", async () => {
     repository.registerPushDevice("alice", "login-alice", {
       ...input,
       previews: false,
     });
-    enqueue();
-    expect(jobs()[0].body).toBe("");
-    await worker.flushPushNotifications();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).body).toBe(
-      "Tap to view your response.",
-    );
-  });
-  it("rechecks preview preferences before delivery", async () => {
-    register();
-    enqueue();
-    repository.registerPushDevice("alice", "login-alice", {
-      ...input,
-      previews: false,
-    });
-    await worker.flushPushNotifications();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).body).not.toContain(
-      "The answer",
-    );
+    await send();
+    await sender.notifyAgentIdle("agent");
+    expect(fetchMock.mock.calls.map((call) => JSON.parse(call[1].body)[0].body))
+      .toEqual(["Tap to view your response.", "Tap to view the session."]);
   });
   it.each(["logout", "expired", "disabled", "deleted", "banned"])(
-    "does not deliver after %s",
+    "does not submit after %s",
     async (action) => {
       register();
-      enqueue();
       if (action === "logout")
         db.delete(schema.session)
           .where(eq(schema.session.id, "login-alice"))
@@ -262,64 +274,123 @@ describe("push registration and delivery through the production migration", () =
       if (action === "deleted") db.delete(schema.chats).run();
       if (action === "banned")
         db.update(schema.user).set({ banned: true }).run();
-      await worker.flushPushNotifications();
+      await send();
       expect(fetchMock).not.toHaveBeenCalled();
-      expect(jobs()).toHaveLength(0);
     },
   );
-  it("retries transient failure without losing the queued notification", async () => {
+  it.each(["network", "http", "malformed", "ticket"])(
+    "contains %s failures without retrying or logging private content",
+    async (failure) => {
+      register();
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        if (failure === "network")
+          fetchMock.mockRejectedValueOnce(new Error(input.token));
+        if (failure === "http")
+          fetchMock.mockResolvedValueOnce(
+            new Response(input.token, { status: 503 }),
+          );
+        if (failure === "malformed")
+          fetchMock.mockResolvedValueOnce(Response.json({ data: input.token }));
+        if (failure === "ticket")
+          fetchMock.mockResolvedValueOnce(
+            Response.json({
+              data: [{ status: "error", message: input.token }],
+            }),
+          );
+        await expect(send()).resolves.toBeUndefined();
+        await vi.advanceTimersByTimeAsync(3_600_000);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(warning).toHaveBeenCalled();
+        expect(JSON.stringify(warning.mock.calls)).not.toContain(input.token);
+        expect(JSON.stringify(warning.mock.calls)).not.toContain("The answer");
+        expect(db.select().from(schema.pushDevices).all()).toHaveLength(1);
+      } finally {
+        warning.mockRestore();
+      }
+    },
+  );
+  it("does not poll receipts after acceptance", async () => {
     register();
-    enqueue();
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 503 }));
-    await worker.flushPushNotifications();
-    expect(jobs()[0]).toMatchObject({ attempts: 1, receiptId: null });
-    await worker.flushPushNotifications();
+    await send();
+    await vi.advanceTimersByTimeAsync(3_600_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(5000);
-    await worker.flushPushNotifications();
-    expect(jobs()[0].receiptId).toBe("receipt");
   });
-  it("checks receipts and removes invalid device registrations", async () => {
+  it.each(["DeviceNotRegistered", "InvalidCredentials"])(
+    "handles an immediate %s ticket",
+    async (error) => {
+      register();
+      const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        fetchMock.mockResolvedValueOnce(
+          Response.json({ data: [{ status: "error", details: { error } }] }),
+        );
+        await send();
+        expect(db.select().from(schema.pushDevices).all()).toHaveLength(
+          error === "DeviceNotRegistered" ? 0 : 1,
+        );
+      } finally {
+        warning.mockRestore();
+      }
+    },
+  );
+  it("does not remove a token refreshed while the send was in flight", async () => {
     register();
-    enqueue();
-    await worker.flushPushNotifications();
-    vi.advanceTimersByTime(15 * 60_000);
-    fetchMock.mockResolvedValueOnce(
-      Response.json({
-        data: {
-          receipt: {
-            status: "error",
-            details: { error: "DeviceNotRegistered" },
-          },
-        },
-      }),
-    );
-    await worker.flushPushNotifications();
-    expect(fetchMock.mock.calls[1][0]).toContain("getReceipts");
-    expect(db.select().from(schema.pushDevices).all()).toHaveLength(0);
-    expect(jobs()).toHaveLength(0);
+    fetchMock.mockImplementationOnce(async () => {
+      repository.registerPushDevice("alice", "login-alice", {
+        ...input,
+        token: "ExpoPushToken[new]",
+      });
+      return Response.json({
+        data: [{ status: "error", details: { error: "DeviceNotRegistered" } }],
+      });
+    });
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await send();
+      expect(db.select().from(schema.pushDevices).get()?.token).toBe(
+        "ExpoPushToken[new]",
+      );
+    } finally {
+      warning.mockRestore();
+    }
   });
-  it("sends generic agent idle alerts and cancels queued ones on resumed work", async () => {
+  it("batches at most 100 devices and continues if another batch fails", async () => {
+    for (let i = 0; i < 101; i++) {
+      repository.registerPushDevice("alice", "login-alice", {
+        ...input,
+        id: crypto.randomUUID(),
+        token: `ExpoPushToken[device-${i}]`,
+      });
+    }
+    fetchMock.mockRejectedValueOnce(new Error("network"));
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await send();
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        fetchMock.mock.calls.map((call) => JSON.parse(call[1].body).length),
+      ).toEqual([100, 1]);
+    } finally {
+      warning.mockRestore();
+    }
+  });
+  it("sends an agent idle alert with its session name", async () => {
     register();
-    repository.enqueueAgentIdle("agent");
-    repository.cancelAgentPush("agent");
-    expect(jobs()).toHaveLength(0);
-    repository.enqueueAgentIdle("agent");
-    await worker.flushPushNotifications();
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+    await sender.notifyAgentIdle("agent");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)[0]).toMatchObject({
       title: "Agent is idle",
       body: "Fix tests · Tap to view the session.",
       data: { kind: "agent", targetId: "agent" },
     });
   });
-  it("does not deliver agent notifications after admin access is revoked", async () => {
+  it("does not submit agent notifications after admin access is revoked", async () => {
     register();
-    repository.enqueueAgentIdle("agent");
     db.update(schema.user)
       .set({ role: "user" })
       .where(eq(schema.user.id, "alice"))
       .run();
-    await worker.flushPushNotifications();
+    await sender.notifyAgentIdle("agent");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

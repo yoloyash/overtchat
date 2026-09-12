@@ -646,14 +646,16 @@ async function handlePost(req: Request): Promise<Response> {
           });
           if (completed && !streamError && !isAborted && assistantMessage) {
             try {
-              notifyChatComplete(
+              void notifyChatComplete(
                 userId,
                 chatId,
                 streamId,
                 assistantMessage.parts,
+              ).catch(() =>
+                console.error("[push] Could not send chat notification."),
               );
             } catch {
-              console.error("[push] Could not queue chat notification.");
+              console.error("[push] Could not send chat notification.");
             }
           }
         } catch (error) {
