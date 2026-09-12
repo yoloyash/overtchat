@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { AgentSessionStream } from "@/lib/agents/stream";
+import type { NetworkState } from "expo-network";
 import { snapshot } from "@/lib/agents/test-fixtures";
 import { queryKeys } from "./keys";
 import { useAgentSession, useAgentConnections } from "./agents";
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   stop: vi.fn(),
   reconnect: vi.fn(),
   fetch: vi.fn(),
+  networkListener: undefined as ((state: NetworkState) => void) | undefined,
 }));
 vi.mock("react-native", () => ({
   AppState: {
@@ -27,7 +29,14 @@ vi.mock("react-native", () => ({
 }));
 vi.mock("expo-router/react-navigation", () => ({ useIsFocused: () => true }));
 vi.mock("expo-network", () => ({
-  addNetworkStateListener: () => ({ remove: vi.fn() }),
+  addNetworkStateListener: (listener: (state: NetworkState) => void) => {
+    mocks.networkListener = listener;
+    return {
+      remove: () => {
+        mocks.networkListener = undefined;
+      },
+    };
+  },
 }));
 vi.mock("@/lib/api", () => ({ getApiBase: () => "https://chat.example" }));
 vi.mock("@/lib/agents/api", () => ({
@@ -129,6 +138,50 @@ it("renders an existing replica while backgrounded without fetching or opening a
   expect(mocks.start).not.toHaveBeenCalled();
   expect(mocks.fetch).not.toHaveBeenCalled();
   expect(consoleError).not.toHaveBeenCalled();
+});
+
+it("keeps the subscription through initial and repeated online network notifications", async () => {
+  await mount();
+  const online = {
+    type: "WIFI",
+    isConnected: true,
+    isInternetReachable: true,
+  } as NetworkState;
+  await act(async () => {
+    for (let i = 0; i < 5; i++) mocks.networkListener!(online);
+    mocks.networkListener!({ ...online, isInternetReachable: undefined });
+    mocks.networkListener!({});
+    mocks.networkListener!(online);
+  });
+  expect(mocks.start).toHaveBeenCalledTimes(1);
+  expect(mocks.reconnect).not.toHaveBeenCalled();
+});
+
+it("reconnects once when the network returns or switches transport", async () => {
+  await mount();
+  const online = {
+    type: "WIFI",
+    isConnected: true,
+    isInternetReachable: true,
+  } as NetworkState;
+  await act(async () => {
+    mocks.networkListener!({ isConnected: false, isInternetReachable: false });
+    mocks.networkListener!({});
+    mocks.networkListener!(online);
+    mocks.networkListener!(online);
+  });
+  expect(mocks.reconnect).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    mocks.networkListener!({ ...online, type: "CELLULAR" } as NetworkState);
+    mocks.networkListener!({ ...online, type: "CELLULAR" } as NetworkState);
+  });
+  expect(mocks.reconnect).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    mocks.networkListener!({ ...online, isInternetReachable: false });
+    mocks.networkListener!(online);
+    mocks.networkListener!(online);
+  });
+  expect(mocks.reconnect).toHaveBeenCalledTimes(3);
 });
 
 it("shows pull-to-refresh progress only for an explicit refresh", async () => {

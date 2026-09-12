@@ -106,9 +106,25 @@ export function useAgentSession(id: string) {
     });
     stream.current = client;
     client.start();
+    let previousNetwork:
+      | { available: boolean; type?: Network.NetworkStateType }
+      | undefined;
     const listener = Network.addNetworkStateListener((state) => {
-      if (state.isConnected && state.isInternetReachable !== false)
-        client.reconnect();
+      // Native capability/path updates can repeatedly report the same online
+      // network. They are not evidence that our live SSE connection was lost.
+      if (state.isConnected === undefined) return;
+      const available = state.isConnected && state.isInternetReachable !== false;
+      const type =
+        state.type && state.type !== "UNKNOWN" && state.type !== "NONE"
+          ? state.type
+          : previousNetwork?.type;
+      const changed =
+        previousNetwork &&
+        available &&
+        (!previousNetwork.available ||
+          (type && previousNetwork.type && type !== previousNetwork.type));
+      previousNetwork = { available, type };
+      if (changed) client.reconnect();
     });
     return () => {
       listener.remove();
