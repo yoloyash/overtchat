@@ -58,6 +58,24 @@ function config(): InstallationConfig {
 }
 
 describe("managed Compose configuration", () => {
+  it.each([
+    ["local", "127.0.0.1", "http://localhost:4718"],
+    ["lan", "0.0.0.0", "http://192.168.1.20:4718"],
+    ["tailscale", "127.0.0.1", "https://server.example.ts.net"],
+    ["advanced", "127.0.0.1", "https://chat.example.com"],
+  ] as const)("coordinates binding and accepted login addresses for %s", (mode, bindAddress, publicUrl) => {
+    const selected = { ...config(), access: { mode }, bindAddress, publicUrl };
+    const environment = renderStackEnvironment(selected, {
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice",
+    }, paths);
+    expect(environment).toContain(`APP_BIND_ADDRESS="${bindAddress}"`);
+    expect(environment).toContain(`BETTER_AUTH_URL="${publicUrl}"`);
+    expect(environment).toContain(`EXTRA_TRUSTED_ORIGINS="${publicUrl},`);
+    const compose = renderComposeFile(selected);
+    expect(compose).toContain('"${APP_BIND_ADDRESS}:${APP_PORT}:4717"');
+    expect(compose).toContain('EXTRA_TRUSTED_ORIGINS: ${EXTRA_TRUSTED_ORIGINS:-}');
+  });
+
   it("starts installed local services independently from the active provider", () => {
     const environment = renderStackEnvironment(
       config(),

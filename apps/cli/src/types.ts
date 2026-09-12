@@ -49,8 +49,20 @@ export type VoiceConfig = {
   installed: boolean;
 };
 
+export type AccessMode = "local" | "lan" | "tailscale" | "advanced";
+export type TailscaleRoute = { hostname: string; port: number; target: string };
+export type AccessConfig = {
+  mode: AccessMode;
+  proxy?: "cloudflare" | "other";
+  proxyLocation?: "host" | "docker" | "remote";
+  lanAddress?: string;
+  connectionStatus?: "pending" | "verified";
+  tailscaleRoute?: TailscaleRoute;
+};
+
 export type InstallationConfig = {
   format: 1;
+  instanceId?: string;
   appVersion: string;
   appImage: string;
   voiceVersion: string;
@@ -67,6 +79,10 @@ export type InstallationConfig = {
   publicUrl: string;
   extraTrustedOrigins: string[];
   connectorServerUrl: string;
+  access?: AccessConfig;
+  // Records the route managed by setup separately from the access choice.
+  // Only this exact Serve route may be changed or removed by the manager.
+  managedTailscaleRoute?: TailscaleRoute;
   disableUpdateCheck?: boolean;
   composeProject: string;
   dataMountType: "volume" | "bind";

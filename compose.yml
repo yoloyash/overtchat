@@ -5,10 +5,11 @@ services:
     container_name: overtchat-app
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-4718}:4717"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-4718}:4717"
     environment:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
+      EXTRA_TRUSTED_ORIGINS: ${EXTRA_TRUSTED_ORIGINS:-}
       DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}
       HOST_CONNECTOR_URL: ${HOST_CONNECTOR_URL:-http://127.0.0.1:${APP_PORT:-4718}}
       OVERTCHAT_INSTALLED_CAPABILITIES: ${OVERTCHAT_INSTALLED_CAPABILITIES:-search,tts,stt}
