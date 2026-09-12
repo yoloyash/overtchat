@@ -24,6 +24,7 @@ import {
   AgentContextSheet,
 } from "@/components/agents/AgentContextUsage";
 import { AgentComposer } from "@/components/agents/AgentComposer";
+import { AgentConnectionFeedback } from "@/components/agents/AgentConnectionFeedback";
 import { AgentControls } from "@/components/agents/AgentControls";
 import { AgentInteraction } from "@/components/agents/AgentInteraction";
 import { AgentTranscript } from "@/components/agents/AgentTranscript";
@@ -254,14 +255,13 @@ function AgentSession({
           retry={session.reconnect}
         />
       )}
-      {snapshot &&
-        session.status !== "connected" &&
-        session.status !== "paused" && (
-          <AgentFeedback
-            error={session.error || "Reconnecting to your agent…"}
-            retry={session.reconnect}
-          />
-        )}
+      {snapshot && (
+        <AgentConnectionFeedback
+          status={session.status}
+          error={session.error}
+          retry={session.reconnect}
+        />
+      )}
       {snapshot?.readOnly && (
         <View style={{ padding: 12 }}>
           <AgentText muted>{snapshot.readOnly.reason}</AgentText>

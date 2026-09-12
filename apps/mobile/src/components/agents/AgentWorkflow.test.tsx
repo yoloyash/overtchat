@@ -9,6 +9,7 @@ import { snapshot } from "@/lib/agents/test-fixtures";
 const mocks = vi.hoisted(() => ({
   snapshot: undefined as ReturnType<typeof snapshot> | undefined,
   status: "connected",
+  sessionError: undefined as string | undefined,
   send: vi.fn(),
   reconnect: vi.fn(),
   replace: vi.fn(),
@@ -317,6 +318,7 @@ vi.mock("@/lib/queries/agents", () => ({
   useAgentSession: () => ({
     snapshot: mocks.snapshot,
     status: mocks.status,
+    error: mocks.sessionError,
     reconnect: mocks.reconnect,
   }),
   useAgentCommand: () => ({ mutateAsync: mocks.send, isPending: false }),
@@ -418,6 +420,7 @@ beforeEach(() => {
   };
   mocks.draft = { message: "", images: [] };
   mocks.status = "connected";
+  mocks.sessionError = undefined;
   mocks.send.mockResolvedValue({});
   mocks.catalog = {
     provider: "codex",
@@ -429,6 +432,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await act(async () => root.unmount());
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 async function render(element: ReactNode = <AgentSessionScreen />) {
@@ -505,6 +509,70 @@ describe("agent context usage", () => {
 });
 
 describe("native agent screen workflows", () => {
+  it("suppresses brief reconnect notices while disabling sends immediately", async () => {
+    vi.useFakeTimers();
+    mocks.draft.message = "Continue";
+    await render();
+    mocks.status = "reconnecting";
+    await render();
+    const sendButton = () => container.querySelector(
+      'button[aria-label="Send message"]',
+    ) as HTMLButtonElement;
+    expect(sendButton().disabled).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    mocks.status = "connected";
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    expect(sendButton().disabled).toBe(false);
+  });
+
+  it("shows sustained recovery, keeps its deadline across retries, and clears it on pause", async () => {
+    vi.useFakeTimers();
+    mocks.status = "reconnecting";
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    mocks.sessionError = "Network lost";
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(container.textContent).toContain("Reconnecting to your agent");
+    await click("Retry");
+    expect(mocks.reconnect).toHaveBeenCalledTimes(1);
+    mocks.status = "paused";
+    await render();
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    mocks.status = "reconnecting";
+    await render();
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+  });
+
+  it("shows terminal connection errors immediately and cancels a pending recovery notice", async () => {
+    vi.useFakeTimers();
+    mocks.status = "reconnecting";
+    await render();
+    mocks.status = "error";
+    mocks.sessionError = "Your session expired. Sign in again.";
+    await render();
+    expect(container.textContent).toContain(mocks.sessionError);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+  });
+
   it("renders a resumed transcript, sends a prompt, and clears only acknowledged drafts", async () => {
     mocks.snapshot!.messages = [
       { role: "user", content: "Earlier request" },
