@@ -14,6 +14,10 @@ connector state lives in `.overtchat-dev/`, separate from production.
 
 ## Environment and commands
 
+Development runs with checked-in defaults; copying `.env.example` is optional.
+That file is a reference for manual source configuration. Managed installations
+use `overtchat setup`, which generates their environment separately.
+
 Defaults are in `apps/web/.env.development`; machine-specific values belong in
 `apps/web/.env.local`. The root `.env` configures source development;
 `apps/web/.env` must remain a symlink to `../../.env`. For another development

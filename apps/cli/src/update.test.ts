@@ -184,6 +184,29 @@ beforeEach(() => {
 });
 
 describe("managed updates", () => {
+  it("preserves access settings and disabled update notifications across manual updates", async () => {
+    const current = config({
+      disableUpdateCheck: true,
+      publicUrl: "https://server.example.ts.net:8443",
+      access: {
+        mode: "tailscale",
+        connectionStatus: "pending",
+        tailscaleRoute: { hostname: "server.example.ts.net", port: 8443, target: "http://127.0.0.1:4718" },
+      },
+    });
+    mocks.readInstallationConfig.mockResolvedValue(current);
+    current.managedTailscaleRoute = current.access?.tailscaleRoute;
+    await update();
+    expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({
+      access: current.access,
+      publicUrl: current.publicUrl,
+      bindAddress: current.bindAddress,
+      managedTailscaleRoute: current.managedTailscaleRoute,
+      disableUpdateCheck: true,
+    }));
+    expect(mocks.outro).toHaveBeenCalledWith(`Connection pending: ${current.publicUrl}`);
+  });
+
   it("rejects installations that have not been managed by setup", async () => {
     mocks.readInstallationConfig.mockResolvedValue(null);
 

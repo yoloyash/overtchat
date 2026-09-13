@@ -9,6 +9,7 @@ import {
   text,
 } from "@clack/prompts";
 import { commandExists } from "./process.js";
+import { promptAccess } from "./access-prompts.js";
 import type {
   ExistingInstallation,
   Gpu,
@@ -420,6 +421,7 @@ export async function promptInstallationConfig(
       process.exit(0);
     }
   }
+  const configured = await promptAccess(initial);
   const search = await promptSearch(initial.search);
   const tts = await promptTts(initial.tts, gpus);
   const stt = await promptStt(initial.stt, gpus);
@@ -458,12 +460,25 @@ export async function promptInstallationConfig(
       inactive: "Set up later",
     }),
   );
+  note(
+    "The app checks overtchat.com for new releases when an administrator opens the account menu. Install updates with overtchat update.",
+    "Update notifications",
+  );
+  const checkForUpdates = chosen(
+    await confirm({
+      message: "Automatically check for updates?",
+      initialValue: !initial.disableUpdateCheck,
+      active: "Yes (recommended)",
+      inactive: "No",
+    }),
+  );
   return {
-    ...initial,
+    ...configured,
     search,
     tts,
     stt,
     voice: { installed: installVoice },
     agents: { installed: installAgents },
+    disableUpdateCheck: !checkForUpdates,
   };
 }

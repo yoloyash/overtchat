@@ -177,9 +177,10 @@ export default function PrivacyPage() {
             <p>
               Cloudflare processes ordinary request data such as the server IP
               address and request time when delivering the manifest. Server
-              operators can disable version checks by setting the documented
-              {" "}
-              <code>DISABLE_UPDATE_CHECK</code> environment variable.
+              operators can disable version checks by running{" "}
+              <code>overtchat setup</code> and choosing No for “Automatically
+              check for updates?”. Manually managed deployments can set{" "}
+              <code>DISABLE_UPDATE_CHECK=true</code>.
             </p>
           </section>
 

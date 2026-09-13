@@ -1,4 +1,5 @@
 import { outro, spinner } from "@clack/prompts";
+import { accessSummary } from "./access.js";
 import {
   initialSecrets,
   normalizeInstallationConfig,
@@ -105,7 +106,7 @@ export async function update(): Promise<void> {
     progress.stop("OvertChat is up to date");
     progressActive = false;
     showSidecarReconciliation(reconciliation);
-    outro(`Open: ${nextConfig.publicUrl}`);
+    outro(nextConfig.access ? accessSummary(nextConfig) : `Open: ${nextConfig.publicUrl}`);
   } catch (error) {
     if (progressActive) progress.stop("OvertChat update failed", 1);
     throw error;

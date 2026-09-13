@@ -20,15 +20,18 @@ const confirmPrompts = vi.hoisted(
       message: string;
       active: string;
       inactive: string;
+      initialValue: boolean;
     }>,
 );
 
 vi.mock("@clack/prompts", () => ({
   cancel: vi.fn(),
   confirm: vi.fn(
-    async (prompt: { message: string; active: string; inactive: string }) => {
+    async (prompt: { message: string; active: string; inactive: string; initialValue: boolean }) => {
       confirmPrompts.push(prompt);
-      return promptAnswers.get(prompt.message);
+      return promptAnswers.has(prompt.message)
+        ? promptAnswers.get(prompt.message)
+        : prompt.initialValue;
     },
   ),
   intro: vi.fn(),
@@ -57,6 +60,8 @@ vi.mock("./process.js", () => ({
 
 beforeEach(() => {
   promptAnswers.clear();
+  promptAnswers.set("Where do you want to access OvertChat?", "local");
+  promptAnswers.set("Customize the port or additional addresses?", false);
   selectPrompts.length = 0;
   confirmPrompts.length = 0;
 });
@@ -173,6 +178,31 @@ describe("existing installation summary", () => {
 });
 
 describe("setup provider selection", () => {
+  it.each([
+    { saved: undefined, answer: true, expectedDefault: true },
+    { saved: false, answer: false, expectedDefault: true },
+    { saved: true, answer: false, expectedDefault: false },
+    { saved: true, answer: true, expectedDefault: false },
+  ])("configures update notifications with saved preference $saved and answer $answer", async ({ saved, answer, expectedDefault }) => {
+    promptAnswers.set("Web search", "disabled");
+    promptAnswers.set("Text-to-speech", "disabled");
+    promptAnswers.set("Speech-to-text", "disabled");
+    promptAnswers.set("Install Agent Connections?", false);
+    promptAnswers.set("Automatically check for updates?", answer);
+
+    const selected = await promptInstallationConfig({
+      ...setupConfig(),
+      disableUpdateCheck: saved,
+    }, []);
+
+    expect(selected.disableUpdateCheck).toBe(!answer);
+    expect(confirmPrompts.find((prompt) => prompt.message === "Automatically check for updates?")).toMatchObject({
+      initialValue: expectedDefault,
+      active: "Yes (recommended)",
+      inactive: "No",
+    });
+  });
+
   it("removes hidden bundled speech services after external providers are selected", async () => {
     const config = setupConfig();
     promptAnswers.set("Web search", "brave");

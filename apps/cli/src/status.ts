@@ -1,6 +1,7 @@
 import { readInstallationConfig } from "./config.js";
 import { detectDockerCommand, runDocker } from "./docker.js";
 import { runtimePaths } from "./paths.js";
+import { accessMode } from "./access.js";
 
 export function providerStatus(provider: string): string {
   return provider === "disabled" ? "not configured" : provider;
@@ -25,6 +26,8 @@ export async function status(): Promise<void> {
   console.log(`OvertChat ${config.appVersion}`);
   console.log(`Status: ${app?.exitCode === 0 ? app.stdout.trim() : "unavailable"}`);
   console.log(`URL: ${config.publicUrl}`);
+  console.log(`Access: ${accessMode(config)}`);
+  if (config.access?.connectionStatus) console.log(`Last connection check: ${config.access.connectionStatus}`);
   console.log(`Web search: ${providerStatus(config.search.provider)}`);
   console.log(
     `Text-to-speech: ${providerStatus(config.tts.provider)}${

@@ -38,8 +38,9 @@ On an **x86-64 or arm64 Linux** server:
 curl -fsSL https://overtchat.com/install | sh
 ```
 
-The guided installer handles Docker, configuration, and secrets. Choose the
-local search and speech services you want, open the printed URL, and create
+The guided installer handles Docker, configuration, and secrets; no `.env`
+editing is needed. Choose where to access OvertChat and the local search and
+speech services you want, open the printed URL, and create
 your account. The first signup becomes the administrator. Add your model
 endpoint in the app; OvertChat connects to inference servers you already run.
 With a local model and the bundled speech and search services, **no provider

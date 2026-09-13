@@ -43,6 +43,10 @@ import {
 } from "./release.js";
 import { createPreMigrationSnapshot } from "./snapshot.js";
 import type { ExistingInstallation, InstallationConfig } from "./types.js";
+import { accessSummary, connectionInstructions } from "./access.js";
+import { finishAccess } from "./connection-check.js";
+import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
+import { startStack } from "./stack.js";
 
 export type SetupOptions = {
   dryRun: boolean;
@@ -137,8 +141,8 @@ async function exists(file: string): Promise<boolean> {
 export async function prepareFiles(
   config: InstallationConfig,
   existingSearxngConfigPath: string | undefined,
+  paths = runtimePaths(),
 ): Promise<void> {
-  const paths = runtimePaths();
   await mkdir(paths.stackDirectory, { recursive: true, mode: 0o700 });
   await mkdir(paths.searxngDirectory, { recursive: true, mode: 0o700 });
   if (
@@ -167,11 +171,12 @@ export async function prepareFiles(
 export async function waitForApp(url: string): Promise<void> {
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
-    const response = await fetch(url, {
+    const response = await fetch(new URL("/api/ping", url), {
       redirect: "manual",
       signal: AbortSignal.timeout(5_000),
     }).catch(() => null);
-    if (response && response.status >= 200 && response.status < 500) return;
+    const body = response?.ok ? await response.json().catch(() => null) : null;
+    if (body?.ok === true && body?.name === "overtchat") return;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
   throw new Error("OvertChat did not become ready within three minutes.");
@@ -358,7 +363,9 @@ export async function setup(
   }
   if (!saved && !existing) {
     const lanAddress = primaryLanAddress();
-    if (lanAddress) config.publicUrl = `http://${lanAddress}:${config.appPort}`;
+    config.access = { mode: lanAddress ? "lan" : "local" };
+    config.bindAddress = lanAddress ? "0.0.0.0" : "127.0.0.1";
+    config.publicUrl = `http://${lanAddress ?? "localhost"}:${config.appPort}`;
   }
   const gpus = await detectNvidiaGpus();
   if (
@@ -454,10 +461,25 @@ export async function setup(
     }
   }
 
+  const oldRoute = saved?.managedTailscaleRoute;
+  const nextRoute = config.access?.tailscaleRoute;
+  if (!options.dryRun && nextRoute) await checkServeRoute(nextRoute, oldRoute);
   const secrets = initialSecrets(
     existing,
     previousSecrets,
   );
+  if (options.dryRun) {
+    const preview = runtimePaths({
+      ...process.env,
+      OVERTCHAT_CONFIG_DIR: path.join(paths.configDirectory, "preview"),
+      OVERTCHAT_STACK_DIR: path.join(paths.stackDirectory, "preview"),
+    });
+    await prepareFiles(config, existing?.searxngConfigPath, preview);
+    await writeSecretsFile(preview, renderStackEnvironment(config, secrets, preview));
+    await requireDocker(docker, ["compose", "--env-file", preview.secretsFile, "-f", preview.composeFile, "config", "--quiet"]);
+    outro(`Configuration preview written to ${preview.stackDirectory}. Installed settings were not changed.`);
+    return;
+  }
   await prepareFiles(config, existing?.searxngConfigPath);
   await writeSecretsFile(
     paths,
@@ -472,11 +494,6 @@ export async function setup(
     paths.composeFile,
   ];
   await requireDocker(docker, [...composeArgs, "config"]);
-  if (options.dryRun) {
-    await writeInstallationConfig(paths, config);
-    outro(`Configuration written to ${paths.stackDirectory}`);
-    return;
-  }
 
   const preparation = spinner();
   preparation.start(
@@ -533,7 +550,10 @@ export async function setup(
     );
   } else {
     preparation.message("Downloading the selected OvertChat components");
-    await requireDocker(docker, [...composeArgs, "pull"], { inherit: true });
+    await requireDocker(docker, [
+      ...composeArgs, "pull",
+      ...(config.appImage === "overtchat-app:setup-dev" ? ["--ignore-pull-failures"] : []),
+    ], { inherit: true });
   }
   const snapshot = adopting && existing
     ? await (async () => {
@@ -550,21 +570,27 @@ export async function setup(
 
   const progress = spinner();
   progress.start("Starting OvertChat");
-  await requireDocker(docker, [...composeArgs, "up", "-d"], { inherit: true });
-  progress.message("Waiting for OvertChat to become ready");
-  await waitForApp(`http://127.0.0.1:${config.appPort}`);
+  await startStack(config, saved, secrets, paths, docker, waitForApp);
+  if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
+    await removeServe(oldRoute);
+  }
   progress.message("Applying provider configuration");
   await syncCapabilities(config, secrets.managementSecret);
   if (config.agents.installed) {
     progress.message("Installing Agent Connections");
     await installManagedConnector(config, secrets.managementSecret);
   }
+  // Record the route before starting Serve so interruption can be recovered.
+  config.managedTailscaleRoute = nextRoute;
   await writeInstallationConfig(paths, config);
   progress.message("Reconciling bundled services");
   const reconciliation = await reconcileManagedSidecars(docker, config);
   progress.stop("OvertChat is ready");
 
   showSidecarReconciliation(reconciliation);
-
-  outro(`Open: ${config.publicUrl}`);
+  const instructions = connectionInstructions(config);
+  if (instructions) note(instructions, "Access OvertChat");
+  await finishAccess(config, !options.defaults);
+  await writeInstallationConfig(paths, config);
+  outro(accessSummary(config));
 }
