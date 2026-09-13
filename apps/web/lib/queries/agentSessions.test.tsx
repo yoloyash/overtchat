@@ -166,6 +166,7 @@ describe("useAgentSession", () => {
     await act(async () => root.unmount());
     queryClient.clear();
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     vi.useRealTimers();
     for (const [key, descriptor] of originalGlobals) {
       if (descriptor) {
@@ -306,7 +307,10 @@ describe("useAgentSession", () => {
     },
   );
 
-  it("reuses a submission identity after an unknown outcome", async () => {
+  it.each([true, false])("retains retry IDs (randomUUID: %s)", async (hasRandomUUID) => {
+    if (!hasRandomUUID) {
+      vi.stubGlobal("crypto", { randomUUID: undefined });
+    }
     const bodies: Array<Record<string, unknown>> = [];
     const fetchMock = vi.fn<typeof fetch>().mockImplementation(
       async (_input, init) => {
@@ -361,6 +365,8 @@ describe("useAgentSession", () => {
     ).resolves.toEqual({ accepted: true });
 
     expect(bodies).toHaveLength(3);
+    expect(bodies[0]?.clientMessageId).toEqual(expect.any(String));
+    expect(String(bodies[0]?.clientMessageId).length).toBeGreaterThan(0);
     expect(bodies[0]?.clientMessageId).toBe(bodies[1]?.clientMessageId);
     expect(bodies[2]?.clientMessageId).not.toBe(
       bodies[1]?.clientMessageId,

@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, RefreshCw } from "lucide-react";
+import { generateId } from "ai";
 import type {
   AgentPromptImage,
   AgentProviderId,
@@ -164,7 +165,7 @@ export function NewAgentSessionView({
         type: "prompt",
         message,
         ...(images.length > 0 ? { images } : {}),
-        clientMessageId: crypto.randomUUID(),
+        clientMessageId: generateId(),
       });
     } catch (cause) {
       window.sessionStorage.setItem(
