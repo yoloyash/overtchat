@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { generateId } from "ai";
 import type {
   AgentQueuedMessage,
   AgentProviderNotice,
@@ -369,7 +370,7 @@ export function useAgentSessionCommand(id: string) {
         generatedClientMessageId =
           retainedIdentity.current?.fingerprint === fingerprint
             ? retainedIdentity.current.clientMessageId
-            : crypto.randomUUID();
+            : generateId();
         retainedIdentity.current = {
           fingerprint,
           clientMessageId: generatedClientMessageId,

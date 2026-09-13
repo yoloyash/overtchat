@@ -351,6 +351,95 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
   };
 }
 
+test("new agent chats and follow-up prompts submit without crypto.randomUUID", async ({
+  page,
+}) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("HTTP Agent Tester");
+  await page.locator("#email").fill("http-agent@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+
+  // Localhost exposes this secure-context API even over HTTP. Remove it on
+  // every navigation to reproduce the capabilities of a plain HTTP LAN origin.
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.messages = [];
+  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", (route) =>
+    route.fulfill({
+      json: { provider: "codex", models: [imageModel], modes: [] },
+    }),
+  );
+  await page.route("**/api/agent-workspaces/workspace/sessions", (route) =>
+    route.fulfill({ json: { session: { id: SESSION_ID } } }),
+  );
+  const submittedCommands: Array<Record<string, unknown>> = [];
+  await page.route(
+    new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`),
+    async (route) => {
+      if (route.request().method() === "POST") {
+        submittedCommands.push(route.request().postDataJSON());
+        await route.fulfill({ json: { accepted: true } });
+        return;
+      }
+      await route.fulfill({ json: { snapshot } });
+    },
+  );
+
+  await page.goto("/agents/new?workspaceId=workspace&provider=codex");
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
+  await composer.fill("First agent prompt over HTTP");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.length).toBe(1);
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+
+  await composer.fill("Follow-up agent prompt over HTTP");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.length).toBe(2);
+  expect(submittedCommands).toEqual([
+    {
+      type: "prompt",
+      message: "First agent prompt over HTTP",
+      clientMessageId: expect.any(String),
+    },
+    {
+      type: "prompt",
+      message: "Follow-up agent prompt over HTTP",
+      clientMessageId: expect.any(String),
+    },
+  ]);
+  const ids = submittedCommands.map((command) => command.clientMessageId);
+  expect(ids.every((id) => typeof id === "string" && id.length > 0)).toBe(true);
+  expect(new Set(ids).size).toBe(2);
+  await expect(page.getByText("Codex command failed", { exact: true })).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
 test("requires inspection before retrying an uncertain queued message", async ({
   page,
 }) => {
