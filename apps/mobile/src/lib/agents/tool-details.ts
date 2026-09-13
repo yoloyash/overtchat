@@ -162,7 +162,7 @@ export function approvalDetails(
     });
     if (request.alwaysValue)
       choices.push({
-        label: "Allow always",
+        label: text(request.alwaysLabel) || "Allow always",
         value: text(request.alwaysValue),
         kind: "always",
       });
@@ -197,50 +197,6 @@ export function approvalDetails(
       message === `Path: ${detail.filePath}`
     )
       message = "";
-  } else if (
-    text(request.id).startsWith("codex:") &&
-    [
-      "Approve command?",
-      "Approve file changes?",
-      "Approve network access?",
-      "Approve additional permissions?",
-    ].includes(text(request.title)) &&
-    Array.isArray(request.options) &&
-    request.options.join("|") === "Allow once|Allow for session|Deny"
-  ) {
-    // Codex currently sends these as select requests. Preserve its exact values.
-    choices.push(
-      { label: "Allow once", value: "Allow once", kind: "allow" },
-      {
-        label: "Allow for session",
-        value: "Allow for session",
-        kind: "always",
-      },
-      { label: "Deny", value: "Deny", kind: "deny" },
-    );
-    if (request.title === "Approve additional permissions?") {
-      const prose: string[] = [];
-      for (const block of message.split("\n\n")) {
-        const match = /^(Network|Files): ([\s\S]*)$/.exec(block);
-        if (!match) {
-          prose.push(block);
-          continue;
-        }
-        try {
-          sections.push(...argumentSections(JSON.parse(match[2]), match[1]));
-        } catch {
-          sections.push({ label: match[1], value: match[2], kind: "code" });
-        }
-      }
-      message = prose.join("\n\n");
-    }
-    const commandAt = message.search(/(?:^|\n\n)\$ /);
-    if (commandAt >= 0) {
-      const command = message.slice(commandAt).replace(/^\n\n/, "").slice(2);
-      message = message.slice(0, commandAt);
-      category = "shell";
-      sections.push({ label: "Command", value: command, kind: "code" });
-    }
   }
   if (detail.type === "edit" && Array.isArray(detail.changes)) {
     category = "edit";

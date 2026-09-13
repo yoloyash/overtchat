@@ -250,4 +250,35 @@ describe("Claude runtime client", () => {
     });
     await client.stop();
   });
+  it("preserves question descriptions and returns custom and multiple answers", async () => {
+    let query!: FakeQuery;
+    queryMock.mockImplementation((params) => (query = new FakeQuery(params)));
+    const client = new ClaudeRuntimeClient(
+      { transport: "local" },
+      { executable: "claude", cwd: "/workspace" },
+    );
+    await client.getState();
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const ask = query.options.canUseTool as (
+      name: string, input: Record<string, unknown>, options: Record<string, unknown>,
+    ) => Promise<unknown>;
+    const decision = ask("AskUserQuestion", {
+      questions: [
+        { header: "Framework", question: "Which framework?", options: [{ label: "React", description: "Existing components" }] },
+        { header: "Features", question: "Which features?", multiSelect: true, options: [{ label: "Search" }, { label: "History" }] },
+      ],
+    }, { signal: new AbortController().signal, requestId: "questions", toolUseID: "ask" });
+    expect(events.at(-1)).toMatchObject({
+      method: "form",
+      fields: [
+        expect.objectContaining({ id: "0", allowOther: true, options: [{ value: "React", label: "React", description: "Existing components" }] }),
+        expect.objectContaining({ id: "1", type: "multiselect", allowOther: true }),
+      ],
+    });
+    client.respondToInteraction("claude:question:questions", { values: { "0": "Custom framework", "1": ["Search", "History"] } });
+    await expect(decision).resolves.toMatchObject({ behavior: "allow", updatedInput: { answers: { "Which framework?": "Custom framework", "Which features?": "Search, History" } } });
+    await client.stop();
+  });
+
 });

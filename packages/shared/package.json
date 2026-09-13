@@ -11,6 +11,7 @@
     "./theme.rn": "./src/theme.rn.ts",
     "./agent-presentation": "./src/agent-presentation.ts",
     "./agent-creation": "./src/agent-creation.ts",
+    "./agent-interaction": "./src/agent-interaction.ts",
     "./context-meter": "./src/context-meter.ts"
   },
   "scripts": {

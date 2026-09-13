@@ -157,9 +157,6 @@ type PendingInteraction =
       kind: "questions";
       rpcId: JsonRpcId;
       questions: UnknownRecord[];
-      index: number;
-      answers: Record<string, { answers: string[] }>;
-      awaitingOther: boolean;
       timeout?: number;
     }
   | {
@@ -2249,18 +2246,24 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
                   .filter((value) => value !== null && value !== undefined)
                   .join(" · ")
               : null,
-            !network && command ? `$ ${command}` : null,
           ]
             .filter(Boolean)
             .join("\n\n") || "Codex needs approval to continue.",
         options: ["Allow once", "Allow for session", "Deny"],
+        approvalKind: "tool",
+        approveValue: "Allow once",
+        alwaysValue: "Allow for session",
+        alwaysLabel: "Allow for session",
+        denyValue: "Deny",
         ...(fileChange
           ? {
               toolDetail: codexFileApprovalDetail(
                 item?.changes ?? params?.changes,
               ),
             }
-          : {}),
+          : !network && command
+            ? { toolDetail: { type: "shell", command } }
+            : {}),
       };
       this.pendingInteractions.set(id, {
         kind: "approval",
@@ -2297,9 +2300,6 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         kind: "questions",
         rpcId: request.id,
         questions,
-        index: 0,
-        answers: {},
-        awaitingOther: false,
         ...(typeof params?.autoResolutionMs === "number" &&
         params.autoResolutionMs > 0
           ? { timeout: params.autoResolutionMs }
@@ -2383,24 +2383,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         rpcId: request.id,
         requested,
       });
-      const details = [
-        params?.reason,
-        requested.network
-          ? `Network: ${toolOutput(requested.network)}`
-          : null,
-        requested.fileSystem
-          ? `Files: ${toolOutput(requested.fileSystem)}`
-          : null,
-      ]
-        .filter((value): value is string => typeof value === "string" && !!value)
-        .join("\n\n");
       this.emit({
         type: "interaction_request",
         id,
         method: "select",
         title: "Approve additional permissions?",
-        message: details || "Codex needs additional permissions to continue.",
+        message: stringOf(params, "reason") || "Codex needs additional permissions to continue.",
+        toolDetail: { type: "json", value: requested },
         options: ["Allow once", "Allow for session", "Deny"],
+        approvalKind: "tool",
+        approveValue: "Allow once",
+        alwaysValue: "Allow for session",
+        alwaysLabel: "Allow for session",
+        denyValue: "Deny",
       });
       return;
     }
@@ -2415,66 +2410,70 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     id: string,
     pending: Extract<PendingInteraction, { kind: "questions" }>,
     response: {
-      value?: string;
+      values?: Record<string, AgentInteractionValue>;
       cancelled?: boolean;
     },
   ): void {
-    if (response.cancelled) {
-      this.pendingInteractions.delete(id);
-      this.server.respond(pending.rpcId, { answers: pending.answers });
-      return;
-    }
-    const question = pending.questions[pending.index];
-    const questionId = stringOf(question, "id");
-    if (!questionId) return;
-    if (response.value === "Other…" && !pending.awaitingOther) {
-      pending.awaitingOther = true;
-      this.emitQuestion(id, pending);
-      return;
-    }
-    pending.answers[questionId] = {
-      answers: response.value === undefined ? [] : [response.value],
-    };
-    pending.index += 1;
-    pending.awaitingOther = false;
-    if (pending.index < pending.questions.length) {
-      this.emitQuestion(id, pending);
-      return;
+    const answers: Record<string, { answers: string[] }> = {};
+    if (!response.cancelled) {
+      for (const question of pending.questions) {
+        const questionId = stringOf(question, "id");
+        if (!questionId) continue;
+        const value = response.values?.[questionId];
+        answers[questionId] = {
+          answers: Array.isArray(value)
+            ? value
+            : typeof value === "string"
+              ? [value]
+              : [],
+        };
+      }
     }
     this.pendingInteractions.delete(id);
-    this.server.respond(pending.rpcId, { answers: pending.answers });
+    this.server.respond(pending.rpcId, { answers });
   }
 
   private emitQuestion(
     id: string,
     pending: Extract<PendingInteraction, { kind: "questions" }>,
   ): void {
-    const question = pending.questions[pending.index];
-    const options = Array.isArray(question?.options)
-      ? question.options
-          .map(recordOf)
-          .flatMap((option) => {
-            const label = stringOf(option, "label");
-            return label ? [label] : [];
-          })
-      : [];
-    const other = question?.isOther === true;
     this.emit({
       type: "interaction_request",
       id,
-      method:
-        pending.awaitingOther || (options.length === 0 && !other)
-          ? "input"
-          : "select",
-      title: stringOf(question, "header") ?? "Codex needs your input",
-      message: stringOf(question, "question") ?? "",
-      ...(question?.isSecret === true ? { secret: true } : {}),
+      method: "form",
+      title: "Codex needs your input",
       ...(pending.timeout ? { timeout: pending.timeout } : {}),
-      ...(pending.awaitingOther
-        ? { placeholder: "Enter another answer" }
-        : options.length > 0 || other
-          ? { options: [...options, ...(other ? ["Other…"] : [])] }
-          : {}),
+      fields: pending.questions.map((question, index) => {
+        const options = Array.isArray(question.options)
+          ? question.options.map(recordOf).flatMap((option) => {
+              const label = stringOf(option, "label");
+              return label
+                ? [
+                    {
+                      value: label,
+                      label,
+                      description: stringOf(option, "description"),
+                    },
+                  ]
+                : [];
+            })
+          : [];
+        return {
+          id: stringOf(question, "id") ?? String(index),
+          label: stringOf(question, "header") ?? `Question ${index + 1}`,
+          description: stringOf(question, "question") ?? "",
+          type:
+            question.multiSelect === true
+              ? "multiselect"
+              : options.length
+                ? "select"
+                : "text",
+          required: true,
+          secret: question.isSecret === true,
+          allowOther: question.isOther === true,
+          options,
+        };
+      }),
     });
   }
 

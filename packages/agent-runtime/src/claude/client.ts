@@ -203,6 +203,7 @@ function questionFields(questions: readonly ClaudeQuestion[]) {
         : ("text" as const),
     required: true,
     secret: false,
+    allowOther: true,
     options: (question.options ?? []).map((option) => ({
       value: option.label,
       label: option.label,

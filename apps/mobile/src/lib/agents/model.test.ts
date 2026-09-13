@@ -12,7 +12,7 @@ import {
   interactionFormFields,
   normalizeFormValues,
   safeExternalUrl,
-} from "./interaction";
+} from "@overtchat/shared/agent-interaction";
 
 describe("mobile agent submissions", () => {
   it("queues busy followups but executes slash commands immediately", () => {

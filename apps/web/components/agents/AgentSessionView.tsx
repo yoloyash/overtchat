@@ -1,5 +1,8 @@
 "use client";
 
+import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
+import { AgentQuestionCard } from "./AgentQuestionCard";
+
 import {
   useCallback,
   useEffect,
@@ -666,6 +669,15 @@ export function AgentSessionView({
           )}
 
           <AgentMessageList
+            question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
+              <AgentQuestionCard
+                key={snapshot.pendingInteraction.id}
+                request={snapshot.pendingInteraction}
+                pending={command.isPending || Boolean(readOnly) || exited}
+                error={dialogError}
+                onRespond={(response) => void run({ type: "interaction_response", id: snapshot.pendingInteraction!.id, ...response })}
+              />
+            ) : undefined}
             providerLabel={providerLabel}
             messages={snapshot.messages}
             streaming={running}
@@ -852,7 +864,7 @@ export function AgentSessionView({
           />
           <AgentInteractionDialog
             providerLabel={providerLabel}
-            request={snapshot.pendingInteraction}
+            request={isAgentQuestion(snapshot.pendingInteraction) ? undefined : snapshot.pendingInteraction}
             pending={command.isPending}
             error={dialogError}
             onRespond={(response) =>

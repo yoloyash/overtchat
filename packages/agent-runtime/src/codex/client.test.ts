@@ -1982,6 +1982,10 @@ describe("CodexRuntimeClient", () => {
       type: "interaction_request",
       id: "codex:approval-1",
       method: "select",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      toolDetail: { type: "shell", command: "npm install" },
       options: ["Allow once", "Allow for session", "Deny"],
     });
 
@@ -1999,6 +2003,10 @@ describe("CodexRuntimeClient", () => {
         network: { enabled: true },
         fileSystem: null,
       },
+    });
+    expect(events.at(-1)).toMatchObject({
+      approvalKind: "tool",
+      toolDetail: { type: "json", value: { network: { enabled: true }, fileSystem: null } },
     });
     client.respondToInteraction("codex:permission-1", {
       value: "Allow once",
@@ -2241,8 +2249,8 @@ describe("CodexRuntimeClient", () => {
     expect(events.at(-1)).toMatchObject({
       type: "interaction_request",
       id: "codex:question-1",
-      method: "input",
-      secret: true,
+      method: "form",
+      fields: [expect.objectContaining({ id: "token", type: "text", secret: true })],
       timeout: 5_000,
     });
 
@@ -2283,11 +2291,11 @@ describe("CodexRuntimeClient", () => {
     expect(events.at(-1)).toMatchObject({
       type: "interaction_request",
       id: "codex:tool-question",
-      method: "select",
-      options: ["A", "B"],
+      method: "form",
+      fields: [expect.objectContaining({ id: "choice", options: [{ value: "A", label: "A", description: "First" }, { value: "B", label: "B", description: "Second" }] })],
     });
 
-    client.respondToInteraction("codex:tool-question", { value: "B" });
+    client.respondToInteraction("codex:tool-question", { values: { choice: "B" } });
     expect(server.responses.at(-1)).toEqual({
       id: "tool-question",
       result: {
@@ -2709,7 +2717,7 @@ describe("CodexRuntimeClient", () => {
     );
   });
 
-  it("emits each question in a multi-question request", async () => {
+  it("emits all questions together and returns answers by provider ID", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },
       { executable: "codex", cwd: "/workspace" },
@@ -2738,14 +2746,13 @@ describe("CodexRuntimeClient", () => {
         },
       ],
     });
-    client.respondToInteraction("codex:question-2", { value: "A" });
     expect(events.at(-1)).toMatchObject({
       type: "interaction_request",
       id: "codex:question-2",
-      title: "Second",
-      options: ["B"],
+      method: "form",
+      fields: [expect.objectContaining({ id: "first", label: "First" }), expect.objectContaining({ id: "second", label: "Second" })],
     });
-    client.respondToInteraction("codex:question-2", { value: "B" });
+    client.respondToInteraction("codex:question-2", { values: { first: "A", second: "B" } });
     expect(server.responses.at(-1)).toEqual({
       id: "question-2",
       result: {
@@ -2756,4 +2763,23 @@ describe("CodexRuntimeClient", () => {
       },
     });
   });
+  it("round-trips custom answers without a second prompt and dismisses the whole form", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" }, { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    const questions = [{ id: "custom", header: "Choice", question: "Which option?", isOther: true, options: [{ label: "A", description: "First option" }] }];
+    server.ask("custom-question", "item/tool/requestUserInput", { questions });
+    expect(events.at(-1)).toMatchObject({ method: "form", fields: [expect.objectContaining({ allowOther: true, options: [{ value: "A", label: "A", description: "First option" }] })] });
+    const count = events.length;
+    client.respondToInteraction("codex:custom-question", { values: { custom: "An answer, with punctuation" } });
+    expect(events).toHaveLength(count);
+    expect(server.responses.at(-1)).toEqual({ id: "custom-question", result: { answers: { custom: { answers: ["An answer, with punctuation"] } } } });
+    server.ask("dismiss-question", "item/tool/requestUserInput", { questions });
+    client.respondToInteraction("codex:dismiss-question", { cancelled: true });
+    expect(server.responses.at(-1)).toEqual({ id: "dismiss-question", result: { answers: {} } });
+  });
+
 });
