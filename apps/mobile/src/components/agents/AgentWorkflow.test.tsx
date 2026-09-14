@@ -653,6 +653,11 @@ describe("native agent screen workflows", () => {
       id: "approval",
       method: "select",
       title: "Approve command?",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
       options: ["Allow once", "Deny"],
     };
     await render();
@@ -660,7 +665,6 @@ describe("native agent screen workflows", () => {
     expect(mocks.send).not.toHaveBeenCalled();
     await click("Respond");
     await click("Allow once");
-    await click("Submit response");
     expect(mocks.send).toHaveBeenCalledWith({
       type: "interaction_response",
       id: "approval",
@@ -1257,7 +1261,13 @@ describe("readable approvals and tool output", () => {
       id: "codex:1",
       method: "select",
       title: "Approve command?",
-      message: "Requires network\n\n$ npm install",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
+      message: "Requires network",
+      toolDetail: { type: "shell", command: "npm install" },
       options: ["Allow once", "Allow for session", "Deny"],
     };
     await render();
@@ -1366,7 +1376,7 @@ describe("audit regressions", () => {
     expect(
       (
         container.querySelector(
-          'button[aria-label="Submit response"]',
+          'button[aria-label="Submit"]',
         ) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
@@ -1374,7 +1384,7 @@ describe("audit regressions", () => {
       field.value = "-1.25";
       field.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    await click("Submit response");
+    await click("Submit");
     expect(mocks.send.mock.lastCall?.[0].values).toEqual({ amount: -1.25 });
   });
   it("accepts an explicit No for a required boolean", async () => {
@@ -1389,12 +1399,12 @@ describe("audit regressions", () => {
     };
     await render();
     const submit = container.querySelector(
-      'button[aria-label="Submit response"]',
+      'button[aria-label="Submit"]',
     ) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
     await click("No");
     expect(submit.disabled).toBe(false);
-    await click("Submit response");
+    await click("Submit");
     expect(mocks.send.mock.lastCall?.[0].values).toEqual({ answer: false });
   });
   it("does not erase a newer draft when an abandoned creation finishes", async () => {
@@ -1499,6 +1509,11 @@ it("renders file approval previews as diffs while preserving provider decision v
     id: "codex:edit",
     method: "select",
     title: "Approve file changes?",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
     options: ["Allow once", "Allow for session", "Deny"],
     toolDetail: {
       type: "edit",
@@ -1528,3 +1543,209 @@ it("dismisses the top sheet on Android Back and releases its handler", async () 
   expect(mocks.push).not.toHaveBeenCalled();
   expect(mocks.replace).not.toHaveBeenCalled();
 });
+
+it("keeps questions inline, paginates choices, and submits every answer together", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "questions",
+    method: "form",
+    fields: [
+      {
+        id: "framework",
+        label: "Framework",
+        description: "Which framework?",
+        type: "select",
+        required: true,
+        allowOther: true,
+        options: [
+          {
+            value: "react",
+            label: "React",
+            description: "Use the existing components",
+          },
+          { value: "vue", label: "Vue" },
+        ],
+      },
+      {
+        id: "features",
+        label: "Features",
+        description: "Which features?",
+        type: "multiselect",
+        required: true,
+        options: [
+          { value: "search", label: "Search" },
+          { value: "history", label: "History" },
+        ],
+      },
+    ],
+  };
+  await render();
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  expect(container.textContent).toContain("Use the existing components");
+  expect(container.textContent).not.toContain("Which features?");
+  await click("React");
+  expect(mocks.send).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("Which features?");
+  await click("Search");
+  await click("History");
+  await click("Question 1 of 2: Framework");
+  expect(container.textContent).toContain("Which framework?");
+  await click("Next");
+  await click("Submit");
+  expect(mocks.send).toHaveBeenCalledWith({
+    type: "interaction_response",
+    id: "questions",
+    values: { framework: "react", features: ["search", "history"] },
+  });
+});
+
+it("keeps a custom answer after a failed submission and resets for the next request", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "custom",
+    method: "form",
+    fields: [
+      {
+        id: "choice",
+        label: "Choice",
+        type: "select",
+        required: true,
+        allowOther: true,
+        options: [{ value: "A", label: "Option A" }],
+      },
+    ],
+  };
+  await render();
+  await click("Option A");
+  const field = container.querySelector(
+    'input[aria-label="Choice"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    field.value = "Something else";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  mocks.send.mockRejectedValueOnce(new Error("Connection lost"));
+  await click("Submit");
+  expect(mocks.send.mock.lastCall?.[0]).toEqual({
+    type: "interaction_response",
+    id: "custom",
+    values: { choice: "Something else" },
+  });
+  expect(field.value).toBe("Something else");
+  expect(container.textContent).toContain("Connection lost");
+  await click("Submit");
+  expect(mocks.send).toHaveBeenCalledTimes(2);
+  mocks.snapshot!.pendingInteraction = {
+    ...mocks.snapshot!.pendingInteraction,
+    id: "next",
+  };
+  await render();
+  expect(
+    (container.querySelector('input[aria-label="Choice"]') as HTMLInputElement)
+      .value,
+  ).toBe("");
+  expect(
+    (
+      container.querySelector(
+        'button[aria-label="Submit"]',
+      ) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+});
+
+it.each(["input", "editor", "select"])(
+  "renders %s questions inline for extension providers",
+  async (method) => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "extension",
+      method,
+      title: "Your answer",
+      ...(method === "select"
+        ? { options: ["Option"] }
+        : { prefill: "Draft answer" }),
+    };
+    await render();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    if (method === "select") await click("Option");
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "interaction_response",
+      id: "extension",
+      value: method === "select" ? "Option" : "Draft answer",
+    });
+  },
+);
+
+it("dismisses required questions but skips optional inputs without cancelling them", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "required",
+    method: "input",
+    title: "Answer",
+  };
+  await render();
+  await click("Dismiss");
+  expect(mocks.send.mock.lastCall?.[0]).toEqual({
+    type: "interaction_response",
+    id: "required",
+    cancelled: true,
+  });
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "optional",
+    method: "input",
+    title: "Comment",
+    optional: true,
+    dismissLabel: "Skip",
+  };
+  await render();
+  await click("Skip");
+  expect(mocks.send.mock.lastCall?.[0]).toEqual({
+    type: "interaction_response",
+    id: "optional",
+    value: "",
+  });
+});
+
+it.each(["select", "multiselect"])(
+  "keeps a typed %s alternative when it passes through an option label",
+  async (type) => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "custom-prefix",
+      method: "form",
+      fields: [
+        {
+          id: "framework",
+          label: "Framework",
+          type,
+          required: true,
+          allowOther: true,
+          options: [{ value: "React", label: "React" }],
+        },
+      ],
+    };
+    await render();
+    const field = container.querySelector(
+      'input[aria-label="Framework"]',
+    ) as HTMLInputElement;
+    for (const char of "React Native") {
+      await act(async () => {
+        field.value += char;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(field.value).toBe("React Native");
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0].values).toEqual({
+      framework: type === "multiselect" ? ["React Native"] : "React Native",
+    });
+    await click("React");
+    expect(field.value).toBe("");
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0].values).toEqual({
+      framework: type === "multiselect" ? ["React"] : "React",
+    });
+  },
+);

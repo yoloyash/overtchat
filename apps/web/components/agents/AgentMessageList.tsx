@@ -99,6 +99,7 @@ function textOfContent(content: unknown): string {
 
 export function AgentMessageList({
   providerLabel,
+  question,
   messages,
   streaming,
   activity,
@@ -114,6 +115,7 @@ export function AgentMessageList({
   onImplementPlan,
 }: {
   providerLabel: string;
+  question?: React.ReactNode;
   messages: unknown[];
   streaming: boolean;
   activity: AgentRunActivity | null;
@@ -157,7 +159,7 @@ export function AgentMessageList({
           ref={contentRef}
           className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-8 pb-8"
         >
-          {messages.length === 0 && !error && !activity ? (
+          {messages.length === 0 && !error && !activity && !question ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <Terminal className="size-6 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium">{workspaceName}</p>
@@ -203,13 +205,14 @@ export function AgentMessageList({
                   </div>
                 );
               })}
-              {activity && !activityAlreadyVisible && (
+              {activity && !question && !activityAlreadyVisible && (
                 <AgentRunIndicator
                   activity={activity}
                   startedAt={activityStartedAt}
                   providerLabel={providerLabel}
                 />
               )}
+              {question && <div className="mt-4">{question}</div>}
               {error && (
                 <AgentErrorNotice error={presentAgentError(error)} />
               )}

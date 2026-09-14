@@ -111,7 +111,13 @@ describe("tool detail presentation", () => {
       id: "codex:12",
       method: "select",
       title: "Approve command?",
-      message: "Needs network access\n\n$ npm install\necho finished",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
+      message: "Needs network access",
+      toolDetail: { type: "shell", command: "npm install\necho finished" },
       options: ["Allow once", "Allow for session", "Deny"],
     };
     const result = approvalDetails(request);
@@ -121,7 +127,7 @@ describe("tool detail presentation", () => {
     ]);
     expect(result.choices[1].value).toBe("Allow for session");
     expect(
-      approvalDetails({ ...request, title: "Which approach?" }).choices,
+      approvalDetails({ ...request, approvalKind: undefined }).choices,
     ).toEqual([]);
   });
 });
@@ -130,9 +136,14 @@ it("renders Codex network and filesystem permissions as labelled values", () => 
   const result = approvalDetails({
     id: "codex:permission",
     title: "Approve additional permissions?",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
     options: ["Allow once", "Allow for session", "Deny"],
-    message:
-      'Needs access\n\nNetwork: {"enabled":true}\n\nFiles: {"write":["/repo"]}',
+    message: "Needs access",
+    toolDetail: { type: "json", value: { network: { enabled: true }, fileSystem: { write: ["/repo"] } } },
   });
   expect(result.message).toBe("Needs access");
   expect(result.sections.map((section) => section.value)).toEqual([

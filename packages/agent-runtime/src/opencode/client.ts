@@ -165,6 +165,7 @@ function questionFields(questions: QuestionInfo[]) {
         : ("text" as const),
     required: true,
     secret: false,
+    allowOther: question.custom !== false,
     options: question.options.map((option) => ({
       value: option.label,
       label: option.label,

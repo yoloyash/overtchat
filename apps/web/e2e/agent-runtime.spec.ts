@@ -1934,27 +1934,146 @@ test("shows durable turn activity without changing completed tool status", async
     ],
   };
   await page.reload();
+  const questionCard = page.getByTestId("agent-question-card");
+  await expect(questionCard).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByRole("dialog", { name: "GitHub needs your input" }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Token")).toHaveAttribute("type", "password");
-  await page.getByLabel("Token").fill("secret");
-  await page.getByLabel("Environment").selectOption("staging");
-  await page.getByRole("checkbox", { name: "Repo", exact: true }).check();
-  await page
-    .getByRole("switch", { name: "Private repository (optional)", exact: true })
+    questionCard.getByLabel("Personal access token", { exact: true }),
+  ).toHaveAttribute("type", "password");
+  await questionCard
+    .getByLabel("Personal access token", { exact: true })
+    .fill("secret");
+  await questionCard.getByRole("button", { name: "Next", exact: true }).click();
+  await questionCard
+    .getByRole("radio", { name: "Production", exact: true })
+    .focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    questionCard.getByRole("radio", { name: "Staging", exact: true }),
+  ).toBeChecked();
+  await expect(
+    questionCard.getByRole("radio", { name: "Staging", exact: true }),
+  ).toBeFocused();
+  await questionCard.getByRole("button", { name: "Next", exact: true }).click();
+  await questionCard
+    .getByRole("checkbox", { name: "Repo", exact: true })
     .click();
-  await page.getByRole("button", { name: "Submit" }).click();
-  await expect.poll(() => interactionResponse).toMatchObject({
-    type: "interaction_response",
-    id: "mcp-form",
-    values: {
-      token: "secret",
-      environment: "staging",
-      scopes: ["repo"],
-      private: true,
-    },
+  await questionCard.getByRole("button", { name: "Next", exact: true }).click();
+  await questionCard.getByRole("radio", { name: "Yes", exact: true }).click();
+  await questionCard
+    .getByRole("tab", { name: "Question 2 of 4: Environment" })
+    .click();
+  await expect(
+    questionCard.getByRole("radio", { name: "Staging", exact: true }),
+  ).toBeChecked();
+  await questionCard
+    .getByRole("tab", { name: "Question 4 of 4: Private repository" })
+    .click();
+  await page.screenshot({
+    path: testInfo.outputPath("inline-agent-question-desktop.png"),
   });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await questionCard.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("inline-agent-question-mobile.png"),
+  });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await questionCard
+    .getByRole("button", { name: "Submit", exact: true })
+    .click();
+  await expect
+    .poll(() => interactionResponse)
+    .toMatchObject({
+      type: "interaction_response",
+      id: "mcp-form",
+      values: {
+        token: "secret",
+        environment: "staging",
+        scopes: ["repo"],
+        private: true,
+      },
+    });
+
+  interactionResponse = null;
+  snapshot.pendingInteraction = {
+    type: "interaction_request",
+    id: "codex:approval",
+    method: "select",
+    title: "Run dependency checks?",
+    approvalKind: "tool",
+    approveValue: "Allow once",
+    alwaysValue: "Allow for session",
+    alwaysLabel: "Allow for session",
+    denyValue: "Deny",
+    message: "Check the workspace dependencies.",
+    toolDetail: { type: "shell", command: "npm test" },
+  };
+  await page.reload();
+  const approvalDialog = page.getByRole("dialog", {
+    name: "Run dependency checks?",
+  });
+  await expect(approvalDialog).toBeVisible();
+  await expect(questionCard).toHaveCount(0);
+  await expect(
+    approvalDialog.getByText("npm test", { exact: true }),
+  ).toBeVisible();
+  await approvalDialog
+    .getByRole("button", { name: "Allow for session", exact: true })
+    .click();
+  await expect
+    .poll(() => interactionResponse)
+    .toMatchObject({
+      type: "interaction_response",
+      id: "codex:approval",
+      value: "Allow for session",
+    });
+
+  interactionResponse = null;
+  snapshot.pendingInteraction = {
+    type: "interaction_request",
+    id: "custom-question",
+    method: "form",
+    fields: [
+      {
+        id: "framework",
+        label: "Framework",
+        description: "Which framework?",
+        type: "select",
+        required: true,
+        allowOther: true,
+        options: [
+          {
+            value: "React",
+            label: "React",
+            description: "Use the current framework",
+          },
+          { value: "Vue", label: "Vue" },
+        ],
+      },
+    ],
+  };
+  await page.reload();
+  const customInput = questionCard.getByRole("textbox", {
+    name: "Which framework?",
+  });
+  await customInput.pressSequentially("React Native");
+  await expect(customInput).toHaveValue("React Native");
+  await expect(
+    questionCard.getByRole("radio", { name: "React", exact: true }),
+  ).not.toBeChecked();
+  await questionCard.getByRole("radio", { name: "Vue", exact: true }).click();
+  await expect(customInput).toHaveValue("");
+  await customInput.pressSequentially("React Native");
+  await questionCard
+    .getByRole("button", { name: "Submit", exact: true })
+    .click();
+  await expect
+    .poll(() => interactionResponse)
+    .toMatchObject({
+      type: "interaction_response",
+      id: "custom-question",
+      values: { framework: "React Native" },
+    });
 
   interactionResponse = null;
   snapshot.pendingInteraction = {

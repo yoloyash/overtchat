@@ -26,6 +26,8 @@ import {
 import { AgentComposer } from "@/components/agents/AgentComposer";
 import { AgentConnectionFeedback } from "@/components/agents/AgentConnectionFeedback";
 import { AgentControls } from "@/components/agents/AgentControls";
+import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
+import { AgentQuestionCard } from "@/components/agents/AgentQuestionCard";
 import { AgentInteraction } from "@/components/agents/AgentInteraction";
 import { AgentTranscript } from "@/components/agents/AgentTranscript";
 import { useAgentDraft } from "@/lib/agents/drafts";
@@ -222,7 +224,7 @@ function AgentSession({
           ),
         }}
       />
-      {snapshot?.pendingInteraction && !interaction && (
+      {snapshot?.pendingInteraction && !isAgentQuestion(snapshot.pendingInteraction) && !interaction && (
         <View
           style={{
             marginHorizontal: 12,
@@ -277,6 +279,12 @@ function AgentSession({
       {snapshot && (
         <AgentTranscript
           snapshot={snapshot}
+          question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
+            <AgentQuestionCard key={snapshot.pendingInteraction.id} request={snapshot.pendingInteraction}
+              pending={mutation.isPending || !ready} error={error}
+              onRespond={(response) => void execute({ type: "interaction_response", id: snapshot.pendingInteraction!.id, ...response })}
+            />
+          ) : undefined}
           disabled={!ready || mutation.isPending}
           onImplementPlan={implementPlan}
         />
@@ -353,7 +361,7 @@ function AgentSession({
             void execute({ type: "remove_queued_message", id })
           }
           supportsImages={model?.input.includes("image") === true}
-          disabled={!ready}
+          disabled={!ready || !!snapshot?.pendingInteraction}
           sending={mutation.isPending}
           running={busy}
           provider={snapshot?.provider}
@@ -412,7 +420,7 @@ function AgentSession({
         onClose={() => setContextVisible(false)}
         stale={!!snapshot && session.status !== "connected"}
       />
-      {snapshot?.pendingInteraction && (
+      {snapshot?.pendingInteraction && !isAgentQuestion(snapshot.pendingInteraction) && (
         <AgentInteraction
           key={snapshot.pendingInteraction.id}
           request={snapshot.pendingInteraction}

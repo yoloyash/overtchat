@@ -27,10 +27,12 @@ const position = {
 
 export function AgentTranscript({
   snapshot,
+  question,
   onImplementPlan,
   disabled,
 }: {
   snapshot: AgentRuntimeSnapshot;
+  question?: React.ReactElement;
   onImplementPlan: (plan: string) => void;
   disabled: boolean;
 }) {
@@ -105,7 +107,7 @@ export function AgentTranscript({
           );
         }}
         scrollEventThrottle={16}
-        ListEmptyComponent={
+        ListEmptyComponent={question ? null :
           <View style={{ paddingVertical: 36, gap: 8 }}>
             <AgentText title>What would you like to work on?</AgentText>
             <AgentText muted>
@@ -122,7 +124,7 @@ export function AgentTranscript({
           />
         )}
         ListFooterComponent={
-          active ? <AgentText muted>Working…</AgentText> : null
+          question ?? (active ? <AgentText muted>Working…</AgentText> : null)
         }
       />
       {away && (
