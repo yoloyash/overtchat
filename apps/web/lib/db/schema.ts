@@ -729,6 +729,7 @@ export const modelConfigs = sqliteTable(
   {
     id: text("id").primaryKey(),
     label: text("label").notNull(),
+    modelType: text("model_type", { enum: ["chat", "image"] }).default("chat").notNull(),
     providerId: text("provider_id", { enum: PROVIDER_IDS })
       .default("custom")
       .notNull(),
@@ -765,6 +766,9 @@ export const modelConfigs = sqliteTable(
       .notNull(),
   },
   (table) => [
+    uniqueIndex("model_configs_activeImage_idx")
+      .on(table.enabled)
+      .where(sql`${table.modelType} = 'image' AND ${table.enabled} = true`),
     uniqueIndex("model_configs_taskModel_idx")
       .on(table.taskModel)
       .where(sql`${table.taskModel} = true`),

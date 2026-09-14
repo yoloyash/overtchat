@@ -41,7 +41,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Invalid voice session request." }, { status: 400 });
   }
   const modelConfig = await getModelConfig(parsed.data.modelConfigId);
-  if (!modelConfig?.enabled) {
+  if (!modelConfig?.enabled || modelConfig.modelType === "image") {
     return Response.json({ error: "Model config not found." }, { status: 404 });
   }
 

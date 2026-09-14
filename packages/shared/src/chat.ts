@@ -35,6 +35,8 @@ export interface ChatRequestBody {
   reasoningLevel?: ChatReasoningLevel;
   webSearchEnabled?: boolean;
   forceSearch?: boolean;
+  /** Explicitly request an image on this turn; otherwise image tools remain automatic. */
+  imageGeneration?: import("./images").ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
   temporary?: boolean;

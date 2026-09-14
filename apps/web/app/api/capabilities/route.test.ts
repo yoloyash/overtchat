@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   listCapabilities: vi.fn(),
+  imageModel: vi.fn(),
   getVoiceCapability: vi.fn(),
 }));
 
@@ -13,6 +14,7 @@ vi.mock("@/lib/auth/server", () => ({
 vi.mock("@/lib/db/serverCapabilities", () => ({
   listServerCapabilities: mocks.listCapabilities,
 }));
+vi.mock("@/lib/db/modelConfigs", () => ({ getImageModelConfig: mocks.imageModel }));
 vi.mock("@/lib/voice/capability", () => ({
   getVoiceCapability: mocks.getVoiceCapability,
 }));
@@ -43,6 +45,13 @@ describe("public capabilities", () => {
     mocks.getSession.mockResolvedValue(null);
 
     expect((await GET(request)).status).toBe(401);
+  });
+
+  it("exposes only image availability and model, never connection details", async () => {
+    mocks.imageModel.mockReturnValue({ providerId: "openai", baseUrl: "https://private.example/v1", apiKey: "private-key", model: "image-model" });
+    const body = await (await GET(request)).json();
+    expect(body.capabilities.images).toEqual({ available: true, model: "image-model", supportsQuality: true });
+    expect(JSON.stringify(body)).not.toContain("private");
   });
 
   it("advertises realtime voice when it is ready", async () => {

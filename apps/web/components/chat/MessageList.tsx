@@ -36,6 +36,7 @@ export function MessageList({
   loadingOlderMessages,
   onLoadOlderMessages,
   onRegenerate,
+  onImageReference,
   onEdit,
   onReconnect,
 }: {
@@ -52,6 +53,7 @@ export function MessageList({
   loadingOlderMessages: boolean;
   onLoadOlderMessages: () => void;
   onRegenerate: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onReconnect: () => void;
 }) {
@@ -165,6 +167,7 @@ export function MessageList({
                     streaming={streaming && isLast}
                     canAct={!streaming && configured}
                     onRegenerate={onRegenerate}
+                    onImageReference={onImageReference}
                     onEdit={onEdit}
                     speech={speech}
                     showStats={showStats}

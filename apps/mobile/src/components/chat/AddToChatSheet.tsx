@@ -23,6 +23,8 @@ const TOOLS: { key: ToolKey; label: string; icon: keyof typeof Ionicons.glyphMap
 export const AddToChatSheet = forwardRef<
   AddToChatSheetRef,
   {
+    imageAvailable?: boolean;
+    onCreateImage?: () => void;
     searchAvailable: boolean;
     searchUnavailableReason: string;
     searchRequested: boolean;
@@ -31,6 +33,7 @@ export const AddToChatSheet = forwardRef<
   }
 >(function AddToChatSheet(
   {
+    imageAvailable, onCreateImage,
     searchAvailable,
     searchUnavailableReason,
     searchRequested,
@@ -163,6 +166,9 @@ export const AddToChatSheet = forwardRef<
             thumbColor={colors.background}
           />
         </View>
+        {imageAvailable && <Pressable accessibilityRole="button" onPress={onCreateImage} style={{ padding: 12, opacity: imageAvailable ? 1 : 0.5 }}>
+          <Text style={{ color: colors.popoverForeground, fontFamily: fonts.sansMedium }}>Create image</Text>
+        </Pressable>}
       </BottomSheetView>
     </BottomSheetModal>
   );

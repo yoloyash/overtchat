@@ -38,6 +38,7 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { StatsPopover } from "./StatsPopover";
 
@@ -56,6 +57,7 @@ export function MessageBubble({
   streaming,
   canAct,
   onRegenerate,
+  onImageReference,
   onEdit,
   speech,
   showStats,
@@ -65,6 +67,7 @@ export function MessageBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -126,6 +129,7 @@ export function MessageBubble({
       streaming={streaming}
       canAct={canAct}
       onRegenerate={onRegenerate}
+      onImageReference={onImageReference}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -138,6 +142,7 @@ function AssistantBubble({
   streaming,
   canAct,
   onRegenerate,
+  onImageReference,
   speech,
   showStats,
   stats,
@@ -146,6 +151,7 @@ function AssistantBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -197,6 +203,16 @@ function AssistantBubble({
                 >
                   {(seg.part as { text: string }).text}
                 </Streamdown>
+              );
+            }
+            if (seg.kind === "image") {
+              return (
+                <GeneratedImageCard
+                  key={seg.index}
+                  part={seg.part}
+                  streaming={streaming}
+                  onReference={canAct ? onImageReference : undefined}
+                />
               );
             }
             if (seg.kind === "memory") {

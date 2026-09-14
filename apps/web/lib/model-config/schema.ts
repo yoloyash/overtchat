@@ -23,6 +23,7 @@ export interface CatalogModelPricing extends ModelPricing {
 
 /** Admin-facing model config DTO. Includes secrets and provider options for editing. */
 export interface AdminModelConfig {
+  modelType: "chat" | "image";
   id: string;
   label: string;
   providerId: ProviderId;
@@ -121,6 +122,7 @@ export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(
 ).superRefine(validateProviderConnection);
 
 export const ModelConfigSchema = ProviderConnectionObject.extend({
+  modelType: z.enum(["chat", "image"]).default("chat"),
   label: z.string().trim().min(1, "Display name is required"),
   ...RuntimeModelFields,
   pricing: ModelPricingSchema.nullish().transform((value) => value ?? null),
@@ -155,7 +157,48 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
     .int()
     .nullish()
     .transform((value) => value ?? 0),
-}).superRefine(validateProviderConnection);
+})
+  .superRefine((value, context) => {
+    validateProviderConnection(value, context);
+    if (value.modelType === "image") {
+      if (value.providerId !== "openai" && value.providerId !== "google") {
+        context.addIssue({
+          code: "custom",
+          path: ["providerId"],
+          message: "Image models support OpenAI and Google Gemini.",
+        });
+      }
+      if (!isHttpEndpoint(value.baseUrl)) return;
+      const endpoint = new URL(value.baseUrl);
+      if (
+        endpoint.username ||
+        endpoint.password ||
+        endpoint.search ||
+        endpoint.hash
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["baseUrl"],
+          message:
+            "Use an endpoint without credentials, query parameters, or fragments.",
+        });
+      }
+    }
+  })
+  .transform((value) =>
+    value.modelType === "image"
+      ? {
+          ...value,
+          toolCallingEnabled: false,
+          systemPrompt: null,
+          providerOptions: null,
+          contextWindow: null,
+          discoveredContextWindow: null,
+          discoveredCapabilities: null,
+          pricing: null,
+        }
+      : value,
+  );
 
 export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
 

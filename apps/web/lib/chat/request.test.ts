@@ -27,6 +27,14 @@ const validBody = {
 };
 
 describe("chat request parsing", () => {
+  it("validates image options and binds them to the idempotency fingerprint", async () => {
+    const initial = await parseChatRequest(request({ ...validBody, imageGeneration: { size: "1024x1024", quality: "low" } }));
+    expect(initial.imageGeneration).toEqual({ size: "1024x1024", quality: "low" });
+    const changed = { ...initial, imageGeneration: { size: "1024x1024" as const, quality: "high" as const } };
+    expect(chatRequestFingerprint(initial)).not.toBe(chatRequestFingerprint(changed));
+    await expect(parseChatRequest(request({ ...validBody, imageGeneration: { size: "unbounded" } }))).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
   it("validates and normalizes an explicit submit request", async () => {
     await expect(
       parseChatRequest(

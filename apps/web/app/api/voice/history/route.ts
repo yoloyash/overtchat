@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   await ensureChatTitle({
     chatId: ticket.chatId,
     userId: ticket.userId,
-    fallbackModelConfig: selectedModel,
+    fallbackModelConfig: selectedModel?.modelType === "image" ? null : selectedModel,
   });
   const chat = await getChat(ticket.chatId, ticket.userId);
   return Response.json({

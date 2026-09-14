@@ -2,6 +2,8 @@ import type { UIMessage } from "ai";
 import { isMcpToolName } from "./mcp";
 import { isMemoryToolPart, type MemoryToolPart } from "./memory-tools";
 
+import { isImageToolPart, type ImageToolPart } from "./images";
+
 type AnyPart = UIMessage["parts"][number];
 
 const ACTIVITY_TYPES = new Set([
@@ -18,6 +20,7 @@ export function isActivityPart(part: AnyPart): boolean {
 }
 
 export type MessageSegment =
+  | { kind: "image"; part: ImageToolPart; index: number }
   | { kind: "text"; part: AnyPart; index: number }
   | { kind: "activity"; parts: AnyPart[]; startIndex: number }
   | { kind: "memory"; parts: MemoryToolPart[]; startIndex: number };
@@ -62,6 +65,11 @@ export function groupMessageParts(
       if (!text?.trim()) return;
       flush();
       segments.push({ kind: "text", part, index });
+      return;
+    }
+    if (isImageToolPart(part)) {
+      flush();
+      segments.push({ kind: "image", part, index });
       return;
     }
     if (isMemoryToolPart(part)) {

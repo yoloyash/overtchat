@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { FileUIPart } from "ai";
 import type {
+  ImageGenerationOptions,
   ChatReasoningLevel,
   ModelReasoningControls,
 } from "@overtchat/shared";
@@ -22,6 +23,7 @@ import {
   Check,
   Cpu,
   Ghost,
+  ImageIcon,
   Globe,
   Loader2,
   Library,
@@ -58,6 +60,7 @@ import {
   type SlashCommand,
 } from "@/lib/chat/slash-commands";
 import type { PublicModelConfig } from "@/lib/model-config/schema";
+import { ImageOptions } from "./ImageOptions";
 import { CategoryIcon } from "./attachment-icons";
 import {
   SlashCommandMenu,
@@ -72,6 +75,7 @@ import {
 
 export interface ComposerHandle {
   addFiles: (files: readonly File[]) => void;
+  addReference: (file: FileUIPart) => void;
   focus: (options?: FocusOptions) => void;
 }
 
@@ -94,6 +98,11 @@ interface ComposerProps {
   searchAvailable: boolean;
   searchUnavailableReason: string;
   searchRequested: boolean;
+  imageAvailable?: boolean;
+  imageModel?: string | null;
+  imageSupportsQuality?: boolean;
+  imageOptions?: ImageGenerationOptions;
+  onImageOptions?: (options: ImageGenerationOptions | undefined) => void;
   dropActive: boolean;
   models: PublicModelConfig[] | null;
   selectedModelId: string;
@@ -125,6 +134,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   searchAvailable,
   searchUnavailableReason,
   searchRequested,
+  imageAvailable, imageModel, imageSupportsQuality, imageOptions, onImageOptions,
   dropActive,
   models,
   selectedModelId,
@@ -188,11 +198,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           0,
         );
       },
+      addReference(file) {
+        addReadyParts([file]);
+        textareaRef.current?.focus({ preventScroll: true });
+      },
       focus(options) {
         textareaRef.current?.focus(options);
       },
     }),
-    [addFiles],
+    [addFiles, addReadyParts],
   );
 
   const dictation = useDictation((text) => {
@@ -500,6 +514,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
           )}
         >
+          {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-1 pt-1">
               {attachments.map((att) => (
@@ -601,6 +616,14 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           <span className="block text-xs text-muted-foreground">Reuse files from your chats</span>
                         </span>
                       </Menu.Item>
+                      {imageAvailable && <Menu.Item
+                        disabled={!attachmentsEnabled}
+                        onClick={() => onImageOptions?.(imageOptions ? undefined : { size: "auto", quality: "auto" })}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                      >
+                        <ImageIcon className="size-4 text-muted-foreground" />
+                        <span><span className="block font-medium">Create image</span><span className="block text-xs text-muted-foreground">{imageModel}</span></span>
+                      </Menu.Item>}
                       <Menu.CheckboxItem
                         checked={searchRequested}
                         onCheckedChange={onToggleSearch}

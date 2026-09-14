@@ -36,6 +36,7 @@ export function MessageList({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  onImageReference,
   localAnchorRequestKey,
   readOnly = false,
 }: {
@@ -51,6 +52,7 @@ export function MessageList({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   localAnchorRequestKey: number;
   readOnly?: boolean;
 }) {
@@ -162,6 +164,7 @@ export function MessageList({
               onCancelEdit={onCancelEdit}
               onSaveEdit={onSaveEdit}
               onRegenerate={onRegenerate}
+              onImageReference={onImageReference}
               readOnly={readOnly}
             />
           </View>

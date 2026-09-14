@@ -13,6 +13,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
+import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
@@ -27,6 +28,7 @@ export function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  onImageReference,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -37,6 +39,7 @@ export function MessageBubble({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -179,6 +182,16 @@ export function MessageBubble({
                 key={`t-${seg.index}`}
                 text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
+              />
+            );
+          }
+          if (seg.kind === "image") {
+            return (
+              <GeneratedImageCard
+                key={`i-${seg.index}`}
+                part={seg.part}
+                streaming={streaming}
+                onReference={readOnly ? undefined : onImageReference}
               />
             );
           }

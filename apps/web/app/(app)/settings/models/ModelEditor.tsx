@@ -7,6 +7,13 @@ import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/toast";
 import { DEFAULT_MODEL_SYSTEM_PROMPT } from "@/lib/model-config/defaults";
@@ -24,10 +31,7 @@ import {
   useUpdateModelConfig,
 } from "@/lib/queries/modelConfigs";
 import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
-import {
-  AdvancedFields,
-  type ModelPricingDraft,
-} from "./AdvancedFields";
+import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
 import {
@@ -59,15 +63,14 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const [draft, setDraft] = useState<ModelEditorDraft>(() => {
     if (existing) {
       return {
+        modelType: existing.modelType,
         label: existing.label,
         providerId: existing.providerId,
         apiFormat: existing.apiFormat,
         baseUrl: existing.baseUrl,
         apiKey: existing.apiKey ?? "",
         model: existing.model,
-        pricing: existing.pricing
-          ? pricingDraftFrom(existing.pricing)
-          : null,
+        pricing: existing.pricing ? pricingDraftFrom(existing.pricing) : null,
         contextWindow: existing.contextWindow,
         discoveredContextWindow: existing.discoveredContextWindow,
         discoveredCapabilities: existing.discoveredCapabilities,
@@ -79,6 +82,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       };
     }
     return {
+      modelType: "chat",
       label: "",
       providerId: "openai",
       apiFormat: PROVIDERS.openai.defaultApiFormat,
@@ -128,11 +132,11 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const updateMut = useUpdateModelConfig();
   const saving = createMut.isPending || updateMut.isPending;
 
+  const isImage = draft.modelType === "image";
   const requiresKey = getProvider(draft.providerId).requiresApiKey;
   const parsedPricing =
     draft.pricing === null ? null : parsePricingDraft(draft.pricing);
-  const pricingIsValid =
-    draft.pricing === null || parsedPricing !== null;
+  const pricingIsValid = draft.pricing === null || parsedPricing !== null;
 
   // A new model's prefilled prompt has to be visible to be worth prefilling.
   // When editing, stay collapsed unless the section holds more than the default.
@@ -150,8 +154,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !saving &&
     !!draft.baseUrl &&
     !!draft.model &&
-    pricingIsValid &&
-    !providerOptionsError &&
+    (isImage || pricingIsValid) &&
+    (isImage || !providerOptionsError) &&
     !(requiresKey && !draft.apiKey);
   const stillEditingOriginalConnection =
     existing !== undefined &&
@@ -215,7 +219,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     setSaveError("");
 
     let providerOptions: unknown = null;
-    if (providerOptionsText.trim()) {
+    if (!isImage && providerOptionsText.trim()) {
       try {
         providerOptions = JSON.parse(providerOptionsText);
       } catch (err) {
@@ -230,8 +234,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     }
 
     const pricing =
-      draft.pricing === null ? null : parsePricingDraft(draft.pricing);
-    if (draft.pricing !== null && pricing === null) {
+      isImage || draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+    if (!isImage && draft.pricing !== null && pricing === null) {
       setSaveError("Enter all four pricing rates as nonnegative numbers.");
       return;
     }
@@ -249,6 +253,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           ? draft.discoveredCapabilities
           : detectedCapabilities,
       providerOptions,
+      ...(isImage ? { contextWindow: null, discoveredContextWindow: null, discoveredCapabilities: null } : {}),
     });
     if (!parsed.success) {
       setSaveError(parsed.error.issues[0]?.message ?? "Invalid input");
@@ -294,11 +299,50 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       />
 
       <form onSubmit={submit} className="space-y-8">
+        <SettingsSection title="Model type">
+          <SettingsRow
+            title="Type"
+            htmlFor="p-model-type"
+            description="Chat models handle conversations. Image models generate and edit pictures through chat tools."
+          >
+            <Select
+              value={draft.modelType}
+              onValueChange={(value) => {
+                if (value !== "chat" && value !== "image") return;
+                setDraft((current) => ({
+                  ...current,
+                  modelType: value,
+                  ...(value === "image" &&
+                  current.providerId !== "openai" &&
+                  current.providerId !== "google"
+                    ? {
+                        providerId: "openai",
+                        apiFormat: "auto",
+                        baseUrl: PROVIDERS.openai.defaultBaseUrl,
+                        apiKey: "",
+                        model: "",
+                      }
+                    : {}),
+                }));
+              }}
+            >
+              <SelectTrigger id="p-model-type">
+                <SelectValue>{isImage ? "Image" : "Chat"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="chat">Chat</SelectItem>
+                <SelectItem value="image">Image</SelectItem>
+              </SelectContent>
+            </Select>
+          </SettingsRow>
+        </SettingsSection>
         <SettingsSection
           title="Connection"
           description="Provider, credentials, model discovery, and connectivity."
         >
           <ConnectionFields
+            key={draft.modelType}
+            imageModel={isImage}
             draft={{
               providerId: draft.providerId,
               apiFormat: draft.apiFormat,
@@ -338,14 +382,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               setDetectedCapabilities(next ?? null)
             }
             onCatalogCapabilities={setCatalogCapabilities}
-            onCatalogPricing={(next) =>
-              setCatalogPricing(next ?? null)
-            }
+            onCatalogPricing={(next) => setCatalogPricing(next ?? null)}
             onCapabilitySuggestion={(next) => {
-              if (
-                !isEditing &&
-                typeof next?.toolCalling === "boolean"
-              ) {
+              if (!isEditing && typeof next?.toolCalling === "boolean") {
                 setDraft((current) => ({
                   ...current,
                   toolCallingEnabled: next.toolCalling ?? true,
@@ -355,50 +394,62 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             autoFetchModels={!isEditing}
           />
 
-          <SettingsRow
-            title="Tool calling"
-            description={toolCallingDescription(capabilitiesHint)}
-            align="center"
-            controlAlign="end"
-            layout="toggle"
-          >
-            <Switch
-              checked={draft.toolCallingEnabled}
-              onCheckedChange={(next) =>
-                setDraft((d) => ({ ...d, toolCallingEnabled: next }))
-              }
-              aria-label={
-                draft.toolCallingEnabled
-                  ? "Disable tool calling"
-                  : "Enable tool calling"
-              }
-            />
-          </SettingsRow>
+          {!isImage && (
+            <>
+              <SettingsRow
+                title="Tool calling"
+                description={toolCallingDescription(capabilitiesHint)}
+                align="center"
+                controlAlign="end"
+                layout="toggle"
+              >
+                <Switch
+                  checked={draft.toolCallingEnabled}
+                  onCheckedChange={(next) =>
+                    setDraft((d) => ({ ...d, toolCallingEnabled: next }))
+                  }
+                  aria-label={
+                    draft.toolCallingEnabled
+                      ? "Disable tool calling"
+                      : "Enable tool calling"
+                  }
+                />
+              </SettingsRow>
 
-          <SettingsRow
-            title="Test connection"
-            description={
-              draft.toolCallingEnabled
-                ? "Send a short request and verify tool calling with the current connection settings."
-                : "Send a short text request with the current connection settings."
-            }
-            controlAlign="end"
-          >
-            <ConnectionTester
-              key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}`}
-              args={pingArgs}
-              disabled={requiresKey && !draft.apiKey}
-            />
-          </SettingsRow>
+              <SettingsRow
+                title="Test connection"
+                description={
+                  draft.toolCallingEnabled
+                    ? "Send a short request and verify tool calling with the current connection settings."
+                    : "Send a short text request with the current connection settings."
+                }
+                controlAlign="end"
+              >
+                <ConnectionTester
+                  key={`${draft.providerId}|${draft.apiFormat}|${draft.baseUrl}|${draft.apiKey}|${draft.model}|${draft.toolCallingEnabled}|${providerOptionsText}`}
+                  args={pingArgs}
+                  disabled={requiresKey && !draft.apiKey}
+                />
+              </SettingsRow>
+            </>
+          )}
         </SettingsSection>
 
         <SettingsSection
-          title="Chat availability"
-          description="How this model appears to people using chat."
+          title={isImage ? "Image availability" : "Chat availability"}
+          description={
+            isImage
+              ? "One image model can be enabled at a time. Enabling this model switches off the previous image model."
+              : "How this model appears to people using chat."
+          }
         >
           <SettingsRow
             title="Display name"
-            description="Shown in the chat model picker."
+            description={
+              isImage
+                ? "Shown in model settings."
+                : "Shown in the chat model picker."
+            }
             htmlFor="p-label"
             align="center"
             controlAlign="end"
@@ -419,8 +470,12 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </SettingsRow>
 
           <SettingsRow
-            title="Available in chat"
-            description="Turn off to keep this model saved without showing it in chat."
+            title={isImage ? "Enabled" : "Available in chat"}
+            description={
+              isImage
+                ? "Makes image generation and editing available to chats with tool calling enabled."
+                : "Turn off to keep this model saved without showing it in chat."
+            }
             align="center"
             controlAlign="end"
             layout="toggle"
@@ -435,34 +490,36 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </SettingsRow>
         </SettingsSection>
 
-        <AdvancedFields
-          contextWindow={draft.contextWindow}
-          onContextWindowChange={(next) =>
-            setDraft((d) => ({ ...d, contextWindow: next }))
-          }
-          contextWindowPlaceholder={contextWindowPlaceholder}
-          resolvedContextWindow={
-            stillEditingOriginalConnection &&
-            detectedContextWindow === undefined
-              ? existing.resolvedContextWindow
-              : undefined
-          }
-          pricing={draft.pricing}
-          catalogPricing={catalogPricingHint}
-          onPricingChange={(next) =>
-            setDraft((d) => ({ ...d, pricing: next }))
-          }
-          systemPrompt={draft.systemPrompt ?? ""}
-          onSystemPromptChange={(next) =>
-            setDraft((d) => ({ ...d, systemPrompt: next }))
-          }
-          providerOptionsText={providerOptionsText}
-          onProviderOptionsTextChange={(next, err) => {
-            setProviderOptionsText(next);
-            setProviderOptionsError(err);
-          }}
-          defaultOpen={advancedDefaultOpen}
-        />
+        {!isImage && (
+          <AdvancedFields
+            contextWindow={draft.contextWindow}
+            onContextWindowChange={(next) =>
+              setDraft((d) => ({ ...d, contextWindow: next }))
+            }
+            contextWindowPlaceholder={contextWindowPlaceholder}
+            resolvedContextWindow={
+              stillEditingOriginalConnection &&
+              detectedContextWindow === undefined
+                ? existing.resolvedContextWindow
+                : undefined
+            }
+            pricing={draft.pricing}
+            catalogPricing={catalogPricingHint}
+            onPricingChange={(next) =>
+              setDraft((d) => ({ ...d, pricing: next }))
+            }
+            systemPrompt={draft.systemPrompt ?? ""}
+            onSystemPromptChange={(next) =>
+              setDraft((d) => ({ ...d, systemPrompt: next }))
+            }
+            providerOptionsText={providerOptionsText}
+            onProviderOptionsTextChange={(next, err) => {
+              setProviderOptionsText(next);
+              setProviderOptionsError(err);
+            }}
+            defaultOpen={advancedDefaultOpen}
+          />
+        )}
 
         {saveError && <SettingsNotice tone="error">{saveError}</SettingsNotice>}
 
@@ -497,9 +554,7 @@ function pricingDraftFrom(pricing: ModelPricing): ModelPricingDraft {
   };
 }
 
-function parsePricingDraft(
-  pricing: ModelPricingDraft,
-): ModelPricing | null {
+function parsePricingDraft(pricing: ModelPricingDraft): ModelPricing | null {
   const values = [
     pricing.input,
     pricing.output,

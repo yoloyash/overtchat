@@ -1,6 +1,7 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
 import {
   REASONING_EFFORTS,
+  IMAGE_SIZES, IMAGE_QUALITIES, type ImageGenerationOptions,
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
@@ -33,6 +34,10 @@ const ChatRequestEnvelopeSchema = z.object({
   clientRequestId: z.string().trim().min(1).max(200).optional(),
   webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
+  imageGeneration: z.object({
+    size: z.enum(IMAGE_SIZES).default("auto"),
+    quality: z.enum(IMAGE_QUALITIES).default("auto"),
+  }).optional(),
   // Accepted during the mobile rollout. `true` maps cleanly to the new
   // one-message action; `false` now means the normal automatic policy.
   searchEnabled: z.boolean().optional(),
@@ -60,6 +65,7 @@ export interface ParsedChatRequest {
   clientRequestId: string;
   webSearchEnabled: boolean;
   forceSearch: boolean;
+  imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
   action: ChatRequestAction;
@@ -83,6 +89,7 @@ export function chatRequestFingerprint({
   chatId,
   webSearchEnabled,
   forceSearch,
+  imageGeneration,
   timeZone,
   projectId,
   action,
@@ -97,6 +104,7 @@ export function chatRequestFingerprint({
         chatId,
         webSearchEnabled,
         forceSearch,
+        imageGeneration,
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
         action,
@@ -162,6 +170,7 @@ export async function parseChatRequest(
     clientRequestId: envelope.data.clientRequestId ?? crypto.randomUUID(),
     webSearchEnabled: envelope.data.webSearchEnabled,
     forceSearch: envelope.data.webSearchEnabled && forceSearch,
+    imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,
     action,
