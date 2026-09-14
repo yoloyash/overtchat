@@ -50,6 +50,8 @@ import {
 } from "@/components/chat/ModelPickerSheet";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
+import { useCapabilities } from "@/lib/queries/capabilities";
+import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
@@ -193,6 +195,9 @@ function ChatSurface({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchRequested, setSearchRequested] = useState(false);
+  const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
+  const { data: capabilitiesData } = useCapabilities();
+  const imageCapability = capabilitiesData?.capabilities.images;
   const [chatPersisted, setChatPersisted] = useState(!isNew);
   const webSearchEnabled = useWebSearchEnabled();
   const reasoningLevels = useReasoningLevels();
@@ -298,6 +303,7 @@ function ChatSurface({
     reasoningOptionsForControls(reasoningControls).length > 1
       ? reasoningLabel(reasoningLevel)
       : undefined;
+  const imageAvailable = Boolean(imageCapability?.available && modelSupportsToolCalling(selectedModel));
   const searchAvailable =
     webSearchEnabled && modelSupportsToolCalling(selectedModel);
   const searchUnavailableReason = !webSearchEnabled
@@ -310,6 +316,7 @@ function ChatSurface({
     uploading,
     error: uploadError,
     addFiles,
+    addReference,
     remove: removeAttachment,
     clear: clearAttachments,
     dismissError: dismissUploadError,
@@ -397,12 +404,13 @@ function ChatSurface({
     });
   }, [navigation, colors, onNewChat]);
 
-  function requestBody(action: ChatRequestAction, forceSearch = false) {
+  function requestBody(action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) {
     const requested = searchAvailable && forceSearch;
     return {
       modelConfigId: selectedId,
       webSearchEnabled,
       forceSearch: requested,
+      ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
       searchEnabled: requested,
@@ -478,9 +486,10 @@ function ChatSurface({
     setLocalAnchorRequestKey((key) => key + 1);
     sendMessage(
       { text, files },
-      { body: requestBody({ type: "submit" }, searchRequested) },
+      { body: requestBody({ type: "submit" }, searchRequested, imageOptions) },
     );
     setSearchRequested(false);
+    setImageOptions(undefined);
     clearAttachments();
   }
 
@@ -489,10 +498,16 @@ function ChatSurface({
     setLocalAnchorRequestKey((key) => key + 1);
     regenerate({
       messageId,
-      body: requestBody({
-        type: "regenerate",
-        targetAssistantMessageId: messageId,
-      }),
+      body: requestBody(
+        {
+          type: "regenerate",
+          targetAssistantMessageId: messageId,
+        },
+        false,
+        imageOptionsFromMetadata(
+          messages.find((message) => message.id === messageId)?.metadata,
+        ),
+      ),
     });
   }
 
@@ -577,6 +592,10 @@ function ChatSurface({
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
+          onImageReference={imageAvailable ? (file) => {
+            addReference(file);
+            setImageOptions({ size: "auto", quality: "auto" });
+          } : undefined}
           localAnchorRequestKey={localAnchorRequestKey}
           readOnly={voiceReadOnly}
         />
@@ -616,6 +635,10 @@ function ChatSurface({
           <Composer
             configured={configured}
             streaming={streaming}
+            imageOptions={imageAvailable ? imageOptions : undefined}
+            imageModel={imageCapability?.model}
+      imageSupportsQuality={imageCapability?.supportsQuality}
+            onImageOptions={setImageOptions}
             searchAvailable={searchAvailable}
             searchRequested={searchAvailable && searchRequested}
             modelLabel={selectedModel?.label}
@@ -658,6 +681,7 @@ function ChatSurface({
         reasoningLevel={reasoningLevel}
         onSelect={(modelId) => {
           setSearchRequested(false);
+          setImageOptions(undefined);
           setSelectedId(modelId);
         }}
         onSelectReasoningLevel={(level) => {
@@ -667,6 +691,8 @@ function ChatSurface({
 
       <AddToChatSheet
         ref={addSheetRef}
+        imageAvailable={imageAvailable}
+        onCreateImage={() => { setImageOptions({ size: "auto", quality: "auto" }); addSheetRef.current?.dismiss(); }}
         searchAvailable={searchAvailable}
         searchUnavailableReason={searchUnavailableReason}
         searchRequested={searchAvailable && searchRequested}

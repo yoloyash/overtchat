@@ -34,6 +34,7 @@ export function useAdminModelConfigs() {
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
   qc.invalidateQueries({ queryKey: modelConfigKeys.all() });
+  qc.invalidateQueries({ queryKey: ["capabilities", "public"] });
 }
 
 export function useCreateModelConfig() {

@@ -1,11 +1,12 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import type { VoiceCapability } from "@overtchat/shared";
+import type { VoiceCapability, ImageCapability } from "@overtchat/shared";
 
 interface PublicCapabilitiesResponse {
   capabilities: {
     voice: VoiceCapability;
+    images: ImageCapability;
     [key: string]: unknown;
   };
 }

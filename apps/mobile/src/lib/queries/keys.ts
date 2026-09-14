@@ -1,4 +1,5 @@
 export const queryKeys = {
+  capabilities: () => ["capabilities", "public"] as const,
   agentConnections: (server: string) =>
     ["agents", server, "connections"] as const,
   agentSession: (server: string, id: string) =>

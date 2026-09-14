@@ -51,11 +51,13 @@ export function AttachmentChip({
   meta,
   onRemove,
   onLongPress,
+  large = false,
 }: {
   attachment: FileUIPart;
   meta?: AttachmentMeta;
   onRemove?: () => void;
   onLongPress?: () => void;
+  large?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
@@ -76,6 +78,7 @@ export function AttachmentChip({
       <View
         style={[
           styles.imageWrap,
+          ...(large ? [{ width: "100%" as const, height: 280 }] : []),
           {
             borderColor: colors.border,
             backgroundColor: colors.muted,
@@ -110,7 +113,7 @@ export function AttachmentChip({
           <Image
             source={source}
             style={styles.image}
-            contentFit="cover"
+            contentFit={large ? "contain" : "cover"}
             cachePolicy="memory-disk"
             accessibilityLabel={label}
           />

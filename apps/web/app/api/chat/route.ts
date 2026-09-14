@@ -11,12 +11,22 @@ import {
   type TextStreamPart,
   type ToolSet,
 } from "ai";
-import { modelSupportsChatReasoningLevel } from "@overtchat/shared";
+import {
+  isImageToolPart,
+  isGeneratedImage,
+  modelSupportsChatReasoningLevel,
+} from "@overtchat/shared";
 import type { MessageStats } from "@/lib/chat/stats";
 import {
   INFERENCE_ACTIVITY_DATA_TYPE,
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
+import {
+  createImageTools,
+  getImageCapability,
+  IMAGE_TOOL_PROMPT,
+  withImageReferences,
+} from "@/lib/images/tools";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   assertChatAttachments,
@@ -116,6 +126,7 @@ async function handlePost(req: Request): Promise<Response> {
     modelConfigId,
     webSearchEnabled,
     forceSearch,
+    imageGeneration,
     timeZone,
     chatId,
     projectId,
@@ -142,7 +153,7 @@ async function handlePost(req: Request): Promise<Response> {
   }
 
   const modelConfig = await getModelConfig(modelConfigId);
-  if (!modelConfig || !modelConfig.enabled) {
+  if (!modelConfig || modelConfig.modelType === "image" || !modelConfig.enabled) {
     return withCors(
       req,
       new Response("Model config not found", { status: 404 }),
@@ -252,10 +263,26 @@ async function handlePost(req: Request): Promise<Response> {
       reasoningLevel,
     });
   const chatTools = createWebTools({ userId, supportsImageInput });
+  let imageOperationStarted = false;
+  const imageTools = createImageTools({
+    userId,
+    messages,
+    supportsImageInput,
+    options: imageGeneration,
+    onGenerate: () => { imageOperationStarted = true; },
+  });
+  const imageToolsEnabled =
+    modelConfig.toolCallingEnabled !== false && getImageCapability().available;
+  if (imageGeneration && !imageToolsEnabled) {
+    throw new ChatRequestError("Image generation requires a configured image provider and a chat model with tool calling enabled.");
+  }
   assertChatAttachments(messages);
-  const inlined = await inlineUploads(messages, userId);
+  const inlined = await inlineUploads(
+    imageToolsEnabled ? withImageReferences(messages, supportsImageInput) : messages,
+    userId,
+  );
   const convertedMessages = await convertToModelMessages(inlined, {
-    tools: chatTools,
+    tools: { ...chatTools, ...imageTools },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
     ignoreIncompleteToolCalls: true,
@@ -296,6 +323,10 @@ async function handlePost(req: Request): Promise<Response> {
       : null,
     projectSystemPrompt(project),
     webToolsEnabled ? WEB_SEARCH_CITATION_PROMPT : null,
+    imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
+    imageGeneration
+      ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
+      : null,
     currentDateSystemPrompt(timeZone),
   ].filter((value): value is string => Boolean(value && value.trim()));
   const system = systemParts.length ? systemParts.join("\n\n") : undefined;
@@ -409,6 +440,7 @@ async function handlePost(req: Request): Promise<Response> {
     const memoryTools = memoryToolsEnabled ? createMemoryTools(userId) : {};
     const toolSources: ToolSet[] = [
       ...(webToolsEnabled ? [chatTools] : []),
+      ...(imageToolsEnabled ? [imageTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
       ...(hasMcpTools ? [mcpTools] : []),
     ];
@@ -523,6 +555,7 @@ async function handlePost(req: Request): Promise<Response> {
       onError: (error) =>
         error instanceof Error ? error.message : "Something went wrong.",
       messageMetadata: ({ part }) => {
+        if (part.type === "start" && imageGeneration) return { imageGeneration };
         if (part.type !== "finish") return undefined;
 
         const finishedAt = Date.now();
@@ -568,8 +601,8 @@ async function handlePost(req: Request): Promise<Response> {
         ];
         if (tokenUsage.some((value) => value !== undefined)) {
           const estimatedCost =
-            stepCosts.length > 0 || hasUnpricedStep
-              ? hasUnpricedStep
+            stepCosts.length > 0 || hasUnpricedStep || imageOperationStarted
+              ? hasUnpricedStep || imageOperationStarted
                 ? null
                 : sumEstimatedGenerationCosts(stepCosts)
               : estimateGenerationCost({
@@ -602,17 +635,25 @@ async function handlePost(req: Request): Promise<Response> {
           completedGenerationUsage = undefined;
         }
 
-        return { stats };
+        return { stats, ...(imageGeneration ? { imageGeneration } : {}) };
       },
       onEnd: async ({ responseMessage, isAborted }) => {
         if (temporary) return;
-        // Stop is an intentional user abort, so retain whatever the model
-        // produced. Provider stream errors still discard broken fragments.
+        // A completed image is a durable result even if the subsequent language
+        // model step fails. Preserve it while discarding broken text fragments.
+        const savedParts = streamError
+          ? responseMessage.parts.filter((part) =>
+              isImageToolPart(part) &&
+              part.state === "output-available" &&
+              Array.isArray(part.output?.images) &&
+              part.output.images.some(isGeneratedImage),
+            )
+          : responseMessage.parts;
         const assistantMessage =
-          !streamError && responseMessage.parts.length > 0
+          savedParts.length > 0
             ? {
                 id: responseMessage.id,
-                parts: responseMessage.parts,
+                parts: savedParts,
                 ...(responseMessage.metadata &&
                 typeof responseMessage.metadata === "object" &&
                 !Array.isArray(responseMessage.metadata)

@@ -47,6 +47,16 @@ function message(chat: string, parts: unknown[], role = "user") {
 }
 
 describe("library membership", () => {
+  it("includes owned generated images, excludes foreign and unsaved outputs", async () => {
+    const generated = upload("generated");
+    const foreign = upload("foreign", "bob");
+    const unsaved = upload("unsaved");
+    const imagePart = (url: string) => ({ type: "tool-generate_image", state: "output-available", output: { images: [{ url }] } });
+    message("chat-a", [imagePart(generated.url), imagePart(foreign.url)], "assistant");
+    message("bob-chat", [imagePart(unsaved.url)], "assistant");
+    expect((await listLibrary("alice")).items.map((item) => item.id)).toEqual(["generated"]);
+  });
+
   it("lists saved owned file parts once, excluding drafts, tool results and URL mentions", async () => {
     const shared = upload("shared");
     const fetched = upload("fetched");

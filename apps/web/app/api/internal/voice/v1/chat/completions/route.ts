@@ -163,7 +163,7 @@ export async function POST(request: Request) {
     return Response.json({ error: { message: "Voice ticket expired or invalid." } }, { status: 401 });
   }
   const modelConfig = await getModelConfig(ticket.modelConfigId);
-  if (!modelConfig?.enabled) {
+  if (!modelConfig?.enabled || modelConfig.modelType === "image") {
     return Response.json({ error: { message: "Model config not found." } }, { status: 404 });
   }
   const chat = await getChat(ticket.chatId, ticket.userId);

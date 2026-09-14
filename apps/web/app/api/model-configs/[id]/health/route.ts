@@ -16,6 +16,8 @@ export async function POST(
   const row = await getModelConfig(id);
   if (!row) return new Response("Not found", { status: 404 });
 
+  if (row.modelType === "image") return Response.json({ error: "Image models do not use chat connection tests." }, { status: 400 });
+
   const result = await pingModel({
     providerId: row.providerId,
     apiFormat: row.apiFormat,

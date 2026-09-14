@@ -12,6 +12,8 @@ import {
   vi,
 } from "vitest";
 
+import { ModelConfigSchema } from "@/lib/model-config/schema";
+
 vi.mock("server-only", () => ({}));
 
 const databasePath = path.join(
@@ -25,6 +27,7 @@ raw.exec(`
   CREATE TABLE model_configs (
     id TEXT PRIMARY KEY NOT NULL,
     label TEXT NOT NULL,
+    model_type TEXT DEFAULT 'chat' NOT NULL,
     provider_id TEXT DEFAULT 'custom' NOT NULL,
     api_format TEXT DEFAULT 'openai-chat' NOT NULL,
     base_url TEXT NOT NULL,
@@ -43,6 +46,7 @@ raw.exec(`
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
   );
+  CREATE UNIQUE INDEX model_configs_activeImage_idx ON model_configs (enabled) WHERE model_type = 'image' AND enabled = true;
   CREATE UNIQUE INDEX model_configs_taskModel_idx
     ON model_configs (task_model)
     WHERE task_model = true;
@@ -91,7 +95,9 @@ describe("task model assignment", () => {
     expect(modelConfigDb.getTaskModelConfig()?.id).toBe("hidden-model");
     expect(
       raw
-        .prepare("SELECT count(*) AS count FROM model_configs WHERE task_model = true")
+        .prepare(
+          "SELECT count(*) AS count FROM model_configs WHERE task_model = true",
+        )
         .get(),
     ).toEqual({ count: 1 });
   });
@@ -121,5 +127,76 @@ describe("task model assignment", () => {
     await modelConfigDb.deleteModelConfig("hidden-model");
 
     expect(modelConfigDb.getTaskModelConfig()).toBeNull();
+  });
+});
+
+describe("image model selection", () => {
+  const input = ModelConfigSchema.parse({
+    label: "Pictures",
+    modelType: "image",
+    providerId: "openai",
+    apiFormat: "auto",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "test-key",
+    model: "gpt-image-1",
+  });
+
+  it("switches a single enabled image model while preserving chat and task models", async () => {
+    modelConfigDb.setTaskModelConfig("chat-model");
+    const first = await modelConfigDb.createModelConfig(input);
+    const second = await modelConfigDb.createModelConfig({
+      ...input,
+      model: "gpt-image-1.5",
+    });
+    expect((await modelConfigDb.getModelConfig(first.id))?.enabled).toBe(false);
+    expect(modelConfigDb.getImageModelConfig()?.id).toBe(second.id);
+    expect((await modelConfigDb.getModelConfig("chat-model"))?.enabled).toBe(
+      true,
+    );
+    expect(modelConfigDb.getTaskModelConfig()?.id).toBe("chat-model");
+    await modelConfigDb.updateModelConfig(first.id, input);
+    expect((await modelConfigDb.getModelConfig(second.id))?.enabled).toBe(
+      false,
+    );
+    expect(modelConfigDb.getImageModelConfig()?.id).toBe(first.id);
+    expect(() =>
+      raw
+        .prepare("UPDATE model_configs SET enabled = true WHERE id = ?")
+        .run(second.id),
+    ).toThrow(/UNIQUE/);
+  });
+
+  it("allows disabling or deleting the last image model, and rejects image task assignment", async () => {
+    const image = await modelConfigDb.createModelConfig(input);
+    expect(modelConfigDb.setTaskModelConfig(image.id)).toEqual({
+      status: "not_found",
+    });
+    await modelConfigDb.updateModelConfig(image.id, {
+      ...input,
+      enabled: false,
+    });
+    expect(modelConfigDb.getImageModelConfig()).toBeNull();
+    await modelConfigDb.updateModelConfig(image.id, input);
+    await modelConfigDb.deleteModelConfig(image.id);
+    expect(modelConfigDb.getImageModelConfig()).toBeNull();
+  });
+
+  it("does not disable the active image on a failed update and rolls back a failed insert", async () => {
+    const image = await modelConfigDb.createModelConfig(input);
+    expect(await modelConfigDb.updateModelConfig("missing", input)).toBeNull();
+    await expect(
+      modelConfigDb.createModelConfig({
+        ...input,
+        label: null as unknown as string,
+      }),
+    ).rejects.toThrow();
+    expect(modelConfigDb.getImageModelConfig()?.id).toBe(image.id);
+  });
+
+  it("clears a task assignment when a chat model becomes an image model", async () => {
+    modelConfigDb.setTaskModelConfig("chat-model");
+    await modelConfigDb.updateModelConfig("chat-model", input);
+    expect(modelConfigDb.getTaskModelConfig()).toBeNull();
+    expect(modelConfigDb.getImageModelConfig()?.id).toBe("chat-model");
   });
 });

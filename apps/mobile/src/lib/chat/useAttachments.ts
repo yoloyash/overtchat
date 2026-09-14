@@ -88,6 +88,7 @@ export function useAttachments() {
     uploading,
     error,
     addFiles,
+    addReference: (file: FileUIPart) => setAttachments((current) => current.some((item) => item.url === file.url) ? current : [...current, file]),
     remove,
     clear,
     dismissError,

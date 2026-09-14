@@ -69,7 +69,7 @@ export async function GET(req: Request) {
   return withCors(
     req,
     Response.json({
-      modelConfigs: rows.filter((r) => r.enabled).map(toPublic),
+      modelConfigs: rows.filter((r) => r.enabled && r.modelType !== "image").map(toPublic),
     }),
   );
 }
@@ -96,7 +96,7 @@ export async function POST(req: Request) {
     );
   }
   try {
-    createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

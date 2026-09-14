@@ -223,15 +223,13 @@ describe("provider configuration", () => {
     };
 
     expect(
-      ModelConfigSchema.parse({ ...base, contextWindow: 32_768 })
-        .contextWindow,
+      ModelConfigSchema.parse({ ...base, contextWindow: 32_768 }).contextWindow,
     ).toBe(32_768);
     expect(
       ModelConfigSchema.safeParse({ ...base, contextWindow: 0 }).success,
     ).toBe(false);
     expect(
-      ModelConfigSchema.safeParse({ ...base, contextWindow: 32_768.5 })
-        .success,
+      ModelConfigSchema.safeParse({ ...base, contextWindow: 32_768.5 }).success,
     ).toBe(false);
     expect(
       ModelConfigSchema.parse({
@@ -281,4 +279,62 @@ describe("provider configuration", () => {
     expect(modelSupportsChatReasoningLevel(capabilities, "xhigh")).toBe(true);
     expect(modelSupportsChatReasoningLevel(capabilities, "medium")).toBe(false);
   });
+});
+
+describe("image model configuration", () => {
+  const image = {
+    label: "Pictures",
+    modelType: "image",
+    providerId: "openai",
+    apiFormat: "auto",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "key",
+    model: "gpt-image-1",
+  };
+  it("accepts both image providers and strips chat-only settings", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        systemPrompt: "Chat",
+        contextWindow: 1000,
+        toolCallingEnabled: true,
+      }),
+    ).toMatchObject({
+      modelType: "image",
+      systemPrompt: null,
+      contextWindow: null,
+      toolCallingEnabled: false,
+    });
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+      }).providerId,
+    ).toBe("google");
+    expect(
+      ModelConfigSchema.parse({ ...image, modelType: undefined }).modelType,
+    ).toBe("chat");
+  });
+  it.each([
+    { providerId: "anthropic" },
+    { model: "" },
+    { baseUrl: "invalid" },
+    { baseUrl: "https://user:secret@example.com/v1" },
+    { baseUrl: "https://example.com/v1?api_key=secret" },
+  ])("rejects unsupported or malformed image configuration %j", (patch) => {
+    expect(ModelConfigSchema.safeParse({ ...image, ...patch }).success).toBe(
+      false,
+    );
+  });
+  it.each(["openai", "google"])(
+    "lets the admin assign any model ID to %s image generation",
+    (providerId) => {
+      for (const model of ["studio-art", "gemini-2.5-flash", "gpt-4o"]) {
+        expect(
+          ModelConfigSchema.parse({ ...image, providerId, model }),
+        ).toMatchObject({ modelType: "image", providerId, model });
+      }
+    },
+  );
 });

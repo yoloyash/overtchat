@@ -56,6 +56,7 @@ export interface ConnectionFieldsProps {
   onCatalogPricing?: (next: CatalogModelPricing | undefined) => void;
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
+  imageModel?: boolean;
 }
 
 export function ConnectionFields({
@@ -68,6 +69,7 @@ export function ConnectionFields({
   onCatalogPricing,
   onCapabilitySuggestion,
   autoFetchModels = false,
+  imageModel = false,
 }: ConnectionFieldsProps) {
   const provider = getProvider(draft.providerId);
   const requiresKey = provider.requiresApiKey;
@@ -128,12 +130,21 @@ export function ConnectionFields({
       setProbing(true);
       setProbeError("");
       try {
-        const discovered = await fetchModelsForProvider({
+        const allModels = await fetchModelsForProvider({
           providerId: connection.providerId,
           apiFormat: connection.apiFormat,
           baseUrl: connection.baseUrl,
           apiKey: connection.apiKey,
         });
+        const discovered = imageModel
+          ? allModels.filter((model) => {
+              const outputs =
+                model.capabilities?.outputModalities ??
+                model.catalogCapabilities?.outputModalities;
+              // Discovery supplies suggestions; admins can enter any model ID.
+              return outputs?.includes("image") ?? false;
+            })
+          : allModels;
         setModels(discovered);
         const current = discovered.find((model) => model.id === draft.model);
         if (discovered.length === 0) {
@@ -179,6 +190,7 @@ export function ConnectionFields({
     },
     [
       draft.model,
+      imageModel,
       onCapabilitySuggestion,
       onCatalogCapabilities,
       onCatalogContextWindow,
@@ -242,7 +254,9 @@ export function ConnectionFields({
             <SelectValue>{provider.label}</SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {PROVIDER_IDS.map((id) => (
+            {PROVIDER_IDS.filter(
+              (id) => !imageModel || id === "openai" || id === "google",
+            ).map((id) => (
               <SelectItem key={id} value={id}>
                 <ModelBrandIcon iconId={PROVIDERS[id].iconId} />
                 {PROVIDERS[id].label}
@@ -343,7 +357,11 @@ export function ConnectionFields({
 
       <SettingsRow
         title="Model"
-        description="Choose a fetched model or enter an id."
+        description={
+          imageModel
+            ? "Choose a model that generates and edits images. You can also enter its ID manually."
+            : "Choose a fetched model or enter an id."
+        }
         htmlFor="p-model"
         controlAlign="end"
       >
@@ -375,7 +393,13 @@ export function ConnectionFields({
               <Input
                 id="p-model"
                 className="min-w-0 flex-1 font-mono text-xs"
-                placeholder={provider.modelPlaceholder}
+                placeholder={
+                  imageModel
+                    ? draft.providerId === "google"
+                      ? "gemini-3.1-flash-image"
+                      : "gpt-image-1"
+                    : provider.modelPlaceholder
+                }
                 required
                 value={draft.model}
                 onChange={(e) => {

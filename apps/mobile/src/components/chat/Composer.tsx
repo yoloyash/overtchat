@@ -1,10 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
-import type { ModelBrandIconId } from "@overtchat/shared";
+import type { ImageGenerationOptions, ModelBrandIconId } from "@overtchat/shared";
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ImageOptions } from "./ImageOptions";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AttachmentMeta } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
@@ -18,6 +19,7 @@ export function Composer({
   streaming,
   searchAvailable,
   searchRequested,
+  imageOptions, imageModel, imageSupportsQuality, onImageOptions,
   modelLabel,
   modelIconId,
   thinkingLevelLabel,
@@ -39,6 +41,10 @@ export function Composer({
   streaming: boolean;
   searchAvailable: boolean;
   searchRequested: boolean;
+  imageOptions?: ImageGenerationOptions;
+  imageModel?: string | null;
+  imageSupportsQuality?: boolean;
+  onImageOptions?: (value: ImageGenerationOptions | undefined) => void;
   modelLabel?: string;
   modelIconId?: ModelBrandIconId;
   thinkingLevelLabel?: string;
@@ -114,6 +120,7 @@ export function Composer({
 
   return (
     <View style={styles.wrapper}>
+      {imageOptions && onImageOptions ? <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} /> : null}
       {uploadError ? (
         <Pressable
           onPress={onDismissUploadError}

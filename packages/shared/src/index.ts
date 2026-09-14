@@ -12,3 +12,4 @@ export * from "./personalization";
 export * from "./memory-tools";
 export * from "./message-parts";
 export * from "./theme/tokens";
+export * from "./images";

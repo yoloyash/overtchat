@@ -67,6 +67,7 @@ export function ModelsPanel() {
         provider.label,
         m.enabled ? "enabled" : "disabled",
         m.taskModel ? "task" : "",
+        m.modelType,
       ]
         .join(" ")
         .toLowerCase()
@@ -80,6 +81,7 @@ export function ModelsPanel() {
       await updateMut.mutateAsync({
         id: m.id,
         input: {
+          modelType: m.modelType,
           label: m.label,
           providerId: m.providerId,
           apiFormat: m.apiFormat,
@@ -142,7 +144,7 @@ export function ModelsPanel() {
     <SettingsPage>
       <SettingsPageHeader
         title="Models"
-        description="Manage models used in chat and background tasks."
+        description="Manage chat, image, and background task models. One image model can be enabled at a time."
         action={
           models.length > 0 ? (
             <Button render={<Link href="/settings/models/new" />} size="sm">
@@ -168,10 +170,7 @@ export function ModelsPanel() {
               onValueChange={(value) => void selectTaskModel(value)}
               disabled={taskModelMut.isPending}
             >
-              <SelectTrigger
-                aria-label="Task model"
-                className="w-full"
-              >
+              <SelectTrigger aria-label="Task model" className="w-full">
                 <SelectValue>
                   {taskModel ? taskModel.label : "Same as chat model"}
                 </SelectValue>
@@ -181,22 +180,24 @@ export function ModelsPanel() {
                   Same as chat model
                 </SelectItem>
                 <SelectSeparator />
-                {models.map((model) => {
-                  const provider = getProvider(model.providerId);
-                  const iconId =
-                    modelIconForModel(model.model) ?? provider.iconId;
-                  return (
-                    <SelectItem key={model.id} value={model.id}>
-                      <ModelBrandIcon iconId={iconId} className="size-4" />
-                      <span>{model.label}</span>
-                      {!model.enabled && (
-                        <span className="text-xs text-muted-foreground">
-                          Not in chat
-                        </span>
-                      )}
-                    </SelectItem>
-                  );
-                })}
+                {models
+                  .filter((model) => model.modelType !== "image")
+                  .map((model) => {
+                    const provider = getProvider(model.providerId);
+                    const iconId =
+                      modelIconForModel(model.model) ?? provider.iconId;
+                    return (
+                      <SelectItem key={model.id} value={model.id}>
+                        <ModelBrandIcon iconId={iconId} className="size-4" />
+                        <span>{model.label}</span>
+                        {!model.enabled && (
+                          <span className="text-xs text-muted-foreground">
+                            Not in chat
+                          </span>
+                        )}
+                      </SelectItem>
+                    );
+                  })}
               </SelectContent>
             </Select>
           </SettingsRow>
@@ -267,10 +268,17 @@ export function ModelsPanel() {
                           Task
                         </span>
                       )}
-                      <HealthBadge
-                        id={m.id}
-                        enabled={m.enabled || m.taskModel}
-                      />
+                      {m.modelType === "image" && (
+                        <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          Image
+                        </span>
+                      )}
+                      {m.modelType !== "image" && (
+                        <HealthBadge
+                          id={m.id}
+                          enabled={m.enabled || m.taskModel}
+                        />
+                      )}
                     </div>
                     <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                       <span>{provider.label}</span>
@@ -295,7 +303,7 @@ export function ModelsPanel() {
                     </span>
                     <Switch
                       checked={m.enabled}
-                      disabled={togglingId === m.id}
+                      disabled={togglingId !== null}
                       onCheckedChange={(next) => void toggleEnabled(m, next)}
                       aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
                     />

@@ -9,6 +9,8 @@ import {
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
+  imageOptionsFromMetadata,
+  type ImageGenerationOptions,
   type ChatKind,
   type ChatReasoningLevel,
   type ChatRequestAction,
@@ -153,6 +155,9 @@ export function ChatArea({
 
   const [searchRequested, setSearchRequested] = useState(false);
   const { data: capabilitiesData } = usePublicCapabilities();
+  const imageCapability = capabilitiesData?.capabilities.images;
+  const imageAvailable = Boolean(imageCapability?.available && modelSupportsSearch);
+  const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const voiceCapability = capabilitiesData?.capabilities.voice;
   const [resolvedChatKind, setResolvedChatKind] = useState<ChatKind | null>(
     chatKind ?? null,
@@ -372,7 +377,8 @@ export function ChatArea({
     !onboardingDismissed &&
     models !== null;
 
-  const requestBody = (action: ChatRequestAction, forceSearch = false) => ({
+  const requestBody = (action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) => ({
+    ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
     modelConfigId: selectedId,
     webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
@@ -469,9 +475,10 @@ export function ChatArea({
     markGenerationStarted();
     sendMessage(
       { text, files: attachments },
-      { body: requestBody({ type: "submit" }, searchRequested) },
+      { body: requestBody({ type: "submit" }, searchRequested, imageOptions) },
     );
     setSearchRequested(false);
+    setImageOptions(undefined);
   }
 
   const initialQueryFiredRef = useRef(false);
@@ -492,10 +499,16 @@ export function ChatArea({
     markGenerationStarted();
     regenerate({
       messageId,
-      body: requestBody({
-        type: "regenerate",
-        targetAssistantMessageId: messageId,
-      }),
+      body: requestBody(
+        {
+          type: "regenerate",
+          targetAssistantMessageId: messageId,
+        },
+        false,
+        imageOptionsFromMetadata(
+          messages.find((message) => message.id === messageId)?.metadata,
+        ),
+      ),
     });
   }
 
@@ -524,6 +537,7 @@ export function ChatArea({
   // switching models drops it.
   function handleSelectModel(modelId: string) {
     setSearchRequested(false);
+    setImageOptions(undefined);
     setSelectedId(modelId);
   }
 
@@ -622,6 +636,11 @@ export function ChatArea({
       searchAvailable={searchAvailable}
       searchUnavailableReason={searchUnavailableReason}
       searchRequested={searchAvailable && searchRequested}
+      imageAvailable={imageAvailable}
+      imageModel={imageCapability?.model}
+      imageSupportsQuality={imageCapability?.supportsQuality}
+      imageOptions={imageAvailable ? imageOptions : undefined}
+      onImageOptions={setImageOptions}
       dropActive={dropActive}
       models={models}
       selectedModelId={selectedId}
@@ -753,6 +772,10 @@ export function ChatArea({
             loadingOlderMessages={loadingOlderMessages}
             onLoadOlderMessages={handleLoadOlderMessages}
             onRegenerate={handleRegenerate}
+                onImageReference={imageAvailable ? (file) => {
+                  composerRef.current?.addReference(file);
+                  setImageOptions({ size: "auto", quality: "auto" });
+                } : undefined}
             onEdit={handleEdit}
             onReconnect={handleReconnect}
           />

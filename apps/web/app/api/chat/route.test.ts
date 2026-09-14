@@ -47,6 +47,8 @@ const mocks = vi.hoisted(() => {
     consumeStream: vi.fn(),
     convertToModelMessages: vi.fn(),
     createWebTools: vi.fn(),
+    createImageTools: vi.fn(),
+    getImageCapability: vi.fn(),
     createMemoryTools: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
@@ -91,6 +93,12 @@ vi.mock("ai", () => ({
     }
   },
   toUIMessageStream: mocks.toUIMessageStream,
+}));
+vi.mock("@/lib/images/tools", () => ({
+  createImageTools: mocks.createImageTools,
+  getImageCapability: mocks.getImageCapability,
+  IMAGE_TOOL_PROMPT: "Image tools",
+  withImageReferences: (messages: unknown) => messages,
 }));
 vi.mock("@/lib/tools", () => ({
   createWebTools: mocks.createWebTools,
@@ -282,6 +290,8 @@ describe("chat route setup boundary", () => {
     });
     mocks.resolveModelCapabilities.mockReturnValue(undefined);
     mocks.createWebTools.mockReturnValue(mocks.chatTools);
+    mocks.createImageTools.mockReturnValue({});
+    mocks.getImageCapability.mockReturnValue({ available: false, model: null });
     mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
@@ -1801,4 +1811,63 @@ describe("chat route setup boundary", () => {
       status: "complete",
     });
   });
+  it.each([false, true])("leaves image sequencing automatic and respects explicit search (%s)", async (forceSearch) => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      forceSearch,
+      imageGeneration: { size: "auto", quality: "auto" },
+    });
+    mocks.getImageCapability.mockReturnValue({ available: true, model: "image-model" });
+    const imageTools = {
+      generate_image: { description: "Generate image" },
+      edit_image: { description: "Edit image" },
+    };
+    mocks.createImageTools.mockReturnValue(imageTools);
+
+    await POST(request());
+
+    const settings = mocks.agentSettings[0];
+    expect(settings.tools).toMatchObject({ ...mocks.chatTools, ...imageTools });
+    expect(settings.toolChoice).toBe("auto");
+    expect(settings.instructions).toMatchObject({
+      content: expect.stringContaining("The user selected Create image for this turn."),
+    });
+    if (forceSearch) {
+      const prepareStep = settings.prepareStep as (options: { stepNumber: number }) => unknown;
+      expect(prepareStep({ stepNumber: 0 })).toEqual({
+        activeTools: mocks.toolOrder,
+        toolChoice: "required",
+      });
+      expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
+    } else {
+      expect(settings.prepareStep).toBeUndefined();
+    }
+  });
+
+  it("rejects explicit image requests before persistence when unavailable", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "user" } });
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, imageGeneration: { size: "auto", quality: "auto" } });
+    mocks.getChatGenerationByRequestId.mockResolvedValue(null);
+    mocks.getChat.mockResolvedValue(null);
+    mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
+    mocks.getImageCapability.mockReturnValue({ available: false, model: null });
+    mocks.commitChatTurn.mockClear();
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+  it.each([true, false])("registers image tools according to chat tool calling (%s)", async (enabled) => {
+    mocks.getModelConfig.mockResolvedValue({ ...modelConfig, toolCallingEnabled: enabled });
+    mocks.getImageCapability.mockReturnValue({ available: true, model: "gpt-image-1" });
+    const generate = { description: "Generate image" };
+    const edit = { description: "Edit image" };
+    mocks.createImageTools.mockReturnValue({ generate_image: generate, edit_image: edit });
+    await POST(request());
+    if (enabled) {
+      expect(mocks.agentSettings[0].tools).toMatchObject({ generate_image: generate, edit_image: edit });
+    } else {
+      expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    }
+  });
+
 });

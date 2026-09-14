@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
 import {
@@ -18,6 +18,7 @@ export type ModelConfigRow = typeof modelConfigs.$inferSelect;
 export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
   return {
     id: row.id,
+    modelType: row.modelType,
     label: row.label,
     providerId: row.providerId,
     apiFormat: row.apiFormat,
@@ -72,7 +73,12 @@ export function getTaskModelConfig(): ModelConfigRow | null {
     db
       .select()
       .from(modelConfigs)
-      .where(eq(modelConfigs.taskModel, true))
+      .where(
+        and(
+          eq(modelConfigs.taskModel, true),
+          eq(modelConfigs.modelType, "chat"),
+        ),
+      )
       .limit(1)
       .get() ?? null
   );
@@ -82,9 +88,7 @@ export type SetTaskModelResult =
   | { status: "updated"; modelConfig: ModelConfigRow | null }
   | { status: "not_found" };
 
-export function setTaskModelConfig(
-  id: string | null,
-): SetTaskModelResult {
+export function setTaskModelConfig(id: string | null): SetTaskModelResult {
   return db.transaction((tx) => {
     const target = id
       ? tx
@@ -94,7 +98,8 @@ export function setTaskModelConfig(
           .limit(1)
           .get()
       : null;
-    if (id && !target) return { status: "not_found" };
+    if (id && (!target || target.modelType === "image"))
+      return { status: "not_found" };
 
     tx.update(modelConfigs)
       .set({ taskModel: false, updatedAt: new Date() })
@@ -118,23 +123,79 @@ export function setTaskModelConfig(
 export async function createModelConfig(
   input: ModelConfigInput,
 ): Promise<ModelConfigRow> {
-  const [row] = await db
-    .insert(modelConfigs)
-    .values({ id: crypto.randomUUID(), ...input })
-    .returning();
-  return row;
+  return db.transaction((tx) => {
+    if (input.modelType === "image" && input.enabled) {
+      tx.update(modelConfigs)
+        .set({ enabled: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(modelConfigs.modelType, "image"),
+            eq(modelConfigs.enabled, true),
+          ),
+        )
+        .run();
+    }
+    return tx
+      .insert(modelConfigs)
+      .values({ id: crypto.randomUUID(), ...input })
+      .returning()
+      .get();
+  });
 }
 
 export async function updateModelConfig(
   id: string,
   input: ModelConfigInput,
 ): Promise<ModelConfigRow | null> {
-  const [row] = await db
-    .update(modelConfigs)
-    .set({ ...input, updatedAt: new Date() })
-    .where(eq(modelConfigs.id, id))
-    .returning();
-  return row ?? null;
+  return db.transaction((tx) => {
+    if (
+      !tx
+        .select({ id: modelConfigs.id })
+        .from(modelConfigs)
+        .where(eq(modelConfigs.id, id))
+        .get()
+    )
+      return null;
+    if (input.modelType === "image" && input.enabled) {
+      tx.update(modelConfigs)
+        .set({ enabled: false, updatedAt: new Date() })
+        .where(
+          and(
+            eq(modelConfigs.modelType, "image"),
+            eq(modelConfigs.enabled, true),
+          ),
+        )
+        .run();
+    }
+    return (
+      tx
+        .update(modelConfigs)
+        .set({
+          ...input,
+          ...(input.modelType === "image" ? { taskModel: false } : {}),
+          updatedAt: new Date(),
+        })
+        .where(eq(modelConfigs.id, id))
+        .returning()
+        .get() ?? null
+    );
+  });
+}
+
+export function getImageModelConfig(): ModelConfigRow | null {
+  return (
+    db
+      .select()
+      .from(modelConfigs)
+      .where(
+        and(
+          eq(modelConfigs.modelType, "image"),
+          eq(modelConfigs.enabled, true),
+        ),
+      )
+      .limit(1)
+      .get() ?? null
+  );
 }
 
 export async function deleteModelConfig(id: string): Promise<void> {
