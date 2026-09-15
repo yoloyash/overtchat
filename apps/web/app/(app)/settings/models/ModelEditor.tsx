@@ -101,6 +101,20 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     };
   });
 
+  const previouslyUsedApiKeys = useMemo(() => {
+    if (isEditing) return [];
+    const endpoint = draft.baseUrl.trim().replace(/\/+$/, "");
+    const keys = list
+      .filter(
+        (model) =>
+          model.providerId === draft.providerId &&
+          model.baseUrl.trim().replace(/\/+$/, "") === endpoint,
+      )
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .flatMap(({ apiKey }) => (apiKey?.trim() ? [apiKey] : []));
+    return [...new Set(keys)];
+  }, [isEditing, list, draft.providerId, draft.baseUrl]);
+
   const [providerOptionsText, setProviderOptionsText] = useState(() =>
     existing?.providerOptions
       ? JSON.stringify(existing.providerOptions, null, 2)
@@ -343,6 +357,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <ConnectionFields
             key={draft.modelType}
             imageModel={isImage}
+            previouslyUsedApiKeys={previouslyUsedApiKeys}
             draft={{
               providerId: draft.providerId,
               apiFormat: draft.apiFormat,

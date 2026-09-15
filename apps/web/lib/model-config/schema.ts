@@ -30,6 +30,8 @@ export interface AdminModelConfig {
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string | null;
+  /** Last model configuration update, in milliseconds since epoch. */
+  updatedAt: number;
   model: string;
   pricing: ModelPricing | null;
   /** Exact models.dev base rates for admin UI guidance. */
