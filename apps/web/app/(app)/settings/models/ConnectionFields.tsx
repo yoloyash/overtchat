@@ -48,7 +48,7 @@ export interface ConnectionDraft {
 
 export interface ConnectionFieldsProps {
   draft: ConnectionDraft;
-  lastUsedApiKey?: string;
+  previouslyUsedApiKeys?: string[];
   onChange: (next: Partial<ConnectionDraft>) => void;
   onDiscoveredContextWindow?: (next: number | undefined) => void;
   onCatalogContextWindow?: (next: number | undefined) => void;
@@ -62,7 +62,7 @@ export interface ConnectionFieldsProps {
 
 export function ConnectionFields({
   draft,
-  lastUsedApiKey,
+  previouslyUsedApiKeys = [],
   onChange,
   onDiscoveredContextWindow,
   onCatalogContextWindow,
@@ -355,19 +355,29 @@ export function ConnectionFields({
               clearProbeState();
             }}
           />
-          {!draft.apiKey && lastUsedApiKey && (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className="mt-1 px-0 text-xs text-muted-foreground"
-              onClick={() => {
-                onChange({ apiKey: lastUsedApiKey });
-                clearProbeState();
-              }}
+          {!draft.apiKey && previouslyUsedApiKeys.length > 0 && (
+            <div
+              role="group"
+              aria-label="Previously used API keys"
+              className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground"
             >
-              Last used ····{lastUsedApiKey.length > 4 ? lastUsedApiKey.slice(-4) : ""}
-            </Button>
+              <span>Previously used:</span>
+              {previouslyUsedApiKeys.map((apiKey) => (
+                <Button
+                  key={apiKey}
+                  type="button"
+                  variant="link"
+                  size="sm"
+                  className="px-0 font-mono text-xs text-muted-foreground"
+                  onClick={() => {
+                    onChange({ apiKey });
+                    clearProbeState();
+                  }}
+                >
+                  ····{apiKey.length > 4 ? apiKey.slice(-4) : ""}
+                </Button>
+              ))}
+            </div>
           )}
         </div>
       </SettingsRow>

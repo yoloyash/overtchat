@@ -101,18 +101,18 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     };
   });
 
-  const lastUsedApiKey = useMemo(() => {
-    if (isEditing) return undefined;
+  const previouslyUsedApiKeys = useMemo(() => {
+    if (isEditing) return [];
     const endpoint = draft.baseUrl.trim().replace(/\/+$/, "");
-    const latest = list
+    const keys = list
       .filter(
         (model) =>
           model.providerId === draft.providerId &&
-          model.baseUrl.trim().replace(/\/+$/, "") === endpoint &&
-          model.apiKey?.trim(),
+          model.baseUrl.trim().replace(/\/+$/, "") === endpoint,
       )
-      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
-    return latest?.apiKey ?? undefined;
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .flatMap(({ apiKey }) => (apiKey?.trim() ? [apiKey] : []));
+    return [...new Set(keys)];
   }, [isEditing, list, draft.providerId, draft.baseUrl]);
 
   const [providerOptionsText, setProviderOptionsText] = useState(() =>
@@ -357,7 +357,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <ConnectionFields
             key={draft.modelType}
             imageModel={isImage}
-            lastUsedApiKey={lastUsedApiKey}
+            previouslyUsedApiKeys={previouslyUsedApiKeys}
             draft={{
               providerId: draft.providerId,
               apiFormat: draft.apiFormat,
