@@ -1,0 +1,149 @@
+name: Mobile iOS dev client probe
+
+# Throwaway copy of mobile-ios.yml used to exercise it before merge: GitHub only
+# lists or dispatches workflows whose file exists on the default branch, so a
+# dispatch-only workflow cannot be tested from a feature branch. Delete with the
+# ci/runner-probe branch.
+
+on:
+  push:
+    branches: [ci/runner-probe]
+    paths: [".github/workflows/mobile-ios-probe.yml"]
+
+permissions: {}
+
+concurrency:
+  group: mobile-ios-device
+  cancel-in-progress: false
+
+jobs:
+  dev-client:
+    # macOS only lets codesign use a private key from a session that owns a
+    # window-server connection, so this job must not move to an SSH session. The
+    # Mac's runner is installed with ./svc.sh install, which registers it as a
+    # launchd user service inside the Aqua session.
+    runs-on: [self-hosted, macos, ARM64]
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      # Homebrew holds CocoaPods, and a launchd service PATH omits it.
+      - name: Add Homebrew to PATH
+        run: echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unlock the signing keychain
+        env:
+          MACOS_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+          if [ -n "${MACOS_KEYCHAIN_PASSWORD:-}" ]; then
+            security unlock-keychain -p "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+              -k "$MACOS_KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          elif security show-keychain-info "$KEYCHAIN" > /dev/null 2>&1; then
+            echo "::notice::login keychain is already unlocked; MACOS_KEYCHAIN_PASSWORD is unset"
+          else
+            echo "::error::The login keychain is locked and MACOS_KEYCHAIN_PASSWORD is unset, so codesign cannot read the private key (errSecInternalComponent). Store the Mac's login password with 'gh secret set MACOS_KEYCHAIN_PASSWORD', or unlock its screen once."
+            exit 1
+          fi
+          security find-identity -v -p codesigning
+
+      # Continuous native generation: ios/ is gitignored, so rebuild from the
+      # Expo config and the installed modules instead of a stale project.
+      - name: Generate the iOS project
+        working-directory: apps/mobile
+        run: npx expo prebuild -p ios --clean
+
+      - name: Build the dev client
+        working-directory: apps/mobile
+        env:
+          TEAM_ID: C35DR2MHM7
+        run: |
+          # A generic destination keeps the build independent of whether the
+          # iPhone happens to be tethered at that moment; installing needs only
+          # a pairing, which the step below checks.
+          xcodebuild -workspace ios/overtchat.xcworkspace -scheme overtchat \
+            -configuration Debug -sdk iphoneos -destination "generic/platform=iOS" \
+            -derivedDataPath ios/build \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_IDENTITY='Apple Development' \
+            -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+            build
+
+      - name: Verify the signed bundle
+        working-directory: apps/mobile
+        env:
+          TEAM_ID: C35DR2MHM7
+        run: |
+          APP=ios/build/Build/Products/Debug-iphoneos/overtchat.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dvv "$APP" 2>&1 | grep -E '^Identifier|^Authority=Apple|^TeamIdentifier'
+          codesign -dvv "$APP" 2>&1 | grep -q "TeamIdentifier=$TEAM_ID" || {
+            echo "::error::the bundle signed under a team other than $TEAM_ID"
+            exit 1
+          }
+          codesign -d --entitlements :- "$APP" 2> /dev/null
+
+      - name: Package the signed bundle
+        working-directory: apps/mobile
+        run: |
+          mkdir -p ../../dist/mobile
+          ditto -c -k --keepParent \
+            ios/build/Build/Products/Debug-iphoneos/overtchat.app \
+            ../../dist/mobile/overtchat-ios-dev-app.zip
+
+      - name: Upload the signed bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: overtchat-ios-dev-app
+          path: dist/mobile/overtchat-ios-dev-app.zip
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+      - name: Install on the device
+        working-directory: apps/mobile
+        env:
+          UDID: 00008110-000E0D210E52401E
+        run: |
+          # devicectl's table prints its own identifier rather than the hardware
+          # UDID, so assert pairing against the JSON.
+          xcrun devicectl list devices --json-output devices.json > /dev/null
+          node -e '
+            const { devices } = JSON.parse(require("fs").readFileSync("devices.json", "utf8")).result;
+            const known = devices.map((d) => d.hardwareProperties?.udid).filter(Boolean);
+            if (!devices.some((d) => [d.identifier, d.hardwareProperties?.udid].includes(process.env.UDID))) {
+              console.error(`::error::${process.env.UDID} is not paired. Known devices: ${known.join(", ") || "none"}`);
+              process.exit(1);
+            }
+            console.log(`paired: ${known.join(", ")}`);
+          '
+          rm -f devices.json
+          xcrun devicectl device install app --device "$UDID" \
+            ios/build/Build/Products/Debug-iphoneos/overtchat.app
+
+      - name: Launch against Metro
+        working-directory: apps/mobile
+        env:
+          UDID: 00008110-000E0D210E52401E
+          BUNDLE_SERVER: http://10.0.0.200:8081
+        run: |
+          ARGS=(--device "$UDID" --terminate-existing com.overtchat.mobile)
+          if [ -n "$BUNDLE_SERVER" ]; then
+            ENCODED="$(node -p 'encodeURIComponent(process.env.BUNDLE_SERVER)')"
+            ARGS+=(--payload-url "overtchat://expo-development-client/?url=$ENCODED")
+          fi
+          xcrun devicectl device process launch "${ARGS[@]}"
