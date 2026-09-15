@@ -19,7 +19,7 @@ export default function PrivacyPage() {
         <header className="legal-header">
           <p className="eyebrow">Legal</p>
           <h1 className="page-title">Privacy Policy</h1>
-          <p className="legal-updated">Last updated 6 September 2026</p>
+          <p className="legal-updated">Last updated 15 September 2026</p>
           <p className="page-lede">
             OvertChat is open-source software that runs on a server you choose.
             The short version: we do not operate a hosted chat service, and the
@@ -42,9 +42,9 @@ export default function PrivacyPage() {
           <section>
             <h2>What the app sends to your server</h2>
             <p>
-              Except for crash reporting described below, the app communicates
-              with the server URL you configured, over HTTPS or HTTP, in order
-              to:
+              Except for crash reporting and optional push notifications
+              described below, the app communicates with the server URL you
+              configured, over HTTPS or HTTP, in order to:
             </p>
             <ul>
               <li>
@@ -74,10 +74,14 @@ export default function PrivacyPage() {
           <section>
             <h2>What is stored on your device</h2>
             <ul>
-              <li>The server URL you entered (in Android secure storage).</li>
-              <li>Your auth session cookie (in Android secure storage).</li>
+              <li>The server URL you entered (in device secure storage).</li>
+              <li>Your auth session cookie (in device secure storage).</li>
               <li>
                 Your appearance, chat font, and web-search toggle preferences.
+              </li>
+              <li>
+                Notification preferences and, if enabled, a push registration
+                identifier and token.
               </li>
               <li>
                 Cached image previews and temporary copies of files you select,
@@ -86,8 +90,11 @@ export default function PrivacyPage() {
               </li>
             </ul>
             <p>
-              Uninstalling the app removes all of the above. You can also clear
-              the server URL from inside the app to start over.
+              You can sign out and change the server from inside the app.
+              Uninstalling removes ordinary app data, but iOS may retain secure
+              storage entries in Keychain. Removing the app does not delete
+              your account or conversations from your server; contact its
+              administrator to manage that data.
             </p>
           </section>
 
@@ -165,6 +172,34 @@ export default function PrivacyPage() {
           </section>
 
           <section>
+            <h2>Push notifications</h2>
+            <p>
+              Notifications are optional and off until you enable them. The app
+              registers with Expo Push Service and sends its push token and a
+              registration identifier to your configured server, which associates
+              them with your account to deliver chat-response and agent-idle
+              notifications. Expo handles push registration information to route
+              notifications through Apple Push Notification service on iOS or
+              Firebase Cloud Messaging on Android.
+            </p>
+            <p>
+              Notification payloads include identifiers used to open the relevant
+              chat or agent session. Message previews are off by default. If you
+              enable previews, a response excerpt or agent-session name is also
+              sent through the push services and may appear on your lock screen.
+              You can disable previews or notifications in the app settings.
+            </p>
+            <p>
+              Expo states that notification contents are held only as needed for
+              delivery. See its{" "}
+              <a href="https://docs.expo.dev/push-notifications/faq/">
+                push notification privacy information
+              </a>{" "}
+              and <a href="https://expo.dev/privacy">privacy policy</a>.
+            </p>
+          </section>
+
+          <section>
             <h2>Server version checks</h2>
             <p>
               When an administrator opens the account menu, an OvertChat server
@@ -215,8 +250,9 @@ export default function PrivacyPage() {
               an app action that uses it—for example, selecting an attachment
               uploads it to your server, and stopping dictation sends the
               recording for transcription. Realtime microphone streaming stops
-              when you mute or end the voice session. Crash diagnostics are a
-              separate data flow to Sentry, described above.
+              when you mute or end the voice session. Crash diagnostics and
+              optional push notifications are separate data flows, described
+              above.
             </p>
           </section>
 
