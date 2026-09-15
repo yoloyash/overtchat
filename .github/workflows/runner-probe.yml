@@ -1,7 +1,8 @@
 name: runner-probe
 
 on:
-  workflow_dispatch:
+  push:
+    branches: ["ci/runner-probe"]
 
 permissions: {}
 
