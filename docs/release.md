@@ -84,6 +84,44 @@ missing local copy through EAS credentials rather than committing it.
    gate. The service account needs the separate **Release to production** app
    permission.
 
+The same workflow owns iOS production builds on GitHub-hosted `macos-15`
+with Xcode 26.3. EAS CLI 24.4.2 runs `build --local`, so compilation uses the
+GitHub runner rather than the EAS hosted-build quota. iOS production signing
+uses the existing EAS-managed distribution certificate and provisioning
+profile. The existing GitHub `EXPO_TOKEN` secret authenticates both build and
+upload; EAS holds the App Store Connect API key for submissions. The public
+App Store app ID is configured in `apps/mobile/eas.json`. No Apple password or
+MacBook keychain is needed on the hosted runner.
+
+1. Manual dispatch accepts `platform: all`, `android`, or `ios` (default `all`).
+   It never uploads to either store, even when dispatched against a tag.
+2. The iOS job checks committed versions, mobile types, and readable production
+   Sentry settings, then builds and verifies the signed IPA: bundle ID, version,
+   build number, arm64 executable, production push entitlement, and App Store
+   provisioning. This is an archive check, not an iOS simulator/UI smoke test.
+3. A `mobile-v*` tag builds both platforms independently. After iOS verification,
+   its upload job sends that exact IPA to App Store Connect through EAS Submit
+   and waits for the submission result. Failure on either platform does not
+   prevent the other platform from completing.
+4. After Apple processes the upload, select that build in App Store Connect,
+   complete the version's release details, and submit it for App Review.
+   The workflow does not change review submissions or store metadata.
+
+To validate iOS without uploading a build:
+
+```bash
+gh workflow run mobile-eas.yml --ref <branch> -f platform=ios
+```
+
+Before a new tagged release, increment the committed Android/iOS build number
+and set the intended public version. A build number already uploaded to Apple
+cannot be uploaded again; a manual validation build may reuse it because it
+never reaches Apple. Signed IPA workflow artifacts expire after three days.
+If signing credentials expire, renew them with `eas credentials --platform ios`
+from `apps/mobile` and the production profile before rerunning. Do not add PR
+triggers to this credentialed workflow; PR validation runs on hosted machines
+without release credentials.
+
 Local EAS builds cannot read secret-visibility variables.
 `EXPO_PUBLIC_SENTRY_DSN` must have plain-text visibility so crash reporting is
 enabled in the binary; `SENTRY_AUTH_TOKEN` remains a credential but must be
