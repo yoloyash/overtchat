@@ -24,6 +24,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     apiFormat: row.apiFormat,
     baseUrl: row.baseUrl,
     apiKey: row.apiKey,
+    updatedAt: row.updatedAt.getTime(),
     model: row.model,
     pricing: row.pricing,
     catalogPricing: catalogPricingFor(row.providerId, row.model) ?? null,

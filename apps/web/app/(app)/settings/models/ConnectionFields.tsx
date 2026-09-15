@@ -48,6 +48,7 @@ export interface ConnectionDraft {
 
 export interface ConnectionFieldsProps {
   draft: ConnectionDraft;
+  lastUsedApiKey?: string;
   onChange: (next: Partial<ConnectionDraft>) => void;
   onDiscoveredContextWindow?: (next: number | undefined) => void;
   onCatalogContextWindow?: (next: number | undefined) => void;
@@ -61,6 +62,7 @@ export interface ConnectionFieldsProps {
 
 export function ConnectionFields({
   draft,
+  lastUsedApiKey,
   onChange,
   onDiscoveredContextWindow,
   onCatalogContextWindow,
@@ -89,6 +91,7 @@ export function ConnectionFields({
   ].join("\n");
 
   function clearProbeState() {
+    lastAutoProbeKeyRef.current = "";
     setModels([]);
     setProbeError("");
     setModelMode("manual");
@@ -352,6 +355,20 @@ export function ConnectionFields({
               clearProbeState();
             }}
           />
+          {!draft.apiKey && lastUsedApiKey && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="mt-1 px-0 text-xs text-muted-foreground"
+              onClick={() => {
+                onChange({ apiKey: lastUsedApiKey });
+                clearProbeState();
+              }}
+            >
+              Last used ····{lastUsedApiKey.length > 4 ? lastUsedApiKey.slice(-4) : ""}
+            </Button>
+          )}
         </div>
       </SettingsRow>
 
