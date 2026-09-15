@@ -5,6 +5,13 @@ name: Mobile iOS dev client
 # needed when native modules or the Expo config change.
 
 on:
+# Every trigger below can only be fired by someone with repository write access.
+# Never add `pull_request`: this repository is public, and this runner is a real
+# Mac that holds a signing identity and this user's SSH configuration.
+  push:
+    branches:
+      - feat/mobile-ios
+
   workflow_dispatch:
     inputs:
       udid:
@@ -37,6 +44,11 @@ jobs:
     permissions:
       contents: read
     timeout-minutes: 45
+    # Push runs have no `inputs`, so the lab defaults live here and manual
+    # dispatch inputs override them.
+    env:
+      UDID: ${{ inputs.udid || '00008110-000E0D210E52401E' }}
+      TEAM_ID: ${{ inputs.team_id || 'C35DR2MHM7' }}
     defaults:
       run:
         shell: bash
@@ -86,8 +98,6 @@ jobs:
 
       - name: Build the dev client
         working-directory: apps/mobile
-        env:
-          TEAM_ID: ${{ inputs.team_id }}
         run: |
           # A generic destination keeps the build independent of whether the
           # iPhone happens to be tethered at that moment; installing needs only
@@ -101,8 +111,6 @@ jobs:
 
       - name: Verify the signed bundle
         working-directory: apps/mobile
-        env:
-          TEAM_ID: ${{ inputs.team_id }}
         run: |
           APP=ios/build/Build/Products/Debug-iphoneos/overtchat.app
           codesign --verify --deep --strict --verbose=2 "$APP"
@@ -131,10 +139,8 @@ jobs:
           retention-days: 3
 
       - name: Install on the device
-        if: ${{ inputs.install }}
+        if: ${{ inputs.install != 'false' }}
         working-directory: apps/mobile
-        env:
-          UDID: ${{ inputs.udid }}
         run: |
           # devicectl's table prints its own identifier rather than the hardware
           # UDID, so assert pairing against the JSON.
@@ -153,11 +159,8 @@ jobs:
             ios/build/Build/Products/Debug-iphoneos/overtchat.app
 
       - name: Launch against Metro
-        if: ${{ inputs.install }}
+        if: ${{ inputs.install != 'false' }}
         working-directory: apps/mobile
-        env:
-          UDID: ${{ inputs.udid }}
-          BUNDLE_SERVER: ${{ inputs.bundle_server }}
         run: |
           ARGS=(--device "$UDID" --terminate-existing com.overtchat.mobile)
           if [ -n "$BUNDLE_SERVER" ]; then
