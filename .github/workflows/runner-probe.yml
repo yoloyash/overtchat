@@ -13,13 +13,24 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Session context
+        continue-on-error: true
+        run: |
+          echo "managername=$(launchctl managername)"
+          echo "uid=$(id -u) user=$(id -un)"
+          security list-keychains -d user
+          security show-keychain-info ~/Library/Keychains/login.keychain-db 2>&1 || echo "keychain-info exit=$?"
+          pgrep -fl SecurityAgent || echo "no SecurityAgent process"
+
       - name: Toolchain
+        continue-on-error: true
         run: |
           sw_vers -productVersion
           xcodebuild -version
           echo "PATH=$PATH"
 
       - name: Codesign identity is visible
+        continue-on-error: true
         run: |
           security find-identity -v -p codesigning
           IDENTITY="$(security find-identity -v -p codesigning | awk '/"Apple Development:/ { print $2; exit }')"
@@ -27,14 +38,13 @@ jobs:
           echo "IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       - name: Compile, sign, and verify a scratch binary
+        continue-on-error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
           bin="$RUNNER_TEMP/probe-$GITHUB_RUN_ID"
           printf 'int main(void){return 0;}' > "$bin.c"
-          cc -o "$bin" "$bin.c"
-          codesign --force --timestamp=none -s "$IDENTITY" "$bin"
-          codesign --verify --strict --verbose=2 "$bin"
-          codesign -d --entitlements :- "$bin" 2>&1 | grep -E 'get-task-allow' || true
+          cc -o "$bin" "$bin.c" && echo "COMPILE OK"
+          codesign --force --timestamp=none -s "$IDENTITY" "$bin" && echo "SIGN OK"
+          codesign --verify --strict --verbose=2 "$bin" && echo "VERIFY OK"
           codesign -dvv "$bin" 2>&1 | grep -E 'Authority=|TeamIdentifier='
           rm -f "$bin" "$bin.c"
-          echo "SIGN-AND-VERIFY OK"
