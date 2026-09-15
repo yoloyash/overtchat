@@ -4,6 +4,12 @@ on:
   push:
     tags: ["mobile-v*"]
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build and validate (manual runs never upload to stores)
+        type: choice
+        options: [all, android, ios]
+        default: all
 
 permissions: {}
 
@@ -13,7 +19,8 @@ concurrency:
 
 jobs:
   build-android:
-    runs-on: self-hosted
+    if: github.event_name == 'push' || inputs.platform != 'ios'
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
     outputs:
@@ -175,9 +182,9 @@ jobs:
           retention-days: 14
 
   publish-android:
-    if: startsWith(github.ref, 'refs/tags/mobile-v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
     needs: [build-android, smoke-android]
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: write
     defaults:
@@ -220,3 +227,138 @@ jobs:
           gh release view "$TAG" >/dev/null 2>&1 || \
             gh release create "$TAG" --draft --latest=false --title "$TAG" --notes "Draft - fill in notes before publishing."
           gh release upload "$TAG" "$APK" --clobber
+
+  build-ios:
+    if: github.event_name == 'push' || inputs.platform != 'android'
+    runs-on: macos-15
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check mobile version
+        id: version
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const { expo } = require('./apps/mobile/app.json');
+          assert.equal(require('./apps/mobile/package.json').version, expo.version);
+          assert.match(expo.version, /^\d+\.\d+\.\d+$/);
+          assert.match(expo.ios.buildNumber, /^[1-9]\d*$/);
+          assert.equal(expo.ios.buildNumber, String(expo.android.versionCode));
+          if (process.env.GITHUB_REF_TYPE === 'tag') {
+            assert.equal(process.env.GITHUB_REF_NAME, `mobile-v${expo.version}`);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${expo.version}\n`);
+          NODE
+
+      - name: Typecheck mobile
+        run: npm run typecheck -w apps/mobile --
+
+      - name: Check crash reporting configuration
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          # shellcheck disable=SC2016
+          npx eas-cli@24.4.2 env:exec production '
+            if [ -z "$EXPO_PUBLIC_SENTRY_DSN" ] || [ -z "$SENTRY_AUTH_TOKEN" ]; then
+              echo "::error::Production Sentry variables must be readable by local EAS builds."
+              exit 1
+            fi
+          '
+
+      # EAS downloads the existing managed distribution certificate/profile and
+      # signs using a temporary keychain on this disposable hosted runner.
+      - name: Build production IPA
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          mkdir -p ../../dist/mobile
+          npx eas-cli@24.4.2 build --local --non-interactive \
+            --platform ios --profile production \
+            --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.ipa"
+
+      - name: Verify signed IPA
+        run: |
+          bash .github/scripts/verify-ios-ipa.sh \
+            "dist/mobile/overtchat-v${{ steps.version.outputs.version }}.ipa"
+
+      - name: Upload signed iOS artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: overtchat-ios-${{ steps.version.outputs.version }}
+          path: dist/mobile/overtchat-v${{ steps.version.outputs.version }}.ipa
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+  upload-ios:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
+    needs: build-ios
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download verified iOS artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: overtchat-ios-${{ needs.build-ios.outputs.version }}
+          path: dist/mobile
+
+      # Upload only. App Review submission remains an App Store Connect action.
+      - name: Upload IPA to App Store Connect
+        working-directory: apps/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx eas-cli@24.4.2 submit --non-interactive --wait \
+            --platform ios --profile production \
+            --path "../../dist/mobile/overtchat-v${{ needs.build-ios.outputs.version }}.ipa"
