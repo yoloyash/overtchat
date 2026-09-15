@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
-  STREAMDOWN_PLUGINS,
+  useStreamdownPlugins,
 } from "@/lib/chat/markdown";
 import { remarkAgentLinks } from "@/lib/agents/links";
 import {
@@ -665,10 +665,11 @@ function Markdown({
   children: string;
   streaming?: boolean;
 }) {
+  const plugins = useStreamdownPlugins();
   return (
     <Streamdown
       className={AGENT_MARKDOWN_CLASSES}
-      plugins={STREAMDOWN_PLUGINS}
+      plugins={plugins}
       remarkPlugins={AGENT_REMARK_PLUGINS}
       allowedTags={AGENT_MARKDOWN_ALLOWED_TAGS}
       components={AGENT_MARKDOWN_COMPONENTS}
