@@ -83,6 +83,14 @@ export function DiagramViewport({
   }, []);
 
   const commit = useCallback((next: DiagramView) => {
+    const current = viewRef.current;
+    // A drag that cannot move the fitted drawing must not leave auto-fit mode.
+    if (
+      next.scale === current.scale &&
+      next.x === current.x &&
+      next.y === current.y
+    )
+      return;
     viewRef.current = next;
     setManualView(next);
   }, []);
@@ -203,7 +211,8 @@ export function DiagramViewport({
           style={{
             height: fullscreen ? "100%" : actualHeight,
             cursor: dragging ? "grabbing" : "grab",
-            touchAction: fullscreen || manualView ? "none" : "pan-y",
+            touchAction:
+              fullscreen || view.scale > fit + 0.000001 ? "none" : "pan-y",
           }}
           onPointerDown={(event) => {
             if (event.button !== 0 || pointers.current.size >= 2) return;

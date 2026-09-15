@@ -47,7 +47,9 @@ test("renders diagrams without randomUUID and updates their theme without reload
     '```mermaid\ngraph TD\n  A["Start<br/>Browser"] --> B["Finish<br/>Server"]\n```',
   );
   await page.goto("/chat/mermaid-chat");
-  expect(await page.evaluate(() => typeof window.crypto.randomUUID)).toBe("undefined");
+  expect(await page.evaluate(() => typeof window.crypto.randomUUID)).toBe(
+    "undefined",
+  );
 
   const diagram = page.getByRole("img", { name: "Mermaid chart" });
   await expect(diagram).toBeVisible();
@@ -344,6 +346,72 @@ test("preserves chat scrolling and uses modifier-wheel zoom inline", async ({
   await page.mouse.wheel(0, -100);
   await page.keyboard.up("Control");
   await expect.poll(() => image.getAttribute("style")).not.toBe(transform);
+});
+
+test("repeated touch swipes keep scrolling the chat until the diagram is zoomed", async ({
+  page,
+  context,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  seedMessage(
+    [
+      "```mermaid",
+      "graph LR",
+      "A[Start] --> B[Finish]",
+      "```",
+      "",
+      ...Array.from({ length: 30 }, (_, i) => `Paragraph ${i}.\n`),
+    ].join("\n"),
+  );
+  await page.goto("/chat/mermaid-chat");
+  const viewer = page.getByRole("region", {
+    name: "Diagram viewer",
+    exact: true,
+  });
+  const transcript = page.locator("[data-chat-transcript-scroll]");
+  await viewer.scrollIntoViewIfNeeded();
+  await expect(viewer.getByRole("img")).toBeVisible();
+  const session = await context.newCDPSession(page);
+  const touchAction = () =>
+    viewer.evaluate((element) => element.style.touchAction);
+  try {
+    for (let swipe = 0; swipe < 2; swipe++) {
+      await viewer.scrollIntoViewIfNeeded();
+      const before = await transcript.evaluate((element) => element.scrollTop);
+      const box = (await viewer.boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchStart",
+        touchPoints: [{ id: 1, x, y }],
+      });
+      // Small initial movements reach the pointer handler before the browser
+      // recognizes the vertical scroll and sends pointercancel.
+      for (const distance of [2, 5, 10, 20, 40, 70]) {
+        await session.send("Input.dispatchTouchEvent", {
+          type: "touchMove",
+          touchPoints: [{ id: 1, x, y: y - distance }],
+        });
+      }
+      await session.send("Input.dispatchTouchEvent", {
+        type: "touchEnd",
+        touchPoints: [],
+      });
+      await expect
+        .poll(() => transcript.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(before);
+      await expect.poll(touchAction).toBe("pan-y");
+    }
+    await page.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await expect.poll(touchAction).toBe("none");
+    await page.getByRole("button", { name: "Fit diagram" }).click();
+    await expect.poll(touchAction).toBe("pan-y");
+    // A manual zoom below the fitted scale must also allow native scrolling.
+    await page.getByRole("button", { name: "Zoom out", exact: true }).click();
+    await expect.poll(touchAction).toBe("pan-y");
+  } finally {
+    await session.detach();
+  }
 });
 
 test("supports pinch zoom in fullscreen on a narrow screen", async ({
