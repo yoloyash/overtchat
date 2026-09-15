@@ -41,6 +41,6 @@ assert not profile.get('ProvisionedDevices'), 'Ad hoc provisioning is not allowe
 assert not profile.get('ProvisionsAllDevices'), 'Enterprise provisioning is not allowed'
 assert profile['ExpirationDate'] > datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None), 'Provisioning profile expired'
 assert entitlements['application-identifier'] == profile['Entitlements']['application-identifier'], 'Signing identity mismatch'
-subprocess.run(['lipo', '-verify_arch', 'arm64', str(app / info['CFBundleExecutable'])], check=True)
+subprocess.run(['lipo', str(app / info['CFBundleExecutable']), '-verify_arch', 'arm64'], check=True)
 print(f"Verified App Store IPA: {info['CFBundleIdentifier']} {info['CFBundleShortVersionString']} ({info['CFBundleVersion']})")
 PY
