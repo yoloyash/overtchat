@@ -1,3 +1,4 @@
+import { generateId } from "ai";
 import type { Size } from "./diagram-viewport";
 
 export type RenderedDiagram = Size & { svg: string };
@@ -21,7 +22,7 @@ export function renderDiagram(
       fontFamily: "sans-serif",
     });
     const { svg } = await renderer.render(
-      `diagram-${crypto.randomUUID()}`,
+      `diagram-${generateId()}`,
       source,
     );
     // Mermaid's HTML labels can contain HTML void elements such as <br>.

@@ -33,13 +33,21 @@ function seedMessage(text: string) {
   }
 }
 
-test("renders diagrams and updates their theme without reloading", async ({
+test("renders diagrams without randomUUID and updates their theme without reloading", async ({
   page,
 }) => {
+  // Plain HTTP on a LAN host does not expose secure-context-only randomUUID.
+  await page.addInitScript(() => {
+    Object.defineProperty(window.crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+  });
   seedMessage(
     '```mermaid\ngraph TD\n  A["Start<br/>Browser"] --> B["Finish<br/>Server"]\n```',
   );
   await page.goto("/chat/mermaid-chat");
+  expect(await page.evaluate(() => typeof window.crypto.randomUUID)).toBe("undefined");
 
   const diagram = page.getByRole("img", { name: "Mermaid chart" });
   await expect(diagram).toBeVisible();
