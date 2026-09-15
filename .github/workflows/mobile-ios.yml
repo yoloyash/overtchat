@@ -1,0 +1,167 @@
+name: Mobile iOS dev client
+
+# Builds the debug dev client for a physical iPhone and installs it over USB.
+# The device keeps loading JavaScript from Metro, so native rebuilds are only
+# needed when native modules or the Expo config change.
+
+on:
+  workflow_dispatch:
+    inputs:
+      udid:
+        description: CoreDevice identifier of the target iPhone
+        default: 00008110-000E0D210E52401E
+      team_id:
+        description: Apple developer team that owns the signing identity
+        default: C35DR2MHM7
+      bundle_server:
+        description: Metro URL the dev client should load (for example http://10.0.0.200:8081); empty launches the app as installed
+        default: ""
+      install:
+        description: Install and launch the result on the attached device
+        type: boolean
+        default: true
+
+permissions: {}
+
+concurrency:
+  group: mobile-ios-device
+  cancel-in-progress: false
+
+jobs:
+  dev-client:
+    # macOS only lets codesign use a private key from a session that owns a
+    # window-server connection, so this job must not move to an SSH session. The
+    # Mac's runner is installed with ./svc.sh install, which registers it as a
+    # launchd user service inside the Aqua session.
+    runs-on: [self-hosted, macos, ARM64]
+    permissions:
+      contents: read
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      # Homebrew holds CocoaPods, and a launchd service PATH omits it.
+      - name: Add Homebrew to PATH
+        run: echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unlock the signing keychain
+        env:
+          MACOS_CI_KEYCHAIN_PASSWORD: ${{ secrets.MACOS_CI_KEYCHAIN_PASSWORD }}
+        run: |
+          # Created once by apps/mobile/scripts/ios-keychain-setup.sh. Codesign
+          # only needs this keychain; the login keychain stays in the search list
+          # because Xcode keeps its developer account there.
+          KEYCHAIN="$HOME/Library/Keychains/overtchat-ci.keychain-db"
+          if [ ! -f "$KEYCHAIN" ]; then
+            echo "::error::$KEYCHAIN is missing. This Mac still needs the one-time iOS runner keychain setup."
+            exit 1
+          fi
+          if [ -z "${MACOS_CI_KEYCHAIN_PASSWORD:-}" ]; then
+            echo "::error::MACOS_CI_KEYCHAIN_PASSWORD is unset. Register the password printed by apps/mobile/scripts/ios-keychain-setup.sh with 'gh secret set MACOS_CI_KEYCHAIN_PASSWORD'. This is not the Mac's login password."
+            exit 1
+          fi
+          security unlock-keychain -p "$MACOS_CI_KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$MACOS_CI_KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" "$HOME/Library/Keychains/login.keychain-db"
+          security find-identity -v -p codesigning
+
+      # Continuous native generation: ios/ is gitignored, so rebuild from the
+      # Expo config and the installed modules instead of a stale project.
+      - name: Generate the iOS project
+        working-directory: apps/mobile
+        run: npx expo prebuild -p ios --clean
+
+      - name: Build the dev client
+        working-directory: apps/mobile
+        env:
+          TEAM_ID: ${{ inputs.team_id }}
+        run: |
+          # A generic destination keeps the build independent of whether the
+          # iPhone happens to be tethered at that moment; installing needs only
+          # a pairing, which the step below checks.
+          xcodebuild -workspace ios/overtchat.xcworkspace -scheme overtchat \
+            -configuration Debug -sdk iphoneos -destination "generic/platform=iOS" \
+            -derivedDataPath ios/build \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_IDENTITY='Apple Development' \
+            -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+            build
+
+      - name: Verify the signed bundle
+        working-directory: apps/mobile
+        env:
+          TEAM_ID: ${{ inputs.team_id }}
+        run: |
+          APP=ios/build/Build/Products/Debug-iphoneos/overtchat.app
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dvv "$APP" 2>&1 | grep -E '^Identifier|^Authority=Apple|^TeamIdentifier'
+          codesign -dvv "$APP" 2>&1 | grep -q "TeamIdentifier=$TEAM_ID" || {
+            echo "::error::the bundle signed under a team other than $TEAM_ID"
+            exit 1
+          }
+          codesign -d --entitlements :- "$APP" 2> /dev/null
+
+      - name: Package the signed bundle
+        working-directory: apps/mobile
+        run: |
+          mkdir -p ../../dist/mobile
+          ditto -c -k --keepParent \
+            ios/build/Build/Products/Debug-iphoneos/overtchat.app \
+            ../../dist/mobile/overtchat-ios-dev-app.zip
+
+      - name: Upload the signed bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: overtchat-ios-dev-app
+          path: dist/mobile/overtchat-ios-dev-app.zip
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 3
+
+      - name: Install on the device
+        if: ${{ inputs.install }}
+        working-directory: apps/mobile
+        env:
+          UDID: ${{ inputs.udid }}
+        run: |
+          # devicectl's table prints its own identifier rather than the hardware
+          # UDID, so assert pairing against the JSON.
+          xcrun devicectl list devices --json-output devices.json > /dev/null
+          node -e '
+            const { devices } = JSON.parse(require("fs").readFileSync("devices.json", "utf8")).result;
+            const known = devices.map((d) => d.hardwareProperties?.udid).filter(Boolean);
+            if (!devices.some((d) => [d.identifier, d.hardwareProperties?.udid].includes(process.env.UDID))) {
+              console.error(`::error::${process.env.UDID} is not paired. Known devices: ${known.join(", ") || "none"}`);
+              process.exit(1);
+            }
+            console.log(`paired: ${known.join(", ")}`);
+          '
+          rm -f devices.json
+          xcrun devicectl device install app --device "$UDID" \
+            ios/build/Build/Products/Debug-iphoneos/overtchat.app
+
+      - name: Launch against Metro
+        if: ${{ inputs.install }}
+        working-directory: apps/mobile
+        env:
+          UDID: ${{ inputs.udid }}
+          BUNDLE_SERVER: ${{ inputs.bundle_server }}
+        run: |
+          ARGS=(--device "$UDID" --terminate-existing com.overtchat.mobile)
+          if [ -n "$BUNDLE_SERVER" ]; then
+            ENCODED="$(node -p 'encodeURIComponent(process.env.BUNDLE_SERVER)')"
+            ARGS+=(--payload-url "overtchat://expo-development-client/?url=$ENCODED")
+          fi
+          xcrun devicectl device process launch "${ARGS[@]}"
