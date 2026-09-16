@@ -221,12 +221,13 @@ export class ManagedProcesses {
     await this.reap(target);
     const id = randomUUID();
     const marker = `OVERTCHAT_MANAGED_PID_${id}:`;
+    const identity = `overtchat-managed-${id}`;
     // Do not let the helper start until its PID and start time are on disk.
     // EOF before the acknowledgement exits the gate without launching it.
-    const gate = `printf '${marker}%s\\n' "$$" >&2; IFS= read -r ticket || exit 1; [ "$ticket" = '${id}' ] || exit 1; ${buildSshRemoteCommand(launch)}`;
+    const gate = `printf '${marker}%s\\n' "$$" >&2; IFS= read -r ticket || exit 1; [ "$ticket" = '${id}' ] || exit 1; ${buildSshRemoteCommand(launch, identity)}`;
     const child = spawn(target, {
       command: "/bin/sh",
-      args: ["-c", gate, `overtchat-managed-${id}`],
+      args: ["-c", gate, identity],
       shellMode: "login",
     });
     // A failed SSH session can close stdin between inspection and the gate

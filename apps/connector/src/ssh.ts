@@ -17,6 +17,7 @@ export function shellQuote(value: string): string {
 
 export function buildSshRemoteCommand(
   launch: AgentProcessHostLaunch,
+  processIdentity?: string,
 ): string {
   const env = Object.entries(launch.env ?? {})
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
@@ -28,7 +29,10 @@ export function buildSshRemoteCommand(
   const agentCommand = launch.cwd
     ? `cd -- ${shellQuote(launch.cwd)} && ${invocation}`
     : invocation;
-  const loginCommand = `exec 1>&3 3>&-; ${agentCommand}`;
+  // Keep managed ownership visible in argv while shell startup files run,
+  // before exec replaces the shell with the final helper command.
+  const identity = processIdentity ? `: ${shellQuote(processIdentity)}; ` : "";
+  const loginCommand = `${identity}exec 1>&3 3>&-; ${agentCommand}`;
   const shellFlags =
     launch.shellMode === "interactive" ? "-ilc" : "-lc";
   return `exec "\${SHELL:-/bin/sh}" ${shellFlags} ${shellQuote(loginCommand)} 3>&1 1>&2`;
