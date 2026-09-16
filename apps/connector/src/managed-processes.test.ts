@@ -3,13 +3,15 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectorProcessHost } from "./runtime.js";
 import { parseProcessTable } from "./managed-processes.js";
+import { shellQuote } from "./ssh.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  vi.unstubAllEnvs();
 });
 
 async function fixture() {
@@ -73,6 +75,45 @@ describe("managed helper processes", () => {
     expect(await readdir(directory)).toEqual([]);
   });
 
+  it("reaps a helper while its login shell is still starting", async () => {
+    const { host, directory } = await fixture();
+    const shell = path.join(directory, "slow-shell");
+    const ready = path.join(directory, "shell-ready");
+    await writeFile(
+      shell,
+      [
+        "#!/bin/sh",
+        // Let the registration gate run, then hold the second shell in startup.
+        'case "$2" in *OVERTCHAT_MANAGED_PID_*) exec /bin/sh "$@" ;; esac',
+        `printf ready > ${shellQuote(ready)}`,
+        "while :; do sleep 1; done",
+      ].join("\n"),
+      { mode: 0o700 },
+    );
+    vi.stubEnv("SHELL", shell);
+    const child = await host.spawnManaged(
+      { transport: "local" },
+      { command: "/bin/sleep", args: ["60"], shellMode: "login" },
+    );
+    child.stdin.end();
+    await vi.waitFor(
+      async () => {
+        expect(await readFile(ready, "utf8")).toBe("ready");
+      },
+      { timeout: 3_000 },
+    );
+    const file = (await readdir(directory)).find((name) =>
+      name.endsWith(".json"),
+    )!;
+    const record = JSON.parse(await readFile(path.join(directory, file), "utf8"));
+    await new ConnectorProcessHost(directory).reap();
+    expect(alive(record.root.pid)).toBe(false);
+    await child.exit;
+    expect(
+      (await readdir(directory)).filter((name) => name.endsWith(".json")),
+    ).toEqual([]);
+  });
+
   it.each(["started", "signature"])(
     "does not kill a PID whose %s no longer matches",
     async (field) => {
@@ -86,11 +127,19 @@ describe("managed helper processes", () => {
         },
       );
       child.stdin.end();
-      // Wait for exec to replace the startup gate (which has its own identity).
-      await new Promise((resolve) => setTimeout(resolve, 100));
       const [file] = await readdir(directory);
       const location = path.join(directory, file);
       const record = JSON.parse(await readFile(location, "utf8"));
+      // Observe exec replacing the gate; elapsed time alone is not evidence.
+      await vi.waitFor(
+        async () => {
+          const { stdout } = await promisify(execFile)("ps", [
+            "-p", String(record.root.pid), "-o", "args=",
+          ]);
+          expect(stdout.trim()).toBe("/bin/sleep 60");
+        },
+        { timeout: 3_000 },
+      );
       if (field === "started") record.root.started = "a different start time";
       else record.signature = "a different command";
       await writeFile(location, JSON.stringify(record));
