@@ -59,6 +59,22 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
+## OpenCode process lifecycle validation
+
+The connector owns cleanup for local and SSH OpenCode servers. To exercise real
+session cancellation, shared server leases, failed SSH cleanup retries, and
+recovery after killing a test connector, run:
+
+```sh
+RUN_OPENCODE_LIFECYCLE_INTEGRATION=1 npm run test -w apps/connector -- src/opencode-lifecycle.integration.test.ts
+```
+
+Set `OPENCODE_COMMAND` if the local executable is not `opencode`. Set
+`OPENCODE_SSH_ALIASES=linux-host,mac-host` to include configured OpenSSH aliases;
+each remote login environment must provide `opencode`. These tests create and
+remove disposable workspaces, sessions, and process records. They run a native
+shell tool without making model requests and only terminate helpers they own.
+
 ## Library benchmark
 
 Run `npm run bench:library -w apps/web --` without competing builds or tests.

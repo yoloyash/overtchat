@@ -207,6 +207,8 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
   private streaming = false;
   private compacting = false;
   private stopped = false;
+  private stopPromise?: Promise<void>;
+  private abortOnCloseStarted = false;
   private submissions: Record<string, string> = {};
   private todos: Todo[] = [];
   private activeSelection?: OpenCodeTurnSelection;
@@ -223,6 +225,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       this.abortEvents.abort();
       const lease = this.lease;
       this.lease = undefined;
+      await this.abortSessionOnClose();
       await lease?.release().catch(() => {});
       throw error;
     });
@@ -437,12 +440,49 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     });
   }
 
-  async stop(): Promise<void> {
-    if (this.stopped) return;
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
     this.stopped = true;
     this.abortEvents.abort();
-    await this.readyPromise.catch(() => {});
-    await this.lease?.release().catch(() => {});
+    this.stopPromise = this.close();
+    return this.stopPromise;
+  }
+
+  private async close(): Promise<void> {
+    try {
+      await this.readyPromise.catch(() => {});
+      await this.abortSessionOnClose();
+    } finally {
+      await this.lease?.release();
+    }
+  }
+
+  private async abortSessionOnClose(): Promise<void> {
+    if (this.abortOnCloseStarted || !this.client || !this.session) return;
+    this.abortOnCloseStarted = true;
+    const abort = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const result = await Promise.race([
+        this.client.session.abort(
+          { sessionID: this.session.id, directory: this.launch.cwd },
+          { signal: abort.signal },
+        ),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            abort.abort();
+            reject(new Error("OpenCode session shutdown timed out."));
+          }, 2_000);
+        }),
+      ]);
+      assertResult(result, "OpenCode session shutdown");
+    } catch (error) {
+      console.warn(
+        `Unable to abort OpenCode session during shutdown: ${openCodeErrorText(error)}`,
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async initialize(): Promise<void> {
@@ -450,6 +490,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     this.client = createOpencodeClient({
       baseUrl: this.lease.baseUrl,
       directory: this.launch.cwd,
+      signal: this.abortEvents.signal,
     });
     const stream = await this.client.global.event({ signal: this.abortEvents.signal });
     void this.runEventLoop(stream.stream);

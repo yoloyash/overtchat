@@ -1,14 +1,16 @@
 import {
   executeOnHost,
   openTcpTunnel,
-  spawnOnHost,
+  spawnManagedOnHost,
+  terminateAgentProcess,
   type AgentProcess,
   type AgentTcpTunnel,
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 
 const STARTUP_TIMEOUT_MS = 30_000;
-const LISTENING_URL = /opencode server listening on http:\/\/127\.0\.0\.1:(\d{1,5})/iu;
+const LISTENING_URL =
+  /opencode server listening on http:\/\/127\.0\.0\.1:(\d{1,5})/iu;
 const PREPARE_SERVER_DIRECTORY = `
 set -eu
 base="\${XDG_STATE_HOME:-\${HOME}/.local/state}"
@@ -67,7 +69,7 @@ async function startServer(
   executable: string,
 ): Promise<StartedServer> {
   const cwd = await prepareServerDirectory(target);
-  const process = spawnOnHost(target, {
+  const process = await spawnManagedOnHost(target, {
     command: executable,
     args: [
       "serve",
@@ -94,67 +96,75 @@ async function startServer(
     stderr = append(stderr, chunk);
   });
 
-  const remotePort = await new Promise<number>((resolve, reject) => {
-    let settled = false;
-    const finish = (value: number | Error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      process.stdout.removeListener("data", inspect);
-      process.stderr.removeListener("data", inspect);
-      if (value instanceof Error) reject(value);
-      else resolve(value);
-    };
-    const inspect = () => {
-      const match = LISTENING_URL.exec(`${stdout}\n${stderr}`);
-      const port = Number(match?.[1]);
-      if (Number.isInteger(port) && port > 0 && port <= 65_535) finish(port);
-    };
-    process.stdout.on("data", inspect);
-    process.stderr.on("data", inspect);
-    void process.exit.then((result) => {
-      finish(
+  let tunnel: AgentTcpTunnel | undefined;
+  try {
+    const remotePort = await new Promise<number>((resolve, reject) => {
+      let settled = false;
+      const finish = (value: number | Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        process.stdout.removeListener("data", inspect);
+        process.stderr.removeListener("data", inspect);
+        if (value instanceof Error) reject(value);
+        else resolve(value);
+      };
+      const inspect = () => {
+        const match = LISTENING_URL.exec(`${stdout}\n${stderr}`);
+        const port = Number(match?.[1]);
+        if (Number.isInteger(port) && port > 0 && port <= 65_535) finish(port);
+      };
+      process.stdout.on("data", inspect);
+      process.stderr.on("data", inspect);
+      void process.exit.then((result) => {
+        finish(
+          new Error(
+            result.error?.message ||
+              stderr.trim() ||
+              stdout.trim() ||
+              `OpenCode server exited before becoming ready (code ${result.code ?? "unknown"}).`,
+          ),
+        );
+      });
+      const timeout = setTimeout(() => {
+        finish(
+          new Error(
+            `OpenCode server did not become ready within ${STARTUP_TIMEOUT_MS / 1_000} seconds.${
+              stderr.trim() ? ` ${stderr.trim()}` : ""
+            }`,
+          ),
+        );
+      }, STARTUP_TIMEOUT_MS);
+    });
+
+    tunnel = await openTcpTunnel(target, remotePort);
+    const exit = process.exit.then(
+      (result) =>
+        result.error ??
         new Error(
-          result.error?.message ||
-            stderr.trim() ||
-            stdout.trim() ||
-            `OpenCode server exited before becoming ready (code ${result.code ?? "unknown"}).`,
+          stderr.trim() ||
+            `OpenCode server exited (code ${result.code ?? "unknown"}, signal ${result.signal ?? "none"}).`,
         ),
+    );
+    return { process, tunnel, baseUrl: tunnel.url, exit };
+  } catch (error) {
+    await terminateAgentProcess(process).catch((cleanupError) => {
+      console.error(
+        `Unable to stop failed OpenCode server: ${errorMessage(cleanupError)}`,
       );
     });
-    const timeout = setTimeout(() => {
-      finish(
-        new Error(
-          `OpenCode server did not become ready within ${STARTUP_TIMEOUT_MS / 1_000} seconds.${
-            stderr.trim() ? ` ${stderr.trim()}` : ""
-          }`,
-        ),
-      );
-      process.kill("SIGTERM");
-    }, STARTUP_TIMEOUT_MS);
-  });
-
-  let tunnel: AgentTcpTunnel;
-  try {
-    tunnel = await openTcpTunnel(target, remotePort);
-  } catch (error) {
-    process.kill("SIGTERM");
-    throw new Error(`Unable to connect to the OpenCode server: ${errorMessage(error)}`);
+    await tunnel?.close().catch(() => {});
+    throw error;
   }
-  const exit = process.exit.then((result) =>
-    result.error ??
-    new Error(
-      stderr.trim() ||
-        `OpenCode server exited (code ${result.code ?? "unknown"}, signal ${result.signal ?? "none"}).`,
-    ),
-  );
-  return { process, tunnel, baseUrl: tunnel.url, exit };
 }
 
 export class OpenCodeServerPool {
   private readonly entries = new Map<string, PoolEntry>();
 
-  async acquire(target: HostTarget, executable: string): Promise<OpenCodeServerLease> {
+  async acquire(
+    target: HostTarget,
+    executable: string,
+  ): Promise<OpenCodeServerLease> {
     const key = targetKey(target, executable);
     let entry = this.entries.get(key);
     if (!entry) {
@@ -165,7 +175,14 @@ export class OpenCodeServerPool {
         .then(async () => {
           if (this.entries.get(key) === entry) this.entries.delete(key);
           const server = await entry!.start.catch(() => null);
-          await server?.tunnel.close().catch(() => {});
+          if (server) {
+            await terminateAgentProcess(server.process).catch((error) => {
+              console.error(
+                `Unable to clean up exited OpenCode server: ${errorMessage(error)}`,
+              );
+            });
+            await server.tunnel.close().catch(() => {});
+          }
         })
         .catch(() => {});
     }
@@ -198,12 +215,11 @@ export class OpenCodeServerPool {
     entry.references = Math.max(0, entry.references - 1);
     if (entry.references > 0 || this.entries.get(key) !== entry) return;
     this.entries.delete(key);
-    await server.tunnel.close().catch(() => {});
-    server.process.kill("SIGTERM");
-    const timeout = setTimeout(() => server.process.kill("SIGKILL"), 1_000);
-    timeout.unref();
-    await server.process.exit.catch(() => {});
-    clearTimeout(timeout);
+    try {
+      await terminateAgentProcess(server.process);
+    } finally {
+      await server.tunnel.close().catch(() => {});
+    }
   }
 }
 

@@ -20,6 +20,7 @@ import {
   AgentProviderSnapshotManager,
   agentProviderAdapter,
   configureProcessSpawner,
+  configureManagedProcessSpawner,
   configureTcpTunnelOpener,
   inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
@@ -125,7 +126,6 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 }
 
 export class ConnectorDaemon {
-  private readonly processHost = new ConnectorProcessHost();
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
   private readonly providerCatalogs = new AgentProviderCatalogManager();
   private readonly registry: AgentRuntimeRegistry;
@@ -150,8 +150,10 @@ export class ConnectorDaemon {
     private readonly timelines: ConnectorTimelineStore,
     private readonly fail: (error: Error) => void = () => {},
     private readonly shutdownGraceMs = SHUTDOWN_GRACE_MS,
+    private readonly processHost = new ConnectorProcessHost(),
   ) {
     configureProcessSpawner(this.processHost.spawn);
+    configureManagedProcessSpawner(this.processHost.spawnManaged);
     configureTcpTunnelOpener(this.processHost.openTcpTunnel);
     this.registry = new AgentRuntimeRegistry({
       resolveImages,
@@ -266,7 +268,7 @@ export class ConnectorDaemon {
       this.settleWithin(captureCleanup, this.shutdownGraceMs),
       this.settleWithin(runtimeCleanup, this.shutdownGraceMs),
     ]);
-    this.processHost.stop();
+    await this.processHost.stop();
     const failure = [captureOutcome, runtimeOutcome].find(
       (outcome): outcome is PromiseRejectedResult =>
         outcome?.status === "rejected",
