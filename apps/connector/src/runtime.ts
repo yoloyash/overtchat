@@ -1,8 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import net from "node:net";
-import type {
-  ConnectorTarget,
-} from "@overtchat/agent-bridge";
+import type { ConnectorTarget } from "@overtchat/agent-bridge";
 import type {
   AgentProcess,
   AgentProcessHostLaunch,
@@ -10,6 +8,7 @@ import type {
   HostTarget,
 } from "@overtchat/agent-runtime";
 import { buildSshRemoteCommand, sshSpawnArgs, sshTunnelArgs } from "./ssh.js";
+import { ManagedProcesses } from "./managed-processes.js";
 
 const TUNNEL_START_TIMEOUT_MS = 10_000;
 
@@ -23,7 +22,8 @@ function availableLoopbackPort(): Promise<number> {
       const port = typeof address === "object" && address ? address.port : 0;
       server.close((error) => {
         if (error) reject(error);
-        else if (!port) reject(new Error("Unable to allocate a loopback port."));
+        else if (!port)
+          reject(new Error("Unable to allocate a loopback port."));
         else resolve(port);
       });
     });
@@ -81,7 +81,6 @@ function killProcessTree(
   child: ChildProcessWithoutNullStreams,
   signal: NodeJS.Signals,
 ): boolean {
-  if (child.exitCode !== null || child.signalCode !== null) return false;
   if (process.platform !== "win32" && child.pid) {
     try {
       process.kill(-child.pid, signal);
@@ -90,6 +89,7 @@ function killProcessTree(
       // Fall back to the direct child when its process group is already gone.
     }
   }
+  if (child.exitCode !== null || child.signalCode !== null) return false;
   return child.kill(signal);
 }
 
@@ -101,11 +101,72 @@ function targetForSpawn(target: HostTarget): ConnectorTarget {
 
 export class ConnectorProcessHost {
   private readonly processes = new Set<ChildProcessWithoutNullStreams>();
+  private readonly cleanups = new Map<
+    ChildProcessWithoutNullStreams,
+    Promise<void>
+  >();
+  private readonly starts = new Set<Promise<AgentProcess>>();
+  private readonly managed: ManagedProcesses;
+  private stopped = false;
+  private stopPromise?: Promise<void>;
+
+  constructor(processDirectory?: string) {
+    this.managed = new ManagedProcesses(processDirectory);
+  }
+
+  reap(): Promise<void> {
+    return this.managed.reap();
+  }
+
+  spawnManaged = (
+    target: HostTarget,
+    launch: AgentProcessHostLaunch,
+  ): Promise<AgentProcess> => {
+    if (this.stopped)
+      return Promise.reject(new Error("The process host is stopped."));
+    const start = this.managed
+      .spawn(target, launch, this.spawn)
+      .then(async (child) => {
+        if (this.stopped) {
+          await child.terminate?.();
+          throw new Error("The process host stopped during launch.");
+        }
+        return child;
+      });
+    this.starts.add(start);
+    void start.then(
+      () => this.starts.delete(start),
+      () => this.starts.delete(start),
+    );
+    return start;
+  };
+
+  private cleanup(child: ChildProcessWithoutNullStreams): Promise<void> {
+    const existing = this.cleanups.get(child);
+    if (existing) return existing;
+    if (!killProcessTree(child, "SIGTERM")) {
+      this.processes.delete(child);
+      return Promise.resolve();
+    }
+    const cleanup = new Promise<void>((resolve) => {
+      // Parent exit is not evidence that its process group is empty. Keep
+      // escalation alive even after the direct child has been reaped.
+      setTimeout(() => {
+        killProcessTree(child, "SIGKILL");
+        this.processes.delete(child);
+        this.cleanups.delete(child);
+        resolve();
+      }, 1_000);
+    });
+    this.cleanups.set(child, cleanup);
+    return cleanup;
+  }
 
   spawn = (
     target: HostTarget,
     launch: AgentProcessHostLaunch,
   ): AgentProcess => {
+    if (this.stopped) throw new Error("The process host is stopped.");
     const connectorTarget = targetForSpawn(target);
     const child =
       connectorTarget.transport === "local"
@@ -119,7 +180,9 @@ export class ConnectorProcessHost {
             stdio: ["pipe", "pipe", "pipe"],
           });
     this.processes.add(child);
-    child.once("exit", () => this.processes.delete(child));
+    child.once("exit", () => {
+      void this.cleanup(child);
+    });
     child.once("error", () => this.processes.delete(child));
 
     let settled = false;
@@ -152,18 +215,26 @@ export class ConnectorProcessHost {
     target: Extract<HostTarget, { transport: "ssh" }>,
     remotePort: number,
   ): Promise<AgentTcpTunnel> => {
+    if (this.stopped) throw new Error("The process host is stopped.");
     const localPort = await availableLoopbackPort();
-    const child = spawn("ssh", sshTunnelArgs(target.alias, localPort, remotePort), {
-      detached: process.platform !== "win32",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+    if (this.stopped) throw new Error("The process host is stopped.");
+    const child = spawn(
+      "ssh",
+      sshTunnelArgs(target.alias, localPort, remotePort),
+      {
+        detached: process.platform !== "win32",
+        stdio: ["pipe", "pipe", "pipe"],
+      },
+    );
     this.processes.add(child);
-    child.once("exit", () => this.processes.delete(child));
+    child.once("exit", () => {
+      void this.cleanup(child);
+    });
     child.once("error", () => this.processes.delete(child));
     try {
       await waitForLoopbackPort(localPort, child);
     } catch (error) {
-      killProcessTree(child, "SIGTERM");
+      await this.cleanup(child);
       throw error;
     }
     let closePromise: Promise<void> | null = null;
@@ -171,29 +242,22 @@ export class ConnectorProcessHost {
       url: `http://127.0.0.1:${localPort}`,
       close: () => {
         if (closePromise) return closePromise;
-        closePromise = new Promise((resolve) => {
-          if (!killProcessTree(child, "SIGTERM")) {
-            resolve();
-            return;
-          }
-          const timer = setTimeout(() => killProcessTree(child, "SIGKILL"), 1_000);
-          timer.unref();
-          child.once("exit", () => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
+        closePromise = this.cleanup(child);
         return closePromise;
       },
     };
   };
 
-  stop(): void {
-    for (const child of this.processes) {
-      if (!killProcessTree(child, "SIGTERM")) continue;
-      const timer = setTimeout(() => killProcessTree(child, "SIGKILL"), 1_000);
-      timer.unref();
-      child.once("exit", () => clearTimeout(timer));
-    }
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopped = true;
+    this.stopPromise = (async () => {
+      await Promise.allSettled([...this.starts]);
+      await this.managed.stop();
+      await Promise.all(
+        [...this.processes].map((child) => this.cleanup(child)),
+      );
+    })();
+    return this.stopPromise;
   }
 }

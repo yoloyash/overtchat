@@ -17,6 +17,7 @@ import {
   type ConnectorConfig,
 } from "./config.js";
 import { ConnectorDaemon } from "./daemon.js";
+import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
@@ -98,6 +99,7 @@ export class ConnectorClient {
     private readonly journal: ConnectorStateJournal,
     private readonly timelines: ConnectorTimelineStore,
     private readonly lock: ConnectorInstanceLock,
+    processHost: ConnectorProcessHost,
   ) {
     this.daemon = new ConnectorDaemon(
       (event) => this.enqueue(event),
@@ -105,6 +107,8 @@ export class ConnectorClient {
       journal,
       timelines,
       (error) => this.fail(error),
+      undefined,
+      processHost,
     );
     this.commandScheduler = new ConnectorCommandScheduler((command) =>
       this.daemon.handle(command),
@@ -118,13 +122,17 @@ export class ConnectorClient {
     let journal: ConnectorStateJournal | undefined;
     let timelines: ConnectorTimelineStore | undefined;
     try {
+      const processHost = new ConnectorProcessHost(
+        `${connectorStatePath(config.connectorId)}.processes`,
+      );
+      await processHost.reap();
       journal = await ConnectorStateJournal.open(
         connectorStatePath(config.connectorId),
       );
       timelines = await ConnectorTimelineStore.open(
         connectorTimelinePath(config.connectorId),
       );
-      return new ConnectorClient(config, journal, timelines, lock);
+      return new ConnectorClient(config, journal, timelines, lock, processHost);
     } catch (error) {
       await timelines?.close().catch(() => {});
       await journal?.close().catch(() => {});

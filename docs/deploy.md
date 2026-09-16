@@ -135,6 +135,15 @@ Coding-agent executables and credentials belong on the Host Connector machine
 or selected SSH host. Configure connections on the web before using them on
 Android.
 
+The connector records its OpenCode helper processes beside its state journal
+in `<state-file>.processes/`. On restart it verifies process identities and
+cleans up recorded leftovers locally or through the original SSH alias.
+Unreachable SSH hosts retain their records and are retried before the next
+OpenCode launch on that host. Preserve this directory with the connector state;
+servers left behind by older versions without records are not automatically
+reaped. Stopping a session aborts its work; other sessions sharing the same
+OpenCode server remain available.
+
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login

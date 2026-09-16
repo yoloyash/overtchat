@@ -28,6 +28,8 @@ export type AgentProcess = {
   stderr: Readable;
   exit: Promise<AgentProcessExit>;
   kill(signal?: NodeJS.Signals): boolean;
+  /** Await cleanup on the execution host, including descendants. */
+  terminate?(): Promise<void>;
 };
 
 export type CommandResult = { stdout: string; stderr: string };
@@ -38,6 +40,51 @@ export type ProcessSpawner = (
 ) => AgentProcess;
 
 let configuredSpawner: ProcessSpawner | undefined;
+
+type ManagedProcessSpawner = (
+  target: HostTarget,
+  launch: AgentProcessHostLaunch,
+) => Promise<AgentProcess>;
+let configuredManagedSpawner: ManagedProcessSpawner | undefined;
+
+export function configureManagedProcessSpawner(
+  spawner: ManagedProcessSpawner,
+): void {
+  configuredManagedSpawner = spawner;
+}
+
+export function spawnManagedOnHost(
+  target: HostTarget,
+  launch: AgentProcessLaunch,
+): Promise<AgentProcess> {
+  if (!configuredManagedSpawner)
+    return Promise.resolve(spawnOnHost(target, launch));
+  return configuredManagedSpawner(target, {
+    ...launch,
+    shellMode: target.shellMode ?? "interactive",
+  });
+}
+
+export async function terminateAgentProcess(
+  handle: AgentProcess,
+): Promise<void> {
+  if (handle.terminate) return handle.terminate();
+  handle.kill("SIGTERM");
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      handle.exit,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          handle.kill("SIGKILL");
+          resolve();
+        }, 1_000);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export type AgentTcpTunnel = {
   url: string;
@@ -53,6 +100,7 @@ let configuredTcpTunnelOpener: TcpTunnelOpener | undefined;
 
 export function configureProcessSpawner(spawner: ProcessSpawner): void {
   configuredSpawner = spawner;
+  configuredManagedSpawner = undefined;
 }
 
 export function configureTcpTunnelOpener(opener: TcpTunnelOpener): void {
@@ -73,7 +121,9 @@ export function openTcpTunnel(
     });
   }
   if (!configuredTcpTunnelOpener) {
-    return Promise.reject(new Error("The agent TCP tunnel opener is not configured."));
+    return Promise.reject(
+      new Error("The agent TCP tunnel opener is not configured."),
+    );
   }
   return configuredTcpTunnelOpener(target, remotePort);
 }
@@ -143,10 +193,12 @@ export async function executeOnHost(
     if (timeout) clearTimeout(timeout);
   }
   if (captureError) throw captureError;
-  if (exit.error) throw new Error(`Unable to start agent command: ${exit.error.message}`);
+  if (exit.error)
+    throw new Error(`Unable to start agent command: ${exit.error.message}`);
   if (exit.code !== 0) {
     throw new Error(
-      stderr.trim() || `Agent command exited with code ${exit.code ?? "unknown"}.`,
+      stderr.trim() ||
+        `Agent command exited with code ${exit.code ?? "unknown"}.`,
     );
   }
   return { stdout, stderr };
