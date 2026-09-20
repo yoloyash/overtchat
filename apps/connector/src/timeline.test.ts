@@ -667,4 +667,45 @@ describe("connector session timeline", () => {
       "timeline persistence failed",
     );
   });
+
+  it("delivers and replays live usage reductions and explicit unknown context", async () => {
+    const { directory, store } = await createStore();
+    const initial = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      snapshot(),
+    );
+    const delivered: AgentRuntimeEnvelope[] = [];
+    const subscription = await store.subscribe(SESSION_ID, initial, (envelope) =>
+      delivered.push(envelope),
+    );
+    for (const tokens of [90000, null, 12000]) {
+      await commit(store, {
+        type: "usage_update",
+        usage: {
+          contextUsage: {
+            tokens,
+            contextWindow: 100000,
+            percent: tokens === null ? null : tokens / 1000,
+          },
+        },
+      });
+    }
+    expect(delivered).toHaveLength(3);
+    await expect(store.sync(SESSION_ID)).resolves.toMatchObject({
+      reset: true,
+      snapshot: { stats: { contextUsage: { tokens: 12000 } } },
+    });
+    subscription.unsubscribe();
+    await store.close();
+    const restored = await reopen(directory);
+    await expect(restored.sync(SESSION_ID)).resolves.toMatchObject({
+      reset: true,
+      snapshot: { stats: { contextUsage: { tokens: 12000 } } },
+    });
+    await expect(restored.sync(SESSION_ID, initial)).resolves.toMatchObject({
+      reset: false,
+      events: delivered,
+    });
+  });
 });

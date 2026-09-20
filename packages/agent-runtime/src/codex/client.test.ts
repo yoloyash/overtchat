@@ -2782,4 +2782,78 @@ describe("CodexRuntimeClient", () => {
     expect(server.responses.at(-1)).toEqual({ id: "dismiss-question", result: { answers: {} } });
   });
 
+
+  it("publishes context reductions during a turn and usage received after completion", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const report = (last?: number) =>
+      server.emit("thread/tokenUsage/updated", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        tokenUsage: {
+          total: { totalTokens: 900000 },
+          ...(last === undefined ? {} : { last: { totalTokens: last } }),
+          modelContextWindow: 100000,
+        },
+      });
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: { id: "turn-1", status: "inProgress", items: [] },
+    });
+    report(90000);
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: { id: "compact", type: "contextCompaction" },
+    });
+    expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+    report(12000);
+    server.emit("turn/completed", {
+      threadId: "thread-1",
+      turn: { id: "turn-1", status: "completed", items: [] },
+    });
+    report(13000);
+    expect(
+      events
+        .filter((event) => event.type === "usage_update")
+        .map(
+          (event) =>
+            (event.usage as { contextUsage: { tokens: number | null } })
+              .contextUsage.tokens,
+        ),
+    ).toEqual([90000, null, 12000, 13000]);
+    report();
+    expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+    expect(events.at(-1)).toMatchObject({
+      type: "usage_update",
+      usage: { contextUsage: { tokens: null } },
+    });
+    server.emit("thread/tokenUsage/updated", {
+      threadId: "child-thread",
+      tokenUsage: { last: { totalTokens: 1 }, modelContextWindow: 100000 },
+    });
+    expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+  });
+
+  it("accepts a current usage reading without cumulative totals, including zero", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    server.emit("thread/tokenUsage/updated", {
+      threadId: "thread-1",
+      tokenUsage: { last: { totalTokens: 0 }, modelContextWindow: 100000 },
+    });
+    expect((await client.getSessionStats()).contextUsage).toEqual({
+      tokens: 0,
+      contextWindow: 100000,
+      percent: 0,
+    });
+  });
 });

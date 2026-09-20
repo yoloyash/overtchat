@@ -281,4 +281,168 @@ describe("Claude runtime client", () => {
     await client.stop();
   });
 
+
+  it.each([30, null, 0])("preserves compacted context %s through zero-token request events", async (postTokens) => {
+    let query!: FakeQuery;
+    queryMock.mockImplementation((params) => (query = new FakeQuery(params)));
+    const client = new ClaudeRuntimeClient(
+      { transport: "local" },
+      { executable: "claude", cwd: "/workspace", model: "haiku" },
+    );
+    await client.getState();
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const push = async (message: unknown) => {
+      query.push(message);
+      await nextTask();
+    };
+    const usage = {
+      input_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+    };
+    try {
+      await push({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: postTokens === null ? {} : { post_tokens: postTokens },
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(postTokens);
+      events.length = 0;
+      await push({
+        type: "stream_event",
+        event: { type: "message_start", message: { id: "placeholder", usage } },
+      });
+      await push({
+        type: "stream_event",
+        event: { type: "message_delta", usage: { output_tokens: 0 } },
+      });
+      await push({
+        type: "assistant",
+        message: { id: "placeholder", content: [], usage },
+      });
+      await push({ type: "result", usage, total_cost_usd: 0 });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(postTokens);
+      expect(events.filter((event) => event.type === "usage_update")).not.toContainEqual(
+        expect.objectContaining({ usage: { contextUsage: expect.anything() } }),
+      );
+      // Cached input is real usage even when uncached input and output are zero.
+      await push({
+        type: "stream_event",
+        event: {
+          type: "message_start",
+          message: { id: "next", usage: { ...usage, cache_read_input_tokens: 12 } },
+        },
+      });
+      await push({
+        type: "stream_event",
+        event: { type: "message_delta", usage: { output_tokens: 0 } },
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12);
+    } finally {
+      await client.stop();
+    }
+  });
+
+  it("streams root context usage including caches and clears stale counts on compaction", async () => {
+    let query!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      query = new FakeQuery(params);
+      const initialized = query.initializationResult();
+      query.initializationResult = async () => {
+        const result = await initialized;
+        return {
+          ...result,
+          models: result.models.map((model) => ({
+            ...model,
+            resolvedModel: "claude-haiku-test",
+          })),
+        };
+      };
+      return query;
+    });
+    const client = new ClaudeRuntimeClient(
+      { transport: "local" },
+      { executable: "claude", cwd: "/workspace", model: "haiku" },
+    );
+    await client.getState();
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const stream = async (
+      event: unknown,
+      parent_tool_use_id: string | null = null,
+    ) => {
+      query.push({ type: "stream_event", parent_tool_use_id, event });
+      await nextTask();
+    };
+    try {
+      query.push({
+        type: "system",
+        subtype: "init",
+        session_id: "claude-session",
+        model: "claude-haiku-test",
+      });
+      await nextTask();
+      await stream({
+        type: "message_start",
+        message: {
+          id: "one",
+          usage: {
+            input_tokens: 100,
+            cache_read_input_tokens: 50,
+            cache_creation_input_tokens: 25,
+          },
+        },
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(175);
+      await stream({ type: "message_delta", usage: { output_tokens: 10 } });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(185);
+      await stream(
+        {
+          type: "message_start",
+          message: { id: "child", usage: { input_tokens: 99999 } },
+        },
+        "child-tool",
+      );
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(185);
+      query.push({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { post_tokens: 30 },
+      });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(30);
+      query.push({
+        type: "result",
+        usage: { input_tokens: 999999, output_tokens: 20000 },
+        modelUsage: { haiku: { contextWindow: 200000 } },
+        total_cost_usd: 1,
+      });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(30);
+      query.push({
+        type: "system",
+        subtype: "compact_boundary",
+        compact_metadata: { pre_tokens: 30 },
+      });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      await stream({ type: "message_delta", usage: { output_tokens: 100 } });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      await stream({
+        type: "message_start",
+        message: { id: "next", usage: { input_tokens: 20 } },
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(20);
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: "usage_update",
+          usage: { contextUsage: expect.objectContaining({ tokens: 185 }) },
+        }),
+      );
+    } finally {
+      await client.stop();
+    }
+  });
 });

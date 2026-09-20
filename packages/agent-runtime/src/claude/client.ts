@@ -253,6 +253,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private commands: AgentSlashCommand[] = [];
   private messages: unknown[] = [];
   private stats: AgentSessionStats = EMPTY_STATS;
+  private contextInputTokens?: number;
+  private contextTokens: number | null = null;
+  private reportedContextWindow?: number;
   private selectedModel?: string;
   private thinkingOptionId?: string;
   private modeId: PermissionMode;
@@ -388,6 +391,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       }
       await this.sdkQuery.setModel(modelId);
       this.selectedModel = modelId;
+      this.reportedContextWindow = undefined;
+      this.updateContextUsage(null);
       this.emitConfig();
       return undefined;
     });
@@ -427,6 +432,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     return this.withLifecycle(async () => {
       await this.readyPromise;
       this.compacting = true;
+      this.contextInputTokens = undefined;
+      this.updateContextUsage(null);
       this.emit({ type: "compaction_start" });
       return this.submit("/compact", [], {}, false);
     });
@@ -681,6 +688,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.messages.push(user);
     this.emit({ type: "message_end", message: user });
     if (!this.active) {
+      this.contextInputTokens = undefined;
       this.active = true;
       this.emit({ type: "turn_start" });
     }
@@ -794,6 +802,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (subtype === "status") {
       if (message.status === "compacting" && !this.compacting) {
         this.compacting = true;
+        this.contextInputTokens = undefined;
+        this.updateContextUsage(null);
         this.emit({ type: "compaction_start" });
       } else if (message.status === null && this.compacting) {
         this.compacting = false;
@@ -807,6 +817,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (subtype === "compact_boundary") {
+      const metadata = record(message.compact_metadata);
+      const postTokens = metadata?.post_tokens ?? metadata?.postTokens;
+      this.contextInputTokens = undefined;
+      this.updateContextUsage(this.usageNumber(postTokens));
       if (this.compacting) {
         this.compacting = false;
         this.emit({ type: "compaction_end" });
@@ -817,6 +831,15 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleStream(message: SDKMessage & Record<string, unknown>): void {
     const event = record(message.event);
     if (!event) return;
+    if (!message.parent_tool_use_id) {
+      if (event.type === "message_start") {
+        this.contextInputTokens = undefined;
+        this.readRequestUsage(record(record(event.message)?.usage));
+      } else if (event.type === "message_delta" && this.contextInputTokens !== undefined) {
+        const output = this.usageNumber(record(event.usage)?.output_tokens);
+        if (output !== null) this.updateRequestContextUsage(this.contextInputTokens + output);
+      }
+    }
     if (event.type === "message_start") {
       const native = record(event.message);
       if (typeof native?.id === "string") {
@@ -861,6 +884,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleAssistant(message: SDKMessage & Record<string, unknown>): void {
     const native = record(message.message);
     if (!native || typeof native.id !== "string") return;
+    if (!message.parent_tool_use_id) this.readRequestUsage(record(native.usage));
     const projection = this.ensureAssistant(native.id);
     if (typeof message.error === "string") projection.errorMessage = message.error;
     const content = Array.isArray(native.content) ? native.content : [];
@@ -938,9 +962,64 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
   }
 
+  private usageNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? value
+      : null;
+  }
+
+  private readRequestUsage(usage: Record<string, unknown> | null): void {
+    const input = this.usageNumber(usage?.input_tokens);
+    if (input === null) return;
+    this.contextInputTokens =
+      input +
+      (this.usageNumber(usage?.cache_read_input_tokens) ?? 0) +
+      (this.usageNumber(usage?.cache_creation_input_tokens) ?? 0);
+    this.updateRequestContextUsage(
+      this.contextInputTokens + (this.usageNumber(usage?.output_tokens) ?? 0),
+    );
+  }
+
+  private updateRequestContextUsage(tokens: number): void {
+    // Empty request events after compaction must preserve the boundary's count.
+    // Explicit zero or unknown counts from compact boundaries remain valid.
+    if (tokens > 0) this.updateContextUsage(tokens);
+  }
+
+  private updateContextUsage(tokens: number | null): void {
+    this.contextTokens = tokens;
+    const contextWindow =
+      this.reportedContextWindow ??
+      this.models.find(
+        (model) =>
+          model.id === this.selectedModel ||
+          model.metadata?.modelId === this.selectedModel,
+      )?.contextWindow;
+    if (!contextWindow) return;
+    this.stats = {
+      ...this.stats,
+      contextUsage: {
+        tokens,
+        contextWindow,
+        percent: tokens === null ? null : (tokens / contextWindow) * 100,
+      },
+    };
+    this.emit({
+      type: "usage_update",
+      usage: { contextUsage: this.stats.contextUsage },
+    });
+  }
+
   private handleResult(message: SDKMessage & Record<string, unknown>): void {
     const usage = record(message.usage);
     const modelUsage = record(message.modelUsage);
+    const selectedUsage = record(modelUsage?.[this.selectedModel ?? ""]) ??
+      (modelUsage && Object.keys(modelUsage).length === 1 ? record(Object.values(modelUsage)[0]) : null);
+    const contextWindow = this.usageNumber(selectedUsage?.contextWindow);
+    if (contextWindow && contextWindow !== this.reportedContextWindow) {
+      this.reportedContextWindow = contextWindow;
+      this.updateContextUsage(this.contextTokens);
+    }
     const totals = modelUsage
       ? Object.values(modelUsage).reduce<{
           input: number;
@@ -972,6 +1051,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       },
       cost: typeof message.total_cost_usd === "number" ? message.total_cost_usd : 0,
     };
+    this.emit({ type: "usage_update", usage: { tokens: this.stats.tokens, cost: this.stats.cost } });
     if (message.is_error === true) {
       const errors = Array.isArray(message.errors)
         ? message.errors.filter((value): value is string => typeof value === "string")

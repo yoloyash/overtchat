@@ -313,4 +313,93 @@ describe("OpenCode runtime client", () => {
     expect(event).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledOnce();
   });
+
+  it("publishes step usage before idle and keeps old history from restoring compacted context", async () => {
+    const { sdk } = sdkFixture();
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    const client = new OpenCodeRuntimeClient(
+      { transport: "local" },
+      { executable: "opencode", cwd: "/workspace", model: "provider/model-a" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const emit = (type: string, properties: Record<string, unknown>) => {
+      (client as unknown as { handleEvent(event: unknown): void }).handleEvent({
+        type,
+        properties: { sessionID: "ses-1", ...properties },
+      });
+    };
+    const tokens = (input: number) => ({
+      input,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    });
+    const info = (id: string, input: number, summary = false) => ({
+      id,
+      role: "assistant",
+      sessionID: "ses-1",
+      providerID: "provider",
+      modelID: "model-a",
+      summary,
+      tokens: tokens(input),
+      cost: 0,
+      time: { created: 1 },
+      parentID: "user",
+      path: { cwd: "/workspace", root: "/workspace" },
+      mode: "build",
+      agent: "build",
+    });
+    try {
+      await client.getState();
+      emit("session.status", { status: { type: "busy" } });
+      emit("message.updated", { info: info("old", 90000) });
+      emit("message.part.updated", {
+        part: {
+          id: "step",
+          messageID: "old",
+          type: "step-finish",
+          tokens: tokens(91000),
+        },
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "usage_update",
+        usage: { contextUsage: { tokens: 91000 } },
+      });
+      expect((await client.getState()).isStreaming).toBe(true);
+      emit("session.next.compaction.started", {});
+      const compactionPart = {
+        id: "compaction",
+        messageID: "old",
+        type: "compaction",
+        auto: true,
+      };
+      emit("message.part.updated", { part: compactionPart });
+      emit("message.updated", { info: info("summary", 80000, true) });
+      emit("session.next.compaction.ended", {});
+      sdk.session.messages.mockResolvedValue({
+        data: [{ info: info("old", 90000), parts: [] }],
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      emit("message.updated", { info: info("old", 92000) });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      emit("message.updated", { info: info("next", 0) });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      emit("message.part.updated", {
+        part: {
+          id: "next-step",
+          messageID: "next",
+          type: "step-finish",
+          tokens: tokens(12000),
+        },
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12000);
+      emit("message.part.updated", { part: compactionPart });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12000);
+      emit("message.updated", { info: info("empty", 0) });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12000);
+    } finally {
+      await client.stop();
+    }
+  });
 });

@@ -160,6 +160,7 @@ async function fetchCatalog(
 
 export const ompProviderAdapter: AgentProviderAdapter = {
   provider: "omp",
+  pollUsage: true,
   // OMP's live events preserve display chronology across async-result
   // continuations. Replacing them at settle time with its mutable model-context
   // snapshot can move already-rendered tool and custom-message rows.

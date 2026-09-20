@@ -649,6 +649,30 @@ export type AgentSessionStats = {
   };
 };
 
+/** Usage is independent of transcript counts. Null explicitly clears unknown context. */
+export const agentUsageUpdateSchema = z.object({
+  tokens: z
+    .object({
+      input: z.number().nonnegative(),
+      output: z.number().nonnegative(),
+      cacheRead: z.number().nonnegative(),
+      cacheWrite: z.number().nonnegative(),
+      total: z.number().nonnegative(),
+    })
+    .optional(),
+  cost: z.number().nonnegative().optional(),
+  contextUsage: z
+    .object({
+      tokens: z.number().nonnegative().nullable(),
+      contextWindow: z.number().positive(),
+      percent: z.number().nonnegative().nullable(),
+    })
+    .nullable()
+    .optional(),
+});
+
+export type AgentUsageUpdate = z.infer<typeof agentUsageUpdateSchema>;
+
 export type AgentRuntimeSnapshot = {
   sessionId: string;
   provider: AgentProviderId;

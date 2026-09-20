@@ -129,6 +129,8 @@ export interface AgentProviderAdapter {
    * full history hydration to session startup and explicit refreshes.
    */
   readonly refreshMessagesAfterTerminal?: boolean;
+  /** Providers without usage notifications need stats polling while active. */
+  readonly pollUsage?: boolean;
   startSession(
     target: HostTarget,
     launch: AgentSessionLaunch,

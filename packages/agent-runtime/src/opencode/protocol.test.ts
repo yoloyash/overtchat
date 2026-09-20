@@ -205,4 +205,39 @@ describe("OpenCode protocol projection", () => {
       },
     });
   });
+
+  it("does not treat a compaction summary or empty assistant placeholder as current context", () => {
+    const assistant = messages.find(
+      (message) => message.info.role === "assistant",
+    )!;
+    if (assistant.info.role !== "assistant") throw new Error("Missing assistant fixture");
+    const summary = {
+      ...assistant,
+      info: { ...assistant.info, id: "summary", summary: true },
+    };
+    const empty = {
+      ...assistant,
+      info: {
+        ...assistant.info,
+        id: "next",
+        tokens: {
+          input: 0,
+          output: 0,
+          reasoning: 0,
+          cache: { read: 0, write: 0 },
+        },
+      },
+    };
+    expect(
+      parseOpenCodeStats([...messages, empty], 128000).contextUsage?.tokens,
+    ).toBe(21);
+    expect(
+      parseOpenCodeStats([...messages, summary, empty], 128000).contextUsage
+        ?.tokens,
+    ).toBeNull();
+    expect(
+      parseOpenCodeStats([...messages, summary, empty, assistant], 128000)
+        .contextUsage?.tokens,
+    ).toBe(21);
+  });
 });

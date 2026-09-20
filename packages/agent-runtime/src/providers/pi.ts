@@ -102,6 +102,7 @@ async function fetchCatalog(
 
 export const piProviderAdapter: AgentProviderAdapter = {
   provider: "pi",
+  pollUsage: true,
   startSession(target, launch) {
     return startPi(target, {
       executable: launch.executable,

@@ -250,12 +250,14 @@ export function parseOpenCodeStats(
       cacheRead += message.info.tokens.cache.read;
       cacheWrite += message.info.tokens.cache.write;
       cost += message.info.cost;
-      contextTokens =
+      const messageTokens =
         message.info.tokens.input +
         message.info.tokens.output +
         message.info.tokens.reasoning +
         message.info.tokens.cache.read +
         message.info.tokens.cache.write;
+      if (message.info.summary) contextTokens = null;
+      else if (messageTokens > 0) contextTokens = messageTokens;
     }
     toolCalls += message.parts.filter((part) => part.type === "tool").length;
   }
