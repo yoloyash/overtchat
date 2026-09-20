@@ -206,6 +206,9 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
   private modeId?: string;
   private streaming = false;
   private compacting = false;
+  private contextUsage: AgentSessionStats["contextUsage"];
+  private readonly preCompactionMessageIds = new Set<string>();
+  private readonly usageCompactionParts = new Set<string>();
   private stopped = false;
   private stopPromise?: Promise<void>;
   private abortOnCloseStarted = false;
@@ -273,6 +276,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       ?.contextWindow;
     return {
       ...parseOpenCodeStats(messages, contextWindow ?? undefined),
+      ...(this.contextUsage ? { contextUsage: this.contextUsage } : {}),
       sessionFile: this.session!.id,
       sessionId: this.session!.id,
     };
@@ -878,6 +882,9 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
           this.messageInfo.set(info.id, info);
           this.messageParts.set(info.id, this.messageParts.get(info.id) ?? new Map());
           this.emitProjected(info.id);
+          if (info.role === "assistant" && !info.summary && !this.preCompactionMessageIds.has(info.id)) {
+            this.updateContextUsage(info.tokens, `${info.providerID}/${info.modelID}`);
+          }
         }
         break;
       }
@@ -889,6 +896,16 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
           this.messageParts.set(part.messageID, parts);
           this.emitProjected(part.messageID);
           if (part.type === "tool") this.emitTool(part);
+          if (part.type === "compaction" && !this.usageCompactionParts.has(part.id)) {
+            this.usageCompactionParts.add(part.id);
+            if (!this.compacting) this.invalidateContextUsage();
+            this.compacting = true;
+          }
+          const info = this.messageInfo.get(part.messageID);
+          if (part.type === "step-finish" && info?.role === "assistant" && !info.summary &&
+              !this.preCompactionMessageIds.has(part.messageID)) {
+            this.updateContextUsage(part.tokens, `${info.providerID}/${info.modelID}`);
+          }
         }
         break;
       }
@@ -976,18 +993,67 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
         break;
       }
       case "session.compacted":
+        if (!this.compacting) this.invalidateContextUsage();
         this.compacting = false;
         this.emit({ type: "compaction_end" });
         break;
       case "session.next.compaction.started":
+        if (!this.compacting) this.invalidateContextUsage();
         this.compacting = true;
         this.emit({ type: "compaction_start", reason: properties.reason });
         break;
       case "session.next.compaction.ended":
+        if (!this.compacting) this.invalidateContextUsage();
         this.compacting = false;
         this.emit({ type: "compaction_end" });
         break;
     }
+  }
+
+  private invalidateContextUsage(): void {
+    for (const id of this.messageInfo.keys())
+      this.preCompactionMessageIds.add(id);
+    const contextWindow =
+      this.contextUsage?.contextWindow ??
+      this.models.find((model) => model.id === this.selectedModel)
+        ?.contextWindow;
+    if (!contextWindow) return;
+    this.contextUsage = { tokens: null, contextWindow, percent: null };
+    this.emit({
+      type: "usage_update",
+      usage: { contextUsage: this.contextUsage },
+    });
+  }
+
+  private updateContextUsage(
+    usage: {
+      input: number;
+      output: number;
+      reasoning: number;
+      cache: { read: number; write: number };
+    },
+    modelId: string,
+  ): void {
+    const contextWindow = this.models.find(
+      (model) => model.id === modelId,
+    )?.contextWindow;
+    const tokens =
+      usage.input +
+      usage.output +
+      usage.reasoning +
+      usage.cache.read +
+      usage.cache.write;
+    // OpenCode sends an empty assistant message before reporting actual usage.
+    if (!contextWindow || !Number.isFinite(tokens) || tokens <= 0) return;
+    this.contextUsage = {
+      tokens,
+      contextWindow,
+      percent: (tokens / contextWindow) * 100,
+    };
+    this.emit({
+      type: "usage_update",
+      usage: { contextUsage: this.contextUsage },
+    });
   }
 
   private emitTool(part: Extract<Part, { type: "tool" }>): void {

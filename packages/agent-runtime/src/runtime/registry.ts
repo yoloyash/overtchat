@@ -14,11 +14,13 @@ import type {
   AgentSessionLaunchConfig,
   AgentSessionSync,
   AgentSessionStats,
+  AgentUsageUpdate,
   AgentThinkingLevel,
 } from "@overtchat/agent-bridge";
 import {
   applyAgentRuntimeMessageEvent,
   applyAgentRuntimeStateEvent,
+  applyAgentRuntimeUsageEvent,
   agentProviderMetadata,
   isAgentProviderId,
   isAgentProviderNotice,
@@ -35,6 +37,7 @@ import type {
   AgentSessionForkResult,
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
+import { AgentUsagePoller } from "./usage-poller";
 
 const MAX_REPLAY_EVENTS = 500;
 const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
@@ -289,6 +292,8 @@ export class AgentSessionRuntime {
     | undefined;
   private pendingInteractionTimer: NodeJS.Timeout | undefined;
   private error: string | undefined;
+  private readonly usagePoller?: AgentUsagePoller;
+  private usageRevisions = { tokens: 0, cost: 0, contextUsage: 0 };
   private refreshPromise: Promise<void> | null = null;
   private idleStopTimer: NodeJS.Timeout | undefined;
   private turnGeneration = 0;
@@ -320,6 +325,13 @@ export class AgentSessionRuntime {
     this.commands = initial.commands;
     this.stats = initial.stats;
     this.status = initial.state.isStreaming === true ? "running" : "idle";
+    if (adapter.pollUsage) {
+      this.usagePoller = new AgentUsagePoller(
+        () => client.getSessionStats(),
+        (usage) => this.publishUsage(usage),
+      );
+      if (this.status === "running") this.usagePoller.start();
+    }
     const restoredQueue = reconcileRestoredQueuedMessages(
       initialQueuedMessages,
       initial.messages,
@@ -357,6 +369,21 @@ export class AgentSessionRuntime {
             ? event.overtchatRecordedAt
             : Date.now(),
       };
+      if (event.type === "usage_update") {
+        this.receiveUsage(event);
+      }
+      if (event.type === "compaction_start" && this.usagePoller) {
+        this.usagePoller.stop();
+        this.publishUsage({
+          contextUsage: this.stats.contextUsage
+            ? { ...this.stats.contextUsage, tokens: null, percent: null }
+            : null,
+        });
+      }
+      if (event.type === "compaction_end") {
+        if (this.status === "running") this.usagePoller?.start();
+        this.usagePoller?.refresh();
+      }
       let settleRejectedPrompt = false;
       const classification = this.eventClassifier.classify(event);
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
@@ -372,6 +399,7 @@ export class AgentSessionRuntime {
       this.acknowledgeQueuedMessages(userMessages);
       if (event.type === "process_exit") {
         this.stopped = true;
+        this.usagePoller?.stop();
         this.turnGeneration += 1;
         this.clearIdleStop();
         this.clearPendingInteraction();
@@ -393,6 +421,7 @@ export class AgentSessionRuntime {
         return;
       }
       if (classification.started) {
+        this.usagePoller?.start();
         this.promptAwaitingStart = false;
         this.status = "running";
         this.activeTurnStartedAt ??= Date.now();
@@ -900,16 +929,36 @@ export class AgentSessionRuntime {
     await this.client.discardForkedSession?.(session);
   }
 
+  private receiveUsage(event: AgentRuntimeEvent): void {
+    const next = applyAgentRuntimeUsageEvent(this.stats, event);
+    if (next === this.stats) return;
+    this.stats = next;
+    for (const key of ["tokens", "cost", "contextUsage"] as const) {
+      if ((event.usage as AgentUsageUpdate)[key] !== undefined)
+        this.usageRevisions[key] += 1;
+    }
+  }
+
+  private publishUsage(usage: AgentUsageUpdate): void {
+    if (this.stopped) return;
+    const event = { type: "usage_update", usage };
+    const next = applyAgentRuntimeUsageEvent(this.stats, event);
+    if (JSON.stringify(next) === JSON.stringify(this.stats)) return;
+    this.receiveUsage(event);
+    this.publish({ type: "runtime_event", data: event });
+  }
+
   async refresh(options: { messages?: boolean } = {}): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
+      const usageRevisions = { ...this.usageRevisions };
       const [state, messageData, stats, commands] =
         await Promise.all([
           this.client.getState(),
           options.messages === false
             ? Promise.resolve(null)
             : this.client.getMessages(),
-          this.client.getSessionStats().catch(() => emptyStats()),
+          this.client.getSessionStats().catch(() => this.stats),
           this.client.getCommands().catch(() => this.commands),
         ]);
       this.state = state;
@@ -919,9 +968,21 @@ export class AgentSessionRuntime {
           messageData.messages,
         );
       }
-      this.stats = stats;
+      // A transcript/command fetch can finish after a newer live usage event.
+      this.stats = {
+        ...stats,
+        tokens: usageRevisions.tokens === this.usageRevisions.tokens
+          ? stats.tokens : this.stats.tokens,
+        cost: usageRevisions.cost === this.usageRevisions.cost
+          ? stats.cost : this.stats.cost,
+        contextUsage:
+          usageRevisions.contextUsage === this.usageRevisions.contextUsage
+            ? stats.contextUsage : this.stats.contextUsage,
+      };
       this.commands = this.adapter.mergeCommands(commands);
       this.status = state.isStreaming === true ? "running" : "idle";
+      if (this.status === "running") this.usagePoller?.start();
+      else this.usagePoller?.stop();
       const reconciledQueue = messageData
         ? reconcileRestoredQueuedMessages(
             this.queuedMessages,
@@ -955,6 +1016,7 @@ export class AgentSessionRuntime {
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    this.usagePoller?.stop();
     this.turnGeneration += 1;
     this.clearIdleStop();
     this.clearPendingInteraction();
@@ -1252,6 +1314,7 @@ export class AgentSessionRuntime {
   }
 
   private completeAcknowledgedAbort(): void {
+    this.usagePoller?.stop();
     // An acknowledged abort supersedes settlement work for the canceled turn.
     this.turnGeneration += 1;
     this.settlePromise = null;
@@ -1308,6 +1371,7 @@ export class AgentSessionRuntime {
       turnGeneration,
     );
     if (!providerIdle) return;
+    this.usagePoller?.stop();
     this.status = "idle";
     this.activeTurnStartedAt = null;
     this.state = {

@@ -3,6 +3,7 @@ import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isHostConnectorCommand,
+  isAgentRuntimeEnvelope,
   isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
@@ -128,5 +129,31 @@ describe("Host Connector protocol compatibility", () => {
         models: [{ ...catalog.models[0], provider: "pi" }],
       }).success,
     ).toBe(false);
+  });
+
+  it("validates usage events, including explicit unknown context", () => {
+    const envelope = (usage: unknown) => ({
+      epoch: "runtime",
+      sequence: 1,
+      type: "runtime_event",
+      data: { type: "usage_update", usage },
+    });
+    expect(isAgentRuntimeEnvelope(envelope({ contextUsage: null }))).toBe(true);
+    expect(
+      isAgentRuntimeEnvelope(
+        envelope({
+          contextUsage: { tokens: 0, contextWindow: 100000, percent: 0 },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isAgentRuntimeEnvelope(
+        envelope({ contextUsage: { tokens: 12, contextWindow: 0, percent: 0 } }),
+      ),
+    ).toBe(false);
+    expect(isAgentRuntimeEnvelope(envelope({ cost: Infinity }))).toBe(false);
+    expect(isAgentRuntimeEnvelope(envelope({ tokens: { total: -1 } }))).toBe(
+      false,
+    );
   });
 });

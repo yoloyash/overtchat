@@ -1956,6 +1956,20 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       const turnId = stringOf(data, "turnId");
       const item = recordOf(data?.item);
       if (turnId && item) {
+        if (
+          method === "item/started" &&
+          stringOf(item, "type") === "contextCompaction" &&
+          this.stats.contextUsage
+        ) {
+          this.stats = {
+            ...this.stats,
+            contextUsage: { ...this.stats.contextUsage, tokens: null, percent: null },
+          };
+          this.emit({
+            type: "usage_update",
+            usage: { contextUsage: this.stats.contextUsage },
+          });
+        }
         this.upsertItem(turnId, item);
         if (
           method === "item/started" &&
@@ -3063,33 +3077,41 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     if (threadId && threadId !== this.thread?.id) return;
     const tokenUsage = recordOf(data?.tokenUsage);
     const usage = recordOf(tokenUsage?.total);
-    if (!usage) return;
+    if (!tokenUsage) return;
     const context = recordOf(tokenUsage?.last);
     const input = numberOf(usage, "inputTokens") ?? 0;
     const output = numberOf(usage, "outputTokens") ?? 0;
     const cacheRead = numberOf(usage, "cachedInputTokens") ?? 0;
     const cacheWrite = numberOf(usage, "cacheWriteInputTokens") ?? 0;
     const total = numberOf(usage, "totalTokens") ?? input + output;
-    const contextTokens = numberOf(context, "totalTokens") ?? total;
+    const contextTokens = numberOf(context, "totalTokens") ?? null;
     const contextWindow = numberOf(
       tokenUsage,
       "modelContextWindow",
-    );
+    ) ?? this.stats.contextUsage?.contextWindow;
     this.stats = {
       ...this.stats,
       sessionFile: this.thread?.path ?? this.thread?.id ?? null,
       sessionId: this.thread?.id ?? null,
-      tokens: { input, output, cacheRead, cacheWrite, total },
+      ...(usage ? { tokens: { input, output, cacheRead, cacheWrite, total } } : {}),
       ...(contextWindow
         ? {
             contextUsage: {
               tokens: contextTokens,
               contextWindow,
-              percent: (contextTokens / contextWindow) * 100,
+              percent: contextTokens === null
+                ? null : (contextTokens / contextWindow) * 100,
             },
           }
         : {}),
     };
+    this.emit({
+      type: "usage_update",
+      usage: {
+        tokens: this.stats.tokens,
+        contextUsage: this.stats.contextUsage ?? null,
+      },
+    });
   }
 
   private emitConfig(): void {

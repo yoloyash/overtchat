@@ -14,6 +14,7 @@ import {
   CONNECTOR_SHELL_MODES,
   AGENT_PROVIDER_IDS,
   agentConnectionDraftSchema,
+  agentUsageUpdateSchema,
   agentDiscoveryTargetSchema,
   agentSessionCommandSchema,
   agentSessionLaunchConfigSchema,
@@ -433,7 +434,9 @@ export function isAgentRuntimeEnvelope(
   return value.type === "snapshot"
     ? isNonEmptyString(value.data.sessionId) &&
         ["idle", "running", "exited"].includes(String(value.data.status))
-    : isNonEmptyString(value.data.type);
+    : isNonEmptyString(value.data.type) &&
+      (value.data.type !== "usage_update" ||
+        agentUsageUpdateSchema.safeParse(value.data.usage).success);
 }
 
 export function isAgentSessionDirectoryEntry(

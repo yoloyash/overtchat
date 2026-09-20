@@ -2,8 +2,9 @@ import type {
   AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
+  AgentSessionStats,
 } from "./agents";
-import { agentPromptImageSchema } from "./agents";
+import { agentPromptImageSchema, agentUsageUpdateSchema } from "./agents";
 import { agentProviderMetadata } from "./catalog";
 
 type AgentRuntimeEvent = Extract<
@@ -460,6 +461,20 @@ export function reconcileAgentRuntimeSnapshot(
   return { ...fresh, messages };
 }
 
+export function applyAgentRuntimeUsageEvent(
+  stats: AgentSessionStats,
+  event: AgentRuntimeEvent,
+): AgentSessionStats {
+  if (event.type !== "usage_update") return stats;
+  const parsed = agentUsageUpdateSchema.safeParse(event.usage);
+  if (!parsed.success) return stats;
+  const { contextUsage, ...usage } = parsed.data;
+  const next = { ...stats, ...usage };
+  if (contextUsage === null) delete next.contextUsage;
+  else if (contextUsage !== undefined) next.contextUsage = contextUsage;
+  return next;
+}
+
 export function applyAgentRuntimeStateEvent(
   state: Record<string, unknown>,
   event: AgentRuntimeEvent,
@@ -480,6 +495,10 @@ export function applyAgentRuntimeEnvelope(
   if (envelope.type === "snapshot") return envelope.data;
   if (!current) return current;
   const event = envelope.data;
+  if (event.type === "usage_update") {
+    const stats = applyAgentRuntimeUsageEvent(current.stats, event);
+    return stats === current.stats ? current : { ...current, stats };
+  }
 
   if (event.type === "agent_start" || event.type === "turn_start") {
     return {

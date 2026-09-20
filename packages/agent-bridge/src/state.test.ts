@@ -927,4 +927,34 @@ describe("agent runtime event reducer", () => {
       }),
     ).toBe(authoritative);
   });
+
+  it("applies live usage and explicit context invalidation without changing transcript or status", () => {
+    const initial = snapshot();
+    initial.status = "running";
+    initial.stats.tokens.total = 900000;
+    const used = applyAgentRuntimeEnvelope(
+      initial,
+      event({
+        type: "usage_update",
+        usage: {
+          contextUsage: { tokens: 12000, contextWindow: 100000, percent: 12 },
+        },
+      }),
+    )!;
+    expect(used.stats.contextUsage?.tokens).toBe(12000);
+    expect(used.stats.tokens.total).toBe(900000);
+    expect(used.messages).toBe(initial.messages);
+    expect(used.status).toBe("running");
+    const unknown = applyAgentRuntimeEnvelope(
+      used,
+      event({ type: "usage_update", usage: { contextUsage: null } }),
+    )!;
+    expect(unknown.stats.contextUsage).toBeUndefined();
+    expect(
+      applyAgentRuntimeEnvelope(
+        used,
+        event({ type: "usage_update", usage: { contextUsage: { tokens: -1 } } }),
+      ),
+    ).toBe(used);
+  });
 });
