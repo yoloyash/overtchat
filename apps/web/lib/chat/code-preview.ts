@@ -20,11 +20,22 @@ export function htmlPreviewDocument(source: string): string {
   return `<!doctype html><meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}"><meta name="viewport" content="width=device-width, initial-scale=1">${source}`;
 }
 
-export function svgPreviewSource(source: string): string {
-  const document = new DOMParser().parseFromString(source, "image/svg+xml");
-  const root = document.documentElement;
+export function svgPreviewSource(source: string, isIncomplete = false): string {
+  // A detached template uses the browser's forgiving HTML/SVG parser to close
+  // unfinished elements while streaming. Its content stays inert, including
+  // scripts and resource URLs, and is only ever serialized into an SVG image.
+  // Completed output still gets strict XML validation.
+  const template = isIncomplete ? document.createElement("template") : null;
+  if (template) template.innerHTML = source;
+  const xml = template
+    ? null
+    : new DOMParser().parseFromString(source, "image/svg+xml");
+  const root = template
+    ? template.content.firstElementChild
+    : xml?.documentElement;
   if (
-    document.querySelector("parsererror") ||
+    !root ||
+    xml?.querySelector("parsererror") ||
     root.localName !== "svg" ||
     (root.namespaceURI && root.namespaceURI !== "http://www.w3.org/2000/svg")
   ) {

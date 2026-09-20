@@ -34,22 +34,34 @@ export function CodePreviewBlock({
   const [document, setDocument] = useState<string | null>(null);
   const [fullscreen, setFullscreen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const readyImage = image?.source === code && !isIncomplete ? image : null;
+  // Keep the last good image while the next chunk is parsed and decoded.
+  const readyImage =
+    image && code.startsWith(image.source.trimEnd()) ? image : null;
   const error = tooLarge
     ? "This block is too large to preview. You can still copy or download its source."
     : failure?.source === code
       ? failure.message
       : null;
-  const canPreview = !isIncomplete && !error && (!isSvg || !!readyImage);
+  const canPreview = !error && (isSvg ? !!readyImage : !isIncomplete);
+
+  useEffect(
+    () => () => {
+      if (image) URL.revokeObjectURL(image.url);
+    },
+    [image],
+  );
 
   useEffect(() => {
-    if (!isSvg || isIncomplete || tooLarge) return;
+    if (!isSvg || tooLarge) return;
     let cancelled = false;
+    let published = false;
     let url: string | undefined;
     const loader = new Image();
     async function loadImage() {
       url = URL.createObjectURL(
-        new Blob([svgPreviewSource(code)], { type: "image/svg+xml" }),
+        new Blob([svgPreviewSource(code, isIncomplete)], {
+          type: "image/svg+xml",
+        }),
       );
       loader.src = url;
       await loader.decode();
@@ -57,6 +69,7 @@ export function CodePreviewBlock({
       if (!loader.naturalWidth || !loader.naturalHeight) {
         throw new Error("This SVG has no usable dimensions.");
       }
+      published = true;
       setImage({
         url,
         width: loader.naturalWidth,
@@ -65,20 +78,23 @@ export function CodePreviewBlock({
       });
       setFailure(null);
     }
-    void loadImage().catch((reason: unknown) => {
-      if (!cancelled) {
-        setFailure({
-          source: code,
-          message:
-            reason instanceof Error
-              ? reason.message
-              : "Unable to preview this SVG.",
-        });
-      }
+    const frame = requestAnimationFrame(() => {
+      void loadImage().catch((reason: unknown) => {
+        if (!cancelled && !isIncomplete) {
+          setFailure({
+            source: code,
+            message:
+              reason instanceof Error
+                ? reason.message
+                : "Unable to preview this SVG.",
+          });
+        }
+      });
     });
     return () => {
       cancelled = true;
-      if (url) URL.revokeObjectURL(url);
+      cancelAnimationFrame(frame);
+      if (url && !published) URL.revokeObjectURL(url);
     };
   }, [code, isSvg, isIncomplete, tooLarge]);
 
@@ -108,7 +124,7 @@ export function CodePreviewBlock({
         <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-2 py-1.5">
           <span className="pl-1 text-xs text-muted-foreground">{label}</span>
           <div className="flex items-center gap-0.5">
-            {isSvg && !readyImage && !error && (
+            {isSvg && (isIncomplete || !readyImage) && !error && (
               <Loader2
                 className="mr-2 size-3.5 animate-spin motion-reduce:animate-none"
                 aria-label="Rendering SVG"

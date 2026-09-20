@@ -225,11 +225,25 @@ test("keeps invalid SVG and ordinary code accessible", async ({ page }) => {
   ).toBeDisabled();
 });
 
-test("waits for streamed fences before rendering SVG or enabling HTML", async ({
+test("renders SVG progressively while keeping HTML gated on completion", async ({
   page,
+  baseURL,
 }) => {
+  const requests: string[] = [];
+  await page.route("**/preview-probe/**", async (route) => {
+    requests.push(route.request().url());
+    await route.fulfill({ body: "unexpected request" });
+  });
+  let startSvg = () => {};
+  let extendSvg = () => {};
   let finishSvg = () => {};
   let finishHtml = () => {};
+  const svgStarted = new Promise<void>((resolve) => {
+    startSvg = resolve;
+  });
+  const svgExtended = new Promise<void>((resolve) => {
+    extendSvg = resolve;
+  });
   const svgReady = new Promise<void>((resolve) => {
     finishSvg = resolve;
   });
@@ -260,11 +274,16 @@ test("waits for streamed fences before rendering SVG or enabling HTML", async ({
       res.write(
         `data: ${JSON.stringify({ id: "preview-stream", object: "chat.completion.chunk", created: 1, model: "preview-test", choices: [{ index: 0, delta: { content }, finish_reason: finishReason }] })}\n\n`,
       );
-    delta('```svg\n<svg viewBox="0 0 240 120"><rect');
+    delta("```svg\n<sv");
+    await svgStarted;
+    delta(`g viewBox="0 0 240 120"><g><rect width="240" height="120" fill="teal"/>
+      <script>parent.document.body.dataset.svgExecuted = 'yes';</script>
+      <image href="${baseURL}/preview-probe/stream" width="20" height="20"/>
+      <path d="M`);
+    await svgExtended;
+    delta(' 10 10 L 40 40" stroke="white"/>');
     await svgReady;
-    delta(
-      ' width="240" height="120" fill="teal"/></svg>\n```\n\n```html\n<h1>Streamed',
-    );
+    delta("</g></svg>\n```\n\n```html\n<h1>Streamed");
     await htmlReady;
     delta(" page</h1>\n```\n");
     delta("", "stop");
@@ -292,10 +311,45 @@ test("waits for streamed fences before rendering SVG or enabling HTML", async ({
     await expect(page.getByRole("img", { name: "Generated SVG" })).toHaveCount(
       0,
     );
-    finishSvg();
+    startSvg();
+    const image = page.getByRole("img", { name: "Generated SVG" });
+    await expect(image).toBeVisible();
+    const source = () =>
+      image
+        .first()
+        .evaluate((element) =>
+          fetch((element as HTMLImageElement).src).then((response) =>
+            response.text(),
+          ),
+        );
+    await expect.poll(source).toContain("<rect");
+    expect(await source()).not.toContain("<path");
     await expect(
-      page.getByRole("img", { name: "Generated SVG" }),
-    ).toBeVisible();
+      page.locator('[data-code-preview="svg"] [role="status"]'),
+    ).toHaveCount(0);
+    expect(
+      await page.locator("body").getAttribute("data-svg-executed"),
+    ).toBeNull();
+    expect(requests).toEqual([]);
+    await page.getByRole("button", { name: "View SVG fullscreen" }).click();
+    const expanded = page
+      .getByRole("dialog")
+      .getByRole("img", { name: "Generated SVG" });
+    await expect(expanded).toBeVisible();
+    extendSvg();
+    await expect
+      .poll(() =>
+        expanded.evaluate((element) =>
+          fetch((element as HTMLImageElement).src).then((response) =>
+            response.text(),
+          ),
+        ),
+      )
+      .toContain('d="M 10 10 L 40 40"');
+    await page.getByRole("button", { name: "Close preview" }).click();
+    await expect(expanded).toHaveCount(0);
+    finishSvg();
+    await expect(image).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Preview HTML" }),
     ).toBeDisabled();
@@ -311,6 +365,8 @@ test("waits for streamed fences before rendering SVG or enabling HTML", async ({
         .getByRole("heading", { name: "Streamed page" }),
     ).toBeVisible();
   } finally {
+    startSvg();
+    extendSvg();
     finishSvg();
     finishHtml();
     provider.closeAllConnections();
