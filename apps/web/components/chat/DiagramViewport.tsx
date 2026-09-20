@@ -27,9 +27,11 @@ type DiagramImage = Size & { url: string };
 export function DiagramViewport({
   image,
   fullscreen = false,
+  alt = "Mermaid chart",
 }: {
   image: DiagramImage;
   fullscreen?: boolean;
+  alt?: string;
 }) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Size>({ width: 0, height: 0 });
@@ -269,7 +271,7 @@ export function DiagramViewport({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={image.url}
-            alt="Mermaid chart"
+            alt={alt}
             draggable={false}
             className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"
             style={{

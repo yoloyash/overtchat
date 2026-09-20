@@ -21,7 +21,7 @@ import { toast } from "@/components/ui/toast";
 import { humanMediaLabel } from "@/lib/chat/attachments";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
-  STREAMDOWN_PLUGINS,
+  MESSAGE_MARKDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
@@ -194,7 +194,7 @@ function AssistantBubble({
                 <Streamdown
                   key={seg.index}
                   className="font-sans space-y-3 text-[15px] leading-relaxed"
-                  plugins={STREAMDOWN_PLUGINS}
+                  plugins={MESSAGE_MARKDOWN_PLUGINS}
                   remarkPlugins={CITATION_REMARK_PLUGINS}
                   allowedTags={CITATION_ALLOWED_TAGS}
                   components={citationComponents}
