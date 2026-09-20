@@ -837,7 +837,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         this.readRequestUsage(record(record(event.message)?.usage));
       } else if (event.type === "message_delta" && this.contextInputTokens !== undefined) {
         const output = this.usageNumber(record(event.usage)?.output_tokens);
-        if (output !== null) this.updateContextUsage(this.contextInputTokens + output);
+        if (output !== null) this.updateRequestContextUsage(this.contextInputTokens + output);
       }
     }
     if (event.type === "message_start") {
@@ -975,9 +975,15 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       input +
       (this.usageNumber(usage?.cache_read_input_tokens) ?? 0) +
       (this.usageNumber(usage?.cache_creation_input_tokens) ?? 0);
-    this.updateContextUsage(
+    this.updateRequestContextUsage(
       this.contextInputTokens + (this.usageNumber(usage?.output_tokens) ?? 0),
     );
+  }
+
+  private updateRequestContextUsage(tokens: number): void {
+    // Empty request events after compaction must preserve the boundary's count.
+    // Explicit zero or unknown counts from compact boundaries remain valid.
+    if (tokens > 0) this.updateContextUsage(tokens);
   }
 
   private updateContextUsage(tokens: number | null): void {
