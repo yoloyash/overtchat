@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Keyboard, ScrollView, View } from "react-native";
-import { Stack, router, useLocalSearchParams } from "expo-router";
+import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
 import {
   KeyboardAvoidingView,
@@ -40,6 +40,8 @@ import {
 } from "@/lib/agents/model";
 import { useAgentCommand, useAgentSession } from "@/lib/queries/agents";
 import { useTheme } from "@/lib/theme";
+import { useSpeech } from "@/lib/useSpeech";
+import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 
 export default function AgentSessionScreen() {
   const {
@@ -64,6 +66,9 @@ function AgentSession({
   const headerHeight = useHeaderHeight();
   const keyboard = useKeyboardState((state) => state.isVisible);
   const session = useAgentSession(id);
+  const speech = useSpeech();
+  const stopSpeech = speech.stop;
+  useFocusEffect(useCallback(() => () => stopSpeech(), [stopSpeech]));
   const snapshot = session.snapshot;
   const mutation = useAgentCommand(id);
   const { draft, setDraft, storageError } = useAgentDraft(id);
@@ -278,6 +283,7 @@ function AgentSession({
       )}
       {snapshot && (
         <AgentTranscript
+          speech={speech}
           snapshot={snapshot}
           question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
             <AgentQuestionCard key={snapshot.pendingInteraction.id} request={snapshot.pendingInteraction}
@@ -289,6 +295,7 @@ function AgentSession({
           onImplementPlan={implementPlan}
         />
       )}
+      <MiniSpeechPlayer speech={speech} />
       {!!(error || storageError || snapshot?.error) && (
         <ScrollView
           style={{ maxHeight: 110 }}

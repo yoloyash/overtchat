@@ -16,7 +16,13 @@ import {
   Terminal,
   GitBranch,
   Pencil,
+  Loader2,
+  Square,
+  Volume2,
 } from "lucide-react";
+import { stripMarkdown } from "@/lib/chat/message";
+import { motionClasses } from "@/lib/motion";
+import type { useSpeech } from "@/lib/useSpeech";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import {
@@ -98,6 +104,7 @@ function textOfContent(content: unknown): string {
 }
 
 export function AgentMessageList({
+  speech,
   providerLabel,
   question,
   messages,
@@ -114,6 +121,7 @@ export function AgentMessageList({
   onForkMessage,
   onImplementPlan,
 }: {
+  speech: ReturnType<typeof useSpeech>;
   providerLabel: string;
   question?: React.ReactNode;
   messages: unknown[];
@@ -192,6 +200,7 @@ export function AgentMessageList({
                     )}
                   >
                     <AgentTranscriptRow
+                      speech={speech}
                       item={item}
                       active={streaming && index === transcript.length - 1}
                       canEditMessages={canEditMessages}
@@ -240,6 +249,7 @@ export function AgentMessageList({
 }
 
 function AgentTranscriptRow({
+  speech,
   item,
   active,
   canEditMessages,
@@ -250,6 +260,7 @@ function AgentTranscriptRow({
   onImplementPlan,
   activitySequencePosition,
 }: {
+  speech: ReturnType<typeof useSpeech>;
   item: AgentTranscriptItem;
   active: boolean;
   canEditMessages: boolean;
@@ -274,6 +285,9 @@ function AgentTranscriptRow({
     return (
       <div className="group/assistant relative text-sm leading-relaxed">
         <Markdown streaming={active}>{item.text}</Markdown>
+        {!active && (
+          <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+        )}
         {canForkMessages && item.actionable && item.messageId && (
           <MessageAction
             label="Fork from this response"
@@ -306,6 +320,8 @@ function AgentTranscriptRow({
   if (item.type === "plan") {
     return (
       <AgentPlanCard
+        speech={speech}
+        active={active}
         item={item}
         disabled={actionsDisabled || active}
         onImplement={() => onImplementPlan(item.text)}
@@ -427,10 +443,14 @@ function AgentTurnFooter({
 }
 
 function AgentPlanCard({
+  speech,
+  active,
   item,
   disabled,
   onImplement,
 }: {
+  speech: ReturnType<typeof useSpeech>;
+  active: boolean;
   item: Extract<AgentTranscriptItem, { type: "plan" }>;
   disabled: boolean;
   onImplement: () => void;
@@ -462,6 +482,9 @@ function AgentPlanCard({
             ))}
           </ol>
         ) : null}
+        {!active && (
+          <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+        )}
         {item.actionable && (
           <div className="flex justify-end border-t pt-3">
             <Button
@@ -477,6 +500,45 @@ function AgentPlanCard({
         )}
       </div>
     </section>
+  );
+}
+
+function AgentSpeakButton({
+  id,
+  text,
+  speech,
+}: {
+  id: string;
+  text: string;
+  speech: ReturnType<typeof useSpeech>;
+}) {
+  const spokenText = useMemo(() => stripMarkdown(text), [text]);
+  if (!spokenText) return null;
+  const active = speech.activeId === id;
+  const loading = active && speech.status === "loading";
+  const tooLong = spokenText.length > 5_000;
+  const label = active
+    ? loading ? "Cancel loading speech" : "Stop reading"
+    : tooLong ? "Read aloud supports up to 5,000 characters" : "Read aloud";
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      className="mt-1 size-7 text-muted-foreground"
+      aria-label={label}
+      title={label}
+      disabled={!active && tooLong}
+      onClick={() => void speech.play(id, spokenText)}
+    >
+      {loading ? (
+        <Loader2 className={motionClasses.spinner} />
+      ) : active ? (
+        <Square />
+      ) : (
+        <Volume2 />
+      )}
+    </Button>
   );
 }
 
