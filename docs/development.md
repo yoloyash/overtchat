@@ -80,9 +80,21 @@ support conversation rewind; OpenCode rewinds conversation and files together.
 File restoration is limited to the provider's native checkpoints.
 
 Fork tests verify draft creation and text history with concise tool summaries.
-Image attachments are omitted. Check rewind and fork on physical Android/iOS
-devices and SSH workspaces separately; the installed-provider suite runs locally.
-The web app and connector must use the same bridge protocol version.
+Image attachments are omitted. To exercise the connector's SSH process and
+tunnel paths against configured aliases:
+
+```sh
+REWIND_SSH_ALIASES=linux-host,mac-host npm run test -w apps/connector -- src/rewind-ssh.integration.test.ts
+```
+
+The SSH suite tests Claude, Codex, Oh My Pi, and OpenCode, including retained
+context, restart/resume, rewind to an empty conversation, and supported file
+checkpoints. It uses temporary remote workspaces and makes real model requests.
+Each remote login environment must provide the selected executables and model
+credentials. The same command/model overrides apply; use Vitest's `-t` option
+to select a provider or host. Check browser workflows against the running app
+and physical Android/iOS devices separately. The web app and connector must use
+the same bridge protocol version.
 
 ## OpenCode process lifecycle validation
 

@@ -391,11 +391,14 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
   snapshot.messages = [];
-  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", (route) =>
-    route.fulfill({
+  let releaseCatalog: () => void = () => {};
+  const catalogReady = new Promise<void>((resolve) => { releaseCatalog = resolve; });
+  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", async (route) => {
+    await catalogReady;
+    return route.fulfill({
       json: { provider: "codex", models: [imageModel], modes: [] },
-    }),
-  );
+    });
+  });
   let createdSessions = 0;
   await page.route("**/api/agent-workspaces/workspace/sessions", (route) => {
     createdSessions += 1;
@@ -432,6 +435,9 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
 
   await page.goto("/agents/new?workspaceId=workspace&provider=codex");
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  await expect(composer).toBeDisabled();
+  releaseCatalog();
+  await expect(composer).toBeEnabled();
   await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await composer.fill("First agent prompt over HTTP");
   await composer.press("Enter");

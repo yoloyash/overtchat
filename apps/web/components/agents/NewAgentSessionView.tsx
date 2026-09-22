@@ -373,7 +373,7 @@ export function NewAgentSessionView({
               running={false}
               pending={pending}
               stopping={false}
-              disabled={!forkLoaded || forkError}
+              disabled={!forkLoaded || forkError || loadingDefaults}
               controls={{
                 providerLabel: providerMetadata.label,
                 models: catalog.data?.models ?? [],
