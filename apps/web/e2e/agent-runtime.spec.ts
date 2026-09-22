@@ -1758,7 +1758,17 @@ test("shows durable turn activity without changing completed tool status", async
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
   const sessionUrl = page.url();
-  await page.getByRole("button", { name: "Rewind to this message" }).click();
+  const rewindButton = page.getByRole("button", { name: "Rewind to this message" });
+  await composer.hover();
+  await expect(rewindButton).toHaveCSS("opacity", "0");
+  await page.getByText("Inspect the runtime", { exact: true }).hover();
+  await expect(rewindButton).toHaveCSS("opacity", "1");
+  await composer.hover();
+  await rewindButton.focus();
+  await expect(rewindButton).toHaveCSS("opacity", "1");
+  await rewindButton.click();
+  await page.mouse.move(0, 0);
+  await expect(rewindButton).toHaveCSS("opacity", "1");
   await page
     .getByRole("menuitem", { name: "Rewind conversation", exact: true })
     .click();

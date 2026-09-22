@@ -59,43 +59,6 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
-## Agent rewind and fork validation
-
-Run bridge, runtime, connector, and mobile tests, plus the web agent API and
-presentation tests. The browser workflow is covered by
-`npm run test:e2e -w apps/web -- e2e/agent-runtime.spec.ts`.
-
-To exercise installed providers with real model requests:
-
-```sh
-REWIND_PROVIDERS=claude,codex,pi,omp,opencode npm run test -w packages/agent-runtime -- src/runtime/rewind.integration.test.ts
-```
-
-These opt-in tests use disposable local workspaces and incur provider usage.
-They check conversation rewind, continued context, restart/resume, and native
-file restoration where supported. Set `<PROVIDER>_COMMAND` to override an
-executable and `<PROVIDER>_REWIND_MODEL` to select the conversation-test model.
-Claude supports conversation, files, and combined rewind; Codex, Pi, and Oh My Pi
-support conversation rewind; OpenCode rewinds conversation and files together.
-File restoration is limited to the provider's native checkpoints.
-
-Fork tests verify draft creation and text history with concise tool summaries.
-Image attachments are omitted. To exercise the connector's SSH process and
-tunnel paths against configured aliases:
-
-```sh
-REWIND_SSH_ALIASES=linux-host,mac-host npm run test -w apps/connector -- src/rewind-ssh.integration.test.ts
-```
-
-The SSH suite tests Claude, Codex, Oh My Pi, and OpenCode, including retained
-context, restart/resume, rewind to an empty conversation, and supported file
-checkpoints. It uses temporary remote workspaces and makes real model requests.
-Each remote login environment must provide the selected executables and model
-credentials. The same command/model overrides apply; use Vitest's `-t` option
-to select a provider or host. Check browser workflows against the running app
-and physical Android/iOS devices separately. The web app and connector must use
-the same bridge protocol version.
-
 ## OpenCode process lifecycle validation
 
 The connector owns cleanup for local and SSH OpenCode servers. To exercise real
