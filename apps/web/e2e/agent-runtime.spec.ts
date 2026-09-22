@@ -1404,8 +1404,12 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     completedTurn.getByRole("button", { name: "Copy response" }),
   ).toBeVisible();
-  await completedTurn.hover();
   const turnActions = completedTurn.locator('[data-slot="message-actions"]');
+  await page.mouse.move(0, 0);
+  await expect(turnActions).toHaveCSS("opacity", "0");
+  await page.getByRole("paragraph").filter({ hasText: "I will inspect the runtime." }).hover();
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await completedTurn.hover();
   await expect(turnActions).toHaveCSS("opacity", "1");
   await expectHorizontalMessageActions(turnActions);
   const thinking = page.getByRole("button", { name: "Thoughts" });

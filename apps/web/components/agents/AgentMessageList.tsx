@@ -161,6 +161,25 @@ export function AgentMessageList({
     ),
     [transcript],
   );
+  const transcriptGroups = useMemo(() => {
+    const groups: Array<Array<{ item: AgentTranscriptItem; index: number }>> = [];
+    transcript.forEach((item, index) => {
+      const previousGroup = groups.at(-1);
+      const previousItem = previousGroup?.at(-1)?.item;
+      if (
+        previousGroup &&
+        item.type === "turn_footer" &&
+        item.messageId !== null &&
+        previousItem?.type === "assistant_text" &&
+        previousItem.messageId === item.messageId
+      ) {
+        previousGroup.push({ item, index });
+      } else {
+        groups.push([{ item, index }]);
+      }
+    });
+    return groups;
+  }, [transcript]);
   const trailingItem = transcript.at(-1);
   const activityAlreadyVisible =
     activity === "working" &&
@@ -191,52 +210,52 @@ export function AgentMessageList({
             </div>
           ) : (
             <div className="flex flex-col">
-              {transcript.map((item, index) => {
-                const previous = transcript[index - 1];
-                const sequencePosition = agentActivitySequencePosition(
-                  transcript,
-                  index,
-                );
-                const compact =
-                  previous &&
-                  (item.type === "activity" ||
-                    previous.type === "activity" ||
-                    item.type === "turn_footer");
-                return (
-                  <div
-                    key={item.key}
-                    className={cn(
-                      "group",
-                      item.type === "assistant_text" &&
-                        transcript[index + 1]?.type === "turn_footer" &&
-                        "[&:hover+div_[data-slot=message-actions]]:opacity-100",
-                      index > 0 && (compact ? "mt-3" : "mt-6"),
-                      (sequencePosition === "middle" ||
-                        sequencePosition === "last") &&
-                        "mt-0",
-                      item.type === "turn_footer" && "mt-2",
-                    )}
-                  >
-                    <AgentTranscriptRow
-                      speech={speech}
-                      item={item}
-                      active={streaming && index === transcript.length - 1}
-                      hasTurnFooter={
-                        item.type === "assistant_text" &&
-                        item.messageId !== null &&
-                        footerMessageIds.has(item.messageId)
-                      }
-                      rewindOptions={rewindOptions}
-                      canForkMessages={canForkMessages}
-                      actionsDisabled={actionsDisabled}
-                      onRewindMessage={onRewindMessage}
-                      onForkMessage={onForkMessage}
-                      onImplementPlan={onImplementPlan}
-                      activitySequencePosition={sequencePosition}
-                    />
-                  </div>
-                );
-              })}
+              {transcriptGroups.map((group) => (
+                <div className="group flex flex-col" key={group[0].item.key}>
+                  {group.map(({ item, index }) => {
+                    const previous = transcript[index - 1];
+                    const sequencePosition = agentActivitySequencePosition(
+                      transcript,
+                      index,
+                    );
+                    const compact =
+                      previous &&
+                      (item.type === "activity" ||
+                        previous.type === "activity" ||
+                        item.type === "turn_footer");
+                    return (
+                      <div
+                        key={item.key}
+                        className={cn(
+                          index > 0 && (compact ? "mt-3" : "mt-6"),
+                          (sequencePosition === "middle" ||
+                            sequencePosition === "last") &&
+                            "mt-0",
+                          item.type === "turn_footer" && "mt-2",
+                        )}
+                      >
+                        <AgentTranscriptRow
+                          speech={speech}
+                          item={item}
+                          active={streaming && index === transcript.length - 1}
+                          hasTurnFooter={
+                            item.type === "assistant_text" &&
+                            item.messageId !== null &&
+                            footerMessageIds.has(item.messageId)
+                          }
+                          rewindOptions={rewindOptions}
+                          canForkMessages={canForkMessages}
+                          actionsDisabled={actionsDisabled}
+                          onRewindMessage={onRewindMessage}
+                          onForkMessage={onForkMessage}
+                          onImplementPlan={onImplementPlan}
+                          activitySequencePosition={sequencePosition}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
               {activity && !question && !activityAlreadyVisible && (
                 <AgentRunIndicator
                   activity={activity}
