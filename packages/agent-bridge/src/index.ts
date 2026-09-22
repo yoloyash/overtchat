@@ -21,7 +21,7 @@ import {
 } from "./agents";
 
 /** Increment only for a breaking web-to-connector wire contract change. */
-export const HOST_CONNECTOR_PROTOCOL_VERSION = 3;
+export const HOST_CONNECTOR_PROTOCOL_VERSION = 4;
 /** Published connector artifact version; independent of wire compatibility. */
 export const HOST_CONNECTOR_RELEASE_VERSION = "0.11.2";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
@@ -41,6 +41,7 @@ export type HostConnectorServerInfo = {
 
 export * from "./agents";
 export * from "./catalog";
+export * from "./history";
 export * from "./commands";
 export * from "./state";
 export * from "./replica";

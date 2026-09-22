@@ -18,3 +18,7 @@ export function newAgentSessionHref(
 export function agentSessionDraftRestoreKey(sessionId: string): string {
   return `overtchat:agent-fork-draft:${sessionId}`;
 }
+
+export function agentForkDraftKey(id: string): string {
+  return `overtchat:agent-fork-context:${id}`;
+}

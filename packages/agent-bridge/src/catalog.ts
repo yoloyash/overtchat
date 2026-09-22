@@ -57,7 +57,9 @@ export const AGENT_PROVIDERS: Record<
     executable: "pi",
     capabilities: {
       steer: true,
+      forkMessages: true,
       customCompactionInstructions: true,
+      rewindConversation: true,
     },
   },
   omp: {
@@ -66,7 +68,9 @@ export const AGENT_PROVIDERS: Record<
     executable: "omp",
     capabilities: {
       steer: true,
+      forkMessages: true,
       customCompactionInstructions: true,
+      rewindConversation: true,
     },
   },
   codex: {
@@ -75,9 +79,10 @@ export const AGENT_PROVIDERS: Record<
     executable: "codex",
     capabilities: {
       steer: true,
+      forkMessages: true,
       usage: true,
       editSentMessages: true,
-      forkMessages: true,
+      rewindConversation: true,
     },
   },
   opencode: {
@@ -85,7 +90,9 @@ export const AGENT_PROVIDERS: Record<
     label: "OpenCode",
     executable: "opencode",
     capabilities: {
+      rewindBoth: true,
       steer: true,
+      forkMessages: true,
     },
   },
   claude: {
@@ -93,7 +100,11 @@ export const AGENT_PROVIDERS: Record<
     label: "Claude Code",
     executable: "claude",
     capabilities: {
+      rewindConversation: true,
+      rewindFiles: true,
+      rewindBoth: true,
       steer: true,
+      forkMessages: true,
     },
   },
 };

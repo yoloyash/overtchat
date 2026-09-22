@@ -11,6 +11,7 @@ export default async function NewAgentSessionPage({
   searchParams: Promise<{
     workspaceId?: string | string[];
     provider?: string | string[];
+    fork?: string | string[];
   }>;
 }) {
   const session = await auth.api.getSession({ headers: await headers() });
@@ -28,6 +29,7 @@ export default async function NewAgentSessionPage({
 
   return (
     <NewAgentSessionView
+      key={`${workspaceId}:${provider}:${typeof query.fork === "string" ? query.fork : ""}`}
       provider={provider}
       workspaceId={owned.workspace.id}
       workspaceName={owned.workspace.name}

@@ -599,17 +599,17 @@ export class ConnectorDaemon {
         const normalized = runtime.normalizeCommand(request.command);
         attemptedProviderAction = true;
         const data =
-          normalized.type === "edit_message" ||
-          normalized.type === "fork_message"
+          normalized.type === "rewind" || normalized.type === "edit_message"
             ? {
-                fork: await this.awaitProviderAction(
-                  this.registry.fork(runtime, normalized),
+                sessionChange: await this.awaitProviderAction(
+                  this.registry.changeSessionHistory(runtime, normalized),
                 ),
               }
             : await this.awaitProviderAction(
                 runtime.command(normalized, request.clientMessageId),
               ).then((commandResult) => ({
-                ...(normalized.type === "show_usage" ||
+                ...(normalized.type === "fork_message" ||
+                normalized.type === "show_usage" ||
                 isAgentProviderNotice(commandResult)
                   ? { commandResult }
                   : {}),
@@ -617,11 +617,11 @@ export class ConnectorDaemon {
                   queuedMessages: runtime.snapshot().queuedMessages,
                 },
               }));
-        if ("fork" in data && data.fork.replacesCurrentSession) {
+        if ("sessionChange" in data && data.sessionChange.replacesCurrentSession) {
           const descriptor = {
             ...request.session,
-            providerSessionId: data.fork.session.providerSessionId,
-            providerSessionPath: data.fork.session.providerSessionPath,
+            providerSessionId: data.sessionChange.session.providerSessionId,
+            providerSessionPath: data.sessionChange.session.providerSessionPath,
           };
           this.assertStoresAvailable();
           await this.journal.recordSession(descriptor);
@@ -630,6 +630,7 @@ export class ConnectorDaemon {
             runtime,
             descriptor.providerSessionId,
             descriptor.providerSessionPath,
+            normalized.type === "rewind" && normalized.mode !== "files",
           );
         }
         this.assertStoresAvailable();
@@ -719,16 +720,18 @@ export class ConnectorDaemon {
     runtime: AgentSessionRuntime,
     providerSessionId: string,
     providerSessionPath: string,
+    replaceHistory = false,
   ): Promise<void> {
     const sessionId = runtime.dbSessionId;
     const existing = this.captures.get(sessionId);
     if (existing?.runtime === runtime) {
       await this.flushCapture(sessionId);
-      if (existing.providerSessionId !== providerSessionId) {
+      if (replaceHistory || existing.providerSessionId !== providerSessionId) {
         await this.timelines.openSession(
           sessionId,
           providerSessionId,
           runtime.snapshot(),
+          replaceHistory,
         );
         existing.providerSessionId = providerSessionId;
         existing.providerSessionPath = providerSessionPath;

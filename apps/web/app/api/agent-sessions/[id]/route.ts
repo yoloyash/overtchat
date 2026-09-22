@@ -158,7 +158,7 @@ export async function POST(
     const result = await hostConnectorBroker.request<{
       commandResult?: unknown;
       snapshot?: { queuedMessages?: unknown[] };
-      fork?: {
+      sessionChange?: {
         session: unknown;
         draft?: string;
         replacesCurrentSession?: boolean;
@@ -170,11 +170,14 @@ export async function POST(
       session: daemonSession(authorized.owned),
       command,
     });
-    if (result.fork) {
+    if (command.type === "fork_message") {
+      return Response.json(result.commandResult);
+    }
+    if (result.sessionChange) {
       const providerSession = parseProviderSessionMetadata(
-        result.fork.session,
+        result.sessionChange.session,
       );
-      if (result.fork.replacesCurrentSession) {
+      if (result.sessionChange.replacesCurrentSession) {
         hostConnectorBroker.replaceSessionProviderSession(
           authorized.owned.host.connectorId,
           id,
@@ -184,8 +187,8 @@ export async function POST(
         return Response.json({
           accepted: true,
           sessionId: id,
-          ...(result.fork.draft !== undefined
-            ? { draft: result.fork.draft }
+          ...(result.sessionChange.draft !== undefined
+            ? { draft: result.sessionChange.draft }
             : {}),
         });
       }
@@ -196,8 +199,8 @@ export async function POST(
       return Response.json({
         accepted: true,
         sessionId: row.id,
-        ...(result.fork.draft !== undefined
-          ? { draft: result.fork.draft }
+        ...(result.sessionChange.draft !== undefined
+          ? { draft: result.sessionChange.draft }
           : {}),
       });
     }

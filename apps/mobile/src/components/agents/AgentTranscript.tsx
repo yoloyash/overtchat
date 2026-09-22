@@ -10,7 +10,13 @@ import {
   type AgentActivityEntry,
   type AgentTranscriptItem,
 } from "@overtchat/shared/agent-presentation";
-import type { AgentRuntimeSnapshot } from "@overtchat/agent-bridge";
+import { AgentForkMenu } from "./AgentForkMenu";
+import { AgentRewindMenu } from "./AgentRewindMenu";
+import type {
+  AgentRewindMode,
+  AgentRuntimeCapabilities,
+  AgentRuntimeSnapshot,
+} from "@overtchat/agent-bridge";
 import { MarkdownBody } from "@/components/chat/MarkdownBody";
 import { record, text } from "@/lib/agents/model";
 import { useTheme } from "@/lib/theme";
@@ -31,12 +37,16 @@ export function AgentTranscript({
   snapshot,
   question,
   onImplementPlan,
+  onFork,
+  onRewind,
   disabled,
 }: {
   speech: ReturnType<typeof useSpeech>;
   snapshot: AgentRuntimeSnapshot;
   question?: React.ReactElement;
   onImplementPlan: (plan: string) => void;
+  onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
+  onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
   disabled: boolean;
 }) {
   const { colors } = useTheme();
@@ -111,13 +121,15 @@ export function AgentTranscript({
           );
         }}
         scrollEventThrottle={16}
-        ListEmptyComponent={question ? null :
-          <View style={{ paddingVertical: 36, gap: 8 }}>
-            <AgentText title>What would you like to work on?</AgentText>
-            <AgentText muted>
-              Messages run in this workspace on your connected machine.
-            </AgentText>
-          </View>
+        ListEmptyComponent={
+          question ? null : (
+            <View style={{ paddingVertical: 36, gap: 8 }}>
+              <AgentText title>What would you like to work on?</AgentText>
+              <AgentText muted>
+                Messages run in this workspace on your connected machine.
+              </AgentText>
+            </View>
+          )
         }
         renderItem={({ item, index }) => (
           <TranscriptItem
@@ -127,6 +139,9 @@ export function AgentTranscript({
             active={active}
             disabled={disabled}
             onImplementPlan={onImplementPlan}
+            onFork={onFork}
+            onRewind={onRewind}
+            capabilities={snapshot.capabilities}
           />
         )}
         ListFooterComponent={
@@ -168,13 +183,19 @@ const TranscriptItem = memo(function TranscriptItem({
   active,
   disabled,
   onImplementPlan,
+  onFork,
+  onRewind,
+  capabilities,
 }: {
   speech: ReturnType<typeof useSpeech>;
   streaming: boolean;
   item: AgentTranscriptItem;
   active: boolean;
+  capabilities: AgentRuntimeCapabilities;
   disabled: boolean;
   onImplementPlan: (plan: string) => void;
+  onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
+  onRewind?: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
   const { colors, radii } = useTheme();
   let content;
@@ -183,6 +204,14 @@ const TranscriptItem = memo(function TranscriptItem({
       content = (
         <View>
           <MarkdownBody text={item.text} />
+          {item.actionable && item.messageId && onFork && (
+            <AgentForkMenu
+              disabled={disabled}
+              onFork={(chooseWorkspace) =>
+                onFork(item.messageId!, chooseWorkspace)
+              }
+            />
+          )}
           {!streaming && (
             <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
           )}
@@ -208,7 +237,19 @@ const TranscriptItem = memo(function TranscriptItem({
       );
       break;
     case "turn_footer":
-      content = <TurnFooter item={item} />;
+      content = (
+        <View>
+          <TurnFooter item={item} />
+          {item.messageId && onFork && (
+            <AgentForkMenu
+              disabled={disabled}
+              onFork={(chooseWorkspace) =>
+                onFork(item.messageId!, chooseWorkspace)
+              }
+            />
+          )}
+        </View>
+      );
       break;
     case "activity":
       content = (
@@ -277,6 +318,17 @@ const TranscriptItem = memo(function TranscriptItem({
           }}
         >
           {!!body && <MarkdownBody text={body} />}
+          {message.role === "user" &&
+            message.overtchatRewindable !== false &&
+            typeof message.id === "string" &&
+            !message.id.startsWith("submission:") &&
+            onRewind && (
+              <AgentRewindMenu
+                capabilities={capabilities}
+                disabled={disabled}
+                onRewind={(mode) => onRewind(message.id as string, mode)}
+              />
+            )}
           {parts
             .filter((part) => part.type === "image")
             .map((part, i) => (

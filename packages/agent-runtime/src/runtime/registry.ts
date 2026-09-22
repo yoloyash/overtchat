@@ -1,3 +1,4 @@
+import { buildAgentForkContext } from "@overtchat/shared/agent-history";
 import type {
   AgentModel,
   AgentProviderCatalog,
@@ -34,7 +35,7 @@ import type {
   AgentRuntimeEventClassifier,
   AgentRuntimeInitialState,
   ResolvedAgentImage,
-  AgentSessionForkResult,
+  AgentSessionChangeResult,
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
 import { AgentUsagePoller } from "./usage-poller";
@@ -696,11 +697,24 @@ export class AgentSessionRuntime {
         return Promise.reject(
           new Error("New sessions must be created by the runtime registry."),
         );
+      case "rewind":
       case "edit_message":
-      case "fork_message":
         return Promise.reject(
-          new Error("Session forks must be created by the runtime registry."),
+          new Error("Session history changes must go through the runtime registry."),
         );
+      case "fork_message":
+        return Promise.resolve({
+          forkContext: {
+            text: buildAgentForkContext(
+              this.messages,
+              command.messageId,
+              typeof this.state.sessionName === "string"
+                ? this.state.sessionName
+                : undefined,
+            ),
+            launchConfig: this.launchConfig,
+          },
+        });
       case "prompt":
         return this.submitPrompt(
           command.message,
@@ -903,10 +917,75 @@ export class AgentSessionRuntime {
     });
   }
 
+  private rewinding = false;
+
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<AgentSessionChangeResult> {
+    const capabilities = agentProviderMetadata(this.provider).capabilities;
+    const supported =
+      mode === "conversation"
+        ? capabilities.rewindConversation
+        : mode === "files"
+          ? capabilities.rewindFiles
+          : capabilities.rewindBoth;
+    if (!supported || !this.client.rewind)
+      throw new Error(`This provider does not support rewinding ${mode}.`);
+    if (readOnlyState(this.state))
+      throw new Error("This session is read-only.");
+    // Validate provider acknowledgement before interrupting a running turn.
+    const target = this.messages.find(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "role") === "user" &&
+        Reflect.get(message, "id") === messageId,
+    );
+    if (
+      !target ||
+      Reflect.get(target as object, "overtchatRewindable") === false ||
+      messageId.startsWith("submission:")
+    )
+      throw new Error(
+        "That message has not been acknowledged by the provider or is no longer available.",
+      );
+    if (this.rewinding) throw new Error("A rewind is already in progress.");
+    this.rewinding = true;
+    try {
+      await this.abortActiveRun();
+      if (this.refreshPromise) await this.refreshPromise;
+      await this.client.rewind(messageId, mode);
+      if (mode !== "files") {
+        this.pendingSubmissions.clear();
+        this.messages = [];
+        this.clearPendingInteraction();
+        this.eventClassifier.reset();
+      }
+      await this.refresh();
+      const identity = this.adapter.sessionIdentity(this.state);
+      return {
+        session: {
+          providerSessionId: identity.providerSessionId,
+          providerSessionPath: identity.providerSessionPath,
+          name: identity.sessionName,
+          firstMessage: firstUserMessage(this.messages),
+          messageCount: this.messages.length,
+          createdAt: null,
+          modifiedAt: new Date(),
+        },
+        replacesCurrentSession: true,
+        ...(mode === "files" ? {} : { draft: messageText(target) }),
+      };
+    } finally {
+      this.rewinding = false;
+    }
+  }
+
   async forkSession(
     messageId: string,
     mode: "edit" | "fork",
-  ): Promise<AgentSessionForkResult> {
+  ): Promise<AgentSessionChangeResult> {
     if (this.status !== "idle") {
       throw new Error("Wait for the current agent turn to finish first.");
     }
@@ -924,7 +1003,7 @@ export class AgentSessionRuntime {
   }
 
   async discardForkedSession(
-    session: AgentSessionForkResult["session"],
+    session: AgentSessionChangeResult["session"],
   ): Promise<void> {
     await this.client.discardForkedSession?.(session);
   }
@@ -1095,6 +1174,7 @@ export class AgentSessionRuntime {
     }
     if (
       this.status !== "idle" ||
+      this.rewinding ||
       this.abortPromise ||
       this.settlePromise ||
       this.queueDrainPromise
@@ -1552,6 +1632,7 @@ export class AgentSessionRuntime {
     if (this.queueDrainPromise) return this.queueDrainPromise;
     if (
       this.status !== "idle" ||
+      this.rewinding ||
       this.abortPromise ||
       this.settlePromise ||
       this.queuedMessages.some(
@@ -1854,18 +1935,16 @@ export class AgentRuntimeRegistry {
     }
   }
 
-  async fork(
+  async changeSessionHistory(
     runtime: AgentSessionRuntime,
     input: Extract<
       AgentSessionCommand,
-      { type: "edit_message" | "fork_message" }
+      { type: "edit_message" | "rewind" }
     >,
-  ): Promise<AgentSessionForkResult> {
-    const fork = await runtime.forkSession(
-      input.messageId,
-      input.type === "edit_message" ? "edit" : "fork",
-    );
-    return fork;
+  ): Promise<AgentSessionChangeResult> {
+    if (input.type === "rewind")
+      return runtime.rewind(input.messageId, input.mode);
+    return runtime.forkSession(input.messageId, "edit");
   }
 
   runtimeStatusForSession(sessionId: string): AgentRuntimeStatus {

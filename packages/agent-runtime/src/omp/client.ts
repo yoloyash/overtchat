@@ -29,6 +29,12 @@ export type OmpLaunch = {
   extraArgs?: string[];
 };
 
+function identifyOmpMessage(message: unknown): unknown {
+  if (!message || typeof message !== "object") return message;
+  const id = Reflect.get(message, "entryId");
+  return typeof id === "string" ? { ...message, id } : message;
+}
+
 type OmpEvent = { type: string; [key: string]: unknown };
 
 export class OmpClient {
@@ -41,6 +47,7 @@ export class OmpClient {
   private readySettled = false;
   private readyTimer: NodeJS.Timeout | undefined;
   private protocolVersion = 1;
+  private historyGeneration = 0;
   private chunk: { id: string; count: number; byteLength: number; parts: Buffer[] } | undefined;
 
   constructor(process: AgentProcess, private readonly modeId: string) {
@@ -118,12 +125,69 @@ export class OmpClient {
           if (cursor) seen.add(cursor);
         } while (cursor);
         if (messages.length !== total) throw new Error("Oh My Pi returned an incomplete message history.");
-        return { messages };
+        return this.identifyMessages(messages);
       } catch (error) {
         if (!(error instanceof JsonlRpcCommandError) || !["session_busy", "stale_cursor"].includes(error.code ?? "")) throw error;
       }
     }
-    return this.request({ type: "get_messages" });
+    const history = await this.request<{ messages: unknown[] }>({ type: "get_messages" });
+    return this.identifyMessages(history.messages);
+  }
+
+  private async identifyMessages(
+    messages: unknown[],
+  ): Promise<{ messages: unknown[] }> {
+    const branch = await this.request<{
+      messages: Array<{ entryId: string; text: string }>;
+    }>({ type: "get_branch_messages" }).catch(() => null);
+    const users = messages.filter(
+      (message) =>
+        message &&
+        typeof message === "object" &&
+        Reflect.get(message, "role") === "user",
+    );
+    const entries = branch?.messages?.slice(-users.length);
+    let userIndex = 0;
+    return {
+      messages: messages.map((message) => {
+        const normalized = identifyOmpMessage(message);
+        if (
+          !normalized ||
+          typeof normalized !== "object" ||
+          Reflect.get(normalized, "role") !== "user"
+        )
+          return normalized;
+        const entry = entries?.[userIndex++];
+        const content = Reflect.get(normalized, "content");
+        const text =
+          typeof content === "string"
+            ? content
+            : Array.isArray(content)
+              ? content
+                  .filter((part) => part?.type === "text")
+                  .map((part) => part.text)
+                  .join("\n")
+              : "";
+        return entry && entry.text === text
+          ? { ...normalized, id: entry.entryId }
+          : normalized;
+      }),
+    };
+  }
+
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "conversation")
+      throw new Error("Oh My Pi supports conversation rewind only.");
+    this.historyGeneration += 1;
+    const result = await this.request<{ cancelled?: boolean }>({
+      type: "branch",
+      entryId: messageId,
+    });
+    if (result.cancelled) throw new Error("Oh My Pi rewind was cancelled.");
+    this.submissionEchoes.clear();
   }
 
   prompt(
@@ -206,6 +270,7 @@ export class OmpClient {
   }
 
   async stop(): Promise<void> {
+    this.historyGeneration += 1;
     this.submissionEchoes.clear();
     this.failReady(new Error("The Oh My Pi RPC process was stopped."));
     await this.transport.stop();
@@ -223,7 +288,32 @@ export class OmpClient {
       return;
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
-    this.emit(mapOmpUiRequest(this.submissionEchoes.annotate(record)) as OmpEvent);
+    const event = mapOmpUiRequest(
+      this.submissionEchoes.annotate(record),
+    ) as OmpEvent;
+    this.emit(event);
+    const message = event.message;
+    if (
+      event.type === "message_end" &&
+      message &&
+      typeof message === "object" &&
+      Reflect.get(message, "role") === "user"
+    ) {
+      // Obtain the persisted branch entry after the provider echo.
+      const generation = this.historyGeneration;
+      void this.identifyMessages([message])
+        .then(({ messages }) => {
+          if (generation !== this.historyGeneration) return;
+          if (
+            messages[0] &&
+            typeof messages[0] === "object" &&
+            typeof Reflect.get(messages[0], "id") === "string"
+          ) {
+            this.emit({ type: "message_end", message: messages[0] });
+          }
+        })
+        .catch(() => {});
+    }
   }
 
   private handleReady(record: Record<string, unknown>): void {

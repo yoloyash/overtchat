@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -47,6 +47,21 @@ const textModel: AgentRuntimeSnapshot["models"][number] = {
 
 test.beforeEach(resetE2eDatabase);
 
+async function expectHorizontalMessageActions(actions: Locator) {
+  const buttons = actions.getByRole("button");
+  await expect(buttons).toHaveCount(3);
+  const boxes = await buttons.evaluateAll((elements) =>
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, right: box.right, centerY: box.y + box.height / 2 };
+    }),
+  );
+  for (let index = 1; index < boxes.length; index++) {
+    expect(boxes[index].centerY).toBeCloseTo(boxes[0].centerY, 0);
+    expect(boxes[index].x).toBeGreaterThanOrEqual(boxes[index - 1].right);
+  }
+}
+
 function seedAgentSession() {
   const db = openE2eDatabase();
   try {
@@ -93,6 +108,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       steer: true,
       usage: true,
       editSentMessages: true,
+      rewindConversation: true,
       forkMessages: true,
     },
     status: "running",
@@ -112,12 +128,14 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         {
           id: "auto",
           label: "Default Permissions",
-          description: "Edit files and run commands with Codex's default approval flow.",
+          description:
+            "Edit files and run commands with Codex's default approval flow.",
         },
         {
           id: "auto-review",
           label: "Auto-review",
-          description: "Route eligible approvals through Codex's auto-reviewer.",
+          description:
+            "Route eligible approvals through Codex's auto-reviewer.",
         },
         {
           id: "full-access",
@@ -181,8 +199,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
           {
             id: "answer",
             type: "text",
-            text:
-              "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
+            text: "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
           },
         ],
         timestamp: 2.2,
@@ -351,7 +368,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
   };
 }
 
-test("new agent chats and follow-up prompts submit without crypto.randomUUID", async ({
+test("new chats, follow-up prompts, and fork drafts work without crypto.randomUUID", async ({
   page,
 }) => {
   await page.goto("/signup");
@@ -389,21 +406,42 @@ test("new agent chats and follow-up prompts submit without crypto.randomUUID", a
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
   snapshot.messages = [];
-  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", (route) =>
-    route.fulfill({
+  let releaseCatalog: () => void = () => {};
+  const catalogReady = new Promise<void>((resolve) => { releaseCatalog = resolve; });
+  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", async (route) => {
+    await catalogReady;
+    return route.fulfill({
       json: { provider: "codex", models: [imageModel], modes: [] },
-    }),
-  );
-  await page.route("**/api/agent-workspaces/workspace/sessions", (route) =>
-    route.fulfill({ json: { session: { id: SESSION_ID } } }),
-  );
+    });
+  });
+  let createdSessions = 0;
+  await page.route("**/api/agent-workspaces/workspace/sessions", (route) => {
+    createdSessions += 1;
+    return route.fulfill({ json: { session: { id: SESSION_ID } } });
+  });
+  const forkHistory =
+    "# Conversation context\n\nUser: Original question\n\nAssistant: Original answer\n\n--- End of prior conversation ---";
   const submittedCommands: Array<Record<string, unknown>> = [];
   await page.route(
     new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`),
     async (route) => {
       if (route.request().method() === "POST") {
-        submittedCommands.push(route.request().postDataJSON());
-        await route.fulfill({ json: { accepted: true } });
+        const command = route.request().postDataJSON();
+        submittedCommands.push(command);
+        await route.fulfill({
+          json:
+            command.type === "fork_message"
+              ? {
+                  forkContext: {
+                    text: forkHistory,
+                    launchConfig: {
+                      model: imageModel.id,
+                      thinkingOptionId: "high",
+                    },
+                  },
+                }
+              : { accepted: true },
+        });
         return;
       }
       await route.fulfill({ json: { snapshot } });
@@ -412,6 +450,9 @@ test("new agent chats and follow-up prompts submit without crypto.randomUUID", a
 
   await page.goto("/agents/new?workspaceId=workspace&provider=codex");
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  await expect(composer).toBeDisabled();
+  releaseCatalog();
+  await expect(composer).toBeEnabled();
   await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await composer.fill("First agent prompt over HTTP");
   await composer.press("Enter");
@@ -437,6 +478,52 @@ test("new agent chats and follow-up prompts submit without crypto.randomUUID", a
   expect(ids.every((id) => typeof id === "string" && id.length > 0)).toBe(true);
   expect(new Set(ids).size).toBe(2);
   await expect(page.getByText("Codex command failed", { exact: true })).toHaveCount(0);
+  snapshot.messages = [
+    {
+      role: "user",
+      id: "original-user",
+      content: [{ type: "text", text: "Original question" }],
+      timestamp: 1,
+    },
+    {
+      role: "assistant",
+      id: "original-answer",
+      content: [{ type: "text", text: "Original answer" }],
+      timestamp: 2,
+    },
+  ];
+  await page.reload();
+  await page.getByText("Original answer", { exact: true }).hover();
+  const messageActions = page.locator('[data-slot="message-actions"]');
+  await expect(messageActions).toHaveCSS("opacity", "1");
+  await expectHorizontalMessageActions(messageActions);
+  await page.getByRole("button", { name: "Fork from this response" }).click();
+  await page.mouse.move(0, 0);
+  await expect(messageActions).toHaveCSS("opacity", "1");
+  await page
+    .getByRole("menuitem", { name: "Fork in another workspace" })
+    .click();
+  await page.waitForURL("**/agents/new?**");
+  await expect(page.getByText("Chat history attached")).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Fork workspace" }),
+  ).toHaveValue("workspace");
+  await expect(composer).toHaveValue("");
+  expect(createdSessions).toBe(1);
+  expect(submittedCommands.at(-1)).toMatchObject({
+    type: "fork_message",
+    messageId: "original-answer",
+  });
+  await composer.fill("Continue the fork");
+  await composer.press("Enter");
+  await expect.poll(() => createdSessions).toBe(2);
+  await expect
+    .poll(() => submittedCommands.at(-1))
+    .toMatchObject({
+      type: "prompt",
+      message: `${forkHistory}\n\nContinue the fork`,
+    });
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
   expect(errors).toEqual([]);
 });
 
@@ -668,7 +755,7 @@ test("shows durable turn activity without changing completed tool status", async
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
-            ...(command.type === "edit_message"
+            ...(command.type === "rewind"
               ? {
                   sessionId: SESSION_ID,
                   draft: "Inspect the runtime",
@@ -1317,6 +1404,14 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     completedTurn.getByRole("button", { name: "Copy response" }),
   ).toBeVisible();
+  const turnActions = completedTurn.locator('[data-slot="message-actions"]');
+  await page.mouse.move(0, 0);
+  await expect(turnActions).toHaveCSS("opacity", "0");
+  await page.getByRole("paragraph").filter({ hasText: "I will inspect the runtime." }).hover();
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await completedTurn.hover();
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await expectHorizontalMessageActions(turnActions);
   const thinking = page.getByRole("button", { name: "Thoughts" });
   await thinking.click();
   await expect(
@@ -1692,13 +1787,28 @@ test("shows durable turn activity without changing completed tool status", async
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
   const sessionUrl = page.url();
+  const rewindButton = page.getByRole("button", { name: "Rewind to this message" });
+  const rewindAction = rewindButton.locator("..");
+  await composer.hover();
+  await expect(rewindAction).toHaveCSS("opacity", "0");
+  await page.getByText("Inspect the runtime", { exact: true }).hover();
+  await expect(rewindAction).toHaveCSS("opacity", "1");
+  await composer.hover();
+  await rewindButton.focus();
+  await expect(rewindAction).toHaveCSS("opacity", "1");
+  await rewindButton.click();
+  await page.mouse.move(0, 0);
+  await expect(rewindAction).toHaveCSS("opacity", "1");
   await page
-    .getByRole("button", { name: "Edit from this message" })
+    .getByRole("menuitem", { name: "Rewind conversation", exact: true })
     .click();
-  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "edit_message",
-    messageId: "turn-1:user:0",
-  });
+  await expect
+    .poll(() => submittedCommands.at(-1))
+    .toMatchObject({
+      type: "rewind",
+      mode: "conversation",
+      messageId: "turn-1:user:0",
+    });
   await expect(composer).toHaveValue("Inspect the runtime");
   await expect(page).toHaveURL(sessionUrl);
   await expect(composer).toBeFocused();

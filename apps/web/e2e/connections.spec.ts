@@ -680,16 +680,15 @@ test("groups providers by directory, filters chats, refreshes globally, and open
       name: "Model defaults are still loading",
     }),
   ).toBeVisible();
-  await composer.getByRole("combobox").fill("Do not launch yet");
-  await composer.getByRole("combobox").press("Enter");
-  await expect(
-    page
-      .getByLabel("Notifications")
-      .getByText("Model defaults are still loading", { exact: true }),
-  ).toBeVisible();
+  await expect(composer.getByRole("combobox")).toBeDisabled();
+  await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
   expect(sessionCreateRequests).toBe(0);
 
   releaseCatalog();
+  await expect(composer.getByRole("combobox")).toBeEnabled();
+  await composer.getByRole("combobox").fill("Ready when I choose to send");
+  await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  expect(sessionCreateRequests).toBe(0);
   await expect(composer.getByTestId("agent-model-effort-trigger")).toBeVisible();
   await expect(composer.getByTestId("agent-access-mode-trigger")).toBeVisible();
 

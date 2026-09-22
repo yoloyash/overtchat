@@ -2,6 +2,7 @@ import { Directory, File, Paths } from "expo-file-system";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import type {
+  AgentForkContext,
   AgentPromptImage,
   AgentSessionCommand,
 } from "@overtchat/agent-bridge";
@@ -12,6 +13,7 @@ export type DraftImage = AgentPromptImage & { size: number; uri: string };
 export type AgentDraft = {
   message: string;
   images: DraftImage[];
+  forkContext?: AgentForkContext;
   pending?: { fingerprint: string; command: AgentSessionCommand };
 };
 const empty: AgentDraft = { message: "", images: [] };
@@ -64,7 +66,12 @@ export function useAgentDraft(id: string) {
   ) {
     const value =
       typeof next === "function" ? next(read()[key] ?? empty) : next;
-    if (!value.message && !value.images.length && !value.pending)
+    if (
+      !value.message &&
+      !value.images.length &&
+      !value.pending &&
+      !value.forkContext
+    )
       delete read()[key];
     else read()[key] = value;
     listeners.forEach((listener) => listener());
@@ -94,7 +101,12 @@ export function useAgentDraft(id: string) {
     ]);
     const value =
       typeof next === "function" ? next(read()[targetKey] ?? empty) : next;
-    if (!value.message && !value.images.length && !value.pending)
+    if (
+      !value.message &&
+      !value.images.length &&
+      !value.pending &&
+      !value.forkContext
+    )
       delete read()[targetKey];
     else read()[targetKey] = value;
     listeners.forEach((listener) => listener());

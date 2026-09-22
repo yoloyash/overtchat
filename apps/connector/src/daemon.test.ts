@@ -16,7 +16,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   getOrStart: vi.fn(),
   get: vi.fn(),
-  fork: vi.fn(),
+  changeSessionHistory: vi.fn(),
   stopAll: vi.fn(),
   stopSession: vi.fn(),
   stopWorkspace: vi.fn(),
@@ -55,7 +55,7 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
       create = mocks.create;
       getOrStart = mocks.getOrStart;
       get = mocks.get;
-      fork = mocks.fork;
+      changeSessionHistory = mocks.changeSessionHistory;
       stopAll = mocks.stopAll;
       stopSession = mocks.stopSession;
       stopWorkspace = mocks.stopWorkspace;
@@ -201,7 +201,7 @@ beforeEach(() => {
   });
   mocks.getOrStart.mockResolvedValue(runtime());
   mocks.get.mockReturnValue(null);
-  mocks.fork.mockResolvedValue({
+  mocks.changeSessionHistory.mockResolvedValue({
     session: {
       providerSessionId: "forked-provider-session",
       providerSessionPath: "/sessions/forked-provider-session.jsonl",
@@ -423,7 +423,7 @@ describe("connector daemon command identity", () => {
     const openTimeline = vi.spyOn(timelines, "openSession");
     const activeRuntime = runtime();
     mocks.getOrStart.mockResolvedValue(activeRuntime);
-    mocks.fork.mockResolvedValueOnce({
+    mocks.changeSessionHistory.mockResolvedValueOnce({
       session: {
         providerSessionId: "edited-provider-session",
         providerSessionPath: "/sessions/edited-provider-session.jsonl",
@@ -457,7 +457,7 @@ describe("connector daemon command identity", () => {
       },
     });
 
-    expect(mocks.fork).toHaveBeenCalledWith(activeRuntime, {
+    expect(mocks.changeSessionHistory).toHaveBeenCalledWith(activeRuntime, {
       type: "edit_message",
       messageId: "turn-1:user:0",
     });
@@ -465,6 +465,7 @@ describe("connector daemon command identity", () => {
       "session",
       "edited-provider-session",
       mocks.snapshot(),
+      false,
     );
     await daemon.handle({
       type: "request",
@@ -488,7 +489,7 @@ describe("connector daemon command identity", () => {
       requestId: "edit-request",
       success: true,
       data: {
-        fork: expect.objectContaining({
+        sessionChange: expect.objectContaining({
           replacesCurrentSession: true,
           draft: "Rewrite this prompt",
         }),
@@ -497,6 +498,85 @@ describe("connector daemon command identity", () => {
     await daemon.stop();
     await timelines.close();
     await journal.close();
+  });
+
+  it("resets unchanged native identity on rewind and reuses the durable result after restart", async () => {
+    const { file, journal, timelineDirectory, timelines } = await openJournal();
+    const activeRuntime = runtime();
+    mocks.getOrStart.mockResolvedValue(activeRuntime);
+    const openTimeline = vi.spyOn(timelines, "openSession");
+    mocks.changeSessionHistory.mockResolvedValueOnce({
+      session: {
+        providerSessionId: session.providerSessionId,
+        providerSessionPath: session.providerSessionPath,
+      },
+      draft: "Restore this prompt",
+      replacesCurrentSession: true,
+    });
+    const request: HostConnectorCommand = {
+      type: "request",
+      requestId: "rewind-first",
+      request: {
+        type: "session_command",
+        commandId: "rewind-command",
+        session,
+        command: {
+          type: "rewind",
+          messageId: "native-user",
+          mode: "conversation",
+        },
+      },
+    };
+    const firstEvents: HostConnectorEventPayload[] = [];
+    const first = new ConnectorDaemon(
+      (event) => firstEvents.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    await first.handle(request);
+    expect(openTimeline).toHaveBeenLastCalledWith(
+      "session",
+      session.providerSessionId,
+      mocks.snapshot(),
+      true,
+    );
+    expect(mocks.changeSessionHistory).toHaveBeenCalledTimes(1);
+    expect(firstEvents).toContainEqual(
+      expect.objectContaining({ type: "response", success: true }),
+    );
+    await first.stop();
+    await timelines.close();
+    await journal.close();
+
+    const restored = await ConnectorStateJournal.open(file);
+    const restoredTimelines = await ConnectorTimelineStore.open(
+      timelineDirectory,
+    );
+    const replay: HostConnectorEventPayload[] = [];
+    const second = new ConnectorDaemon(
+      (event) => replay.push(event),
+      async () => [],
+      restored,
+      restoredTimelines,
+    );
+    await second.handle({ ...request, requestId: "rewind-retry" });
+    expect(mocks.changeSessionHistory).toHaveBeenCalledTimes(1);
+    expect(replay).toContainEqual(
+      expect.objectContaining({
+        type: "response",
+        success: true,
+        data: {
+          sessionChange: expect.objectContaining({
+            draft: "Restore this prompt",
+            replacesCurrentSession: true,
+          }),
+        },
+      }),
+    );
+    await second.stop();
+    await restoredTimelines.close();
+    await restored.close();
   });
 
   it("reuses an accepted result after a daemon restart", async () => {

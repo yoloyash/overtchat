@@ -1,5 +1,8 @@
 "use client";
 
+import { generateId } from "ai";
+import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
+
 import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
 import { AgentQuestionCard } from "./AgentQuestionCard";
 
@@ -42,7 +45,10 @@ import {
 } from "@/lib/queries/agentSessions";
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
 import { latestAgentTaskList } from "@/lib/agents/presentation";
-import { agentSessionDraftRestoreKey } from "@/lib/agents/sessionDraft";
+import {
+  agentForkDraftKey,
+  agentSessionDraftRestoreKey,
+} from "@/lib/agents/sessionDraft";
 import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
@@ -426,6 +432,7 @@ export function AgentSessionView({
   async function run(
     input: AgentSessionCommand,
     options: {
+      chooseWorkspace?: boolean;
       closeRename?: boolean;
       closeCompact?: boolean;
       toastTitle?: string;
@@ -437,12 +444,22 @@ export function AgentSessionView({
       if (result.notice) {
         toast.warning(result.notice.message);
       }
-      if (
-        input.type === "edit_message" ||
-        input.type === "fork_message"
-      ) {
+      if (input.type === "fork_message") {
+        if (!result.forkContext)
+          throw new Error("The agent did not return conversation history.");
+        const draftId = generateId();
+        window.sessionStorage.setItem(
+          agentForkDraftKey(draftId),
+          JSON.stringify(result.forkContext),
+        );
+        router.push(
+          `/agents/new?workspaceId=${encodeURIComponent(workspaceId)}&provider=${provider}&fork=${draftId}${options.chooseWorkspace ? "&chooseWorkspace=1" : ""}`,
+        );
+        return true;
+      }
+      if (input.type === "rewind" || input.type === "edit_message") {
         if (!result.sessionId) {
-          throw new Error(`${providerLabel} did not return the forked session.`);
+          throw new Error(`${providerLabel} did not return the updated session.`);
         }
         const draft = result.draft;
         if (draft !== undefined) {
@@ -691,22 +708,20 @@ export function AgentSessionView({
             activityStartedAt={activityStartedAt}
             error={runtimeError}
             workspaceName={workspaceName}
-            canEditMessages={
-              snapshot.capabilities.editSentMessages === true
-            }
+            rewindOptions={agentRewindOptions(snapshot.capabilities)}
             canForkMessages={snapshot.capabilities.forkMessages === true}
             actionsDisabled={
-              running ||
               exited ||
+              Boolean(readOnly) ||
               command.isPending ||
               Boolean(snapshot.pendingInteraction)
             }
             suppressScrollButton={composerMenuOpen}
-            onEditMessage={(messageId) =>
-              void run({ type: "edit_message", messageId })
-            }
-            onForkMessage={(messageId) =>
-              void run({ type: "fork_message", messageId })
+            onRewindMessage={async (messageId, mode) => {
+              await run({ type: "rewind", messageId, mode });
+            }}
+            onForkMessage={(messageId, chooseWorkspace) =>
+              void run({ type: "fork_message", messageId }, { chooseWorkspace })
             }
             onImplementPlan={(plan) =>
               void run({ type: "implement_plan", plan })

@@ -53,6 +53,7 @@ async function responseError(response: Response): Promise<Error> {
 export type AgentSessionCommandResult = {
   sessionId?: string;
   draft?: string;
+  forkContext?: import("@overtchat/agent-bridge").AgentForkContext;
   queuedMessages?: AgentQueuedMessage[];
   usage?: AgentUsageSnapshot;
   notice?: AgentProviderNotice;
@@ -416,6 +417,7 @@ export function useAgentSessionCommand(id: string) {
         );
       }
       if (
+        command.type === "rewind" ||
         command.type === "set_model" ||
         command.type === "set_thinking_level" ||
         command.type === "set_collaboration_mode" ||
@@ -438,6 +440,7 @@ export function useAgentSessionCommand(id: string) {
         command.type === "steer_queued_message" ||
         command.type === "set_session_name" ||
         command.type === "new_session" ||
+        command.type === "rewind" ||
         command.type === "edit_message" ||
         command.type === "fork_message"
       ) {

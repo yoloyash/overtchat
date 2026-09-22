@@ -386,10 +386,15 @@ export type AgentInteractionValue =
   | boolean
   | string[];
 
+export type AgentRewindMode = "conversation" | "files" | "both";
+
 export type AgentRuntimeCapabilities = {
   steer: boolean;
   customCompactionInstructions?: boolean;
   usage?: boolean;
+  rewindConversation?: boolean;
+  rewindFiles?: boolean;
+  rewindBoth?: boolean;
   editSentMessages?: boolean;
   forkMessages?: boolean;
 };
@@ -595,6 +600,11 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("new_session") }),
   z.object({ type: z.literal("show_usage") }),
+  z.object({
+    type: z.literal("rewind"),
+    messageId: z.string().min(1).max(500),
+    mode: z.enum(["conversation", "files", "both"]),
+  }),
   z.object({
     type: z.literal("edit_message"),
     messageId: z.string().min(1).max(500),

@@ -16,7 +16,7 @@ import type {
   AgentRuntimeEvent,
   AgentSubmissionOptions,
   ResolvedAgentImage,
-  AgentSessionForkResult,
+  AgentSessionChangeResult,
   AgentSessionLaunch,
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
@@ -1527,10 +1527,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     );
   }
 
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "conversation")
+      throw new Error("Codex supports conversation rewind only.");
+    await this.forkSession(messageId, "edit");
+  }
+
   async forkSession(
     messageId: string,
     mode: "edit" | "fork",
-  ): Promise<AgentSessionForkResult> {
+  ): Promise<AgentSessionChangeResult> {
     await this.readyPromise;
     if (this.activeTurnId) {
       throw new Error("Wait for the current Codex turn to finish first.");
@@ -1628,7 +1637,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   async discardForkedSession(
-    session: AgentSessionForkResult["session"],
+    session: AgentSessionChangeResult["session"],
   ): Promise<void> {
     await this.readyPromise;
     await this.server.request(
