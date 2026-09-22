@@ -1,7 +1,7 @@
 "use client";
 import { Menu } from "@base-ui/react/menu";
 import { GitBranch } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { MessageActionButton } from "@/components/chat/MessageActions";
 
 export function AgentForkMenu({
   disabled,
@@ -13,13 +13,16 @@ export function AgentForkMenu({
   return (
     <Menu.Root>
       <Menu.Trigger
-        render={<Button variant="ghost" size="icon-sm" />}
+        render={
+          <MessageActionButton
+            label="Fork from this response"
+            icon={<GitBranch className="size-3.5" />}
+          />
+        }
         disabled={disabled}
         aria-label="Fork from this response"
         title="Fork from this response"
-      >
-        <GitBranch className="size-3.5" />
-      </Menu.Trigger>
+      />
       <Menu.Portal>
         <Menu.Positioner
           side="bottom"

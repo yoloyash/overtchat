@@ -23,6 +23,10 @@ import { stripMarkdown } from "@/lib/chat/message";
 import { motionClasses } from "@/lib/motion";
 import type { useSpeech } from "@/lib/useSpeech";
 import { Button } from "@/components/ui/button";
+import {
+  MessageActions,
+  MessageActionButton,
+} from "@/components/chat/MessageActions";
 import { toast } from "@/components/ui/toast";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
@@ -149,6 +153,14 @@ export function AgentMessageList({
     () => projectAgentTranscript(messages),
     [messages],
   );
+  const footerMessageIds = useMemo(
+    () => new Set(
+      transcript.flatMap((item) =>
+        item.type === "turn_footer" && item.messageId ? [item.messageId] : [],
+      ),
+    ),
+    [transcript],
+  );
   const trailingItem = transcript.at(-1);
   const activityAlreadyVisible =
     activity === "working" &&
@@ -194,6 +206,10 @@ export function AgentMessageList({
                   <div
                     key={item.key}
                     className={cn(
+                      "group",
+                      item.type === "assistant_text" &&
+                        transcript[index + 1]?.type === "turn_footer" &&
+                        "[&:hover+div_[data-slot=message-actions]]:opacity-100",
                       index > 0 && (compact ? "mt-3" : "mt-6"),
                       (sequencePosition === "middle" ||
                         sequencePosition === "last") &&
@@ -205,6 +221,11 @@ export function AgentMessageList({
                       speech={speech}
                       item={item}
                       active={streaming && index === transcript.length - 1}
+                      hasTurnFooter={
+                        item.type === "assistant_text" &&
+                        item.messageId !== null &&
+                        footerMessageIds.has(item.messageId)
+                      }
                       rewindOptions={rewindOptions}
                       canForkMessages={canForkMessages}
                       actionsDisabled={actionsDisabled}
@@ -252,6 +273,7 @@ function AgentTranscriptRow({
   speech,
   item,
   active,
+  hasTurnFooter,
   rewindOptions,
   canForkMessages,
   actionsDisabled,
@@ -263,6 +285,7 @@ function AgentTranscriptRow({
   speech: ReturnType<typeof useSpeech>;
   item: AgentTranscriptItem;
   active: boolean;
+  hasTurnFooter: boolean;
   rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
   actionsDisabled: boolean;
@@ -285,17 +308,20 @@ function AgentTranscriptRow({
     return (
       <div className="group/assistant relative text-sm leading-relaxed">
         <Markdown streaming={active}>{item.text}</Markdown>
-        {!active && (
-          <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
-        )}
-        {canForkMessages && item.actionable && item.messageId && (
-          <div className="absolute -bottom-6 left-0">
-            <AgentForkMenu
-              disabled={actionsDisabled}
-              onFork={(chooseWorkspace) =>
-                onForkMessage(item.messageId!, chooseWorkspace)
-              }
-            />
+        {!hasTurnFooter && (
+          <div className="mt-2">
+            <MessageActions show={!active}>
+              <AgentCopyButton text={item.text} disabled={actionsDisabled} />
+              <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+              {canForkMessages && item.actionable && item.messageId && (
+                <AgentForkMenu
+                  disabled={actionsDisabled}
+                  onFork={(chooseWorkspace) =>
+                    onForkMessage(item.messageId!, chooseWorkspace)
+                  }
+                />
+              )}
+            </MessageActions>
           </div>
         )}
       </div>
@@ -310,6 +336,7 @@ function AgentTranscriptRow({
   if (item.type === "turn_footer") {
     return (
       <AgentTurnFooter
+        speech={speech}
         item={item}
         canFork={canForkMessages}
         actionsDisabled={actionsDisabled}
@@ -371,62 +398,43 @@ function AgentNotificationNotice({
 }
 
 function AgentTurnFooter({
+  speech,
   item,
   canFork,
   actionsDisabled,
   onForkMessage,
 }: {
+  speech: ReturnType<typeof useSpeech>;
   item: Extract<AgentTranscriptItem, { type: "turn_footer" }>;
   canFork: boolean;
   actionsDisabled: boolean;
   onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const showFork = canFork && item.messageId !== null;
 
   if (!item.text && !showFork && item.durationMs === null) return null;
-
-  function copyTurn() {
-    void clipboardWriteText(item.text)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1_200);
-      })
-      .catch(() => {
-        toast.error({
-          title: "Failed to copy",
-          description: "Clipboard access was denied by the browser.",
-        });
-      });
-  }
 
   return (
     <div
       className="flex min-h-7 items-center gap-1 text-xs text-muted-foreground"
       data-testid="agent-turn-footer"
     >
-      {item.text && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="size-7"
-          aria-label={copied ? "Copied response" : "Copy response"}
-          title={copied ? "Copied" : "Copy response"}
-          disabled={actionsDisabled}
-          onClick={copyTurn}
-        >
-          {copied ? <Check /> : <Copy />}
-        </Button>
-      )}
-      {showFork && (
-        <AgentForkMenu
-          disabled={actionsDisabled}
-          onFork={(chooseWorkspace) =>
-            onForkMessage(item.messageId!, chooseWorkspace)
-          }
-        />
-      )}
+      <MessageActions show={!!item.text || showFork}>
+        {item.text && (
+          <>
+            <AgentCopyButton text={item.text} disabled={actionsDisabled} />
+            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          </>
+        )}
+        {showFork && (
+          <AgentForkMenu
+            disabled={actionsDisabled}
+            onFork={(chooseWorkspace) =>
+              onForkMessage(item.messageId!, chooseWorkspace)
+            }
+          />
+        )}
+      </MessageActions>
       {item.durationMs !== null && (
         <span className="ml-1 tabular-nums">
           Worked for {formatAgentElapsed(item.durationMs)}
@@ -477,7 +485,9 @@ function AgentPlanCard({
           </ol>
         ) : null}
         {!active && (
-          <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          <div className="mt-1">
+            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          </div>
         )}
         {item.actionable && (
           <div className="flex justify-end border-t pt-3">
@@ -515,24 +525,42 @@ function AgentSpeakButton({
     ? loading ? "Cancel loading speech" : "Stop reading"
     : tooLong ? "Read aloud supports up to 5,000 characters" : "Read aloud";
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className="mt-1 size-7 text-muted-foreground"
-      aria-label={label}
-      title={label}
+    <MessageActionButton
+      label={label}
       disabled={!active && tooLong}
       onClick={() => void speech.play(id, spokenText)}
-    >
-      {loading ? (
-        <Loader2 className={motionClasses.spinner} />
+      icon={loading ? (
+        <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
       ) : active ? (
-        <Square />
+        <Square className="size-3.5" />
       ) : (
-        <Volume2 />
+        <Volume2 className="size-3.5" />
       )}
-    </Button>
+    />
+  );
+}
+
+function AgentCopyButton({ text, disabled }: { text: string; disabled: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <MessageActionButton
+      label={copied ? "Copied response" : "Copy response"}
+      icon={copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      disabled={disabled}
+      onClick={() => {
+        void clipboardWriteText(text)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1_200);
+          })
+          .catch(() => {
+            toast.error({
+              title: "Failed to copy",
+              description: "Clipboard access was denied by the browser.",
+            });
+          });
+      }}
+    />
   );
 }
 
@@ -673,7 +701,7 @@ function UserMessage({
             </div>
           )}
           {messageId && !messageId.startsWith("submission:") && (
-            <div className="absolute right-full bottom-0 mr-1">
+            <div className="absolute right-full bottom-0 mr-1 opacity-0 motion-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100">
               <AgentRewindMenu
                 options={rewindOptions}
                 disabled={actionsDisabled}

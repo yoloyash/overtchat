@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -46,6 +46,21 @@ const textModel: AgentRuntimeSnapshot["models"][number] = {
 };
 
 test.beforeEach(resetE2eDatabase);
+
+async function expectHorizontalMessageActions(actions: Locator) {
+  const buttons = actions.getByRole("button");
+  await expect(buttons).toHaveCount(3);
+  const boxes = await buttons.evaluateAll((elements) =>
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, right: box.right, centerY: box.y + box.height / 2 };
+    }),
+  );
+  for (let index = 1; index < boxes.length; index++) {
+    expect(boxes[index].centerY).toBeCloseTo(boxes[0].centerY, 0);
+    expect(boxes[index].x).toBeGreaterThanOrEqual(boxes[index - 1].right);
+  }
+}
 
 function seedAgentSession() {
   const db = openE2eDatabase();
@@ -478,7 +493,13 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
     },
   ];
   await page.reload();
+  await page.getByText("Original answer", { exact: true }).hover();
+  const messageActions = page.locator('[data-slot="message-actions"]');
+  await expect(messageActions).toHaveCSS("opacity", "1");
+  await expectHorizontalMessageActions(messageActions);
   await page.getByRole("button", { name: "Fork from this response" }).click();
+  await page.mouse.move(0, 0);
+  await expect(messageActions).toHaveCSS("opacity", "1");
   await page
     .getByRole("menuitem", { name: "Fork in another workspace" })
     .click();
@@ -1383,6 +1404,10 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     completedTurn.getByRole("button", { name: "Copy response" }),
   ).toBeVisible();
+  await completedTurn.hover();
+  const turnActions = completedTurn.locator('[data-slot="message-actions"]');
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await expectHorizontalMessageActions(turnActions);
   const thinking = page.getByRole("button", { name: "Thoughts" });
   await thinking.click();
   await expect(
@@ -1759,16 +1784,17 @@ test("shows durable turn activity without changing completed tool status", async
   snapshot.state.isStreaming = false;
   const sessionUrl = page.url();
   const rewindButton = page.getByRole("button", { name: "Rewind to this message" });
+  const rewindAction = rewindButton.locator("..");
   await composer.hover();
-  await expect(rewindButton).toHaveCSS("opacity", "0");
+  await expect(rewindAction).toHaveCSS("opacity", "0");
   await page.getByText("Inspect the runtime", { exact: true }).hover();
-  await expect(rewindButton).toHaveCSS("opacity", "1");
+  await expect(rewindAction).toHaveCSS("opacity", "1");
   await composer.hover();
   await rewindButton.focus();
-  await expect(rewindButton).toHaveCSS("opacity", "1");
+  await expect(rewindAction).toHaveCSS("opacity", "1");
   await rewindButton.click();
   await page.mouse.move(0, 0);
-  await expect(rewindButton).toHaveCSS("opacity", "1");
+  await expect(rewindAction).toHaveCSS("opacity", "1");
   await page
     .getByRole("menuitem", { name: "Rewind conversation", exact: true })
     .click();

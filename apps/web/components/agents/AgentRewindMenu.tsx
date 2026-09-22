@@ -27,7 +27,6 @@ export function AgentRewindMenu({
     >
       <Menu.Trigger
         render={<Button variant="ghost" size="icon-sm" />}
-        className="opacity-0 motion-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100 data-[popup-open]:opacity-100 [@media(hover:none)]:opacity-100"
         disabled={disabled || !!pending}
         aria-label="Rewind to this message"
         title="Rewind to this message"

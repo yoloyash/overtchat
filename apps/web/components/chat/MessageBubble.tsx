@@ -41,6 +41,10 @@ import { ChainOfThought } from "./ChainOfThought";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { StatsPopover } from "./StatsPopover";
+import {
+  MessageActions,
+  MessageActionButton as ActionButton,
+} from "./MessageActions";
 
 const CITATION_REMARK_PLUGINS = [
   ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
@@ -400,43 +404,6 @@ function EditBubble({
         </div>
       </form>
     </div>
-  );
-}
-
-function MessageActions({
-  show,
-  children,
-}: {
-  show: boolean;
-  children: React.ReactNode;
-}) {
-  if (!show) return null;
-  return (
-    <div className="flex items-center gap-0.5 opacity-0 motion-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-      {children}
-    </div>
-  );
-}
-
-function ActionButton({
-  label,
-  icon,
-  onClick,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
-    >
-      {icon}
-    </button>
   );
 }
 
