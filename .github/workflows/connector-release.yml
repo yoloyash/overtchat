@@ -9,6 +9,7 @@ on:
       - "apps/connector/**"
       - "packages/agent-bridge/**"
       - "packages/agent-runtime/**"
+      - "packages/shared/**"
       - "package.json"
       - "package-lock.json"
       - "scripts/install-connector.sh"

@@ -93,6 +93,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       steer: true,
       usage: true,
       editSentMessages: true,
+      rewindConversation: true,
       forkMessages: true,
     },
     status: "running",
@@ -112,12 +113,14 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         {
           id: "auto",
           label: "Default Permissions",
-          description: "Edit files and run commands with Codex's default approval flow.",
+          description:
+            "Edit files and run commands with Codex's default approval flow.",
         },
         {
           id: "auto-review",
           label: "Auto-review",
-          description: "Route eligible approvals through Codex's auto-reviewer.",
+          description:
+            "Route eligible approvals through Codex's auto-reviewer.",
         },
         {
           id: "full-access",
@@ -181,8 +184,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
           {
             id: "answer",
             type: "text",
-            text:
-              "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
+            text: "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
           },
         ],
         timestamp: 2.2,
@@ -351,7 +353,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
   };
 }
 
-test("new agent chats and follow-up prompts submit without crypto.randomUUID", async ({
+test("new chats, follow-up prompts, and fork drafts work without crypto.randomUUID", async ({
   page,
 }) => {
   await page.goto("/signup");
@@ -394,16 +396,34 @@ test("new agent chats and follow-up prompts submit without crypto.randomUUID", a
       json: { provider: "codex", models: [imageModel], modes: [] },
     }),
   );
-  await page.route("**/api/agent-workspaces/workspace/sessions", (route) =>
-    route.fulfill({ json: { session: { id: SESSION_ID } } }),
-  );
+  let createdSessions = 0;
+  await page.route("**/api/agent-workspaces/workspace/sessions", (route) => {
+    createdSessions += 1;
+    return route.fulfill({ json: { session: { id: SESSION_ID } } });
+  });
+  const forkHistory =
+    "# Conversation context\n\nUser: Original question\n\nAssistant: Original answer\n\n--- End of prior conversation ---";
   const submittedCommands: Array<Record<string, unknown>> = [];
   await page.route(
     new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`),
     async (route) => {
       if (route.request().method() === "POST") {
-        submittedCommands.push(route.request().postDataJSON());
-        await route.fulfill({ json: { accepted: true } });
+        const command = route.request().postDataJSON();
+        submittedCommands.push(command);
+        await route.fulfill({
+          json:
+            command.type === "fork_message"
+              ? {
+                  forkContext: {
+                    text: forkHistory,
+                    launchConfig: {
+                      model: imageModel.id,
+                      thinkingOptionId: "high",
+                    },
+                  },
+                }
+              : { accepted: true },
+        });
         return;
       }
       await route.fulfill({ json: { snapshot } });
@@ -437,6 +457,46 @@ test("new agent chats and follow-up prompts submit without crypto.randomUUID", a
   expect(ids.every((id) => typeof id === "string" && id.length > 0)).toBe(true);
   expect(new Set(ids).size).toBe(2);
   await expect(page.getByText("Codex command failed", { exact: true })).toHaveCount(0);
+  snapshot.messages = [
+    {
+      role: "user",
+      id: "original-user",
+      content: [{ type: "text", text: "Original question" }],
+      timestamp: 1,
+    },
+    {
+      role: "assistant",
+      id: "original-answer",
+      content: [{ type: "text", text: "Original answer" }],
+      timestamp: 2,
+    },
+  ];
+  await page.reload();
+  await page.getByRole("button", { name: "Fork from this response" }).click();
+  await page
+    .getByRole("menuitem", { name: "Fork in another workspace" })
+    .click();
+  await page.waitForURL("**/agents/new?**");
+  await expect(page.getByText("Chat history attached")).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Fork workspace" }),
+  ).toHaveValue("workspace");
+  await expect(composer).toHaveValue("");
+  expect(createdSessions).toBe(1);
+  expect(submittedCommands.at(-1)).toMatchObject({
+    type: "fork_message",
+    messageId: "original-answer",
+  });
+  await composer.fill("Continue the fork");
+  await composer.press("Enter");
+  await expect.poll(() => createdSessions).toBe(2);
+  await expect
+    .poll(() => submittedCommands.at(-1))
+    .toMatchObject({
+      type: "prompt",
+      message: `${forkHistory}\n\nContinue the fork`,
+    });
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
   expect(errors).toEqual([]);
 });
 
@@ -668,7 +728,7 @@ test("shows durable turn activity without changing completed tool status", async
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
-            ...(command.type === "edit_message"
+            ...(command.type === "rewind"
               ? {
                   sessionId: SESSION_ID,
                   draft: "Inspect the runtime",
@@ -1692,13 +1752,17 @@ test("shows durable turn activity without changing completed tool status", async
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
   const sessionUrl = page.url();
+  await page.getByRole("button", { name: "Rewind to this message" }).click();
   await page
-    .getByRole("button", { name: "Edit from this message" })
+    .getByRole("menuitem", { name: "Rewind conversation", exact: true })
     .click();
-  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "edit_message",
-    messageId: "turn-1:user:0",
-  });
+  await expect
+    .poll(() => submittedCommands.at(-1))
+    .toMatchObject({
+      type: "rewind",
+      mode: "conversation",
+      messageId: "turn-1:user:0",
+    });
   await expect(composer).toHaveValue("Inspect the runtime");
   await expect(page).toHaveURL(sessionUrl);
   await expect(composer).toBeFocused();

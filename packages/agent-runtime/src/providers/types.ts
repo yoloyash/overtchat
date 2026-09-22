@@ -1,4 +1,5 @@
 import type {
+  AgentRewindMode,
   AgentCollaborationMode,
   AgentConnectionDraft,
   AgentGoal,
@@ -47,7 +48,7 @@ export type AgentSessionLaunch = AgentSessionLaunchConfig & {
   };
 };
 
-export type AgentSessionForkResult = {
+export type AgentSessionChangeResult = {
   session: AgentProviderSessionMetadata;
   draft?: string;
   replacesCurrentSession?: boolean;
@@ -102,10 +103,11 @@ export interface AgentRuntimeClient {
   ): void;
   retryInteractive?(): Promise<unknown>;
   getUsage?(): Promise<AgentUsageSnapshot>;
+  rewind?(messageId: string, mode: AgentRewindMode): Promise<void>;
   forkSession?(
     messageId: string,
     mode: "edit" | "fork",
-  ): Promise<AgentSessionForkResult>;
+  ): Promise<AgentSessionChangeResult>;
   discardForkedSession?(session: AgentProviderSessionMetadata): Promise<void>;
   stop(): Promise<void>;
 }

@@ -10,6 +10,7 @@ import {
 import { randomUUID } from "expo-crypto";
 import {
   agentProviderMetadata,
+  agentPromptWithHistory,
   isAgentProviderId,
   type AgentProviderId,
   type AgentSessionLaunchConfig,
@@ -19,10 +20,15 @@ import { AgentSessionHeaderTitle } from "@/components/agents/AgentSessionHeader"
 import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { AgentComposer } from "@/components/agents/AgentComposer";
 import { AgentControls } from "@/components/agents/AgentControls";
-import { AgentFeedback, AgentText } from "@/components/agents/AgentPrimitives";
+import {
+  AgentButton,
+  AgentSheet,
+  AgentFeedback,
+  AgentText,
+} from "@/components/agents/AgentPrimitives";
 import { toastError } from "@/lib/toast";
 import { useTheme } from "@/lib/theme";
-import { useAgentCatalog } from "@/lib/queries/agents";
+import { useAgentConnections, useAgentCatalog } from "@/lib/queries/agents";
 import { useAgentDraft } from "@/lib/agents/drafts";
 import { agentJson } from "@/lib/agents/api";
 
@@ -31,14 +37,18 @@ export default function NewAgentScreen() {
     workspace: string;
     provider: string;
     name: string;
+    fork?: string;
+    chooseWorkspace?: string;
   }>();
   if (!params.workspace || !isAgentProviderId(params.provider ?? ""))
     return <AgentFeedback error="Choose a workspace from Agent Connections." />;
   return (
     <NewAgent
-      key={`${params.workspace}:${params.provider}`}
+      key={`${params.workspace}:${params.provider}:${params.fork ?? ""}`}
       workspace={params.workspace}
       provider={params.provider as AgentProviderId}
+      chooseWorkspace={params.chooseWorkspace === "1"}
+      fork={params.fork}
       name={params.name}
     />
   );
@@ -48,20 +58,39 @@ function NewAgent({
   workspace,
   provider,
   name,
+  fork,
+  chooseWorkspace,
 }: {
   workspace: string;
   provider: AgentProviderId;
   name: string;
+  fork?: string;
+  chooseWorkspace?: boolean;
 }) {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const keyboard = useKeyboardState((state) => state.isVisible);
-  const catalog = useAgentCatalog(workspace, provider);
-  const { draft, setDraft, storageError, saveDraftToSession } = useAgentDraft(
-    `new:${workspace}:${provider}`,
+  const connections = useAgentConnections();
+  const [targetWorkspace, setTargetWorkspace] = useState(workspace);
+  const [workspacePicker, setWorkspacePicker] = useState(
+    chooseWorkspace === true,
   );
-  const [config, setConfig] = useState<AgentSessionLaunchConfig>({});
+  const workspaceOptions = (connections.data ?? [])
+    .filter((connection) => connection.provider === provider)
+    .flatMap((connection) =>
+      connection.workspaces.map((workspace) => ({
+        id: workspace.id,
+        label: `${workspace.name} · ${connection.host.name}`,
+      })),
+    );
+  const catalog = useAgentCatalog(targetWorkspace, provider);
+  const { draft, setDraft, storageError, saveDraftToSession } = useAgentDraft(
+    fork ? `fork:${fork}` : `new:${workspace}:${provider}`,
+  );
+  const [config, setConfig] = useState<AgentSessionLaunchConfig>(
+    draft.forkContext?.launchConfig ?? {},
+  );
   const [settings, setSettings] = useState(false);
   const [pending, setPending] = useState(false);
   const lock = useRef(false);
@@ -101,7 +130,19 @@ function NewAgent({
       filename,
       mediaType,
     }));
-    const message = draft.message.trim();
+    let message: string;
+    try {
+      message = agentPromptWithHistory(
+        draft.message.trim(),
+        draft.forkContext?.text,
+      );
+    } catch (cause) {
+      setError(String(cause));
+      lock.current = false;
+      setPending(false);
+      clearTimeout(timer);
+      return;
+    }
     const command = {
       type: "prompt" as const,
       message,
@@ -110,7 +151,7 @@ function NewAgent({
     };
     try {
       const result = await agentJson<{ session: { id: string } }>(
-        `/api/agent-workspaces/${encodeURIComponent(workspace)}/sessions`,
+        `/api/agent-workspaces/${encodeURIComponent(targetWorkspace)}/sessions`,
         {
           provider,
           launchConfig: {
@@ -127,11 +168,18 @@ function NewAgent({
       // Preserve the first prompt and its identity in the new chat before sending.
       // If delivery fails, retry from that chat instead of creating another session.
       if (!mounted.current) {
-        saveDraftToSession(sessionId, { ...draft, pending: undefined });
+        saveDraftToSession(sessionId, {
+          ...draft,
+          message,
+          forkContext: undefined,
+          pending: undefined,
+        });
         return;
       }
       const submittedDraft = {
         ...draft,
+        message,
+        forkContext: undefined,
         pending: { fingerprint: JSON.stringify({ message, images }), command },
       };
       saveDraftToSession(sessionId, submittedDraft);
@@ -165,7 +213,7 @@ function NewAgent({
         if (mounted.current)
           router.replace({
             pathname: "/agents/[id]",
-            params: { id: sessionId, workspace, name },
+            params: { id: sessionId, workspace: targetWorkspace, name },
           });
       }
       lock.current = false;
@@ -226,6 +274,40 @@ function NewAgent({
         />
       )}
       <View style={{ paddingBottom: keyboard ? 0 : insets.bottom }}>
+        {draft.forkContext && (
+          <View style={{ padding: 12 }}>
+            <AgentButton
+              label={`Workspace: ${workspaceOptions.find((option) => option.id === targetWorkspace)?.label ?? name}`}
+              onPress={() => setWorkspacePicker(true)}
+            />
+            <AgentSheet
+              visible={workspacePicker}
+              title="Fork workspace"
+              onClose={() => setWorkspacePicker(false)}
+            >
+              {workspaceOptions.map((option) => (
+                <AgentButton
+                  key={option.id}
+                  label={option.label}
+                  onPress={() => {
+                    setTargetWorkspace(option.id);
+                    setWorkspacePicker(false);
+                  }}
+                />
+              ))}
+            </AgentSheet>
+            <AgentText>Chat history attached</AgentText>
+            <AgentButton
+              label="Remove history"
+              onPress={() =>
+                setDraft(
+                  ({ forkContext: _context, ...current }) => current,
+                  true,
+                )
+              }
+            />
+          </View>
+        )}
         <AgentComposer
           draft={draft}
           setDraft={setDraft}

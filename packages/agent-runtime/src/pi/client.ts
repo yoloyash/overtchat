@@ -116,8 +116,61 @@ export class PiClient {
     return parsePiCommands(await this.request({ type: "get_commands" }));
   }
 
-  getMessages(): Promise<{ messages: unknown[] }> {
-    return this.request({ type: "get_messages" });
+  async getMessages(): Promise<{ messages: unknown[] }> {
+    const history = await this.request<{ messages: unknown[] }>({
+      type: "get_messages",
+    });
+    // Native entry IDs survive reloads and distinguish repeated identical prompts.
+    const tree = await this.request<{
+      entries?: Array<{
+        id: string;
+        parentId: string | null;
+        type: string;
+        message?: Record<string, unknown>;
+      }>;
+      leafId?: string;
+    }>({ type: "get_entries" }).catch(() => null);
+    if (!tree?.entries) return history;
+    const entries = new Map(tree.entries.map((entry) => [entry.id, entry]));
+    const branch: typeof tree.entries = [];
+    const seen = new Set<string>();
+    for (let id = tree.leafId; id && !seen.has(id); ) {
+      seen.add(id);
+      const entry = entries.get(id);
+      if (!entry) break;
+      if (entry.type === "message" && entry.message) branch.unshift(entry);
+      id = entry.parentId ?? undefined;
+    }
+    return {
+      messages: history.messages.map((message) => {
+        if (!message || typeof message !== "object") return message;
+        const index = branch.findIndex(
+          (entry) =>
+            entry.message?.role === Reflect.get(message, "role") &&
+            entry.message?.timestamp === Reflect.get(message, "timestamp") &&
+            JSON.stringify(entry.message?.content) ===
+              JSON.stringify(Reflect.get(message, "content")),
+        );
+        if (index < 0) return message;
+        const [entry] = branch.splice(index, 1);
+        return { ...message, id: entry!.id };
+      }),
+    };
+  }
+
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "conversation")
+      throw new Error("Pi supports conversation rewind only.");
+    // Current Pi exposes this natively over RPC; no transcript files are rewritten.
+    const result = await this.request<{ cancelled?: boolean }>({
+      type: "fork",
+      entryId: messageId,
+    });
+    if (result.cancelled) throw new Error("Pi rewind was cancelled.");
+    this.submissionEchoes.clear();
   }
 
   prompt(

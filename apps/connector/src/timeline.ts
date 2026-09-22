@@ -185,6 +185,7 @@ export class ConnectorTimelineStore {
     sessionId: string,
     providerSessionId: string,
     snapshot: AgentRuntimeSnapshot,
+    replaceHistory = false,
   ): Promise<AgentRuntimeCursor> {
     this.assertOpen();
     if (snapshot.sessionId !== sessionId) {
@@ -213,7 +214,7 @@ export class ConnectorTimelineStore {
         return { epoch: state.epoch, sequence: state.sequence };
       }
 
-      if (state.providerSessionId !== providerSessionId) {
+      if (replaceHistory || state.providerSessionId !== providerSessionId) {
         const envelope: AgentRuntimeEnvelope = {
           epoch: crypto.randomUUID(),
           sequence: 1,

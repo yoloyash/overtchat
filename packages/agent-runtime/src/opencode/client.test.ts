@@ -44,7 +44,7 @@ function sdkFixture() {
   const sdk = {
     global: {
       event: vi.fn().mockResolvedValue({
-        stream: (async function* () {})(),
+        stream: (async function* () { yield { directory: "global", payload: { type: "server.connected", properties: {} } }; })(),
       }),
     },
     provider: {
@@ -102,6 +102,27 @@ describe("OpenCode runtime client", () => {
       exit: new Promise(() => {}),
       release: vi.fn().mockResolvedValue(undefined),
     });
+  });
+
+  it("waits for the native event stream handshake before sending a prompt", async () => {
+    const { sdk, promptAsync } = sdkFixture();
+    let connect: () => void = () => {};
+    const connected = new Promise<void>(resolve => { connect = resolve; });
+    sdk.global.event.mockResolvedValue({ stream: (async function* () {
+      await connected;
+      yield { directory: "global", payload: { type: "server.connected", properties: {} } };
+    })() });
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    const client = new OpenCodeRuntimeClient({ transport: "local" }, { executable: "opencode", cwd: "/workspace" });
+    try {
+      await client.getState();
+      const sending = client.prompt("First prompt");
+      await new Promise(resolve => setImmediate(resolve));
+      expect(promptAsync).not.toHaveBeenCalled();
+      connect();
+      await sending;
+      expect(promptAsync).toHaveBeenCalledOnce();
+    } finally { await client.stop(); }
   });
 
   it("pins steering to the active turn while settings change for the next turn", async () => {

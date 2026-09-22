@@ -215,6 +215,10 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
   private submissions: Record<string, string> = {};
   private todos: Todo[] = [];
   private activeSelection?: OpenCodeTurnSelection;
+  private resolveEventStreamReady: () => void = () => {};
+  private readonly eventStreamReady = new Promise<void>((resolve) => {
+    this.resolveEventStreamReady = resolve;
+  });
 
   constructor(
     private readonly target: HostTarget,
@@ -254,6 +258,25 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       isStreaming: this.streaming,
       isCompacting: this.compacting,
     };
+  }
+
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "both")
+      throw new Error("OpenCode rewinds conversation and files together.");
+    await this.readyPromise;
+    this.session = resultData(
+      await this.client!.session.revert({
+        sessionID: this.session!.id,
+        directory: this.launch.cwd,
+        messageID: messageId,
+      }),
+      "OpenCode rewind",
+    );
+    this.messageInfo.clear();
+    this.messageParts.clear();
   }
 
   async getMessages(): Promise<{ messages: unknown[] }> {
@@ -578,6 +601,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     steering: boolean,
   ): Promise<unknown> {
     await this.readyPromise;
+    await this.awaitEventStreamReady();
     const selection = steering
       ? (this.activeSelection ?? this.currentSelection())
       : this.currentSelection();
@@ -673,7 +697,11 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       sessionID: this.session!.id,
       directory: this.launch.cwd,
     });
-    return resultData(result, "OpenCode messages");
+    const messages = resultData(result, "OpenCode messages");
+    const boundary = this.session?.revert?.messageID;
+    return boundary
+      ? messages.filter((message) => message.info.id < boundary)
+      : messages;
   }
 
   private rememberMessage(message: OpenCodeMessageWithParts): void {
@@ -707,10 +735,30 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     }
   }
 
+  // Wait for server.connected before dispatching the first prompt.
+  // The SDK returns a lazy stream, before its HTTP connection is established.
+  private async awaitEventStreamReady(): Promise<void> {
+    const signal = this.abortEvents.signal;
+    if (signal.aborted) throw new Error("OpenCode is stopped.");
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", aborted);
+        if (error) reject(error);
+        else resolve();
+      };
+      const aborted = () => finish(new Error("OpenCode is stopped."));
+      const timer = setTimeout(() => finish(new Error("OpenCode event stream is not connected; your message was not sent.")), 15_000);
+      signal.addEventListener("abort", aborted, { once: true });
+      void this.eventStreamReady.then(() => finish());
+    });
+  }
+
   private async consumeEvents(stream: AsyncIterable<GlobalEvent>): Promise<void> {
     for await (const envelope of stream) {
       if (this.stopped) continue;
       const payload = envelope.payload as unknown as Record<string, unknown>;
+      if (payload.type === "server.connected") this.resolveEventStreamReady();
       if (
         typeof payload.type !== "string" ||
         !payload.properties ||

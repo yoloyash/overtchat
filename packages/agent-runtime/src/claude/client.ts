@@ -109,6 +109,7 @@ type AssistantProjection = {
   content: Array<Record<string, unknown>>;
   timestamp: number;
   errorMessage?: string;
+  overtchatProviderMessageId?: string;
 };
 
 const EMPTY_STATS: AgentSessionStats = {
@@ -445,6 +446,59 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     );
   }
 
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    return this.withLifecycle(async () => {
+      await this.readyPromise;
+      if (this.active)
+        throw new Error("Cannot rewind Claude while a turn is active.");
+      const index = this.messages.findIndex((value) => {
+        const message = record(value);
+        return message?.role === "user" && message.id === messageId;
+      });
+      if (index < 0)
+        throw new Error("Claude could not find that user message.");
+      const previous = this.messages
+        .slice(0, index)
+        .findLast((value) => record(value)?.role === "assistant");
+      const previousRecord = record(previous);
+      const resumeAt =
+        previousRecord?.overtchatProviderMessageId ?? previousRecord?.id;
+      if (index > 0 && typeof resumeAt !== "string")
+        throw new Error(
+          "Claude did not provide the preceding turn's checkpoint.",
+        );
+      // Restore files before switching conversation sessions: checkpoints
+      // belong to the original session and do not survive a native fork.
+      if (mode !== "conversation") {
+        const result = await this.sdkQuery.rewindFiles(messageId, {
+          dryRun: false,
+        });
+        if (!result.canRewind)
+          throw new Error(
+            result.error ?? "No file checkpoint found for that message.",
+          );
+      }
+      if (mode === "files") return;
+      const kept = this.messages.slice(0, index);
+      // Use the SDK's native resume/fork options so this also executes over SSH.
+      await this.restartQuery(
+        typeof resumeAt === "string"
+          ? { resume: this.sessionId, resumeAt }
+          : {},
+      );
+      this.launch.resume = undefined;
+      this.messages = kept;
+      this.assistantMessages.clear();
+      this.toolNames.clear();
+      this.currentStreamMessageId = undefined;
+      this.contextInputTokens = undefined;
+      this.updateContextUsage(null);
+    });
+  }
+
   async setSessionName(name: string): Promise<unknown> {
     return this.withLifecycle(async () => {
       await this.readyPromise;
@@ -563,7 +617,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
   }
 
-  private startQuery(resume?: string): void {
+  private startQuery(resume?: string, resumeAt?: string): void {
     const generation = ++this.consumeGeneration;
     this.input = new ClaudeInputQueue();
     this.sdkQuery = createSdkQuery({
@@ -573,6 +627,15 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         env: safeEnvironment(),
         pathToClaudeCodeExecutable: this.launch.executable,
         ...(resume ? { resume } : { sessionId: this.sessionId }),
+        ...(resumeAt
+          ? {
+              resumeSessionAt: resumeAt,
+              forkSession: true,
+              sessionId: this.sessionId,
+            }
+          : {}),
+        enableFileCheckpointing: true,
+        extraArgs: { "replay-user-messages": null },
         ...(this.selectedModel ? { model: this.selectedModel } : {}),
         ...thinkingOptions(this.thinkingOptionId),
         includePartialMessages: true,
@@ -583,7 +646,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         canUseTool: this.canUseTool,
         stderr: (data) => this.captureStderr(data),
         spawnClaudeCodeProcess: (options) =>
-          spawnClaudeOnHost(this.target, options, (data) => this.captureStderr(data)),
+          spawnClaudeOnHost(this.target, options, (data) =>
+            this.captureStderr(data),
+          ),
       },
     });
     this.consumePromise = this.consume(this.sdkQuery, generation);
@@ -671,6 +736,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     const user = {
       role: "user",
       id: randomUUID(),
+      overtchatRewindable: false,
       content: [
         ...(message ? [{ type: "text", text: message }] : []),
         ...images.map((image) => ({
@@ -696,13 +762,13 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       type: "user",
       message: { role: "user", content } as SDKUserMessage["message"],
       parent_tool_use_id: null,
-      uuid: randomUUID(),
+      uuid: user.id,
       origin: { kind: "human" },
       ...(steering ? { priority: "next" as const } : {}),
     });
   }
 
-  private async restartQuery(): Promise<void> {
+  private async restartQuery(rewind?: { resume?: string; resumeAt?: string }): Promise<void> {
     if (this.stopped) return;
     this.restarting = true;
     const oldInput = this.input;
@@ -714,7 +780,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.active = false;
     this.compacting = false;
     if (this.stopped) return;
-    this.startQuery(this.sessionId);
+    if (rewind) this.sessionId = randomUUID();
+    this.startQuery(rewind ? rewind.resume : this.sessionId, rewind?.resumeAt);
     const [initialized, settingsModels] = await Promise.all([
       this.sdkQuery.initializationResult(),
       readClaudeSettingsModels(this.target),
@@ -886,6 +953,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (!native || typeof native.id !== "string") return;
     if (!message.parent_tool_use_id) this.readRequestUsage(record(native.usage));
     const projection = this.ensureAssistant(native.id);
+    if (typeof message.uuid === "string") projection.overtchatProviderMessageId = message.uuid;
     if (typeof message.error === "string") projection.errorMessage = message.error;
     const content = Array.isArray(native.content) ? native.content : [];
     for (const [index, block] of content.entries()) {
@@ -932,6 +1000,19 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   }
 
   private handleUser(message: SDKMessage & Record<string, unknown>): void {
+    // A sent UUID becomes a rewind checkpoint only after Claude echoes it.
+    const index = this.messages.findIndex(
+      (value) =>
+        record(value)?.role === "user" && record(value)?.id === message.uuid,
+    );
+    if (index >= 0) {
+      const acknowledged = {
+        ...record(this.messages[index]),
+        overtchatRewindable: true,
+      };
+      this.messages[index] = acknowledged;
+      this.emit({ type: "message_end", message: acknowledged });
+    }
     const native = record(message.message);
     if (!native || !Array.isArray(native.content)) return;
     for (const blockValue of native.content) {

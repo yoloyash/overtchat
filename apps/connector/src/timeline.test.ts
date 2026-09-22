@@ -116,6 +116,37 @@ afterEach(async () => {
 });
 
 describe("connector session timeline", () => {
+  it("persists a rewind with a new epoch even when the native session ID stays the same", async () => {
+    const { directory, store } = await createStore();
+    const old = {
+      ...snapshot(),
+      messages: [{ role: "user", id: "old", content: "Removed prompt" }],
+    };
+    const cursor = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      old,
+    );
+    const replacement = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      snapshot(),
+      true,
+    );
+    expect(replacement.epoch).not.toBe(cursor.epoch);
+    expect(await store.sync(SESSION_ID, cursor)).toMatchObject({
+      reset: true,
+      snapshot: { messages: [] },
+    });
+    await store.close();
+    const restored = await reopen(directory);
+    expect(await restored.sync(SESSION_ID, cursor)).toMatchObject({
+      reset: true,
+      cursor: replacement,
+      snapshot: { messages: [] },
+    });
+  });
+
   it("persists an event before live delivery and restores its exact cursor", async () => {
     const { directory, file, store } = await createStore();
     const initial = await store.openSession(

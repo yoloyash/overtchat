@@ -1,3 +1,4 @@
+import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Keyboard, ScrollView, View } from "react-native";
 import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -71,7 +72,8 @@ function AgentSession({
   useFocusEffect(useCallback(() => () => stopSpeech(), [stopSpeech]));
   const snapshot = session.snapshot;
   const mutation = useAgentCommand(id);
-  const { draft, setDraft, storageError } = useAgentDraft(id);
+  const { draft, setDraft, storageError, saveDraftToSession } =
+    useAgentDraft(id);
   const [settings, setSettings] = useState(false);
   const [contextVisible, setContextVisible] = useState(false);
   const [interaction, setInteraction] = useState(false);
@@ -102,6 +104,7 @@ function AgentSession({
   async function execute(
     command: AgentSessionCommand,
     clearDraft = false,
+    chooseWorkspace = false,
   ): Promise<boolean> {
     if (lock.current || (!ready && command.type !== "retry_interactive"))
       return false;
@@ -129,6 +132,36 @@ function AgentSession({
             : { ...current, pending: undefined };
         }, true);
       if (!mounted.current) return false;
+      if (command.type === "fork_message") {
+        if (!result.forkContext || !snapshot)
+          throw new Error("The agent did not return conversation history.");
+        const fork = Crypto.randomUUID();
+        saveDraftToSession(`fork:${fork}`, {
+          message: "",
+          images: [],
+          forkContext: result.forkContext,
+        });
+        router.push({
+          pathname: "/agents/new",
+          params: {
+            workspace,
+            provider: snapshot.provider,
+            name,
+            fork,
+            chooseWorkspace: chooseWorkspace ? "1" : "0",
+          },
+        });
+        return true;
+      }
+      if (command.type === "rewind" && result.draft !== undefined) {
+        setDraft(
+          (current) => ({
+            ...current,
+            message: restoreAgentComposer(current.message, result.draft!),
+          }),
+          true,
+        );
+      }
       if (result.usage) setUsage(result.usage);
       if (result.notice) setNotice(result.notice.message);
       if (result.sessionId && result.sessionId !== id) {
@@ -283,6 +316,16 @@ function AgentSession({
       )}
       {snapshot && (
         <AgentTranscript
+          onFork={async (messageId, chooseWorkspace) => {
+            await execute(
+              { type: "fork_message", messageId },
+              false,
+              chooseWorkspace,
+            );
+          }}
+          onRewind={async (messageId, mode) => {
+            await execute({ type: "rewind", messageId, mode });
+          }}
           speech={speech}
           snapshot={snapshot}
           question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (

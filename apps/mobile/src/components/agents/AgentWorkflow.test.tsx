@@ -520,6 +520,71 @@ describe("agent context usage", () => {
   });
 });
 
+describe("agent history actions", () => {
+  it("rewinds from a native message and preserves an existing draft", async () => {
+    mocks.snapshot!.capabilities.rewindConversation = true;
+    mocks.snapshot!.messages = [
+      { role: "user", id: "native-user", content: "Original prompt" },
+    ];
+    mocks.draft.message = "Keep my draft";
+    mocks.send.mockResolvedValue({
+      sessionId: "session",
+      draft: "Original prompt",
+    });
+    await render();
+    await click("Rewind to this message");
+    expect(container.textContent).toContain("This action cannot be undone");
+    await click("Rewind conversation");
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "rewind",
+      messageId: "native-user",
+      mode: "conversation",
+    });
+    expect(mocks.draft.message).toBe("Keep my draft");
+  });
+
+  it("restores a rewound prompt into an empty composer", async () => {
+    mocks.snapshot!.capabilities.rewindBoth = true;
+    mocks.snapshot!.messages = [
+      { role: "user", id: "native-user", content: "Original" },
+    ];
+    mocks.send.mockResolvedValue({ sessionId: "session", draft: "Original" });
+    await render();
+    await click("Rewind to this message");
+    await click("Rewind conversation and files");
+    expect(mocks.draft.message).toBe("Original");
+  });
+
+  it("opens a fork draft with attached history without sending a prompt", async () => {
+    mocks.snapshot!.messages = [
+      {
+        role: "assistant",
+        id: "answer",
+        content: [{ type: "text", text: "An answer" }],
+      },
+    ];
+    const forkContext = {
+      text: "Chat history",
+      launchConfig: { model: "model-id" },
+    };
+    mocks.send.mockResolvedValue({ forkContext });
+    await render();
+    await click("Fork conversation");
+    await click("Fork in new session");
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "fork_message",
+      messageId: "answer",
+    });
+    expect(mocks.saveDraftToSession).toHaveBeenCalledWith(
+      expect.stringMatching(/^fork:/),
+      { message: "", images: [], forkContext },
+    );
+    expect(mocks.push).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: "/agents/new" }),
+    );
+  });
+});
+
 describe("native agent screen workflows", () => {
   it("suppresses brief reconnect notices while disabling sends immediately", async () => {
     vi.useFakeTimers();
@@ -832,6 +897,20 @@ describe("native agent screen workflows", () => {
     });
     expect(mocks.replace.mock.lastCall?.[0].params.id).toBe("created");
   });
+  it("preserves attached fork history and retry identity when its first send fails", async () => {
+    mocks.draft.forkContext = { text: "Previous history", launchConfig: { model: model.id } };
+    mocks.api.mockResolvedValueOnce({ session: { id: "fork-created" } }).mockRejectedValueOnce(new Error("Disconnected"));
+    await render(<NewAgentScreen />);
+    await input("Continue here");
+    await click("Send message");
+    const message = "Previous history\n\nContinue here";
+    expect(mocks.api.mock.calls[1][1]).toMatchObject({ type: "prompt", message });
+    expect(mocks.saveDraftToSession).toHaveBeenCalledWith("fork-created", expect.objectContaining({
+      message, forkContext: undefined,
+      pending: { fingerprint: JSON.stringify({ message, images: [] }), command: { type: "prompt", message, clientMessageId: "message-id" } },
+    }));
+  });
+
   it("keeps the draft if creation fails and doesn't send or navigate", async () => {
     mocks.api.mockRejectedValueOnce(new Error("Provider unavailable"));
     await render(<NewAgentScreen />);

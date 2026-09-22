@@ -1,5 +1,8 @@
+import { AGENT_PROVIDERS } from "@overtchat/agent-bridge";
 import { describe, expect, it } from "vitest";
 import {
+  agentRewindOptions,
+  restoreAgentComposer,
   agentActivitySequencePosition,
   agentToolStatus,
   describeAgentActivity,
@@ -686,5 +689,31 @@ describe("agent activity presentation", () => {
       secondary: null,
       status: "failed",
     });
+  });
+});
+
+describe("rewind presentation", () => {
+  it("offers only the provider's native rewind modes", () => {
+    expect(
+      agentRewindOptions(AGENT_PROVIDERS.claude.capabilities).map(
+        (item) => item.mode,
+      ),
+    ).toEqual(["conversation", "files", "both"]);
+    for (const provider of ["pi", "omp", "codex"] as const)
+      expect(
+        agentRewindOptions(AGENT_PROVIDERS[provider].capabilities).map(
+          (item) => item.mode,
+        ),
+      ).toEqual(["conversation"]);
+    expect(
+      agentRewindOptions(AGENT_PROVIDERS.opencode.capabilities).map(
+        (item) => item.mode,
+      ),
+    ).toEqual(["both"]);
+    expect(agentRewindOptions({ steer: false })).toEqual([]);
+  });
+  it("preserves the human draft and restores into an empty composer", () => {
+    expect(restoreAgentComposer("existing", "previous")).toBe("existing");
+    expect(restoreAgentComposer("", "previous")).toBe("previous");
   });
 });

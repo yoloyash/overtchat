@@ -153,6 +153,26 @@ describe("OmpClient", () => {
     await client.stop();
   });
 
+  it("does not replay a late native message ID lookup after rewinding", async () => {
+    let lookup: Record<string, unknown> | undefined;
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "get_branch_messages") lookup = command;
+      else if (command.type === "negotiate_protocol") fake.reply(command, { protocolVersion: 2 });
+      else fake.reply(command, { cancelled: false });
+    });
+    const client = new OmpClient(process, "full");
+    announceReady(process);
+    const events: unknown[] = [];
+    client.onEvent(event => events.push(event));
+    process.stdout.write(`${JSON.stringify({ type: "message_end", message: { role: "user", content: "Discard me" } })}\n`);
+    await vi.waitFor(() => expect(lookup).toBeDefined());
+    await client.rewind("native-user", "conversation");
+    process.reply(lookup!, { messages: [{ entryId: "native-user", text: "Discard me" }] });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(events).toHaveLength(1);
+    await client.stop();
+  });
+
   it("reassembles OMP v2 response chunks", async () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {
@@ -244,6 +264,10 @@ describe("OmpClient", () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {
         fake.reply(command, { protocolVersion: 2 });
+        return;
+      }
+      if (command.type === "get_branch_messages") {
+        fake.reply(command, { messages: [] });
         return;
       }
       const message = {

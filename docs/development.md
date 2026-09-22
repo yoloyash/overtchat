@@ -59,6 +59,31 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
+## Agent rewind and fork validation
+
+Run bridge, runtime, connector, and mobile tests, plus the web agent API and
+presentation tests. The browser workflow is covered by
+`npm run test:e2e -w apps/web -- e2e/agent-runtime.spec.ts`.
+
+To exercise installed providers with real model requests:
+
+```sh
+REWIND_PROVIDERS=claude,codex,pi,omp,opencode npm run test -w packages/agent-runtime -- src/runtime/rewind.integration.test.ts
+```
+
+These opt-in tests use disposable local workspaces and incur provider usage.
+They check conversation rewind, continued context, restart/resume, and native
+file restoration where supported. Set `<PROVIDER>_COMMAND` to override an
+executable and `<PROVIDER>_REWIND_MODEL` to select the conversation-test model.
+Claude supports conversation, files, and combined rewind; Codex, Pi, and Oh My Pi
+support conversation rewind; OpenCode rewinds conversation and files together.
+File restoration is limited to the provider's native checkpoints.
+
+Fork tests verify draft creation and text history with concise tool summaries.
+Image attachments are omitted. Check rewind and fork on physical Android/iOS
+devices and SSH workspaces separately; the installed-provider suite runs locally.
+The web app and connector must use the same bridge protocol version.
+
 ## OpenCode process lifecycle validation
 
 The connector owns cleanup for local and SSH OpenCode servers. To exercise real

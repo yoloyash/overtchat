@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { generateId } from "ai";
 import type {
@@ -10,7 +10,12 @@ import type {
   AgentProviderId,
   AgentSessionLaunchConfig,
 } from "@overtchat/agent-bridge";
-import { agentProviderMetadata } from "@overtchat/agent-bridge";
+import {
+  agentPromptWithHistory,
+  agentProviderMetadata,
+  agentSessionLaunchConfigSchema,
+  type AgentForkContext,
+} from "@overtchat/agent-bridge";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -23,11 +28,13 @@ import {
 import {
   AGENT_MODEL_DEFAULTS_LOADING_MESSAGE,
   agentSessionDraftRestoreKey,
+  agentForkDraftKey,
   resolveAgentSessionDraftSelection,
 } from "@/lib/agents/sessionDraft";
 import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
 import {
   useAgentWorkspaceCatalog,
+  useAgentConnections,
   useCreateAgentSession,
 } from "@/lib/queries/agentConnections";
 import { sendAgentSessionCommand } from "@/lib/queries/agentSessions";
@@ -47,9 +54,23 @@ export function NewAgentSessionView({
   workspacePath: string;
 }) {
   const router = useRouter();
+  const search = useSearchParams();
+  const forkId = search.get("fork");
+  const [forkContext, setForkContext] = useState<AgentForkContext | null>(null);
+  const [forkLoaded, setForkLoaded] = useState(false);
   const providerMetadata = agentProviderMetadata(provider);
   const providerVisual = AGENT_PROVIDER_VISUALS[provider];
-  const catalog = useAgentWorkspaceCatalog(workspaceId, provider);
+  const connections = useAgentConnections();
+  const [targetWorkspaceId, setTargetWorkspaceId] = useState(workspaceId);
+  const workspaceOptions = (connections.data ?? [])
+    .filter((connection) => connection.provider === provider)
+    .flatMap((connection) =>
+      connection.workspaces.map((workspace) => ({
+        id: workspace.id,
+        label: `${workspace.name} · ${connection.host.name}`,
+      })),
+    );
+  const catalog = useAgentWorkspaceCatalog(targetWorkspaceId, provider);
   const createSession = useCreateAgentSession();
   const [sendingFirstPrompt, setSendingFirstPrompt] = useState(false);
   const [modelId, setModelId] = useState("");
@@ -59,6 +80,38 @@ export function NewAgentSessionView({
     AGENT_CREATE_PREFERENCES_KEY,
     DEFAULT_AGENT_CREATE_PREFERENCES,
   );
+  const [forkError, setForkError] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      try {
+        const value = forkId
+          ? window.sessionStorage.getItem(agentForkDraftKey(forkId))
+          : null;
+        if (forkId && !value) throw new Error("Missing fork history");
+        const context = value ? (JSON.parse(value) as AgentForkContext) : null;
+        if (context) {
+          if (
+            typeof context.text !== "string" ||
+            !context.text ||
+            context.text.length > 180_000
+          )
+            throw new Error("Invalid fork history");
+          const config = agentSessionLaunchConfigSchema.parse(
+            context.launchConfig,
+          );
+          setForkContext({ text: context.text, launchConfig: config });
+          setModelId(config.model ?? "");
+          setThinkingOptionId(config.thinkingOptionId ?? "");
+          setModeId(config.modeId ?? "");
+        }
+        setForkError(false);
+      } catch {
+        setForkError(true);
+      }
+      setForkLoaded(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [forkId]);
   const preferences = useMemo(
     () => parseAgentCreatePreferences(storedPreferences),
     [storedPreferences],
@@ -103,6 +156,14 @@ export function NewAgentSessionView({
     message: string,
     images: AgentPromptImage[],
   ): Promise<boolean> {
+    if (!forkLoaded || forkError) return false;
+    let prompt: string;
+    try {
+      prompt = agentPromptWithHistory(message, forkContext?.text);
+    } catch (cause) {
+      toast.error({ title: String(cause) });
+      return false;
+    }
     if (loadingDefaults) {
       toast.error({ title: AGENT_MODEL_DEFAULTS_LOADING_MESSAGE });
       return false;
@@ -144,7 +205,7 @@ export function NewAgentSessionView({
     let sessionId: string;
     try {
       sessionId = await createSession.mutateAsync({
-        workspaceId,
+        workspaceId: targetWorkspaceId,
         provider,
         launchConfig,
       });
@@ -163,14 +224,14 @@ export function NewAgentSessionView({
     try {
       await sendAgentSessionCommand(sessionId, {
         type: "prompt",
-        message,
+        message: prompt,
         ...(images.length > 0 ? { images } : {}),
         clientMessageId: generateId(),
       });
     } catch (cause) {
       window.sessionStorage.setItem(
         agentSessionDraftRestoreKey(sessionId),
-        message,
+        prompt,
       );
       toast.error({
         title: `${providerMetadata.label} command failed`,
@@ -180,6 +241,7 @@ export function NewAgentSessionView({
             : "The first message could not be sent.",
       });
     } finally {
+      if (forkId) window.sessionStorage.removeItem(agentForkDraftKey(forkId));
       router.replace(`/agents/${sessionId}`);
     }
     return true;
@@ -208,7 +270,10 @@ export function NewAgentSessionView({
           </span>
           <span className="hidden sm:inline">{providerMetadata.label}</span>
         </div>
-        <span className="hidden h-4 w-px bg-border sm:block" aria-hidden="true" />
+        <span
+          className="hidden h-4 w-px bg-border sm:block"
+          aria-hidden="true"
+        />
         <span
           className="hidden max-w-40 truncate px-1 font-mono text-xs text-muted-foreground md:block lg:max-w-64 xl:max-w-96"
           title={workspacePath}
@@ -231,6 +296,12 @@ export function NewAgentSessionView({
 
         <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-3xl">
+            {forkError && (
+              <p role="alert" className="mb-3 text-sm text-destructive">
+                Could not restore the forked conversation. Return to the original
+                session and fork again.
+              </p>
+            )}
             {catalog.isError && !catalog.data && (
               <div
                 role="alert"
@@ -254,6 +325,45 @@ export function NewAgentSessionView({
                 </Button>
               </div>
             )}
+            {forkContext && (
+              <label className="mb-3 block text-sm">
+                Workspace
+                <select
+                  autoFocus={search.get("chooseWorkspace") === "1"}
+                  aria-label="Fork workspace"
+                  className="mt-1 block w-full rounded-md border bg-background p-2"
+                  value={targetWorkspaceId}
+                  onChange={(event) => setTargetWorkspaceId(event.target.value)}
+                >
+                  {!workspaceOptions.some(
+                    (workspace) => workspace.id === workspaceId,
+                  ) && <option value={workspaceId}>{workspaceName}</option>}
+                  {workspaceOptions.map((workspace) => (
+                    <option key={workspace.id} value={workspace.id}>
+                      {workspace.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {forkContext && (
+              <div className="mb-3 flex items-center justify-between rounded-lg border px-3 py-2 text-sm">
+                <span>Chat history attached</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setForkContext(null);
+                    if (forkId)
+                      window.sessionStorage.removeItem(
+                        agentForkDraftKey(forkId),
+                      );
+                  }}
+                >
+                  Remove
+                </Button>
+              </div>
+            )}
             <AgentComposer
               providerLabel={providerMetadata.label}
               commands={[]}
@@ -263,7 +373,7 @@ export function NewAgentSessionView({
               running={false}
               pending={pending}
               stopping={false}
-              disabled={false}
+              disabled={!forkLoaded || forkError}
               controls={{
                 providerLabel: providerMetadata.label,
                 models: catalog.data?.models ?? [],

@@ -1,5 +1,6 @@
 "use client";
 
+import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import {
   useEffect,
   useId,
@@ -21,7 +22,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { agentSlashCommandQuery } from "@overtchat/agent-bridge";
+import {
+  agentSlashCommandQuery,
+} from "@overtchat/agent-bridge";
 import type {
   AgentPromptImage,
   AgentQueuedMessage,
@@ -143,7 +146,7 @@ export function AgentComposer({
     window.sessionStorage.removeItem(restoreDraftKey);
     let focusFrame: number | undefined;
     const restoreFrame = requestAnimationFrame(() => {
-      setInput((current) => current || draft);
+      setInput((current) => restoreAgentComposer(current, draft));
       focusFrame = requestAnimationFrame(() => {
         const element = textareaRef.current;
         element?.focus({ preventScroll: true });
@@ -160,7 +163,7 @@ export function AgentComposer({
     if (!restoredDraft) return;
     let focusFrame: number | undefined;
     const restoreFrame = requestAnimationFrame(() => {
-      setInput((current) => current || restoredDraft.text);
+      setInput((current) => restoreAgentComposer(current, restoredDraft.text));
       focusFrame = requestAnimationFrame(() => {
         const element = textareaRef.current;
         element?.focus({ preventScroll: true });

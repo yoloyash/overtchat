@@ -179,7 +179,12 @@ async function metadata(file, requestedCwd) {
 
 (async () => {
   if (mode === "history") {
-    process.stdout.write(JSON.stringify(boundedHistory(normalized(await readEntries(input)))));
+    let file = input;
+    if (!file.endsWith(".jsonl")) {
+      file = (await files(root)).find((candidate) => path.basename(candidate, ".jsonl") === input);
+      if (!file) throw new Error("Claude session history is not available yet.");
+    }
+    process.stdout.write(JSON.stringify(boundedHistory(normalized(await readEntries(file)))));
     return;
   }
   let requestedCwd;
@@ -218,7 +223,6 @@ export async function readClaudeSessionMessages(
   target: HostTarget,
   providerSessionPath: string,
 ): Promise<unknown[]> {
-  if (!providerSessionPath.endsWith(".jsonl")) return [];
   const result = await executeOnHost(
     target,
     { command: "node", args: ["-e", CLAUDE_SESSION_SCRIPT, "history", providerSessionPath] },

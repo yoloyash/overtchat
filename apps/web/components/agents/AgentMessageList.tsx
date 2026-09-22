@@ -10,12 +10,11 @@ import {
   ChevronDown,
   Copy,
   Info,
+  GitBranch,
   ListChecks,
   Minimize2,
   Play,
   Terminal,
-  GitBranch,
-  Pencil,
   Loader2,
   Square,
   Volume2,
@@ -47,6 +46,9 @@ import {
   type AgentRunActivity,
 } from "./AgentActivity";
 import { AgentTaskProgressCard } from "./AgentTaskList";
+import { AgentForkMenu } from "./AgentForkMenu";
+import { AgentRewindMenu } from "./AgentRewindMenu";
+import type { AgentRewindMode } from "@overtchat/agent-bridge";
 import { AgentLinkIcon } from "./AgentLinkIcon";
 import { AgentWorkspaceLink } from "./AgentWorkspaceLink";
 
@@ -113,11 +115,11 @@ export function AgentMessageList({
   activityStartedAt,
   error,
   workspaceName,
-  canEditMessages,
+  rewindOptions,
   canForkMessages,
   actionsDisabled,
   suppressScrollButton,
-  onEditMessage,
+  onRewindMessage,
   onForkMessage,
   onImplementPlan,
 }: {
@@ -130,12 +132,12 @@ export function AgentMessageList({
   activityStartedAt: number | null;
   error?: string;
   workspaceName: string;
-  canEditMessages: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
   actionsDisabled: boolean;
   suppressScrollButton: boolean;
-  onEditMessage: (messageId: string) => void;
-  onForkMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
+  onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
   onImplementPlan: (plan: string) => void;
 }) {
   const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
@@ -203,10 +205,10 @@ export function AgentMessageList({
                       speech={speech}
                       item={item}
                       active={streaming && index === transcript.length - 1}
-                      canEditMessages={canEditMessages}
+                      rewindOptions={rewindOptions}
                       canForkMessages={canForkMessages}
                       actionsDisabled={actionsDisabled}
-                      onEditMessage={onEditMessage}
+                      onRewindMessage={onRewindMessage}
                       onForkMessage={onForkMessage}
                       onImplementPlan={onImplementPlan}
                       activitySequencePosition={sequencePosition}
@@ -222,9 +224,7 @@ export function AgentMessageList({
                 />
               )}
               {question && <div className="mt-4">{question}</div>}
-              {error && (
-                <AgentErrorNotice error={presentAgentError(error)} />
-              )}
+              {error && <AgentErrorNotice error={presentAgentError(error)} />}
             </div>
           )}
         </div>
@@ -252,10 +252,10 @@ function AgentTranscriptRow({
   speech,
   item,
   active,
-  canEditMessages,
+  rewindOptions,
   canForkMessages,
   actionsDisabled,
-  onEditMessage,
+  onRewindMessage,
   onForkMessage,
   onImplementPlan,
   activitySequencePosition,
@@ -263,11 +263,11 @@ function AgentTranscriptRow({
   speech: ReturnType<typeof useSpeech>;
   item: AgentTranscriptItem;
   active: boolean;
-  canEditMessages: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
   actionsDisabled: boolean;
-  onEditMessage: (messageId: string) => void;
-  onForkMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
+  onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
@@ -275,9 +275,9 @@ function AgentTranscriptRow({
     return (
       <AgentMessage
         message={item.message}
-        canEdit={canEditMessages}
+        rewindOptions={rewindOptions}
         actionsDisabled={actionsDisabled}
-        onEditMessage={onEditMessage}
+        onRewindMessage={onRewindMessage}
       />
     );
   }
@@ -289,14 +289,14 @@ function AgentTranscriptRow({
           <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
         )}
         {canForkMessages && item.actionable && item.messageId && (
-          <MessageAction
-            label="Fork from this response"
-            className="-bottom-6 left-0"
-            disabled={actionsDisabled}
-            onClick={() => onForkMessage(item.messageId!)}
-          >
-            <GitBranch />
-          </MessageAction>
+          <div className="absolute -bottom-6 left-0">
+            <AgentForkMenu
+              disabled={actionsDisabled}
+              onFork={(chooseWorkspace) =>
+                onForkMessage(item.messageId!, chooseWorkspace)
+              }
+            />
+          </div>
         )}
       </div>
     );
@@ -379,7 +379,7 @@ function AgentTurnFooter({
   item: Extract<AgentTranscriptItem, { type: "turn_footer" }>;
   canFork: boolean;
   actionsDisabled: boolean;
-  onForkMessage: (messageId: string) => void;
+  onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const showFork = canFork && item.messageId !== null;
@@ -420,18 +420,12 @@ function AgentTurnFooter({
         </Button>
       )}
       {showFork && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="size-7"
-          aria-label="Fork from this response"
-          title="Fork from this response"
+        <AgentForkMenu
           disabled={actionsDisabled}
-          onClick={() => onForkMessage(item.messageId!)}
-        >
-          <GitBranch />
-        </Button>
+          onFork={(chooseWorkspace) =>
+            onForkMessage(item.messageId!, chooseWorkspace)
+          }
+        />
       )}
       {item.durationMs !== null && (
         <span className="ml-1 tabular-nums">
@@ -577,14 +571,14 @@ function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
 
 function AgentMessage({
   message,
-  canEdit,
+  rewindOptions,
   actionsDisabled,
-  onEditMessage,
+  onRewindMessage,
 }: {
   message: unknown;
-  canEdit: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   actionsDisabled: boolean;
-  onEditMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
   const record = recordOf(message);
   if (!record) return null;
@@ -593,10 +587,14 @@ function AgentMessage({
     return (
       <UserMessage
         content={contentOf(message)}
-        messageId={typeof record.id === "string" ? record.id : null}
-        canEdit={canEdit}
+        messageId={
+          record.overtchatRewindable !== false && typeof record.id === "string"
+            ? record.id
+            : null
+        }
+        rewindOptions={rewindOptions}
         actionsDisabled={actionsDisabled}
-        onEditMessage={onEditMessage}
+        onRewindMessage={onRewindMessage}
       />
     );
   }
@@ -621,15 +619,15 @@ function AgentMessage({
 function UserMessage({
   content,
   messageId,
-  canEdit,
+  rewindOptions,
   actionsDisabled,
-  onEditMessage,
+  onRewindMessage,
 }: {
   content: unknown;
   messageId: string | null;
-  canEdit: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   actionsDisabled: boolean;
-  onEditMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
   const text = textOfContent(content);
   const images = Array.isArray(content)
@@ -667,56 +665,25 @@ function UserMessage({
           className="max-h-64 max-w-[80%] rounded-lg border object-contain"
         />
       ))}
-      {text && (
+      {(text || images.length > 0) && (
         <div className="relative min-w-0 max-w-[80%]">
-          <div className="rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
-            {text}
-          </div>
-          {canEdit && messageId && (
-            <MessageAction
-              label="Edit from this message"
-              className="right-full bottom-0 mr-1"
-              disabled={actionsDisabled}
-              onClick={() => onEditMessage(messageId)}
-            >
-              <Pencil />
-            </MessageAction>
+          {text && (
+            <div className="rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
+              {text}
+            </div>
+          )}
+          {messageId && !messageId.startsWith("submission:") && (
+            <div className="absolute right-full bottom-0 mr-1">
+              <AgentRewindMenu
+                options={rewindOptions}
+                disabled={actionsDisabled}
+                onRewind={(mode) => onRewindMessage(messageId, mode)}
+              />
+            </div>
           )}
         </div>
       )}
     </div>
-  );
-}
-
-function MessageAction({
-  label,
-  className,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  className: string;
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className={cn(
-        "absolute size-6 text-muted-foreground opacity-60 motion-opacity hover:text-foreground sm:opacity-0 sm:group-hover/user:opacity-100 sm:group-hover/assistant:opacity-100 sm:focus:opacity-100",
-        className,
-      )}
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </Button>
   );
 }
 

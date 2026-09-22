@@ -1,3 +1,8 @@
+import {
+  agentForkMessageId,
+  type AgentRewindMode,
+  type AgentRuntimeCapabilities,
+} from "@overtchat/agent-bridge";
 type UnknownRecord = Record<string, unknown>;
 
 export type AgentToolCategory =
@@ -574,7 +579,7 @@ export function projectAgentTranscript(
           ? record.overtchatTurnBoundaryId
           : typeof record.id === "string"
             ? record.id
-            : null;
+            : agentForkMessageId(message, messageIndex);
       const actionsOwnedByFooter =
         typeof record.overtchatTurnBoundaryId === "string";
       const lastTextIndex = content.reduce((lastIndex, part, index) => {
@@ -1101,4 +1106,36 @@ function formatUnknown(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+export function agentRewindOptions(
+  capabilities: AgentRuntimeCapabilities,
+): Array<{ mode: AgentRewindMode; label: string }> {
+  const options: Array<{
+    enabled: boolean | undefined;
+    mode: AgentRewindMode;
+    label: string;
+  }> = [
+    {
+      enabled: capabilities.rewindConversation,
+      mode: "conversation",
+      label: "Rewind conversation",
+    },
+    { enabled: capabilities.rewindFiles, mode: "files", label: "Rewind files" },
+    {
+      enabled: capabilities.rewindBoth,
+      mode: "both",
+      label: "Rewind conversation and files",
+    },
+  ];
+  return options.flatMap(({ enabled, mode, label }) =>
+    enabled ? [{ mode, label }] : [],
+  );
+}
+
+export function restoreAgentComposer(
+  currentText: string,
+  rewoundText: string,
+): string {
+  return currentText || rewoundText;
 }

@@ -158,6 +158,7 @@ export function useAgentCatalog(workspace: string, provider: AgentProviderId) {
 export type AgentCommandResult = {
   sessionId?: string;
   draft?: string;
+  forkContext?: import("@overtchat/agent-bridge").AgentForkContext;
   usage?: AgentUsageSnapshot;
   notice?: AgentProviderNotice;
 };
