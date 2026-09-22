@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
   alert: vi.fn(),
   copy: vi.fn(),
+  stopSpeech: vi.fn(),
   uuid: vi.fn(),
   invalidDismiss: vi.fn(),
   backHandlers: new Set<() => boolean>(),
@@ -218,7 +219,8 @@ vi.mock("react-native-svg", () => ({
   default: ({ children }: { children: ReactNode }) => <svg>{children}</svg>,
   Circle: () => <circle />,
 }));
-vi.mock("expo-router", () => ({
+vi.mock("expo-router", async () => ({
+  useFocusEffect: (await import("react")).useEffect,
   useLocalSearchParams: () => mocks.params,
   router: { replace: mocks.replace, push: mocks.push },
   Stack: {
@@ -238,6 +240,16 @@ vi.mock("expo-router", () => ({
   },
 }));
 vi.mock("expo-router/react-navigation", () => ({ useHeaderHeight: () => 50 }));
+vi.mock("@/lib/useSpeech", () => ({
+  useSpeech: () => ({
+    activeId: null,
+    status: "idle",
+    stop: mocks.stopSpeech,
+  }),
+}));
+vi.mock("@/components/chat/MiniSpeechPlayer", () => ({
+  MiniSpeechPlayer: () => null,
+}));
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, bottom: 20 }),
 }));
@@ -285,7 +297,7 @@ vi.mock("@shopify/flash-list", async () => {
       (
         props: {
           data: unknown[];
-          renderItem: (args: { item: unknown }) => ReactNode;
+          renderItem: (args: { item: unknown; index: number }) => ReactNode;
           ListEmptyComponent: ReactNode;
           ListFooterComponent: ReactNode;
         } & typeof mocks.listHandlers,
@@ -304,7 +316,7 @@ vi.mock("@shopify/flash-list", async () => {
           <div>
             {props.data.length
               ? props.data.map((item, i) => (
-                  <div key={i}>{props.renderItem({ item })}</div>
+                  <div key={i}>{props.renderItem({ item, index: i })}</div>
                 ))
               : props.ListEmptyComponent}
             {props.ListFooterComponent}

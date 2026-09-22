@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { Pressable, View } from "react-native";
+import { ActivityIndicator, Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import {
@@ -15,6 +15,7 @@ import { MarkdownBody } from "@/components/chat/MarkdownBody";
 import { record, text } from "@/lib/agents/model";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
+import type { useSpeech } from "@/lib/useSpeech";
 import { AgentToolRow, AgentToolDetails } from "./AgentToolDetails";
 import { AgentButton, AgentText, AgentSheet } from "./AgentPrimitives";
 import { AgentImage } from "./AgentImage";
@@ -26,11 +27,13 @@ const position = {
 };
 
 export function AgentTranscript({
+  speech,
   snapshot,
   question,
   onImplementPlan,
   disabled,
 }: {
+  speech: ReturnType<typeof useSpeech>;
   snapshot: AgentRuntimeSnapshot;
   question?: React.ReactElement;
   onImplementPlan: (plan: string) => void;
@@ -78,6 +81,7 @@ export function AgentTranscript({
         ref={list}
         style={{ flex: 1 }}
         data={items}
+        extraData={{ activeId: speech.activeId, status: speech.status, active }}
         keyExtractor={(item) => item.key}
         getItemType={(item) => item.type}
         maintainVisibleContentPosition={position}
@@ -115,8 +119,10 @@ export function AgentTranscript({
             </AgentText>
           </View>
         }
-        renderItem={({ item }) => (
+        renderItem={({ item, index }) => (
           <TranscriptItem
+            speech={speech}
+            streaming={active && index === items.length - 1}
             item={item}
             active={active}
             disabled={disabled}
@@ -156,11 +162,15 @@ export function AgentTranscript({
 }
 
 const TranscriptItem = memo(function TranscriptItem({
+  speech,
+  streaming,
   item,
   active,
   disabled,
   onImplementPlan,
 }: {
+  speech: ReturnType<typeof useSpeech>;
+  streaming: boolean;
   item: AgentTranscriptItem;
   active: boolean;
   disabled: boolean;
@@ -170,7 +180,14 @@ const TranscriptItem = memo(function TranscriptItem({
   let content;
   switch (item.type) {
     case "assistant_text":
-      content = <MarkdownBody text={item.text} />;
+      content = (
+        <View>
+          <MarkdownBody text={item.text} />
+          {!streaming && (
+            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          )}
+        </View>
+      );
       break;
     case "assistant_error":
       content = (
@@ -208,6 +225,9 @@ const TranscriptItem = memo(function TranscriptItem({
               {step.status === "completed" ? "✓" : "○"} {step.step}
             </AgentText>
           ))}
+          {!streaming && (
+            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          )}
           {item.actionable && (
             <AgentButton
               label="Implement plan"
@@ -278,6 +298,55 @@ const TranscriptItem = memo(function TranscriptItem({
   }
   return <View style={{ paddingBottom: 14 }}>{content}</View>;
 });
+
+function AgentSpeakButton({
+  id,
+  text,
+  speech,
+}: {
+  id: string;
+  text: string;
+  speech: ReturnType<typeof useSpeech>;
+}) {
+  const { colors } = useTheme();
+  const spokenText = text.trim();
+  if (!spokenText) return null;
+  const active = speech.activeId === id;
+  const loading = active && speech.status === "loading";
+  const tooLong = spokenText.length > 5_000;
+  const disabled = !active && tooLong;
+  const label = active
+    ? loading ? "Cancel loading speech" : "Stop reading"
+    : tooLong ? "Read aloud supports up to 5,000 characters" : "Read aloud";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={() => void speech.play(id, spokenText)}
+      style={({ pressed }) => ({
+        width: 44,
+        height: 44,
+        borderRadius: 10,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: disabled ? 0.5 : 1,
+        backgroundColor: pressed ? colors.muted : "transparent",
+      })}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color={colors.mutedForeground} />
+      ) : (
+        <Ionicons
+          name={active ? "stop-outline" : "volume-medium-outline"}
+          size={18}
+          color={colors.mutedForeground}
+        />
+      )}
+    </Pressable>
+  );
+}
 
 function TurnFooter({
   item,

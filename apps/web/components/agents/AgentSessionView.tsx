@@ -61,6 +61,8 @@ import {
   RenameAgentSessionDialog,
 } from "./AgentSessionDialogs";
 import { AgentMessageList } from "./AgentMessageList";
+import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
+import { useSpeech } from "@/lib/useSpeech";
 import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
@@ -232,6 +234,9 @@ export function AgentSessionView({
   const providerLabel = agentProviderMetadata(provider).label;
   const router = useRouter();
   const session = useAgentSession(sessionId);
+  const speech = useSpeech();
+  const stopSpeech = speech.stop;
+  useEffect(() => () => stopSpeech(), [sessionId, stopSpeech]);
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
   const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
@@ -669,6 +674,7 @@ export function AgentSessionView({
           )}
 
           <AgentMessageList
+            speech={speech}
             question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
               <AgentQuestionCard
                 key={snapshot.pendingInteraction.id}
@@ -707,6 +713,7 @@ export function AgentSessionView({
             }
           />
 
+          <MiniSpeechPlayer speech={speech} />
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
               <AgentSessionContext
