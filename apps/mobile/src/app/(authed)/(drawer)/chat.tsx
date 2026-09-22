@@ -59,6 +59,7 @@ import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import type { ChatListItem } from "@/lib/queries/chats";
 import { queryKeys } from "@/lib/queries/keys";
+import { useSelectedModel } from "@/lib/modelPreferences";
 import {
   setReasoningLevel,
   useReasoningLevels,
@@ -193,7 +194,7 @@ function ChatSurface({
     refetch: refetchHydration,
   } = useChatMessages(isNew ? null : chatId);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useSelectedModel();
   const [searchRequested, setSearchRequested] = useState(false);
   const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const { data: capabilitiesData } = useCapabilities();
@@ -209,7 +210,7 @@ function ChatSurface({
     if (!selectedId || !models.some((m) => m.id === selectedId)) {
       setSelectedId(models[0].id);
     }
-  }, [models, selectedId]);
+  }, [models, selectedId, setSelectedId]);
 
   const transport = useMemo(
     () =>
