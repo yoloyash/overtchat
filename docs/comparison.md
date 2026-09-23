@@ -18,8 +18,8 @@ together, with your conversations on a server you control.
   [See the interface](../README.md#the-useful-parts-together).
 - **Set it up once for the household.** Connect your models, add family
   accounts, and share your server URL. Each person gets separate conversations
-  and projects in the browser and native Android app. You choose the providers,
-  keep the history, and control access.
+  and projects in the browser and the native Android or iOS app. You choose
+  the providers, keep the history, and control access.
 
 ## Compared with Open WebUI
 

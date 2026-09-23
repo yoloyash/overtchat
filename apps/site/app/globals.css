@@ -1374,6 +1374,12 @@ a:focus-visible,
   line-height: 1.75;
 }
 
+.store-links {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 1.75rem;
+}
+
 .quick-start-section {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(32rem, 1.2fr);

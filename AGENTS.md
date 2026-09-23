@@ -12,7 +12,7 @@ OpenCode sessions locally or over SSH.
   development validation.
 - `docs/release.md` owns version, tag, artifact, promotion, and release-specific
   validation procedures.
-- `docs/deploy.md#android` owns Android installation and sideloading.
+- `docs/deploy.md#mobile` owns Android and iOS installation, plus Android sideloading.
 
 Update a runbook when its process changes. In `AGENTS.md`, link to the owning
 runbook instead of copying its instructions.

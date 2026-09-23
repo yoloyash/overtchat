@@ -144,7 +144,7 @@ must support WebSocket upgrades; realtime voice uses the app's existing origin.
 
 Coding-agent executables and credentials belong on the Host Connector machine
 or selected SSH host. Configure connections on the web before using them on
-Android.
+Android or iOS.
 
 The connector records its OpenCode helper processes beside its state journal
 in `<state-file>.processes/`. On restart it verifies process identities and
@@ -162,13 +162,14 @@ details and your server's LAN or HTTPS URL. Everyone uses the enabled models
 with their own chats and projects. Only the first account uses public signup;
 administrators create subsequent accounts.
 
-## Android
+## Mobile
 
-Install from [Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile),
-enter your server URL, and sign in. Use an address reachable from the phone;
+Install from [Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile)
+or the [App Store](https://apps.apple.com/us/app/overtchat/id6812165221), enter
+your server URL, and sign in. Use an address reachable from the phone;
 `localhost` refers to the phone itself.
 
-### Sideload an APK
+### Sideload an APK (Android)
 
 1. Open [Releases](https://github.com/yoloyash/overtchat/releases) and choose the
    newest **`mobile-v*`** release (`v*` releases are for the server).
