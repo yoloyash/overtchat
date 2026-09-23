@@ -11,6 +11,7 @@ import {
   installUserService,
 } from "./service.js";
 import { CONNECTOR_VERSION } from "./version.js";
+import { configureServiceLogging } from "./service-logging.js";
 
 type ParsedArgs = {
   command: string;
@@ -150,6 +151,7 @@ async function preflight(): Promise<void> {
 
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
+  if (parsed.command === "run") configureServiceLogging();
   switch (parsed.command) {
     case "service-install":
       if (parsed.values.size > 0) throw new Error("service-install takes no arguments.");

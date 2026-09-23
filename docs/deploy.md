@@ -34,7 +34,7 @@ Agent Connections run as a LaunchAgent and start at login. Enable Docker
 Desktop's start-at-login setting to start the stack automatically.
 
 Connector logs are in `~/Library/Logs/OvertChat/connector.log` and
-`connector.error.log`.
+`connector.error.log`, each limited to 10 MiB with three rotated backups.
 
 ## Choose how to access OvertChat
 
