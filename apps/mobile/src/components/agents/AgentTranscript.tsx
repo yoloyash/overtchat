@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import {
   projectAgentTranscript,
+  agentActiveTurnStart,
   describeAgentActivity,
   describeAgentTool,
   type AgentActivityEntry,
@@ -85,6 +86,7 @@ export function AgentTranscript({
     [],
   );
   const active = snapshot.status === "running";
+  const activeTurnStart = agentActiveTurnStart(items, active);
   return (
     <View style={{ flex: 1 }}>
       <FlashList
@@ -134,7 +136,7 @@ export function AgentTranscript({
         renderItem={({ item, index }) => (
           <TranscriptItem
             speech={speech}
-            streaming={active && index === items.length - 1}
+            turnActive={index >= activeTurnStart}
             item={item}
             active={active}
             disabled={disabled}
@@ -178,7 +180,7 @@ export function AgentTranscript({
 
 const TranscriptItem = memo(function TranscriptItem({
   speech,
-  streaming,
+  turnActive,
   item,
   active,
   disabled,
@@ -188,7 +190,7 @@ const TranscriptItem = memo(function TranscriptItem({
   capabilities,
 }: {
   speech: ReturnType<typeof useSpeech>;
-  streaming: boolean;
+  turnActive: boolean;
   item: AgentTranscriptItem;
   active: boolean;
   capabilities: AgentRuntimeCapabilities;
@@ -204,7 +206,7 @@ const TranscriptItem = memo(function TranscriptItem({
       content = (
         <View>
           <MarkdownBody text={item.text} />
-          {item.actionable && item.messageId && onFork && (
+          {!turnActive && item.actionable && item.messageId && onFork && (
             <AgentForkMenu
               disabled={disabled}
               onFork={(chooseWorkspace) =>
@@ -212,7 +214,7 @@ const TranscriptItem = memo(function TranscriptItem({
               }
             />
           )}
-          {!streaming && (
+          {!turnActive && (
             <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
           )}
         </View>
@@ -266,7 +268,7 @@ const TranscriptItem = memo(function TranscriptItem({
               {step.status === "completed" ? "✓" : "○"} {step.step}
             </AgentText>
           ))}
-          {!streaming && (
+          {!turnActive && (
             <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
           )}
           {item.actionable && (

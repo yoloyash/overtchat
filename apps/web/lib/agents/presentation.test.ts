@@ -2,6 +2,7 @@ import { AGENT_PROVIDERS } from "@overtchat/agent-bridge";
 import { describe, expect, it } from "vitest";
 import {
   agentRewindOptions,
+  agentActiveTurnStart,
   restoreAgentComposer,
   agentActivitySequencePosition,
   agentToolStatus,
@@ -715,5 +716,37 @@ describe("rewind presentation", () => {
   it("preserves the human draft and restores into an empty composer", () => {
     expect(restoreAgentComposer("existing", "previous")).toBe("existing");
     expect(restoreAgentComposer("", "previous")).toBe("previous");
+  });
+});
+
+describe("agentActiveTurnStart", () => {
+  const user = (id: string) => ({ role: "user", id, content: id });
+  const reply = (id: string) => assistant([{ type: "text", text: id }], 1, { id });
+
+  it("keeps all current-turn text and tools active while preserving earlier responses", () => {
+    const messages = [user("previous"), reply("previous-answer"), user("current"), reply("progress")];
+    const start = agentActiveTurnStart(projectAgentTranscript(messages), true);
+    expect(start).toBe(3);
+    const withTool = [...messages, assistant([call("tool", "bash", { command: "ls" })], 2)];
+    expect(agentActiveTurnStart(projectAgentTranscript(withTool), true)).toBe(start);
+    const withAnswer = projectAgentTranscript([...withTool, reply("final-answer")]);
+    expect(agentActiveTurnStart(withAnswer, true)).toBe(start);
+    expect(agentActiveTurnStart(withAnswer, false)).toBe(withAnswer.length);
+  });
+
+  it("preserves completed native turns while a new turn is running", () => {
+    const items = projectAgentTranscript([
+      user("question"), reply("answer"),
+      { role: "turnFooter", messageId: "answer", content: "answer" },
+      reply("next-turn"),
+    ]);
+    expect(agentActiveTurnStart(items, true)).toBe(3);
+  });
+
+  it("treats loaded output without a user boundary as active until the run finishes", () => {
+    const items = projectAgentTranscript([reply("progress"), assistant([call("tool", "bash", {})], 2)]);
+    expect(agentActiveTurnStart(items, true)).toBe(0);
+    expect(agentActiveTurnStart(items, false)).toBe(items.length);
+    expect(agentActiveTurnStart([], true)).toBe(0);
   });
 });

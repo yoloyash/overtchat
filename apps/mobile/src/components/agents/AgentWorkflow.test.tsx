@@ -555,6 +555,33 @@ describe("agent history actions", () => {
     expect(mocks.draft.message).toBe("Original");
   });
 
+  it("hides current-turn speech and fork actions through tool calls until completion", async () => {
+    mocks.snapshot!.status = "running";
+    mocks.snapshot!.messages = [
+      { role: "user", id: "old-user", content: "Earlier question" },
+      { role: "assistant", id: "old-answer", content: [{ type: "text", text: "Earlier answer" }] },
+      { role: "user", id: "current-user", content: "Check the files" },
+      { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking the files" }] },
+      { role: "assistant", id: "tool", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }] },
+    ];
+    const speechButtons = () => container.querySelectorAll('button[aria-label="Read aloud"]');
+    const forkButtons = () => container.querySelectorAll('button[aria-label="Fork conversation"]');
+    await render();
+    expect(speechButtons()).toHaveLength(1);
+    expect(forkButtons()).toHaveLength(1);
+    mocks.snapshot!.messages = [
+      ...mocks.snapshot!.messages,
+      { role: "assistant", id: "final", content: [{ type: "text", text: "Finished checking" }] },
+    ];
+    await render();
+    expect(speechButtons()).toHaveLength(1);
+    expect(forkButtons()).toHaveLength(1);
+    mocks.snapshot!.status = "idle";
+    await render();
+    expect(speechButtons()).toHaveLength(3);
+    expect(forkButtons()).toHaveLength(3);
+  });
+
   it("opens a fork draft with attached history without sending a prompt", async () => {
     mocks.snapshot!.messages = [
       {
