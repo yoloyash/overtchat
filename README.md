@@ -32,7 +32,7 @@ accounts to use the same local models with their own conversations.
 
 ## Quick start
 
-On an **x86-64 or arm64 Linux** server:
+On **Linux or macOS (Intel or Apple Silicon)**, with Docker Desktop running on Mac:
 
 ```sh
 curl -fsSL https://overtchat.com/install | sh

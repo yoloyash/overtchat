@@ -47,6 +47,9 @@ export async function detectDockerCommand(): Promise<DockerCommand | null> {
   if (!(await commandExists("docker"))) return null;
   const direct = await runCommand("docker", ["info"]);
   if (direct.exitCode === 0) return { command: "docker", prefix: [] };
+  if (process.platform === "darwin") {
+    throw new Error("Docker is installed but not ready. Start Docker Desktop, wait for its engine, then retry. Check docker context show if you use another Docker runtime.");
+  }
   if (await commandExists("sudo")) {
     const elevated = await runCommand("sudo", ["-n", "docker", "info"]);
     if (elevated.exitCode === 0) {
@@ -58,6 +61,9 @@ export async function detectDockerCommand(): Promise<DockerCommand | null> {
 }
 
 export async function installDockerEngine(): Promise<void> {
+  if (process.platform !== "linux") {
+    throw new Error("Install and start Docker Desktop for Mac (https://docs.docker.com/desktop/setup/install/mac-install/), then run overtchat setup again.");
+  }
   const response = await fetch("https://get.docker.com", {
     redirect: "follow",
     signal: AbortSignal.timeout(60_000),
@@ -568,6 +574,7 @@ export async function detectExistingInstallation(
 }
 
 export async function detectNvidiaGpus(): Promise<Gpu[]> {
+  if (process.platform !== "linux") return [];
   if (!(await commandExists("nvidia-smi"))) return [];
   let result = await runCommand("nvidia-smi", [
     "--query-gpu=index,uuid,name,memory.total,compute_cap",

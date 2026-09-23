@@ -390,3 +390,27 @@ describe("existing TTS accelerator detection", () => {
     });
   });
 });
+
+describe("macOS Docker discovery", () => {
+  it("does not attempt sudo when Docker Desktop is stopped", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    try {
+      mocks.commandExists.mockResolvedValue(true);
+      mocks.runCommand.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "not running" });
+      const { detectDockerCommand } = await import("./docker.js");
+      await expect(detectDockerCommand()).rejects.toThrow("Start Docker Desktop");
+      expect(mocks.runCommand).toHaveBeenCalledExactlyOnceWith("docker", ["info"]);
+    } finally {
+      platform.mockRestore();
+    }
+  });
+  it("does not offer NVIDIA acceleration on Mac", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    try {
+      await expect(detectNvidiaGpus()).resolves.toEqual([]);
+      expect(mocks.commandExists).not.toHaveBeenCalled();
+    } finally {
+      platform.mockRestore();
+    }
+  });
+});

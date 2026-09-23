@@ -41,10 +41,10 @@ Do not change unrelated manifest fields.
   release, and dispatches promotion.
 - **Realtime voice:** The voice workflow publishes the amd64/arm64 image and
   dispatches promotion.
-- **CLI:** The CLI workflow verifies both binaries, publishes the GitHub
-  release, and dispatches promotion.
-- **Connector:** The connector workflow verifies both binaries, publishes the
-  GitHub release, and dispatches promotion. Increment the bridge protocol only
+- **CLI:** The CLI workflow builds and natively smoke-tests all four
+  Linux/macOS binaries, publishes the GitHub release, and dispatches promotion.
+- **Connector:** The connector workflow builds and natively smoke-tests all four
+  Linux/macOS binaries, publishes the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol.
 - **STT:** The STT workflow publishes both images and dispatches promotion.
@@ -159,6 +159,17 @@ For a CLI release, build the CLI workspace and then verify the bundled version:
 npm run build -w apps/cli --
 node apps/cli/dist/overtchat.mjs version
 ```
+
+CLI and connector assets use `linux-amd64`, `linux-arm64`, `darwin-amd64`, and
+`darwin-arm64` suffixes. Release workflows run each executable's version check
+on its native OS/CPU before publication. Promotion requires checksums for all
+four targets. The macOS bootstrap uses the system `shasum -a 256`.
+
+For macOS deployment changes, use a disposable Mac installation with Docker
+Desktop and a logged-in desktop user. Verify setup, rerunning setup, update,
+connector LaunchAgent restart, LAN/local access, and a CPU TTS/STT round trip.
+Verify the standalone connector installer and its upgrade rollback as well.
+Keep Apple GPU speech support separate from the CPU deployment path.
 
 `promote-release.yml` is the only CI production deploy path. It verifies CLI
 and connector checksums plus the required app/voice/STT platforms before

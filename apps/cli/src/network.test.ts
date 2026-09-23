@@ -25,3 +25,11 @@ it("does not mislabel a public or Tailscale address as a LAN address", () => {
   });
   expect(primaryLanAddress()).toBeNull();
 });
+it("ignores Mac VPN and VM bridges when selecting the Wi-Fi address", () => {
+  vi.spyOn(os, "networkInterfaces").mockReturnValue({
+    utun0: [address("10.0.0.1")],
+    bridge100: [address("192.168.64.1")],
+    en0: [address("192.168.1.30")],
+  });
+  expect(primaryLanAddress()).toBe("192.168.1.30");
+});

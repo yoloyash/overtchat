@@ -1,6 +1,6 @@
 # Management CLI guidance
 
-This workspace is the Linux installer and updater for managed OvertChat
+This workspace is the Linux/macOS installer and updater for managed OvertChat
 installations. It turns a validated release manifest, detected Docker state,
 and operator choices into a managed Compose stack and optional Host Connector.
 

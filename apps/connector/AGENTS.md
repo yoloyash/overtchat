@@ -8,7 +8,7 @@ back using contracts from `@overtchat/agent-bridge`.
 ## Architecture
 
 - `src/cli.ts`, `src/config.ts`, and `src/service.ts` own pairing, persisted
-  credentials, command routing, and systemd user-service installation.
+  credentials, command routing, and systemd/launchd user-service installation.
 - `src/client.ts` owns the server connection, reconnect behavior, command
   stream, event delivery, acknowledgements, and connector instance lock.
 - `src/daemon.ts` dispatches bridge requests, manages live agent sessions, and

@@ -27,7 +27,12 @@ function writeExecutable(filePath: string, contents: string) {
 }
 
 describe("Managed installer", () => {
-  it("falls back cleanly when the process has no controlling terminal", () => {
+  it.each([
+    ["Linux", "x86_64", "linux-amd64"],
+    ["Linux", "aarch64", "linux-arm64"],
+    ["Darwin", "x86_64", "darwin-amd64"],
+    ["Darwin", "arm64", "darwin-arm64"],
+  ])("installs %s/%s without a controlling terminal", (platform, arch, suffix) => {
     const fixtureDirectory = mkdtempSync(
       path.join(os.tmpdir(), "overtchat-managed-installer-test-"),
     );
@@ -51,9 +56,9 @@ exit 0
       path.join(mockBinDirectory, "uname"),
       `#!/bin/sh
 if [ "\${1:-}" = "-s" ]; then
-  echo Linux
+  echo ${platform}
 else
-  echo x86_64
+  echo ${arch}
 fi
 `,
     );
@@ -77,7 +82,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */overtchat-checksums.txt)
-    printf '%s  overtchat-linux-amd64\\n' "$MOCK_ASSET_SHA256" > "$output"
+    printf '%s  overtchat-${suffix}\\n' "$MOCK_ASSET_SHA256" > "$output"
     ;;
   *)
     cat > "$output" <<'MOCK_CLI'

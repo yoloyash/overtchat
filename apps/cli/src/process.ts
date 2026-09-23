@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { commandEnvironment } from "./platform.js";
 
 export type CommandResult = {
   stdout: string;
@@ -22,7 +23,7 @@ export async function runCommand(
   return await new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
-      env: options.environment ?? process.env,
+      env: commandEnvironment(options.environment ?? process.env),
       stdio: options.inherit ? ["pipe", "inherit", "inherit"] : "pipe",
       timeout: options.timeoutMs,
     });

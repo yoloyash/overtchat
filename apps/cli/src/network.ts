@@ -2,7 +2,7 @@ import os from "node:os";
 
 export function primaryLanAddress(): string | null {
   const candidates = Object.entries(os.networkInterfaces())
-    .filter(([name]) => !/^(?:lo$|docker|br-|veth|tailscale|tun\d|tap\d|virbr)/u.test(name))
+    .filter(([name]) => !/^(?:lo\d*$|docker|br-|bridge|veth|tailscale|utun\d|tun\d|tap\d|virbr|awdl|llw)/u.test(name))
     .flatMap(([, addresses]) => addresses ?? [])
     .filter(
       (address) =>

@@ -59,7 +59,7 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - name: Build Linux binaries
+      - name: Build Linux and macOS binaries
         run: |
           mkdir -p dist/cli-release
           bun build apps/cli/src/cli.ts \
@@ -70,9 +70,15 @@ jobs:
             --compile \
             --target=bun-linux-arm64 \
             --outfile dist/cli-release/overtchat-linux-arm64
+          bun build apps/cli/src/cli.ts \
+            --compile --target=bun-darwin-x64 \
+            --outfile dist/cli-release/overtchat-darwin-amd64
+          bun build apps/cli/src/cli.ts \
+            --compile --target=bun-darwin-arm64 \
+            --outfile dist/cli-release/overtchat-darwin-arm64
           (
             cd dist/cli-release
-            sha256sum overtchat-linux-amd64 overtchat-linux-arm64 \
+            sha256sum overtchat-darwin-amd64 overtchat-darwin-arm64 overtchat-linux-amd64 overtchat-linux-arm64 \
               > overtchat-checksums.txt
           )
 
@@ -83,9 +89,39 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  smoke:
+    needs: build
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux-amd64
+          - runner: ubuntu-24.04-arm
+            platform: linux-arm64
+          - runner: macos-15-intel
+            platform: darwin-amd64
+          - runner: macos-15
+            platform: darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: overtchat-cli-release
+          path: release
+      - name: Run the released executable on its target OS and CPU
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          chmod +x "release/overtchat-$PLATFORM"
+          test "$("release/overtchat-$PLATFORM" version)" = "$VERSION"
+
   publish:
     if: github.event_name != 'pull_request'
-    needs: build
+    needs: [build, smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -139,6 +175,8 @@ jobs:
         run: |
           expected_assets=$(printf '%s\n' \
             overtchat-checksums.txt \
+            overtchat-darwin-amd64 \
+            overtchat-darwin-arm64 \
             overtchat-linux-amd64 \
             overtchat-linux-arm64)
           actual_assets=$(gh release view "$TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort)
@@ -148,9 +186,11 @@ jobs:
           trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
           gh release download "$TAG" --dir "$verification_directory" \
             --pattern overtchat-checksums.txt \
+            --pattern overtchat-darwin-amd64 \
+            --pattern overtchat-darwin-arm64 \
             --pattern overtchat-linux-amd64 \
             --pattern overtchat-linux-arm64
-          for asset in overtchat-checksums.txt overtchat-linux-amd64 overtchat-linux-arm64; do
+          for asset in overtchat-checksums.txt overtchat-darwin-amd64 overtchat-darwin-arm64 overtchat-linux-amd64 overtchat-linux-arm64; do
             cmp "release/$asset" "$verification_directory/$asset"
           done
           (cd "$verification_directory" && sha256sum --check overtchat-checksums.txt)

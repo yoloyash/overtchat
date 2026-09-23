@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
+  HOST_CONNECTOR_RELEASE_VERSION,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   type HostConnectorEventBatch,
   type HostConnectorEventPayload,
@@ -133,7 +134,7 @@ describe.sequential("connector client compatibility", () => {
 
     const headers = new Headers(requests[0]!.init?.headers);
     expect(headers.get("x-overtchat-connector-version")).toBeNull();
-    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.11.2");
+    expect(headers.get("x-overtchat-connector-build-version")).toBe(HOST_CONNECTOR_RELEASE_VERSION);
     expect(headers.get("x-overtchat-connector-protocol")).toBe(
       String(HOST_CONNECTOR_PROTOCOL_VERSION),
     );

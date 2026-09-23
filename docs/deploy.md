@@ -1,7 +1,7 @@
 # Deploy
 
-Requires x86-64 or arm64 Linux. The guided manager installs and updates
-OvertChat with Docker Compose.
+Supports x86-64/arm64 Linux and Intel/Apple Silicon Macs. The guided manager
+installs and updates OvertChat with Docker Compose.
 
 ## Install
 
@@ -10,8 +10,8 @@ curl -fsSL https://overtchat.com/install | sh
 ```
 
 Choose where to access OvertChat, local search, speech, and voice services,
-and whether to check for updates. The wizard installs Docker if needed and
-generates the configuration and secrets; no `.env` file editing is needed.
+and whether to check for updates. The wizard generates the configuration and
+secrets; no `.env` file editing is needed. On Linux, it installs Docker if needed.
 Open the printed URL, create the administrator account,
 and add your model endpoint in the web app.
 
@@ -21,8 +21,36 @@ overtchat status    # check versions and service status
 overtchat update    # update the managed stack
 ```
 
-Voice requires both STT and TTS. Bundled Parakeet and Kokoro can each use CPU or
-NVIDIA GPU; setup can install NVIDIA Container Toolkit on supported systems.
+### macOS
+
+Install and start [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/)
+first, then run the same install command in Terminal as your normal user.
+The manager also detects Docker Desktop from its standard application location
+when `docker` is missing from the shell PATH. No Node.js or npm installation is
+required. An existing local Docker runtime with Compose v2 can also be used;
+Docker Desktop is the tested Mac path.
+
+Bundled Kokoro TTS and Parakeet STT run using the existing CPU images, natively
+on ARM64 for Apple Silicon and AMD64 for Intel. Apple GPU acceleration is not
+included. Existing external speech endpoints remain available.
+
+Agent Connections install a per-user LaunchAgent at
+`~/Library/LaunchAgents/com.overtchat.connector.plist`. Install while logged in
+to the Mac desktop; SSH setup works for that same logged-in user. The connector
+starts at login and restarts after a crash. Docker Desktop must also be running
+(enable its start-at-login setting for automatic startup). This is a desktop
+login deployment, not an always-on system daemon: logout, sleep, or stopping
+Docker can interrupt availability.
+
+Connector logs are in `~/Library/Logs/OvertChat/connector.log` and
+`connector.error.log`. The service captures the installer's PATH and includes
+Homebrew and `~/.local/bin`; rerun setup after changing agent executable paths.
+Configuration and data use the same locations documented below on both OSes.
+
+### Speech services
+
+Voice requires both STT and TTS. Bundled Parakeet and Kokoro can each use CPU
+or, on Linux, NVIDIA GPU; setup can install NVIDIA Container Toolkit on supported systems.
 Kokoro needs roughly 3–4 GB VRAM, so choose CPU if GPU memory is limited.
 
 ## Choose how to access OvertChat
@@ -67,10 +95,12 @@ can choose another HTTPS port. Existing Serve routes and public Funnel
 configuration are inspected before any changes. Setup only manages its own
 recorded route and never resets the device's Serve configuration.
 
-The current Linux user needs permission to manage Tailscale Serve. If needed,
+On Linux, the current user needs permission to manage Tailscale Serve. If needed,
 run `sudo tailscale set --operator=<your-linux-username>`. If HTTPS needs enabling,
 complete the link printed by Tailscale and retry. See
 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
+On macOS, setup also detects the CLI bundled inside `/Applications/Tailscale.app`;
+connect and sign in through the app before setup.
 The first HTTPS request may wait while Tailscale issues a certificate. If the
 initial check times out, wait briefly and retry.
 

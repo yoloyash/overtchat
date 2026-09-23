@@ -157,3 +157,15 @@ describe("Tailscale Serve ownership", () => {
     expect(runCommand).toHaveBeenCalledTimes(1);
   });
 });
+
+it("finds the CLI bundled in Tailscale.app on Mac", async () => {
+  const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+  try {
+    vi.mocked(commandExists).mockImplementation(async (command) => command === "/Applications/Tailscale.app/Contents/MacOS/Tailscale");
+    vi.mocked(runCommand).mockResolvedValue(result({ BackendState: "Running", Self: { DNSName: "mac.example.ts.net.", Online: true } }));
+    await expect(detectTailscale()).resolves.toEqual({ hostname: "mac.example.ts.net" });
+    expect(runCommand).toHaveBeenCalledWith("/Applications/Tailscale.app/Contents/MacOS/Tailscale", ["status", "--json"], { timeoutMs: 10_000 });
+  } finally {
+    platform.mockRestore();
+  }
+});

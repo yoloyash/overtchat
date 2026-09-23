@@ -1,5 +1,18 @@
-import { commandExists, runCommand } from "./process.js";
+import { commandExists, runCommand, type RunOptions } from "./process.js";
 import type { AccessConfig } from "./types.js";
+
+async function tailscaleCommand(): Promise<string | null> {
+  if (await commandExists("tailscale")) return "tailscale";
+  const bundled = "/Applications/Tailscale.app/Contents/MacOS/Tailscale";
+  if (process.platform === "darwin" && await commandExists(bundled)) return bundled;
+  return null;
+}
+
+async function runTailscale(args: string[], options: RunOptions = {}) {
+  const command = await tailscaleCommand();
+  if (!command) throw new Error("Tailscale not found. Install and connect Tailscale first.");
+  return runCommand(command, args, options);
+}
 
 type Route = NonNullable<AccessConfig["tailscaleRoute"]>;
 type ServeConfig = {
@@ -21,12 +34,12 @@ export async function detectTailscale(): Promise<{
   hostname?: string;
   problem?: string;
 }> {
-  if (!(await commandExists("tailscale")))
+  if (!(await tailscaleCommand()))
     return {
       problem:
         "Tailscale not found. Install Tailscale, then run overtchat setup again.",
     };
-  const result = await runCommand("tailscale", ["status", "--json"], {
+  const result = await runTailscale(["status", "--json"], {
     timeoutMs: 10_000,
   });
   let status: {
@@ -43,10 +56,14 @@ export async function detectTailscale(): Promise<{
   }
   const problems: Record<string, string> = {
     NeedsLogin:
-      "Tailscale needs sign-in. Run sudo tailscale up, complete sign-in, then retry.",
+      process.platform === "darwin"
+        ? "Tailscale needs sign-in. Open Tailscale, sign in, then retry."
+        : "Tailscale needs sign-in. Run sudo tailscale up, complete sign-in, then retry.",
     NeedsMachineAuth:
       "This device is waiting for approval in the Tailscale admin console. Approve it, then retry.",
-    Stopped: "Tailscale is disconnected. Run sudo tailscale up, then retry.",
+    Stopped: process.platform === "darwin"
+      ? "Tailscale is disconnected. Connect in the Tailscale app, then retry."
+      : "Tailscale is disconnected. Run sudo tailscale up, then retry.",
   };
   if (status.BackendState !== "Running")
     return {
@@ -72,7 +89,7 @@ export async function detectTailscale(): Promise<{
 }
 
 async function serveConfig(): Promise<ServeConfig> {
-  const result = await runCommand("tailscale", ["serve", "status", "--json"], {
+  const result = await runTailscale(["serve", "status", "--json"], {
     timeoutMs: 10_000,
   });
   if (result.exitCode !== 0)
@@ -126,8 +143,7 @@ export async function startServe(
   previous?: Route,
 ): Promise<void> {
   await checkServeRoute(route, previous);
-  const result = await runCommand(
-    "tailscale",
+  const result = await runTailscale(
     [
       "serve",
       "--bg",
@@ -171,8 +187,7 @@ export async function removeServe(route: Route): Promise<void> {
     throw new Error(
       "The previous OvertChat Tailscale route was changed outside setup. Remove or move that route with tailscale serve before changing access mode.",
     );
-  const result = await runCommand(
-    "tailscale",
+  const result = await runTailscale(
     ["serve", "--bg", `--https=${route.port}`, "--set-path=/", "off"],
     { timeoutMs: 10_000 },
   );

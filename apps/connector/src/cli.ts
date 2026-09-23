@@ -151,6 +151,10 @@ async function preflight(): Promise<void> {
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   switch (parsed.command) {
+    case "service-install":
+      if (parsed.values.size > 0) throw new Error("service-install takes no arguments.");
+      console.log(`Service installed at ${await installUserService()}`);
+      return;
     case "pair":
       await pair(parsed.values);
       return;
