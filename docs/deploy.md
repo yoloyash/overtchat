@@ -21,37 +21,20 @@ overtchat status    # check versions and service status
 overtchat update    # update the managed stack
 ```
 
+Voice requires both STT and TTS. Bundled Parakeet and Kokoro use CPU on macOS
+and support CPU or NVIDIA GPU on Linux. Setup can install NVIDIA Container
+Toolkit on supported systems. Kokoro needs roughly 3–4 GB VRAM, so choose CPU
+if GPU memory is limited.
+
 ### macOS
 
-Install and start [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/)
-first, then run the same install command in Terminal as your normal user.
-The manager also detects Docker Desktop from its standard application location
-when `docker` is missing from the shell PATH. No Node.js or npm installation is
-required. An existing local Docker runtime with Compose v2 can also be used;
-Docker Desktop is the tested Mac path.
-
-Bundled Kokoro TTS and Parakeet STT run using the existing CPU images, natively
-on ARM64 for Apple Silicon and AMD64 for Intel. Apple GPU acceleration is not
-included. Existing external speech endpoints remain available.
-
-Agent Connections install a per-user LaunchAgent at
-`~/Library/LaunchAgents/com.overtchat.connector.plist`. Install while logged in
-to the Mac desktop; SSH setup works for that same logged-in user. The connector
-starts at login and restarts after a crash. Docker Desktop must also be running
-(enable its start-at-login setting for automatic startup). This is a desktop
-login deployment, not an always-on system daemon: logout, sleep, or stopping
-Docker can interrupt availability.
+Install and start [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/),
+then run the installer as your normal user while logged in to the Mac desktop.
+Agent Connections run as a LaunchAgent and start at login. Enable Docker
+Desktop's start-at-login setting to start the stack automatically.
 
 Connector logs are in `~/Library/Logs/OvertChat/connector.log` and
-`connector.error.log`. The service captures the installer's PATH and includes
-Homebrew and `~/.local/bin`; rerun setup after changing agent executable paths.
-Configuration and data use the same locations documented below on both OSes.
-
-### Speech services
-
-Voice requires both STT and TTS. Bundled Parakeet and Kokoro can each use CPU
-or, on Linux, NVIDIA GPU; setup can install NVIDIA Container Toolkit on supported systems.
-Kokoro needs roughly 3–4 GB VRAM, so choose CPU if GPU memory is limited.
+`connector.error.log`.
 
 ## Choose how to access OvertChat
 
@@ -99,8 +82,6 @@ On Linux, the current user needs permission to manage Tailscale Serve. If needed
 run `sudo tailscale set --operator=<your-linux-username>`. If HTTPS needs enabling,
 complete the link printed by Tailscale and retry. See
 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).
-On macOS, setup also detects the CLI bundled inside `/Applications/Tailscale.app`;
-connect and sign in through the app before setup.
 The first HTTPS request may wait while Tailscale issues a certificate. If the
 initial check times out, wait briefly and retry.
 
