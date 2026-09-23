@@ -88,21 +88,35 @@ The same workflow owns iOS production builds on GitHub-hosted `macos-15`
 with Xcode 26.3. EAS CLI 24.4.2 runs `build --local`, so compilation uses the
 GitHub runner rather than the EAS hosted-build quota. iOS production signing
 uses the existing EAS-managed distribution certificate and provisioning
-profile. The existing GitHub `EXPO_TOKEN` secret authenticates both build and
-upload; EAS holds the App Store Connect API key for submissions. The public
-App Store app ID is configured in `apps/mobile/eas.json`. No Apple password or
-MacBook keychain is needed on the hosted runner.
+profile. The GitHub `EXPO_TOKEN` secret authenticates the build and signing
+credential download. Uploads go directly to Apple from the same Mac using
+Xcode's `altool`; iOS releases do not use EAS Submit or its queue.
 
-1. Manual dispatch accepts `platform: all`, `android`, or `ios` (default `all`).
-   It never uploads to either store, even when dispatched against a tag.
+Configure these GitHub Actions repository secrets for uploads:
+
+- `ASC_API_KEY_ID`: the App Store Connect team API key ID.
+- `ASC_API_ISSUER_ID`: the key's issuer ID.
+- `ASC_API_PRIVATE_KEY`: the complete `.p8` private key, including PEM headers
+  and newlines. Supply it through GitHub's secrets UI or `gh secret set` via
+  standard input; never commit it or put it in command-line arguments.
+
+An existing App Store Connect API key can be reused if it has permission to
+upload builds for OvertChat. The upload script writes the key to a temporary,
+private directory and removes it on exit; the hosted runner is also disposable.
+No Apple password or personal MacBook keychain is needed.
+
+1. Manual dispatch with `platform: all`, `android`, or `ios` (default `all`)
+   only builds and validates, even when dispatched against a tag. The explicit
+   `platform: ios-release` option builds, verifies, and uploads only iOS.
 2. The iOS job checks committed versions, mobile types, and readable production
    Sentry settings, then builds and verifies the signed IPA: bundle ID, version,
    build number, arm64 executable, production push entitlement, and App Store
    provisioning. This is an archive check, not an iOS simulator/UI smoke test.
 3. A `mobile-v*` tag builds both platforms independently. After iOS verification,
-   its upload job sends that exact IPA to App Store Connect through EAS Submit
-   and waits for the submission result. Failure on either platform does not
-   prevent the other platform from completing.
+   the Mac uploads that exact IPA directly to App Store Connect and waits for
+   delivery, with a 30-minute upload timeout. Apple processing happens afterward.
+   iOS jobs are serialized across refs to avoid overlapping uploads. Failure on
+   either platform does not prevent the other platform from completing.
 4. After Apple processes the upload, select that build in App Store Connect,
    complete the version's release details, and submit it for App Review.
    The workflow does not change review submissions or store metadata.
@@ -112,6 +126,21 @@ To validate iOS without uploading a build:
 ```bash
 gh workflow run mobile-eas.yml --ref <branch> -f platform=ios
 ```
+
+To rebuild and upload iOS from a trusted release commit or reviewed branch
+without creating another tag or releasing Android:
+
+```bash
+gh workflow run mobile-eas.yml --ref <ref> -f platform=ios-release
+```
+
+This uploads to App Store Connect; it does not submit for App Review. Before
+recovery from a failed or timed-out upload, check App Store Connect's TestFlight
+builds and any earlier EAS submission. Cancel a queued EAS submission and confirm
+it is canceled before switching upload paths. Reuse the committed build number
+only if Apple has not received it; otherwise increment the shared Android/iOS
+build number. Do not move an existing release tag. Rerunning an old GitHub run
+uses its original workflow, so dispatch the revised workflow ref explicitly.
 
 Before a new tagged release, increment the committed Android/iOS build number
 and set the intended public version. A build number already uploaded to Apple
