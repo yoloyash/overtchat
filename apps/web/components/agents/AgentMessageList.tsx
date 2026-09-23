@@ -35,6 +35,7 @@ import {
 import { remarkAgentLinks } from "@/lib/agents/links";
 import {
   agentActivitySequencePosition,
+  agentActiveTurnStart,
   describeAgentActivity,
   presentAgentError,
   projectAgentTranscript,
@@ -181,6 +182,7 @@ export function AgentMessageList({
     return groups;
   }, [transcript]);
   const trailingItem = transcript.at(-1);
+  const activeTurnStart = agentActiveTurnStart(transcript, streaming);
   const activityAlreadyVisible =
     activity === "working" &&
     streaming &&
@@ -238,6 +240,7 @@ export function AgentMessageList({
                           speech={speech}
                           item={item}
                           active={streaming && index === transcript.length - 1}
+                          turnActive={index >= activeTurnStart}
                           hasTurnFooter={
                             item.type === "assistant_text" &&
                             item.messageId !== null &&
@@ -292,6 +295,7 @@ function AgentTranscriptRow({
   speech,
   item,
   active,
+  turnActive,
   hasTurnFooter,
   rewindOptions,
   canForkMessages,
@@ -304,6 +308,7 @@ function AgentTranscriptRow({
   speech: ReturnType<typeof useSpeech>;
   item: AgentTranscriptItem;
   active: boolean;
+  turnActive: boolean;
   hasTurnFooter: boolean;
   rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
@@ -329,7 +334,7 @@ function AgentTranscriptRow({
         <Markdown streaming={active}>{item.text}</Markdown>
         {!hasTurnFooter && (
           <div className="mt-2">
-            <MessageActions show={!active}>
+            <MessageActions show={!turnActive}>
               <AgentCopyButton text={item.text} disabled={actionsDisabled} />
               <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
               {canForkMessages && item.actionable && item.messageId && (
@@ -367,9 +372,9 @@ function AgentTranscriptRow({
     return (
       <AgentPlanCard
         speech={speech}
-        active={active}
+        active={turnActive}
         item={item}
-        disabled={actionsDisabled || active}
+        disabled={actionsDisabled || turnActive}
         onImplement={() => onImplementPlan(item.text)}
       />
     );

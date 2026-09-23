@@ -492,6 +492,27 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
       timestamp: 2,
     },
   ];
+  const completedMessages = snapshot.messages;
+  snapshot.status = "running";
+  snapshot.messages = [
+    ...completedMessages,
+    { role: "user", id: "current-user", content: "Keep checking", timestamp: 3 },
+    { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking the files" }], timestamp: 4 },
+    { role: "assistant", id: "tool", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }], timestamp: 5 },
+  ];
+  await page.reload();
+  const transcriptActions = page.getByTestId("agent-message-list").locator('[data-slot="message-actions"]');
+  await expect(transcriptActions).toHaveCount(1);
+  await page.getByText("Original answer", { exact: true }).hover();
+  await expect(transcriptActions).toHaveCSS("opacity", "1");
+  snapshot.messages.push({ role: "assistant", id: "final", content: [{ type: "text", text: "Finished checking" }], timestamp: 6 });
+  await page.reload();
+  await expect(page.getByText("Finished checking", { exact: true })).toBeVisible();
+  await expect(transcriptActions).toHaveCount(1);
+  snapshot.status = "idle";
+  await page.reload();
+  await expect(transcriptActions).toHaveCount(3);
+  snapshot.messages = completedMessages;
   await page.reload();
   await page.getByText("Original answer", { exact: true }).hover();
   const messageActions = page.locator('[data-slot="message-actions"]');

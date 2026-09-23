@@ -142,6 +142,23 @@ export type AgentToolStatus =
   | "failed"
   | "stopped";
 
+export function agentActiveTurnStart(
+  items: readonly AgentTranscriptItem[],
+  running: boolean,
+): number {
+  if (!running) return items.length;
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (
+      item.type === "turn_footer" ||
+      (item.type === "message" && roleOf(item.message) === "user")
+    ) {
+      return index + 1;
+    }
+  }
+  return 0;
+}
+
 export type AgentToolPresentation = {
   category: AgentToolCategory;
   label: string;
