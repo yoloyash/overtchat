@@ -121,6 +121,16 @@ No Apple password or personal MacBook keychain is needed.
    complete the version's release details, and submit it for App Review.
    The workflow does not change review submissions or store metadata.
 
+The iOS app declares `ios.config.usesNonExemptEncryption: false` in
+`apps/mobile/app.json`. Expo writes `ITSAppUsesNonExemptEncryption = false`
+into the built Info.plist so future uploads do not require the repeated
+encryption questionnaire. This reflects the current use of Apple-provided
+networking encryption and Keychain storage through SecureStore; reassess the
+declaration if the app adds its own encryption implementation. It applies only
+to newly built archives. For an earlier upload without this declaration, answer
+the export-compliance questions in App Store Connect; no rebuild is needed just
+to supply that answer. See [Expo's encryption prompt guidance](https://docs.expo.dev/versions/latest/sdk/securestore/#exempting-encryption-prompt).
+
 To validate iOS without uploading a build:
 
 ```bash
