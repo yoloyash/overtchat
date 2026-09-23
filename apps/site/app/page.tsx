@@ -63,7 +63,7 @@ const steps: Array<{
   {
     number: "03",
     title: "Let them just chat",
-    body: "They sign in from the web or Android app. Nobody else needs an inference URL, a shared API key, or a lesson in your model stack.",
+    body: "They sign in from the web, Android, or iOS app. Nobody else needs an inference URL, a shared API key, or a lesson in your model stack.",
   },
 ];
 
@@ -401,16 +401,24 @@ export default function HomePage() {
             <p className="eyebrow">Away from the desk</p>
             <h2>Same server. Smaller screen.</h2>
             <p>
-              The native Android app connects straight to OvertChat. Chats,
-              attachments, projects, search, and voice follow without moving
-              into a separate mobile backend.
+              The native Android and iOS apps connect straight to OvertChat.
+              Chats, attachments, projects, search, and voice follow without
+              moving into a separate mobile backend.
             </p>
-            <a
-              href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"
-              className="text-link"
-            >
-              Get it on Google Play <ArrowRight aria-hidden="true" />
-            </a>
+            <div className="store-links">
+              <a
+                href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"
+                className="text-link"
+              >
+                Get it on Google Play <ArrowRight aria-hidden="true" />
+              </a>
+              <a
+                href="https://apps.apple.com/us/app/overtchat/id6812165221"
+                className="text-link"
+              >
+                Get it on the App Store <ArrowRight aria-hidden="true" />
+              </a>
+            </div>
           </div>
         </div>
       </section>

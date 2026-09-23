@@ -11,6 +11,7 @@
   <a href="https://github.com/yoloyash/overtchat/releases"><img src="https://img.shields.io/github/v/release/yoloyash/overtchat?label=release&amp;color=63734b" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-63734b" alt="MIT license"></a>
   <a href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"><img src="https://img.shields.io/badge/Android-Google_Play-63734b?logo=googleplay&amp;logoColor=white" alt="Android on Google Play"></a>
+  <a href="https://apps.apple.com/us/app/overtchat/id6812165221"><img src="https://img.shields.io/badge/iOS-App_Store-63734b?logo=apple&amp;logoColor=white" alt="iOS on the App Store"></a>
 </p>
 
 <p align="center">
@@ -71,7 +72,8 @@ overtchat update    # update the managed installation
   gets access, and manage your own backups. No OvertChat cloud account or
   usage analytics.
 - **One setup for the household.** Add accounts for your family and share your
-  local models. Each person gets their own chats and projects on web and Android.
+  local models. Each person gets their own chats and projects on web, Android,
+  and iOS.
   [Set up family access.](docs/deploy.md#share-with-your-family)
 
 ## Talk it through
@@ -108,11 +110,13 @@ search queries go to the providers used.
 
 ## Take your conversations with you
 
-Use the responsive web app or connect the **native Android app** to your own
-server. Your chats, projects, files, and Agent Connections come with you.
+Use the responsive web app or connect the **native Android and iOS apps** to
+your own server. Your chats, projects, files, and Agent Connections come with
+you.
 
 [Get it on Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile)
-· [Install an APK](docs/deploy.md#sideload-an-apk)
+· [Get it on the App Store](https://apps.apple.com/us/app/overtchat/id6812165221)
+· [Install an APK](docs/deploy.md#sideload-an-apk-android)
 
 <p align="center">
   <img src=".github/assets/android-chat.png" alt="A local model conversation in OvertChat for Android, in dark mode" width="300">
@@ -155,7 +159,7 @@ and voice brought together by a guided installer.
 ## Contribute and learn more
 
 [Development setup](docs/development.md) ·
-[Android installation](docs/deploy.md#android) ·
+[Mobile apps](docs/deploy.md#mobile) ·
 [Release process](docs/release.md) ·
 [README media](docs/readme-media.md) ·
 [Privacy policy](https://overtchat.com/privacy/) ·
