@@ -1,3 +1,4 @@
+import { releaseAsset } from "./platform.js";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -180,15 +181,6 @@ export async function latestReleaseManifest(): Promise<ReleaseManifest> {
   return parseReleaseManifest(await response.json());
 }
 
-function cliAsset(): string {
-  if (process.platform !== "linux") {
-    throw new Error("The managed OvertChat CLI currently supports Linux.");
-  }
-  if (process.arch === "x64") return "overtchat-linux-amd64";
-  if (process.arch === "arm64") return "overtchat-linux-arm64";
-  throw new Error(`The OvertChat CLI does not support ${process.arch}.`);
-}
-
 function checksumFor(contents: string, asset: string): string {
   for (const line of contents.split(/\r?\n/u)) {
     const [checksum, filename] = line.trim().split(/\s+/u);
@@ -211,7 +203,7 @@ async function download(url: string): Promise<Uint8Array> {
 function currentExecutable(): string | null {
   const executable = process.execPath;
   const basename = path.basename(executable);
-  return basename === "overtchat" || basename.startsWith("overtchat-linux-")
+  return basename === "overtchat" || /^overtchat-(?:linux|darwin)-(?:amd64|arm64)$/u.test(basename)
     ? executable
     : null;
 }
@@ -224,7 +216,7 @@ export async function updateCliIfNeeded(
   // Source/development runs use node, tsx, or bun. Never overwrite those.
   if (!executable) return null;
 
-  const asset = cliAsset();
+  const asset = releaseAsset("overtchat");
   const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/cli-v${manifest.cliVersion}`;
   const temporaryDirectory = await mkdtemp(
     path.join(path.dirname(executable), ".overtchat-update-"),

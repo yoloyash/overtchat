@@ -241,7 +241,7 @@ export async function promptAccess(
       publicUrl = `https://${hostname}${httpsPort === 443 ? "" : `:${httpsPort}`}`;
       access.connectionStatus = "pending";
       note(
-        `OvertChat will configure private HTTPS access at ${publicUrl}.\nTailscale must allow this user to manage Serve. If needed, run sudo tailscale set --operator=<your-linux-username>.`,
+        `OvertChat will configure private HTTPS access at ${publicUrl}.\n${process.platform === "darwin" ? "Keep Tailscale connected on this Mac." : "Tailscale must allow this user to manage Serve. If needed, run sudo tailscale set --operator=<your-linux-username>."}`,
         "Tailscale access",
       );
     }

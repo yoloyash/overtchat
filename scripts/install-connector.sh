@@ -2,7 +2,7 @@
 set -eu
 
 repository="yoloyash/overtchat"
-connector_version="0.11.2"
+connector_version="0.12.0"
 server=""
 pair_code=""
 connector_name=""
@@ -50,9 +50,47 @@ if [ "$upgrade" = "true" ]; then
 else
   [ -n "$server" ] && [ -n "$pair_code" ] || { usage; exit 2; }
 fi
-[ "$(uname -s)" = "Linux" ] || {
-  echo "The OvertChat Host Connector currently supports Linux." >&2
-  exit 1
+case "$(uname -s)" in
+  Linux) platform="linux"; checksum_command="sha256sum"; service_command="systemctl" ;;
+  Darwin) platform="darwin"; checksum_command="shasum"; service_command="launchctl" ;;
+  *) echo "The OvertChat Host Connector supports Linux and macOS." >&2; exit 1 ;;
+esac
+
+checksum() {
+  if [ "$platform" = "darwin" ]; then shasum -a 256 "$1"; else sha256sum "$1"; fi
+}
+
+launch_domain="gui/$(id -u)"
+launch_service="$launch_domain/com.overtchat.connector"
+launch_plist="${HOME:?}/Library/LaunchAgents/com.overtchat.connector.plist"
+stopped_pid=""
+
+service_active() {
+  if [ "$platform" = "darwin" ]; then
+    launchctl print "$launch_service" 2>/dev/null | grep -q 'state = running'
+  else
+    systemctl --user is-active --quiet overtchat-connector.service
+  fi
+}
+
+service_stop() {
+  if [ "$platform" = "darwin" ]; then
+    stopped_pid=""
+    if service_details=$(launchctl print "$launch_service" 2>/dev/null); then
+      stopped_pid=$(printf '%s\n' "$service_details" | awk '$1 == "pid" && $2 == "=" { print $3; exit }')
+      launchctl bootout "$launch_service"
+    fi
+  else
+    systemctl --user stop overtchat-connector.service
+  fi
+}
+
+service_start() {
+  if [ "$platform" = "darwin" ]; then
+    launchctl enable "$launch_service" && launchctl bootstrap "$launch_domain" "$launch_plist"
+  else
+    systemctl --user start overtchat-connector.service
+  fi
 }
 
 case "$(uname -m)" in
@@ -64,7 +102,7 @@ case "$(uname -m)" in
     ;;
 esac
 
-for command in awk cp curl sed sha256sum install systemctl; do
+for command in awk cp curl sed "$checksum_command" install "$service_command"; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Required command not found: $command" >&2
     exit 1
@@ -76,7 +114,7 @@ wait_for_stable_service() {
   active_streak=0
   while [ "$attempts" -lt 15 ]; do
     attempts=$((attempts + 1))
-    if systemctl --user is-active --quiet overtchat-connector.service; then
+    if service_active; then
       active_streak=$((active_streak + 1))
       if [ "$active_streak" -ge 3 ]; then
         return 0
@@ -92,7 +130,12 @@ wait_for_stable_service() {
 wait_for_stopped_service() {
   attempts=0
   while [ "$attempts" -lt 15 ]; do
-    if ! systemctl --user is-active --quiet overtchat-connector.service; then
+    if [ "$platform" = "darwin" ]; then
+      if ! launchctl print "$launch_service" >/dev/null 2>&1 &&
+        { [ -z "$stopped_pid" ] || ! kill -0 "$stopped_pid" 2>/dev/null; }; then
+        return 0
+      fi
+    elif ! service_active; then
       return 0
     fi
     attempts=$((attempts + 1))
@@ -102,51 +145,102 @@ wait_for_stopped_service() {
 }
 
 if [ "$upgrade" = "true" ]; then
-  unit_definition=$(systemctl --user cat overtchat-connector.service 2>/dev/null) || {
-    echo "The existing overtchat-connector.service user service was not found." >&2
-    echo "Set up the connector from OvertChat Settings -> Connections first." >&2
-    exit 1
-  }
-  expected_exec_start="ExecStart=\"${HOME:?}/.local/bin/overtchat-connector\" \"run\""
-  unit_exec_start=$(printf '%s\n' "$unit_definition" | sed -n '/^[[:space:]]*ExecStart=/p')
-  [ "$unit_exec_start" = "$expected_exec_start" ] || {
-    echo "The connector service does not use the installer-managed Host Connector command." >&2
-    echo "Back up custom service state manually before upgrading." >&2
-    exit 1
-  }
-  effective_exec_start=$(
-    systemctl --user show overtchat-connector.service \
-      --property=ExecStart --value
-  ) || {
-    echo "Unable to inspect the connector service command." >&2
-    exit 1
-  }
-  case "$effective_exec_start" in
-    "{ path=${HOME:?}/.local/bin/overtchat-connector ; argv[]=${HOME:?}/.local/bin/overtchat-connector run ; "*) ;;
-    *)
-      echo "The connector service's effective command is not installer-managed." >&2
+  if [ "$platform" = "linux" ]; then
+    unit_definition=$(systemctl --user cat overtchat-connector.service 2>/dev/null) || {
+      echo "The existing overtchat-connector.service user service was not found." >&2
+      echo "Set up the connector from OvertChat Settings -> Connections first." >&2
+      exit 1
+    }
+    expected_exec_start="ExecStart=\"${HOME:?}/.local/bin/overtchat-connector\" \"run\""
+    unit_exec_start=$(printf '%s\n' "$unit_definition" | sed -n '/^[[:space:]]*ExecStart=/p')
+    [ "$unit_exec_start" = "$expected_exec_start" ] || {
+      echo "The connector service does not use the installer-managed Host Connector command." >&2
       echo "Back up custom service state manually before upgrading." >&2
       exit 1
-      ;;
-  esac
-  case "$unit_definition" in
-    *Environment=*|*EnvironmentFile=*)
-      echo "The connector service has a custom environment that this upgrader cannot safely inspect." >&2
-      echo "Back up custom service state manually before upgrading." >&2
+    }
+    effective_exec_start=$(
+      systemctl --user show overtchat-connector.service \
+        --property=ExecStart --value
+    ) || {
+      echo "Unable to inspect the connector service command." >&2
       exit 1
-      ;;
-  esac
-  service_manager_environment=$(systemctl --user show-environment) || {
-    echo "Unable to inspect the systemd user service environment." >&2
-    exit 1
-  }
-  case "$service_manager_environment" in
-    *OVERTCHAT_CONNECTOR_CONFIG=*|*OVERTCHAT_CONNECTOR_STATE=*|*OVERTCHAT_CONNECTOR_TIMELINES=*|*OVERTCHAT_CONNECTOR_LOCK=*)
-      echo "The systemd user manager has custom Host Connector paths." >&2
-      echo "Back up those custom paths manually before upgrading." >&2
+    }
+    case "$effective_exec_start" in
+      "{ path=${HOME:?}/.local/bin/overtchat-connector ; argv[]=${HOME:?}/.local/bin/overtchat-connector run ; "*) ;;
+      *)
+        echo "The connector service's effective command is not installer-managed." >&2
+        echo "Back up custom service state manually before upgrading." >&2
+        exit 1
+        ;;
+    esac
+    case "$unit_definition" in
+      *Environment=*|*EnvironmentFile=*)
+        echo "The connector service has a custom environment that this upgrader cannot safely inspect." >&2
+        echo "Back up custom service state manually before upgrading." >&2
+        exit 1
+        ;;
+    esac
+    service_manager_environment=$(systemctl --user show-environment) || {
+      echo "Unable to inspect the systemd user service environment." >&2
       exit 1
-      ;;
-  esac
+    }
+    case "$service_manager_environment" in
+      *OVERTCHAT_CONNECTOR_CONFIG=*|*OVERTCHAT_CONNECTOR_STATE=*|*OVERTCHAT_CONNECTOR_TIMELINES=*|*OVERTCHAT_CONNECTOR_LOCK=*)
+        echo "The systemd user manager has custom Host Connector paths." >&2
+        echo "Back up those custom paths manually before upgrading." >&2
+        exit 1
+        ;;
+    esac
+  else
+    launchctl print "$launch_domain" >/dev/null 2>&1 || {
+      echo "Log in to the macOS desktop and retry as that user without sudo." >&2
+      exit 1
+    }
+    [ "$(plutil -extract ProgramArguments.0 raw -o - "$launch_plist")" = "${HOME:?}/.local/bin/overtchat-connector" ] &&
+      [ "$(plutil -extract ProgramArguments.1 raw -o - "$launch_plist")" = "run" ] &&
+      ! plutil -extract ProgramArguments.2 raw -o - "$launch_plist" >/dev/null 2>&1 || {
+      echo "The connector LaunchAgent does not use the installer-managed command." >&2
+      exit 1
+    }
+    if plutil -extract Program raw -o - "$launch_plist" >/dev/null 2>&1 ||
+      plutil -extract RootDirectory raw -o - "$launch_plist" >/dev/null 2>&1; then
+      echo "The connector LaunchAgent has a custom execution environment." >&2
+      exit 1
+    fi
+    environment_keys=$(plutil -extract EnvironmentVariables xml1 -o - "$launch_plist" |
+      sed -n 's/.*<key>\(.*\)<\/key>.*/\1/p')
+    [ "$environment_keys" = "PATH" ] || {
+      echo "The LaunchAgent has a custom environment; back up its state manually before upgrading." >&2
+      exit 1
+    }
+    if loaded_service=$(launchctl print "$launch_service" 2>/dev/null); then
+      loaded_program=$(printf '%s\n' "$loaded_service" | sed -n 's/^[[:space:]]*program = //p')
+      loaded_arguments=$(printf '%s\n' "$loaded_service" | awk '
+        /^[[:space:]]*arguments = \{/ { in_arguments=1; next }
+        in_arguments && /^[[:space:]]*\}/ { exit }
+        in_arguments { sub(/^[[:space:]]*/, ""); print }
+      ')
+      [ "$loaded_program" = "${HOME:?}/.local/bin/overtchat-connector" ] &&
+        [ "$loaded_arguments" = "$(printf '%s\nrun' "${HOME:?}/.local/bin/overtchat-connector")" ] || {
+        echo "The running LaunchAgent command is not installer-managed." >&2
+        exit 1
+      }
+      case "$loaded_service" in
+        *OVERTCHAT_CONNECTOR_CONFIG*|*OVERTCHAT_CONNECTOR_STATE*|*OVERTCHAT_CONNECTOR_TIMELINES*|*OVERTCHAT_CONNECTOR_LOCK*)
+          echo "The running LaunchAgent has custom Host Connector paths." >&2
+          exit 1
+          ;;
+      esac
+    fi
+    # Only the PATH captured by the installer is supported by this upgrader.
+    for key in OVERTCHAT_CONNECTOR_CONFIG OVERTCHAT_CONNECTOR_STATE OVERTCHAT_CONNECTOR_TIMELINES OVERTCHAT_CONNECTOR_LOCK; do
+      if plutil -extract "EnvironmentVariables.$key" raw -o - "$launch_plist" >/dev/null 2>&1 ||
+        [ -n "$(launchctl getenv "$key")" ]; then
+        echo "The LaunchAgent has custom Host Connector paths; back them up manually before upgrading." >&2
+        exit 1
+      fi
+    done
+  fi
   [ "${OVERTCHAT_CONNECTOR_CONFIG+x}" != "x" ] &&
     [ "${OVERTCHAT_CONNECTOR_STATE+x}" != "x" ] &&
     [ "${OVERTCHAT_CONNECTOR_TIMELINES+x}" != "x" ] &&
@@ -180,7 +274,7 @@ if [ "$upgrade" = "true" ]; then
   connector_state="${HOME:?}/.config/overtchat/connector-$connector_id.state.json"
 fi
 
-asset="overtchat-connector-linux-$architecture"
+asset="overtchat-connector-$platform-$architecture"
 release_url="https://github.com/$repository/releases/download/connector-v$connector_version"
 temporary_directory=$(mktemp -d)
 staged_install_path=""
@@ -200,7 +294,7 @@ rollback_upgrade() {
   trap '' HUP INT TERM
   if [ "$state_may_have_changed" = "true" ] ||
     [ "$binary_may_have_changed" = "true" ]; then
-    systemctl --user stop overtchat-connector.service >/dev/null 2>&1 &&
+    service_stop >/dev/null 2>&1 &&
       wait_for_stopped_service || return 1
   fi
   if [ "$state_may_have_changed" = "true" ]; then
@@ -225,7 +319,7 @@ rollback_upgrade() {
     rm -f "$previous_path" || return 1
   fi
   if [ "$upgrade_service_stopped" = "true" ] &&
-    systemctl --user start overtchat-connector.service &&
+    service_start &&
     wait_for_stable_service; then
     upgrade_service_stopped="false"
     return 0
@@ -260,7 +354,7 @@ expected=$(
   echo "The release checksum for $asset is missing." >&2
   exit 1
 }
-actual=$(sha256sum "$temporary_directory/$asset" | awk '{ print $1 }')
+actual=$(checksum "$temporary_directory/$asset" | awk '{ print $1 }')
 [ "$actual" = "$expected" ] || {
   echo "The Host Connector download failed checksum verification." >&2
   exit 1
@@ -296,7 +390,7 @@ if [ "$upgrade" = "true" ]; then
 
   staged_install_path=$(mktemp "$install_directory/.overtchat-connector.new.XXXXXX")
   install -m 0755 "$temporary_directory/$asset" "$staged_install_path"
-  staged_actual=$(sha256sum "$staged_install_path" | awk '{ print $1 }')
+  staged_actual=$(checksum "$staged_install_path" | awk '{ print $1 }')
   [ "$staged_actual" = "$expected" ] || {
     echo "The staged Host Connector failed checksum verification." >&2
     exit 1
@@ -304,7 +398,7 @@ if [ "$upgrade" = "true" ]; then
 
   upgrade_service_stopped="true"
   upgrade_transaction_active="true"
-  if ! systemctl --user stop overtchat-connector.service; then
+  if ! service_stop; then
     echo "Unable to stop the existing Host Connector safely; nothing was upgraded." >&2
     exit 1
   fi
@@ -363,7 +457,7 @@ if [ "$upgrade" = "true" ]; then
   staged_install_path=""
 
   start_succeeded="false"
-  if systemctl --user start overtchat-connector.service; then
+  if service_start; then
     start_succeeded="true"
   fi
 
@@ -399,7 +493,7 @@ else
     --pair-code "$pair_code"
 fi
 
-if [ "$upgrade" = "false" ] && command -v loginctl >/dev/null 2>&1; then
+if [ "$upgrade" = "false" ] && [ "$platform" = "linux" ] && command -v loginctl >/dev/null 2>&1; then
   linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || true)
   if [ "$linger" != "yes" ] && ! loginctl enable-linger "$(id -un)" >/dev/null 2>&1; then
     echo "Warning: enable user lingering to keep the connector running after logout:" >&2

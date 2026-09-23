@@ -1,3 +1,4 @@
+import { releaseAsset } from "./platform.js";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -18,15 +19,6 @@ import {
   runCommand,
 } from "./process.js";
 import type { InstallationConfig } from "./types.js";
-
-function connectorAsset(): string {
-  if (process.platform !== "linux") {
-    throw new Error("Agent Connections currently require Linux.");
-  }
-  if (process.arch === "x64") return "overtchat-connector-linux-amd64";
-  if (process.arch === "arm64") return "overtchat-connector-linux-arm64";
-  throw new Error(`Agent Connections do not support ${process.arch}.`);
-}
 
 async function download(url: string): Promise<Uint8Array> {
   const response = await fetch(url, {
@@ -60,7 +52,7 @@ async function stageConnectorBinary(
     await chmod(staged, 0o755);
     return { temporaryDirectory, binary: staged };
   }
-  const asset = connectorAsset();
+  const asset = releaseAsset("overtchat-connector");
   const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/connector-v${version}`;
   const [binary, checksums] = await Promise.all([
     download(`${releaseBase}/${asset}`),
@@ -166,18 +158,23 @@ export async function installManagedConnector(
       "Run overtchat setup as your normal user. It will request sudo only when Docker needs it.",
     );
   }
-  const systemd = await runCommand("systemctl", ["--user", "show-environment"]);
-  if (systemd.exitCode !== 0) {
+  const serviceCheck = process.platform === "darwin"
+    ? await runCommand("launchctl", ["print", `gui/${process.getuid!()}`])
+    : await runCommand("systemctl", ["--user", "show-environment"]);
+  if (serviceCheck.exitCode !== 0) {
     throw new Error(
-      "Agent Connections require a running systemd user session on this machine.",
+      process.platform === "darwin"
+        ? "Agent Connections require a logged-in macOS desktop session. Run setup as that user without sudo."
+        : "Agent Connections require a running systemd user session on this machine.",
     );
   }
-  await ensureUserLinger();
+  if (process.platform === "linux") await ensureUserLinger();
   const staged = await stageConnectorBinary(config.connectorVersion);
   const installDirectory = path.join(os.homedir(), ".local", "bin");
   const installPath = path.join(installDirectory, "overtchat-connector");
   const backupPath = `${installPath}.previous`;
   let hadPrevious = false;
+  let installed = false;
   try {
     const preflight = await requireSuccessful(staged.binary, ["version"]);
     if (preflight.stdout.trim() !== config.connectorVersion) {
@@ -194,6 +191,7 @@ export async function installManagedConnector(
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
+    installed = true;
     await copyFile(staged.binary, installPath);
     await chmod(installPath, 0o755);
     const provisioned = await provisionConnector(config, managementSecret);
@@ -207,14 +205,21 @@ export async function installManagedConnector(
     await waitForConnector(config, managementSecret);
     await rm(backupPath, { force: true });
   } catch (error) {
-    await rm(installPath, { force: true });
+    if (installed) {
+      if (process.platform === "darwin") {
+        await runCommand("launchctl", ["bootout", `gui/${process.getuid!()}/com.overtchat.connector`]).catch(() => null);
+      } else {
+        await runCommand("systemctl", ["--user", "stop", "overtchat-connector.service"]).catch(() => null);
+      }
+      await rm(installPath, { force: true });
+    }
     if (hadPrevious) {
       await rename(backupPath, installPath).catch(() => {});
-      await runCommand("systemctl", [
-        "--user",
-        "restart",
-        "overtchat-connector.service",
-      ]).catch(() => null);
+      if (process.platform === "darwin") {
+        await runCommand(installPath, ["service-install"]).catch(() => null);
+      } else {
+        await runCommand("systemctl", ["--user", "restart", "overtchat-connector.service"]).catch(() => null);
+      }
     }
     throw error;
   } finally {

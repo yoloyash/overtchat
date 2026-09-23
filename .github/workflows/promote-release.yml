@@ -129,6 +129,8 @@ jobs:
                 --dir "$verification_directory" \
                 --clobber \
                 --pattern overtchat-checksums.txt \
+                --pattern overtchat-darwin-amd64 \
+                --pattern overtchat-darwin-arm64 \
                 --pattern overtchat-linux-amd64 \
                 --pattern overtchat-linux-arm64; then
               downloaded=true
@@ -137,6 +139,10 @@ jobs:
             sleep 3
           done
           test "$downloaded" = "true"
+          grep -Eq '[[:space:]]\*?overtchat-darwin-amd64$' \
+            "$verification_directory/overtchat-checksums.txt"
+          grep -Eq '[[:space:]]\*?overtchat-darwin-arm64$' \
+            "$verification_directory/overtchat-checksums.txt"
           grep -Eq '[[:space:]]\*?overtchat-linux-amd64$' \
             "$verification_directory/overtchat-checksums.txt"
           grep -Eq '[[:space:]]\*?overtchat-linux-arm64$' \
@@ -163,6 +169,8 @@ jobs:
                 --clobber \
                 --pattern connector-checksums.txt \
                 --pattern install-connector.sh \
+                --pattern overtchat-connector-darwin-amd64 \
+                --pattern overtchat-connector-darwin-arm64 \
                 --pattern overtchat-connector-linux-amd64 \
                 --pattern overtchat-connector-linux-arm64; then
               downloaded=true
@@ -171,6 +179,10 @@ jobs:
             sleep 3
           done
           test "$downloaded" = "true"
+          grep -Eq '[[:space:]]\*?overtchat-connector-darwin-amd64$' \
+            "$verification_directory/connector-checksums.txt"
+          grep -Eq '[[:space:]]\*?overtchat-connector-darwin-arm64$' \
+            "$verification_directory/connector-checksums.txt"
           grep -Eq '[[:space:]]\*?overtchat-connector-linux-amd64$' \
             "$verification_directory/connector-checksums.txt"
           grep -Eq '[[:space:]]\*?overtchat-connector-linux-arm64$' \

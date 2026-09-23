@@ -30,6 +30,7 @@ function writeExecutable(filePath: string, contents: string) {
 function createUpgradeFixture(
   newServiceBehavior: "stable" | "inactive" | "active-once",
   options: {
+    platform?: "Linux" | "Darwin";
     binaryBackupExists?: boolean;
     effectiveExecStart?: "managed" | "custom";
     preflightFails?: boolean;
@@ -106,7 +107,7 @@ exit 0
     path.join(mockBinDirectory, "uname"),
     `#!/bin/sh
 if [ "\${1:-}" = "-s" ]; then
-  echo Linux
+  echo ${options.platform ?? "Linux"}
 else
   echo x86_64
 fi
@@ -132,7 +133,7 @@ while [ "$#" -gt 0 ]; do
 done
 case "$url" in
   */connector-checksums.txt)
-    printf '%s  overtchat-connector-linux-amd64\\n' "$MOCK_ASSET_SHA256" > "$output"
+    printf '%s  overtchat-connector-${options.platform === "Darwin" ? "darwin" : "linux"}-amd64\\n' "$MOCK_ASSET_SHA256" > "$output"
     ;;
   *)
     cat > "$output" <<'MOCK_CONNECTOR'
@@ -205,6 +206,36 @@ esac
 exit 1
 `,
   );
+  if (options.platform === "Darwin") {
+    writeExecutable(path.join(mockBinDirectory, "plutil"), `#!/bin/sh
+case "$2" in
+  ProgramArguments.0)
+    if [ "$MOCK_EFFECTIVE_EXEC_START" = "custom" ]; then echo /tmp/custom-connector; else echo "$HOME/.local/bin/overtchat-connector"; fi
+    ;;
+  ProgramArguments.1) echo run ;;
+  EnvironmentVariables) echo "<dict><key>PATH</key><string>/usr/bin:/bin</string></dict>" ;;
+  *) exit 1 ;;
+esac
+`);
+    writeExecutable(path.join(mockBinDirectory, "launchctl"), `#!/bin/sh
+case "$1" in
+  print)
+    case "$2" in
+      */com.overtchat.connector)
+        systemctl --user is-active --quiet overtchat-connector.service || exit 113
+        echo 'state = running'
+        echo "program = $HOME/.local/bin/overtchat-connector"
+        printf 'arguments = {\\n%s/.local/bin/overtchat-connector\\nrun\\n}\\n' "$HOME"
+        ;;
+    esac
+    ;;
+  bootout) systemctl --user stop overtchat-connector.service ;;
+  bootstrap) systemctl --user start overtchat-connector.service ;;
+  enable|getenv) exit 0 ;;
+  *) exit 1 ;;
+esac
+`);
+  }
   writeExecutable(path.join(mockBinDirectory, "sleep"), "#!/bin/sh\nexit 0\n");
 
   const installer = path.resolve(
@@ -478,5 +509,31 @@ describe("Host Connector installer redirect", () => {
       "interrupted backup\n",
     );
     expect(readFileSync(systemctlCalls, "utf8")).not.toContain("--user stop");
+  });
+});
+
+
+describe("macOS Host Connector upgrades", () => {
+  it("refuses a custom LaunchAgent before changing its binary or state", () => {
+    const fixture = createUpgradeFixture("stable", { platform: "Darwin", effectiveExecStart: "custom" });
+    expect(fixture.result.status).toBe(1);
+    expect(fixture.result.stderr).toContain("installer-managed command");
+    expect(readFileSync(fixture.installPath, "utf8")).toBe("old connector\n");
+    expect(readFileSync(fixture.statePath, "utf8")).toBe(fixture.legacyState);
+  });
+  it("preserves pairing and commits a successful LaunchAgent upgrade", () => {
+    const fixture = createUpgradeFixture("stable", { platform: "Darwin" });
+    expect(fixture.result.status, fixture.result.stderr).toBe(0);
+    expect(readFileSync(fixture.installPath, "utf8")).toBe(fixture.newConnector);
+    expect(readFileSync(fixture.configPath, "utf8")).toBe(fixture.configContents);
+    expect(existsSync(`${fixture.statePath}.previous`)).toBe(false);
+  });
+  it("restores the previous binary and journal when preflight fails", () => {
+    const fixture = createUpgradeFixture("stable", { platform: "Darwin", preflightFails: true });
+    expect(fixture.result.status).toBe(1);
+    expect(fixture.result.stderr).toContain("restored and restarted");
+    expect(readFileSync(fixture.installPath, "utf8")).toBe("old connector\n");
+    expect(readFileSync(fixture.statePath, "utf8")).toBe(fixture.legacyState);
+    expect(readFileSync(fixture.configPath, "utf8")).toBe(fixture.configContents);
   });
 });

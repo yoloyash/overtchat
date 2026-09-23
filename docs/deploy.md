@@ -1,7 +1,7 @@
 # Deploy
 
-Requires x86-64 or arm64 Linux. The guided manager installs and updates
-OvertChat with Docker Compose.
+Supports x86-64/arm64 Linux and Intel/Apple Silicon Macs. The guided manager
+installs and updates OvertChat with Docker Compose.
 
 ## Install
 
@@ -10,8 +10,8 @@ curl -fsSL https://overtchat.com/install | sh
 ```
 
 Choose where to access OvertChat, local search, speech, and voice services,
-and whether to check for updates. The wizard installs Docker if needed and
-generates the configuration and secrets; no `.env` file editing is needed.
+and whether to check for updates. The wizard generates the configuration and
+secrets; no `.env` file editing is needed. On Linux, it installs Docker if needed.
 Open the printed URL, create the administrator account,
 and add your model endpoint in the web app.
 
@@ -21,9 +21,20 @@ overtchat status    # check versions and service status
 overtchat update    # update the managed stack
 ```
 
-Voice requires both STT and TTS. Bundled Parakeet and Kokoro can each use CPU or
-NVIDIA GPU; setup can install NVIDIA Container Toolkit on supported systems.
-Kokoro needs roughly 3–4 GB VRAM, so choose CPU if GPU memory is limited.
+Voice requires both STT and TTS. Bundled Parakeet and Kokoro use CPU on macOS
+and support CPU or NVIDIA GPU on Linux. Setup can install NVIDIA Container
+Toolkit on supported systems. Kokoro needs roughly 3–4 GB VRAM, so choose CPU
+if GPU memory is limited.
+
+### macOS
+
+Install and start [Docker Desktop for Mac](https://docs.docker.com/desktop/setup/install/mac-install/),
+then run the installer as your normal user while logged in to the Mac desktop.
+Agent Connections run as a LaunchAgent and start at login. Enable Docker
+Desktop's start-at-login setting to start the stack automatically.
+
+Connector logs are in `~/Library/Logs/OvertChat/connector.log` and
+`connector.error.log`, each limited to 10 MiB with three rotated backups.
 
 ## Choose how to access OvertChat
 
@@ -67,7 +78,7 @@ can choose another HTTPS port. Existing Serve routes and public Funnel
 configuration are inspected before any changes. Setup only manages its own
 recorded route and never resets the device's Serve configuration.
 
-The current Linux user needs permission to manage Tailscale Serve. If needed,
+On Linux, the current user needs permission to manage Tailscale Serve. If needed,
 run `sudo tailscale set --operator=<your-linux-username>`. If HTTPS needs enabling,
 complete the link printed by Tailscale and retry. See
 [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve).

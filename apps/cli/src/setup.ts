@@ -1,3 +1,4 @@
+import { platformServices } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { confirm, isCancel, note, outro, spinner } from "@clack/prompts";
@@ -298,8 +299,8 @@ export async function setup(
   options: SetupOptions,
   productionManifest?: ReleaseManifest,
 ): Promise<void> {
-  if (process.platform !== "linux") {
-    throw new Error("The managed OvertChat installer currently supports Linux.");
+  if (process.platform !== "linux" && process.platform !== "darwin") {
+    throw new Error("The managed OvertChat installer supports Linux and macOS.");
   }
   const sourceDirectory = path.resolve(
     process.env.OVERTCHAT_SOURCE_DIR || process.env.INIT_CWD || process.cwd(),
@@ -312,6 +313,7 @@ export async function setup(
   }
   let docker = await detectDockerCommand();
   if (!docker) {
+    if (process.platform === "darwin") await installDockerEngine();
     if (options.defaults) {
       throw new Error("Docker Engine was not found.");
     }
@@ -402,6 +404,7 @@ export async function setup(
     };
   }
 
+  config = platformServices(config);
   const ttsUsesGpu =
     config.tts.provider === "bundled" &&
     (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu");
@@ -570,27 +573,32 @@ export async function setup(
 
   const progress = spinner();
   progress.start("Starting OvertChat");
-  await startStack(config, saved, secrets, paths, docker, waitForApp);
-  if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
-    await removeServe(oldRoute);
-  }
-  progress.message("Applying provider configuration");
-  await syncCapabilities(config, secrets.managementSecret);
-  if (config.agents.installed) {
-    progress.message("Installing Agent Connections");
-    await installManagedConnector(config, secrets.managementSecret);
-  }
-  // Record the route before starting Serve so interruption can be recovered.
-  config.managedTailscaleRoute = nextRoute;
-  await writeInstallationConfig(paths, config);
-  progress.message("Reconciling bundled services");
-  const reconciliation = await reconcileManagedSidecars(docker, config);
-  progress.stop("OvertChat is ready");
+  try {
+    await startStack(config, saved, secrets, paths, docker, waitForApp);
+    if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
+      await removeServe(oldRoute);
+    }
+    progress.message("Applying provider configuration");
+    await syncCapabilities(config, secrets.managementSecret);
+    if (config.agents.installed) {
+      progress.message("Installing Agent Connections");
+      await installManagedConnector(config, secrets.managementSecret);
+    }
+    // Record the route before starting Serve so interruption can be recovered.
+    config.managedTailscaleRoute = nextRoute;
+    await writeInstallationConfig(paths, config);
+    progress.message("Reconciling bundled services");
+    const reconciliation = await reconcileManagedSidecars(docker, config);
+    progress.stop("OvertChat is ready");
 
-  showSidecarReconciliation(reconciliation);
-  const instructions = connectionInstructions(config);
-  if (instructions) note(instructions, "Access OvertChat");
-  await finishAccess(config, !options.defaults);
-  await writeInstallationConfig(paths, config);
-  outro(accessSummary(config));
+    showSidecarReconciliation(reconciliation);
+    const instructions = connectionInstructions(config);
+    if (instructions) note(instructions, "Access OvertChat");
+    await finishAccess(config, !options.defaults);
+    await writeInstallationConfig(paths, config);
+    outro(accessSummary(config));
+  } catch (error) {
+    progress.stop("OvertChat setup failed", 1);
+    throw error;
+  }
 }

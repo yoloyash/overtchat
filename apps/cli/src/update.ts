@@ -1,3 +1,4 @@
+import { platformServices } from "./platform.js";
 import { outro, spinner } from "@clack/prompts";
 import { accessSummary } from "./access.js";
 import {
@@ -64,7 +65,7 @@ export async function update(): Promise<void> {
     }
 
     const nextConfig = normalizeInstallationConfig(
-      applyReleaseManifest(config, manifest),
+      platformServices(applyReleaseManifest(config, manifest)),
     );
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(

@@ -3,6 +3,7 @@ import { chmod, mkdir, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { assertLaunchAgentAvailable, installLaunchAgent } from "./launchd.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -24,8 +25,9 @@ function connectorInvocation(): string[] {
 }
 
 export async function assertUserServiceAvailable(): Promise<void> {
+  if (process.platform === "darwin") return assertLaunchAgentAvailable();
   if (process.platform !== "linux") {
-    throw new Error("Automatic service installation currently supports Linux.");
+    throw new Error("Automatic service installation supports Linux and macOS.");
   }
   try {
     await execFileAsync("systemctl", ["--user", "show-environment"]);
@@ -37,6 +39,7 @@ export async function assertUserServiceAvailable(): Promise<void> {
 }
 
 export async function installUserService(): Promise<string> {
+  if (process.platform === "darwin") return installLaunchAgent(connectorInvocation());
   await assertUserServiceAvailable();
   const directory = path.join(os.homedir(), ".config", "systemd", "user");
   const unitPath = path.join(directory, "overtchat-connector.service");

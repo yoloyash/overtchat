@@ -41,10 +41,10 @@ Do not change unrelated manifest fields.
   release, and dispatches promotion.
 - **Realtime voice:** The voice workflow publishes the amd64/arm64 image and
   dispatches promotion.
-- **CLI:** The CLI workflow verifies both binaries, publishes the GitHub
+- **CLI:** The CLI workflow verifies Linux/macOS binaries, publishes the GitHub
   release, and dispatches promotion.
-- **Connector:** The connector workflow verifies both binaries, publishes the
-  GitHub release, and dispatches promotion. Increment the bridge protocol only
+- **Connector:** The connector workflow verifies Linux/macOS binaries, publishes
+  the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol.
 - **STT:** The STT workflow publishes both images and dispatches promotion.
@@ -161,8 +161,8 @@ node apps/cli/dist/overtchat.mjs version
 ```
 
 `promote-release.yml` is the only CI production deploy path. It verifies CLI
-and connector checksums plus the required app/voice/STT platforms before
-atomically deploying the site and manifest. After deployment, it updates the
-app and voice `latest` aliases to the versions selected by `appVersion` and
+and connector checksums for Linux/macOS on x86-64/arm64, plus the required
+app/voice/STT platforms, before atomically deploying the site and manifest.
+After deployment, it updates the app and voice `latest` aliases to the versions selected by `appVersion` and
 `voiceVersion`; the manifest remains the stable source of truth. Versioned
 container tags are immutable.
