@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: Platform to build and validate (manual runs never upload to stores)
+        description: Build and validate, or explicitly build and upload iOS with ios-release
         type: choice
-        options: [all, android, ios]
+        options: [all, android, ios, ios-release]
         default: all
 
 permissions: {}
@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build-android:
-    if: github.event_name == 'push' || inputs.platform != 'ios'
+    if: github.event_name == 'push' || (inputs.platform != 'ios' && inputs.platform != 'ios-release')
     runs-on: [self-hosted, Linux, X64]
     permissions:
       contents: read
@@ -232,6 +232,9 @@ jobs:
     if: github.event_name == 'push' || inputs.platform != 'android'
     runs-on: macos-15
     timeout-minutes: 90
+    concurrency:
+      group: mobile-ios-release
+      cancel-in-progress: false
     permissions:
       contents: read
     outputs:
@@ -257,6 +260,18 @@ jobs:
         run: |
           sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
           xcodebuild -version
+
+      - name: Check Apple upload credentials
+        if: github.event_name == 'push' || inputs.platform == 'ios-release'
+        env:
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          if [[ -z "$ASC_API_KEY_ID" || -z "$ASC_API_ISSUER_ID" || -z "$ASC_API_PRIVATE_KEY" ]]; then
+            echo "::error::Configure ASC_API_KEY_ID, ASC_API_ISSUER_ID, and ASC_API_PRIVATE_KEY in GitHub Actions secrets before uploading."
+            exit 1
+          fi
 
       - name: Install dependencies
         run: npm ci
@@ -320,45 +335,14 @@ jobs:
           overwrite: true
           retention-days: 3
 
-  upload-ios:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')
-    needs: build-ios
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    permissions:
-      contents: read
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
-        with:
-          node-version: 22.x
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Use pinned npm
-        run: npm install --global npm@10.9.8
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Download verified iOS artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: overtchat-ios-${{ needs.build-ios.outputs.version }}
-          path: dist/mobile
-
       # Upload only. App Review submission remains an App Store Connect action.
       - name: Upload IPA to App Store Connect
-        working-directory: apps/mobile
+        if: github.event_name == 'push' || inputs.platform == 'ios-release'
+        timeout-minutes: 30
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
         run: |
-          npx eas-cli@24.4.2 submit --non-interactive --wait \
-            --platform ios --profile production \
-            --path "../../dist/mobile/overtchat-v${{ needs.build-ios.outputs.version }}.ipa"
+          bash .github/scripts/upload-ios-ipa.sh \
+            "dist/mobile/overtchat-v${{ steps.version.outputs.version }}.ipa"
