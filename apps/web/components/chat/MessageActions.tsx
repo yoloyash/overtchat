@@ -4,16 +4,22 @@ import { cn } from "@/lib/utils";
 
 export function MessageActions({
   show,
+  alwaysVisible = false,
   children,
 }: {
   show: boolean;
+  alwaysVisible?: boolean;
   children: React.ReactNode;
 }) {
   if (!show) return null;
   return (
     <div
       data-slot="message-actions"
-      className="flex items-center gap-0.5 opacity-0 motion-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100"
+      className={cn(
+        "flex items-center gap-0.5",
+        !alwaysVisible &&
+          "opacity-0 motion-opacity group-hover:opacity-100 focus-within:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100",
+      )}
     >
       {children}
     </div>
