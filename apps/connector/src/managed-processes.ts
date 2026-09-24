@@ -21,6 +21,7 @@ import { buildSshRemoteCommand, shellQuote, sshCommandArgs } from "./ssh.js";
 
 const execFileAsync = promisify(execFile);
 const GRACE_MS = 1_000;
+const OWNERSHIP_RETRY_MS = 1_000;
 const CONTROL_TIMEOUT_MS = 10_000;
 type Identity = { pid: number; started: string };
 type ProcessRow = Identity & {
@@ -318,7 +319,24 @@ export class ManagedProcesses {
   }
 
   private async stopRecord(record: Record): Promise<void> {
-    let rows = ownedTree(record, await processTable(record.target));
+    let table = await processTable(record.target);
+    let rows = ownedTree(record, table);
+    const ownershipDeadline = Date.now() + OWNERSHIP_RETRY_MS;
+    // exec can temporarily hide argv even though PID/start time still match.
+    // An uncertain live root must not be forgotten, including when some of its
+    // descendants are already known. Keep the ledger if it cannot be verified.
+    while (
+      table.some((row) => sameProcess(record.root, row)) &&
+      !rows.some((row) => sameProcess(record.root, row))
+    ) {
+      if (Date.now() >= ownershipDeadline)
+        throw new Error(
+          `Managed process ${record.root.pid} is still running but ownership could not be confirmed; retaining recovery record`,
+        );
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      table = await processTable(record.target);
+      rows = ownedTree(record, table);
+    }
     if (rows.length) {
       // Preserve descendants before signalling the parent: escalation and a
       // subsequent connector restart must still find them after reparenting.
