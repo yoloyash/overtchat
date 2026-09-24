@@ -503,7 +503,7 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   await page.reload();
   const transcriptActions = page.getByTestId("agent-message-list").locator('[data-slot="message-actions"]');
   await expect(transcriptActions).toHaveCount(1);
-  await page.getByText("Original answer", { exact: true }).hover();
+  await page.mouse.move(0, 0);
   await expect(transcriptActions).toHaveCSS("opacity", "1");
   snapshot.messages.push({ role: "assistant", id: "final", content: [{ type: "text", text: "Finished checking" }], timestamp: 6 });
   await page.reload();
@@ -514,7 +514,7 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   await expect(transcriptActions).toHaveCount(3);
   snapshot.messages = completedMessages;
   await page.reload();
-  await page.getByText("Original answer", { exact: true }).hover();
+  await page.mouse.move(0, 0);
   const messageActions = page.locator('[data-slot="message-actions"]');
   await expect(messageActions).toHaveCSS("opacity", "1");
   await expectHorizontalMessageActions(messageActions);
@@ -1427,7 +1427,7 @@ test("shows durable turn activity without changing completed tool status", async
   ).toBeVisible();
   const turnActions = completedTurn.locator('[data-slot="message-actions"]');
   await page.mouse.move(0, 0);
-  await expect(turnActions).toHaveCSS("opacity", "0");
+  await expect(turnActions).toHaveCSS("opacity", "1");
   await page.getByRole("paragraph").filter({ hasText: "I will inspect the runtime." }).hover();
   await expect(turnActions).toHaveCSS("opacity", "1");
   await completedTurn.hover();

@@ -334,7 +334,7 @@ function AgentTranscriptRow({
         <Markdown streaming={active}>{item.text}</Markdown>
         {!hasTurnFooter && (
           <div className="mt-2">
-            <MessageActions show={!turnActive}>
+            <MessageActions show={!turnActive} alwaysVisible>
               <AgentCopyButton text={item.text} disabled={actionsDisabled} />
               <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
               {canForkMessages && item.actionable && item.messageId && (
@@ -443,7 +443,7 @@ function AgentTurnFooter({
       className="flex min-h-7 items-center gap-1 text-xs text-muted-foreground"
       data-testid="agent-turn-footer"
     >
-      <MessageActions show={!!item.text || showFork}>
+      <MessageActions show={!!item.text || showFork} alwaysVisible>
         {item.text && (
           <>
             <AgentCopyButton text={item.text} disabled={actionsDisabled} />
