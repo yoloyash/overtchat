@@ -25,17 +25,37 @@ import {
 import { agentJson } from "@/lib/agents/api";
 import { useTheme } from "@/lib/theme";
 
+const RECENT_CHAT_LIMIT = 5;
+
 export default function AgentsScreen() {
   const { colors, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const connections = useAgentConnections();
   const [search, setSearch] = useState("");
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string>();
+  const groups = useMemo(
+    () => groupWorkspaces(connections.data ?? []),
+    [connections.data],
+  );
+  const recentChats = useMemo(
+    () =>
+      groups
+        .flatMap((group) =>
+          group.sessions.map((item) => ({ item, group })),
+        )
+        .sort(
+          (a, b) =>
+            (b.item.session.modifiedAt ?? b.item.session.createdAt ?? 0) -
+            (a.item.session.modifiedAt ?? a.item.session.createdAt ?? 0),
+        )
+        .slice(0, RECENT_CHAT_LIMIT),
+    [groups],
+  );
   const sections = useMemo(
     () =>
-      groupWorkspaces(connections.data ?? []).flatMap((group) => {
+      groups.flatMap((group) => {
         const matches = matchingSessions(group, search);
         if (
           search.trim() &&
@@ -43,7 +63,7 @@ export default function AgentsScreen() {
           !matches.length
         )
           return [];
-        const closed = !search.trim() && collapsed.has(group.key);
+        const closed = !search.trim() && !expanded.has(group.key);
         return [
           {
             ...group,
@@ -56,7 +76,7 @@ export default function AgentsScreen() {
           },
         ];
       }),
-    [connections.data, search, collapsed],
+    [groups, search, expanded],
   );
   function openWorkspace(group: WorkspaceGroup, create = false) {
     if (create && group.targets.length === 1) {
@@ -138,6 +158,48 @@ export default function AgentsScreen() {
           paddingHorizontal: 12,
           paddingBottom: insets.bottom + 20,
         }}
+        ListHeaderComponent={
+          !search.trim() && groups.length > 0 ? (
+            <View>
+              {recentChats.length > 0 && (
+                <View style={{ paddingBottom: 12 }}>
+                  <Text
+                    accessibilityRole="header"
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 8,
+                      color: colors.foreground,
+                      fontFamily: fonts.sansSemiBold,
+                      fontSize: 16,
+                    }}
+                  >
+                    Recent chats
+                  </Text>
+                  {recentChats.map(({ item, group }) => (
+                    <AgentSessionRow
+                      key={item.session.id}
+                      item={item}
+                      workspaceName={group.name}
+                      contextLabel={`${group.name} · ${group.host.name}`}
+                    />
+                  ))}
+                </View>
+              )}
+              <Text
+                accessibilityRole="header"
+                style={{
+                  paddingHorizontal: 12,
+                  paddingTop: 8,
+                  color: colors.foreground,
+                  fontFamily: fonts.sansSemiBold,
+                  fontSize: 16,
+                }}
+              >
+                Workspaces
+              </Text>
+            </View>
+          ) : null
+        }
         ListEmptyComponent={
           !connections.isPending && !connections.error ? (
             <View style={{ padding: 24, gap: 12, alignItems: "center" }}>
@@ -171,7 +233,7 @@ export default function AgentsScreen() {
                     openWorkspace(section);
                     return;
                   }
-                  setCollapsed((current) => {
+                  setExpanded((current) => {
                     const next = new Set(current);
                     next.has(section.key)
                       ? next.delete(section.key)

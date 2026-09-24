@@ -107,13 +107,16 @@ vi.mock("react-native", async () => {
       renderItem,
       renderSectionHeader,
       renderSectionFooter,
+      ListHeaderComponent,
     }: {
       sections: { key: string; data: unknown[] }[];
       renderItem: (args: { item: unknown; section: unknown }) => ReactNode;
       renderSectionHeader: (args: { section: unknown }) => ReactNode;
       renderSectionFooter: (args: { section: unknown }) => ReactNode;
+      ListHeaderComponent?: ReactNode;
     }) => (
       <div>
+        {ListHeaderComponent}
         {sections.map((section) => (
           <div key={section.key}>
             {renderSectionHeader({ section })}
@@ -1098,7 +1101,20 @@ describe("workspace navigation at scale", () => {
       host,
       workspaces: [
         { id: "workspace", path: "/project", name: "Project", sessions },
-        { id: "other", path: "/other", name: "Other project", sessions: [] },
+        {
+          id: "other",
+          path: "/other",
+          name: "Other project",
+          sessions: [
+            {
+              ...sessions[0],
+              id: "other-chat",
+              name: "Other chat",
+              modifiedAt: null,
+              createdAt: 300,
+            },
+          ],
+        },
       ],
     };
     mocks.connections = [
@@ -1125,17 +1141,35 @@ describe("workspace navigation at scale", () => {
       },
     ];
   }
-  it("caps previews, combines providers, collapses a workspace, and opens full history", async () => {
+  it("shows global recents above collapsed workspaces and opens chats and full history", async () => {
     setupWorkspaces();
     await render(<AgentsScreen />);
-    expect(container.querySelectorAll("[data-provider]")).toHaveLength(5);
+    expect(
+      [...container.querySelectorAll('button[aria-label*="My computer"]')].map(
+        (button) => button.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "Other chat, Codex, Other project · My computer",
+      "Claude chat, Claude Code, Project · My computer",
+      "Chat 104, Codex, Project · My computer",
+      "Chat 103, Codex, Project · My computer",
+      "Chat 102, Codex, Project · My computer",
+    ]);
     expect(container.textContent).toContain("Other project");
     expect(container.textContent).not.toContain("Chat 0");
     expect(
-      container.querySelectorAll('button[aria-label="Collapse Project"]'),
+      container.querySelectorAll('button[aria-label="Expand Project"]'),
     ).toHaveLength(1);
+    await click("Other chat, Codex, Other project · My computer");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/[id]",
+      params: { id: "other-chat", workspace: "other", name: "Other project" },
+    });
+    await click("Expand Project");
+    expect(container.textContent).toContain("Chat 101");
     await click("Collapse Project");
-    expect(container.textContent).not.toContain("Claude chat");
+    expect(container.textContent).not.toContain("Chat 101");
+    expect(container.textContent).toContain("Claude chat");
     await click("Expand Project");
     await click("View all 106 chats");
     expect(mocks.push).toHaveBeenLastCalledWith({
@@ -1163,7 +1197,14 @@ describe("workspace navigation at scale", () => {
     });
     expect(container.textContent).toContain("Chat 0");
     expect(container.textContent).not.toContain("Other project");
+    expect(container.textContent).not.toContain("Recent chats");
     expect(container.querySelectorAll("[data-provider]")).toHaveLength(1);
+    await click("Clear search");
+    expect(container.textContent).toContain("Recent chats");
+    expect(container.textContent).not.toContain("Chat 0");
+    expect(
+      container.querySelector('button[aria-label="Expand Project"]'),
+    ).not.toBeNull();
   });
 });
 
@@ -1334,6 +1375,10 @@ describe("agent working indicators", () => {
     expect(
       container.querySelector('[aria-label="Agent working"]'),
     ).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="1 agent working in Project"]'),
+    ).not.toBeNull();
+    await click("Expand Project");
     await click("Collapse Project");
     expect(
       container.querySelector('[aria-label="1 agent working in Project"]'),

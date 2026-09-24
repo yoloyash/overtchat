@@ -75,9 +75,11 @@ export function AgentSearch({
 export function AgentSessionRow({
   item,
   workspaceName,
+  contextLabel,
 }: {
   item: WorkspaceSession;
   workspaceName: string;
+  contextLabel?: string;
 }) {
   const { colors, fonts } = useTheme();
   const { session, provider, workspaceId } = item;
@@ -86,7 +88,7 @@ export function AgentSessionRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${title}, ${agentProviderMetadata(provider).label}${running ? ", working" : ""}`}
+      accessibilityLabel={`${title}, ${agentProviderMetadata(provider).label}${contextLabel ? `, ${contextLabel}` : ""}${running ? ", working" : ""}`}
       onPress={() =>
         router.push({
           pathname: "/agents/[id]",
@@ -120,6 +122,18 @@ export function AgentSessionRow({
         >
           {title}
         </Text>
+        {contextLabel && (
+          <Text
+            numberOfLines={1}
+            style={{
+              color: colors.mutedForeground,
+              fontFamily: fonts.sansRegular,
+              fontSize: 12,
+            }}
+          >
+            {contextLabel}
+          </Text>
+        )}
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
           {running && <AgentWorkingIndicator />}
           <Text
