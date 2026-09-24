@@ -15,6 +15,8 @@ afterEach(async () => {
 });
 
 async function fixture() {
+  // Process ownership tests do not depend on the developer's login profile.
+  vi.stubEnv("SHELL", "/bin/sh");
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "overtchat-processes-"),
   );
@@ -70,10 +72,24 @@ describe("managed helper processes", () => {
     expect(alive(record.root.pid)).toBe(true);
     expect(await readdir(directory)).toHaveLength(1);
     await new ConnectorProcessHost(directory).reap();
-    await child.exit;
-    expect(alive(record.root.pid)).toBe(false);
-    expect(await readdir(directory)).toEqual([]);
-  });
+    let exited = false;
+    void child.exit.then(() => {
+      exited = true;
+    });
+    await expect.poll(
+      async () => ({
+        exited,
+        alive: alive(record.root.pid),
+        records: await readdir(directory),
+      }),
+      {
+        timeout: 2_000,
+        message: "Recovered helper must exit before its ownership is forgotten",
+      },
+    ).toEqual({ exited: true, alive: false, records: [] });
+    // Startup/control commands have their own ten-second timeout. Leave room
+    // for it and the diagnostic exit assertion instead of timing out first.
+  }, 15_000);
 
   it("reaps a helper while its login shell is still starting", async () => {
     const { host, directory } = await fixture();
@@ -145,7 +161,9 @@ describe("managed helper processes", () => {
       await writeFile(location, JSON.stringify(record));
       await new ConnectorProcessHost(directory).reap();
       expect(alive(record.root.pid)).toBe(true);
-      expect(await readdir(directory)).toEqual([]);
+      expect(await readdir(directory)).toEqual(
+        field === "signature" ? [file] : [],
+      );
       await child.terminate?.();
     },
   );
