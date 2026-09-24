@@ -72,6 +72,16 @@ gitignored at `apps/mobile/credentials.json`,
 the release workflow installs and evaluates them before the build. Retrieve a
 missing local copy through EAS credentials rather than committing it.
 
+The root `.easignore` preserves the root and mobile Git exclusions but includes
+`apps/mobile/google-services.json` in the EAS build archive. Keep these exclusions
+in sync when changing either `.gitignore`; EAS ignores both files when
+`.easignore` exists. Signing credentials and service account keys remain excluded.
+The Android `eas-build-pre-install` hook validates Firebase configuration again
+inside the extracted archive for preview and production builds. The release
+workflow also checks the finished APK's Firebase resources against the supplied
+configuration before uploading artifacts. A successful checkout-level check
+alone does not prove the file reached the native build.
+
 `.github/workflows/mobile-eas.yml` owns the Android release pipeline:
 
 1. A manual dispatch builds the production AAB and APK and smoke-tests the APK

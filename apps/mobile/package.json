@@ -11,6 +11,7 @@
     "lint": "npm run typecheck",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "eas-build-pre-install": "node ../../.github/scripts/check-mobile-push.mjs --eas-build",
     "build": "echo \"(mobile is dev-only; no build step)\" && exit 0",
     "build:android:aab": "mkdir -p ../../dist/mobile && npx eas-cli@20 build --local --non-interactive --platform android --profile production --output ../../dist/mobile/overtchat.aab",
     "build:android:apk": "mkdir -p ../../dist/mobile && npx eas-cli@20 build --local --non-interactive --platform android --profile production-apk --output ../../dist/mobile/overtchat.apk",
