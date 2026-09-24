@@ -119,6 +119,9 @@ jobs:
             --platform android --profile production-apk \
             --output "../../dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
 
+      - name: Verify Firebase configuration in the production APK
+        run: node .github/scripts/check-mobile-push.mjs --apk "dist/mobile/overtchat-v${{ steps.version.outputs.version }}.apk"
+
       - name: Upload signed Android artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

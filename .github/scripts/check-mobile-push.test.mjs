@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, URL } from "node:url";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import { checkMobilePush } from "./check-mobile-push.mjs";
+import { checkApkResources, checkMobilePush } from "./check-mobile-push.mjs";
 
 const config = {
   android: {
@@ -128,5 +134,84 @@ describe("Android push release preflight", () => {
       write(value);
       assert.throws(() => checkMobilePush(config, directory), /API key/);
     }
+  });
+
+  it("checks Firebase values in the APK, not just resource names", () => {
+    write(firebase());
+    const expected = checkMobilePush(config, directory);
+    const resources = Object.entries(expected)
+      .map(
+        ([name, value]) =>
+          `    resource 0x7f130001 string/${name}\n      () ${JSON.stringify(value)}`,
+      )
+      .join("\n");
+    assert.doesNotThrow(() => checkApkResources(resources, expected));
+    assert.throws(() => checkApkResources("", expected), /google_app_id/);
+    assert.throws(
+      () =>
+        checkApkResources(
+          resources.replace('"test-project"', '"another-project"'),
+          expected,
+        ),
+      /project_id/,
+    );
+    assert.throws(
+      () =>
+        checkApkResources(
+          resources.replace('"test-key"', '"wrong-key"'),
+          expected,
+        ),
+      (error) => {
+        assert.match(error.message, /google_api_key/);
+        assert.doesNotMatch(error.message, /test-key|wrong-key/);
+        return true;
+      },
+    );
+  });
+
+  it("fails inside an extracted Android release archive when Firebase was excluded", () => {
+    const scripts = path.join(directory, ".github/scripts");
+    const mobile = path.join(directory, "apps/mobile");
+    mkdirSync(scripts, { recursive: true });
+    mkdirSync(mobile, { recursive: true });
+    copyFileSync(
+      new URL("./check-mobile-push.mjs", import.meta.url),
+      path.join(scripts, "check-mobile-push.mjs"),
+    );
+    copyFileSync(
+      new URL("../../apps/mobile/app.config.js", import.meta.url),
+      path.join(mobile, "app.config.js"),
+    );
+    writeFileSync(
+      path.join(mobile, "app.json"),
+      JSON.stringify({
+        expo: { android: { package: config.android.package } },
+      }),
+    );
+    function run(platform, profile) {
+      const env = {
+        ...process.env,
+        EAS_BUILD_PLATFORM: platform,
+        EAS_BUILD_PROFILE: profile,
+      };
+      delete env.GOOGLE_SERVICES_JSON;
+      return spawnSync(
+        process.execPath,
+        [path.join(scripts, "check-mobile-push.mjs"), "--eas-build"],
+        { env, encoding: "utf8" },
+      );
+    }
+    for (const profile of ["preview", "production", "production-apk"]) {
+      const result = run("android", profile);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /configuration is missing/);
+    }
+    assert.equal(run("ios", "production").status, 0);
+    assert.equal(run("android", "development").status, 0);
+    writeFileSync(
+      path.join(mobile, "google-services.json"),
+      JSON.stringify(firebase()),
+    );
+    assert.equal(run("android", "production").status, 0);
   });
 });

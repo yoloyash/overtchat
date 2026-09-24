@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /* global console, process */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL, URL } from "node:url";
@@ -60,6 +61,46 @@ export function checkMobilePush(config, projectRoot) {
       "Android Firebase configuration is missing a valid app ID or API key.",
     );
   }
+  return {
+    google_app_id: client.client_info.mobilesdk_app_id,
+    gcm_defaultSenderId: project.project_number,
+    project_id: project.project_id,
+    google_api_key: client.api_key.find(
+      (entry) =>
+        typeof entry?.current_key === "string" && entry.current_key.trim(),
+    ).current_key,
+  };
+}
+
+export function checkApkResources(resources, expected) {
+  for (const [name, value] of Object.entries(expected)) {
+    const resource = resources.match(
+      new RegExp(`string/${name}\\s*\\n\\s*\\(\\) ("[^"\\n]*")`),
+    );
+    if (!resource || JSON.parse(resource[1]) !== value) {
+      throw new Error(
+        `Android APK has missing or mismatched Firebase resource: ${name}.`,
+      );
+    }
+  }
+}
+
+function inspectApk(apk, expected) {
+  const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT;
+  if (!sdk)
+    throw new Error("Set ANDROID_HOME or ANDROID_SDK_ROOT to inspect the APK.");
+  const buildTools = path.join(sdk, "build-tools");
+  const version = readdirSync(buildTools)
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }))
+    .find((entry) => existsSync(path.join(buildTools, entry, "aapt2")));
+  if (!version)
+    throw new Error("Android SDK build-tools with aapt2 are required.");
+  const resources = execFileSync(
+    path.join(buildTools, version, "aapt2"),
+    ["dump", "resources", apk],
+    { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
+  );
+  checkApkResources(resources, expected);
 }
 
 if (
@@ -67,16 +108,33 @@ if (
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
   try {
-    const projectRoot = fileURLToPath(
-      new URL("../../apps/mobile/", import.meta.url),
-    );
-    const require = createRequire(import.meta.url);
-    const { expo } = require(path.join(projectRoot, "app.json"));
-    const config = require(path.join(projectRoot, "app.config.js"))({
-      config: expo,
-    });
-    checkMobilePush(config, projectRoot);
-    console.log("Android Firebase client configuration is valid.");
+    // This hook runs inside EAS's extracted archive, before prebuild. iOS does
+    // not use Firebase; development clients may intentionally omit Android push.
+    const skip =
+      process.argv.includes("--eas-build") &&
+      (process.env.EAS_BUILD_PLATFORM !== "android" ||
+        process.env.EAS_BUILD_PROFILE === "development");
+    if (!skip) {
+      const projectRoot = fileURLToPath(
+        new URL("../../apps/mobile/", import.meta.url),
+      );
+      const require = createRequire(import.meta.url);
+      const { expo } = require(path.join(projectRoot, "app.json"));
+      const config = require(path.join(projectRoot, "app.config.js"))({
+        config: expo,
+      });
+      const expected = checkMobilePush(config, projectRoot);
+      console.log("Android Firebase client configuration is valid.");
+      const apkIndex = process.argv.indexOf("--apk");
+      if (apkIndex !== -1) {
+        const apk = process.argv[apkIndex + 1];
+        if (!apk) throw new Error("--apk requires an APK path.");
+        inspectApk(apk, expected);
+        console.log(
+          "Android APK contains the expected Firebase configuration.",
+        );
+      }
+    }
   } catch (error) {
     console.error(
       error instanceof Error
