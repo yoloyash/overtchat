@@ -2,7 +2,7 @@
 set -eu
 
 repository="yoloyash/overtchat"
-cli_version="0.3.0"
+cli_version="0.3.1"
 
 say() {
   printf '%s\n' "$*"
@@ -65,8 +65,29 @@ case ":$PATH:" in
     ;;
 esac
 
-if ( : </dev/tty >/dev/tty ) 2>/dev/null; then
-  exec "$install_path" setup </dev/tty >/dev/tty
+# The installer consumes stdin under curl | sh. Reopen the actual terminal
+# device for setup; Bun cannot reliably poll the /dev/tty alias on macOS.
+terminal=""
+if command -v tty >/dev/null 2>&1; then
+  if terminal=$(tty <&2 2>/dev/null); then
+    :
+  elif terminal=$(tty <&1 2>/dev/null); then
+    :
+  else
+    terminal=""
+  fi
+fi
+
+case "$terminal" in
+  /dev/*)
+    if [ -c "$terminal" ] && ( : <>"$terminal" ) 2>/dev/null; then
+      exec "$install_path" setup <>"$terminal"
+    fi
+    ;;
+esac
+
+if [ -n "$terminal" ]; then
+  say "Could not open the controlling terminal at $terminal."
 fi
 
 say "Run $install_path setup in an interactive terminal to finish."
