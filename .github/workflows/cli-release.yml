@@ -61,7 +61,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: 1.3.14
+          bun-version: 1.4.2
 
       - name: Build Linux and macOS binaries
         run: |
@@ -86,10 +86,27 @@ jobs:
               > overtchat-checksums.txt
           )
 
+      - name: Build macOS terminal smoke executables
+        run: |
+          mkdir -p dist/cli-terminal-smoke
+          bun build .github/scripts/cli-terminal-smoke.ts \
+            --compile --target=bun-darwin-x64 \
+            --outfile dist/cli-terminal-smoke/overtchat-terminal-smoke-darwin-amd64
+          bun build .github/scripts/cli-terminal-smoke.ts \
+            --compile --target=bun-darwin-arm64 \
+            --outfile dist/cli-terminal-smoke/overtchat-terminal-smoke-darwin-arm64
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: overtchat-cli-release
           path: dist/cli-release/
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: overtchat-cli-terminal-smoke
+          path: dist/cli-terminal-smoke/
           if-no-files-found: error
           retention-days: 7
 
@@ -111,10 +128,21 @@ jobs:
             platform: darwin-arm64
     runs-on: ${{ matrix.runner }}
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: overtchat-cli-release
           path: release
+
+      - if: startsWith(matrix.platform, 'darwin')
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: overtchat-cli-terminal-smoke
+          path: terminal-smoke
+
       - name: Run the released executable on its target OS and CPU
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -122,6 +150,16 @@ jobs:
         run: |
           chmod +x "release/overtchat-$PLATFORM"
           test "$("release/overtchat-$PLATFORM" version)" = "$VERSION"
+
+      - name: Run the installer through a macOS pseudo-terminal
+        if: startsWith(matrix.platform, 'darwin')
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: >-
+          python3 .github/scripts/cli-installer-pty-smoke.py
+          apps/site/public/install
+          "terminal-smoke/overtchat-terminal-smoke-$PLATFORM"
+          "$PLATFORM"
 
   publish:
     if: github.event_name != 'pull_request'
