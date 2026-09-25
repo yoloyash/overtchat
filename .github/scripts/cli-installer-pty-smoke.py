@@ -1,140 +1,206 @@
 #!/usr/bin/env python3
-"""Exercise the curl-to-shell installer inside a real controlling terminal."""
+"""Run the unmodified piped installer and release CLI's real setup prompts."""
 
 from __future__ import annotations
 
+import errno
+import fcntl
 import hashlib
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import json
 import os
 import pathlib
 import pty
+import re
 import select
+import signal
+import struct
+import subprocess
 import sys
 import tempfile
+import termios
+import threading
 import time
 
 
-READY = b"OVERTCHAT_TERMINAL_READY"
-SUCCESS = b"OVERTCHAT_TERMINAL_OK"
+FIRST_PROMPT = b"Where do you want to access OvertChat?"
+NEXT_PROMPT = b"Customize the port or additional addresses?"
+ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
-def fail(message: str, output: bytearray) -> None:
-    sys.stdout.buffer.write(output)
-    raise SystemExit(message)
+def executable(path: pathlib.Path, contents: str) -> None:
+    path.write_text(contents, encoding="utf-8")
+    path.chmod(0o755)
 
 
 def main() -> None:
     if len(sys.argv) != 4:
-        raise SystemExit(
-            "usage: cli-installer-pty-smoke.py INSTALLER FIXTURE PLATFORM"
-        )
-
+        raise SystemExit("usage: cli-installer-pty-smoke.py INSTALLER CLI PLATFORM")
     installer = pathlib.Path(sys.argv[1]).resolve()
-    fixture = pathlib.Path(sys.argv[2]).resolve()
+    binary = pathlib.Path(sys.argv[2]).resolve()
     platform = sys.argv[3]
-    if not installer.is_file() or not fixture.is_file():
-        raise SystemExit("installer and fixture executable must exist")
+    manifest = installer.with_name("install-manifest.json").read_bytes()
+    version = json.loads(manifest)["cliVersion"]
+    binary.chmod(0o755)
+    actual_version = subprocess.check_output([str(binary), "version"], timeout=10)
+    if actual_version.decode().strip() != version:
+        raise SystemExit("CLI artifact must match the candidate manifest version")
 
-    with tempfile.TemporaryDirectory(prefix="overtchat-installer-smoke-") as root:
+    class ManifestHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path != "/install-manifest.json":
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(manifest)))
+            self.end_headers()
+            self.wfile.write(manifest)
+
+        def log_message(self, *_args: object) -> None:
+            pass
+
+    # Use the existing manifest override to avoid the live site's availability,
+    # version drift, or self-updates replacing the exact artifact under test.
+    with HTTPServer(("127.0.0.1", 0), ManifestHandler) as server, \
+            tempfile.TemporaryDirectory(prefix="overtchat-installer-smoke-") as root:
         root_path = pathlib.Path(root)
         home = root_path / "home"
         mock_bin = root_path / "bin"
         home.mkdir()
         mock_bin.mkdir()
-
+        digest = hashlib.sha256(binary.read_bytes()).hexdigest()
         checksums = root_path / "checksums.txt"
-        digest = hashlib.sha256(fixture.read_bytes()).hexdigest()
-        checksums.write_text(
-            f"{digest}  overtchat-{platform}\n", encoding="utf-8"
-        )
+        checksums.write_text(f"{digest}  overtchat-{platform}\n", encoding="utf-8")
 
-        mock_curl = mock_bin / "curl"
-        mock_curl.write_text(
-            """#!/bin/sh
+        # Keep the real installer, checksum verification, installed executable,
+        # and setup command. Only release asset transport is replaced.
+        executable(mock_bin / "curl", """#!/bin/sh
 set -eu
-output=""
-url=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    -fsSLo)
-      output=$2
-      shift 2
-      ;;
-    *)
-      url=$1
-      shift
-      ;;
-  esac
-done
-case "$url" in
-  */overtchat-checksums.txt) cp "$SMOKE_CHECKSUMS" "$output" ;;
-  *) cp "$SMOKE_FIXTURE" "$output" ;;
+[ "$#" = 6 ] && [ "$1" = --proto ] && [ "$2" = '=https' ] &&
+  [ "$3" = --tlsv1.2 ] && [ "$4" = -fsSLo ] || exit 90
+case "$6" in
+  "$SMOKE_RELEASE_URL/overtchat-checksums.txt") cp "$SMOKE_CHECKSUMS" "$5" ;;
+  "$SMOKE_RELEASE_URL/overtchat-$SMOKE_PLATFORM") cp "$SMOKE_BINARY" "$5" ;;
+  *) echo "Unexpected download: $6" >&2; exit 91 ;;
 esac
-""",
-            encoding="utf-8",
-        )
-        mock_curl.chmod(0o755)
-
+""")
+        # No real Docker daemon is contacted. Fail closed if setup tries to
+        # provision anything, and record that attempt even if the CLI ignores it.
+        executable(mock_bin / "docker", """#!/bin/sh
+case "$*" in
+  info|"compose version") exit 0 ;;
+  "inspect overtchat-app") exit 1 ;;
+  "volume ls --filter label=com.docker.compose.volume=overtchat-data --format {{.Name}}") exit 0 ;;
+  *) printf '%s\\n' "$*" >> "$SMOKE_UNEXPECTED_DOCKER"; exit 99 ;;
+esac
+""")
+        executable(mock_bin / "nvidia-smi", "#!/bin/sh\nexit 1\n")
         environment = {
-            **os.environ,
             "HOME": str(home),
+            "OVERTCHAT_HOME": str(home),
+            "OVERTCHAT_CONFIG_DIR": str(root_path / "config"),
+            "OVERTCHAT_STACK_DIR": str(root_path / "stack"),
+            "OVERTCHAT_RELEASE_MANIFEST_URL":
+                f"http://127.0.0.1:{server.server_port}/install-manifest.json",
             "INSTALLER": str(installer),
-            "PATH": f"{mock_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+            "PATH": f"{mock_bin}:/usr/bin:/bin:/usr/sbin:/sbin",
+            "TERM": "xterm-256color",
             "SMOKE_CHECKSUMS": str(checksums),
-            "SMOKE_FIXTURE": str(fixture),
+            "SMOKE_BINARY": str(binary),
+            "SMOKE_PLATFORM": platform,
+            "SMOKE_RELEASE_URL":
+                f"https://github.com/yoloyash/overtchat/releases/download/cli-v{version}",
+            "SMOKE_UNEXPECTED_DOCKER": str(root_path / "unexpected-docker"),
         }
 
+        # Fork before starting the HTTP thread (forking a multithreaded Python
+        # process is unsafe on macOS). A real window size is needed by Clack.
         child_pid, terminal_fd = pty.fork()
         if child_pid == 0:
-            os.execve(
-                "/bin/sh",
-                ["sh", "-c", 'cat "$INSTALLER" | /bin/sh'],
-                environment,
-            )
+            try:
+                os.chdir(home)
+                fcntl.ioctl(1, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+                os.execve("/bin/sh", ["sh", "-c", 'cat "$INSTALLER" | /bin/sh'], environment)
+            finally:
+                os._exit(127)
 
+        worker = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.05})
+        worker.start()
         output = bytearray()
-        input_sent = False
-        deadline = time.monotonic() + 20
-        status: int | None = None
+        stage = 0
+        initial_selection = None
+        status = None
+        eof = False
+        deadline = time.monotonic() + 30
         try:
             while time.monotonic() < deadline:
-                readable, _, _ = select.select([terminal_fd], [], [], 0.25)
-                if readable:
+                if not eof and select.select([terminal_fd], [], [], 0.1)[0]:
                     try:
-                        chunk = os.read(terminal_fd, 4096)
-                    except OSError:
+                        chunk = os.read(terminal_fd, 65536)
+                    except OSError as error:
+                        if error.errno != errno.EIO:
+                            raise
                         chunk = b""
-                    if chunk:
-                        output.extend(chunk)
-                        if READY in output and not input_sent:
-                            os.write(terminal_fd, b"x")
-                            input_sent = True
-                    else:
-                        break
-
-                completed, candidate = os.waitpid(child_pid, os.WNOHANG)
-                if completed == child_pid:
-                    status = candidate
+                    if not chunk:
+                        eof = True
+                    output.extend(chunk)
+                    selections = re.findall(
+                        r"● ([^\r\n]+)", ANSI.sub("", output.decode(errors="replace"))
+                    )
+                    selected = selections[-1] if selections else None
+                    if stage == 0 and FIRST_PROMPT in output and b"Advanced setup" in output and selected:
+                        # Either LAN or local is initially selected. Verify
+                        # both arrow-key redraws before submitting that choice.
+                        initial_selection = selected
+                        os.write(terminal_fd, b"\x1b[B")
+                        stage = 1
+                    elif stage == 1 and selected and selected != initial_selection:
+                        os.write(terminal_fd, b"\x1b[A")
+                        stage = 2
+                    elif stage == 2 and selected == initial_selection:
+                        os.write(terminal_fd, b"\r")
+                        stage = 3
+                    elif stage == 3 and NEXT_PROMPT in output:
+                        os.write(terminal_fd, b"\x1b")
+                        stage = 4
+                if status is None:
+                    completed, candidate = os.waitpid(child_pid, os.WNOHANG)
+                    if completed:
+                        status = candidate
+                if status is not None and eof:
                     break
+                if eof:
+                    time.sleep(0.01)
+
+            if status is None:
+                raise RuntimeError("installer/setup timed out")
+            if os.waitstatus_to_exitcode(status) != 130:
+                raise RuntimeError(f"expected cancelled setup (130), got status {status}")
+            if stage != 4 or b"Setup cancelled." not in output:
+                raise RuntimeError("real setup did not advance and cancel in response to keyboard input")
+            if b"kqueue" in output:
+                raise RuntimeError("terminal runtime error")
+            installed = home / ".local/bin/overtchat"
+            if hashlib.sha256(installed.read_bytes()).hexdigest() != digest:
+                raise RuntimeError("setup did not use the supplied CLI artifact")
+            for name in ("config", "stack", "unexpected-docker"):
+                if (root_path / name).exists():
+                    raise RuntimeError(f"setup attempted provisioning: {name}")
+            print(f"PASS: {platform} installer and real setup accept arrows, Enter, and Escape")
         finally:
-            os.close(terminal_fd)
-
-        if status is None:
-            completed, candidate = os.waitpid(child_pid, os.WNOHANG)
-            if completed == child_pid:
-                status = candidate
-            else:
-                os.kill(child_pid, 9)
+            # Also terminate descendants if a timed-out shell leaves its CLI
+            # running. pty.fork made this child the leader of its own session.
+            if status is None:
+                try:
+                    os.killpg(child_pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 os.waitpid(child_pid, 0)
-                fail("installer terminal smoke test timed out", output)
-
-        if not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
-            fail(f"installer exited unsuccessfully with status {status}", output)
-        if READY not in output or SUCCESS not in output:
-            fail("installer did not complete its terminal input handshake", output)
-        if b"invalid argument, kqueue" in output:
-            fail("Bun attempted to register the terminal alias with kqueue", output)
-
-        sys.stdout.buffer.write(output)
+            os.close(terminal_fd)
+            server.shutdown()
+            worker.join()
+            sys.stdout.buffer.write(output)
 
 
 if __name__ == "__main__":
