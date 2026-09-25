@@ -24,7 +24,11 @@ import time
 
 
 FIRST_PROMPT = b"Where do you want to access OvertChat?"
-NEXT_PROMPT = b"Customize the port or additional addresses?"
+CUSTOMIZE_PROMPT = b"Customize the port or additional addresses?"
+PORT_PROMPT = b"OvertChat port"
+LAN_PROMPT = b"This server's LAN address"
+ADDITIONAL_PROMPT = b"Additional addresses (comma-separated, optional)"
+SERVICES_PROMPT = b"Web search"
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
@@ -159,11 +163,34 @@ esac
                         os.write(terminal_fd, b"\x1b[A")
                         stage = 2
                     elif stage == 2 and selected == initial_selection:
+                        # Always exercise LAN customization, including hosts
+                        # where setup initially selects local-only access.
+                        if selected.startswith("Only on this computer"):
+                            os.write(terminal_fd, b"\x1b[B")
+                            stage = 3
+                        else:
+                            os.write(terminal_fd, b"\r")
+                            stage = 4
+                    elif stage == 3 and selected and selected.startswith("On my home network"):
                         os.write(terminal_fd, b"\r")
-                        stage = 3
-                    elif stage == 3 and NEXT_PROMPT in output:
-                        os.write(terminal_fd, b"\x1b")
                         stage = 4
+                    elif stage == 4 and CUSTOMIZE_PROMPT in output:
+                        os.write(terminal_fd, b"\x1b[D\r")
+                        stage = 5
+                    elif stage == 5 and PORT_PROMPT in output:
+                        os.write(terminal_fd, b"\x158888\r")
+                        stage = 6
+                    elif stage == 6 and LAN_PROMPT in output:
+                        os.write(terminal_fd, b"\x1510.0.0.164\r")
+                        stage = 7
+                    elif stage == 7 and ADDITIONAL_PROMPT in output:
+                        # Submit an untouched optional field. Clack returns
+                        # undefined without an explicit empty default value.
+                        os.write(terminal_fd, b"\r")
+                        stage = 8
+                    elif stage == 8 and SERVICES_PROMPT in output:
+                        os.write(terminal_fd, b"\x1b")
+                        stage = 9
                 if status is None:
                     completed, candidate = os.waitpid(child_pid, os.WNOHANG)
                     if completed:
@@ -177,8 +204,12 @@ esac
                 raise RuntimeError("installer/setup timed out")
             if os.waitstatus_to_exitcode(status) != 130:
                 raise RuntimeError(f"expected cancelled setup (130), got status {status}")
-            if stage != 4 or b"Setup cancelled." not in output:
+            if stage != 9 or b"Setup cancelled." not in output:
                 raise RuntimeError("real setup did not advance and cancel in response to keyboard input")
+            if b"http://10.0.0.164:8888" not in output:
+                raise RuntimeError("setup did not apply the custom LAN address and port")
+            if b"undefined" in output:
+                raise RuntimeError("setup displayed an undefined prompt value")
             if b"kqueue" in output:
                 raise RuntimeError("terminal runtime error")
             installed = home / ".local/bin/overtchat"
@@ -187,7 +218,7 @@ esac
             for name in ("config", "stack", "unexpected-docker"):
                 if (root_path / name).exists():
                     raise RuntimeError(f"setup attempted provisioning: {name}")
-            print(f"PASS: {platform} installer and real setup accept arrows, Enter, and Escape")
+            print(f"PASS: {platform} installer accepts LAN customization and blank addresses, then cancels")
         finally:
             # Also terminate descendants if a timed-out shell leaves its CLI
             # running. pty.fork made this child the leader of its own session.

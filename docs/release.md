@@ -216,9 +216,10 @@ node apps/cli/dist/overtchat.mjs version
 
 The CLI release workflow also gates publication on the real compiled CLI and
 piped installer running in a pseudo-terminal on Linux/macOS, x86-64/arm64.
-The test sends arrow keys and Enter to advance the first setup prompt, then
-Escape to cancel, requiring exit 130 and no provisioning. It uses an isolated
-home, a local candidate manifest, staged release downloads, and a Docker stub;
+The test uses arrow keys and Enter to select home network access, customize the
+port and LAN address, and submit empty additional addresses. It then sends
+Escape at the services prompt, requiring exit 130 and no provisioning. It uses
+an isolated home, a local candidate manifest, staged downloads, and a Docker stub;
 it does not exercise container startup or service provisioning. Run it locally
 with a binary compiled for your host (the version must match the manifest):
 
