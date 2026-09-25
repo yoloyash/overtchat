@@ -254,6 +254,8 @@ export async function promptAccess(
         await text({
           message: "Additional addresses (comma-separated, optional)",
           initialValue: extraTrustedOrigins.join(", "),
+          defaultValue: "",
+          placeholder: "None",
           validate: (value) => additionalAddressValidation(value, publicUrl),
         }),
       )

@@ -15,7 +15,16 @@ vi.mock("@clack/prompts", () => {
     isCancel: () => false,
     note: vi.fn(),
     select: answer,
-    text: answer,
+    text: vi.fn(async (prompt: {
+      message: string;
+      initialValue?: string;
+      defaultValue?: string;
+    }) => {
+      const queued = answers.get(prompt.message);
+      const value = queued?.length ? queued.shift() : prompt.initialValue;
+      // Clack finalizes empty text with defaultValue, even with initialValue: "".
+      return value || prompt.defaultValue;
+    }),
     confirm: answer,
   };
 });
@@ -88,6 +97,38 @@ describe("access wizard", () => {
       }),
     );
     expect(selected.extraTrustedOrigins).toEqual(["http://my-server:4718"]);
+  });
+  it.each([undefined, "", "   "])(
+    "accepts blank additional addresses (%j) with a custom LAN port",
+    async (value) => {
+      answer("Where do you want to access OvertChat?", "lan");
+      answer("Customize the port or additional addresses?", true);
+      answer("OvertChat port", "8888");
+      answer("This server's LAN address", "10.0.0.164");
+      answer("Additional addresses (comma-separated, optional)", value);
+
+      const selected = await promptAccess(config);
+
+      expect(selected).toMatchObject({
+        appPort: 8888,
+        publicUrl: "http://10.0.0.164:8888",
+        connectorServerUrl: "http://127.0.0.1:8888",
+        bindAddress: "0.0.0.0",
+        extraTrustedOrigins: [],
+      });
+    },
+  );
+  it("lets users clear saved additional addresses", async () => {
+    answer("Customize the port or additional addresses?", true);
+    answer("Additional addresses (comma-separated, optional)", "");
+
+    const selected = await promptAccess({
+      ...config,
+      access: { mode: "lan" },
+      extraTrustedOrigins: ["http://my-server:4718"],
+    });
+
+    expect(selected.extraTrustedOrigins).toEqual([]);
   });
   it("lets users return to other options when Tailscale is missing", async () => {
     answer("Where do you want to access OvertChat?", "tailscale", "local");
