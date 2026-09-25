@@ -16,11 +16,13 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
+  Smartphone,
   User,
   UserRound,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { MobileAppDialog } from "@/components/MobileAppDialog";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
 import { getErrorMessage } from "@/lib/errors";
@@ -36,6 +38,7 @@ const UPDATE_COMMAND = "overtchat update";
 export function AccountMenu() {
   const router = useRouter();
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [mobileAppOrigin, setMobileAppOrigin] = useState<string | null>(null);
   const { data: session, isPending } = authClient.useSession();
   const isAdmin = session?.user.role === "admin";
   const { data: update, isStale, refetch } = useAppUpdate(isAdmin);
@@ -172,6 +175,13 @@ export function AccountMenu() {
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
               <span>Settings</span>
             </Menu.Item>
+            <Menu.Item
+              onClick={() => setMobileAppOrigin(window.location.origin)}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+            >
+              <Smartphone className="size-3.5 shrink-0 text-muted-foreground" />
+              <span>Get the mobile app</span>
+            </Menu.Item>
             {isAdmin && (
               <Menu.Item
                 render={
@@ -243,6 +253,7 @@ export function AccountMenu() {
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
+      {mobileAppOrigin && <MobileAppDialog origin={mobileAppOrigin} onClose={() => setMobileAppOrigin(null)} />}
       {availableVersion && (
         <AppUpdateDialog
           open={updateDialogOpen}

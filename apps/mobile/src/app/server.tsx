@@ -1,9 +1,11 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -11,11 +13,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { PingResponse } from "@overtchat/shared";
+import { parseMobileServerUrl } from "@overtchat/shared/mobile-connection";
+import { ServerQrScanner } from "@/components/ServerQrScanner";
 import { resetAuthClient } from "@/lib/auth/client";
 import { setServerUrl, useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
-
-const DEFAULT_URL = "http://10.0.0.200:4717";
 
 type Status = { kind: "idle" } | { kind: "loading" } | { kind: "error"; message: string };
 
@@ -29,42 +31,69 @@ function normalizeUrl(raw: string): string {
 export default function ServerScreen() {
   const { colors, radii, fonts } = useTheme();
   const serverUrl = useServerUrl();
-  const [url, setUrl] = useState(() => serverUrl ?? DEFAULT_URL);
+  const [url, setUrl] = useState(() => serverUrl ?? "");
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [redirectToLogin, setRedirectToLogin] = useState(false);
+  const pendingRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => {
+    const controller = pendingRequest.current;
+    pendingRequest.current = null;
+    controller?.abort();
+  }, []);
 
   useEffect(() => {
     if (redirectToLogin && serverUrl) router.replace("/login");
   }, [redirectToLogin, serverUrl]);
 
-  async function connect() {
-    const target = normalizeUrl(url);
-    if (!target) {
+  async function connect(input = url) {
+    if (pendingRequest.current) return;
+    if (!input.trim()) {
       setStatus({ kind: "error", message: "Enter a server URL." });
       return;
     }
 
+    const target = parseMobileServerUrl(normalizeUrl(input));
+    if (!target) {
+      setStatus({ kind: "error", message: "Enter a valid HTTP or HTTPS server address." });
+      return;
+    }
     setStatus({ kind: "loading" });
+    const controller = new AbortController();
+    pendingRequest.current = controller;
+    const timeout = setTimeout(() => controller.abort(), 15_000);
     try {
-      const res = await fetch(`${target}/api/ping`);
+      const res = await fetch(`${target}/api/ping`, {
+        credentials: "omit",
+        signal: controller.signal,
+      });
+      if (pendingRequest.current !== controller) return;
+      if (controller.signal.aborted) throw new Error("Connection timed out");
       if (!res.ok) {
         setStatus({ kind: "error", message: `Server returned ${res.status}.` });
         return;
       }
       const body = (await res.json()) as PingResponse;
+      if (pendingRequest.current !== controller) return;
+      if (controller.signal.aborted) throw new Error("Connection timed out");
       if (!body?.ok || body.name !== "overtchat") {
         setStatus({ kind: "error", message: "That doesn't look like an overtchat server." });
         return;
       }
-      setServerUrl(target);
       resetAuthClient();
+      setServerUrl(target);
       setStatus({ kind: "idle" });
       setRedirectToLogin(true);
-    } catch (err) {
+    } catch {
+      if (pendingRequest.current !== controller) return;
       setStatus({
         kind: "error",
-        message: err instanceof Error ? err.message : "Could not reach server.",
+        message: "Couldn’t reach this server. Check the address and your connection, then retry.",
       });
+    } finally {
+      clearTimeout(timeout);
+      if (pendingRequest.current === controller) pendingRequest.current = null;
     }
   }
 
@@ -76,7 +105,7 @@ export default function ServerScreen() {
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.brand}>
             <Text
               style={[styles.wordmark, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
@@ -107,7 +136,7 @@ export default function ServerScreen() {
                   { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                 ]}
               >
-                Enter the URL of your overtchat instance.
+                Enter your server address or scan it from the web app.
               </Text>
             </View>
 
@@ -119,11 +148,12 @@ export default function ServerScreen() {
               </Text>
               <TextInput
                 value={url}
-                onChangeText={setUrl}
+                onChangeText={(value) => { setUrl(value); setStatus({ kind: "idle" }); }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType="url"
-                placeholder="http://10.0.0.200:4717"
+                placeholder="https://chat.example.com"
+                accessibilityLabel="Server URL"
                 placeholderTextColor={colors.mutedForeground}
                 editable={!isLoading}
                 style={[
@@ -149,7 +179,7 @@ export default function ServerScreen() {
             <Pressable
               accessibilityRole="button"
               disabled={isLoading}
-              onPress={connect}
+              onPress={() => void connect()}
               style={({ pressed }) => [
                 styles.cta,
                 {
@@ -165,14 +195,37 @@ export default function ServerScreen() {
                   { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                {isLoading ? "Connecting…" : "Connect"}
+                {isLoading ? "Connecting…" : status.kind === "error" ? "Retry" : "Connect"}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={isLoading}
+              onPress={() => { Keyboard.dismiss(); setScannerOpen(true); }}
+              style={({ pressed }) => [styles.cta, {
+                borderWidth: 1, borderColor: colors.border, borderRadius: radii.md,
+                opacity: pressed || isLoading ? 0.65 : 1,
+              }]}
+            >
+              <Text style={[styles.ctaText, { color: colors.foreground, fontFamily: fonts.sansSemiBold }]}>
+                Scan QR code
               </Text>
             </Pressable>
           </View>
 
           <View style={styles.flex} />
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
+      {scannerOpen && (
+        <ServerQrScanner
+          onClose={() => setScannerOpen(false)}
+          onScan={(address) => {
+            setUrl(address);
+            setScannerOpen(false);
+            void connect(address);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -180,7 +233,7 @@ export default function ServerScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1 },
   flex: { flex: 1 },
-  content: { flex: 1, paddingHorizontal: 16, paddingVertical: 40, gap: 32 },
+  content: { flexGrow: 1, paddingHorizontal: 16, paddingVertical: 40, gap: 32 },
   brand: { alignItems: "center" },
   wordmark: { fontSize: 18, letterSpacing: -0.3 },
   card: { padding: 24, borderWidth: StyleSheet.hairlineWidth, gap: 20 },

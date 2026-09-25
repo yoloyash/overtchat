@@ -59,6 +59,24 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
+### Mobile connection QR codes
+
+The scanner uses `expo-camera`; development clients built before it was added
+must be rebuilt. From `apps/mobile`, use `npx expo run:android --device`, or
+`npx expo run:ios --device` on a Mac, then start Metro with `npm run dev:mobile`
+from the repository root if needed. Use a physical device to test the camera.
+
+Open the web app at the development server's reachable LAN address (for example,
+`http://192.168.1.20:4717`). In the account menu → **Get the mobile app**, check
+both store codes, then open **Connect your phone**. Verify the displayed address
+matches the browser and cannot be edited; localhost should show setup guidance
+instead of a connection QR. On mobile, choose
+**Scan QR code**, grant camera access, and scan it. Verify it opens login without
+an extra Connect tap. Also check unreachable servers, retry, denied camera
+permission, cancellation, invalid QR codes, background/resume, manual entry,
+and password-manager autofill on both platforms. Network/auth origin
+configuration above still applies.
+
 ## Speech
 
 `speech/stt/` contains CPU/CUDA STT containers; `speech/apple/` contains native

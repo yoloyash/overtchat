@@ -13,7 +13,8 @@
     "./agent-history": "./src/agent-history.ts",
     "./agent-creation": "./src/agent-creation.ts",
     "./agent-interaction": "./src/agent-interaction.ts",
-    "./context-meter": "./src/context-meter.ts"
+    "./context-meter": "./src/context-meter.ts",
+    "./mobile-connection": "./src/mobile-connection.ts"
   },
   "scripts": {
     "theme:generate": "tsx scripts/generate-theme-css.ts",

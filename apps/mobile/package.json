@@ -43,6 +43,7 @@
     "expo": "~56.0.8",
     "expo-audio": "~56.0.11",
     "expo-build-properties": "~56.0.16",
+    "expo-camera": "~56.0.8",
     "expo-clipboard": "~56.0.3",
     "expo-constants": "~56.0.16",
     "expo-crypto": "~56.0.4",
