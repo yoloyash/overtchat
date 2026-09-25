@@ -7,6 +7,8 @@ on:
     paths:
       - ".github/workflows/cli-release.yml"
       - "apps/cli/**"
+      - "speech/apple/**"
+      - "scripts/bundle-apple-speech.mjs"
       - "apps/site/public/install"
       - "package.json"
       - "package-lock.json"
@@ -45,6 +47,8 @@ jobs:
         run: npm install --global npm@10.9.8
 
       - run: npm ci
+
+      - run: npm run speech:check
 
       - name: Validate CLI release version
         id: version

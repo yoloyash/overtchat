@@ -59,6 +59,55 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
+## Apple speech
+
+`speech/apple/server.py` owns the small speech HTTP service. Kokoro/PyTorch MPS
+and Parakeet/MLX own inference. `apps/cli/src/apple-speech.ts` owns private runtime
+installation, LaunchAgent lifecycle, and rollback. The web speech proxy uses
+separate bundled endpoint variables so switching external providers cannot
+redirect bundled speech. Neither clients nor the Host Connector manage models.
+
+After changing the server or lockfile, regenerate the payload embedded in the
+CLI; no runtime checkout or separate speech release artifact is required:
+
+```sh
+npm run speech:bundle
+npm run speech:check
+npm run test -w apps/cli --
+npm run test -w apps/web -- lib/speech/proxy.test.ts
+python3 -m venv /tmp/overtchat-speech-tests
+/tmp/overtchat-speech-tests/bin/pip install -r speech/apple/requirements-test.txt
+/tmp/overtchat-speech-tests/bin/python -m unittest discover -s speech/apple -p 'test_*.py'
+```
+
+The Python tests use fake inference and real FFmpeg, including an M4A seeking
+regression. Regenerate dependencies on an Apple Silicon Mac using uv 0.12.18:
+
+```sh
+MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile speech/apple/requirements.in \
+  --python-version 3.12 --python-platform aarch64-apple-darwin \
+  --generate-hashes --output-file speech/apple/requirements.lock
+npm run speech:bundle
+```
+
+Japanese dependencies are selected explicitly: prebuilt `pyopenjtalk-plus`
+and the packaged `unidic-lite` dictionary avoid a compiler and a separate
+dictionary download. Do not reintroduce Misaki's source-only OpenJTalk extra.
+
+Use a disposable managed installation on a logged-in Apple Silicon Mac for real
+inference. Its runtime directory is printed in the LaunchAgent's arguments.
+With that runtime's `.venv/bin/python`, run `speech/apple/smoke.py` followed by
+the path to its private `service.json`. This exercises PCM/MP3/WAV/FLAC/Opus/AAC,
+WAV/WebM/M4A transcription, JSON/text responses, authentication, cancellation,
+and concurrent requests. `--fixture path/to/spoken.wav` accepts an independent
+recording containing "the quick brown fox"; otherwise it synthesizes one.
+Never print or commit `service.json`, which contains the internal token.
+
+Also verify Docker Desktop can reach the service, native-to-CPU switching,
+service replacement/rollback, and restart after login. Metal tests require
+physical Apple hardware; passing transport tests on Linux does not validate
+inference. Setup/update tests must use isolated config and stack directories.
+
 ## OpenCode process lifecycle validation
 
 The connector owns cleanup for local and SSH OpenCode servers. To exercise real

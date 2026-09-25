@@ -1,3 +1,4 @@
+import { prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
 import { platformServices } from "./platform.js";
 import { outro, spinner } from "@clack/prompts";
 import { accessSummary } from "./access.js";
@@ -53,6 +54,7 @@ export async function update(): Promise<void> {
   const completedSecrets = initialSecrets(null, secrets);
   const progress = spinner();
   let progressActive = true;
+  let speechChange: SpeechChange | undefined;
   progress.start("Checking for OvertChat updates");
   try {
     const manifest = await latestReleaseManifest();
@@ -91,6 +93,8 @@ export async function update(): Promise<void> {
       ],
       { inherit: true },
     );
+    progress.message("Preparing local speech");
+    speechChange = await prepareAppleSpeech(nextConfig, secrets.managementSecret, paths);
     progress.message("Applying updates and database migrations");
     await requireDocker(docker, [...composeArgs, "up", "-d"], {
       inherit: true,
@@ -103,12 +107,15 @@ export async function update(): Promise<void> {
     }
     await writeInstallationConfig(paths, nextConfig);
     progress.message("Reconciling bundled services");
+    await speechChange.commit();
+    speechChange = undefined;
     const reconciliation = await reconcileManagedSidecars(docker, nextConfig);
     progress.stop("OvertChat is up to date");
     progressActive = false;
     showSidecarReconciliation(reconciliation);
     outro(nextConfig.access ? accessSummary(nextConfig) : `Open: ${nextConfig.publicUrl}`);
   } catch (error) {
+    await speechChange?.rollback();
     if (progressActive) progress.stop("OvertChat update failed", 1);
     throw error;
   }

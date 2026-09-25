@@ -57,6 +57,12 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Speech transport and codec tests (no Apple models)
+        run: |
+          python3 -m venv /tmp/overtchat-speech-tests
+          /tmp/overtchat-speech-tests/bin/pip install -r speech/apple/requirements-test.txt
+          /tmp/overtchat-speech-tests/bin/python -m unittest discover -s speech/apple -p 'test_*.py'
+
   container:
     permissions:
       contents: read

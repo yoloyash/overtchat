@@ -43,6 +43,12 @@ Do not change unrelated manifest fields.
   dispatches promotion.
 - **CLI:** The CLI workflow verifies Linux/macOS binaries, publishes the GitHub
   release, and dispatches promotion.
+- **Apple speech:** Its source and hashed dependency lock are embedded in the
+  CLI. Regenerate/check the bundle and run the [Apple speech validation](development.md#apple-speech)
+  before a CLI release that changes it. The first native-speech release also
+  requires the app's bundled endpoint/token routing changes: promote the app
+  and CLI together, after both artifacts are published. Release version bumps
+  must include both components; do not publish this CLI against the old app.
 - **Connector:** The connector workflow verifies Linux/macOS binaries, publishes
   the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases

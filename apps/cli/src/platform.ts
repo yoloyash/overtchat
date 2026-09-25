@@ -39,8 +39,8 @@ export function commandEnvironment(
   };
 }
 
-// macOS runs the CPU images inside Docker's Linux VM. CUDA is Linux-only;
-// also normalize saved/adopted settings so updates cannot select GPU images.
+// CUDA is Linux-only. Preserve an explicit Apple selection; legacy CPU installs
+// stay on CPU until setup selects Apple acceleration.
 export function platformServices(
   config: InstallationConfig,
 ): InstallationConfig {
@@ -50,13 +50,13 @@ export function platformServices(
     tts: config.tts.bundledInstalled
       ? {
           ...config.tts,
-          accelerator: "cpu",
+          accelerator: config.tts.accelerator === "apple" ? "apple" : "cpu",
           gpuUuid: undefined,
           gpuVariant: undefined,
         }
       : config.tts,
     stt: config.stt.bundledInstalled
-      ? { ...config.stt, accelerator: "cpu", gpuUuid: undefined }
+      ? { ...config.stt, accelerator: config.stt.accelerator === "apple" ? "apple" : "cpu", gpuUuid: undefined }
       : config.stt,
   };
 }

@@ -1,0 +1,18 @@
+# Regenerate with the command in docs/development.md (Apple speech).
+fastapi==0.141.1
+uvicorn==0.53.0
+python-multipart==0.0.32
+numpy==2.4.6
+kokoro==0.9.4
+misaki[en,zh]==0.9.4
+# Japanese: prebuilt OpenJTalk and a packaged dictionary avoid Xcode/system setup.
+pyopenjtalk-plus==0.4.1.post9
+fugashi==1.5.2
+jaconv==0.4.1
+mojimoji==0.0.13
+unidic-lite==1.0.8
+torch==2.10.0
+parakeet-mlx==0.5.2
+mlx==0.32.2
+imageio-ffmpeg==0.6.0
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl

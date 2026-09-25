@@ -176,6 +176,7 @@ describe("access provisioning lifecycle", () => {
       }),
       [],
       undefined,
+      null,
     );
     expect(await readInstallationConfig(runtimePaths())).toMatchObject({
       access: { mode: "local" },
@@ -186,6 +187,7 @@ describe("access provisioning lifecycle", () => {
       expect.objectContaining({ access: { mode: "local" } }),
       [],
       undefined,
+      null,
     );
     const environment = await readFile(runtimePaths().secretsFile, "utf8");
     expect(environment).toContain('APP_BIND_ADDRESS="127.0.0.1"');

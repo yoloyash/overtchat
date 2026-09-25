@@ -108,6 +108,7 @@ async function promptSearch(
 async function promptTts(
   current: InstallationConfig["tts"],
   gpus: Gpu[],
+  appleChip?: string | null,
 ): Promise<InstallationConfig["tts"]> {
   const provider = chosen(
     await select<TtsProvider>({
@@ -117,7 +118,7 @@ async function promptTts(
         {
           value: "bundled",
           label: "Bundled Kokoro",
-          hint: "local CPU or NVIDIA GPU service",
+          hint: appleChip ? `${appleChip} acceleration available` : "local CPU or NVIDIA GPU service",
         },
         { value: "openai-compatible", label: "OpenAI-compatible API" },
         {
@@ -132,6 +133,7 @@ async function promptTts(
     return { provider, bundledInstalled: false };
   }
   if (provider === "bundled") {
+    if (appleChip) return { provider, bundledInstalled: true, accelerator: await promptAppleAccelerator(current.accelerator, appleChip) };
     if (gpus.length === 0) {
       note(
         "No NVIDIA GPU was detected. Kokoro will use the CPU image.",
@@ -280,6 +282,7 @@ export function existingInstallationSummary(
 async function promptStt(
   current: InstallationConfig["stt"],
   gpus: Gpu[],
+  appleChip?: string | null,
 ): Promise<InstallationConfig["stt"]> {
   const provider = chosen(
     await select<SttProvider>({
@@ -289,10 +292,10 @@ async function promptStt(
         {
           value: "bundled",
           label:
-            gpus.length > 0
+            appleChip ? "Bundled Parakeet — Apple accelerated" : gpus.length > 0
               ? "Bundled Parakeet — NVIDIA accelerated"
               : "Bundled Parakeet — CPU",
-          hint: gpus.length > 0 ? `${gpus.length} NVIDIA GPU${gpus.length === 1 ? "" : "s"} detected` : "CPU",
+          hint: appleChip ?? (gpus.length > 0 ? `${gpus.length} NVIDIA GPU${gpus.length === 1 ? "" : "s"} detected` : "CPU"),
         },
         { value: "openai-compatible", label: "OpenAI-compatible API" },
         {
@@ -338,6 +341,7 @@ async function promptStt(
   if (provider === "disabled") {
     return { provider, bundledInstalled: false };
   }
+  if (appleChip) return { provider, bundledInstalled: true, accelerator: await promptAppleAccelerator(current.accelerator, appleChip) };
   if (gpus.length === 0) {
     note("No NVIDIA GPU was detected. Parakeet will use the CPU image.", "Local STT accelerator");
     return { provider, bundledInstalled: true, accelerator: "cpu" };
@@ -404,6 +408,7 @@ export async function promptInstallationConfig(
   initial: InstallationConfig,
   gpus: Gpu[],
   existing?: ExistingInstallation,
+  appleChip?: string | null,
 ): Promise<InstallationConfig> {
   intro("OvertChat setup");
   if (existing) {
@@ -423,8 +428,8 @@ export async function promptInstallationConfig(
   }
   const configured = await promptAccess(initial);
   const search = await promptSearch(initial.search);
-  const tts = await promptTts(initial.tts, gpus);
-  const stt = await promptStt(initial.stt, gpus);
+  const tts = await promptTts(initial.tts, gpus, appleChip);
+  const stt = await promptStt(initial.stt, gpus, appleChip);
   const voiceAvailable = tts.provider !== "disabled" && stt.provider !== "disabled";
   const installVoice = voiceAvailable
     ? chosen(
@@ -481,4 +486,15 @@ export async function promptInstallationConfig(
     agents: { installed: installAgents },
     disableUpdateCheck: !checkForUpdates,
   };
+}
+
+async function promptAppleAccelerator(current: string | undefined, chip: string): Promise<"apple" | "cpu"> {
+  return chosen(await select<"apple" | "cpu">({
+    message: `Mac detected — ${chip}`,
+    initialValue: current === "cpu" ? "cpu" : "apple",
+    options: [
+      { value: "apple", label: `${chip} acceleration`, hint: "recommended" },
+      { value: "cpu", label: "CPU — Linux container" },
+    ],
+  }));
 }

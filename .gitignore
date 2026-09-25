@@ -41,6 +41,7 @@ GEMINI.md
 CLAUDE.md
 /scripts/*
 !/scripts/install-connector.sh
+!/scripts/bundle-apple-speech.mjs
 !/scripts/dev.mjs
 !/scripts/dev.test.mjs
 !/scripts/readme-media.mjs
