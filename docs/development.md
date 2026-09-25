@@ -61,24 +61,14 @@ gestures. Use an existing development client unless native modules change.
 
 ## Speech
 
-`speech/` groups bundled speech inference and packaging. `speech/stt/` contains
-the Parakeet CPU/CUDA container service and its Dockerfiles; `speech/apple/`
-contains native Apple TTS/STT. Container TTS uses the pinned upstream Kokoro
-images selected by Compose and the release manifest. Realtime conversation
-orchestration remains in `voice/`; the installer owns backend selection and
-lifecycle, and clients use the web speech proxy.
+`speech/stt/` contains CPU/CUDA STT containers; `speech/apple/` contains native
+Kokoro/PyTorch MPS and Parakeet/MLX inference. Container TTS uses upstream Kokoro
+images. Realtime orchestration remains in `voice/`.
 
-Build the STT containers from the repository root with
-`docker compose --profile stt build stt-cpu` or
+Build STT with `docker compose --profile stt build stt-cpu` or
 `docker compose --profile stt-gpu build stt-gpu`.
 
 ### Apple speech
-
-`speech/apple/server.py` owns the small speech HTTP service. Kokoro/PyTorch MPS
-and Parakeet/MLX own inference. `apps/cli/src/apple-speech.ts` owns private runtime
-installation, LaunchAgent lifecycle, and rollback. The web speech proxy uses
-separate bundled endpoint variables so switching external providers cannot
-redirect bundled speech. Neither clients nor the Host Connector manage models.
 
 After changing the server or lockfile, regenerate the payload embedded in the
 CLI; no runtime checkout or separate speech release artifact is required:
@@ -103,23 +93,12 @@ MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile speech/apple/requirements.in \
 npm run speech:bundle
 ```
 
-Japanese dependencies are selected explicitly: prebuilt `pyopenjtalk-plus`
-and the packaged `unidic-lite` dictionary avoid a compiler and a separate
-dictionary download. Do not reintroduce Misaki's source-only OpenJTalk extra.
-
-Use a disposable managed installation on a logged-in Apple Silicon Mac for real
-inference. Its runtime directory is printed in the LaunchAgent's arguments.
-With that runtime's `.venv/bin/python`, run `speech/apple/smoke.py` followed by
-the path to its private `service.json`. This exercises PCM/MP3/WAV/FLAC/Opus/AAC,
-WAV/WebM/M4A transcription, JSON/text responses, authentication, cancellation,
-and concurrent requests. `--fixture path/to/spoken.wav` accepts an independent
-recording containing "the quick brown fox"; otherwise it synthesizes one.
-Never print or commit `service.json`, which contains the internal token.
-
-Also verify Docker Desktop can reach the service, native-to-CPU switching,
-service replacement/rollback, and restart after login. Metal tests require
-physical Apple hardware; passing transport tests on Linux does not validate
-inference. Setup/update tests must use isolated config and stack directories.
+On an isolated, logged-in Apple Silicon Mac, run `speech/apple/smoke.py` with
+the managed runtime's Python and its private `service.json` path. Use
+`--fixture spoken.wav` for an independent recording containing "the quick brown
+fox". Never print or commit the service token. Verify Docker connectivity,
+long recordings, setup/update recovery, CPU switching, and restart at login.
+Linux tests cover transport/codecs; physical Mac tests cover inference.
 
 ## OpenCode process lifecycle validation
 

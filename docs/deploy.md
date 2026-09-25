@@ -38,30 +38,20 @@ Desktop's start-at-login setting to start the stack automatically.
 Connector logs are in `~/Library/Logs/OvertChat/connector.log` and
 `connector.error.log`, each limited to 10 MiB with three rotated backups.
 
-Setup detects the Apple chip and recommends acceleration for new bundled
-speech installations. Existing installations keep their saved choice; run
-`overtchat setup` to change it. The web and mobile settings continue to show
-bundled Kokoro and Parakeet, with the same speech APIs.
+Setup recommends native Apple acceleration for new speech installations on
+Apple Silicon with macOS 14+. Existing installations retain their selection;
+run `overtchat setup` to switch between Apple acceleration and CPU containers.
+Web/mobile continue using the bundled speech providers.
 
-Apple speech runs as a separate, managed LaunchAgent under your normal desktop
-user. Setup installs a private Python environment, FFmpeg, and pinned model
-files automatically; Homebrew and a system Python installation are unnecessary.
-The first installation downloads several gigabytes. The app still runs in
-Docker Desktop and reaches the token-protected speech service through the host.
-The service listens on loopback, by default port 5093.
+The CLI installs private Python, FFmpeg and model files (several GB) and manages
+a LaunchAgent. Speech requires a logged-in desktop user and an awake Mac;
+models share system memory and requests queue on one worker. Docker Desktop
+connects to the authenticated loopback service on port 5093.
 
-The service starts at login and requires the Mac to stay awake. Models remain
-loaded in shared system memory and speech requests share one inference worker;
-simultaneous requests queue. Switching back to CPU in setup stops the native
-service after the app starts successfully. Native updates stage a new runtime
-before replacing the running service and restore its previous LaunchAgent if
-startup fails. This recovery does not roll back app versions or database changes.
-
-`overtchat status` reports native readiness. Its log, Python runtimes, and model
-cache are under `~/.local/share/overtchat/apple-speech/` (or the configured stack
-directory). The log is `speech.log`. Old runtimes and cached downloads are
-retained when switching to CPU or updating; they are not automatically pruned.
-Do not delete the native directory while its LaunchAgent is running.
+`overtchat status` reports readiness and the log path. Runtimes, downloads and
+`speech.log` live in the managed stack's `apple-speech/` directory and are not
+automatically pruned. Setup restores speech routing and the previous native
+service on failure; it does not downgrade the app or database.
 
 ## Choose how to access OvertChat
 
