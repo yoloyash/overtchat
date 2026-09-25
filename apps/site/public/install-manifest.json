@@ -1,7 +1,7 @@
 {
   "format": 1,
   "cliVersion": "0.3.2",
-  "appVersion": "0.22.0",
+  "appVersion": "0.22.1",
   "voiceVersion": "0.1.1",
   "connectorVersion": "0.12.0",
   "sttVersion": "0.1.1",
