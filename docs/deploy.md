@@ -19,9 +19,7 @@ and add your model endpoint in the web app.
 overtchat setup     # change access, services, or update notifications
 overtchat status    # check versions and service status
 overtchat update    # update the managed stack
-overtchat doctor    # diagnose problems and suggest next steps
 overtchat logs -f   # follow container logs
-overtchat restart  # restart the stack and native services
 ```
 
 Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
@@ -60,11 +58,8 @@ service on failure; it does not downgrade the app or database.
 
 First-time installation and `overtchat setup` use the same access question.
 Rerunning setup preselects the saved choice and lets you change it without
-reinstalling or losing data. Reconfiguration preserves installed component
-versions and works without fetching the release manifest. Use `overtchat update`
-to upgrade. Updates preserve the access choice. `overtchat setup --dry-run`
-prints a plan without writing files, updating the CLI, installing prerequisites,
-or changing services and Tailscale routes. Docker must be available for discovery.
+reinstalling or losing data. Updates preserve the choice. A dry run renders a
+preview without saving new installation settings or changing Tailscale routes.
 If an access reconfiguration fails to start, setup attempts to restore the
 previous network settings. It does not downgrade the app or roll back database
 migrations. The previous Tailscale route is retained until startup succeeds.
@@ -208,14 +203,6 @@ app, selected services, and managed connector while preserving data. Rerun it
 if interrupted. `overtchat update --check` only reports available versions and
 does not require Docker; add `--json` for structured output.
 
-Before applying an app version/image change, update creates a SQLite snapshot
-using the installed app image and verifies its integrity. Failure stops the
-update before stack files change. Snapshots are printed as a host path or
-`<volume>:/backups/pre-update-<timestamp>.db`. They remain in the app data storage
-until you remove them; copy important backups to a separate location. This is
-a database snapshot, not a complete backup of uploads, configuration, or secrets,
-and does not provide automatic database rollback.
-
 Setup asks **Automatically check for updates?**, with **Yes (recommended)**
 selected for new installations. This enables release notifications in the
 administrator account menu. The app contacts overtchat.com to check for new
@@ -242,38 +229,7 @@ status. Every command supports `--help`.
   connectivity, native speech readiness, the access URL, and storage paths.
   Unavailable components retain their configured version with unknown running
   versions. A container without a health check is reported as running, not ready.
-- `overtchat doctor` performs read-only checks and prints corrective actions.
-  It returns exit status 1 when any check fails. Public URL verification checks
-  this installation's identity without sending management credentials to it.
-- `version`, `status`, and `doctor` support `--json`.
-- `overtchat start`, `stop`, and `restart` control the saved stack and installed
-  native services. Start uses local images without pulling updates; missing
-  images require setup/update. Stop/restart interrupts agent connections.
-  Data and settings survive. macOS services require a logged-in desktop session.
-
-## Uninstall
-
-```sh
-overtchat uninstall --dry-run        # review runtime removal; retain data
-overtchat uninstall                  # confirm and remove runtime services
-overtchat uninstall --purge --dry-run # review data deletion too
-overtchat uninstall --purge          # confirm permanent deletion
-```
-
-Default uninstall stops and removes the managed containers, native service
-registrations, connector executable, and recorded Tailscale Serve route. It
-retains app data, configuration/secrets, model caches and connector history;
-`overtchat setup` reinstalls using the retained configuration. The management
-CLI remains available; add `--remove-cli` to remove its installed binary too.
-
-`--purge` also removes generated files, managed caches, native service data,
-and app volumes whose recorded ownership matches this installation. Adopted
-bind mounts and legacy/unproven-owned data volumes are always retained and
-printed for manual removal. Shared networks, images, Docker, Tailscale,
-coding agents, and externally managed tunnel/proxy routes are retained.
-Uninstall refuses conflicting resource ownership. Remove external proxy routes
-in their own service. For unattended removal, review the dry run and pass
-`--yes` (including with `--purge` to explicitly authorize data deletion).
+- `version` and `status` support `--json`.
 
 ## Logs and backup
 
@@ -287,7 +243,6 @@ overtchat logs speech --follow       # native Apple speech
 Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `connector`,
 and `speech`; only installed services are available. Container log output may
 contain application data; review it before sharing.
-
 
 ```sh
 docker logs -f overtchat-app

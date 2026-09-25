@@ -301,23 +301,3 @@ it("retains native speech and its selection after a first-install failure", asyn
   expect(rollback).not.toHaveBeenCalled();
   expect((await readInstallationConfig(runtimePaths()))?.tts.accelerator).toBe("apple");
 });
-
-it("preserves saved app and sidecar versions when reconfiguring against a newer manifest", async () => {
-  const current = local(defaultInstallationConfig(null, manifest));
-  current.appVersion = "0.1.0";
-  current.appImage = "ghcr.io/yoloyash/overtchat-app:0.1.0";
-  current.voiceVersion = "0.0.1";
-  current.voiceImage = "ghcr.io/yoloyash/overtchat-voice:0.0.1";
-  await writeInstallationConfig(runtimePaths(), current);
-  await setup(options, manifest);
-  const saved = await readInstallationConfig(runtimePaths());
-  expect(saved).toMatchObject({ appVersion: "0.1.0", appImage: current.appImage, voiceVersion: "0.0.1", voiceImage: current.voiceImage, redisImage: current.redisImage });
-});
-
-it("does not write even preview files during a dry run", async () => {
-  await setup({ ...options, dryRun: true }, manifest);
-  await expect(readFile(runtimePaths().composeFile)).rejects.toMatchObject({ code: "ENOENT" });
-  await expect(readFile(runtimePaths().secretsFile)).rejects.toMatchObject({ code: "ENOENT" });
-  expect(await readInstallationConfig(runtimePaths())).toBeNull();
-  expect(requireDocker).not.toHaveBeenCalled();
-});

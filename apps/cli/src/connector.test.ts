@@ -27,7 +27,6 @@ import { installManagedConnector } from "./connector.js";
 const config = {
   appPort: 4718,
   connectorVersion: "0.12.0",
-  agents: { installed: true },
 } as InstallationConfig;
 
 beforeEach(() => {

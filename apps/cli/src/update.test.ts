@@ -496,28 +496,3 @@ it("checks updates without Docker, credentials, self-update, or writes", async (
   expect(mocks.prepareFiles).not.toHaveBeenCalled();
   expect(mocks.writeInstallationConfig).not.toHaveBeenCalled();
 });
-
-it("verifies a snapshot with the old image before writing new stack files", async () => {
-  const current = config({ appVersion: "0.13.9", appImage: "ghcr.io/yoloyash/overtchat-app:0.13.9" });
-  mocks.readInstallationConfig.mockResolvedValue(current);
-  await update();
-  const index = mocks.requireDocker.mock.calls.findIndex(([, args]) => args[0] === "run");
-  expect(index).toBeGreaterThanOrEqual(0);
-  const args = mocks.requireDocker.mock.calls[index]![1];
-  expect(args).toContain(current.appImage);
-  expect(args.join(" ")).toContain("pre-update-");
-  expect(args.at(-1)).toContain("integrity_check");
-  expect(mocks.requireDocker.mock.invocationCallOrder[index]).toBeLessThan(mocks.prepareFiles.mock.invocationCallOrder[0]!);
-});
-
-it("aborts an app update when its safety snapshot fails", async () => {
-  mocks.readInstallationConfig.mockResolvedValue(config({ appVersion: "0.13.9", appImage: "ghcr.io/yoloyash/overtchat-app:0.13.9" }));
-  mocks.requireDocker.mockImplementation(async (_docker, args) => {
-    if (args[0] === "run") throw new Error("Snapshot failed SQLite integrity_check.");
-    return { stdout: "", stderr: "", exitCode: 0 };
-  });
-  await expect(update()).rejects.toThrow("integrity_check");
-  expect(mocks.prepareFiles).not.toHaveBeenCalled();
-  expect(mocks.writeSecretsFile).not.toHaveBeenCalled();
-  expect(mocks.installManagedConnector).not.toHaveBeenCalled();
-});

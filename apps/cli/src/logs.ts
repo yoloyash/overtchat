@@ -5,7 +5,8 @@ import {
   managedDocker,
   managedInstallation,
 } from "./management.js";
-import { nativeServices } from "./native-services.js";
+import os from "node:os";
+import path from "node:path";
 import { requireSuccessful } from "./process.js";
 
 export async function logs(
@@ -15,17 +16,19 @@ export async function logs(
 ): Promise<void> {
   const { config, paths } = await managedInstallation();
   if (service === "connector" || service === "speech") {
-    const native = (await nativeServices(config, paths)).find(
-      (entry) => entry.id === service,
-    );
-    if (!native) throw new Error(`${service} is not installed.`);
+    if (!components(config).some((entry) => entry.id === service))
+      throw new Error(`${service} is not installed.`);
+    const files = service === "speech"
+      ? [path.join(paths.stackDirectory, "apple-speech", "speech.log")]
+      : ["connector.log", "connector.error.log"].map((file) =>
+          path.join(os.homedir(), "Library", "Logs", "OvertChat", file));
     if (service === "connector" && process.platform === "linux") {
       await requireSuccessful(
         "journalctl",
         [
           "--user",
           "-u",
-          native.label,
+          "overtchat-connector.service",
           "--no-pager",
           "-n",
           String(tail),
@@ -36,7 +39,7 @@ export async function logs(
     } else
       await requireSuccessful(
         "tail",
-        ["-n", String(tail), ...(follow ? ["-F"] : []), ...native.logs],
+        ["-n", String(tail), ...(follow ? ["-F"] : []), ...files],
         { inherit: true },
       );
     return;

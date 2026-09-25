@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import {
   appleSpeechCapabilities,
   appleSpeechHealth,
@@ -303,13 +302,4 @@ export async function installationReport() {
     speech.running = health?.revision;
   }
   return report;
-}
-
-export async function optionalFile(file: string): Promise<string | null> {
-  try {
-    return await readFile(file, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
 }

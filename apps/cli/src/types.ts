@@ -43,7 +43,6 @@ export type SttConfig = {
 
 export type AgentConfig = {
   installed: boolean;
-  connectorId?: string;
 };
 
 export type VoiceConfig = {
@@ -89,8 +88,6 @@ export type InstallationConfig = {
   composeProject: string;
   dataMountType: "volume" | "bind";
   dataVolume: string;
-  // Only fresh volumes created and labelled by this manager may be purged.
-  dataVolumeOwned?: boolean;
   search: SearchConfig;
   tts: TtsConfig;
   stt: SttConfig;

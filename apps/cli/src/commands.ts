@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 import { CLI_VERSION } from "./constants.js";
 import { readInstallationConfig } from "./config.js";
-import { doctor } from "./doctor.js";
-import { lifecycle } from "./lifecycle.js";
 import { logs } from "./logs.js";
 import { installationReport } from "./management.js";
 import { runtimePaths } from "./paths.js";
@@ -10,11 +8,9 @@ import { requireSuccessful } from "./process.js";
 import {
   latestReleaseManifest,
   updateCliIfNeeded,
-  type ReleaseManifest,
 } from "./release.js";
 import { setup } from "./setup.js";
 import { status } from "./status.js";
-import { uninstall } from "./uninstall.js";
 import { update } from "./update.js";
 
 const commands: Record<
@@ -24,13 +20,13 @@ const commands: Record<
   setup: {
     usage: "setup [--dry-run] [--defaults] [--development]",
     description:
-      "Install or reconfigure OvertChat. Existing versions are preserved. --dry-run previews without changes; --defaults runs without prompts.",
+      "Install or reconfigure OvertChat using the release manifest. --dry-run writes preview files; --defaults runs without prompts.",
     flags: ["--dry-run", "--defaults", "--development"],
   },
   update: {
     usage: "update [--check [--json]]",
     description:
-      "Update installed components. --check reports available versions without changing anything. App upgrades first verify a database snapshot.",
+      "Update installed components. --check reports available versions without changing anything.",
     flags: ["--check", "--json"],
   },
   status: {
@@ -45,41 +41,11 @@ const commands: Record<
       "Print the CLI version. --all includes running and configured component versions; --json provides structured output.",
     flags: ["--all", "--json"],
   },
-  doctor: {
-    usage: "doctor [--json]",
-    description:
-      "Diagnose installation health without making changes. Exits with status 1 if a check fails.",
-    flags: ["--json"],
-  },
   logs: {
     usage: "logs [service] [--follow|-f] [--tail N]",
     description:
       "Show Docker service logs (all by default), or connector/native speech logs. Services: app, redis, search, tts, stt, voice, connector, speech. Default: last 100 lines.",
     flags: ["--follow", "-f", "--tail"],
-  },
-  start: {
-    usage: "start",
-    description:
-      "Start the saved stack and native services using installed images. Does not update or download components.",
-    flags: [],
-  },
-  stop: {
-    usage: "stop",
-    description:
-      "Stop the stack and native services, including active agent connections. Preserve all data.",
-    flags: [],
-  },
-  restart: {
-    usage: "restart",
-    description:
-      "Stop and start the saved stack and native services. Active agent connections are interrupted.",
-    flags: [],
-  },
-  uninstall: {
-    usage: "uninstall [--dry-run] [--purge] [--yes] [--remove-cli]",
-    description:
-      "Remove managed services and containers. Preserve data/configuration by default. --purge deletes proven-owned data, connector history and managed files; adopted storage remains. --dry-run previews the exact removal plan. --yes confirms removal without prompting. --remove-cli also deletes the installed manager binary.",
-    flags: ["--dry-run", "--purge", "--yes", "--remove-cli"],
   },
 };
 export function usage(command?: string): string {
@@ -174,13 +140,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         await setup(options);
         return;
       }
-      const saved = await readInstallationConfig(runtimePaths());
-      // Reconfiguration must also work offline and must never implicitly upgrade.
-      const manifest: ReleaseManifest = saved
-        ? { ...saved, cliVersion: CLI_VERSION }
-        : await latestReleaseManifest();
-      const updatedExecutable =
-        !saved && !options.dryRun ? await updateCliIfNeeded(manifest) : null;
+      const manifest = await latestReleaseManifest();
+      const updatedExecutable = await updateCliIfNeeded(manifest);
       if (updatedExecutable) {
         await requireSuccessful(
           updatedExecutable,
@@ -217,28 +178,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         console.log(json ? JSON.stringify({ cli: CLI_VERSION }) : CLI_VERSION);
       return;
     }
-    case "doctor":
-      await doctor(json);
-      return;
     case "logs":
       await logs(
         parsed.service,
         flags.has("--follow") || flags.has("-f"),
         parsed.tail,
       );
-      return;
-    case "start":
-    case "stop":
-    case "restart":
-      await lifecycle(command);
-      return;
-    case "uninstall":
-      await uninstall({
-        dryRun: flags.has("--dry-run"),
-        purge: flags.has("--purge"),
-        yes: flags.has("--yes"),
-        removeCli: flags.has("--remove-cli"),
-      });
       return;
   }
 }

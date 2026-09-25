@@ -73,11 +73,10 @@ function timestamp(date: Date): string {
 }
 
 export function databaseSnapshot(
-  existing: Pick<ExistingInstallation, "dataMountType" | "dataVolume">,
+  existing: ExistingInstallation,
   date = new Date(),
-  reason = "managed",
 ): DatabaseSnapshot {
-  const fileName = `pre-${reason}-${timestamp(date)}.db`;
+  const fileName = `pre-managed-${timestamp(date)}.db`;
   const containerPath = `/app/data/backups/${fileName}`;
   return {
     fileName,
@@ -90,7 +89,7 @@ export function databaseSnapshot(
 }
 
 export function snapshotDockerArgs(
-  existing: Pick<ExistingInstallation, "dataMountType" | "dataVolume">,
+  existing: ExistingInstallation,
   config: InstallationConfig,
   snapshot: DatabaseSnapshot,
 ): string[] {
@@ -119,13 +118,6 @@ export function snapshotDockerArgs(
     "-e",
     SNAPSHOT_SCRIPT,
   ];
-}
-
-export async function createUpdateSnapshot(docker: DockerCommand, config: InstallationConfig): Promise<DatabaseSnapshot> {
-  if (config.dataMountType === "volume") await requireDocker(docker, ["volume", "inspect", config.dataVolume]);
-  const snapshot = databaseSnapshot(config, new Date(), "update");
-  await requireDocker(docker, snapshotDockerArgs(config, config, snapshot));
-  return snapshot;
 }
 
 export async function createPreMigrationSnapshot(

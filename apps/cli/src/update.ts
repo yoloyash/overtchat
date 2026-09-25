@@ -32,7 +32,6 @@ import {
   waitForApp,
 } from "./setup.js";
 import { printUpdatePlan, updatePlan } from "./update-plan.js";
-import { createUpdateSnapshot } from "./snapshot.js";
 
 export async function update(options: { check?: boolean; json?: boolean } = {}): Promise<void> {
   const paths = runtimePaths();
@@ -80,11 +79,6 @@ export async function update(options: { check?: boolean; json?: boolean } = {}):
     nextConfig = normalizeInstallationConfig(
       platformServices(applyReleaseManifest(config, manifest)),
     );
-    if (nextConfig.appVersion !== config.appVersion || nextConfig.appImage !== config.appImage) {
-      progress.message("Creating and verifying a pre-update database snapshot");
-      const snapshot = await createUpdateSnapshot(docker, config);
-      console.log(`Pre-update snapshot: ${snapshot.displayPath}`);
-    }
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(
       paths,

@@ -27,12 +27,7 @@ describe("CLI contract", () => {
     "update",
     "status",
     "version",
-    "doctor",
     "logs",
-    "start",
-    "stop",
-    "restart",
-    "uninstall",
   ])(
     "supports %s --help without loading installation state",
     async (command) => {
@@ -72,27 +67,20 @@ describe("CLI contract", () => {
     expect(status).toHaveBeenCalledOnce();
     expect(setup).not.toHaveBeenCalled();
   });
-  it("reconfigures offline without self-updating or fetching newer versions", async () => {
-    const saved = { format: 1, appVersion: "1.2.3" } as const;
-    vi.mocked(readInstallationConfig).mockResolvedValue(saved as never);
+  it("keeps setup release selection and CLI self-update behavior", async () => {
+    const manifest = { cliVersion: "99.0.0" } as never;
+    vi.mocked(latestReleaseManifest).mockResolvedValue(manifest);
+    vi.mocked(updateCliIfNeeded).mockResolvedValue(null);
     await main(["setup", "--defaults"]);
-    expect(latestReleaseManifest).not.toHaveBeenCalled();
-    expect(updateCliIfNeeded).not.toHaveBeenCalled();
+    expect(latestReleaseManifest).toHaveBeenCalledOnce();
+    expect(updateCliIfNeeded).toHaveBeenCalledWith(manifest);
     expect(setup).toHaveBeenCalledWith(
-      { dryRun: false, defaults: true, development: false },
-      { ...saved, cliVersion: CLI_VERSION },
+      { dryRun: false, defaults: true, development: false }, manifest,
     );
   });
-  it("never self-updates a fresh dry run", async () => {
-    vi.mocked(readInstallationConfig).mockResolvedValue(null);
-    vi.mocked(latestReleaseManifest).mockResolvedValue({
-      cliVersion: "99.0.0",
-    } as never);
-    await main(["setup", "--dry-run", "--defaults"]);
-    expect(updateCliIfNeeded).not.toHaveBeenCalled();
-    expect(setup).toHaveBeenCalledWith(
-      expect.objectContaining({ dryRun: true }),
-      expect.anything(),
-    );
-  });
+  it.each(["doctor", "start", "stop", "restart", "uninstall"])(
+    "rejects deferred command %s", (command) => {
+      expect(() => parseArgs([command])).toThrow("Unknown command");
+    },
+  );
 });

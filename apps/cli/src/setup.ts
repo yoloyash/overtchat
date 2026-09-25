@@ -49,7 +49,6 @@ import { accessSummary, connectionInstructions } from "./access.js";
 import { finishAccess } from "./connection-check.js";
 import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
 import { startStack, recoverSpeech } from "./stack.js";
-import { setupPreflight } from "./doctor.js";
 
 export type SetupOptions = {
   dryRun: boolean;
@@ -313,12 +312,8 @@ export async function setup(
   if (!manifest) {
     throw new Error("A release manifest is required for production setup.");
   }
-  if (!options.defaults && (!process.stdin.isTTY || !process.stdout.isTTY)) {
-    throw new Error("Interactive setup needs a terminal. Re-run with --defaults for an unattended install.");
-  }
-  let docker = await detectDockerCommand(options.dryRun);
+  let docker = await detectDockerCommand();
   if (!docker) {
-    if (options.dryRun) throw new Error("Docker is required to inspect this installation. Dry run will not install it.");
     if (process.platform === "darwin") await installDockerEngine();
     if (options.defaults) {
       throw new Error("Docker Engine was not found.");
@@ -349,7 +344,7 @@ export async function setup(
   const adopting = installationNeedsAdoption(existing, paths.stackDirectory);
   const previousSecrets = await readInstallationSecrets(paths);
   let config = saved ?? defaultInstallationConfig(existing, manifest);
-  if (!saved) config = applyReleaseManifest(config, manifest);
+  config = applyReleaseManifest(config, manifest);
   if (saved) {
     config = mergeRunningCapabilities(
       config,
@@ -429,9 +424,7 @@ export async function setup(
     (ttsUsesGpu || sttUsesGpu) &&
     !(await nvidiaContainerRuntimeAvailable(docker))
   ) {
-    if (options.dryRun) {
-      note("NVIDIA Container Toolkit is required for this selection. Dry run will not install it.", "Prerequisite");
-    } else if (options.defaults) {
+    if (options.defaults) {
       if (ttsUsesGpu) {
         config.tts = {
           ...config.tts,
@@ -487,24 +480,28 @@ export async function setup(
     existing,
     previousSecrets,
   );
-  const summary = [
+  note([
     accessSummary(config),
     `App: ${config.appVersion}`,
     `Web search: ${config.search.provider}`,
-    `Text-to-speech: ${config.tts.provider}${config.tts.accelerator ? ` (${config.tts.accelerator})` : ""}`,
-    `Speech-to-text: ${config.stt.provider}${config.stt.accelerator ? ` (${config.stt.accelerator})` : ""}`,
+    `Text-to-speech: ${config.tts.provider}`,
+    `Speech-to-text: ${config.stt.provider}`,
     `Realtime voice: ${config.voice.installed ? "installed" : "set up later"}`,
     `Agent Connections: ${config.agents.installed ? "installed" : "set up later"}`,
     `Data: ${config.dataMountType} ${config.dataVolume}`,
-    `Stack: ${paths.stackDirectory}`,
-  ].join("\n");
+  ].join("\n"), "Selected configuration");
   if (options.dryRun) {
-    note(summary, "Setup preview");
-    outro("Dry run complete. No files, services, prerequisites, or installed versions were changed.");
+    const preview = runtimePaths({
+      ...process.env,
+      OVERTCHAT_CONFIG_DIR: path.join(paths.configDirectory, "preview"),
+      OVERTCHAT_STACK_DIR: path.join(paths.stackDirectory, "preview"),
+    });
+    await prepareFiles(config, existing?.searxngConfigPath, preview);
+    await writeSecretsFile(preview, renderStackEnvironment(config, secrets, preview));
+    await requireDocker(docker, ["compose", "--env-file", preview.secretsFile, "-f", preview.composeFile, "config", "--quiet"]);
+    outro(`Configuration preview written to ${preview.stackDirectory}. Installed settings were not changed.`);
     return;
   }
-  await setupPreflight(config, existing?.appPort);
-  note(`${summary}\nSelected speech services may download several GiB of models.`, "Installation summary");
   await prepareFiles(config, existing?.searxngConfigPath);
   await writeSecretsFile(
     paths,
@@ -529,8 +526,7 @@ export async function setup(
   if (config.dataMountType === "volume") {
     const volume = await runDocker(docker, ["volume", "inspect", config.dataVolume]);
     if (volume.exitCode !== 0) {
-      await requireDocker(docker, ["volume", "create", ...(config.instanceId ? ["--label", `com.overtchat.instance=${config.instanceId}`] : []), config.dataVolume]);
-      config.dataVolumeOwned = !!config.instanceId;
+      await requireDocker(docker, ["volume", "create", config.dataVolume]);
     }
   }
   if (options.development) {
@@ -628,7 +624,7 @@ export async function setup(
     await writeInstallationConfig(paths, config);
     outro(accessSummary(config));
     if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
-    note("overtchat status\novertchat logs --follow\novertchat doctor\novertchat update", "Manage OvertChat");
+    note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");
   } catch (error) {
     if (speechChange) {
       try {
