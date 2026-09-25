@@ -486,3 +486,13 @@ it("recovers native speech after connector failure without downgrading the migra
     appVersion: "0.15.0", tts: previous.tts,
   }));
 });
+
+it("checks updates without Docker, credentials, self-update, or writes", async () => {
+  await update({ check: true, json: true });
+  expect(mocks.latestReleaseManifest).toHaveBeenCalledOnce();
+  expect(mocks.detectDockerCommand).not.toHaveBeenCalled();
+  expect(mocks.readInstallationSecrets).not.toHaveBeenCalled();
+  expect(mocks.updateCliIfNeeded).not.toHaveBeenCalled();
+  expect(mocks.prepareFiles).not.toHaveBeenCalled();
+  expect(mocks.writeInstallationConfig).not.toHaveBeenCalled();
+});

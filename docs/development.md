@@ -128,3 +128,24 @@ HTTP, rendering, concurrent users, and cold caches are excluded.
 
 See [README media](readme-media.md) for capture commands, shared fixtures,
 and image review.
+
+## Management CLI validation
+
+```sh
+npm run test -w apps/cli --
+npm run typecheck -w apps/cli --
+npm run lint -w apps/cli --
+npm run build -w apps/cli --
+```
+
+Use a disposable installation when testing setup or update. Changing only
+`OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_STACK_DIR` does not isolate Docker
+containers, data volumes, or the host connector.
+
+Exercise command help, bare version compatibility, status/version JSON, logs,
+and `update --check`. Check reporting with Docker unavailable and stopped
+components. Verify that update checks do not require Docker, read credentials,
+self-update, or write installation files. Setup and update retain their existing
+provisioning behavior; setup dry runs still write preview files.
+
+Installer binary and terminal checks are documented in [Release process](release.md).

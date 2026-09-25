@@ -480,6 +480,16 @@ export async function setup(
     existing,
     previousSecrets,
   );
+  note([
+    accessSummary(config),
+    `App: ${config.appVersion}`,
+    `Web search: ${config.search.provider}`,
+    `Text-to-speech: ${config.tts.provider}`,
+    `Speech-to-text: ${config.stt.provider}`,
+    `Realtime voice: ${config.voice.installed ? "installed" : "set up later"}`,
+    `Agent Connections: ${config.agents.installed ? "installed" : "set up later"}`,
+    `Data: ${config.dataMountType} ${config.dataVolume}`,
+  ].join("\n"), "Selected configuration");
   if (options.dryRun) {
     const preview = runtimePaths({
       ...process.env,
@@ -613,6 +623,8 @@ export async function setup(
     await finishAccess(config, !options.defaults);
     await writeInstallationConfig(paths, config);
     outro(accessSummary(config));
+    if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
+    note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");
   } catch (error) {
     if (speechChange) {
       try {

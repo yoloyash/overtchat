@@ -1,49 +1,31 @@
-import { appleSpeechCapabilities, appleSpeechHealth, appleSpeechToken } from "./apple-speech.js";
-import { readInstallationConfig, readInstallationSecrets } from "./config.js";
-import { detectDockerCommand, runDocker } from "./docker.js";
-import { runtimePaths } from "./paths.js";
-import { accessMode } from "./access.js";
+import { installationReport } from "./management.js";
 
 export function providerStatus(provider: string): string {
   return provider === "disabled" ? "not configured" : provider;
 }
-
-export async function status(): Promise<void> {
-  const paths = runtimePaths();
-  const config = await readInstallationConfig(paths);
-  if (!config) {
-    console.log("OvertChat is not managed on this machine. Run: overtchat setup");
+export async function status(json = false): Promise<void> {
+  const report = await installationReport();
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
     return;
   }
-  const docker = await detectDockerCommand();
-  const app = docker
-    ? await runDocker(docker, [
-        "inspect",
-        "--format",
-        "{{.State.Status}}",
-        "overtchat-app",
-      ])
-    : null;
-  console.log(`OvertChat ${config.appVersion}`);
-  console.log(`Status: ${app?.exitCode === 0 ? app.stdout.trim() : "unavailable"}`);
-  console.log(`URL: ${config.publicUrl}`);
-  console.log(`Access: ${accessMode(config)}`);
-  if (config.access?.connectionStatus) console.log(`Last connection check: ${config.access.connectionStatus}`);
-  console.log(`Web search: ${providerStatus(config.search.provider)}`);
-  console.log(
-    `Text-to-speech: ${providerStatus(config.tts.provider)}${
-      config.tts.provider === "bundled"
-        ? ` (${config.tts.accelerator === "apple" ? "Apple" : config.tts.accelerator === "auto" || config.tts.accelerator === "gpu" ? "NVIDIA" : "CPU"})`
-        : ""
-    }`,
-  );
-  console.log(`Speech-to-text: ${providerStatus(config.stt.provider)}${config.stt.accelerator === "apple" ? " (Apple)" : ""}`);
-  if (appleSpeechCapabilities(config).length) {
-    const secrets = await readInstallationSecrets(paths);
-    const health = secrets.managementSecret ? await appleSpeechHealth(config, appleSpeechToken(secrets.managementSecret)) : null;
-    console.log(`Apple speech: ${health ? "ready" : "unavailable"}`);
-    console.log(`Speech log: ${paths.stackDirectory}/apple-speech/speech.log`);
+  console.log(`OvertChat CLI ${report.cli}`);
+  if (!report.managed) {
+    console.log(
+      "OvertChat is not managed on this machine. Run: overtchat setup",
+    );
+    return;
   }
-  console.log(`Realtime voice: ${config.voice.installed ? "installed" : "not installed"}`);
-  console.log(`Agent Connections: ${config.agents.installed ? "installed" : "not installed"}`);
+  console.log(`URL: ${report.url}\nAccess: ${report.access ?? "custom"}`);
+  for (const component of report.components)
+    console.log(
+      `${component.id}: ${component.state} | running: ${component.running ?? "unknown"} | configured: ${component.configured}`,
+    );
+  for (const [name, provider] of Object.entries(report.providers ?? {}))
+    console.log(`${name} provider: ${providerStatus(provider)}`);
+  console.log(
+    `Data: ${report.storage!.type} ${report.storage!.source}\nConfiguration: ${report.storage!.config}\nStack: ${report.storage!.stack}`,
+  );
+  for (const problem of report.problems) console.log(`Warning: ${problem}`);
+  console.log("Troubleshoot: overtchat doctor | overtchat logs --follow");
 }

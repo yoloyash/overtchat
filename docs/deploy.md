@@ -19,6 +19,7 @@ and add your model endpoint in the web app.
 overtchat setup     # change access, services, or update notifications
 overtchat status    # check versions and service status
 overtchat update    # update the managed stack
+overtchat logs -f   # follow container logs
 ```
 
 Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
@@ -197,8 +198,10 @@ Repeat for updates; sideloaded builds do not auto-update.
 
 ## Update or adopt an existing installation
 
-`overtchat update` updates the CLI, app, selected services, and managed
-connector while preserving data. Rerun it if interrupted.
+`overtchat update` prints the component version changes and updates the CLI,
+app, selected services, and managed connector while preserving data. Rerun it
+if interrupted. `overtchat update --check` only reports available versions and
+does not require Docker; add `--json` for structured output.
 
 Setup asks **Automatically check for updates?**, with **Yes (recommended)**
 selected for new installations. This enables release notifications in the
@@ -214,14 +217,44 @@ paired connectors. For stopped stacks, setup can recover one Compose data
 volume; if several are found, start the intended stack first. Back up custom
 or source installations before migrating to the managed layout.
 
+## Manage and troubleshoot
+
+Running `overtchat` shows command help and, for a managed installation, its
+status. Every command supports `--help`.
+
+- `overtchat version` and `overtchat --version` print only the CLI version for
+  compatibility with older self-updaters. `overtchat version --all` reports
+  selected components with running and configured versions.
+- `overtchat status` shows live container health, app readiness, connector
+  connectivity, native speech readiness, the access URL, and storage paths.
+  Unavailable components retain their configured version with unknown running
+  versions. A container without a health check is reported as running, not ready.
+- `version` and `status` support `--json`.
+
 ## Logs and backup
+
+```sh
+overtchat logs --tail 100             # all selected container services
+overtchat logs app --follow
+overtchat logs connector --follow    # systemd journal or macOS log files
+overtchat logs speech --follow       # native Apple speech
+```
+
+Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `connector`,
+and `speech`; only installed services are available. Container log output may
+contain application data; review it before sharing.
 
 ```sh
 docker logs -f overtchat-app
 docker logs -f overtchat-voice  # when installed
 
 # Snapshot the live database and copy it to the host
-docker exec overtchat-app sqlite3 /app/data/chat.db ".backup /app/data/backup.db"
+docker exec overtchat-app node -e '
+const db = new (require("better-sqlite3"))("/app/data/chat.db");
+db.backup("/app/data/backup.db").then(() => db.close()).catch(error => {
+  console.error(error); process.exitCode = 1; db.close();
+});
+'
 docker cp overtchat-app:/app/data/backup.db ./backup.db
 ```
 
