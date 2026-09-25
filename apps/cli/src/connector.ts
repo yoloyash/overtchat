@@ -101,7 +101,7 @@ async function provisionConnector(
   return { connectorId: body.connectorId, token: body.token };
 }
 
-async function waitForConnector(
+export async function waitForConnector(
   config: InstallationConfig,
   managementSecret: string,
 ): Promise<void> {
@@ -203,6 +203,7 @@ export async function installManagedConnector(
       })}\n`,
     });
     await waitForConnector(config, managementSecret);
+    config.agents = { ...config.agents, connectorId: provisioned.connectorId };
     await rm(backupPath, { force: true });
   } catch (error) {
     if (installed) {

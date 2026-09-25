@@ -483,7 +483,7 @@ export async function promptInstallationConfig(
     tts,
     stt,
     voice: { installed: installVoice },
-    agents: { installed: installAgents },
+    agents: { ...initial.agents, installed: installAgents },
     disableUpdateCheck: !checkForUpdates,
   };
 }

@@ -42,7 +42,7 @@ export function appleSpeechToken(managementSecret: string): string {
   return createHmac("sha256", managementSecret).update("overtchat.apple-speech.v1").digest("hex");
 }
 
-function locations(paths: RuntimePaths) {
+export function speechLocations(paths: RuntimePaths) {
   const suffix = createHash("sha256").update(paths.configDirectory).digest("hex").slice(0, 12);
   const label = `com.overtchat.speech.${suffix}`;
   const root = path.join(paths.stackDirectory, "apple-speech");
@@ -143,7 +143,7 @@ export async function prepareAppleSpeech(config: InstallationConfig, managementS
   const capabilities = appleSpeechCapabilities(config);
   const noop = async () => {};
   if (!capabilities.length && process.platform !== "darwin") return { commit: noop, rollback: noop };
-  const { root, label, domain, plist } = locations(paths);
+  const { root, label, domain, plist } = speechLocations(paths);
   const previous = await readOptional(plist);
   if (!capabilities.length) {
     return { rollback: noop, commit: async () => {

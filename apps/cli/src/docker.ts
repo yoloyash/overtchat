@@ -43,18 +43,19 @@ export type DockerCommand = {
   prefix: string[];
 };
 
-export async function detectDockerCommand(): Promise<DockerCommand | null> {
+export async function detectDockerCommand(readOnly = false): Promise<DockerCommand | null> {
   if (!(await commandExists("docker"))) return null;
-  const direct = await runCommand("docker", ["info"]);
+  const direct = await runCommand("docker", ["info"], { timeoutMs: 10_000 });
   if (direct.exitCode === 0) return { command: "docker", prefix: [] };
   if (process.platform === "darwin") {
     throw new Error("Docker is installed but not ready. Start Docker Desktop, wait for its engine, then retry. Check docker context show if you use another Docker runtime.");
   }
   if (await commandExists("sudo")) {
-    const elevated = await runCommand("sudo", ["-n", "docker", "info"]);
+    const elevated = await runCommand("sudo", ["-n", "docker", "info"], { timeoutMs: 10_000 });
     if (elevated.exitCode === 0) {
-      return { command: "sudo", prefix: ["docker"] };
+      return { command: "sudo", prefix: readOnly ? ["-n", "docker"] : ["docker"] };
     }
+    if (readOnly) return null;
     return { command: "sudo", prefix: ["docker"] };
   }
   return { command: "docker", prefix: [] };

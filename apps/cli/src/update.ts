@@ -31,12 +31,20 @@ import {
   showSidecarReconciliation,
   waitForApp,
 } from "./setup.js";
+import { printUpdatePlan, updatePlan } from "./update-plan.js";
+import { createUpdateSnapshot } from "./snapshot.js";
 
-export async function update(): Promise<void> {
+export async function update(options: { check?: boolean; json?: boolean } = {}): Promise<void> {
   const paths = runtimePaths();
   const config = await readInstallationConfig(paths);
   if (!config) {
     throw new Error("OvertChat is not managed yet. Run overtchat setup first.");
+  }
+  if (options.check) {
+    const manifest = await latestReleaseManifest();
+    if (options.json) console.log(JSON.stringify(updatePlan(config, manifest), null, 2));
+    else printUpdatePlan(config, manifest);
+    return;
   }
   const docker = await detectDockerCommand();
   if (!docker || !(await dockerComposeAvailable(docker))) {
@@ -60,6 +68,7 @@ export async function update(): Promise<void> {
   progress.start("Checking for OvertChat updates");
   try {
     const manifest = await latestReleaseManifest();
+    printUpdatePlan(config, manifest);
     const updatedExecutable = await updateCliIfNeeded(manifest);
     if (updatedExecutable) {
       progress.stop("OvertChat manager updated");
@@ -71,6 +80,11 @@ export async function update(): Promise<void> {
     nextConfig = normalizeInstallationConfig(
       platformServices(applyReleaseManifest(config, manifest)),
     );
+    if (nextConfig.appVersion !== config.appVersion || nextConfig.appImage !== config.appImage) {
+      progress.message("Creating and verifying a pre-update database snapshot");
+      const snapshot = await createUpdateSnapshot(docker, config);
+      console.log(`Pre-update snapshot: ${snapshot.displayPath}`);
+    }
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(
       paths,

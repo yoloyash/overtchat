@@ -11,6 +11,11 @@ and operator choices into a managed Compose stack and optional Host Connector.
   app, sync service capabilities, and install the connector.
 - `src/update.ts` applies newer manifest versions through the same rendering,
   Compose, readiness, and connector paths.
+- `src/management.ts` discovers owned components; `src/native-services.ts`
+  controls verified native services. Status, doctor, logs, lifecycle, and
+  uninstall share these boundaries. Uninstall must preserve adopted storage
+  and refuse conflicting ownership; operator semantics live in
+  `docs/deploy.md#uninstall`.
 - `src/config.ts`, `src/paths.ts`, and `src/compose.ts` own persisted
   installation state, managed locations, secrets/environment output, optional
   service profiles, and Compose rendering.

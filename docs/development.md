@@ -128,3 +128,31 @@ HTTP, rendering, concurrent users, and cold caches are excluded.
 
 See [README media](readme-media.md) for capture commands, shared fixtures,
 and image review.
+
+## Management CLI validation
+
+```sh
+npm run test -w apps/cli --
+npm run typecheck -w apps/cli --
+npm run lint -w apps/cli --
+npm run build -w apps/cli --
+```
+
+Run provisioning and uninstall checks only in a disposable installation. Use a
+separate Docker daemon/VM for a fresh-install test; changing only
+`OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_STACK_DIR` does not isolate Docker container
+names, data volumes, or the host's connector service. Run the manager in the
+same network namespace as its daemon so loopback readiness and port checks
+refer to the installation being tested.
+
+Exercise guided setup, status/doctor JSON, logs, stop/start/restart, and
+`setup --defaults --dry-run`. With an older release installed, verify that
+setup preserves its versions, `update --check` reports the newer release
+without changes, and update produces an integrity-checked database snapshot.
+Keep a test record in the database and verify it after update, restart, default
+uninstall, and reinstall. Review purge with `--dry-run`, then verify that purge
+removes owned resources while adopted storage and unrelated resources remain.
+
+For native service changes, exercise real systemd and launchd registration,
+stop, start after unloading, and removal on Linux and a logged-in Mac. Installer
+binary and terminal checks are documented in [Release process](release.md).

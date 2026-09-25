@@ -62,6 +62,11 @@ case ":$PATH:" in
   *":$install_directory:"*) ;;
   *)
     say "Add $install_directory to PATH to run overtchat from any shell."
+    case "${SHELL:-}" in
+      */fish) say 'Run: fish_add_path "$HOME/.local/bin"' ;;
+      */zsh) say 'Add to ~/.zshrc: export PATH="$HOME/.local/bin:$PATH"'; say 'Then run: source ~/.zshrc' ;;
+      *) say 'Add to your shell profile: export PATH="$HOME/.local/bin:$PATH"'; say 'Then open a new terminal.' ;;
+    esac
     ;;
 esac
 

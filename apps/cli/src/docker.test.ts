@@ -399,7 +399,7 @@ describe("macOS Docker discovery", () => {
       mocks.runCommand.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "not running" });
       const { detectDockerCommand } = await import("./docker.js");
       await expect(detectDockerCommand()).rejects.toThrow("Start Docker Desktop");
-      expect(mocks.runCommand).toHaveBeenCalledExactlyOnceWith("docker", ["info"]);
+      expect(mocks.runCommand).toHaveBeenCalledExactlyOnceWith("docker", ["info"], { timeoutMs: 10_000 });
     } finally {
       platform.mockRestore();
     }
