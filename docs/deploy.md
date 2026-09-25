@@ -187,16 +187,6 @@ or the [App Store](https://apps.apple.com/us/app/overtchat/id6812165221), enter
 your server URL, and sign in. Use an address reachable from the phone;
 `localhost` refers to the phone itself.
 
-In the web app, open the account menu → **Get the mobile app** for store links
-and download QR codes. Choose **Connect your phone**, then tap **Scan QR code**
-in the mobile app. Scanning checks the server and opens the normal login screen.
-You can also enter the address manually.
-
-The dialog shows the current server address. For access from other devices,
-run `overtchat setup`, choose **On my home network**, and open the network
-address shown. The QR code is hidden when using `localhost`. Private addresses
-usually require the same Wi-Fi or VPN.
-
 ### Sideload an APK (Android)
 
 1. Open [Releases](https://github.com/yoloyash/overtchat/releases) and choose the
