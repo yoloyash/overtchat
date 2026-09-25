@@ -59,7 +59,20 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
-## Apple speech
+## Speech
+
+`speech/` groups bundled speech inference and packaging. `speech/stt/` contains
+the Parakeet CPU/CUDA container service and its Dockerfiles; `speech/apple/`
+contains native Apple TTS/STT. Container TTS uses the pinned upstream Kokoro
+images selected by Compose and the release manifest. Realtime conversation
+orchestration remains in `voice/`; the installer owns backend selection and
+lifecycle, and clients use the web speech proxy.
+
+Build the STT containers from the repository root with
+`docker compose --profile stt build stt-cpu` or
+`docker compose --profile stt-gpu build stt-gpu`.
+
+### Apple speech
 
 `speech/apple/server.py` owns the small speech HTTP service. Kokoro/PyTorch MPS
 and Parakeet/MLX own inference. `apps/cli/src/apple-speech.ts` owns private runtime
