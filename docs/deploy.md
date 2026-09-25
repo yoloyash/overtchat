@@ -21,8 +21,10 @@ overtchat status    # check versions and service status
 overtchat update    # update the managed stack
 ```
 
-Voice requires both STT and TTS. Bundled Parakeet and Kokoro use CPU on macOS
-and support CPU or NVIDIA GPU on Linux. Setup can install NVIDIA Container
+Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
+Apple acceleration on Apple Silicon with macOS 14 or later, and CPU or NVIDIA
+GPU containers on Linux. CPU containers remain available on Macs, including
+Intel Macs. Setup can install NVIDIA Container
 Toolkit on supported systems. Kokoro needs roughly 3–4 GB VRAM, so choose CPU
 if GPU memory is limited.
 
@@ -35,6 +37,21 @@ Desktop's start-at-login setting to start the stack automatically.
 
 Connector logs are in `~/Library/Logs/OvertChat/connector.log` and
 `connector.error.log`, each limited to 10 MiB with three rotated backups.
+
+Setup recommends native Apple acceleration for new speech installations on
+Apple Silicon with macOS 14+. Existing installations retain their selection;
+run `overtchat setup` to switch between Apple acceleration and CPU containers.
+Web/mobile continue using the bundled speech providers.
+
+The CLI installs private Python, FFmpeg and model files (several GB) and manages
+a LaunchAgent. Speech requires a logged-in desktop user and an awake Mac;
+models share system memory and requests queue on one worker. Docker Desktop
+connects to the authenticated loopback service on port 5093.
+
+`overtchat status` reports readiness and the log path. Runtimes, downloads and
+`speech.log` live in the managed stack's `apple-speech/` directory and are not
+automatically pruned. Setup restores speech routing and the previous native
+service on failure; it does not downgrade the app or database.
 
 ## Choose how to access OvertChat
 

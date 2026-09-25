@@ -1,3 +1,4 @@
+import { usesAppleSpeech, bundledSpeechUrl, appleSpeechToken, appleSpeechCapabilities } from "./apple-speech.js";
 import type { InstallationConfig, RuntimePaths } from "./types.js";
 import type { InstallationSecrets } from "./config.js";
 
@@ -15,14 +16,14 @@ function composeBindAddress(value: string): string {
 function profileList(config: InstallationConfig): string[] {
   const profiles: string[] = [];
   if (config.search.bundledInstalled) profiles.push("search-bundled");
-  if (config.tts.bundledInstalled) {
+  if (config.tts.bundledInstalled && !usesAppleSpeech(config.tts)) {
     profiles.push(
       config.tts.accelerator === "auto" || config.tts.accelerator === "gpu"
         ? "tts-gpu"
         : "tts-cpu",
     );
   }
-  if (config.stt.bundledInstalled) {
+  if (config.stt.bundledInstalled && !usesAppleSpeech(config.stt)) {
     profiles.push(
       config.stt.accelerator === "auto" || config.stt.accelerator === "gpu"
         ? "stt-gpu"
@@ -104,12 +105,15 @@ export function renderStackEnvironment(
         config.search.baseUrl,
       ),
     ],
+    ["OVERTCHAT_BUNDLED_TTS_URL", bundledSpeechUrl(config, "tts")],
+    ["OVERTCHAT_BUNDLED_STT_URL", bundledSpeechUrl(config, "stt")],
+    ["OVERTCHAT_BUNDLED_SPEECH_TOKEN", appleSpeechCapabilities(config).length ? appleSpeechToken(secrets.managementSecret) : ""],
     ["TTS_PROVIDER", config.tts.provider],
     [
       "OVERTCHAT_TTS_URL",
       capabilityUrl(
         config.tts.provider,
-        "http://kokoro:8880",
+        bundledSpeechUrl(config, "tts"),
         config.tts.baseUrl,
       ),
     ],
@@ -122,7 +126,7 @@ export function renderStackEnvironment(
       "OVERTCHAT_STT_URL",
       capabilityUrl(
         config.stt.provider,
-        "http://stt:5092",
+        bundledSpeechUrl(config, "stt"),
         config.stt.baseUrl,
       ),
     ],
@@ -169,6 +173,9 @@ services:
       VOICE_SHARED_SECRET: \${VOICE_SHARED_SECRET}
       WEB_SEARCH_PROVIDER: \${WEB_SEARCH_PROVIDER}
       SEARXNG_URL: \${OVERTCHAT_SEARXNG_URL:-}
+      OVERTCHAT_BUNDLED_TTS_URL: \${OVERTCHAT_BUNDLED_TTS_URL:-}
+      OVERTCHAT_BUNDLED_STT_URL: \${OVERTCHAT_BUNDLED_STT_URL:-}
+      OVERTCHAT_BUNDLED_SPEECH_TOKEN: \${OVERTCHAT_BUNDLED_SPEECH_TOKEN:-}
       TTS_PROVIDER: \${TTS_PROVIDER}
       KOKORO_URL: \${OVERTCHAT_TTS_URL:-}
       TTS_MODEL: \${TTS_MODEL:-kokoro}

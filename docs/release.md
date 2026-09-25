@@ -43,11 +43,16 @@ Do not change unrelated manifest fields.
   dispatches promotion.
 - **CLI:** The CLI workflow verifies Linux/macOS binaries, publishes the GitHub
   release, and dispatches promotion.
+- **Apple speech:** Ships inside the CLI. Run [Apple speech validation](development.md#apple-speech)
+  after changing it. The first release requires both app and CLI version bumps
+  and coordinated promotion so the app supports native routing/authentication.
 - **Connector:** The connector workflow verifies Linux/macOS binaries, publishes
   the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol.
-- **STT:** The STT workflow publishes both images and dispatches promotion.
+- **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
+  `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
+  images, and dispatches promotion.
 - **Bundled images:** Promotion verifies amd64 and arm64 for every selected
   digest except the amd64-only Kokoro Blackwell image. Keep the CPU, standard
   CUDA, and Blackwell Kokoro digests on the same upstream release. A

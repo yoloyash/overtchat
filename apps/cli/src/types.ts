@@ -1,7 +1,7 @@
 export type SearchProvider = "bundled" | "brave" | "searxng" | "disabled";
 export type TtsProvider = "bundled" | "openai-compatible" | "disabled";
 export type SttProvider = "bundled" | "openai-compatible" | "disabled";
-export type SpeechAccelerator = "auto" | "cpu" | "gpu";
+export type SpeechAccelerator = "auto" | "cpu" | "gpu" | "apple";
 export type KokoroGpuVariant = "standard" | "blackwell";
 
 export type Gpu = {
@@ -74,6 +74,7 @@ export type InstallationConfig = {
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  appleSpeechPort?: number;
   appPort: number;
   bindAddress: string;
   publicUrl: string;

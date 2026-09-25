@@ -1,3 +1,4 @@
+import { detectAppleSpeech, prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
 import { platformServices } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -47,7 +48,7 @@ import type { ExistingInstallation, InstallationConfig } from "./types.js";
 import { accessSummary, connectionInstructions } from "./access.js";
 import { finishAccess } from "./connection-check.js";
 import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
-import { startStack } from "./stack.js";
+import { startStack, recoverSpeech } from "./stack.js";
 
 export type SetupOptions = {
   dryRun: boolean;
@@ -351,6 +352,7 @@ export async function setup(
     );
   }
   config = normalizeInstallationConfig(config);
+  const previousConfig = saved ? structuredClone(config) : null;
   if (options.development) {
     if (!(await exists(path.join(sourceDirectory, "Dockerfile")))) {
       throw new Error(
@@ -370,6 +372,12 @@ export async function setup(
     config.publicUrl = `http://${lanAddress ?? "localhost"}:${config.appPort}`;
   }
   const gpus = await detectNvidiaGpus();
+  const appleChip = await detectAppleSpeech();
+  if (appleChip && !saved && !existing) {
+    for (const id of ["tts", "stt"] as const) {
+      if (config[id].bundledInstalled) config[id] = { ...config[id], accelerator: "apple" };
+    }
+  }
   if (
     (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu") &&
     !config.tts.gpuVariant
@@ -393,6 +401,7 @@ export async function setup(
       config,
       gpus,
       adopting ? existing ?? undefined : undefined,
+      appleChip,
     );
   } else if (gpus.length > 0 && config.stt.provider === "bundled") {
     const gpu = [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
@@ -573,8 +582,13 @@ export async function setup(
 
   const progress = spinner();
   progress.start("Starting OvertChat");
+  let speechChange: SpeechChange | undefined;
+  let stackStarted = false;
   try {
+    progress.message("Preparing local speech");
+    speechChange = await prepareAppleSpeech(config, secrets.managementSecret, paths);
     await startStack(config, saved, secrets, paths, docker, waitForApp);
+    stackStarted = true;
     if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
       await removeServe(oldRoute);
     }
@@ -588,6 +602,8 @@ export async function setup(
     config.managedTailscaleRoute = nextRoute;
     await writeInstallationConfig(paths, config);
     progress.message("Reconciling bundled services");
+    await speechChange.commit();
+    speechChange = undefined;
     const reconciliation = await reconcileManagedSidecars(docker, config);
     progress.stop("OvertChat is ready");
 
@@ -598,6 +614,14 @@ export async function setup(
     await writeInstallationConfig(paths, config);
     outro(accessSummary(config));
   } catch (error) {
+    if (speechChange) {
+      try {
+        await recoverSpeech(speechChange, config, previousConfig, secrets, paths, docker, waitForApp, syncCapabilities, !stackStarted);
+      } catch (recoveryError) {
+        progress.stop("OvertChat setup failed", 1);
+        throw new AggregateError([error, recoveryError], "Setup failed and speech recovery failed. Run overtchat setup to repair the installation.");
+      }
+    }
     progress.stop("OvertChat setup failed", 1);
     throw error;
   }

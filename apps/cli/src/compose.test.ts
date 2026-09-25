@@ -58,6 +58,20 @@ function config(): InstallationConfig {
 }
 
 describe("managed Compose configuration", () => {
+  it("keeps native routing available when the active provider changes", () => {
+    const selected = config();
+    selected.tts = { provider: "openai-compatible", bundledInstalled: true, accelerator: "apple", baseUrl: "https://external.example/v1" };
+    selected.stt = { provider: "bundled", bundledInstalled: true, accelerator: "cpu" };
+    const environment = renderStackEnvironment(selected, {
+      betterAuthSecret: "auth", managementSecret: "management", searxngSecret: "search", voiceSharedSecret: "voice",
+    }, paths);
+    expect(environment).toContain('COMPOSE_PROFILES="stt-cpu,voice"');
+    expect(environment).toContain('OVERTCHAT_BUNDLED_TTS_URL="http://host.docker.internal:5093"');
+    expect(environment).toContain('OVERTCHAT_BUNDLED_STT_URL="http://stt:5092"');
+    expect(environment).toContain('OVERTCHAT_TTS_URL="https://external.example/v1"');
+    expect(environment).toMatch(/OVERTCHAT_BUNDLED_SPEECH_TOKEN="[a-f0-9]{64}"/u);
+  });
+
   it.each([
     ["local", "127.0.0.1", "http://localhost:4718"],
     ["lan", "0.0.0.0", "http://192.168.1.20:4718"],

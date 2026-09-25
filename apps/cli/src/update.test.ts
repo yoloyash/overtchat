@@ -51,9 +51,19 @@ vi.mock("./connector.js", () => ({
   installManagedConnector: mocks.installManagedConnector,
 }));
 
-vi.mock("./compose.js", () => ({
+vi.mock("./compose.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./compose.js")>()),
   renderStackEnvironment: mocks.renderStackEnvironment,
 }));
+vi.mock("node:fs/promises", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs/promises")>()),
+  writeFile: vi.fn(),
+}));
+vi.mock("./apple-speech.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./apple-speech.js")>()),
+  prepareAppleSpeech: vi.fn(async () => ({ commit: async () => {}, rollback: async () => {} })),
+}));
+import { prepareAppleSpeech } from "./apple-speech.js";
 
 vi.mock("./docker.js", () => ({
   detectDockerCommand: mocks.detectDockerCommand,
@@ -457,4 +467,22 @@ describe("managed updates", () => {
       1,
     );
   });
+});
+
+it("recovers native speech after connector failure without downgrading the migrated app", async () => {
+  const previous = config({ tts: { provider: "bundled", bundledInstalled: true, accelerator: "apple" }, agents: { installed: true } });
+  mocks.readInstallationConfig.mockResolvedValue(previous);
+  mocks.latestReleaseManifest.mockResolvedValue({
+    format: 1, cliVersion: "0.1.1", appVersion: "0.15.0", voiceVersion: "0.1.0",
+    connectorVersion: "0.4.0", sttVersion: "0.1.0", ...releaseImages,
+  });
+  const rollback = vi.fn(async () => {});
+  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit: vi.fn(), rollback });
+  mocks.installManagedConnector.mockRejectedValueOnce(new Error("connector failed"));
+  await expect(update()).rejects.toThrow("connector failed");
+  expect(rollback).toHaveBeenCalledOnce();
+  expect(mocks.requireDocker.mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(2);
+  expect(mocks.writeInstallationConfig).toHaveBeenLastCalledWith(paths, expect.objectContaining({
+    appVersion: "0.15.0", tts: previous.tts,
+  }));
 });

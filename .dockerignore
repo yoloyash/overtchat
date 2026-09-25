@@ -42,5 +42,5 @@ compose.override.yaml
 **/tsconfig.tsbuildinfo
 docs
 searxng
-stt
+speech
 vllm-cache

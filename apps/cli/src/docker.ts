@@ -314,7 +314,8 @@ export async function reconcileManagedSidecars(
       selected:
         config.tts.bundledInstalled &&
         config.tts.accelerator !== "auto" &&
-        config.tts.accelerator !== "gpu",
+        config.tts.accelerator !== "gpu" &&
+        config.tts.accelerator !== "apple",
       service: "kokoro",
     },
     {
@@ -338,7 +339,8 @@ export async function reconcileManagedSidecars(
       selected:
         config.stt.bundledInstalled &&
         config.stt.accelerator !== "auto" &&
-        config.stt.accelerator !== "gpu",
+        config.stt.accelerator !== "gpu" &&
+        config.stt.accelerator !== "apple",
       service: "stt-cpu",
     },
     {

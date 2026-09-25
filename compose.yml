@@ -105,7 +105,7 @@ services:
   stt-cpu:
     image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.1}
     build:
-      context: ./stt
+      context: ./speech/stt
       dockerfile: Dockerfile.cpu
     container_name: overtchat-stt-cpu
     restart: unless-stopped
@@ -119,7 +119,7 @@ services:
   stt-gpu:
     image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.1}
     build:
-      context: ./stt
+      context: ./speech/stt
       dockerfile: Dockerfile.gpu
     container_name: overtchat-stt-gpu
     restart: unless-stopped

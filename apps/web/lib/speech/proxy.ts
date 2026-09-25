@@ -22,7 +22,7 @@ export async function proxyTranscription(request: Request): Promise<Response> {
   const capability = getServerCapability("stt");
   const baseUrl =
     capability.provider === "bundled"
-      ? "http://stt:5092"
+      ? process.env.OVERTCHAT_BUNDLED_STT_URL || "http://stt:5092"
       : capability.baseUrl || process.env.STT_URL;
   if (capability.provider === "disabled" || !baseUrl) {
     return Response.json({ error: "stt_unavailable" }, { status: 503 });
@@ -49,7 +49,7 @@ export async function proxyTranscription(request: Request): Promise<Response> {
   const upstream = await fetch(apiEndpoint(baseUrl, "/audio/transcriptions"), {
     method: "POST",
     body: outgoing,
-    headers: providerHeaders(capability.apiKey),
+    headers: providerHeaders(capability.provider === "bundled" ? process.env.OVERTCHAT_BUNDLED_SPEECH_TOKEN || null : capability.apiKey),
     signal: request.signal,
   }).catch(() => null);
   if (!upstream) {
@@ -84,7 +84,7 @@ export async function proxySpeech(
   const capability = getServerCapability("tts");
   const baseUrl =
     capability.provider === "bundled"
-      ? "http://kokoro:8880"
+      ? process.env.OVERTCHAT_BUNDLED_TTS_URL || "http://kokoro:8880"
       : capability.baseUrl || process.env.KOKORO_URL;
   if (capability.provider === "disabled" || !baseUrl) {
     return Response.json({ error: "tts_unavailable" }, { status: 503 });
@@ -98,7 +98,7 @@ export async function proxySpeech(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...providerHeaders(capability.apiKey),
+      ...providerHeaders(capability.provider === "bundled" ? process.env.OVERTCHAT_BUNDLED_SPEECH_TOKEN || null : capability.apiKey),
     },
     body: JSON.stringify({
       model: capability.model ?? "kokoro",

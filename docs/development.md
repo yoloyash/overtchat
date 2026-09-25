@@ -59,6 +59,47 @@ background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
 
+## Speech
+
+`speech/stt/` contains CPU/CUDA STT containers; `speech/apple/` contains native
+Kokoro/PyTorch MPS and Parakeet/MLX inference. Container TTS uses upstream Kokoro
+images. Realtime orchestration remains in `voice/`.
+
+Build STT with `docker compose --profile stt build stt-cpu` or
+`docker compose --profile stt-gpu build stt-gpu`.
+
+### Apple speech
+
+After changing the server or lockfile, regenerate the payload embedded in the
+CLI; no runtime checkout or separate speech release artifact is required:
+
+```sh
+npm run speech:bundle
+npm run speech:check
+npm run test -w apps/cli --
+npm run test -w apps/web -- lib/speech/proxy.test.ts
+python3 -m venv /tmp/overtchat-speech-tests
+/tmp/overtchat-speech-tests/bin/pip install -r speech/apple/requirements-test.txt
+/tmp/overtchat-speech-tests/bin/python -m unittest discover -s speech/apple -p 'test_*.py'
+```
+
+The Python tests use fake inference and real FFmpeg, including an M4A seeking
+regression. Regenerate dependencies on an Apple Silicon Mac using uv 0.12.18:
+
+```sh
+MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile speech/apple/requirements.in \
+  --python-version 3.12 --python-platform aarch64-apple-darwin \
+  --generate-hashes --output-file speech/apple/requirements.lock
+npm run speech:bundle
+```
+
+On an isolated, logged-in Apple Silicon Mac, run `speech/apple/smoke.py` with
+the managed runtime's Python and its private `service.json` path. Use
+`--fixture spoken.wav` for an independent recording containing "the quick brown
+fox". Never print or commit the service token. Verify Docker connectivity,
+long recordings, setup/update recovery, CPU switching, and restart at login.
+Linux tests cover transport/codecs; physical Mac tests cover inference.
+
 ## OpenCode process lifecycle validation
 
 The connector owns cleanup for local and SSH OpenCode servers. To exercise real
