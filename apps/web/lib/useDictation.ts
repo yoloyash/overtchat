@@ -6,6 +6,7 @@ export type DictationStatus = "idle" | "recording" | "transcribing";
 
 export type DictationError =
   | { kind: "permission" }
+  | { kind: "insecure_context" }
   | { kind: "unsupported" }
   | { kind: "stt_unavailable"; role: "admin" | "user" }
   | { kind: "empty" }
@@ -46,6 +47,10 @@ export function useDictation(onResult: (text: string) => void) {
 
   const start = useCallback(async () => {
     setError(null);
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      setError({ kind: "insecure_context" });
+      return;
+    }
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       setError({ kind: "unsupported" });
       return;
