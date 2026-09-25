@@ -58,6 +58,7 @@
     "media-chrome": "^4.19.0",
     "next": "16.3.4",
     "next-themes": "^0.4.6",
+    "qrcode.react": "^4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-simple-code-editor": "^0.14.1",

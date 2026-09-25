@@ -47,7 +47,15 @@
         "expo-image-picker",
         {
           "photosPermission": "Allow overtchat to access your photos so you can attach them to chats.",
-          "cameraPermission": "Allow overtchat to use your camera so you can attach photos to chats."
+          "cameraPermission": "Allow overtchat to use your camera to scan server QR codes and attach photos to chats."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow overtchat to use your camera to scan server QR codes and attach photos to chats.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
         }
       ],
       "expo-image",

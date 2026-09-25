@@ -97,7 +97,8 @@ export default function LoginScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
-                  textContentType="emailAddress"
+                  autoComplete="username"
+                  importantForAutofill="yes"
                   editable={!submitting}
                   style={[
                     styles.input,
@@ -123,7 +124,8 @@ export default function LoginScreen() {
                   autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry
-                  textContentType="password"
+                  autoComplete="current-password"
+                  importantForAutofill="yes"
                   editable={!submitting}
                   style={[
                     styles.input,
