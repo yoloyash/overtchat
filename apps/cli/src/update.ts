@@ -1,4 +1,5 @@
 import { prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
+import { recoverSpeech } from "./stack.js";
 import { platformServices } from "./platform.js";
 import { outro, spinner } from "@clack/prompts";
 import { accessSummary } from "./access.js";
@@ -54,6 +55,7 @@ export async function update(): Promise<void> {
   const completedSecrets = initialSecrets(null, secrets);
   const progress = spinner();
   let progressActive = true;
+  let nextConfig = config;
   let speechChange: SpeechChange | undefined;
   progress.start("Checking for OvertChat updates");
   try {
@@ -66,7 +68,7 @@ export async function update(): Promise<void> {
       return;
     }
 
-    const nextConfig = normalizeInstallationConfig(
+    nextConfig = normalizeInstallationConfig(
       platformServices(applyReleaseManifest(config, manifest)),
     );
     await prepareFiles(nextConfig, undefined);
@@ -115,7 +117,14 @@ export async function update(): Promise<void> {
     showSidecarReconciliation(reconciliation);
     outro(nextConfig.access ? accessSummary(nextConfig) : `Open: ${nextConfig.publicUrl}`);
   } catch (error) {
-    await speechChange?.rollback();
+    if (speechChange) {
+      try {
+        await recoverSpeech(speechChange, nextConfig, config, completedSecrets, paths, docker, waitForApp, async () => {});
+      } catch (recoveryError) {
+        if (progressActive) progress.stop("OvertChat update failed", 1);
+        throw new AggregateError([error, recoveryError], "Update failed and speech recovery failed. Run overtchat setup to repair the installation.");
+      }
+    }
     if (progressActive) progress.stop("OvertChat update failed", 1);
     throw error;
   }

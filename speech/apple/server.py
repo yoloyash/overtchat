@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import io
 import logging
 import os
 from pathlib import Path
@@ -65,20 +66,59 @@ def decode(blob: bytes) -> np.ndarray:
     return audio
 
 
-def encode(pcm: bytes, fmt: str) -> bytes:
-    if fmt == "pcm":
-        return pcm
-    codec, container = {"mp3": ("libmp3lame", "mp3"), "flac": ("flac", "flac"),
-                        "opus": ("libopus", "ogg"), "aac": ("aac", "adts")}[fmt]
-    result = subprocess.run(
-        [ffmpeg(), "-nostdin", "-v", "error", "-f", "s16le", "-ar", "24000", "-ac", "1",
-         "-i", "pipe:0", "-c:a", codec, "-f", container,
-         *(["-write_xing", "0", "-id3v2_version", "0"] if fmt == "mp3" else []), "pipe:1"],
-        input=pcm, capture_output=True, timeout=30,
-    )
-    if result.returncode:
-        raise RuntimeError("Audio encoding failed")
-    return result.stdout
+class AudioBuffer(io.RawIOBase):
+    """A non-seekable output, so muxers produce streaming headers and trailers."""
+    def __init__(self):
+        self.data = bytearray()
+
+    def writable(self):
+        return True
+
+    def write(self, data):
+        self.data.extend(data)
+        return len(data)
+
+
+class AudioEncoder:
+    """One codec context per response, as in Kokoro-FastAPI's streaming writer."""
+    def __init__(self, fmt: str):
+        import av
+        self.av = av
+        self.buffer = AudioBuffer()
+        self.samples = 0
+        container = "ogg" if fmt == "opus" else "adts" if fmt == "aac" else fmt
+        codec = {"mp3": "libmp3lame", "flac": "flac", "opus": "libopus", "aac": "aac"}[fmt]
+        self.output = av.open(self.buffer, mode="w", format=container,
+                              options={"write_xing": "0", "id3v2_version": "0"} if fmt == "mp3" else {})
+        self.stream = self.output.add_stream(codec, rate=24000, layout="mono")
+        if fmt in {"mp3", "opus", "aac"}:
+            self.stream.bit_rate = 128000
+
+    def drain(self) -> bytes:
+        data = bytes(self.buffer.data)
+        self.buffer.data.clear()
+        return data
+
+    def write(self, pcm: bytes) -> bytes:
+        frame = self.av.AudioFrame.from_ndarray(np.frombuffer(pcm, dtype="<i2").reshape(1, -1),
+                                                format="s16", layout="mono")
+        frame.sample_rate = 24000
+        frame.pts = self.samples
+        self.samples += frame.samples
+        for packet in self.stream.encode(frame):
+            self.output.mux(packet)
+        return self.drain()
+
+    def finish(self) -> bytes:
+        for packet in self.stream.encode(None):
+            self.output.mux(packet)
+        # Container trailers (notably Ogg's final page) are emitted on close.
+        self.output.close()
+        return self.drain()
+
+    def close(self):
+        self.output.close()
+        self.buffer.close()
 
 
 def wav_header() -> bytes:
@@ -140,7 +180,7 @@ class Models:
                     audio = result.audio.detach().cpu().numpy()
                     yield (np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes()
 
-    def transcribe(self, waveform: np.ndarray) -> str:
+    def transcribe(self, waveform: np.ndarray, stopped: threading.Event | None = None) -> str:
         # Feed the model a WAV with known encoding. No lossy intermediate re-encode.
         import wave
         with tempfile.TemporaryDirectory(prefix="overtchat-stt-") as directory:
@@ -150,7 +190,12 @@ class Models:
                 output.setsampwidth(2)
                 output.setframerate(16000)
                 output.writeframes((np.clip(waveform, -1, 1) * 32767).astype("<i2").tobytes())
-            return self.stt.transcribe(str(path)).text.strip()
+            def check_cancelled(*_):
+                if stopped is not None and stopped.is_set():
+                    raise InterruptedError("Transcription cancelled")
+            check_cancelled()
+            return self.stt.transcribe(str(path), chunk_duration=120,
+                                       overlap_duration=15, chunk_callback=check_cancelled).text.strip()
 
 
 class Worker:
@@ -247,7 +292,7 @@ def create_app(config: dict, model_factory=Models) -> FastAPI:
             if stopped.is_set():
                 return ""
             waveform = decode(blob)
-            return "" if stopped.is_set() else worker.models.transcribe(waveform)
+            return "" if stopped.is_set() else worker.models.transcribe(waveform, stopped)
 
         future = worker.submit(run)
         try:
@@ -285,22 +330,29 @@ def create_app(config: dict, model_factory=Models) -> FastAPI:
                     continue
 
         def run():
+            encoder = None
             try:
-                buffered = []
                 fmt = body.response_format
+                if fmt not in {"pcm", "wav"}:
+                    encoder = AudioEncoder(fmt)
                 for pcm in worker.models.speech(body.input, body.voice, body.speed):
                     if stopped.is_set():
                         break
-                    if fmt in {"pcm", "wav", "mp3"}:
-                        emit(encode(pcm, "pcm" if fmt == "wav" else fmt))
-                    else:
-                        buffered.append(pcm)
-                if buffered and not stopped.is_set():
-                    emit(encode(b"".join(buffered), fmt))
+                    data = encoder.write(pcm) if encoder else pcm
+                    if data:
+                        emit(data)
+                if encoder and not stopped.is_set():
+                    emit(encoder.finish())
             except Exception as exc:
                 emit(exc)
             finally:
-                emit(None)
+                try:
+                    if encoder:
+                        encoder.close()
+                except Exception as exc:
+                    emit(exc)
+                finally:
+                    emit(None)
 
         future = worker.submit(run)
 

@@ -16,3 +16,4 @@ parakeet-mlx==0.5.2
 mlx==0.32.2
 imageio-ffmpeg==0.6.0
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+av==18.1.0

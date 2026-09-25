@@ -1,3 +1,4 @@
+import { appleSpeechCapabilities, type SpeechChange } from "./apple-speech.js";
 import { writeFile } from "node:fs/promises";
 import { renderComposeFile, renderStackEnvironment } from "./compose.js";
 import {
@@ -99,4 +100,39 @@ export async function startStack(
       { cause: error },
     );
   }
+}
+
+// Roll back speech routing and its native process together; retain the current
+// app image because it may already have migrated the database.
+export async function recoverSpeech(
+  change: SpeechChange,
+  current: InstallationConfig,
+  previous: InstallationConfig | null,
+  secrets: InstallationSecrets,
+  paths: RuntimePaths,
+  docker: DockerCommand,
+  waitForApp: (url: string) => Promise<void>,
+  syncCapabilities: (config: InstallationConfig, secret: string) => Promise<void>,
+  restorePreviousAccess = false,
+): Promise<void> {
+  if (!appleSpeechCapabilities(current).length &&
+      !(previous && appleSpeechCapabilities(previous).length)) return;
+  if (!previous) {
+    // On a first installation there is no old routing to restore. Keep the
+    // prepared service alive for the app and persist the selection for repair.
+    await writeInstallationConfig(paths, current);
+    return;
+  }
+  const restored = {
+    ...current,
+    ...(restorePreviousAccess ? accessSettings(previous) : {}),
+    tts: previous.tts,
+    stt: previous.stt,
+    voice: previous.voice,
+    search: previous.search,
+    appleSpeechPort: previous.appleSpeechPort,
+  };
+  await change.rollback();
+  await restoreAccess(restored, restored, secrets, paths, docker, waitForApp);
+  await syncCapabilities(restored, secrets.managementSecret);
 }

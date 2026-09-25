@@ -80,7 +80,9 @@ describe("native service lifecycle", () => {
       const directory = path.join(root, `${APPLE_SPEECH_REVISION}-${selection}`);
       await mkdir(path.dirname(plist), { recursive: true });
       await mkdir(directory, { recursive: true });
-      await writeFile(path.join(directory, ".installed"), APPLE_SPEECH_REVISION);
+      const uvRoot = path.join(root, "tools", "0.12.18");
+      await mkdir(uvRoot, { recursive: true });
+      await writeFile(path.join(uvRoot, ".verified"), "cf40e0c6a202190ccd9e0406dcfdd5b2d6668a9a5c779b17948963df32aafe5b");
       await writeFile(plist, "previous working service");
       let attempts = 0;
       vi.mocked(requireSuccessful).mockImplementation(async (_command, args) => {
@@ -90,6 +92,10 @@ describe("native service lifecycle", () => {
       await expect(prepareAppleSpeech(selected, "secret", paths)).rejects.toThrow("candidate failed");
       expect(await readFile(plist, "utf8")).toBe("previous working service");
       expect(attempts).toBe(2);
+      expect(requireSuccessful).toHaveBeenCalledWith(expect.stringMatching(/\/uv$/u),
+        ["python", "install", "--no-bin", "3.12.12"], expect.objectContaining({
+          environment: expect.objectContaining({ UV_PYTHON_INSTALL_DIR: path.join(root, "python") }),
+        }));
       const cpu = { ...selected, tts: { ...selected.tts, accelerator: "cpu" as const } };
       const change = await prepareAppleSpeech(cpu, "secret", paths);
       expect(await readFile(plist, "utf8")).toBe("previous working service");

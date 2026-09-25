@@ -48,7 +48,7 @@ import type { ExistingInstallation, InstallationConfig } from "./types.js";
 import { accessSummary, connectionInstructions } from "./access.js";
 import { finishAccess } from "./connection-check.js";
 import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
-import { startStack } from "./stack.js";
+import { startStack, recoverSpeech } from "./stack.js";
 
 export type SetupOptions = {
   dryRun: boolean;
@@ -352,6 +352,7 @@ export async function setup(
     );
   }
   config = normalizeInstallationConfig(config);
+  const previousConfig = saved ? structuredClone(config) : null;
   if (options.development) {
     if (!(await exists(path.join(sourceDirectory, "Dockerfile")))) {
       throw new Error(
@@ -582,10 +583,12 @@ export async function setup(
   const progress = spinner();
   progress.start("Starting OvertChat");
   let speechChange: SpeechChange | undefined;
+  let stackStarted = false;
   try {
     progress.message("Preparing local speech");
     speechChange = await prepareAppleSpeech(config, secrets.managementSecret, paths);
     await startStack(config, saved, secrets, paths, docker, waitForApp);
+    stackStarted = true;
     if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
       await removeServe(oldRoute);
     }
@@ -611,7 +614,14 @@ export async function setup(
     await writeInstallationConfig(paths, config);
     outro(accessSummary(config));
   } catch (error) {
-    await speechChange?.rollback();
+    if (speechChange) {
+      try {
+        await recoverSpeech(speechChange, config, previousConfig, secrets, paths, docker, waitForApp, syncCapabilities, !stackStarted);
+      } catch (recoveryError) {
+        progress.stop("OvertChat setup failed", 1);
+        throw new AggregateError([error, recoveryError], "Setup failed and speech recovery failed. Run overtchat setup to repair the installation.");
+      }
+    }
     progress.stop("OvertChat setup failed", 1);
     throw error;
   }

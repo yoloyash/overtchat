@@ -19,7 +19,7 @@ class FakeModels:
         self.threads.append(threading.get_ident())
         self.voices = {"af_heart": None}
 
-    def transcribe(self, waveform):
+    def transcribe(self, waveform, stopped=None):
         self.threads.append(threading.get_ident())
         return "A real transcript"
 
@@ -109,6 +109,34 @@ class SpeechTests(unittest.TestCase):
 
 
 class CodecTests(unittest.TestCase):
+    def test_streaming_codecs_preserve_duration_across_chunks(self):
+        pcm = (np.sin(np.arange(24000) * 2 * np.pi * 440 / 24000) * 16000).astype("<i2").tobytes()
+        for fmt in ["mp3", "opus", "aac", "flac"]:
+            with self.subTest(format=fmt):
+                encoder = server.AudioEncoder(fmt)
+                try:
+                    parts = [encoder.write(pcm) for _ in range(20)]
+                    self.assertTrue(any(parts), "audio must stream before finalization")
+                    blob = b"".join(parts) + encoder.finish()
+                finally:
+                    encoder.close()
+                decoded = server.decode(blob)
+                self.assertAlmostEqual(len(decoded) / 16000, 20, delta=0.15)
+
+    def test_transcription_uses_upstream_chunking_and_cancellation(self):
+        from types import SimpleNamespace
+        from unittest.mock import Mock
+        models = server.Models.__new__(server.Models)
+        models.stt = SimpleNamespace(transcribe=Mock(return_value=SimpleNamespace(text=" transcript ")))
+        stop = threading.Event()
+        self.assertEqual(models.transcribe(np.zeros(16000), stop), "transcript")
+        options = models.stt.transcribe.call_args.kwargs
+        self.assertEqual(options["chunk_duration"], 120)
+        self.assertEqual(options["overlap_duration"], 15)
+        stop.set()
+        with self.assertRaises(InterruptedError):
+            options["chunk_callback"](120, 240)
+
     def test_mobile_m4a_with_trailing_index_is_decoded(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "recording.m4a"

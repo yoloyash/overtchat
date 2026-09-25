@@ -110,7 +110,7 @@ async function ensureRuntime(root: string, directory: string): Promise<void> {
     await rm(archivePath);
     await writeFile(path.join(uvRoot, ".verified"), UV_SHA256, { mode: 0o600 });
   }
-  await requireSuccessful(uv, ["python", "install", PYTHON_VERSION], { environment, inherit: true });
+  await requireSuccessful(uv, ["python", "install", "--no-bin", PYTHON_VERSION], { environment, inherit: true });
   await requireSuccessful(uv, ["venv", "--managed-python", "--python", PYTHON_VERSION, path.join(directory, ".venv")], { environment, inherit: true });
   await requireSuccessful(uv, ["pip", "sync", "--python", path.join(directory, ".venv", "bin", "python"), "--require-hashes", path.join(directory, "requirements.lock")], { environment, inherit: true });
   await writeFile(path.join(directory, ".installed"), APPLE_SPEECH_REVISION, { mode: 0o600 });

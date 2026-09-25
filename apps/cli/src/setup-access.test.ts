@@ -258,3 +258,46 @@ describe("access provisioning lifecycle", () => {
     ).toEqual(route);
   });
 });
+
+vi.mock("./apple-speech.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./apple-speech.js")>()),
+  detectAppleSpeech: async () => null,
+  prepareAppleSpeech: vi.fn(async () => ({ commit: async () => {}, rollback: async () => {} })),
+}));
+import { prepareAppleSpeech } from "./apple-speech.js";
+
+it("restores both speech routing and the service after a late setup failure", async () => {
+  const previous = local(defaultInstallationConfig(null, manifest));
+  previous.tts = { provider: "bundled", bundledInstalled: true, accelerator: "cpu" };
+  await writeInstallationConfig(runtimePaths(), previous);
+  vi.mocked(promptInstallationConfig).mockResolvedValue({
+    ...previous, tts: { provider: "bundled", bundledInstalled: true, accelerator: "apple" },
+  });
+  const rollback = vi.fn(async () => {});
+  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit: vi.fn(), rollback });
+  let puts = 0;
+  vi.stubGlobal("fetch", vi.fn(async (_url, init) => init?.method === "PUT" && puts++ === 0
+    ? new Response("forced late failure", { status: 500 })
+    : Response.json({ capabilities: [], ok: true, name: "overtchat" })));
+  await expect(setup(options, manifest)).rejects.toThrow("forced late failure");
+  expect(rollback).toHaveBeenCalledOnce();
+  const rendered = await readFile(runtimePaths().secretsFile, "utf8");
+  expect(rendered).toContain('OVERTCHAT_BUNDLED_TTS_URL="http://kokoro:8880"');
+  expect((await readInstallationConfig(runtimePaths()))?.tts.accelerator).toBe("cpu");
+  expect(vi.mocked(requireDocker).mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(2);
+  expect(puts).toBe(2);
+});
+
+it("retains native speech and its selection after a first-install failure", async () => {
+  vi.mocked(promptInstallationConfig).mockImplementation(async initial => ({
+    ...local(initial), tts: { provider: "bundled", bundledInstalled: true, accelerator: "apple" },
+  }));
+  const rollback = vi.fn(async () => {});
+  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit: vi.fn(), rollback });
+  vi.stubGlobal("fetch", vi.fn(async (_url, init) => init?.method === "PUT"
+    ? new Response("sync failed", { status: 500 })
+    : Response.json({ capabilities: [], ok: true, name: "overtchat" })));
+  await expect(setup(options, manifest)).rejects.toThrow("sync failed");
+  expect(rollback).not.toHaveBeenCalled();
+  expect((await readInstallationConfig(runtimePaths()))?.tts.accelerator).toBe("apple");
+});
