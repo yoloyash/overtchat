@@ -32,6 +32,8 @@ export function dictationErrorMessage(
   switch (err.kind) {
     case "permission":
       return "Microphone access denied. Allow it in your browser settings to dictate.";
+    case "insecure_context":
+      return "Microphone access requires HTTPS on this address. Open OvertChat over HTTPS, or use localhost on the computer running the server.";
     case "unsupported":
       return "Your browser doesn't support audio recording.";
     case "stt_unavailable":
