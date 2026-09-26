@@ -1936,6 +1936,42 @@ it.each(["select", "multiselect"])(
 );
 
 describe("agent dictation", () => {
+  it("keeps Stop dictation available when the agent disconnects", async () => {
+    mocks.dictation.status = "recording";
+    await render();
+    mocks.status = "reconnecting";
+    await render();
+    const stop = container.querySelector(
+      'button[aria-label="Stop dictation"]',
+    ) as HTMLButtonElement;
+    expect(stop.disabled).toBe(false);
+    await click("Stop dictation");
+    expect(mocks.dictation.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["recording", "transcribing"] as const)(
+    "waits for %s to finish before sending the complete prompt",
+    async (status) => {
+      mocks.draft.message = "Please";
+      mocks.dictation.status = status;
+      await render();
+      const send = () => container.querySelector(
+        'button[aria-label="Send message"]',
+      ) as HTMLButtonElement;
+      expect(send().disabled).toBe(true);
+      expect(mocks.send).not.toHaveBeenCalled();
+      await act(async () => mocks.dictation.onResult("fix the spec"));
+      mocks.dictation.status = "idle";
+      await render();
+      expect(send().disabled).toBe(false);
+      await click("Send message");
+      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+        type: "prompt",
+        message: "Please fix the spec",
+      }));
+    },
+  );
+
   it("captures through the mic and appends the transcript to the draft", async () => {
     await render();
     await click("Start dictation");

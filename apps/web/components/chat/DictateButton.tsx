@@ -18,7 +18,7 @@ export function DictateButton({
   onBeforeStart,
 }: {
   dictation: Dictation;
-  /** Chat-level reasons capture cannot run (e.g. a live realtime voice call). */
+  /** Prevents starting capture; an active recording can always be stopped. */
   disabled?: boolean;
   /**
    * Runs immediately before capture starts. Composers that can be reading an
@@ -47,7 +47,7 @@ export function DictateButton({
           void dictation.start();
         }
       }}
-      disabled={transcribing || disabled}
+      disabled={transcribing || (disabled && !recording)}
       aria-label={
         recording
           ? "Stop dictation"

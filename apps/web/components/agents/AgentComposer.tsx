@@ -245,6 +245,7 @@ export function AgentComposer({
       (!message && images.length === 0) ||
       pending ||
       submittingRef.current ||
+      dictation.status !== "idle" ||
       disabled
     )
       return;
@@ -700,6 +701,7 @@ export function AgentComposer({
                 uploading ||
                 pending ||
                 submitting ||
+                dictation.status !== "idle" ||
                 disabled
               }
               onClick={submit}

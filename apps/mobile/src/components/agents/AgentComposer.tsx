@@ -457,11 +457,11 @@ export function AgentComposer({
             }
             icon={dictation.status === "recording" ? "stop" : "mic"}
             danger={dictation.status === "recording"}
+            loading={dictation.status === "transcribing"}
             disabled={
-              disabled ||
-              sending ||
-              uploading ||
-              dictation.status === "transcribing"
+              dictation.status === "transcribing" ||
+              (dictation.status !== "recording" &&
+                (disabled || sending || uploading))
             }
             onPress={toggleMic}
           />
@@ -481,6 +481,7 @@ export function AgentComposer({
               disabled ||
               sending ||
               uploading ||
+              dictation.status !== "idle" ||
               (!draft.message.trim() && !draft.images.length) ||
               (!!draft.images.length && !supportsImages)
             }
@@ -499,6 +500,7 @@ function IconButton({
   onPress,
   primary,
   danger,
+  loading,
 }: {
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
@@ -506,13 +508,14 @@ function IconButton({
   onPress: () => void;
   primary?: boolean;
   danger?: boolean;
+  loading?: boolean;
 }) {
   const { colors } = useTheme();
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ disabled: !!disabled }}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => ({
@@ -537,17 +540,21 @@ function IconButton({
               : colors.muted,
         }}
       >
-        <Ionicons
-          name={icon}
-          size={20}
-          color={
-            primary
-              ? colors.primaryForeground
-              : danger
-                ? colors.background
-                : colors.foreground
-          }
-        />
+        {loading ? (
+          <ActivityIndicator size="small" color={colors.mutedForeground} />
+        ) : (
+          <Ionicons
+            name={icon}
+            size={20}
+            color={
+              primary
+                ? colors.primaryForeground
+                : danger
+                  ? colors.background
+                  : colors.foreground
+            }
+          />
+        )}
       </View>
     </Pressable>
   );
