@@ -42,6 +42,15 @@ export function reconstructPersistedMessages({
   requestMessages: UIMessage[];
   action: ChatRequestAction;
 }): ReconstructedPersistedRequest {
+  if (action.type === "compact") {
+    if (
+      !storedMessages.length ||
+      requestMessages.at(-1)?.id !== storedMessages.at(-1)?.id
+    ) {
+      throw new ChatHistoryConflictError();
+    }
+    return { messages: storedMessages, persistUserMessage: false };
+  }
   const requestUserMessage = requestMessages.at(-1);
   if (!requestUserMessage || requestUserMessage.role !== "user") {
     throw new ChatHistoryConflictError();

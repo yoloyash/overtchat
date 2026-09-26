@@ -27,6 +27,18 @@ const validBody = {
 };
 
 describe("chat request parsing", () => {
+  it("accepts a compact request referencing the last assistant without a new user turn", async () => {
+    const body = {
+      ...validBody,
+      messages: [{ id: "answer", role: "assistant", parts: [] }],
+    };
+    await expect(
+      parseChatRequest(request({ ...body, action: { type: "compact" } })),
+    ).resolves.toMatchObject({ action: { type: "compact" } });
+    await expect(
+      parseChatRequest(request({ ...body, action: { type: "submit" } })),
+    ).rejects.toThrow("final message must be a user");
+  });
   it("validates image options and binds them to the idempotency fingerprint", async () => {
     const initial = await parseChatRequest(request({ ...validBody, imageGeneration: { size: "1024x1024", quality: "low" } }));
     expect(initial.imageGeneration).toEqual({ size: "1024x1024", quality: "low" });

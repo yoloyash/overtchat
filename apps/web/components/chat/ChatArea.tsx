@@ -69,6 +69,11 @@ import {
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
 import {
+  CONTEXT_STATUS_DATA_TYPE,
+  isContextStatus,
+  type ContextStatus,
+} from "@overtchat/shared";
+import {
   chatComposerDraftScope,
   newChatComposerDraftScope,
 } from "@/lib/chat/composer-drafts";
@@ -210,6 +215,9 @@ export function ChatArea({
   );
   const [inferenceActivity, setInferenceActivity] =
     useState<InferenceActivity | null>(null);
+  const [contextStatus, setContextStatus] = useState<ContextStatus | null>(
+    null,
+  );
   const [dragDepth, setDragDepth] = useState(0);
 
   const isNewRef = useRef(isNew ?? false);
@@ -273,6 +281,12 @@ export function ChatArea({
     throttle: 32,
     onData: (part) => {
       if (
+        part.type === CONTEXT_STATUS_DATA_TYPE &&
+        isContextStatus(part.data)
+      ) {
+        setContextStatus(part.data);
+      }
+      if (
         part.type === INFERENCE_ACTIVITY_DATA_TYPE &&
         isInferenceActivity(part.data)
       ) {
@@ -280,14 +294,30 @@ export function ChatArea({
       }
     },
     onError: () => {
+      setMessages((current) =>
+        current.filter(
+          (m) =>
+            (m.metadata as { contextStatus?: string } | undefined)
+              ?.contextStatus !== "manual-compacting",
+        ),
+      );
       setInferenceActivity(null);
+      setContextStatus(null);
       if (!temporaryRef.current) {
         void qc.invalidateQueries({ queryKey: chatKeys.active() });
         void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       }
     },
     onFinish: ({ message, isError }) => {
+      setMessages((current) =>
+        current.filter(
+          (m) =>
+            (m.metadata as { contextStatus?: string } | undefined)
+              ?.contextStatus !== "manual-compacting",
+        ),
+      );
       setInferenceActivity(null);
+      setContextStatus(null);
       const stats = readMessageStats(message);
       if (stats && !temporaryRef.current) {
         setStoredStats((current) => {
@@ -314,6 +344,7 @@ export function ChatArea({
   });
   const handleGenerationSettled = useCallback(() => {
     setInferenceActivity(null);
+    setContextStatus(null);
     setChatPersisted(true);
     setActiveChatInCache(qc, chatId, false);
     void Promise.all([
@@ -427,6 +458,7 @@ export function ChatArea({
 
   function handleStop() {
     setInferenceActivity(null);
+    setContextStatus(null);
     stop();
     if (!temporary) {
       void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
@@ -451,12 +483,22 @@ export function ChatArea({
   }, [chatId, qc]);
 
   function handleSubmit(text: string, attachments: FileUIPart[]) {
+    if (
+      !voiceActive &&
+      resolvedChatKind !== "voice" &&
+      text.trim().toLowerCase() === "/compact" &&
+      attachments.length === 0
+    ) {
+      handleCompact();
+      return;
+    }
     if (voiceActive) {
       voiceSessionRef.current?.sendMessage(text);
       return;
     }
     if (resolvedChatKind === "voice") return;
     setInferenceActivity(null);
+    setContextStatus(null);
     const wasNew = !temporary && markNewChatPersisted();
     if (wasNew) {
       qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) => {
@@ -496,6 +538,7 @@ export function ChatArea({
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    setContextStatus(null);
     markGenerationStarted();
     regenerate({
       messageId,
@@ -512,15 +555,25 @@ export function ChatArea({
     });
   }
 
+  function handleCompact() {
+    if (streaming || !configured || messages.length === 0) return;
+    setInferenceActivity(null);
+    setContextStatus(null);
+    markGenerationStarted();
+    void sendMessage(undefined, { body: requestBody({ type: "compact" }) });
+  }
+
   function handleReconnect() {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    setContextStatus(null);
     void reconcileGeneration();
   }
 
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    setContextStatus(null);
     markGenerationStarted();
     sendMessage(
       { text, files, messageId },
@@ -607,9 +660,7 @@ export function ChatArea({
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
   const canToggleTemporary = Boolean(isNew) && messages.length === 0;
-  let contextUsage:
-    | { usedTokens: number; contextWindow?: number }
-    | undefined;
+  let contextUsage: { usedTokens: number; contextWindow?: number } | undefined;
   if (contextMeterEnabled) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
@@ -667,6 +718,19 @@ export function ChatArea({
       attachmentsEnabled={resolvedChatKind !== "voice" && !voiceActive}
       textInputDisabled={resolvedChatKind === "voice" && !voiceActive}
       commandActions={{
+        compact:
+          resolvedChatKind !== "voice" && !voiceActive
+            ? {
+                onCompact: handleCompact,
+                unavailableReason: streaming
+                  ? "Wait for the response to finish"
+                  : !configured
+                    ? "Configure a model first"
+                    : messages.length === 0
+                      ? "Start a conversation first"
+                      : undefined,
+              }
+            : undefined,
         temporary: canToggleTemporary
           ? { active: temporary, onToggle: () => setTemporary((t) => !t) }
           : undefined,
@@ -764,6 +828,7 @@ export function ChatArea({
             streaming={streaming}
             status={status}
             inferenceActivity={inferenceActivity}
+            contextStatus={contextStatus}
             error={error}
             configured={configured && resolvedChatKind !== "voice"}
             speech={speech}

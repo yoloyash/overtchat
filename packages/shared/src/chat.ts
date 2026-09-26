@@ -6,6 +6,7 @@ export type ChatKind = (typeof CHAT_KINDS)[number];
 
 export type ChatRequestAction =
   | { type: "submit" }
+  | { type: "compact" }
   | { type: "edit"; targetUserMessageId: string }
   | { type: "regenerate"; targetAssistantMessageId: string }
   | { type: "retry"; userMessageId: string };

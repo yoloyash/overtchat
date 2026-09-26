@@ -10,6 +10,7 @@ import { z } from "zod";
 
 const ChatRequestActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("submit") }),
+  z.object({ type: z.literal("compact") }),
   z.object({
     type: z.literal("edit"),
     targetUserMessageId: z.string().trim().min(1),
@@ -143,7 +144,7 @@ export async function parseChatRequest(
   }
 
   const last = validated.data[validated.data.length - 1];
-  if (last.role !== "user") {
+  if (last.role !== "user" && envelope.data.action?.type !== "compact") {
     throw new ChatRequestError("The final message must be a user message");
   }
 
