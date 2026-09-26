@@ -5,7 +5,7 @@ export async function POST(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
 
-  return proxyTranscription(req, {
+  return proxyTranscription(req, undefined, {
     actorRole: session.user.role === "admin" ? "admin" : "user",
   });
 }

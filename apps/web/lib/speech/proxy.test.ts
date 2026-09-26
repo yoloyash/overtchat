@@ -48,6 +48,7 @@ describe("bundled speech transport", () => {
     body.set("file", new File(["audio"], "recording.webm", { type: "audio/webm" }));
     const response = await proxyTranscription(
       new Request("http://app/stt", { method: "POST", body }),
+      undefined,
       { actorRole: "admin" },
     );
     expect(response.status).toBe(503);

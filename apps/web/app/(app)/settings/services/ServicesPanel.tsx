@@ -20,6 +20,7 @@ import type {
 import { getErrorMessage } from "@/lib/errors";
 import {
   useServerCapabilities,
+  useTestServerCapability,
   useUpdateServerCapability,
 } from "@/lib/queries/serverCapabilities";
 import {
@@ -142,6 +143,17 @@ function CapabilitySection({
 }) {
   const [draft, setDraft] = useState<CapabilityDraft>(capability);
   const updateCapability = useUpdateServerCapability();
+  const testCapability = useTestServerCapability();
+  const canTest =
+    draft.provider === "bundled"
+      ? draft.bundledInstalled
+      : Boolean(
+          draft.baseUrl?.trim() &&
+            draft.model?.trim() &&
+            (draft.id !== "tts" || draft.voice?.trim()),
+        );
+  // Results belong to the submitted draft, even if it changes during a request.
+  const showTestResult = testCapability.variables === draft;
 
   async function save() {
     try {
@@ -347,14 +359,39 @@ function CapabilitySection({
       )}
 
       <SettingsActions className="py-4">
+        {draft.id !== "search" && draft.provider !== "disabled" && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => testCapability.mutate(draft as ServerCapabilityInput)}
+            disabled={
+              !canTest || testCapability.isPending || updateCapability.isPending
+            }
+          >
+            {testCapability.isPending ? "Testing…" : "Test connection"}
+          </Button>
+        )}
         <Button
           size="sm"
           onClick={() => void save()}
-          disabled={updateCapability.isPending}
+          disabled={updateCapability.isPending || testCapability.isPending}
         >
           {updateCapability.isPending ? "Saving…" : "Save"}
         </Button>
       </SettingsActions>
+      {showTestResult && testCapability.isSuccess && (
+        <SettingsNotice tone="success" className="py-4">
+          {testCapability.data.message}
+        </SettingsNotice>
+      )}
+      {showTestResult && testCapability.isError && (
+        <SettingsNotice tone="error" className="py-4">
+          {getErrorMessage(
+            testCapability.error,
+            "Could not connect to the provider.",
+          )}
+        </SettingsNotice>
+      )}
     </SettingsSection>
   );
 }

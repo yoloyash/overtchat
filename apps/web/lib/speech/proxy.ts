@@ -1,6 +1,11 @@
 import "server-only";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
 
+type SpeechConfig = Pick<
+  ReturnType<typeof getServerCapability>,
+  "provider" | "baseUrl" | "apiKey" | "model" | "voice"
+>;
+
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const MAX_SPEECH_CHARS = 5_000;
 const SPEECH_FORMATS = new Set(["aac", "flac", "mp3", "opus", "pcm", "wav"]);
@@ -15,22 +20,18 @@ function providerHeaders(apiKey: string | null): HeadersInit {
 }
 
 export interface TranscriptionOptions {
-  /**
-   * Role of the signed-in viewer. An unavailable transcription service is
-   * actionable prose, and only an operator can act on it.
-   */
   actorRole?: "admin" | "user";
 }
 
 export async function proxyTranscription(
   request: Request,
+  capability: SpeechConfig = getServerCapability("stt"),
   options: TranscriptionOptions = {},
 ): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_AUDIO_BYTES) {
     return new Response("Audio too large", { status: 413 });
   }
-  const capability = getServerCapability("stt");
   const baseUrl =
     capability.provider === "bundled"
       ? process.env.OVERTCHAT_BUNDLED_STT_URL || "http://stt:5092"
@@ -90,6 +91,7 @@ export async function proxyTranscription(
 export async function proxySpeech(
   request: Request,
   defaultFormat: "mp3" | "pcm",
+  capability: SpeechConfig = getServerCapability("tts"),
 ): Promise<Response> {
   const body = (await request.json().catch(() => null)) as
     | {
@@ -104,7 +106,6 @@ export async function proxySpeech(
   if (input.length > MAX_SPEECH_CHARS) {
     return new Response(`Text exceeds ${MAX_SPEECH_CHARS} chars`, { status: 413 });
   }
-  const capability = getServerCapability("tts");
   const baseUrl =
     capability.provider === "bundled"
       ? process.env.OVERTCHAT_BUNDLED_TTS_URL || "http://kokoro:8880"
