@@ -19,9 +19,14 @@ function providerHeaders(apiKey: string | null): HeadersInit {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
+export interface TranscriptionOptions {
+  actorRole?: "admin" | "user";
+}
+
 export async function proxyTranscription(
   request: Request,
   capability: SpeechConfig = getServerCapability("stt"),
+  options: TranscriptionOptions = {},
 ): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_AUDIO_BYTES) {
@@ -32,7 +37,13 @@ export async function proxyTranscription(
       ? process.env.OVERTCHAT_BUNDLED_STT_URL || "http://stt:5092"
       : capability.baseUrl || process.env.STT_URL;
   if (capability.provider === "disabled" || !baseUrl) {
-    return Response.json({ error: "stt_unavailable" }, { status: 503 });
+    return Response.json(
+      {
+        error: "stt_unavailable",
+        ...(options.actorRole ? { role: options.actorRole } : {}),
+      },
+      { status: 503 },
+    );
   }
   const incoming = await request.formData().catch(() => null);
   const file = incoming?.get("file");
@@ -60,7 +71,13 @@ export async function proxyTranscription(
     signal: request.signal,
   }).catch(() => null);
   if (!upstream) {
-    return Response.json({ error: "stt_unavailable" }, { status: 503 });
+    return Response.json(
+      {
+        error: "stt_unavailable",
+        ...(options.actorRole ? { role: options.actorRole } : {}),
+      },
+      { status: 503 },
+    );
   }
   return new Response(await upstream.arrayBuffer(), {
     status: upstream.status,

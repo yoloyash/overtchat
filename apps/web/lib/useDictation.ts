@@ -12,6 +12,16 @@ export type DictationError =
   | { kind: "empty" }
   | { kind: "other"; message: string };
 
+/** Handle returned by {@link useDictation}. */
+export interface Dictation {
+  status: DictationStatus;
+  error: DictationError | null;
+  start: () => Promise<void>;
+  stop: () => void;
+  cancel: () => void;
+  clearError: () => void;
+}
+
 const PREFERRED_MIME = [
   "audio/webm;codecs=opus",
   "audio/webm",
@@ -27,7 +37,7 @@ function pickMime(): string | undefined {
   return undefined;
 }
 
-export function useDictation(onResult: (text: string) => void) {
+export function useDictation(onResult: (text: string) => void): Dictation {
   const [status, setStatus] = useState<DictationStatus>("idle");
   const [error, setError] = useState<DictationError | null>(null);
 

@@ -47,7 +47,6 @@ import {
   formatSize,
   getDataTransferFiles,
 } from "@/lib/chat/attachments";
-import { dictationErrorMessage } from "@/lib/chat/message";
 import { useComposerDraft } from "@/lib/chat/use-composer-draft";
 import { motionClasses } from "@/lib/motion";
 import { useDictation } from "@/lib/useDictation";
@@ -60,6 +59,7 @@ import {
   type SlashCommand,
 } from "@/lib/chat/slash-commands";
 import type { PublicModelConfig } from "@/lib/model-config/schema";
+import { DictateButton, DictateError } from "./DictateButton";
 import { ImageOptions } from "./ImageOptions";
 import { CategoryIcon } from "./attachment-icons";
 import {
@@ -122,6 +122,8 @@ interface ComposerProps {
   onStop: () => void;
   onStartVoice: () => void;
   onEndVoice: () => void;
+  /** Stops text-to-speech before dictation so playback is not transcribed. */
+  onBeforeDictate?: () => void;
   isAdmin: boolean;
   draftUserId?: string;
   draftScope: string | null;
@@ -154,6 +156,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   onStop,
   onStartVoice,
   onEndVoice,
+  onBeforeDictate,
   isAdmin,
   draftUserId,
   draftScope,
@@ -226,7 +229,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }, [input]);
 
   function startDictation() {
-    if (dictation.status === "idle") void dictation.start();
+    if (dictation.status !== "idle") return;
+    onBeforeDictate?.();
+    void dictation.start();
   }
 
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
@@ -489,11 +494,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <>
-      {dictation.error && (
-        <p className="mb-2 text-sm text-destructive">
-          {dictationErrorMessage(dictation.error, isAdmin)}
-        </p>
-      )}
+      <DictateError error={dictation.error} isAdmin={isAdmin} />
       <div className="relative">
         {menuOpen && query && (
           <SlashCommandMenu
@@ -670,40 +671,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
               />
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className={cn(
-                  "rounded-full",
-                  dictation.status === "recording" &&
-                    "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
-                )}
-                onClick={() => {
-                  if (dictation.status === "recording") {
-                    dictation.stop();
-                  } else if (dictation.status === "idle") {
-                    void dictation.start();
-                  }
-                }}
-                disabled={dictation.status === "transcribing" || voiceActive}
-                aria-label={
-                  dictation.status === "recording"
-                    ? "Stop dictation"
-                    : dictation.status === "transcribing"
-                      ? "Transcribing"
-                      : "Dictate"
-                }
-                aria-pressed={dictation.status === "recording"}
-              >
-                {dictation.status === "transcribing" ? (
-                  <Loader2 className={motionClasses.spinner} />
-                ) : dictation.status === "recording" ? (
-                  <Square className="size-3 fill-current" />
-                ) : (
-                  <Mic />
-                )}
-              </Button>
+              <DictateButton
+                dictation={dictation}
+                disabled={voiceActive}
+                onBeforeStart={onBeforeDictate}
+              />
               {streaming ? (
                 <Button
                   size="icon-sm"

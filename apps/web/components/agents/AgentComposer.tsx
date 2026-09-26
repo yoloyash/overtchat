@@ -44,6 +44,8 @@ import {
   type ChatAttachment,
   useChatAttachments,
 } from "@/components/chat/useChatAttachments";
+import { DictateButton, DictateError } from "@/components/chat/DictateButton";
+import { useDictation } from "@/lib/useDictation";
 import { toast } from "@/components/ui/toast";
 import { UsageIndicator } from "@/components/chat/UsageIndicator";
 import {
@@ -74,6 +76,8 @@ export function AgentComposer({
   pending,
   stopping,
   disabled,
+  isAdmin,
+  onBeforeDictate,
   controls,
   contextUsage,
   onSubmit,
@@ -93,6 +97,9 @@ export function AgentComposer({
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
+  isAdmin: boolean;
+  /** Stops text-to-speech before dictation so playback is not transcribed. */
+  onBeforeDictate?: () => void;
   controls: AgentComposerControlsProps;
   contextUsage?: AgentSessionStats["contextUsage"];
   onSubmit: (
@@ -124,6 +131,19 @@ export function AgentComposer({
   } = useChatAttachments();
   const listboxId = useId();
   const optionIdPrefix = useId();
+
+  const dictation = useDictation((text) => {
+    // Transcription resolves after an arbitrary recording delay, so merge into
+    // whatever was typed meanwhile instead of replacing it.
+    setInput((prev) => {
+      const trimmed = prev.trimEnd();
+      if (!trimmed) return text;
+      return `${trimmed} ${text}`;
+    });
+    setDismissedDraft(null);
+    setActiveIndex(0);
+    setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
+  });
   const composerContextUsage =
     contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
       ? {
@@ -225,6 +245,7 @@ export function AgentComposer({
       (!message && images.length === 0) ||
       pending ||
       submittingRef.current ||
+      dictation.status !== "idle" ||
       disabled
     )
       return;
@@ -565,6 +586,8 @@ export function AgentComposer({
         </section>
       )}
 
+      <DictateError error={dictation.error} isAdmin={isAdmin} />
+
       <div className="relative flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
         {attachments.length > 0 && (
           <div className="flex gap-2 overflow-x-auto px-1">
@@ -646,6 +669,11 @@ export function AgentComposer({
                 />
               </>
             )}
+            <DictateButton
+              dictation={dictation}
+              disabled={disabled || pending || submitting}
+              onBeforeStart={onBeforeDictate}
+            />
             {running && (
               <Button
                 type="button"
@@ -673,6 +701,7 @@ export function AgentComposer({
                 uploading ||
                 pending ||
                 submitting ||
+                dictation.status !== "idle" ||
                 disabled
               }
               onClick={submit}
