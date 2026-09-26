@@ -59,3 +59,25 @@ export function useUpdateServerCapability() {
     },
   });
 }
+
+export function useTestServerCapability() {
+  return useMutation({
+    mutationFn: async (
+      input: ServerCapabilityInput,
+    ): Promise<{ message: string }> => {
+      const response = await fetch(`/api/server-capabilities/${input.id}/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.message) {
+        throw new Error(body.error ?? `HTTP ${response.status}`);
+      }
+      return { message: body.message };
+    },
+  });
+}

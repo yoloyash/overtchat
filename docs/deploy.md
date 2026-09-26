@@ -160,6 +160,12 @@ Service URLs must be reachable **from the app container**:
 Use HTTPS for browser microphone access outside localhost. Reverse proxies
 must support WebSocket upgrades; realtime voice uses the app's existing origin.
 
+**Test connection** under text-to-speech or speech-to-text checks the values on
+screen without saving them. It requests a short audio sample for TTS or sends
+silent audio for STT, so no microphone access is needed. This checks connectivity
+and the response format, not speech quality. Leave the API key field empty to
+use the stored key.
+
 Coding-agent executables and credentials belong on the Host Connector machine
 or selected SSH host. Configure connections on the web before using them on
 Android or iOS.
