@@ -42,7 +42,7 @@ export default function NewAgentScreen() {
     chooseWorkspace?: string;
   }>();
   if (!params.workspace || !isAgentProviderId(params.provider ?? ""))
-    return <AgentFeedback error="Choose a workspace from Agent Connections." />;
+    return <AgentFeedback error="Choose a workspace from Agents." />;
   return (
     <NewAgent
       key={`${params.workspace}:${params.provider}:${params.fork ?? ""}`}

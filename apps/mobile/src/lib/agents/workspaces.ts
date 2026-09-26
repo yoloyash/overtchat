@@ -20,6 +20,17 @@ export type WorkspaceGroup = {
 };
 export const WORKSPACE_CHAT_PREVIEW = 5;
 
+export function recentAgentChats(groups: WorkspaceGroup[], limit = 5) {
+  return groups
+    .flatMap((group) => group.sessions.map((item) => ({ item, group })))
+    .sort(
+      (a, b) =>
+        (b.item.session.modifiedAt ?? b.item.session.createdAt ?? 0) -
+        (a.item.session.modifiedAt ?? a.item.session.createdAt ?? 0),
+    )
+    .slice(0, limit);
+}
+
 // A directory on the same connector/SSH target is one workspace, even when
 // multiple providers have chats there. Match the web client's workspace identity.
 export function groupWorkspaces(

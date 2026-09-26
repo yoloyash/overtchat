@@ -227,3 +227,32 @@ it("shows pull-to-refresh progress only for an explicit refresh", async () => {
   });
   expect(connections.refreshing).toBe(false);
 });
+
+it("fetches drawer recents on opening and keeps the cache when closed", async () => {
+  let connections!: ReturnType<typeof useAgentConnections>;
+  function DrawerProbe({ open }: { open: boolean }) {
+    connections = useAgentConnections({ enabled: open });
+    return null;
+  }
+  async function renderDrawer(open: boolean) {
+    await act(async () => root.render(
+      <QueryClientProvider client={client}>
+        <DrawerProbe open={open} />
+      </QueryClientProvider>,
+    ));
+    await flushNotifications();
+  }
+  mocks.fetch.mockResolvedValue({ connections: [] });
+  await renderDrawer(false);
+  expect(mocks.fetch).not.toHaveBeenCalled();
+  await renderDrawer(true);
+  expect(mocks.fetch).toHaveBeenCalled();
+  expect(connections.data).toEqual([]);
+  const requests = mocks.fetch.mock.calls.length;
+  await renderDrawer(false);
+  await client.invalidateQueries({ queryKey: queryKeys.agentConnections("https://chat.example") });
+  expect(mocks.fetch).toHaveBeenCalledTimes(requests);
+  expect(connections.data).toEqual([]);
+  await renderDrawer(true);
+  expect(mocks.fetch.mock.calls.length).toBeGreaterThan(requests);
+});

@@ -151,7 +151,7 @@ it("opens an agent on a warm notification tap", async () => {
   await render();
   await act(async () => mocks.listener?.(notification("agent")));
   expect(mocks.push).toHaveBeenCalledExactlyOnceWith({
-    pathname: "/(authed)/agents/[id]",
+    pathname: "/agents/[id]",
     params: { id: "target" },
   });
   expect(chat.openChat).not.toHaveBeenCalled();
