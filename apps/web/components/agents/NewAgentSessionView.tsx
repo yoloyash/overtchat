@@ -38,6 +38,7 @@ import {
   useCreateAgentSession,
 } from "@/lib/queries/agentConnections";
 import { sendAgentSessionCommand } from "@/lib/queries/agentSessions";
+import { authClient } from "@/lib/auth/client";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
@@ -54,6 +55,8 @@ export function NewAgentSessionView({
   workspacePath: string;
 }) {
   const router = useRouter();
+  const { data: authSession } = authClient.useSession();
+  const isAdmin = authSession?.user.role === "admin";
   const search = useSearchParams();
   const forkId = search.get("fork");
   const [forkContext, setForkContext] = useState<AgentForkContext | null>(null);
@@ -374,6 +377,7 @@ export function NewAgentSessionView({
               pending={pending}
               stopping={false}
               disabled={!forkLoaded || forkError || loadingDefaults}
+              isAdmin={isAdmin}
               controls={{
                 providerLabel: providerMetadata.label,
                 models: catalog.data?.models ?? [],

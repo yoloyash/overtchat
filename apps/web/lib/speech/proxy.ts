@@ -14,7 +14,18 @@ function providerHeaders(apiKey: string | null): HeadersInit {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-export async function proxyTranscription(request: Request): Promise<Response> {
+export interface TranscriptionOptions {
+  /**
+   * Role of the signed-in viewer. An unavailable transcription service is
+   * actionable prose, and only an operator can act on it.
+   */
+  actorRole?: "admin" | "user";
+}
+
+export async function proxyTranscription(
+  request: Request,
+  options: TranscriptionOptions = {},
+): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_AUDIO_BYTES) {
     return new Response("Audio too large", { status: 413 });
@@ -25,7 +36,13 @@ export async function proxyTranscription(request: Request): Promise<Response> {
       ? process.env.OVERTCHAT_BUNDLED_STT_URL || "http://stt:5092"
       : capability.baseUrl || process.env.STT_URL;
   if (capability.provider === "disabled" || !baseUrl) {
-    return Response.json({ error: "stt_unavailable" }, { status: 503 });
+    return Response.json(
+      {
+        error: "stt_unavailable",
+        ...(options.actorRole ? { role: options.actorRole } : {}),
+      },
+      { status: 503 },
+    );
   }
   const incoming = await request.formData().catch(() => null);
   const file = incoming?.get("file");
@@ -53,7 +70,13 @@ export async function proxyTranscription(request: Request): Promise<Response> {
     signal: request.signal,
   }).catch(() => null);
   if (!upstream) {
-    return Response.json({ error: "stt_unavailable" }, { status: 503 });
+    return Response.json(
+      {
+        error: "stt_unavailable",
+        ...(options.actorRole ? { role: options.actorRole } : {}),
+      },
+      { status: 503 },
+    );
   }
   return new Response(await upstream.arrayBuffer(), {
     status: upstream.status,

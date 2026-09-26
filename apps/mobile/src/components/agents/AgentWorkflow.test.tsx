@@ -2,6 +2,7 @@ import React, { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toastError } from "@/lib/toast";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 import type { AgentDraft } from "@/lib/agents/drafts";
 import { snapshot } from "@/lib/agents/test-fixtures";
@@ -17,6 +18,14 @@ const mocks = vi.hoisted(() => ({
   alert: vi.fn(),
   copy: vi.fn(),
   stopSpeech: vi.fn(),
+  dictation: {
+    status: "idle" as "idle" | "recording" | "transcribing",
+    error: null as { kind: string; role?: string } | null,
+    onResult: (_text: string) => {},
+    start: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    clearError: vi.fn(),
+  },
   uuid: vi.fn(),
   invalidDismiss: vi.fn(),
   backHandlers: new Set<() => boolean>(),
@@ -273,6 +282,17 @@ vi.mock("expo-paste-input", () => ({
 }));
 vi.mock("expo-clipboard", () => ({ setStringAsync: mocks.copy }));
 vi.mock("@/lib/toast", () => ({ toastSuccess: vi.fn(), toastError: vi.fn() }));
+vi.mock("@/lib/auth/client", () => ({
+  getAuthClient: () => ({
+    useSession: () => ({ data: { user: { role: "admin" } } }),
+  }),
+}));
+vi.mock("@/lib/useDictation", () => ({
+  useDictation: (onResult: (text: string) => void) => {
+    mocks.dictation.onResult = onResult;
+    return mocks.dictation;
+  },
+}));
 vi.mock("expo-image-picker", () => ({}));
 vi.mock("expo-file-system", () => ({ File: class {} }));
 vi.mock("@/lib/api", () => ({
@@ -434,6 +454,8 @@ beforeEach(() => {
     ],
   };
   mocks.draft = { message: "", images: [] };
+  mocks.dictation.status = "idle";
+  mocks.dictation.error = null;
   mocks.status = "connected";
   mocks.sessionError = undefined;
   mocks.send.mockResolvedValue({});
@@ -1912,3 +1934,29 @@ it.each(["select", "multiselect"])(
     });
   },
 );
+
+describe("agent dictation", () => {
+  it("captures through the mic and appends the transcript to the draft", async () => {
+    await render();
+    await click("Start dictation");
+    // Recording must not capture playback, so text-to-speech stops first.
+    expect(mocks.stopSpeech).toHaveBeenCalledTimes(1);
+    expect(mocks.dictation.start).toHaveBeenCalledTimes(1);
+    const field = container.querySelector(
+      'input[aria-label="Message agent"]',
+    ) as HTMLInputElement;
+    await act(async () => mocks.dictation.onResult("fix the failing spec"));
+    expect(field.value).toBe("fix the failing spec");
+    await act(async () => mocks.dictation.onResult("then rerun it"));
+    expect(field.value).toBe("fix the failing spec then rerun it");
+  });
+  it("surfaces a dictation failure and clears it", async () => {
+    mocks.dictation.error = { kind: "stt_unavailable", role: "admin" };
+    await render();
+    expect(toastError).toHaveBeenCalledWith(
+      "Dictation",
+      expect.stringContaining("overtchat setup"),
+    );
+    expect(mocks.dictation.clearError).toHaveBeenCalledTimes(1);
+  });
+});

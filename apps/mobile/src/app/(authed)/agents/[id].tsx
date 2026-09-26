@@ -43,6 +43,7 @@ import { useAgentCommand, useAgentSession } from "@/lib/queries/agents";
 import { useTheme } from "@/lib/theme";
 import { useSpeech } from "@/lib/useSpeech";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
+import { getAuthClient } from "@/lib/auth/client";
 
 export default function AgentSessionScreen() {
   const {
@@ -69,6 +70,10 @@ function AgentSession({
   const session = useAgentSession(id);
   const speech = useSpeech();
   const stopSpeech = speech.stop;
+  const authSession = getAuthClient().useSession();
+  const isAdmin =
+    (authSession.data?.user as { role?: string | null } | undefined)?.role ===
+    "admin";
   useFocusEffect(useCallback(() => () => stopSpeech(), [stopSpeech]));
   const snapshot = session.snapshot;
   const mutation = useAgentCommand(id);
@@ -414,6 +419,8 @@ function AgentSession({
           disabled={!ready || !!snapshot?.pendingInteraction}
           sending={mutation.isPending}
           running={busy}
+          isAdmin={isAdmin}
+          onBeforeDictate={stopSpeech}
           provider={snapshot?.provider}
           modelLabel={model?.label || modelId || "Model"}
           thinkingLabel={

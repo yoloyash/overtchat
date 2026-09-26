@@ -685,6 +685,7 @@ export function ChatArea({
       onStop={handleStop}
       onStartVoice={() => setVoiceActive(true)}
       onEndVoice={() => setVoiceActive(false)}
+      onBeforeDictate={() => speech.stop()}
       isAdmin={isAdmin}
       draftUserId={session?.user.id}
       draftScope={composerDraftScope}

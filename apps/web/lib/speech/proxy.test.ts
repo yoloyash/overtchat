@@ -42,6 +42,18 @@ describe("bundled speech transport", () => {
     expect(await response.json()).toEqual({ text: "Hello" });
   });
 
+  it("tells the viewer which role can fix an unavailable transcription service", async () => {
+    capability.mockReturnValue({ provider: "disabled", baseUrl: null, apiKey: null });
+    const body = new FormData();
+    body.set("file", new File(["audio"], "recording.webm", { type: "audio/webm" }));
+    const response = await proxyTranscription(
+      new Request("http://app/stt", { method: "POST", body }),
+      { actorRole: "admin" },
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "stt_unavailable", role: "admin" });
+  });
+
   it("keeps external provider credentials and URLs independent", async () => {
     capability.mockReturnValue({ provider: "openai-compatible", baseUrl: "https://external.example/v1", apiKey: "provider-key" });
     vi.stubEnv("OVERTCHAT_BUNDLED_TTS_URL", "http://host.docker.internal:5093");

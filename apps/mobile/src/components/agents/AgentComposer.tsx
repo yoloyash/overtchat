@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,6 +25,9 @@ import {
 } from "@overtchat/agent-bridge";
 import { uploadFile } from "@/lib/api";
 import type { AgentDraft } from "@/lib/agents/drafts";
+import { dictationErrorMessage } from "@/lib/chat/message";
+import { toastError } from "@/lib/toast";
+import { useDictation } from "@/lib/useDictation";
 import { useTheme } from "@/lib/theme";
 import { AgentButton, AgentText } from "./AgentPrimitives";
 import { AgentProviderIcon } from "./AgentProviderIcon";
@@ -51,6 +54,8 @@ export function AgentComposer({
   onEditQueued,
   onSteerQueued,
   onRemoveQueued,
+  isAdmin,
+  onBeforeDictate,
 }: {
   draft: AgentDraft;
   setDraft: (value: AgentDraft | ((value: AgentDraft) => AgentDraft)) => void;
@@ -71,6 +76,9 @@ export function AgentComposer({
   onEditQueued?: (id: string) => Promise<boolean>;
   onSteerQueued?: (id: string) => void;
   onRemoveQueued?: (id: string) => void;
+  isAdmin: boolean;
+  /** Stops text-to-speech before dictation so playback is not transcribed. */
+  onBeforeDictate?: () => void;
 }) {
   const { colors, fonts, radii } = useTheme();
   const [uploading, setUploading] = useState(false);
@@ -110,6 +118,31 @@ export function AgentComposer({
       setEditing(false);
     }
   }
+  const dictation = useDictation((message) => {
+    setDraft((current) => {
+      const trimmed = current.message.trimEnd();
+      return {
+        ...current,
+        message: trimmed ? `${trimmed} ${message}` : message,
+      };
+    });
+  });
+
+  useEffect(() => {
+    if (!dictation.error) return;
+    toastError("Dictation", dictationErrorMessage(dictation.error, isAdmin));
+    dictation.clearError();
+  }, [dictation, isAdmin]);
+
+  function toggleMic() {
+    if (dictation.status === "recording") {
+      void dictation.stop();
+    } else if (dictation.status === "idle") {
+      onBeforeDictate?.();
+      void dictation.start();
+    }
+  }
+
   const query = agentSlashCommandQuery(draft.message);
   const matches =
     query === null
@@ -324,7 +357,7 @@ export function AgentComposer({
             testID="agent-composer-input"
             accessibilityLabel="Message agent"
             multiline
-            editable={!sending}
+            editable={!sending && dictation.status !== "transcribing"}
             value={draft.message}
             onChangeText={(message) => setDraft({ ...draft, message })}
             placeholder="Message your agent, or type /"
@@ -414,6 +447,24 @@ export function AgentComposer({
               }
             />
           )}
+          <IconButton
+            label={
+              dictation.status === "recording"
+                ? "Stop dictation"
+                : dictation.status === "transcribing"
+                  ? "Transcribing"
+                  : "Start dictation"
+            }
+            icon={dictation.status === "recording" ? "stop" : "mic"}
+            danger={dictation.status === "recording"}
+            disabled={
+              disabled ||
+              sending ||
+              uploading ||
+              dictation.status === "transcribing"
+            }
+            onPress={toggleMic}
+          />
           {running && (
             <IconButton
               label="Stop agent"
@@ -447,12 +498,14 @@ function IconButton({
   disabled,
   onPress,
   primary,
+  danger,
 }: {
   label: string;
   icon: React.ComponentProps<typeof Ionicons>["name"];
   disabled?: boolean;
   onPress: () => void;
   primary?: boolean;
+  danger?: boolean;
 }) {
   const { colors } = useTheme();
   return (
@@ -477,13 +530,23 @@ function IconButton({
           borderRadius: 18,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: primary ? colors.primary : colors.muted,
+          backgroundColor: primary
+            ? colors.primary
+            : danger
+              ? colors.destructive
+              : colors.muted,
         }}
       >
         <Ionicons
           name={icon}
           size={20}
-          color={primary ? colors.primaryForeground : colors.foreground}
+          color={
+            primary
+              ? colors.primaryForeground
+              : danger
+                ? colors.background
+                : colors.foreground
+          }
         />
       </View>
     </Pressable>

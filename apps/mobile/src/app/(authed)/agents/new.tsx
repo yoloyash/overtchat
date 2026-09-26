@@ -31,6 +31,7 @@ import { useTheme } from "@/lib/theme";
 import { useAgentConnections, useAgentCatalog } from "@/lib/queries/agents";
 import { useAgentDraft } from "@/lib/agents/drafts";
 import { agentJson } from "@/lib/agents/api";
+import { getAuthClient } from "@/lib/auth/client";
 
 export default function NewAgentScreen() {
   const params = useLocalSearchParams<{
@@ -68,6 +69,10 @@ function NewAgent({
   chooseWorkspace?: boolean;
 }) {
   const { colors } = useTheme();
+  const authSession = getAuthClient().useSession();
+  const isAdmin =
+    (authSession.data?.user as { role?: string | null } | undefined)?.role ===
+    "admin";
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const keyboard = useKeyboardState((state) => state.isVisible);
@@ -317,6 +322,7 @@ function NewAgent({
           disabled={!catalog.data || !model}
           sending={pending}
           running={false}
+          isAdmin={isAdmin}
           modelLabel={model?.label ?? "Loading model…"}
           thinkingLabel={selection.thinkingOptionId || undefined}
           modeLabel={

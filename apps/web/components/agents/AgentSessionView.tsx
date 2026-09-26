@@ -69,6 +69,7 @@ import {
 import { AgentMessageList } from "./AgentMessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
 import { useSpeech } from "@/lib/useSpeech";
+import { authClient } from "@/lib/auth/client";
 import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
@@ -243,6 +244,8 @@ export function AgentSessionView({
   const speech = useSpeech();
   const stopSpeech = speech.stop;
   useEffect(() => () => stopSpeech(), [sessionId, stopSpeech]);
+  const { data: authSession } = authClient.useSession();
+  const isAdmin = authSession?.user.role === "admin";
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
   const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
@@ -765,6 +768,8 @@ export function AgentSessionView({
                 pending={command.isPending}
                 stopping={pendingCommand === "abort"}
                 disabled={composerDisabled}
+                isAdmin={isAdmin}
+                onBeforeDictate={stopSpeech}
                 controls={{
                   providerLabel,
                   models: snapshot.models,
