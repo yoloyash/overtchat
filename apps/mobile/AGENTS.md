@@ -27,9 +27,10 @@ in the web app.
   only in `src/lib/queries/keys.ts`.
 - Chat rendering and input behavior live under `src/components/chat`; the
   drawer and its project/chat mutations live under `src/components/drawer`.
-- `src/app/(authed)/agents` owns Agent Connections navigation. Agent transcripts,
-  settings, and interaction sheets live in `src/components/agents`; authenticated
-  queries and commands live in `src/lib/queries/agents.ts`.
+- `src/app/(authed)/(drawer)/agents` owns agent navigation within the shared
+  chat drawer. Agent transcripts, settings, and interaction sheets live in
+  `src/components/agents`; authenticated queries and commands live in
+  `src/lib/queries/agents.ts`.
 - Mobile does not expose workspace file browsing. Tool command, change, and
   output details use `AgentToolDetails`; these are supplied by the agent and do
   not fetch workspace files. Approval actions preserve provider response values.

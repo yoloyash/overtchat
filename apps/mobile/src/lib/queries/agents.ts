@@ -37,10 +37,13 @@ export function useAgentForeground() {
   return focused && active;
 }
 
-export function useAgentConnections() {
+export function useAgentConnections({
+  enabled = true,
+}: { enabled?: boolean } = {}) {
   const [refreshing, setRefreshing] = useState(false);
   const refreshLock = useRef(false);
-  const active = useAgentForeground();
+  const foreground = useAgentForeground();
+  const active = foreground && enabled;
   const query = useQuery({
     queryKey: queryKeys.agentConnections(getApiBase()),
     queryFn: async ({ signal }) =>

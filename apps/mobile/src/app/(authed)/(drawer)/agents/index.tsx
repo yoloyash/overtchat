@@ -17,6 +17,7 @@ import { AgentProviderIcon } from "@/components/agents/AgentProviderIcon";
 import { useAgentConnections } from "@/lib/queries/agents";
 import {
   groupWorkspaces,
+  recentAgentChats,
   matchingSessions,
   workspaceMatches,
   WORKSPACE_CHAT_PREVIEW,
@@ -24,8 +25,6 @@ import {
 } from "@/lib/agents/workspaces";
 import { agentJson } from "@/lib/agents/api";
 import { useTheme } from "@/lib/theme";
-
-const RECENT_CHAT_LIMIT = 5;
 
 export default function AgentsScreen() {
   const { colors, fonts } = useTheme();
@@ -40,17 +39,7 @@ export default function AgentsScreen() {
     [connections.data],
   );
   const recentChats = useMemo(
-    () =>
-      groups
-        .flatMap((group) =>
-          group.sessions.map((item) => ({ item, group })),
-        )
-        .sort(
-          (a, b) =>
-            (b.item.session.modifiedAt ?? b.item.session.createdAt ?? 0) -
-            (a.item.session.modifiedAt ?? a.item.session.createdAt ?? 0),
-        )
-        .slice(0, RECENT_CHAT_LIMIT),
+    () => recentAgentChats(groups),
     [groups],
   );
   const sections = useMemo(
@@ -125,7 +114,7 @@ export default function AgentsScreen() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Stack.Screen
         options={{
-          title: "Agent Connections",
+          title: "Agents",
           headerRight: () => (
             <AgentButton
               label={syncing ? "Syncing…" : "Sync"}

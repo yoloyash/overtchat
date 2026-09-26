@@ -76,10 +76,16 @@ export function AgentSessionRow({
   item,
   workspaceName,
   contextLabel,
+  compact = false,
+  selected = false,
+  onPress,
 }: {
   item: WorkspaceSession;
   workspaceName: string;
   contextLabel?: string;
+  compact?: boolean;
+  selected?: boolean;
+  onPress?: () => void;
 }) {
   const { colors, fonts } = useTheme();
   const { session, provider, workspaceId } = item;
@@ -88,29 +94,36 @@ export function AgentSessionRow({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityState={{ selected }}
       accessibilityLabel={`${title}, ${agentProviderMetadata(provider).label}${contextLabel ? `, ${contextLabel}` : ""}${running ? ", working" : ""}`}
-      onPress={() =>
-        router.push({
-          pathname: "/agents/[id]",
-          params: {
-            id: session.id,
-            workspace: workspaceId,
-            name: workspaceName,
-          },
-        })
+      onPress={
+        onPress ??
+        (() =>
+          router.push({
+            pathname: "/agents/[id]",
+            params: {
+              id: session.id,
+              workspace: workspaceId,
+              name: workspaceName,
+            },
+          }))
       }
       style={({ pressed }) => ({
         flexDirection: "row",
         alignItems: "center",
-        gap: 12,
+        gap: compact ? 8 : 12,
         paddingHorizontal: 12,
-        paddingVertical: 13,
-        minHeight: 64,
+        paddingVertical: compact ? 9 : 13,
+        minHeight: compact ? 52 : 64,
         borderRadius: 10,
-        backgroundColor: pressed ? colors.muted : "transparent",
+        backgroundColor: selected
+          ? colors.accent
+          : pressed
+            ? colors.muted
+            : "transparent",
       })}
     >
-      <AgentProviderIcon provider={provider} size={24} />
+      <AgentProviderIcon provider={provider} size={compact ? 18 : 24} />
       <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
         <Text
           numberOfLines={1}
@@ -122,7 +135,7 @@ export function AgentSessionRow({
         >
           {title}
         </Text>
-        {contextLabel && (
+        {contextLabel && !compact && (
           <Text
             numberOfLines={1}
             style={{
@@ -144,18 +157,24 @@ export function AgentSessionRow({
               fontSize: 12,
             }}
           >
-            {running ? "Working" : agentProviderMetadata(provider).label}
-            {session.modifiedAt
+            {compact
+              ? (contextLabel ?? agentProviderMetadata(provider).label)
+              : running
+                ? "Working"
+                : agentProviderMetadata(provider).label}
+            {!compact && session.modifiedAt
               ? ` · ${new Date(session.modifiedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
               : ""}
           </Text>
         </View>
       </View>
-      <Ionicons
-        name="chevron-forward"
-        size={15}
-        color={colors.mutedForeground}
-      />
+      {!compact && (
+        <Ionicons
+          name="chevron-forward"
+          size={15}
+          color={colors.mutedForeground}
+        />
+      )}
     </Pressable>
   );
 }

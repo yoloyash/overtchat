@@ -15,6 +15,11 @@ const mocks = vi.hoisted(() => ({
   reconnect: vi.fn(),
   replace: vi.fn(),
   push: vi.fn(),
+  navigate: vi.fn(),
+  pathname: "/chat",
+  canGoBack: false,
+  toggleDrawer: vi.fn(),
+  storage: new Map<string, string>(),
   alert: vi.fn(),
   copy: vi.fn(),
   stopSpeech: vi.fn(),
@@ -64,6 +69,7 @@ vi.mock("react-native", async () => {
   type Props = {
     children?: ReactNode;
     accessibilityLabel?: string;
+    accessibilityState?: { selected?: boolean; expanded?: boolean };
     onPress?: () => void;
     disabled?: boolean;
     value?: string;
@@ -117,22 +123,25 @@ vi.mock("react-native", async () => {
       renderSectionHeader,
       renderSectionFooter,
       ListHeaderComponent,
+      ListEmptyComponent,
     }: {
+      ListEmptyComponent?: ReactNode;
       sections: { key: string; data: unknown[] }[];
       renderItem: (args: { item: unknown; section: unknown }) => ReactNode;
       renderSectionHeader: (args: { section: unknown }) => ReactNode;
-      renderSectionFooter: (args: { section: unknown }) => ReactNode;
+      renderSectionFooter?: (args: { section: unknown }) => ReactNode;
       ListHeaderComponent?: ReactNode;
     }) => (
       <div>
         {ListHeaderComponent}
+        {!sections.length && ListEmptyComponent}
         {sections.map((section) => (
           <div key={section.key}>
             {renderSectionHeader({ section })}
             {section.data.map((item, i) => (
               <div key={i}>{renderItem({ item, section })}</div>
             ))}
-            {renderSectionFooter({ section })}
+            {renderSectionFooter?.({ section })}
           </div>
         ))}
       </div>
@@ -143,10 +152,13 @@ vi.mock("react-native", async () => {
       onPress,
       disabled,
       accessibilityLabel,
+      accessibilityState,
       testID,
     }: Props) => (
       <button
         aria-label={accessibilityLabel}
+        aria-expanded={accessibilityState?.expanded}
+        aria-selected={accessibilityState?.selected}
         data-testid={testID}
         disabled={disabled}
         onClick={onPress}
@@ -231,25 +243,37 @@ vi.mock("react-native-svg", () => ({
   default: ({ children }: { children: ReactNode }) => <svg>{children}</svg>,
   Circle: () => <circle />,
 }));
+vi.mock("expo-secure-store", () => ({
+  getItem: (key: string) => mocks.storage.get(key) ?? null,
+  setItem: (key: string, value: string) => mocks.storage.set(key, value),
+}));
 vi.mock("expo-router", async () => ({
   useFocusEffect: (await import("react")).useEffect,
   useLocalSearchParams: () => mocks.params,
-  router: { replace: mocks.replace, push: mocks.push },
+  usePathname: () => mocks.pathname,
+  router: { replace: mocks.replace, push: mocks.push, navigate: mocks.navigate },
   Stack: {
     Screen: ({
       options,
     }: {
       options?: {
         headerTitle?: () => ReactNode;
-        headerRight?: () => ReactNode;
+        headerLeft?: (props: { canGoBack: boolean }) => ReactNode;
+        headerRight?: (props: { canGoBack: boolean }) => ReactNode;
+        headerBackVisible?: boolean;
       };
     }) => (
-      <header>
+      <header data-back-visible={options?.headerBackVisible}>
+        <div data-header-left>{options?.headerLeft?.({ canGoBack: mocks.canGoBack })}</div>
         {options?.headerTitle?.()}
-        {options?.headerRight?.()}
+        <div data-header-right>{options?.headerRight?.({ canGoBack: mocks.canGoBack })}</div>
       </header>
     ),
   },
+}));
+vi.mock("expo-router/build/react-navigation/drawer", () => ({
+  useDrawerStatus: () => "open",
+  DrawerToggleButton: () => <button aria-label="Show navigation menu" onClick={mocks.toggleDrawer} />,
 }));
 vi.mock("expo-router/react-navigation", () => ({ useHeaderHeight: () => 50 }));
 vi.mock("@/lib/useSpeech", () => ({
@@ -385,11 +409,12 @@ vi.mock("@/lib/agents/drafts", async () => {
   };
 });
 
-import AgentSessionScreen from "@/app/(authed)/agents/[id]";
-import AgentsScreen from "@/app/(authed)/agents/index";
-import AgentWorkspaceScreen from "@/app/(authed)/agents/workspace";
+import AgentSessionScreen from "@/app/(authed)/(drawer)/agents/[id]";
+import AgentsScreen from "@/app/(authed)/(drawer)/agents/index";
+import AgentWorkspaceScreen from "@/app/(authed)/(drawer)/agents/workspace";
+import { DrawerAgents } from "@/components/drawer/DrawerAgents";
 import { AgentDetailSections } from "./AgentToolDetails";
-import NewAgentScreen from "@/app/(authed)/agents/new";
+import NewAgentScreen from "@/app/(authed)/(drawer)/agents/new";
 
 let root: Root;
 let container: HTMLElement;
@@ -411,6 +436,11 @@ const model = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.storage.clear();
+  mocks.pathname = "/chat";
+  mocks.canGoBack = false;
+  mocks.params = { id: "session", workspace: "workspace", name: "Project", provider: "codex" };
+  mocks.connections = [];
   mocks.copy.mockResolvedValue(undefined);
   mocks.uuid.mockReturnValue("message-id");
   mocks.measurements = { height: 2000, viewport: 500, offset: 1500 };
@@ -491,6 +521,19 @@ async function input(value: string) {
     field.dispatchEvent(new Event("input", { bubbles: true }));
   });
 }
+
+it.each([false, true])("keeps the drawer and context controls accessible with canGoBack=%s", async (canGoBack) => {
+  mocks.canGoBack = canGoBack;
+  await render();
+  expect(container.querySelector("header")?.getAttribute("data-back-visible")).toBe("true");
+  const menu = container.querySelector('button[aria-label="Show navigation menu"]');
+  expect(container.querySelectorAll('button[aria-label="Show navigation menu"]')).toHaveLength(1);
+  expect(menu?.parentElement?.closest(canGoBack ? "[data-header-right]" : "[data-header-left]")).not.toBeNull();
+  await click("Show navigation menu");
+  expect(mocks.toggleDrawer).toHaveBeenCalledTimes(1);
+  await click("Context usage unavailable. Show details");
+  expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+});
 
 describe("agent context usage", () => {
   it("opens details from the header and updates them from live context, not cumulative tokens", async () => {
@@ -1163,6 +1206,88 @@ describe("workspace navigation at scale", () => {
       },
     ];
   }
+  it("opens the five most recent agent chats directly from the drawer and marks the current one", async () => {
+    setupWorkspaces();
+    mocks.pathname = "/agents/claude-chat";
+    const closeDrawer = vi.fn();
+    await render(<DrawerAgents onNavigate={closeDrawer} />);
+    await click("Expand agents");
+    const rows = [...container.querySelectorAll('button[aria-label*="My computer"]')];
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
+      "Other chat, Codex, Other project · My computer",
+      "Claude chat, Claude Code, Project · My computer",
+      "Chat 104, Codex, Project · My computer",
+      "Chat 103, Codex, Project · My computer",
+      "Chat 102, Codex, Project · My computer",
+    ]);
+    expect(rows[1].getAttribute("aria-selected")).toBe("true");
+    expect(rows[0].getAttribute("aria-selected")).toBe("false");
+    await click("Claude chat, Claude Code, Project · My computer");
+    expect(closeDrawer).toHaveBeenCalledTimes(1);
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      pathname: "/agents/[id]",
+      params: { id: "claude-chat", workspace: "claude-workspace", name: "Project" },
+    });
+    await click("View all agents");
+    expect(mocks.navigate).toHaveBeenLastCalledWith("/agents");
+    expect(closeDrawer).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('button[aria-label="New agent chat"]')).toBeNull();
+  });
+
+  it("starts collapsed and remembers expansion across drawer remounts", async () => {
+    setupWorkspaces();
+    const drawer = (key: string) => <DrawerAgents key={key} onNavigate={() => {}} />;
+    await render(drawer("first"));
+    expect(container.querySelector('button[aria-label="Expand agents"]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.textContent).not.toContain("Claude chat");
+    expect(container.textContent).not.toContain("View all");
+    expect(container.querySelector('button[aria-label="New agent chat"]')).toBeNull();
+    await click("Expand agents");
+    expect(container.querySelector('button[aria-label="Collapse agents"]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.textContent).toContain("Claude chat");
+    expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("1");
+    await render(drawer("reopened"));
+    expect(container.textContent).toContain("Claude chat");
+    await click("Collapse agents");
+    expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("0");
+    mocks.pathname = "/agents/claude-chat";
+    await render(drawer("agent-chat"));
+    expect(container.querySelector('button[aria-label="Expand agents"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Claude chat");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps provider selection in the workspace with plain provider names", async () => {
+    setupWorkspaces();
+    await render(<AgentsScreen />);
+    await click("New chat in Project");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/workspace",
+      params: { workspace: "workspace", name: "Project", create: "1" },
+    });
+    await render(<AgentWorkspaceScreen />);
+    await click("New chat");
+    const picker = container.querySelector('[role="dialog"]');
+    expect(picker?.textContent).toContain("Project");
+    expect(picker?.querySelector('button[aria-label="Codex"]')).not.toBeNull();
+    expect(picker?.querySelector('button[aria-label="Claude Code"]')).not.toBeNull();
+    expect(picker?.textContent).not.toContain("New Claude Code chat in Project");
+    await click("Claude Code");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/new",
+      params: { workspace: "claude-workspace", provider: "claude", name: "Project" },
+    });
+    expect(mocks.api).not.toHaveBeenCalled();
+  });
+
+  it("keeps agent navigation available when there are no sessions", async () => {
+    await render(<DrawerAgents onNavigate={() => {}} />);
+    await click("Expand agents");
+    expect(container.textContent).toContain("No agent chats yet");
+    await click("View all agents");
+    expect(mocks.navigate).toHaveBeenCalledWith("/agents");
+  });
+
   it("shows global recents above collapsed workspaces and opens chats and full history", async () => {
     setupWorkspaces();
     await render(<AgentsScreen />);

@@ -79,7 +79,7 @@ export function useNotifications(chat: ChatSession) {
         router.push("/(authed)/(drawer)/chat");
       } else {
         router.push({
-          pathname: "/(authed)/agents/[id]",
+          pathname: "/agents/[id]",
           params: { id: target.targetId },
         });
       }

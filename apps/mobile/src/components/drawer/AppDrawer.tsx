@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { FlashList } from "@shopify/flash-list";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/build/react-navigation/drawer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -33,6 +33,7 @@ import {
 import { useTheme } from "@/lib/theme";
 import { toastError, toastSuccess } from "@/lib/toast";
 import { ChatRowMenu } from "./ChatRowMenu";
+import { DrawerAgents } from "./DrawerAgents";
 import { CreateProjectSheet } from "./CreateProjectSheet";
 import { MoveToProjectSheet } from "./MoveToProjectSheet";
 import { RenameChatSheet } from "./RenameChatSheet";
@@ -56,10 +57,12 @@ function initialsOf(name: string | null | undefined, email: string | null | unde
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { colors, radii, fonts } = useTheme();
   const {
-    activeChatId,
+    activeChatId: sessionChatId,
     openChat: openSession,
     startNewChat: startSessionNewChat,
   } = useChatSession();
+  const pathname = usePathname();
+  const activeChatId = pathname === "/chat" ? sessionChatId : null;
   const { data: chats, isPending, isFetching, error, refetch } = useChats();
   const { data: projects } = useProjects();
   const session = getAuthClient().useSession();
@@ -195,16 +198,19 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   function openChat(item: ChatListItem) {
     openSession(item.id);
     props.navigation.closeDrawer();
+    router.navigate("/chat");
   }
 
   function startNewChatHere() {
     startSessionNewChat(null);
     props.navigation.closeDrawer();
+    router.navigate("/chat");
   }
 
   function startNewChatInProject(projectId: string) {
     startSessionNewChat(projectId);
     props.navigation.closeDrawer();
+    router.navigate("/chat");
   }
 
   function openRename(item: ChatListItem) {
@@ -255,7 +261,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     const target = deleteTarget;
     deleteMutation.mutate(target.id, {
       onSuccess: () => {
-        if (activeChatId === target.id) {
+        if (sessionChatId === target.id) {
           startSessionNewChat(null);
         }
         toastSuccess("Chat deleted");
@@ -329,137 +335,121 @@ export function AppDrawer(props: DrawerContentComponentProps) {
 
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-      <Pressable accessibilityRole="button" accessibilityLabel="Agent Connections" onPress={() => {
-        props.navigation.closeDrawer();
-        router.push("/agents");
-      }} style={({ pressed }) => ({ flexDirection: "row", alignItems: "center", gap: 12, minHeight: 48,
-        paddingHorizontal: 20, backgroundColor: pressed ? colors.accent : "transparent" })}>
-        <Ionicons name="terminal-outline" size={20} color={colors.foreground} />
-        <Text style={{ color: colors.foreground, fontFamily: fonts.sansMedium, fontSize: 14 }}>Agent Connections</Text>
-      </Pressable>
-
       <View style={styles.list}>
-        {isPending ? (
-          <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
-        ) : error ? (
-          <Text
-            style={[
-              styles.empty,
-              { color: colors.destructive, fontFamily: fonts.sansRegular },
-            ]}
-          >
-            Couldn't load chats
-          </Text>
-        ) : entries.length === 1 ? (
-          // Only the new-project entry — nothing else exists yet.
-          <View>
-            <NewProjectButton onPress={() => createProjectSheetRef.current?.present()} />
-            <Text
-              style={[
-                styles.empty,
-                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-              ]}
-            >
-              No chats yet
-            </Text>
-          </View>
-        ) : (
-          <FlashList<ListEntry>
-            data={entries}
-            keyExtractor={(e) => e.key}
-            getItemType={(e) => e.kind}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            refreshing={isFetching && !isPending}
-            onRefresh={onPullToRefresh}
-            renderItem={({ item: entry }) => {
-              switch (entry.kind) {
-                case "section":
-                  return (
-                    <Text
-                      style={[
-                        styles.sectionLabel,
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: fonts.sansMedium,
-                        },
-                      ]}
-                    >
-                      {entry.label}
-                    </Text>
-                  );
-                case "project-row":
-                  return (
-                    <ProjectRow
-                      project={entry.project}
-                      expanded={entry.expanded}
-                      isActive={entry.isActive}
-                      onToggle={() => toggleProject(entry.project.id)}
-                      onOpen={() => openProject(entry.project.id)}
-                      onNewChat={() => startNewChatInProject(entry.project.id)}
-                    />
-                  );
-                case "project-chat":
-                  return (
-                    <ChatRow
-                      item={entry.chat}
-                      isActive={entry.isActive}
-                      indented
-                      onTap={openChat}
-                      onRename={openRename}
-                      onMove={openMove}
-                      onDelete={openDeleteConfirm}
-                    />
-                  );
-                case "project-empty":
-                  return (
-                    <Text
-                      style={[
-                        styles.projectEmpty,
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: fonts.sansRegular,
-                        },
-                      ]}
-                    >
-                      No chats yet
-                    </Text>
-                  );
-                case "new-project":
-                  return (
-                    <NewProjectButton
-                      onPress={() => createProjectSheetRef.current?.present()}
-                    />
-                  );
-                case "date-header":
-                  return (
-                    <Text
-                      style={[
-                        styles.groupLabel,
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: fonts.sansMedium,
-                        },
-                      ]}
-                    >
-                      {entry.label}
-                    </Text>
-                  );
-                case "chat-row":
-                  return (
-                    <ChatRow
-                      item={entry.chat}
-                      isActive={entry.isActive}
-                      onTap={openChat}
-                      onRename={openRename}
-                      onMove={openMove}
-                      onDelete={openDeleteConfirm}
-                    />
-                  );
-              }
-            }}
-          />
-        )}
+        <FlashList<ListEntry>
+          data={isPending || error ? [] : entries}
+          ListHeaderComponent={
+            <DrawerAgents onNavigate={() => props.navigation.closeDrawer()} />
+          }
+          ListEmptyComponent={
+            isPending ? (
+              <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
+            ) : error ? (
+              <Text style={[styles.empty, { color: colors.destructive, fontFamily: fonts.sansRegular }]}>
+                Couldn't load chats
+              </Text>
+            ) : null
+          }
+          ListFooterComponent={
+            !isPending && !error && entries.length === 1 ? (
+              <Text style={[styles.empty, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
+                No chats yet
+              </Text>
+            ) : null
+          }
+          keyExtractor={(e) => e.key}
+          getItemType={(e) => e.kind}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={isFetching && !isPending}
+          onRefresh={onPullToRefresh}
+          renderItem={({ item: entry }) => {
+            switch (entry.kind) {
+              case "section":
+                return (
+                  <Text
+                    style={[
+                      styles.sectionLabel,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansMedium,
+                      },
+                    ]}
+                  >
+                    {entry.label}
+                  </Text>
+                );
+              case "project-row":
+                return (
+                  <ProjectRow
+                    project={entry.project}
+                    expanded={entry.expanded}
+                    isActive={entry.isActive}
+                    onToggle={() => toggleProject(entry.project.id)}
+                    onOpen={() => openProject(entry.project.id)}
+                    onNewChat={() => startNewChatInProject(entry.project.id)}
+                  />
+                );
+              case "project-chat":
+                return (
+                  <ChatRow
+                    item={entry.chat}
+                    isActive={entry.isActive}
+                    indented
+                    onTap={openChat}
+                    onRename={openRename}
+                    onMove={openMove}
+                    onDelete={openDeleteConfirm}
+                  />
+                );
+              case "project-empty":
+                return (
+                  <Text
+                    style={[
+                      styles.projectEmpty,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansRegular,
+                      },
+                    ]}
+                  >
+                    No chats yet
+                  </Text>
+                );
+              case "new-project":
+                return (
+                  <NewProjectButton
+                    onPress={() => createProjectSheetRef.current?.present()}
+                  />
+                );
+              case "date-header":
+                return (
+                  <Text
+                    style={[
+                      styles.groupLabel,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansMedium,
+                      },
+                    ]}
+                  >
+                    {entry.label}
+                  </Text>
+                );
+              case "chat-row":
+                return (
+                  <ChatRow
+                    item={entry.chat}
+                    isActive={entry.isActive}
+                    onTap={openChat}
+                    onRename={openRename}
+                    onMove={openMove}
+                    onDelete={openDeleteConfirm}
+                  />
+                );
+            }
+          }}
+        />
       </View>
 
       <View style={[styles.footer, { borderTopColor: colors.border }]}>

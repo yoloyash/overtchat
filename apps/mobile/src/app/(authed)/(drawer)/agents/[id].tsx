@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Keyboard, ScrollView, View } from "react-native";
 import { Stack, router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useHeaderHeight } from "expo-router/react-navigation";
+import { DrawerToggleButton } from "expo-router/build/react-navigation/drawer";
 import {
   KeyboardAvoidingView,
   useKeyboardState,
@@ -247,14 +248,20 @@ function AgentSession({
           title: text(snapshot?.state.sessionName).trim() || name,
           headerTitleAlign: "left",
           headerBackButtonDisplayMode: "minimal",
-          headerRight: () => (
-            <AgentContextButton
-              usage={snapshot?.stats.contextUsage}
-              onPress={() => {
-                Keyboard.dismiss();
-                setContextVisible(true);
-              }}
-            />
+          headerBackVisible: true,
+          headerLeft: ({ canGoBack }) =>
+            canGoBack ? null : <DrawerToggleButton tintColor={colors.foreground} />,
+          headerRight: ({ canGoBack }) => (
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <AgentContextButton
+                usage={snapshot?.stats.contextUsage}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setContextVisible(true);
+                }}
+              />
+              {canGoBack && <DrawerToggleButton tintColor={colors.foreground} />}
+            </View>
           ),
           headerTitle: () => (
             <AgentSessionHeaderTitle

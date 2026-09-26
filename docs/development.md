@@ -58,6 +58,11 @@ On Android and iOS, check session creation/resume, web/mobile switching,
 background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
 gestures. Use an existing development client unless native modules change.
+For navigation changes, check the shared drawer from regular and agent chats,
+the remembered Agents section expansion, recent agent selection, workspace
+chat creation, and opening both chat types from push notifications. Check native
+Back alongside the conversation menu, edge-only drawer swipes on chat and agent
+list screens, and horizontal tool/code scrolling on agent detail screens.
 
 ## Speech
 
