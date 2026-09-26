@@ -45,6 +45,7 @@ const mocks = vi.hoisted(() => {
     resumeChatStreamResponse: vi.fn(),
     currentDateSystemPrompt: vi.fn(),
     consumeStream: vi.fn(),
+    generateText: vi.fn(),
     convertToModelMessages: vi.fn(),
     createWebTools: vi.fn(),
     createImageTools: vi.fn(),
@@ -77,6 +78,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({
+  generateText: mocks.generateText,
   consumeStream: mocks.consumeStream,
   convertToModelMessages: mocks.convertToModelMessages,
   createUIMessageStream: mocks.createUIMessageStream,
@@ -1023,15 +1025,30 @@ describe("chat route setup boundary", () => {
       expect(settings).not.toHaveProperty("runtimeContext");
       expect(settings).not.toHaveProperty("toolApproval");
     }
-    expect(automatic.prepareStep).toBeUndefined();
+    expect(automatic.prepareStep).toEqual(expect.any(Function));
     const prepareStep = forced.prepareStep as (options: {
       stepNumber: number;
-    }) => unknown;
-    expect(prepareStep({ stepNumber: 0 })).toEqual({
+      messages: unknown[];
+      steps: unknown[];
+    }) => Promise<unknown>;
+    expect(
+      await prepareStep({
+        stepNumber: 0,
+        messages: convertedMessages,
+        steps: [],
+      }),
+    ).toEqual({
+      messages: convertedMessages,
       activeTools: mocks.toolOrder,
       toolChoice: "required",
     });
-    expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
+    expect(
+      await prepareStep({
+        stepNumber: 1,
+        messages: convertedMessages,
+        steps: [],
+      }),
+    ).toEqual({ messages: convertedMessages });
     expect(automatic.tools).toBe(forced.tools);
     expect(automatic.instructions).toEqual(forced.instructions);
     expect(mocks.currentDateSystemPrompt).toHaveBeenCalledWith(
@@ -1233,7 +1250,7 @@ describe("chat route setup boundary", () => {
         toolChoice: "auto",
       }),
     );
-    expect(mocks.agentSettings[0]?.prepareStep).toBeUndefined();
+    expect(mocks.agentSettings[0]?.prepareStep).toEqual(expect.any(Function));
     expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
       expect.objectContaining({ tools: mcpTools }),
     );
@@ -1242,8 +1259,7 @@ describe("chat route setup boundary", () => {
       [{ id: "reference" }],
     );
     const observed = mocks.uiStreamOptions?.stream as
-      | ReadableStream<unknown>
-      | undefined;
+      ReadableStream<unknown> | undefined;
     await observed?.pipeTo(new WritableStream());
     expect(mocks.releaseMcpBinding).toHaveBeenCalledOnce();
   });
@@ -1505,6 +1521,277 @@ describe("chat route setup boundary", () => {
     );
     expect(messages).toEqual(originalMessages);
     expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
+  });
+
+  it.each([false, true])(
+    "compacts regular chat and carries checkpoints in response metadata (temporary=%s)",
+    async (temporary) => {
+      const old = {
+        id: "old-user",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "Remember ORCHID-47. " + "reference ".repeat(10000),
+          },
+        ],
+      };
+      const history = [old, ...messages];
+      const modelHistory = history.map((message) => ({
+        role: message.role,
+        content: message.parts[0].text,
+      }));
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        messages: history,
+        temporary,
+      });
+      mocks.inlineUploads.mockResolvedValue(history);
+      mocks.convertToModelMessages.mockResolvedValue(modelHistory);
+      mocks.resolveModelContextWindow.mockReturnValue(4096);
+      mocks.generateText.mockResolvedValue({
+        text: "The launch code is ORCHID-47.",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          inputTokenDetails: {},
+        },
+      });
+      await POST(request());
+      const prepare = mocks.agentSettings[0].prepareStep as (
+        input: object,
+      ) => Promise<{ messages: Array<{ content: string }> }>;
+      const prepared = await prepare({
+        messages: modelHistory,
+        steps: [],
+        stepNumber: 0,
+      });
+      expect(prepared.messages[0].content).toContain("ORCHID-47");
+      expect(prepared.messages.at(-1)?.content).toBe("Hello");
+      expect(mocks.agentSettings[0].maxOutputTokens).toBe(1024);
+      expect(mocks.uiStreamOptions?.originalMessages).toEqual(history);
+      expect(mocks.uiChunks).toContainEqual({
+        type: "data-context-status",
+        data: "compacted",
+        transient: true,
+      });
+      const metadata = (
+        mocks.uiStreamOptions?.messageMetadata as (
+          input: object,
+        ) => Record<string, unknown>
+      )({
+        part: {
+          type: "finish",
+          finishReason: "stop",
+          totalUsage: {
+            inputTokens: 200,
+            outputTokens: 20,
+            totalTokens: 220,
+            inputTokenDetails: {},
+          },
+        },
+      });
+      expect(metadata.contextCheckpoint).toMatchObject({
+        boundaryMessageId: "user-message",
+        summary: expect.stringContaining("ORCHID-47"),
+      });
+      await (mocks.uiStreamOptions?.onEnd as (input: object) => Promise<void>)({
+        responseMessage: {
+          id: "response",
+          role: "assistant",
+          parts: [{ type: "text", text: "Answer" }],
+          metadata,
+        },
+        isAborted: false,
+      });
+      if (temporary) {
+        expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+        expect(mocks.completeChatStream).not.toHaveBeenCalled();
+      } else {
+        expect(mocks.completeChatStream).toHaveBeenCalledWith(
+          expect.objectContaining({
+            assistantMessage: expect.objectContaining({ metadata }),
+            usage: expect.objectContaining({
+              inputTokens: 200 + 100 * mocks.generateText.mock.calls.length,
+            }),
+          }),
+        );
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "runs compact-only through the owned stream without generating an answer (temporary=%s)",
+    async (temporary) => {
+      const history = [
+        {
+          id: "u1",
+          role: "user",
+          parts: [{ type: "text", text: "Remember ORCHID-47" }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [{ type: "text", text: "Okay" }],
+        },
+        { id: "u2", role: "user", parts: [{ type: "text", text: "Continue" }] },
+        {
+          id: "a2",
+          role: "assistant",
+          parts: [{ type: "text", text: "Ready" }],
+        },
+      ];
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        action: { type: "compact" },
+        messages: temporary ? history : history.slice(-1),
+        temporary,
+      });
+      mocks.getChat.mockResolvedValue(
+        temporary ? null : { id: "chat", title: "Saved chat" },
+      );
+      mocks.getMessages.mockResolvedValue(history);
+      mocks.inlineUploads.mockResolvedValue(history);
+      mocks.convertToModelMessages.mockResolvedValue(
+        history.map((m) => ({ role: m.role, content: m.parts[0].text })),
+      );
+      mocks.generateText.mockResolvedValue({
+        text: "The code is ORCHID-47",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          inputTokenDetails: {},
+        },
+      });
+      expect((await POST(request())).status).toBe(200);
+      const reader = (
+        mocks.uiStreamOptions!.stream as ReadableStream<Record<string, unknown>>
+      ).getReader();
+      const parts: Record<string, unknown>[] = [];
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        parts.push(next.value);
+      }
+      expect(parts.map((p) => p.type)).toEqual(["start", "finish"]);
+      expect(mocks.agentStream).not.toHaveBeenCalled();
+      expect(mocks.uiStreamOptions?.originalMessages).toBeUndefined();
+      const metadata = (
+        mocks.uiStreamOptions!.messageMetadata as (
+          input: object,
+        ) => Record<string, unknown>
+      )({ part: parts.at(-1) });
+      expect(metadata).toMatchObject({
+        contextStatus: "manual-compacted",
+        contextCheckpoint: {
+          boundaryMessageId: "u2",
+          summary: "The code is ORCHID-47",
+        },
+      });
+      await (mocks.uiStreamOptions!.onEnd as (input: object) => Promise<void>)({
+        responseMessage: {
+          id: "marker",
+          role: "assistant",
+          parts: [],
+          metadata,
+        },
+        isAborted: false,
+      });
+      if (temporary) {
+        expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+        expect(mocks.completeChatStream).not.toHaveBeenCalled();
+      } else {
+        expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userMessage: undefined,
+            truncateFromMessageId: undefined,
+          }),
+        );
+        expect(mocks.completeChatStream).toHaveBeenCalledWith(
+          expect.objectContaining({
+            assistantMessage: { id: "marker", parts: [], metadata },
+            usage: expect.objectContaining({
+              inputTokens: 100,
+              outputTokens: 10,
+            }),
+          }),
+        );
+      }
+      expect(mocks.notifyChatComplete).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not save a replacement checkpoint or answer after a failed manual summary", async () => {
+    const history = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "Important old fact" }],
+      },
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "Current request" }],
+      },
+    ];
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      action: { type: "compact" },
+      messages: history.slice(-1),
+    });
+    mocks.getChat.mockResolvedValue({ id: "chat", title: "Saved" });
+    mocks.getMessages.mockResolvedValue(history);
+    mocks.inlineUploads.mockResolvedValue(history);
+    mocks.convertToModelMessages.mockResolvedValue(
+      history.map((m) => ({ role: m.role, content: m.parts[0].text })),
+    );
+    mocks.generateText.mockRejectedValue(new Error("Summarizer unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await POST(request());
+      const reader = (
+        mocks.uiStreamOptions!.stream as ReadableStream<Record<string, unknown>>
+      ).getReader();
+      const parts: Record<string, unknown>[] = [];
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        parts.push(next.value);
+      }
+      expect(parts.map((p) => p.type)).toEqual(["start", "error"]);
+      expect((parts[1].error as Error).message).toContain(
+        "previous checkpoint are unchanged",
+      );
+      await (mocks.uiStreamOptions!.onEnd as (input: object) => Promise<void>)({
+        responseMessage: {
+          id: "marker",
+          role: "assistant",
+          parts: [],
+          metadata: { contextStatus: "manual-compacting" },
+        },
+        isAborted: false,
+      });
+      expect(mocks.completeChatStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assistantMessage: undefined,
+          status: "error",
+        }),
+      );
+      expect(mocks.agentStream).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("requests an explicit context window for unknown models before claiming a stream", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("context window");
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
   it("emits provider cache token details in finish metadata", async () => {
@@ -1826,23 +2113,46 @@ describe("chat route setup boundary", () => {
 
     await POST(request());
 
-    const settings = mocks.agentSettings[0];
-    expect(settings.tools).toMatchObject({ ...mocks.chatTools, ...imageTools });
-    expect(settings.toolChoice).toBe("auto");
-    expect(settings.instructions).toMatchObject({
-      content: expect.stringContaining("The user selected Create image for this turn."),
-    });
-    if (forceSearch) {
-      const prepareStep = settings.prepareStep as (options: { stepNumber: number }) => unknown;
-      expect(prepareStep({ stepNumber: 0 })).toEqual({
-        activeTools: mocks.toolOrder,
-        toolChoice: "required",
+      const settings = mocks.agentSettings[0];
+      expect(settings.tools).toMatchObject({
+        ...mocks.chatTools,
+        ...imageTools,
       });
-      expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
-    } else {
-      expect(settings.prepareStep).toBeUndefined();
-    }
-  });
+      expect(settings.toolChoice).toBe("auto");
+      expect(settings.instructions).toMatchObject({
+        content: expect.stringContaining(
+          "The user selected Create image for this turn.",
+        ),
+      });
+      if (forceSearch) {
+        const prepareStep = settings.prepareStep as (options: {
+          stepNumber: number;
+          messages: unknown[];
+          steps: unknown[];
+        }) => Promise<unknown>;
+        expect(
+          await prepareStep({
+            stepNumber: 0,
+            messages: convertedMessages,
+            steps: [],
+          }),
+        ).toEqual({
+          messages: convertedMessages,
+          activeTools: mocks.toolOrder,
+          toolChoice: "required",
+        });
+        expect(
+          await prepareStep({
+            stepNumber: 1,
+            messages: convertedMessages,
+            steps: [],
+          }),
+        ).toEqual({ messages: convertedMessages });
+      } else {
+        expect(settings.prepareStep).toEqual(expect.any(Function));
+      }
+    },
+  );
 
   it("rejects explicit image requests before persistence when unavailable", async () => {
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });

@@ -2,6 +2,7 @@ export * from "./ping";
 export * from "./models";
 export * from "./model-icons";
 export * from "./chat";
+export * from "./context-status";
 export * from "./tools";
 export * from "./tool-preferences";
 export * from "./citations";

@@ -38,6 +38,38 @@ messages; Redis buffers live events for reconnecting clients. Without Redis,
 generations still complete and clients recover saved messages, but cannot
 replay missed live deltas.
 
+## Chat compaction validation
+
+Regular chat automatically compacts at 80% of the resolved model context window,
+or earlier to respect the input budget, reserving up to 8,192 output tokens
+(at most a quarter of the window and the model's output
+limit) and 10% headroom. The Advanced context-window override controls this
+budget. Checkpoints live in message metadata; the original transcript remains
+intact. Token counts use a local tokenizer estimate calibrated with provider
+usage, including tool schemas and media allowances. `/compact` forces a checkpoint
+below the threshold without generating a chat answer; it retains the newest turn
+and shows a permanent inline marker. Failed summaries stop the operation with a
+retryable error and leave the prior checkpoint and transcript intact. The recent
+turns have a retention target of 40% of the input budget; the newest turn is
+always kept. Unknown model windows must be set in Advanced before chatting.
+
+Run the focused regressions with:
+
+```sh
+npm run test -w apps/web -- lib/chat/compaction.test.ts app/api/chat/route.test.ts lib/db/chatTurns.test.ts
+```
+
+For live validation, use a disposable chat and a copy of a local model config
+with tool calling disabled, so memory/tool side effects cannot influence the
+recall check. Import a synthetic transcript larger than its input budget, with
+known facts near the beginning and several recent turns. Ask for those facts,
+verify a compaction notice and checkpoint, then continue to verify reuse. Add
+more history to trigger another compaction. Test an 8k context override and an
+edit before the checkpoint; the edited conversation must not reuse the old
+summary. Verify `/compact` below the threshold, reload its marker, and continue
+from its saved checkpoint. Verify failed and cancelled compactions do not save a
+replacement checkpoint. Remove the test chat and model config afterward.
+
 ## Mobile validation
 
 For Agent Connections changes:

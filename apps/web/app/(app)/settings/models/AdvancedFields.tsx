@@ -105,7 +105,7 @@ export function AdvancedFields({
         <>
           <SettingsRow
             title="Context window"
-            description="Maximum tokens this model can hold. Leave blank to use the detected or catalog value."
+            description="Maximum tokens this model can hold. Older conversation is automatically summarized to leave room for replies. Leave blank to use the detected or catalog value."
             htmlFor="p-context-window"
             align="center"
             controlAlign="end"
