@@ -68,6 +68,11 @@ import { useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
+import {
+  CONTEXT_STATUS_DATA_TYPE,
+  isContextStatus,
+  type ContextStatus,
+} from "@overtchat/shared";
 
 export default function ChatScreen() {
   const { activeChatId, isNewChat, activeProjectId } = useChatSession();
@@ -232,6 +237,9 @@ function ChatSurface({
     [baseURL],
   );
 
+  const [contextStatus, setContextStatus] = useState<ContextStatus | null>(
+    null,
+  );
   const {
     messages,
     setMessages,
@@ -250,7 +258,33 @@ function ChatSurface({
     resume: false,
     transport,
     messages: initialMessages,
+    onData: (part) => {
+      if (
+        part.type === CONTEXT_STATUS_DATA_TYPE &&
+        isContextStatus(part.data)
+      ) {
+        setContextStatus(part.data);
+      }
+    },
+    onError: () => {
+      setContextStatus(null);
+      setMessages((current) =>
+        current.filter(
+          (m) =>
+            (m.metadata as { contextStatus?: string } | undefined)
+              ?.contextStatus !== "manual-compacting",
+        ),
+      );
+    },
     onFinish: ({ message, isAbort }) => {
+      setMessages((current) =>
+        current.filter(
+          (m) =>
+            (m.metadata as { contextStatus?: string } | undefined)
+              ?.contextStatus !== "manual-compacting",
+        ),
+      );
+      setContextStatus(null);
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: queryKeys.personalization() });
       }
@@ -467,6 +501,13 @@ function ChatSurface({
 
   function handleSubmit(text: string, files: FileUIPart[]) {
     Keyboard.dismiss();
+    if (text.trim().toLowerCase() === "/compact" && files.length === 0) {
+      if (streaming || !configured || messages.length === 0) return;
+      setContextStatus(null);
+      setLocalAnchorRequestKey((key) => key + 1);
+      void sendMessage(undefined, { body: requestBody({ type: "compact" }) });
+      return;
+    }
     const wasNew = isNewRef.current;
     if (wasNew) {
       isNewRef.current = false;
@@ -581,6 +622,7 @@ function ChatSurface({
         </View>
       ) : (
         <MessageList
+          contextStatus={contextStatus}
           messages={messages}
           streaming={streaming}
           status={status}

@@ -22,6 +22,7 @@ import {
   ArrowUp,
   Check,
   Cpu,
+  Shrink,
   Ghost,
   ImageIcon,
   Globe,
@@ -84,6 +85,7 @@ export interface ComposerHandle {
  * composer; everything that mutates chat-level state is declared by `ChatArea`.
  */
 export interface ComposerCommandActions {
+  compact?: { onCompact: () => void; unavailableReason?: string };
   /** Runs `/temporary`; omitted once the chat has messages. */
   temporary?: { active: boolean; onToggle: () => void };
   onNewChat: () => void;
@@ -286,6 +288,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         keywords: ["incognito", "private", "unsaved"],
         toggle: { active: commandActions.temporary.active },
         run: commandActions.temporary.onToggle,
+      });
+    }
+
+    if (commandActions.compact) {
+      list.push({
+        name: "compact",
+        title: "Compact conversation",
+        description: "Summarize older context now",
+        group: "actions",
+        icon: Shrink,
+        keywords: ["summarize", "context"],
+        toggle: { active: false, unavailableReason: commandActions.compact.unavailableReason },
+        run: commandActions.compact.onCompact,
       });
     }
 

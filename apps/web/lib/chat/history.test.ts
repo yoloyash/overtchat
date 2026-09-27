@@ -28,6 +28,24 @@ describe("messagesForChatRequest", () => {
 });
 
 describe("reconstructPersistedMessages", () => {
+  it("compacts canonical history without adding or replacing a message", () => {
+    expect(
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [
+          { ...stored.at(-1)!, parts: [{ type: "text", text: "fabricated" }] },
+        ],
+        action: { type: "compact" },
+      }),
+    ).toEqual({ messages: stored, persistUserMessage: false });
+    expect(() =>
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [stored[0]],
+        action: { type: "compact" },
+      }),
+    ).toThrow(ChatHistoryConflictError);
+  });
   it("appends only the requested user turn to canonical stored history", () => {
     const next = message("user-3", "user");
 

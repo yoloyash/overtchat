@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  createContextCheckpoint,
+  restoreContextCheckpoint,
+} from "../chat/context-checkpoint";
+import {
   afterAll,
   beforeAll,
   beforeEach,
@@ -163,6 +167,76 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("persists checkpoints with the owned response and invalidates them when editing covered history", async () => {
+    seedChat();
+    const original = await chatDb.getMessages("chat");
+    const checkpoint = createContextCheckpoint(
+      original,
+      "edit",
+      "Remember Before",
+    );
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "compact-stream",
+        clientRequestId: "compact-request",
+        requestFingerprint: "compact-fingerprint",
+        staleStreamId: null,
+        userMessage: {
+          id: "new-question",
+          parts: [{ type: "text", text: "Continue" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "wrong-stream",
+        assistantMessage: {
+          id: "wrong-answer",
+          parts: [],
+          metadata: { contextCheckpoint: checkpoint },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "compact-stream",
+        assistantMessage: {
+          id: "compact-answer",
+          parts: [{ type: "text", text: "Answer" }],
+          metadata: { contextCheckpoint: checkpoint },
+        },
+      }),
+    ).toBe(true);
+    const saved = await chatDb.getMessages("chat");
+    expect(saved.slice(0, original.length)).toEqual(original);
+    expect(restoreContextCheckpoint(saved).checkpoint).toEqual(checkpoint);
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "edit-stream",
+        clientRequestId: "edit-request",
+        requestFingerprint: "edit-fingerprint",
+        staleStreamId: null,
+        truncateFromMessageId: "before",
+        userMessage: {
+          id: "before",
+          parts: [{ type: "text", text: "Changed" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      restoreContextCheckpoint(await chatDb.getMessages("chat")).checkpoint,
+    ).toBeUndefined();
+    expect(messageIds()).toEqual(["before"]);
+  });
+
   it("lists only generations that still own a running chat stream", async () => {
     seedChat();
     expect(

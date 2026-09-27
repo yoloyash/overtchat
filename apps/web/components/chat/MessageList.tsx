@@ -13,6 +13,12 @@ import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import type { InferenceActivity } from "@/lib/chat/inference-activity";
 import {
+  contextStatusLabel,
+  isManualCompactionMessage,
+  isContextStatus,
+  type ContextStatus,
+} from "@overtchat/shared";
+import {
   formatInteger,
   formatTps,
   readMessageStats,
@@ -27,6 +33,7 @@ export function MessageList({
   streaming,
   status,
   inferenceActivity,
+  contextStatus,
   error,
   configured,
   speech,
@@ -44,6 +51,7 @@ export function MessageList({
   streaming: boolean;
   status: ChatStatus;
   inferenceActivity: InferenceActivity | null;
+  contextStatus?: ContextStatus | null;
   error: Error | undefined;
   configured: boolean;
   speech: ReturnType<typeof useSpeech>;
@@ -97,9 +105,7 @@ export function MessageList({
     scrollEndThreshold: 80,
     onChange(instance) {
       const atBottom = instance.isAtEnd(80);
-      setIsAtBottom((current) =>
-        current === atBottom ? current : atBottom,
-      );
+      setIsAtBottom((current) => (current === atBottom ? current : atBottom));
       const atTop = (instance.scrollOffset ?? 0) <= 80;
       setIsAtTop((current) => (current === atTop ? current : atTop));
       if (
@@ -160,29 +166,57 @@ export function MessageList({
             const message = messages[item.index];
             if (message) {
               const isLast = item.index === messages.length - 1;
+              const savedContextStatus = (
+                message.metadata as Record<string, unknown> | undefined
+              )?.contextStatus;
+              const visibleContextStatus =
+                isLast && streaming && contextStatus
+                  ? contextStatus
+                  : isContextStatus(savedContextStatus) &&
+                      savedContextStatus !== "compacting" &&
+                      savedContextStatus !== "manual-compacting"
+                    ? savedContextStatus
+                    : null;
+              const contextIndicator = visibleContextStatus && (
+                <p
+                  className="my-2 flex items-center gap-2 text-xs text-muted-foreground"
+                  role="status"
+                >
+                  {(visibleContextStatus === "compacting" ||
+                    visibleContextStatus === "manual-compacting") && (
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                  )}
+                  {contextStatusLabel(visibleContextStatus)}
+                </p>
+              );
               content = (
                 <>
-                  <MessageBubble
-                    message={message}
-                    streaming={streaming && isLast}
-                    canAct={!streaming && configured}
-                    onRegenerate={onRegenerate}
-                    onImageReference={onImageReference}
-                    onEdit={onEdit}
-                    speech={speech}
-                    showStats={showStats}
-                    stats={
-                      readMessageStats(message) ??
-                      storedStats[message.id] ??
-                      null
-                    }
-                  />
+                  {message.role === "assistant" && contextIndicator}
+                  {!isManualCompactionMessage(message) && (
+                    <MessageBubble
+                      message={message}
+                      streaming={streaming && isLast}
+                      canAct={!streaming && configured}
+                      onRegenerate={onRegenerate}
+                      onImageReference={onImageReference}
+                      onEdit={onEdit}
+                      speech={speech}
+                      showStats={showStats}
+                      stats={
+                        readMessageStats(message) ??
+                        storedStats[message.id] ??
+                        null
+                      }
+                    />
+                  )}
+                  {message.role !== "assistant" && contextIndicator}
                   {isLast && !error && streaming && inferenceActivity && (
                     <InferenceActivityIndicator activity={inferenceActivity} />
                   )}
                   {isLast &&
                     !error &&
                     !inferenceActivity &&
+                    !contextStatus &&
                     status === "submitted" &&
                     message.role === "user" && <PendingIndicator />}
                 </>

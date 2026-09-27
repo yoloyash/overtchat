@@ -3,6 +3,7 @@ import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
@@ -14,6 +15,12 @@ import {
 import { useTheme } from "@/lib/theme";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MessageBubble } from "./MessageBubble";
+import {
+  contextStatusLabel,
+  isManualCompactionMessage,
+  isContextStatus,
+  type ContextStatus,
+} from "@overtchat/shared";
 
 const CHAT_MAINTAIN_VISIBLE_POSITION = {
   startRenderingFromBottom: true,
@@ -27,6 +34,7 @@ export function MessageList({
   messages,
   streaming,
   status,
+  contextStatus,
   error,
   editingId,
   speech,
@@ -43,6 +51,7 @@ export function MessageList({
   messages: UIMessage[];
   streaming: boolean;
   status: ChatStatus;
+  contextStatus?: ContextStatus | null;
   error: Error | undefined;
   editingId: string | null;
   speech: ReturnType<typeof useSpeech>;
@@ -66,13 +75,21 @@ export function MessageList({
   const lastIsUser = latestMessageRole === "user";
   const listExtraData = useMemo(
     () => ({
+      contextStatus,
       editingId,
       readOnly,
       speechActiveId: speech.activeId,
       speechStatus: speech.status,
       streaming,
     }),
-    [editingId, readOnly, speech.activeId, speech.status, streaming],
+    [
+      contextStatus,
+      editingId,
+      readOnly,
+      speech.activeId,
+      speech.status,
+      streaming,
+    ],
   );
 
   const handleScroll = useCallback(
@@ -95,7 +112,7 @@ export function MessageList({
 
   const footer = (
     <>
-      {!error && status === "submitted" && lastIsUser && (
+      {!error && !contextStatus && status === "submitted" && lastIsUser && (
         <Text
           accessibilityLabel="Assistant is responding"
           accessibilityLiveRegion="polite"
@@ -153,22 +170,60 @@ export function MessageList({
             />
           ) : undefined
         }
-        renderItem={({ item: message }) => (
-          <View style={styles.messageRow}>
-            <MessageBubble
-              message={message}
-              streaming={streaming && message.id === latestMessageId}
-              editing={editingId === message.id}
-              speech={speech}
-              onStartEdit={onStartEdit}
-              onCancelEdit={onCancelEdit}
-              onSaveEdit={onSaveEdit}
-              onRegenerate={onRegenerate}
-              onImageReference={onImageReference}
-              readOnly={readOnly}
-            />
-          </View>
-        )}
+        renderItem={({ item: message }) => {
+          const savedContextStatus = (
+            message.metadata as Record<string, unknown> | undefined
+          )?.contextStatus;
+          const visibleContextStatus =
+            message.id === latestMessageId && streaming && contextStatus
+              ? contextStatus
+              : isContextStatus(savedContextStatus) &&
+                  savedContextStatus !== "compacting" &&
+                  savedContextStatus !== "manual-compacting"
+                ? savedContextStatus
+                : null;
+          const contextIndicator = visibleContextStatus && (
+            <View style={styles.contextStatus}>
+              {(visibleContextStatus === "compacting" ||
+                visibleContextStatus === "manual-compacting") && (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.mutedForeground}
+                />
+              )}
+              <Text
+                accessibilityLiveRegion="polite"
+                style={{
+                  color: colors.mutedForeground,
+                  fontFamily: fonts.sansRegular,
+                  fontSize: 12,
+                }}
+              >
+                {contextStatusLabel(visibleContextStatus)}
+              </Text>
+            </View>
+          );
+          return (
+            <View style={styles.messageRow}>
+              {message.role === "assistant" && contextIndicator}
+              {!isManualCompactionMessage(message) && (
+                <MessageBubble
+                  message={message}
+                  streaming={streaming && message.id === latestMessageId}
+                  editing={editingId === message.id}
+                  speech={speech}
+                  onStartEdit={onStartEdit}
+                  onCancelEdit={onCancelEdit}
+                  onSaveEdit={onSaveEdit}
+                  onRegenerate={onRegenerate}
+                  onImageReference={onImageReference}
+                  readOnly={readOnly}
+                />
+              )}
+              {message.role !== "assistant" && contextIndicator}
+            </View>
+          );
+        }}
         ListFooterComponent={footer}
       />
 
@@ -201,6 +256,12 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 16, paddingVertical: 16 },
   messageRow: { marginBottom: 16 },
+  contextStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginVertical: 8,
+  },
   pending: { fontSize: 18, paddingVertical: 4 },
   error: {
     borderWidth: StyleSheet.hairlineWidth,

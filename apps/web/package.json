@@ -51,6 +51,7 @@
     "devicons-react": "^1.5.0",
     "drizzle-orm": "^0.45.2",
     "fflate": "^0.8.2",
+    "js-tiktoken": "^1.0.21",
     "katex": "^0.16.45",
     "linkedom": "^0.18.12",
     "lucide-react": "^1.14.0",
