@@ -113,9 +113,6 @@ jobs:
 
       - name: Verify CLI release
         id: cli
-        continue-on-error: >-
-          ${{ github.event_name == 'push' ||
-              (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
         env:
           GH_TOKEN: ${{ github.token }}
           CLI_VERSION: ${{ steps.manifest.outputs.cli }}
@@ -138,7 +135,11 @@ jobs:
             fi
             sleep 3
           done
-          test "$downloaded" = "true"
+          if [ "$downloaded" != "true" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Release artifacts are not available yet; deferring verification."
+            exit 0
+          fi
           grep -Eq '[[:space:]]\*?overtchat-darwin-amd64$' \
             "$verification_directory/overtchat-checksums.txt"
           grep -Eq '[[:space:]]\*?overtchat-darwin-arm64$' \
@@ -149,12 +150,10 @@ jobs:
             "$verification_directory/overtchat-checksums.txt"
           (cd "$verification_directory" && sha256sum --check overtchat-checksums.txt)
           grep -F "cli_version=\"$CLI_VERSION\"" apps/site/public/install
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify connector release
         id: connector
-        continue-on-error: >-
-          ${{ github.event_name == 'push' ||
-              (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
         env:
           GH_TOKEN: ${{ github.token }}
           CONNECTOR_VERSION: ${{ steps.manifest.outputs.connector }}
@@ -178,7 +177,11 @@ jobs:
             fi
             sleep 3
           done
-          test "$downloaded" = "true"
+          if [ "$downloaded" != "true" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Release artifacts are not available yet; deferring verification."
+            exit 0
+          fi
           grep -Eq '[[:space:]]\*?overtchat-connector-darwin-amd64$' \
             "$verification_directory/connector-checksums.txt"
           grep -Eq '[[:space:]]\*?overtchat-connector-darwin-arm64$' \
@@ -194,12 +197,10 @@ jobs:
             apps/site/public/_redirects
           grep -Fx "/install-connector.sh /install/connector/$CONNECTOR_VERSION 302" \
             apps/site/public/_redirects
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify container images
         id: images
-        continue-on-error: >-
-          ${{ github.event_name == 'push' ||
-              (github.event_name == 'workflow_dispatch' && !inputs.require_complete) }}
         env:
           APP_VERSION: ${{ steps.manifest.outputs.app }}
           VOICE_VERSION: ${{ steps.manifest.outputs.voice }}
@@ -222,7 +223,9 @@ jobs:
               fi
               sleep 3
             done
-            return 1
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "$image is not available yet; deferring verification."
+            exit 0
           }
 
           inspect_image "ghcr.io/yoloyash/overtchat-app:$APP_VERSION" \
@@ -266,25 +269,24 @@ jobs:
             "$verification_directory/kokoro-gpu-blackwell.json"
           node .github/scripts/assert-image-platforms.mjs \
             "$verification_directory/kokoro-gpu-blackwell.json" linux/amd64
+          echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Require a complete candidate release
         id: readiness
-        if: always()
         env:
-          CLI_RESULT: ${{ steps.cli.outcome }}
-          CONNECTOR_RESULT: ${{ steps.connector.outcome }}
-          IMAGE_RESULT: ${{ steps.images.outcome }}
+          CLI_READY: ${{ steps.cli.outputs.ready }}
+          CONNECTOR_READY: ${{ steps.connector.outputs.ready }}
+          IMAGES_READY: ${{ steps.images.outputs.ready }}
+          REQUIRE_COMPLETE: ${{ github.event_name == 'workflow_dispatch' && inputs.require_complete }}
         run: |
-          if [ "$CLI_RESULT" = "success" ] && \
-             [ "$CONNECTOR_RESULT" = "success" ] && \
-             [ "$IMAGE_RESULT" = "success" ]; then
+          if [ "$CLI_READY" = "true" ] && \
+             [ "$CONNECTOR_READY" = "true" ] && \
+             [ "$IMAGES_READY" = "true" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "ready=false" >> "$GITHUB_OUTPUT"
-          if [ "$GITHUB_EVENT_NAME" = "push" ] || \
-             { [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && \
-               [ "${{ inputs.require_complete }}" != "true" ]; }; then
+          if [ "$REQUIRE_COMPLETE" != "true" ]; then
             echo "Candidate artifacts are not all public; deferring promotion."
             exit 0
           fi

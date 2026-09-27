@@ -58,7 +58,11 @@ Do not change unrelated manifest fields.
   CUDA, and Blackwell Kokoro digests on the same upstream release. A
   digest-only change does not require a CLI release.
 - **Combined:** Artifacts may publish in any order; promotion succeeds only
-  after every selected component is public.
+  after every selected component is public. Automatic promotion (including
+  release-note edits) defers while artifact downloads or image lookups are
+  unavailable after retries. Checksum, installer, and platform verification
+  failures remain fatal. A manual promotion with `require_complete: true` also
+  fails when artifacts are unavailable.
 
 ## Mobile release
 
