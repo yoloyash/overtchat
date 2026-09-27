@@ -28,7 +28,10 @@ import {
   isManualCompactionMessage,
   type ContextStatus,
 } from "@overtchat/shared";
-import { withOutputBudget } from "@/lib/providers/server/output-budget";
+import {
+  configuredOutputTokens,
+  withSummaryOutputBudget,
+} from "@/lib/providers/server/output-budget";
 import {
   isImageToolPart,
   isGeneratedImage,
@@ -281,6 +284,31 @@ async function handlePost(req: Request): Promise<Response> {
       supportsImageInput,
       reasoningLevel,
     });
+  const provider = getProvider(modelConfig.providerId);
+  const contextWindow = resolveModelContextWindow(
+    modelConfig.contextWindow,
+    modelConfig.discoveredContextWindow,
+    modelConfig.providerId,
+    modelConfig.model,
+  );
+  if (manualCompaction && !contextWindow) {
+    throw new ChatRequestError(
+      "Set this model's context window in Advanced settings to compact this conversation.",
+    );
+  }
+  const contextBudget = contextWindow
+    ? resolveContextBudget(
+        contextWindow,
+        modelCapabilities,
+        configuredOutputTokens(providerOptions),
+      )
+    : undefined;
+  if (contextBudget && contextBudget.inputTokens <= 0) {
+    throw new ChatRequestError(
+      "The configured output limit leaves no room for input. Reduce it or increase the model's context window in Advanced settings.",
+    );
+  }
+
   const chatTools = createWebTools({ userId, supportsImageInput });
   let imageOperationStarted = false;
   const imageTools = createImageTools({
@@ -323,6 +351,14 @@ async function handlePost(req: Request): Promise<Response> {
     // Keep partial text/reasoning, but do not replay an unmatched call.
     ignoreIncompleteToolCalls: true,
   });
+  // A checkpoint remains useful if the next model has an unknown window.
+  // Include it once here when automatic budget management is unavailable.
+  if (!contextBudget && restoredContext.checkpoint) {
+    convertedMessages.unshift({
+      role: "assistant",
+      content: `Earlier conversation checkpoint:\n${restoredContext.checkpoint.summary}`,
+    });
+  }
   const modelMessages =
     promptCacheStrategy?.kind === "anthropic"
       ? markAnthropicConversationCacheBoundary(
@@ -331,19 +367,6 @@ async function handlePost(req: Request): Promise<Response> {
         )
       : convertedMessages;
 
-  const provider = getProvider(modelConfig.providerId);
-  const contextWindow = resolveModelContextWindow(
-    modelConfig.contextWindow,
-    modelConfig.discoveredContextWindow,
-    modelConfig.providerId,
-    modelConfig.model,
-  );
-  if (!contextWindow) {
-    throw new ChatRequestError(
-      "Set this model's context window in Advanced settings to enable automatic context management.",
-    );
-  }
-  const contextBudget = resolveContextBudget(contextWindow, modelCapabilities);
   const modelIconId =
     modelIconForModel(modelConfig.model) ?? provider.iconId ?? undefined;
   const requestProviderOptions =
@@ -508,63 +531,67 @@ async function handlePost(req: Request): Promise<Response> {
     const streamInclude = includeProviderActivity
       ? { rawChunks: true as const }
       : undefined;
-    const contextManager = new ChatContextManager({
-      ...contextBudget,
-      instructionTokens:
-        countTextTokens(system ?? "") +
-        (await countToolTokens(agentTools)) +
-        32,
-      userMessageIds: restoredContext.messages
-        .filter((message) => message.role === "user")
-        .map((message) => message.id),
-      summary: contextCheckpoint?.summary,
-      calibration: readContextCalibration(
-        messages,
-        modelConfig.id,
-        modelConfig.model,
-      ),
-      signal: abortSignal,
-      onCheckpoint(boundaryMessageId, summary) {
-        contextCheckpoint = createContextCheckpoint(
-          messages,
-          boundaryMessageId,
-          summary,
-        );
-      },
-      onStatus(status) {
-        if (emitContextStatus) emitContextStatus(status);
-        else pendingContextStatuses.push(status);
-      },
-      async summarize({ prompt, maxOutputTokens }) {
-        const result = await generateText({
-          model,
-          prompt,
-          maxOutputTokens,
-          providerOptions: withOutputBudget(
-            requestProviderOptions,
-            maxOutputTokens,
+    const contextManager = contextBudget
+      ? new ChatContextManager({
+          ...contextBudget,
+          instructionTokens:
+            countTextTokens(system ?? "") +
+            (await countToolTokens(agentTools)) +
+            32,
+          userMessageIds: restoredContext.messages
+            .filter((message) => message.role === "user")
+            .map((message) => message.id),
+          summary: contextCheckpoint?.summary,
+          calibration: readContextCalibration(
+            messages,
+            modelConfig.id,
+            modelConfig.model,
           ),
-          abortSignal,
-          maxRetries: 0,
-        });
-        summaryUsages.push(result.usage);
-        const cost = estimateGenerationCost({
-          providerId: modelConfig.providerId,
-          model: modelConfig.model,
-          usage: result.usage,
-          pricing: modelConfig.pricing,
-        });
-        if (cost) stepCosts.push(cost);
-        else hasUnpricedStep = true;
-        return result.text;
-      },
-    });
+          signal: abortSignal,
+          onCheckpoint(boundaryMessageId, summary) {
+            contextCheckpoint = createContextCheckpoint(
+              messages,
+              boundaryMessageId,
+              summary,
+            );
+          },
+          onStatus(status) {
+            if (emitContextStatus) emitContextStatus(status);
+            else pendingContextStatuses.push(status);
+          },
+          async summarize({ prompt, maxOutputTokens }) {
+            const result = await generateText({
+              model,
+              prompt,
+              maxOutputTokens,
+              providerOptions: withSummaryOutputBudget(
+                requestProviderOptions,
+                maxOutputTokens,
+              ),
+              abortSignal,
+              maxRetries: 0,
+            });
+            summaryUsages.push(result.usage);
+            const cost = estimateGenerationCost({
+              providerId: modelConfig.providerId,
+              model: modelConfig.model,
+              usage: result.usage,
+              pricing: modelConfig.pricing,
+            });
+            if (cost) stepCosts.push(cost);
+            else hasUnpricedStep = true;
+            return result.text;
+          },
+        })
+      : undefined;
     const prepareStep: PrepareStepFunction<ToolSet> = async ({
       messages: stepMessages,
       steps,
       stepNumber,
     }) => {
-      const prepared = await contextManager.prepare(stepMessages, steps);
+      const prepared = contextManager
+        ? await contextManager.prepare(stepMessages, steps)
+        : stepMessages;
       return {
         messages:
           promptCacheStrategy?.kind === "anthropic"
@@ -584,7 +611,7 @@ async function handlePost(req: Request): Promise<Response> {
             async start(writer) {
               writer.enqueue({ type: "start" });
               try {
-                await contextManager.prepare(modelMessages, [], true);
+                await contextManager!.prepare(modelMessages, [], true);
                 writer.enqueue({
                   type: "finish",
                   finishReason: "stop",
@@ -624,11 +651,7 @@ async function handlePost(req: Request): Promise<Response> {
             stopWhen: isStepCount(50),
             toolChoice: "auto",
             prepareStep,
-            maxOutputTokens: contextBudget.maxOutputTokens,
-            providerOptions: withOutputBudget(
-              requestProviderOptions,
-              contextBudget.maxOutputTokens,
-            ),
+            providerOptions: requestProviderOptions,
             ...(streamInclude ? { include: streamInclude } : {}),
           }).stream({ messages: modelMessages, abortSignal })
         : await new ToolLoopAgent<never, Record<string, never>>({
@@ -636,11 +659,7 @@ async function handlePost(req: Request): Promise<Response> {
             experimental_download: rejectAttachmentDownloads,
             instructions,
             prepareStep,
-            maxOutputTokens: contextBudget.maxOutputTokens,
-            providerOptions: withOutputBudget(
-              requestProviderOptions,
-              contextBudget.maxOutputTokens,
-            ),
+            providerOptions: requestProviderOptions,
             ...(streamInclude ? { include: streamInclude } : {}),
           }).stream({ messages: modelMessages, abortSignal });
 
@@ -811,10 +830,12 @@ async function handlePost(req: Request): Promise<Response> {
         return {
           ...(!manualCompaction ? { stats } : {}),
           ...(contextCheckpoint ? { contextCheckpoint } : {}),
-          ...(contextManager.status
+          ...(contextManager?.status
             ? { contextStatus: contextManager.status }
             : {}),
-          ...(!manualCompaction && contextManager.estimatedInputTokens > 0
+          ...(!manualCompaction &&
+          contextManager &&
+          contextManager.estimatedInputTokens > 0
             ? {
                 contextEstimate: {
                   modelConfigId: modelConfig.id,
@@ -844,7 +865,7 @@ async function handlePost(req: Request): Promise<Response> {
           (manualCompaction &&
             !streamError &&
             !isAborted &&
-            contextManager.status === "manual-compacted")
+            contextManager?.status === "manual-compacted")
             ? {
                 id: responseMessage.id,
                 parts: savedParts,

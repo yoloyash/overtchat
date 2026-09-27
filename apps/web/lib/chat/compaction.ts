@@ -30,7 +30,7 @@ export class ChatContextManager {
   constructor(
     private readonly options: {
       inputTokens: number;
-      maxOutputTokens: number;
+      summaryOutputTokens: number;
       instructionTokens: number;
       userMessageIds: string[];
       summary?: string;
@@ -82,7 +82,7 @@ export class ChatContextManager {
     previous = "",
     limit = 2048,
   ): Promise<string> {
-    const maxOutputTokens = Math.min(4096, this.options.maxOutputTokens);
+    const maxOutputTokens = Math.min(4096, this.options.summaryOutputTokens);
     const summaryLimit = Math.max(
       64,
       Math.min(limit, 2048, Math.floor(this.options.inputTokens / 8)),

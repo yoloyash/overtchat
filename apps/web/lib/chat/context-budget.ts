@@ -104,23 +104,33 @@ export async function countToolTokens(tools: ToolSet): Promise<number> {
   return tokens;
 }
 
+/** Budget estimates never change the output parameters sent for a chat reply. */
 export function resolveContextBudget(
   contextWindow: number,
   capabilities?: { maxOutputTokens?: number; maxInputTokens?: number },
+  configuredOutputTokens?: number,
 ) {
-  const maxOutputTokens = Math.max(
+  // A model's advertised maximum is not its default generation length. When
+  // no output limit is configured, reserve 10% as an estimate, not a reply cap.
+  const reservedOutputTokens =
+    configuredOutputTokens ??
+    Math.min(
+      Math.floor(contextWindow * 0.1),
+      capabilities?.maxOutputTokens ?? Infinity,
+    );
+  const safetyMargin = Math.ceil(contextWindow * 0.1);
+  const inputTokens = Math.min(
+    Math.floor(contextWindow * 0.8),
+    contextWindow - reservedOutputTokens - safetyMargin,
+    capabilities?.maxInputTokens ?? Infinity,
+  );
+  const summaryOutputTokens = Math.max(
     1,
     Math.min(
-      8192,
+      4096,
       Math.floor(contextWindow / 4),
       capabilities?.maxOutputTokens ?? Infinity,
     ),
   );
-  const safetyMargin = Math.ceil(contextWindow * 0.1);
-  const inputTokens = Math.min(
-    Math.floor(contextWindow * 0.8),
-    contextWindow - maxOutputTokens - safetyMargin,
-    capabilities?.maxInputTokens ?? Infinity,
-  );
-  return { maxOutputTokens, inputTokens, safetyMargin };
+  return { reservedOutputTokens, summaryOutputTokens, inputTokens, safetyMargin };
 }

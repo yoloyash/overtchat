@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/notifications/chat", () => ({ notifyChatComplete: mocks.notifyChatComplete }));
+import { createContextCheckpoint } from "@/lib/chat/context-checkpoint";
 import type { MessageStats } from "@/lib/chat/stats";
 
 const mocks = vi.hoisted(() => {
@@ -1569,7 +1570,7 @@ describe("chat route setup boundary", () => {
       });
       expect(prepared.messages[0].content).toContain("ORCHID-47");
       expect(prepared.messages.at(-1)?.content).toBe("Hello");
-      expect(mocks.agentSettings[0].maxOutputTokens).toBe(1024);
+      expect(mocks.agentSettings[0].maxOutputTokens).toBeUndefined();
       expect(mocks.uiStreamOptions?.originalMessages).toEqual(history);
       expect(mocks.uiChunks).toContainEqual({
         type: "data-context-status",
@@ -1785,8 +1786,61 @@ describe("chat route setup boundary", () => {
     }
   });
 
-  it("requests an explicit context window for unknown models before claiming a stream", async () => {
+  it("keeps ordinary chat working when the model window is unknown", async () => {
     mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalled();
+    expect(mocks.agentStream).toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    const prepare = mocks.agentSettings[0].prepareStep as (input: unknown) => Promise<unknown>;
+    expect(await prepare({ messages: convertedMessages, steps: [], stepNumber: 0 }))
+      .toMatchObject({ messages: convertedMessages });
+  });
+
+  it("retains a saved checkpoint when switching to an unknown-window model", async () => {
+    const history = [
+      { id: "u1", role: "user" as const, parts: [{ type: "text" as const, text: "Remember ORCHID-47" }] },
+      { id: "a1", role: "assistant" as const, parts: [{ type: "text" as const, text: "Okay" }] },
+      { id: "u2", role: "user" as const, parts: [{ type: "text" as const, text: "Continue" }] },
+    ];
+    const checkpoint = createContextCheckpoint(history, "u2", "The code is ORCHID-47");
+    const requestMessages = [...history, {
+      id: "a2", role: "assistant" as const, parts: [{ type: "text" as const, text: "Ready" }],
+      metadata: { contextCheckpoint: checkpoint },
+    }, { id: "u3", role: "user" as const, parts: [{ type: "text" as const, text: "What is the code?" }] }];
+    mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, temporary: true, messages: requestMessages });
+    mocks.inlineUploads.mockImplementation(async (value) => value);
+    mocks.convertToModelMessages.mockImplementation(async (value) => value.map((m: typeof history[number]) => ({ role: m.role, content: m.parts[0].text })));
+    expect((await POST(request())).status).toBe(200);
+    const sent = mocks.agentStreamArgs[0].messages as { content: string }[];
+    expect(sent[0].content).toContain("The code is ORCHID-47");
+    expect(sent).toHaveLength(4);
+    expect(sent.at(-1)?.content).toBe("What is the code?");
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it.each([512, 64000])("preserves a configured %s-token reply limit", async (limit) => {
+    const providerOptions = { custom: { max_tokens: limit, temperature: 0.3 } };
+    mocks.createConfiguredLanguageModel.mockReturnValue({ model: "language-model", providerOptions });
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.agentSettings[0].maxOutputTokens).toBeUndefined();
+    expect(mocks.agentSettings[0].providerOptions).toEqual(providerOptions);
+  });
+
+  it("rejects an impossible output reservation before claiming a stream", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(4096);
+    mocks.createConfiguredLanguageModel.mockReturnValue({
+      model: "language-model", providerOptions: { custom: { max_tokens: 8192 } },
+    });
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("requests a context window for explicit compaction before claiming a stream", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, action: { type: "compact" }, temporary: true });
     const response = await POST(request());
     expect(response.status).toBe(400);
     expect(await response.text()).toContain("context window");

@@ -11,7 +11,7 @@ import {
   createContextCheckpoint,
   restoreContextCheckpoint,
 } from "./context-checkpoint";
-import { withOutputBudget } from "../providers/server/output-budget";
+import { configuredOutputTokens, withSummaryOutputBudget } from "../providers/server/output-budget";
 import { z } from "zod";
 
 const user = (text: string): ModelMessage => ({ role: "user", content: text });
@@ -31,7 +31,7 @@ function setup(
 ) {
   const options = {
     inputTokens: 3000,
-    maxOutputTokens: 1024,
+    summaryOutputTokens: 1024,
     instructionTokens: 100,
     userMessageIds: ["u1", "u2", "u3"],
     summarize: vi
@@ -50,11 +50,12 @@ function setup(
 describe("automatic chat compaction", () => {
   it("reserves actual output and headroom for 131072, small windows, and provider input/output limits", () => {
     expect(resolveContextBudget(131072)).toEqual({
-      maxOutputTokens: 8192,
+      reservedOutputTokens: 13107,
+      summaryOutputTokens: 4096,
       safetyMargin: 13108,
       inputTokens: 104857,
     });
-    expect(resolveContextBudget(4096).maxOutputTokens).toBe(1024);
+    expect(resolveContextBudget(4096).summaryOutputTokens).toBe(1024);
     expect(
       resolveContextBudget(131072, {
         maxOutputTokens: 2048,
@@ -62,14 +63,25 @@ describe("automatic chat compaction", () => {
       }).inputTokens,
     ).toBe(32000);
     expect(
-      withOutputBudget(
+      withSummaryOutputBudget(
         { custom: { max_tokens: 64000, temperature: 0.2 } },
         8192,
       ),
     ).toEqual({ custom: { max_tokens: 8192, temperature: 0.2 } });
-    expect(withOutputBudget({ custom: { max_tokens: 512 } }, 8192)).toEqual({
+    expect(withSummaryOutputBudget({ custom: { max_tokens: 512 } }, 8192)).toEqual({
       custom: { max_tokens: 512 },
     });
+  });
+
+  it("reserves explicit output without capping it or assuming the advertised maximum is a default", () => {
+    const options = { custom: { max_tokens: 64000, temperature: 0.2 } };
+    expect(configuredOutputTokens(options)).toBe(64000);
+    expect(options.custom.max_tokens).toBe(64000);
+    expect(resolveContextBudget(131072, undefined, 64000).inputTokens).toBe(53964);
+    expect(resolveContextBudget(131072, { maxOutputTokens: 131072 }).inputTokens).toBe(104857);
+    expect(resolveContextBudget(4096, undefined, 8192).inputTokens).toBeLessThan(0);
+    expect(configuredOutputTokens({ custom: { max_tokens: -1 } })).toBeUndefined();
+    expect(configuredOutputTokens({ custom: { max_output_tokens: 32000 } })).toBe(32000);
   });
 
   it("counts schemas, unicode, JSON tool arguments, and attachments without counting base64 as text", async () => {

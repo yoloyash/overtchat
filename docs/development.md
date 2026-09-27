@@ -41,23 +41,36 @@ replay missed live deltas.
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,
-or earlier to respect the input budget, reserving up to 8,192 output tokens
-(at most a quarter of the window and the model's output
-limit) and 10% headroom. The Advanced context-window override controls this
-budget. Checkpoints live in message metadata; the original transcript remains
-intact. Token counts use a local tokenizer estimate calibrated with provider
+or earlier to leave room for an explicitly configured output limit and 10%
+headroom. Ordinary replies keep their existing output settings: compaction adds
+no reply cap. When no output limit is configured, the budget reserves an estimated
+10% of the window (bounded by the model's known output maximum); this is not a
+guarantee about an unknown provider default. Summary generation alone is capped
+at up to 4,096 tokens, a quarter of the window, and the model's output maximum.
+The Advanced context-window override controls this budget. Checkpoints live in
+message metadata; the original transcript remains intact. Token counts use a local tokenizer estimate calibrated with provider
 usage, including tool schemas and media allowances. `/compact` forces a checkpoint
 below the threshold without generating a chat answer; it retains the newest turn
 and shows a permanent inline marker. Failed summaries stop the operation with a
 retryable error and leave the prior checkpoint and transcript intact. The recent
 turns have a retention target of 40% of the input budget; the newest turn is
-always kept. Unknown model windows must be set in Advanced before chatting.
+always kept. Unknown model windows leave ordinary chat available without automatic
+compaction;
+set a window in Advanced to enable compaction. Existing checkpoints remain in
+the model context when switching to a model with an unknown window.
 
 Run the focused regressions with:
 
 ```sh
 npm run test -w apps/web -- lib/chat/compaction.test.ts app/api/chat/route.test.ts lib/db/chatTurns.test.ts
+E2E_PORT=4727 npm run test:e2e -w apps/web -- compaction.spec.ts
 ```
+
+The browser regression uses a controlled provider and a real HTTP MCP connection
+through the production chat route. It checks large tool results across successive
+agent steps, call/result pairing, unchanged reply settings, complete stored results,
+and a durable inline marker. On a native device or emulator, also check `/compact`,
+automatic compaction, Stop during summarization, and reopening the saved chat.
 
 For live validation, use a disposable chat and a copy of a local model config
 with tool calling disabled, so memory/tool side effects cannot influence the
