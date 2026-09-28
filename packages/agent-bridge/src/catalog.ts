@@ -107,6 +107,12 @@ export const AGENT_PROVIDERS: Record<
       forkMessages: true,
     },
   },
+  hermes: {
+    id: "hermes",
+    label: "Hermes",
+    executable: "hermes",
+    capabilities: { steer: true, renameSession: false },
+  },
 };
 
 export function agentProviderMetadata(

@@ -43,6 +43,7 @@ const stats = {
 vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
   agentProviderAdapter: (provider: AgentProviderId) => ({
     provider,
+    steering: provider === "hermes" ? "restart" : undefined,
     refreshMessagesAfterTerminal: provider !== "omp",
     pollUsage: provider === "pi" || provider === "omp",
     capabilities: { steer: true },
@@ -1267,6 +1268,37 @@ describe("agent runtime", () => {
       await registry.stopAll();
     },
   );
+
+  it("keeps a replacement queued when cancellation fails, without submitting it", async () => {
+    mocks.abort.mockRejectedValueOnce(new Error("Cancellation failed"));
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    try {
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider: "hermes",
+        target: { transport: "local" },
+        executable: "hermes",
+        cwd: "/workspace",
+        sessionId: "session",
+        providerSessionId: "provider-session",
+        providerSessionPath: "provider-session",
+        launchConfig: {},
+      });
+      await runtime.command({ type: "prompt", message: "Original" }, "original");
+      await runtime.command({ type: "queue", message: "Correction" }, "correction");
+      await expect(
+        runtime.command({ type: "steer_queued_message", id: "correction" }),
+      ).rejects.toThrow("Cancellation failed");
+      expect(mocks.prompt).toHaveBeenCalledTimes(1);
+      expect(mocks.steer).not.toHaveBeenCalled();
+      expect(runtime.snapshot().queuedMessages).toEqual([
+        expect.objectContaining({ id: "correction", status: "pending" }),
+      ]);
+    } finally {
+      await registry.stopAll();
+    }
+  });
 
   it("publishes one canonical user message when a provider echoes before accepting", async () => {
     mocks.prompt.mockImplementation(async (_message, _images, options) => {

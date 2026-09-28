@@ -32,6 +32,9 @@ describe("agent installation discovery", () => {
         "opencode",
         "/usr/local/bin/opencode",
         "opencode 5.6.7",
+        "hermes",
+        "/home/test/.local/bin/hermes",
+        "Hermes Agent v0.21.5+2372.g678a476 (2026.9.24)",
         "",
       ].join("\0"),
       stderr: "",
@@ -39,7 +42,7 @@ describe("agent installation discovery", () => {
 
     await expect(
       discoverAgentInstallations({ transport: "ssh", alias: "devbox" }),
-    ).resolves.toHaveLength(5);
+    ).resolves.toHaveLength(6);
     expect(mocks.executeOnHost).toHaveBeenCalledOnce();
     expect(mocks.executeOnHost).toHaveBeenCalledWith(
       { transport: "ssh", alias: "devbox", shellMode: "interactive" },

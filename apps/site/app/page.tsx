@@ -100,7 +100,7 @@ const features: Array<{
   {
     icon: Bot,
     title: "A side door to coding agents",
-    body: "When useful, admins can run Codex, Claude Code, OpenCode, Pi, and Oh My Pi locally or over SSH without leaving the chat app.",
+    body: "When useful, admins can run Codex, Claude Code, OpenCode, Pi, Oh My Pi, and Hermes locally or over SSH without leaving the chat app.",
   },
 ];
 

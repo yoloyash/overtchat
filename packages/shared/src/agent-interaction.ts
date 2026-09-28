@@ -4,6 +4,34 @@ import type {
   AgentSessionCommand,
 } from "@overtchat/agent-bridge";
 
+export type AgentApprovalChoice = {
+  label: string;
+  value: string;
+  kind: "allow" | "always" | "deny";
+};
+
+/** Keep provider-supplied approval scopes and opaque response values intact. */
+export function agentApprovalChoices(value: unknown): AgentApprovalChoice[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const choice = candidate as Record<string, unknown>;
+    if (
+      typeof choice.label !== "string" ||
+      typeof choice.value !== "string" ||
+      !["allow", "always", "deny"].includes(String(choice.kind))
+    )
+      return [];
+    return [
+      {
+        label: choice.label,
+        value: choice.value,
+        kind: choice.kind as AgentApprovalChoice["kind"],
+      },
+    ];
+  });
+}
+
 export type InteractionFormField = {
   id: string;
   label: string;

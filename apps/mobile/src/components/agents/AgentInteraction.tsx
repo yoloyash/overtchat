@@ -8,7 +8,6 @@ import { safeExternalUrl } from "@overtchat/shared/agent-interaction";
 import { approvalDetails } from "@/lib/agents/tool-details";
 import { AgentDetailSections } from "./AgentToolDetails";
 import { AgentApprovalActions } from "./AgentApprovalActions";
-import { text } from "@/lib/agents/model";
 import { AgentButton, AgentSheet, AgentText } from "./AgentPrimitives";
 
 type Request = NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>;
@@ -38,7 +37,7 @@ export function AgentInteraction({
   const url = safeExternalUrl(request.url);
   return (
     <AgentSheet
-      title={text(request.title) || "Your agent needs input"}
+      title={approval.title}
       visible={visible}
       onClose={onClose}
       closeLabel="Close request"

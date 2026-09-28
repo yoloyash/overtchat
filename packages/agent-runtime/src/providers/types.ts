@@ -124,6 +124,8 @@ export interface AgentRuntimeEventClassifier {
 
 export interface AgentProviderAdapter {
   readonly provider: AgentProviderId;
+  /** Restart-only providers steer by cancelling, then submitting a normal prompt. */
+  readonly steering?: "restart";
   /**
    * Whether a normal provider-terminal transition should replace the live
    * transcript with a freshly fetched history snapshot. Providers whose live

@@ -20,14 +20,11 @@ vi.mock("@/lib/db/hostConnectors", () => ({
 import { POST } from "./route";
 
 function request(body: unknown): Request {
-  return new Request(
-    "http://server.test/api/agent-connections/discover",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    },
-  );
+  return new Request("http://server.test/api/agent-connections/discover", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 describe("Agent Connection discovery route", () => {
@@ -55,6 +52,7 @@ describe("Agent Connection discovery route", () => {
         { provider: "codex", status: "unavailable" },
         { provider: "opencode", status: "unavailable" },
         { provider: "claude", status: "unavailable" },
+        { provider: "hermes", status: "unavailable" },
       ],
       refreshedAt: 123,
     });
@@ -89,6 +87,7 @@ describe("Agent Connection discovery route", () => {
           { provider: "codex", status: "unavailable" },
           { provider: "opencode", status: "unavailable" },
           { provider: "claude", status: "unavailable" },
+          { provider: "hermes", status: "unavailable" },
         ],
         refreshedAt: 123,
       },

@@ -9,6 +9,7 @@ export const AGENT_PROVIDER_IDS = [
   "codex",
   "opencode",
   "claude",
+  "hermes",
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
@@ -390,6 +391,8 @@ export type AgentRewindMode = "conversation" | "files" | "both";
 
 export type AgentRuntimeCapabilities = {
   steer: boolean;
+  /** Defaults to supported for existing providers. */
+  renameSession?: boolean;
   customCompactionInstructions?: boolean;
   usage?: boolean;
   rewindConversation?: boolean;

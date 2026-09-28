@@ -11,6 +11,7 @@ const vectors = {
     '<svg width="300" height="300" viewBox="0 0 300 300" fill="none" xmlns="http://www.w3.org/2000/svg">\n  <path d="M210 240H90V120H210V240Z" fill="#4B4646"/>\n  <path d="M210 60H90V240H210V60ZM270 300H30V0H270V300Z" fill="#F1ECEC"/>\n</svg>\n',
 } as const;
 const images = {
+  hermes: require("@/assets/agent-providers/hermes.png"),
   codex: require("@/assets/agent-providers/codex.png"),
   claude: require("@/assets/agent-providers/claude-code.png"),
 };
@@ -34,7 +35,7 @@ export function AgentProviderIcon({
         backgroundColor: provider === "claude" ? "transparent" : "#09090b",
       }}
     >
-      {provider === "codex" || provider === "claude" ? (
+      {provider === "codex" || provider === "claude" || provider === "hermes" ? (
         <Image
           source={images[provider]}
           style={{ width: size, height: size }}

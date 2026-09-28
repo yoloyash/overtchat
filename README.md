@@ -127,7 +127,7 @@ you.
 
 ## Coding agents, when you need them
 
-Connect **Codex, Claude Code, Pi, Oh My Pi, or OpenCode** through the Host
+Connect **Codex, Claude Code, Pi, Oh My Pi, OpenCode, or Hermes** through the Host
 Connector. Start or resume sessions, follow plans and tool calls, review
 changes, and respond to approvals from OvertChat. Agents run on your own
 machine or an SSH host, with that host's tools and credentials.

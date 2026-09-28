@@ -12,13 +12,14 @@ import type {
   AgentSessionStats,
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
-import { safeExternalUrl, type AgentQuestionResponse } from "@overtchat/shared/agent-interaction";
+import {
+  safeExternalUrl,
+  type AgentQuestionResponse,
+} from "@overtchat/shared/agent-interaction";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
-type AgentInteraction = NonNullable<
-  AgentRuntimeSnapshot["pendingInteraction"]
->;
+type AgentInteraction = NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>;
 
 const dialogBackdrop = cn(
   "fixed inset-0 z-40 bg-black/40",
@@ -196,8 +197,7 @@ function CompactAgentSessionDialogContent({
             Compact context?
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            {providerLabel} will summarize older context in this native
-            session.
+            {providerLabel} will summarize older context in this native session.
           </Dialog.Description>
           <form
             className="mt-5 space-y-4"
@@ -354,7 +354,7 @@ export function AgentUsageDialog({
                   <span className="font-medium tabular-nums">
                     {usage.credits.unlimited
                       ? "Unlimited"
-                      : usage.credits.balance ?? "Available"}
+                      : (usage.credits.balance ?? "Available")}
                   </span>
                 </div>
               )}
@@ -512,22 +512,13 @@ function InteractionDialogContent({
   error?: string;
   onRespond: (response: AgentQuestionResponse) => void;
 }) {
-  const toolApproval = request.approvalKind === "tool";
-  const approveValue =
-    typeof request.approveValue === "string" ? request.approveValue : "Approve";
-  const denyValue =
-    typeof request.denyValue === "string" ? request.denyValue : "Deny";
-  const alwaysValue =
-    typeof request.alwaysValue === "string" ? request.alwaysValue : null;
   const title =
     typeof request.title === "string" && request.title.trim()
       ? request.title
       : `${providerLabel} needs your input`;
   const url =
     request.method === "external" ? safeExternalUrl(request.url) : null;
-  const detail = toolApprovalDetail(request.toolDetail);
-  const cancel = () =>
-    onRespond(toolApproval ? { value: denyValue } : { cancelled: true });
+  const cancel = () => onRespond({ cancelled: true });
   return (
     <Dialog.Root
       open
@@ -546,11 +537,6 @@ function InteractionDialogContent({
               {request.message}
             </Dialog.Description>
           )}
-          {detail && (
-            <pre className="mt-3 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/40 p-3 font-mono text-xs">
-              {detail}
-            </pre>
-          )}
           <div className="mt-5 space-y-4">
             {url && (
               <Button
@@ -567,48 +553,22 @@ function InteractionDialogContent({
             <DialogActions>
               <Button
                 type="button"
-                variant={toolApproval ? "destructive" : "ghost"}
+                variant="ghost"
                 size="sm"
                 disabled={pending}
                 onClick={cancel}
               >
-                {toolApproval ? "Deny" : "Cancel"}
+                Cancel
               </Button>
-              {toolApproval ? (
-                <>
-                  {alwaysValue && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => onRespond({ value: alwaysValue })}
-                    >
-                      {typeof request.alwaysLabel === "string"
-                        ? request.alwaysLabel
-                        : "Allow always"}
-                    </Button>
-                  )}
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => onRespond({ value: approveValue })}
-                  >
-                    {pending && <PendingIcon />}Approve
-                  </Button>
-                </>
-              ) : (
-                request.method === "external" && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={pending || !url}
-                    onClick={() => onRespond({ confirmed: true })}
-                  >
-                    {pending && <PendingIcon />}Continue
-                  </Button>
-                )
+              {request.method === "external" && (
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={pending || !url}
+                  onClick={() => onRespond({ confirmed: true })}
+                >
+                  {pending && <PendingIcon />}Continue
+                </Button>
               )}
             </DialogActions>
           </div>
@@ -618,50 +578,10 @@ function InteractionDialogContent({
   );
 }
 
-function toolApprovalDetail(value: unknown): string | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const detail = value as Record<string, unknown>;
-  if (detail.type === "shell" && typeof detail.command === "string") {
-    return detail.command;
-  }
-  if (detail.type === "edit" && Array.isArray(detail.changes)) {
-    return (
-      detail.changes
-        .flatMap((value) => {
-          if (!value || typeof value !== "object") return [];
-          const change = value as Record<string, unknown>;
-          if (typeof change.filePath !== "string") return [];
-          const path =
-            typeof change.movePath === "string"
-              ? `${change.filePath} → ${change.movePath}`
-              : change.filePath;
-          return [
-            `${path}\n${
-              typeof change.patch === "string" && change.patch
-                ? change.patch
-                : "No change preview was provided for this file."
-            }`,
-          ];
-        })
-        .join("\n\n") || null
-    );
-  }
-  if (detail.type === "edit" && typeof detail.filePath === "string") {
-    return detail.filePath;
-  }
-  if (
-    detail.type === "write" &&
-    typeof detail.filePath === "string" &&
-    typeof detail.content === "string"
-  ) {
-    return `${detail.filePath}\n\n${detail.content}`;
-  }
-  if (detail.type === "json") return JSON.stringify(detail.value, null, 2);
-  return null;
-}
-
 function DialogActions({ children }: { children: React.ReactNode }) {
-  return <div className="flex justify-end gap-2 pt-2">{children}</div>;
+  return (
+    <div className="flex flex-wrap justify-end gap-2 pt-2">{children}</div>
+  );
 }
 
 function DialogError({ children }: { children: React.ReactNode }) {
@@ -673,7 +593,5 @@ function DialogError({ children }: { children: React.ReactNode }) {
 }
 
 function PendingIcon() {
-  return (
-    <Loader2 className="animate-spin motion-reduce:animate-none" />
-  );
+  return <Loader2 className="animate-spin motion-reduce:animate-none" />;
 }
