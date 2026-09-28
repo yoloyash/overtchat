@@ -170,11 +170,31 @@ Coding-agent executables and credentials belong on the Host Connector machine
 or selected SSH host. Configure connections on the web before using them on
 Android or iOS.
 
-The connector records its OpenCode helper processes beside its state journal
+Hermes uses its native ACP interface. Install and configure Hermes on the
+connector machine or SSH target, then verify `hermes acp --version` and
+`hermes acp --check`. If ACP dependencies or credentials are missing, follow
+the [Hermes ACP setup guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/acp/)
+and run `hermes model` on that host. Refresh agent discovery in OvertChat and
+select Hermes when creating a workspace session. Its existing configuration,
+memory, skills, tools and credentials remain on the execution host.
+
+Hermes sessions support streaming, images, tool approvals, model and permission
+selection, cancellation, queued messages, steering and context compression.
+Steer follows Paseo's generic ACP behavior: cancel the current turn, wait for
+cancellation to finish, then send the queued message as a normal prompt in the
+same session. It supports images when the selected model does. This interrupts
+current work; effects from tools that already ran are not undone.
+ACP session history can be reopened after connector restarts; Hermes CLI/gateway history
+is not included. Message forks, rewind, session renaming and
+reasoning controls are not exposed by this integration. Approval choices keep
+the scope Hermes advertises, including permanent versus session-only grants.
+The web app and connector must both support connector protocol 5 for Hermes.
+
+The connector records its OpenCode and Hermes helper processes beside its state journal
 in `<state-file>.processes/`. On restart it verifies process identities and
 cleans up recorded leftovers locally or through the original SSH alias.
 Unreachable SSH hosts retain their records and are retried before the next
-OpenCode launch on that host. Preserve this directory with the connector state;
+managed agent launch on that host. Preserve this directory with the connector state;
 servers left behind by older versions without records are not automatically
 reaped. Stopping a session aborts its work; other sessions sharing the same
 OpenCode server remain available.

@@ -182,14 +182,16 @@ export function AgentSessionHeader({
                   <ChartNoAxesColumnIncreasing className="size-3.5 text-muted-foreground" />
                   Session usage
                 </Menu.Item>
-                <Menu.Item
-                  disabled={readOnly}
-                  onClick={onRename}
-                  className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
-                >
-                  <Pencil className="size-3.5 text-muted-foreground" />
-                  Rename session
-                </Menu.Item>
+                {providerMetadata.capabilities.renameSession !== false && (
+                  <Menu.Item
+                    disabled={readOnly}
+                    onClick={onRename}
+                    className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                  >
+                    <Pencil className="size-3.5 text-muted-foreground" />
+                    Rename session
+                  </Menu.Item>
+                )}
                 <Menu.Item
                   disabled={readOnly || running || commandPending}
                   onClick={onCompact}

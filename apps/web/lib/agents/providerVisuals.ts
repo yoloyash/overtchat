@@ -4,6 +4,7 @@ import claudeIcon from "@/assets/agent-providers/claude-code.png";
 import ompIcon from "@/assets/agent-providers/omp.svg";
 import openCodeIcon from "@/assets/agent-providers/opencode.svg";
 import piIcon from "@/assets/agent-providers/pi.svg";
+import hermesIcon from "@/assets/agent-providers/hermes.png";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 
 export type AgentProviderVisual = {
@@ -20,4 +21,5 @@ export const AGENT_PROVIDER_VISUALS: Record<
   codex: { icon: codexIcon, darkSurface: true },
   opencode: { icon: openCodeIcon, darkSurface: true },
   claude: { icon: claudeIcon },
+  hermes: { icon: hermesIcon },
 };

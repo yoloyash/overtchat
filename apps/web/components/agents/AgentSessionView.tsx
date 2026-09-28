@@ -5,6 +5,7 @@ import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
 
 import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
 import { AgentQuestionCard } from "./AgentQuestionCard";
+import { AgentApprovalCard } from "./AgentApprovalCard";
 
 import {
   useCallback,
@@ -695,7 +696,15 @@ export function AgentSessionView({
 
           <AgentMessageList
             speech={speech}
-            question={isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
+            question={snapshot.pendingInteraction?.approvalKind === "tool" ? (
+              <AgentApprovalCard
+                key={snapshot.pendingInteraction.id}
+                request={snapshot.pendingInteraction}
+                pending={command.isPending || Boolean(readOnly) || exited}
+                error={dialogError}
+                onRespond={(response) => void run({ type: "interaction_response", id: snapshot.pendingInteraction!.id, ...response })}
+              />
+            ) : isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
               <AgentQuestionCard
                 key={snapshot.pendingInteraction.id}
                 request={snapshot.pendingInteraction}
@@ -891,7 +900,7 @@ export function AgentSessionView({
           />
           <AgentInteractionDialog
             providerLabel={providerLabel}
-            request={isAgentQuestion(snapshot.pendingInteraction) ? undefined : snapshot.pendingInteraction}
+            request={isAgentQuestion(snapshot.pendingInteraction) || snapshot.pendingInteraction?.approvalKind === "tool" ? undefined : snapshot.pendingInteraction}
             pending={command.isPending}
             error={dialogError}
             onRespond={(response) =>

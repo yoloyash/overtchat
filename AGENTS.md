@@ -2,8 +2,8 @@
 
 OvertChat is a self-hosted chat application for local and hosted LLMs, with
 web/mobile clients and optional coding-agent control. Users own the server and
-data; a host-native connector runs Codex, Claude Code, Pi, Oh My Pi, and
-OpenCode sessions locally or over SSH.
+data; a host-native connector runs Codex, Claude Code, Pi, Oh My Pi,
+OpenCode, and Hermes sessions locally or over SSH.
 
 ## Sources of truth
 

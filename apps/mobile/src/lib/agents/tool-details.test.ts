@@ -151,3 +151,23 @@ it("renders Codex network and filesystem permissions as labelled values", () => 
     "/repo",
   ]);
 });
+
+it("preserves all provider approval scopes and their action details", () => {
+  const choices = [
+    { value: "once:opaque", label: "Allow once", kind: "allow" },
+    { value: "session:opaque", label: "Allow for session", kind: "always" },
+    { value: "permanent:opaque", label: "Allow always", kind: "always" },
+    { value: "no:opaque", label: "Deny", kind: "deny" },
+  ];
+  const result = approvalDetails({
+    approvalKind: "tool",
+    approvalChoices: choices,
+    toolDetail: { type: "json", value: { command: "echo approved" } },
+  });
+  expect(result.choices).toEqual(choices);
+  expect(result.sections).toContainEqual({
+    label: "Command",
+    value: "echo approved",
+    kind: "code",
+  });
+});

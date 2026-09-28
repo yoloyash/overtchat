@@ -105,7 +105,7 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
 }
 
 function ModeControl(props: AgentComposerControlsProps) {
-  const [fullAccessOpen, setFullAccessOpen] = useState(false);
+  const [pendingMode, setPendingMode] = useState<AgentMode | null>(null);
   const selected =
     props.modes.find((mode) => mode.id === props.modeId) ?? props.modes[0];
   if (!selected) return null;
@@ -114,7 +114,7 @@ function ModeControl(props: AgentComposerControlsProps) {
   function select(mode: AgentMode) {
     if (mode.id === props.modeId) return;
     if (mode.dangerous) {
-      setFullAccessOpen(true);
+      setPendingMode(mode);
       return;
     }
     props.onSelectMode(mode.id);
@@ -189,7 +189,12 @@ function ModeControl(props: AgentComposerControlsProps) {
         </Menu.Portal>
       </Menu.Root>
 
-      <AlertDialog.Root open={fullAccessOpen} onOpenChange={setFullAccessOpen}>
+      <AlertDialog.Root
+        open={pendingMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMode(null);
+        }}
+      >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
             className={cn(
@@ -204,30 +209,25 @@ function ModeControl(props: AgentComposerControlsProps) {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Enable Full access?
+              Enable {pendingMode?.label}?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              {props.providerLabel} will be able to run commands and modify files without
-              sandbox restrictions or approval prompts.
+              {pendingMode?.description ||
+                `${props.providerLabel} will be able to run commands and modify files without sandbox restrictions or approval prompts.`}
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
-              <AlertDialog.Close
-                render={<Button variant="ghost" size="sm" />}
-              >
+              <AlertDialog.Close render={<Button variant="ghost" size="sm" />}>
                 Cancel
               </AlertDialog.Close>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => {
-                  setFullAccessOpen(false);
-                  const dangerousMode = props.modes.find(
-                    (mode) => mode.dangerous,
-                  );
-                  if (dangerousMode) props.onSelectMode(dangerousMode.id);
+                  if (pendingMode) props.onSelectMode(pendingMode.id);
+                  setPendingMode(null);
                 }}
               >
-                Enable Full access
+                Enable {pendingMode?.label}
               </Button>
             </div>
           </AlertDialog.Popup>

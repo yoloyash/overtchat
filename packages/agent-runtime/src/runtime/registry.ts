@@ -1177,6 +1177,7 @@ export class AgentSessionRuntime {
       this.rewinding ||
       this.abortPromise ||
       this.settlePromise ||
+      this.steerPromise ||
       this.queueDrainPromise
     ) {
       const label = agentProviderMetadata(this.provider).label;
@@ -1328,9 +1329,20 @@ export class AgentSessionRuntime {
       });
     };
     const operation = (
-      imageRefs.length > 0
-        ? this.resolveImages(imageRefs).then(submit)
-        : submit([])
+      // Like Paseo's ACP fallback, finish cancellation before starting a replacement.
+      this.adapter.steering === "restart"
+        ? this.abortActiveRun().then(() => {
+            if (this.stopped) throw new Error(`${metadata.label} exited.`);
+            return this.startPrompt(
+              message,
+              imageRefs,
+              submissionId,
+              onProviderInvoke,
+            );
+          })
+        : imageRefs.length > 0
+          ? this.resolveImages(imageRefs).then(submit)
+          : submit([])
     )
       .catch((error) => {
         const submission = this.pendingSubmissions.get(submissionId);
@@ -1354,7 +1366,10 @@ export class AgentSessionRuntime {
         throw error;
       });
     const settled = operation.finally(() => {
-      if (this.steerPromise === settled) this.steerPromise = null;
+      if (this.steerPromise === settled) {
+        this.steerPromise = null;
+        if (this.status === "idle") void this.drainQueuedMessage();
+      }
     });
     this.steerPromise = settled;
     return settled;
@@ -1635,6 +1650,7 @@ export class AgentSessionRuntime {
       this.rewinding ||
       this.abortPromise ||
       this.settlePromise ||
+      this.steerPromise ||
       this.queuedMessages.some(
         (message) =>
           message.status === "sending" || message.status === "uncertain",

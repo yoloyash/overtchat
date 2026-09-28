@@ -166,6 +166,33 @@ each remote login environment must provide `opencode`. These tests create and
 remove disposable workspaces, sessions, and process records. They run a native
 shell tool without making model requests and only terminate helpers they own.
 
+## Hermes ACP validation
+
+Hermes uses `@agentclientprotocol/sdk` 0.17.1, which retains the ACP model
+catalog and `session/set_model` API implemented by Hermes. Keep the SDK pinned;
+an SDK upgrade must verify those APIs against the supported Hermes release.
+Live validation has covered Hermes `0.21.5+2372.g678a476`.
+
+```sh
+npm run test -w packages/agent-runtime -- src/acp/client.test.ts
+RUN_HERMES_INTEGRATION=1 HERMES_SSH_ALIAS=home-server npm run test -w apps/connector -- src/hermes.integration.test.ts
+```
+
+Omit `HERMES_SSH_ALIAS` to test locally; `HERMES_COMMAND` overrides the executable.
+The opt-in test uses the host's configured model credentials for a small
+conversation, creates a disposable workspace, and checks discovery, streaming,
+cancel-and-restart steering during a harmless sleep tool, process cleanup and
+persisted history after restart. It selects Don't Ask only in its disposable
+session. It deletes only its own test session and workspace. Unit tests use the
+actual ACP SDK with an in-memory stdio agent to cover approvals, cancellation,
+history, tool projection and
+replacement-turn approval, image steering and cancellation ordering. Runtime
+queue tests also cover cancellation failures before a replacement is sent.
+Also run the bridge/runtime/connector tests and typechecks, connector build,
+web typecheck/lint/build and mobile typecheck/tests. In the running app, check
+Hermes discovery, model selection, tool approval choices, Stop and reopening
+the conversation over SSH.
+
 ## Library benchmark
 
 Run `npm run bench:library -w apps/web --` without competing builds or tests.
