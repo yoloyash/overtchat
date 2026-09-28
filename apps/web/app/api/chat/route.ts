@@ -422,6 +422,7 @@ async function handlePost(req: Request): Promise<Response> {
     cancelRegistry.register(streamId, controller);
     try {
       const commitResult = commitChatTurn({
+        modelConfigId,
         chatId,
         userId,
         projectId: resolvedProjectId,

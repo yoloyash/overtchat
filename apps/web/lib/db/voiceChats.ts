@@ -2,7 +2,7 @@ import "server-only";
 import { eq, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
-import { chats, messages, projects } from "@/lib/db/schema";
+import { chats, messages, modelConfigs, projects } from "@/lib/db/schema";
 import { extractSearchText } from "@/lib/search/extract";
 
 export type SyncVoiceHistoryResult =
@@ -15,12 +15,14 @@ export type SyncVoiceHistoryResult =
 
 export function syncVoiceHistory({
   chatId,
+  modelConfigId,
   userId,
   projectId,
   allowCreate,
   history,
 }: {
   chatId: string;
+  modelConfigId?: string;
   userId: string;
   projectId: string | null;
   allowCreate: boolean;
@@ -95,7 +97,10 @@ export function syncVoiceHistory({
     for (const message of history) {
       const existingMessage = existingMessages.get(message.id);
       if (existingMessage) {
-        if (JSON.stringify(existingMessage.parts) === JSON.stringify(message.parts)) {
+        if (
+          JSON.stringify(existingMessage.parts) ===
+          JSON.stringify(message.parts)
+        ) {
           continue;
         }
         tx.update(messages)
@@ -128,8 +133,18 @@ export function syncVoiceHistory({
     }
 
     if (changed) {
+      const availableModelId =
+        modelConfigId &&
+        tx
+          .select({ id: modelConfigs.id })
+          .from(modelConfigs)
+          .where(eq(modelConfigs.id, modelConfigId))
+          .get()?.id;
       tx.update(chats)
-        .set({ updatedAt: new Date() })
+        .set({
+          updatedAt: new Date(),
+          modelConfigId: availableModelId || undefined,
+        })
         .where(eq(chats.id, chatId))
         .run();
     }

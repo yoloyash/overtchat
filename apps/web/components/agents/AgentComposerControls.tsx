@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { Button } from "@/components/ui/button";
+import { ModelSearch } from "@/components/ModelSearch";
 import type {
   AgentCollaborationMode,
   AgentMode,
@@ -239,6 +240,14 @@ function ModeControl(props: AgentComposerControlsProps) {
 
 function ModelEffortControl(props: AgentComposerControlsProps) {
   const [panel, setPanel] = useState<"root" | "model" | "effort">("root");
+  const [search, setSearch] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const filteredModels = props.models.filter((model) =>
+    [model.label, model.id, model.provider]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.trim().toLowerCase()),
+  );
   const selectedModel = props.models.find(
     (model) =>
       model.provider === props.currentModel?.provider &&
@@ -247,9 +256,8 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   const modelLabel =
     selectedModel?.label ?? props.currentModel?.id ?? props.providerLabel;
   const effortLabel = props.thinkingLevel
-    ? (props.thinkingOptions.find(
-        (option) => option.id === props.thinkingLevel,
-      )?.label ?? thinkingLabel(props.thinkingLevel))
+    ? (props.thinkingOptions.find((option) => option.id === props.thinkingLevel)
+        ?.label ?? thinkingLabel(props.thinkingLevel))
     : null;
   const accessibleLabel = effortLabel
     ? `Model and effort: ${modelLabel}, ${effortLabel}`
@@ -269,10 +277,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
         data-testid="agent-model-effort-trigger"
       >
         <Loader2
-          className={cn(
-            "size-4 text-muted-foreground",
-            motionClasses.spinner,
-          )}
+          className={cn("size-4 text-muted-foreground", motionClasses.spinner)}
         />
         <span className="truncate">Loading model…</span>
       </Button>
@@ -282,7 +287,11 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   return (
     <Menu.Root
       onOpenChange={(open) => {
-        if (!open) setPanel("root");
+        if (!open) {
+          setPanel("root");
+          setSearch("");
+          setSearchExpanded(false);
+        }
         props.onMenuOpenChange?.(open);
       }}
     >
@@ -319,11 +328,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
             aria-label="Model and effort"
             className={cn(
               "z-50 max-h-[min(28rem,calc(100vh-2rem))] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-              panel === "model"
-                ? "w-80"
-                : panel === "effort"
-                  ? "w-56"
-                  : "w-72",
+              panel === "model" ? "w-80" : panel === "effort" ? "w-56" : "w-72",
               motionClasses.popup,
             )}
           >
@@ -364,9 +369,29 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
             )}
             {panel === "model" && (
               <>
-                <BackItem label="Model" onClick={() => setPanel("root")} />
-                <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-                {props.models.map((model) => {
+                <ModelSearch
+                  count={props.models.length}
+                  search={search}
+                  onSearch={setSearch}
+                  expanded={searchExpanded}
+                  onExpanded={setSearchExpanded}
+                  heading={
+                    <BackItem
+                      label="Model"
+                      onClick={() => {
+                        setPanel("root");
+                        setSearch("");
+                        setSearchExpanded(false);
+                      }}
+                    />
+                  }
+                />
+                {filteredModels.length === 0 && (
+                  <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                    No matching models.
+                  </div>
+                )}
+                {filteredModels.map((model) => {
                   const selected =
                     model.provider === props.currentModel?.provider &&
                     model.id === props.currentModel.id;
@@ -425,13 +450,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   );
 }
 
-function BackItem({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
+function BackItem({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Menu.Item
       closeOnClick={false}

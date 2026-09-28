@@ -7,13 +7,19 @@ import type {
   ModelReasoningControls,
   ModelReasoningLevel,
 } from "@overtchat/shared";
-import { Brain, Check, ChevronDown, Search } from "lucide-react";
+import { favoriteModelsFirst } from "@overtchat/shared";
+import { Brain, Check, ChevronDown, Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { ModelSearch } from "@/components/ModelSearch";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
 import type { PublicModelConfig } from "@/lib/model-config/schema";
 import { motionClasses } from "@/lib/motion";
+import {
+  useModelPreferences,
+  useSetModelFavorite,
+} from "@/lib/queries/modelPreferences";
+import { toast } from "@/components/ui/toast";
 
 interface Props {
   models: PublicModelConfig[] | null;
@@ -23,8 +29,6 @@ interface Props {
   reasoningLevel: ChatReasoningLevel;
   onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
 }
-
-const SEARCH_THRESHOLD = 7;
 
 function reasoningOptions(controls: ModelReasoningControls | undefined) {
   if (!controls) return [];
@@ -49,9 +53,12 @@ export function ModelPicker({
   onSelectReasoningLevel,
 }: Props) {
   const [search, setSearch] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const preferences = useModelPreferences();
+  const setFavorite = useSetModelFavorite();
+  const favoriteModelIds = preferences.data?.favoriteModelIds;
   const loading = models === null;
   const selected = models?.find((m) => m.id === selectedId) ?? null;
-  const showSearch = (models?.length ?? 0) > SEARCH_THRESHOLD;
   const effectiveReasoningLevel = reasoningControls
     ? reasoningLevel === "default"
       ? reasoningControls.defaultLevel
@@ -68,16 +75,23 @@ export function ModelPicker({
         : "No models configured";
 
   const filteredModels = useMemo(() => {
-    const list = models ?? [];
+    const list = favoriteModelsFirst(models ?? [], favoriteModelIds);
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter((m) =>
       [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
-  }, [models, search]);
+  }, [models, search, favoriteModelIds]);
 
   return (
-    <Menu.Root>
+    <Menu.Root
+      onOpenChange={(open) => {
+        if (!open) {
+          setSearch("");
+          setSearchExpanded(false);
+        }
+      }}
+    >
       <Menu.Trigger
         render={
           <Button
@@ -103,7 +117,9 @@ export function ModelPicker({
             <span aria-hidden="true" className="text-border">
               ·
             </span>
-            <span className="shrink-0 capitalize">{effectiveReasoningLevel}</span>
+            <span className="shrink-0 capitalize">
+              {effectiveReasoningLevel}
+            </span>
           </>
         )}
         <ChevronDown className="size-3.5 shrink-0" />
@@ -143,25 +159,13 @@ export function ModelPicker({
                 </div>
               </div>
             )}
-            <div className="px-2 py-1 text-xs font-medium text-muted-foreground">
-              Model
-            </div>
-            {showSearch && (
-              <div className="sticky top-0 z-10 bg-popover px-1 pb-1.5">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                    placeholder="Search models"
-                    aria-label="Search models"
-                    className="h-7 pl-7 text-xs md:text-xs"
-                  />
-                </div>
-              </div>
-            )}
+            <ModelSearch
+              count={models?.length ?? 0}
+              search={search}
+              onSearch={setSearch}
+              expanded={searchExpanded}
+              onExpanded={setSearchExpanded}
+            />
 
             <div>
               {filteredModels.length === 0 ? (
@@ -171,27 +175,74 @@ export function ModelPicker({
                 </div>
               ) : (
                 filteredModels.map((m) => (
-                  <Menu.Item
+                  <div
                     key={m.id}
-                    onClick={() => {
-                      onSelect(m.id);
-                      setSearch("");
-                    }}
                     className={cn(
-                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                      "group/model flex items-center rounded-md hover:bg-accent focus-within:bg-accent",
                       m.id === selectedId && "bg-accent text-accent-foreground",
                     )}
                   >
-                    <ModelBrandIcon
-                      iconId={m.modelIconId ?? m.providerIconId}
-                    />
-                    <span className="min-w-0 flex-1 truncate">{m.label}</span>
-                    <span className="flex size-4 shrink-0 items-center justify-center">
-                      {m.id === selectedId ? (
-                        <Check className="size-3.5 text-muted-foreground" />
-                      ) : null}
-                    </span>
-                  </Menu.Item>
+                    <Menu.Item
+                      onClick={() => onSelect(m.id)}
+                      className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                    >
+                      <ModelBrandIcon
+                        iconId={m.modelIconId ?? m.providerIconId}
+                      />
+                      <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                      <span className="flex size-4 shrink-0 items-center justify-center">
+                        {m.id === selectedId && (
+                          <Check className="size-3.5 text-muted-foreground" />
+                        )}
+                      </span>
+                    </Menu.Item>
+                    <Menu.Item
+                      closeOnClick={false}
+                      disabled={preferences.isPending || setFavorite.isPending}
+                      aria-label={
+                        favoriteModelIds?.includes(m.id)
+                          ? `Remove ${m.label} from favorites`
+                          : `Add ${m.label} to favorites`
+                      }
+                      title={
+                        favoriteModelIds?.includes(m.id)
+                          ? "Remove from favorites"
+                          : "Add to favorites"
+                      }
+                      onClick={() =>
+                        setFavorite.mutate(
+                          {
+                            modelConfigId: m.id,
+                            favorite: !favoriteModelIds?.includes(m.id),
+                          },
+                          {
+                            onError: (error) =>
+                              toast.error({ title: error.message }),
+                          },
+                        )
+                      }
+                      className={cn(
+                        "mr-0.5 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground data-[highlighted]:bg-accent data-[highlighted]:text-foreground data-[disabled]:cursor-wait",
+                        !favoriteModelIds?.includes(m.id) &&
+                          "[@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/model:opacity-100 group-focus-within/model:opacity-100 data-[highlighted]:opacity-100",
+                      )}
+                    >
+                      {setFavorite.isPending &&
+                      setFavorite.variables?.modelConfigId === m.id ? (
+                        <Loader2
+                          className={cn("size-3.5", motionClasses.spinner)}
+                        />
+                      ) : (
+                        <Star
+                          className={cn(
+                            "size-3.5",
+                            favoriteModelIds?.includes(m.id) &&
+                              "fill-current text-foreground",
+                          )}
+                        />
+                      )}
+                    </Menu.Item>
+                  </div>
                 ))
               )}
             </div>

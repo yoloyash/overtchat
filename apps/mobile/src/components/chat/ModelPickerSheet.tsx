@@ -12,6 +12,7 @@ import type {
   ModelReasoningLevel,
   PublicModelConfig,
 } from "@overtchat/shared";
+import { favoriteModelsFirst } from "@overtchat/shared";
 import {
   forwardRef,
   useCallback,
@@ -22,6 +23,8 @@ import {
 } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -31,6 +34,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { useTheme } from "@/lib/theme";
+import {
+  useModelPreferences,
+  useSetModelFavorite,
+} from "@/lib/queries/modelPreferences";
 
 type ModelPickerPanel = "models" | "thinking";
 
@@ -71,13 +78,17 @@ export const ModelPickerSheet = forwardRef<
   const { height } = useWindowDimensions();
   const modalRef = useRef<BottomSheetModal>(null);
   const [search, setSearch] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const preferences = useModelPreferences();
+  const setFavorite = useSetModelFavorite();
+  const favoriteModelIds = preferences.data?.favoriteModelIds;
   const [panel, setPanel] = useState<ModelPickerPanel>("models");
   const sheetMaxHeight = Math.min(640, Math.round(height * 0.86));
   const showSearch =
     panel === "models" &&
     !loading &&
     !error &&
-    models.length > SEARCH_THRESHOLD;
+    (models.length > SEARCH_THRESHOLD || searchExpanded);
   const searchTerm = search.trim();
   const selectedModel = models.find((model) => model.id === selectedId);
   const reasoningOptions = useMemo(
@@ -93,6 +104,7 @@ export const ModelPickerSheet = forwardRef<
   useImperativeHandle(ref, () => ({
     present(nextPanel = "models") {
       setSearch("");
+      setSearchExpanded(false);
       setPanel(nextPanel);
       modalRef.current?.present();
     },
@@ -102,12 +114,13 @@ export const ModelPickerSheet = forwardRef<
   }));
 
   const filteredModels = useMemo(() => {
-    if (!searchTerm) return models;
+    const sorted = favoriteModelsFirst(models, favoriteModelIds);
+    if (!searchTerm) return sorted;
     const q = searchTerm.toLowerCase();
-    return models.filter((m) =>
+    return sorted.filter((m) =>
       [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
-  }, [models, searchTerm]);
+  }, [models, searchTerm, favoriteModelIds]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -128,7 +141,9 @@ export const ModelPickerSheet = forwardRef<
       maxDynamicContentSize={sheetMaxHeight}
       backdropComponent={renderBackdrop}
       onDismiss={() => {
+        Keyboard.dismiss();
         setSearch("");
+        setSearchExpanded(false);
         setPanel("models");
       }}
       backgroundStyle={{
@@ -193,6 +208,34 @@ export const ModelPickerSheet = forwardRef<
               </Text>
             ) : null}
           </View>
+          {panel === "models" &&
+          !loading &&
+          !error &&
+          models.length > 0 &&
+          models.length <= SEARCH_THRESHOLD ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                searchExpanded ? "Close model search" : "Search models"
+              }
+              accessibilityState={{ expanded: searchExpanded }}
+              onPress={() => {
+                if (searchExpanded) Keyboard.dismiss();
+                setSearch("");
+                setSearchExpanded(!searchExpanded);
+              }}
+              style={({ pressed }) => [
+                styles.backButton,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Ionicons
+                name={searchExpanded ? "close" : "search-outline"}
+                size={21}
+                color={colors.mutedForeground}
+              />
+            </Pressable>
+          ) : null}
         </View>
 
         {panel === "models" && showThinking && effectiveReasoningLevel ? (
@@ -261,11 +304,17 @@ export const ModelPickerSheet = forwardRef<
               },
             ]}
           >
-            <Ionicons name="search-outline" size={17} color={colors.mutedForeground} />
+            <Ionicons
+              name="search-outline"
+              size={17}
+              color={colors.mutedForeground}
+            />
             <BottomSheetTextInput
               value={search}
               onChangeText={setSearch}
               placeholder="Search models"
+              accessibilityLabel="Search models"
+              autoFocus={searchExpanded}
               placeholderTextColor={colors.mutedForeground}
               autoCapitalize="none"
               autoCorrect={false}
@@ -338,6 +387,29 @@ export const ModelPickerSheet = forwardRef<
                 key={model.id}
                 model={model}
                 selected={model.id === selectedId}
+                isFavorite={favoriteModelIds?.includes(model.id) === true}
+                favoritePending={
+                  setFavorite.isPending &&
+                  setFavorite.variables?.modelConfigId === model.id
+                }
+                favoriteDisabled={
+                  preferences.isPending || setFavorite.isPending
+                }
+                onSetFavorite={() =>
+                  setFavorite.mutate(
+                    {
+                      modelConfigId: model.id,
+                      favorite: !favoriteModelIds?.includes(model.id),
+                    },
+                    {
+                      onError: (error) =>
+                        Alert.alert(
+                          "Couldn't save model favorites",
+                          error.message,
+                        ),
+                    },
+                  )
+                }
                 onPress={() => {
                   onSelect(model.id);
                   setSearch("");
@@ -429,58 +501,102 @@ export function reasoningLabel(level: ChatReasoningLevel): string {
 function ModelRow({
   model,
   selected,
+  isFavorite,
   onPress,
+  onSetFavorite,
+  favoriteDisabled,
+  favoritePending,
 }: {
   model: PublicModelConfig;
   selected: boolean;
+  isFavorite: boolean;
   onPress: () => void;
+  onSetFavorite: () => void;
+  favoriteDisabled: boolean;
+  favoritePending: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
-
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.row,
-        {
-          backgroundColor: selected || pressed ? colors.accent : "transparent",
-          borderRadius: radii.md,
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        borderRadius: radii.md,
+        backgroundColor: selected ? colors.accent : "transparent",
+      }}
     >
-      <ModelBrandIcon
-        iconId={model.modelIconId ?? model.providerIconId}
-        color={colors.mutedForeground}
-        size={17}
-        style={styles.rowIcon}
-      />
-      <View style={styles.rowText}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={model.label}
+        accessibilityState={{ selected }}
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.row,
+          {
+            flex: 1,
+            minWidth: 0,
+            borderRadius: radii.md,
+            backgroundColor: pressed ? colors.accent : "transparent",
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+      >
+        <ModelBrandIcon
+          iconId={model.modelIconId ?? model.providerIconId}
+          color={colors.mutedForeground}
+          size={17}
+          style={styles.rowIcon}
+        />
         <Text
           numberOfLines={1}
           ellipsizeMode="tail"
           style={[
             styles.label,
-            {
-              color: colors.popoverForeground,
-              fontFamily: fonts.sansSemiBold,
-            },
+            styles.rowText,
+            { color: colors.popoverForeground, fontFamily: fonts.sansSemiBold },
           ]}
         >
           {model.label}
         </Text>
-      </View>
-      {selected ? (
-        <Ionicons
-          name="checkmark"
-          size={18}
-          color={colors.primary}
-          style={styles.rowCheck}
-        />
-      ) : null}
-    </Pressable>
+        <View style={{ width: 18 }}>
+          {selected ? (
+            <Ionicons name="checkmark" size={18} color={colors.primary} />
+          ) : null}
+        </View>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={
+          isFavorite
+            ? `Remove ${model.label} from favorites`
+            : `Add ${model.label} to favorites`
+        }
+        accessibilityHint={
+          isFavorite
+            ? "Remove this model from your favorites"
+            : "Keep this model at the top of the list"
+        }
+        accessibilityState={{ disabled: favoriteDisabled }}
+        disabled={favoriteDisabled}
+        onPress={onSetFavorite}
+        style={({ pressed }) => [
+          styles.backButton,
+          { opacity: pressed || favoriteDisabled ? 0.6 : 1 },
+        ]}
+      >
+        {favoritePending ? (
+          <ActivityIndicator size="small" color={colors.mutedForeground} />
+        ) : (
+          <Ionicons
+            name={isFavorite ? "star" : "star-outline"}
+            size={18}
+            color={
+              isFavorite ? colors.popoverForeground : colors.mutedForeground
+            }
+          />
+        )}
+      </Pressable>
+    </View>
   );
 }
 
@@ -496,7 +612,8 @@ function StatusState({
   tone?: "muted" | "error";
 }) {
   const { colors, fonts } = useTheme();
-  const textColor = tone === "error" ? colors.destructive : colors.mutedForeground;
+  const textColor =
+    tone === "error" ? colors.destructive : colors.mutedForeground;
   return (
     <View style={styles.status}>
       {icon}

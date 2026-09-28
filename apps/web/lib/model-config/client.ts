@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  resolveChatModelId,
   REASONING_EFFORTS,
   type ModelCapabilities,
   type ModelReasoningLevel,
   type ReasoningEffort,
 } from "@overtchat/shared";
+import { useState } from "react";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import type {
   CatalogModelPricing,
@@ -28,8 +30,26 @@ export interface AvailableModel {
   catalogPricing?: CatalogModelPricing;
 }
 
-export function useSelectedModel(): [string, (id: string) => void] {
-  return useLocalStorage<string>(SELECTED_MODEL_KEY, "");
+export function useSelectedModel(
+  models: readonly { id: string }[] | null,
+  initialModelId?: string | null,
+): [string, (id: string) => void] {
+  const [rememberedId, remember] = useLocalStorage<string>(
+    SELECTED_MODEL_KEY,
+    "",
+  );
+  const [selection, setSelection] = useState<string | null>(
+    initialModelId ?? null,
+  );
+  const selectedId = resolveChatModelId(models ?? [], selection, rememberedId);
+  if (selectedId && selectedId !== selection) setSelection(selectedId);
+  return [
+    selectedId,
+    (id) => {
+      setSelection(id);
+      remember(id);
+    },
+  ];
 }
 
 export async function fetchModelsForProvider(
@@ -66,13 +86,9 @@ export async function fetchModelsForProvider(
       {
         id: record.id,
         ...(contextWindow === undefined ? {} : { contextWindow }),
-        ...(catalogContextWindow === undefined
-          ? {}
-          : { catalogContextWindow }),
+        ...(catalogContextWindow === undefined ? {} : { catalogContextWindow }),
         ...(capabilities === undefined ? {} : { capabilities }),
-        ...(catalogCapabilities === undefined
-          ? {}
-          : { catalogCapabilities }),
+        ...(catalogCapabilities === undefined ? {} : { catalogCapabilities }),
         ...(catalogPricing === undefined ? {} : { catalogPricing }),
       },
     ];
@@ -84,12 +100,7 @@ function readCatalogPricing(value: unknown): CatalogModelPricing | undefined {
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const pricingKeys = [
-    "input",
-    "output",
-    "cacheRead",
-    "cacheWrite",
-  ] as const;
+  const pricingKeys = ["input", "output", "cacheRead", "cacheWrite"] as const;
   if (
     typeof record.tiered !== "boolean" ||
     pricingKeys.some(

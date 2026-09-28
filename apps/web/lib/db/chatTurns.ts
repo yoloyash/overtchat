@@ -111,6 +111,7 @@ export async function getChatMessage(
 
 export function commitChatTurn({
   chatId,
+  modelConfigId,
   userId,
   projectId,
   streamId,
@@ -121,6 +122,7 @@ export function commitChatTurn({
   userMessage,
 }: {
   chatId: string;
+  modelConfigId?: string;
   userId: string;
   projectId: string | null;
   streamId: string;
@@ -236,7 +238,7 @@ export function commitChatTurn({
     }
 
     tx.update(chats)
-      .set({ activeStreamId: streamId, updatedAt: new Date() })
+      .set({ activeStreamId: streamId, modelConfigId, updatedAt: new Date() })
       .where(eq(chats.id, chatId))
       .run();
     return "committed";

@@ -12,8 +12,11 @@ vi.mock("expo-secure-store", () => ({
 
 let root: Root;
 let current: ReturnType<typeof useSelectedModel>;
-function Probe() {
-  current = useSelectedModel();
+function Probe({ initialModelId }: { initialModelId?: string }) {
+  current = useSelectedModel(
+    [{ id: "model-a" }, { id: "model-b" }, { id: "model-c" }],
+    initialModelId,
+  );
   return null;
 }
 
@@ -37,7 +40,7 @@ afterEach(async () => {
 
 it("persists a model selection and restores it when switching chats", async () => {
   await act(async () => root.render(<Probe key="first-chat" />));
-  expect(current[0]).toBeNull();
+  expect(current[0]).toBe("model-a");
 
   await act(async () => current[1]("model-b"));
   expect(current[0]).toBe("model-b");
@@ -50,5 +53,25 @@ it("persists a model selection and restores it when switching chats", async () =
 it("restores a previously stored selection on a fresh mount", async () => {
   storage.set("overtchat.selectedModel", "model-c");
   await act(async () => root.render(<Probe />));
+  expect(current[0]).toBe("model-c");
+});
+
+it("restores each saved chat's model independently of the device preference", async () => {
+  storage.set("overtchat.selectedModel", "model-c");
+  await act(async () =>
+    root.render(<Probe key="saved" initialModelId="model-a" />),
+  );
+  expect(current[0]).toBe("model-a");
+  await act(async () => current[1]("model-b"));
+  await act(async () =>
+    root.render(<Probe key="another" initialModelId="model-c" />),
+  );
+  expect(current[0]).toBe("model-c");
+  await act(async () => root.render(<Probe key="new" />));
+  expect(current[0]).toBe("model-b");
+});
+it("falls back when a saved chat model is no longer available", async () => {
+  storage.set("overtchat.selectedModel", "model-c");
+  await act(async () => root.render(<Probe initialModelId="removed" />));
   expect(current[0]).toBe("model-c");
 });

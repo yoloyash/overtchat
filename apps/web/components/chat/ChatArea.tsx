@@ -102,6 +102,7 @@ interface Props {
   chatKind?: ChatKind;
   initialMessages?: UIMessage[];
   initialMessageCursor?: string | null;
+  initialModelId?: string | null;
   isNew?: boolean;
   projectId?: string | null;
   initialQuery?: string;
@@ -112,6 +113,7 @@ export function ChatArea({
   chatKind,
   initialMessages,
   initialMessageCursor,
+  initialModelId,
   isNew,
   projectId,
   initialQuery,
@@ -123,15 +125,7 @@ export function ChatArea({
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : (modelsData ?? null);
-  const [selectedId, setSelectedId] = useSelectedModel();
-
-  useEffect(() => {
-    if (!models || models.length === 0) return;
-    if (!models.some((m) => m.id === selectedId)) {
-      setSelectedId(models[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models]);
+  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
   const selectedModel = models?.find((model) => model.id === selectedId);

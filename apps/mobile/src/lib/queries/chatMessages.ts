@@ -8,6 +8,7 @@ export type ChatMessagesResponse = {
   messages: UIMessage[];
   projectId: string | null;
   kind: ChatKind;
+  modelConfigId?: string | null;
 };
 
 export function useChatMessages(chatId: string | null) {
