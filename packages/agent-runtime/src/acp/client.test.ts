@@ -436,17 +436,214 @@ describe("ACP runtime using the official SDK over stdio", () => {
     expect(prompt).toHaveBeenCalledTimes(2);
   });
 
-  it("replaces cleared history after a native reset command", async () => {
+  it.each([
+    {
+      command: "/reset",
+      history: "",
+      feedback: "Conversation history cleared.",
+    },
+    {
+      command: "/RESET",
+      history: "",
+      feedback: "Conversation history cleared.",
+    },
+    {
+      command: "/COMPRESS",
+      history: "Compressed context",
+      feedback: "Context compressed.",
+    },
+    {
+      command: "/compress",
+      history: "Original context",
+      feedback: "Compression failed: model unavailable",
+    },
+  ])(
+    "refreshes $command history while retaining command feedback",
+    async ({ command, history, feedback }) => {
+      const load = vi.fn(async () => {
+        if (history)
+          await setup.update({
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text: history },
+          });
+        return {};
+      });
+      const setup = fixture({
+        loadSession: load,
+        prompt: async ({ prompt }) => {
+          await setup.update({
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text:
+                prompt[0].type === "text" && prompt[0].text === command
+                  ? feedback
+                  : "Normal answer",
+            },
+          });
+          return { stopReason: "end_turn" };
+        },
+      });
+      const client = setup.start();
+      await client.prompt("before command");
+      await idle(client);
+      await client.prompt(command, [], {
+        clientMessageId: "command-submission",
+      });
+      await idle(client);
+      expect(load).toHaveBeenCalledTimes(1);
+      const messages = (await client.getMessages()).messages;
+      expect(messages).toMatchObject([
+        ...(history ? [{ role: "user", content: [{ text: history }] }] : []),
+        {
+          role: "user",
+          content: [{ text: command }],
+          overtchatSubmissionId: "command-submission",
+        },
+        { role: "assistant", content: [{ text: feedback }] },
+      ]);
+      await client.prompt("next turn");
+      await idle(client);
+      const next = (await client.getMessages()).messages as { id: string }[];
+      expect(new Set(next.map((message) => message.id)).size).toBe(next.length);
+      expect(next.slice(0, messages.length)).toEqual(messages);
+    },
+  );
+
+  it.each([
+    {
+      command: "/model",
+      feedback: "Current model: test:model",
+      modelId: "test:model",
+    },
+    {
+      command: "/MODEL test:second",
+      feedback: "Model switched to: test:second",
+      modelId: "test:second",
+    },
+    {
+      command: "/model invalid",
+      feedback: "Error executing /model: unknown model",
+      modelId: "test:model",
+    },
+  ])(
+    "refreshes $command configuration without replacing its response or earlier turns",
+    async ({ command, feedback, modelId }) => {
+      const setup = fixture({
+        loadSession: async () => {
+          // Loading configuration also replays history; it must not duplicate or
+          // replace the live transcript (which includes local command feedback).
+          await setup.update({
+            sessionUpdate: "user_message_chunk",
+            content: { type: "text", text: "Replayed history" },
+          });
+          return {
+            models: {
+              currentModelId: modelId,
+              availableModels: [{ modelId, name: modelId }],
+            },
+          };
+        },
+        prompt: async () => {
+          await setup.update({
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: feedback },
+          });
+          return { stopReason: "end_turn" };
+        },
+      });
+      const client = setup.start();
+      await client.prompt("earlier turn");
+      await idle(client);
+      const before = (await client.getMessages()).messages;
+      await client.prompt(command);
+      await idle(client);
+      const after = (await client.getMessages()).messages;
+      expect(after.slice(0, before.length)).toEqual(before);
+      expect(after.slice(before.length)).toMatchObject([
+        { role: "user", content: [{ text: command }] },
+        { role: "assistant", content: [{ text: feedback }] },
+      ]);
+      expect(await client.getState()).toMatchObject({ model: { id: modelId } });
+    },
+  );
+
+  it("does not reload slash-prefixed image prompts", async () => {
     const load = vi.fn(async () => ({}));
     const setup = fixture({ loadSession: load });
     const client = setup.start();
-    await client.prompt("before reset");
+    await client.prompt("/reset", [
+      {
+        data: "aW1hZ2U=",
+        mediaType: "image/png",
+        uploadId: "image-1",
+        filename: "test.png",
+      },
+    ]);
     await idle(client);
-    expect((await client.getMessages()).messages.length).toBeGreaterThan(0);
-    await client.prompt("/reset");
-    await idle(client);
-    expect(load).toHaveBeenCalledTimes(1);
-    expect((await client.getMessages()).messages).toEqual([]);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("reconciles a reset and its feedback into the runtime snapshot", async () => {
+    const setup = fixture({
+      loadSession: async () => {
+        await setup.update({
+          sessionUpdate: "available_commands_update",
+          availableCommands: [],
+        });
+        return {};
+      },
+      prompt: async ({ prompt }) => {
+        const reset = prompt[0].type === "text" && prompt[0].text === "/RESET";
+        await setup.update({
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: reset ? "Conversation history cleared." : "Normal answer",
+          },
+        });
+        return { stopReason: "end_turn" };
+      },
+    });
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    try {
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider: "hermes",
+        target: { transport: "local" },
+        executable: "hermes",
+        cwd: "/workspace",
+        sessionId: "test",
+        providerSessionId: "session-1",
+        providerSessionPath: "session-1",
+        launchConfig: {},
+      });
+      await runtime.command(
+        { type: "prompt", message: "Submitted before reset" },
+        "old-submission",
+      );
+      await runtime.command(
+        { type: "queue", message: "/RESET" },
+        "reset-submission",
+      );
+      await vi.waitFor(() => {
+        expect(runtime.snapshot().status).toBe("idle");
+        expect(runtime.snapshot().messages).toMatchObject([
+          {
+            role: "user",
+            content: "/RESET",
+            overtchatSubmissionId: "reset-submission",
+          },
+          {
+            role: "assistant",
+            content: [{ text: "Conversation history cleared." }],
+          },
+        ]);
+      });
+    } finally {
+      await registry.stopAll();
+    }
   });
   it("launches on the configured host, streams a turn and preserves the submission identity", async () => {
     const setup = fixture();

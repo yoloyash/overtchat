@@ -2140,15 +2140,16 @@ test("shows durable turn activity without changing completed tool status", async
     toolDetail: { type: "shell", command: "npm test" },
   };
   await page.reload();
-  const approvalDialog = page.getByRole("dialog", {
+  const approvalCard = page.getByRole("region", {
     name: "Run dependency checks?",
   });
-  await expect(approvalDialog).toBeVisible();
+  await expect(approvalCard).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(questionCard).toHaveCount(0);
   await expect(
-    approvalDialog.getByText("npm test", { exact: true }),
+    approvalCard.getByText("npm test", { exact: true }),
   ).toBeVisible();
-  await approvalDialog
+  await approvalCard
     .getByRole("button", { name: "Allow for session", exact: true })
     .click();
   await expect

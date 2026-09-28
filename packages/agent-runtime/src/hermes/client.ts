@@ -8,7 +8,7 @@ export const HERMES_ACP: AcpProvider = {
   args: ["acp"],
   compactCommand: "/compress",
   dangerousModes: ["accept_edits", "dont_ask"],
-  reloadCommands: ["reset", "compress", "model"],
+  reloadCommands: { reset: "history", compress: "history", model: "config" },
   historyUserText: (text) => {
     const open =
       "[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]";

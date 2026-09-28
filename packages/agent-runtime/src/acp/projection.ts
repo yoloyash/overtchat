@@ -140,6 +140,23 @@ export class AcpProjection {
     return changed;
   }
 
+  /** Append completed local feedback omitted from native history. Allocate IDs
+   * after replay so subsequent turns cannot collide with the retained rows. */
+  appendTurn(messages: readonly AcpMessage[]): void {
+    this.endTurn();
+    this.turn += 1;
+    for (const message of messages) {
+      const appended = this.create(
+        message.role,
+        `${message.role}-${++this.sequence}`,
+      );
+      Object.assign(appended, structuredClone(message), {
+        id: appended.id,
+        overtchatTurnId: appended.overtchatTurnId,
+      });
+    }
+  }
+
   update(update: SessionUpdate): AcpMessage[] {
     switch (update.sessionUpdate) {
       case "user_message_chunk":

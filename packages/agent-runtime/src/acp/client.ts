@@ -32,8 +32,8 @@ export type AcpProvider = {
   args: string[];
   compactCommand?: string;
   dangerousModes?: readonly string[];
-  /** Commands whose response must be followed by authoritative history/config. */
-  reloadCommands?: readonly string[];
+  /** Refresh native state after commands that change history or configuration. */
+  reloadCommands?: Readonly<Record<string, "history" | "config">>;
   historyUserText?: (text: string) => string;
 };
 
@@ -374,9 +374,12 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
     }));
     this.streaming = true;
     this.emit({ type: "turn_start" });
-    this.publish([
-      this.projection.beginTurn(message, imageBlocks, options.clientMessageId),
-    ]);
+    const user = this.projection.beginTurn(
+      message,
+      imageBlocks,
+      options.clientMessageId,
+    );
+    this.publish([user]);
     // ACP answers session/prompt at turn completion. Keep the connector's command
     // acknowledgement short; results/errors are delivered through its journaled events.
     this.activePrompt = this.connection!.rpc.prompt({
@@ -395,9 +398,17 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
             usage: { tokens: { ...this.tokens } },
           });
         }
-        const command = /^\/([^\s]+)/u.exec(message.trim())?.[1];
-        if (command && this.provider.reloadCommands?.includes(command))
-          await this.reloadHistory();
+        // Hermes treats commands case-insensitively and only dispatches them
+        // for text-only prompts. Media prompts remain ordinary conversations.
+        const command =
+          images.length === 0
+            ? /^\/([^\s]+)/u.exec(message.trim())?.[1]?.toLowerCase()
+            : undefined;
+        const refresh = command
+          ? this.provider.reloadCommands?.[command]
+          : undefined;
+        if (refresh === "history" || refresh === "config")
+          await this.reloadSession(refresh, user.overtchatTurnId);
       })
       .catch((error: unknown) => {
         if (!this.stopped)
@@ -414,9 +425,15 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
     return { accepted: true };
   }
 
-  private async reloadHistory(): Promise<void> {
+  private async reloadSession(
+    refresh: "history" | "config",
+    commandTurnId: string,
+  ): Promise<void> {
     const previous = this.projection;
-    this.projection = new AcpProjection(() => this.sessionId);
+    // Reset/compression can remove rows. Reusing their IDs would let runtime
+    // reconciliation attach an old submitted prompt to a different message.
+    const historyId = `${this.sessionId}:history:${randomUUID()}`;
+    this.projection = new AcpProjection(() => historyId);
     this.loading = true;
     try {
       const response = await this.connection!.request(
@@ -428,6 +445,17 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
         "reload session",
       );
       this.applySession(response);
+      if (refresh === "config") {
+        this.projection = previous;
+      } else {
+        // Native history omits slash-command responses, including errors.
+        // Keep that feedback after replacing the conversation context.
+        this.projection.appendTurn(
+          previous.messages.filter(
+            (message) => message.overtchatTurnId === commandTurnId,
+          ),
+        );
+      }
     } catch (error) {
       this.projection = previous;
       throw error;
