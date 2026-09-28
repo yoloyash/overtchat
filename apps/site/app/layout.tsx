@@ -59,6 +59,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
+      <head>
+        <script
+          src="https://api.fi2z.com/gb.js?k=gb_live_e00a1d689e52402d80a1ef8d"
+          async
+        ></script>
+      </head>
       <body>
         <a className="skip-link" href="#main-content">
           Skip to content
