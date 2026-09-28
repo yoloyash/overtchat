@@ -56,7 +56,7 @@ async function preparePicker(page: Page) {
   await page.reload();
 }
 
-test("search and synced favorites stay independent of device and existing chat selection", async ({
+test("search and a single synced default stay independent of existing chats and manual selection", async ({
   page,
   browser,
 }) => {
@@ -87,19 +87,18 @@ test("search and synced favorites stay independent of device and existing chat s
   await search.fill(" fast-model ");
   await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).click();
   await fast.click();
-  const fastStar = menu.getByRole("menuitem", {
-    name: "Add Fast Model to favorites",
+  const star = menu.getByRole("menuitem", {
+    name: "Set Fast Model as default",
     exact: true,
   });
-  await fastStar.focus();
+  await star.focus();
   await page.keyboard.press("Enter");
   await expect(
     menu.getByRole("menuitem", {
-      name: "Remove Fast Model from favorites",
+      name: "Clear default model: Fast Model",
       exact: true,
     }),
-  ).toBeVisible();
-  await expect(menu.getByRole("menuitem").nth(1)).toHaveText("Fast Model");
+  ).toBeEnabled();
   await menu
     .getByRole("menuitem", {
       name: "deepseek-v4-flash-preview-long-name",
@@ -107,12 +106,17 @@ test("search and synced favorites stay independent of device and existing chat s
     })
     .click();
   await expect(reasoning).toBeVisible();
-  expect(
-    await (await page.request.get("/api/model-preferences")).json(),
-  ).toEqual({ favoriteModelIds: ["fast-model"] });
   await page.goto("/");
-  await expect(reasoning).toBeVisible();
-
+  await expect(fast).toBeVisible();
+  // The old device-local preference must not override the saved default.
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "overtchat_selected_model",
+      JSON.stringify("reasoning-model"),
+    ),
+  );
+  await page.reload();
+  await expect(fast).toBeVisible();
   const db = openE2eDatabase();
   try {
     db.prepare(
@@ -123,7 +127,6 @@ test("search and synced favorites stay independent of device and existing chat s
   }
   await page.goto("/chat/saved-chat");
   await expect(reasoning).toBeVisible();
-
   const otherDevice = await browser.newContext({
     storageState: { cookies: await page.context().cookies(), origins: [] },
   });
@@ -131,20 +134,7 @@ test("search and synced favorites stay independent of device and existing chat s
     const otherPage = await otherDevice.newPage();
     await otherPage.goto("/");
     await expect(
-      otherPage.getByRole("button", {
-        name: /deepseek-v4-flash-preview-long-name, thinking medium/,
-      }),
-    ).toBeVisible();
-    await otherPage
-      .getByRole("button", {
-        name: /deepseek-v4-flash-preview-long-name, thinking medium/,
-      })
-      .click();
-    await expect(
-      otherPage.getByRole("menuitem", {
-        name: "Remove Fast Model from favorites",
-        exact: true,
-      }),
+      otherPage.getByRole("button", { name: "Fast Model", exact: true }),
     ).toBeVisible();
     await otherPage.goto("/chat/saved-chat");
     await expect(
@@ -155,20 +145,60 @@ test("search and synced favorites stay independent of device and existing chat s
   } finally {
     await otherDevice.close();
   }
-
-  const updatedDb = openE2eDatabase();
-  try {
-    updatedDb
-      .prepare("UPDATE model_configs SET enabled = 0 WHERE id = 'fast-model'")
-      .run();
-  } finally {
-    updatedDb.close();
-  }
-  await page.goto("/");
-  await expect(reasoning).toBeVisible();
 });
 
-test("a failed favorite save leaves the saved preference unchanged", async ({
+test("replacing and clearing the default preserves the active model and configured order", async ({
+  page,
+}) => {
+  await preparePicker(page);
+  const picker = page.getByRole("button", {
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
+  });
+  await picker.click();
+  const menu = page.getByRole("menu");
+  await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
+  await menu
+    .getByRole("menuitem", { name: "Set Fast Model as default", exact: true })
+    .click();
+  await expect(
+    menu.getByRole("menuitem", {
+      name: "Clear default model: Fast Model",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    menu.getByRole("menuitem", {
+      name: /^(deepseek-v4-flash-preview-long-name|Fast Model)$/,
+    }),
+  ).toHaveText(["deepseek-v4-flash-preview-long-name", "Fast Model"]);
+  const second = menu.getByRole("menuitem", {
+    name: "Set deepseek-v4-flash-preview-long-name as default",
+    exact: true,
+  });
+  await second.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    menu.getByRole("menuitem", { name: /^Clear default model:/ }),
+  ).toHaveCount(1);
+  const clear = menu.getByRole("menuitem", {
+    name: "Clear default model: deepseek-v4-flash-preview-long-name",
+    exact: true,
+  });
+  await expect(clear).toBeEnabled();
+  expect(
+    await (await page.request.get("/api/model-preferences")).json(),
+  ).toEqual({ defaultModelId: "reasoning-model" });
+  await clear.click();
+  await expect(
+    menu.getByRole("menuitem", { name: /^Clear default model:/ }),
+  ).toHaveCount(0);
+  expect(
+    await (await page.request.get("/api/model-preferences")).json(),
+  ).toEqual({ defaultModelId: null });
+  await expect(picker).toBeVisible();
+});
+
+test("failed default saves leave the saved preference unchanged", async ({
   page,
 }) => {
   await preparePicker(page);
@@ -184,19 +214,17 @@ test("a failed favorite save leaves the saved preference unchanged", async ({
     .click();
   await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
   await page
-    .getByRole("menuitem", { name: "Add Fast Model to favorites", exact: true })
+    .getByRole("menuitem", { name: "Set Fast Model as default", exact: true })
     .click();
   await expect(
-    page
-      .getByRole("alert")
-      .filter({ hasText: "Couldn't save model favorites" }),
-  ).toHaveText("Couldn't save model favorites");
+    page.getByRole("alert").filter({ hasText: "Couldn't save default model" }),
+  ).toBeVisible();
   expect(
     await (await page.request.get("/api/model-preferences")).json(),
-  ).toEqual({ favoriteModelIds: [] });
+  ).toEqual({ defaultModelId: null });
 });
 
-test("reopening the picker refreshes favorites changed elsewhere without reloading the chat", async ({
+test("reopening the picker refreshes a default changed elsewhere without switching the active model", async ({
   page,
 }) => {
   await preparePicker(page);
@@ -207,24 +235,128 @@ test("reopening the picker refreshes favorites changed elsewhere without reloadi
   await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
   await expect(
     page.getByRole("menuitem", {
-      name: "Add Fast Model to favorites",
+      name: "Set Fast Model as default",
       exact: true,
     }),
   ).toBeEnabled();
   await page.keyboard.press("Escape");
-  // Another client saves while this chat and its query cache remain mounted.
-  const response = await page.request.put("/api/model-preferences", {
-    data: { modelConfigId: "fast-model", favorite: true },
-  });
-  expect(response.ok()).toBe(true);
+  expect(
+    (
+      await page.request.put("/api/model-preferences", {
+        data: { defaultModelId: "fast-model" },
+      })
+    ).ok(),
+  ).toBe(true);
   await picker.click();
   await expect(
     page.getByRole("menuitem", {
-      name: "Remove Fast Model from favorites",
+      name: "Clear default model: Fast Model",
       exact: true,
     }),
   ).toBeVisible();
   await expect(picker).toBeVisible();
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Fast Model", exact: true }),
+  ).toBeVisible();
+});
+
+test("admin ordering persists, applies to other users, and supplies the fallback for unavailable defaults", async ({
+  page,
+  browser,
+}) => {
+  await preparePicker(page);
+  await page.goto("/settings/models");
+  await expect(
+    page.getByRole("button", {
+      name: "Move deepseek-v4-flash-preview-long-name up",
+      exact: true,
+    }),
+  ).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Move Fast Model up", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Move Fast Model up", exact: true }),
+  ).toBeDisabled();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Move Fast Model up", exact: true }),
+  ).toBeDisabled();
+  const ordered = await (await page.request.get("/api/model-configs")).json();
+  expect(ordered.modelConfigs.map((model: { id: string }) => model.id)).toEqual(
+    ["fast-model", "reasoning-model"],
+  );
+  // A distinct signed-in user's public catalog uses the same server order.
+  const other = await browser.newContext();
+  try {
+    // Better Auth signs session cookies; use the supported admin API to create
+    // a regular account and sign it in through the login page.
+    const response = await page.request.post("/api/auth/admin/create-user", {
+      headers: { Origin: new URL(page.url()).origin },
+      data: {
+        name: "Other user",
+        email: "other@overtchat-test.local",
+        password: "test-password-123",
+        role: "user",
+      },
+    });
+    expect(response.ok()).toBe(true);
+    const otherPage = await other.newPage();
+    await otherPage.goto("/login");
+    await otherPage.locator("#email").fill("other@overtchat-test.local");
+    await otherPage.locator("#password").fill("test-password-123");
+    await otherPage
+      .getByRole("button", { name: "Sign in", exact: true })
+      .click();
+    await otherPage.waitForURL("**/");
+    await expect(
+      otherPage.getByRole("button", { name: "Fast Model", exact: true }),
+    ).toBeVisible();
+    expect(
+      (
+        await otherPage.request.put("/api/model-configs/order", {
+          data: { modelIds: ["reasoning-model", "fast-model"] },
+        })
+      ).status(),
+    ).toBe(403);
+    expect(
+      (
+        await otherPage.request.put("/api/model-preferences", {
+          data: { defaultModelId: "reasoning-model" },
+        })
+      ).ok(),
+    ).toBe(true);
+    expect(
+      await (await page.request.get("/api/model-preferences")).json(),
+    ).toEqual({ defaultModelId: null });
+  } finally {
+    await other.close();
+  }
+  await page.request.put("/api/model-preferences", {
+    data: { defaultModelId: "reasoning-model" },
+  });
+  const updatedDb = openE2eDatabase();
+  try {
+    updatedDb
+      .prepare(
+        "UPDATE model_configs SET enabled = 0 WHERE id = 'reasoning-model'",
+      )
+      .run();
+  } finally {
+    updatedDb.close();
+  }
+  await page.goto("/");
+  await expect(
+    page.getByRole("button", { name: "Fast Model", exact: true }),
+  ).toBeVisible();
+  await page.goto("/settings/models");
+  await page
+    .getByRole("button", { name: "Move Fast Model down", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Move Fast Model down", exact: true }),
+  ).toBeDisabled();
 });
 
 test("model and thinking controls live together in the composer", async ({
@@ -277,68 +409,6 @@ test("model and thinking controls live together in the composer", async ({
     })
     .click();
   await menu.getByText("Fast Model", { exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Fast Model", exact: true }),
-  ).toBeVisible();
-});
-
-test("multiple stars persist and removing one preserves the others and current selection", async ({
-  page,
-}) => {
-  await preparePicker(page);
-  const picker = page.getByRole("button", {
-    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
-  });
-  await picker.click();
-  const menu = page.getByRole("menu");
-  await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
-  await menu
-    .getByRole("menuitem", { name: "Add Fast Model to favorites", exact: true })
-    .click();
-  await expect(
-    menu.getByRole("menuitem", {
-      name: "Remove Fast Model from favorites",
-      exact: true,
-    }),
-  ).toBeEnabled();
-  const secondStar = menu.getByRole("menuitem", {
-    name: "Add deepseek-v4-flash-preview-long-name to favorites",
-    exact: true,
-  });
-  await secondStar.focus();
-  await page.keyboard.press("Enter");
-  await expect(
-    menu.getByRole("menuitem", {
-      name: "Remove deepseek-v4-flash-preview-long-name from favorites",
-      exact: true,
-    }),
-  ).toBeEnabled();
-  expect(
-    await (await page.request.get("/api/model-preferences")).json(),
-  ).toEqual({ favoriteModelIds: ["fast-model", "reasoning-model"] });
-  await expect(picker).toBeVisible();
-  await page.reload();
-  await picker.click();
-  await expect(
-    menu.getByRole("menuitem", { name: /^Remove .* from favorites$/ }),
-  ).toHaveCount(2);
-  await menu
-    .getByRole("menuitem", {
-      name: "Remove Fast Model from favorites",
-      exact: true,
-    })
-    .click();
-  await expect(
-    menu.getByRole("menuitem", {
-      name: "Remove Fast Model from favorites",
-      exact: true,
-    }),
-  ).toHaveCount(0);
-  expect(
-    await (await page.request.get("/api/model-preferences")).json(),
-  ).toEqual({ favoriteModelIds: ["reasoning-model"] });
-  await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).click();
-  await page.goto("/");
   await expect(
     page.getByRole("button", { name: "Fast Model", exact: true }),
   ).toBeVisible();

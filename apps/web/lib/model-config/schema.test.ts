@@ -119,7 +119,6 @@ describe("provider configuration", () => {
       providerOptions: null,
       toolCallingEnabled: true,
       enabled: true,
-      sortOrder: 0,
     });
   });
 

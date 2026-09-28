@@ -2,7 +2,7 @@ import React, { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useSelectedModel } from "./modelPreferences";
+import { useSelectedModel } from "./client";
 
 const preferences = vi.hoisted(() => ({
   data: { defaultModelId: "model-b" as string | null },

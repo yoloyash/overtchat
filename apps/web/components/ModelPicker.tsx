@@ -7,7 +7,6 @@ import type {
   ModelReasoningControls,
   ModelReasoningLevel,
 } from "@overtchat/shared";
-import { favoriteModelsFirst } from "@overtchat/shared";
 import { Brain, Check, ChevronDown, Loader2, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ModelSearch } from "@/components/ModelSearch";
@@ -17,7 +16,7 @@ import type { PublicModelConfig } from "@/lib/model-config/schema";
 import { motionClasses } from "@/lib/motion";
 import {
   useModelPreferences,
-  useSetModelFavorite,
+  useSetDefaultModel,
 } from "@/lib/queries/modelPreferences";
 import { toast } from "@/components/ui/toast";
 
@@ -55,8 +54,8 @@ export function ModelPicker({
   const [search, setSearch] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
   const preferences = useModelPreferences();
-  const setFavorite = useSetModelFavorite();
-  const favoriteModelIds = preferences.data?.favoriteModelIds;
+  const setDefault = useSetDefaultModel();
+  const defaultModelId = preferences.data?.defaultModelId;
   const loading = models === null;
   const selected = models?.find((m) => m.id === selectedId) ?? null;
   const effectiveReasoningLevel = reasoningControls
@@ -75,13 +74,13 @@ export function ModelPicker({
         : "No models configured";
 
   const filteredModels = useMemo(() => {
-    const list = favoriteModelsFirst(models ?? [], favoriteModelIds);
+    const list = models ?? [];
     const q = search.trim().toLowerCase();
     if (!q) return list;
     return list.filter((m) =>
       [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
-  }, [models, search, favoriteModelIds]);
+  }, [models, search]);
 
   return (
     <Menu.Root
@@ -200,22 +199,22 @@ export function ModelPicker({
                     </Menu.Item>
                     <Menu.Item
                       closeOnClick={false}
-                      disabled={preferences.isPending || setFavorite.isPending}
+                      disabled={!preferences.data || setDefault.isPending}
                       aria-label={
-                        favoriteModelIds?.includes(m.id)
-                          ? `Remove ${m.label} from favorites`
-                          : `Add ${m.label} to favorites`
+                        defaultModelId === m.id
+                          ? `Clear default model: ${m.label}`
+                          : `Set ${m.label} as default`
                       }
                       title={
-                        favoriteModelIds?.includes(m.id)
-                          ? "Remove from favorites"
-                          : "Add to favorites"
+                        defaultModelId === m.id
+                          ? "Clear default for new chats"
+                          : "Set as default for new chats"
                       }
                       onClick={() =>
-                        setFavorite.mutate(
+                        setDefault.mutate(
                           {
-                            modelConfigId: m.id,
-                            favorite: !favoriteModelIds?.includes(m.id),
+                            defaultModelId:
+                              defaultModelId === m.id ? null : m.id,
                           },
                           {
                             onError: (error) =>
@@ -225,12 +224,13 @@ export function ModelPicker({
                       }
                       className={cn(
                         "mr-0.5 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground data-[highlighted]:bg-accent data-[highlighted]:text-foreground data-[disabled]:cursor-wait",
-                        !favoriteModelIds?.includes(m.id) &&
+                        defaultModelId !== m.id &&
                           "[@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/model:opacity-100 group-focus-within/model:opacity-100 data-[highlighted]:opacity-100",
                       )}
                     >
-                      {setFavorite.isPending &&
-                      setFavorite.variables?.modelConfigId === m.id ? (
+                      {setDefault.isPending &&
+                      (setDefault.variables?.defaultModelId ??
+                        defaultModelId) === m.id ? (
                         <Loader2
                           className={cn("size-3.5", motionClasses.spinner)}
                         />
@@ -238,7 +238,7 @@ export function ModelPicker({
                         <Star
                           className={cn(
                             "size-3.5",
-                            favoriteModelIds?.includes(m.id) &&
+                            defaultModelId === m.id &&
                               "fill-current text-foreground",
                           )}
                         />

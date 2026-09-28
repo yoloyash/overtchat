@@ -73,6 +73,45 @@ afterAll(() => {
   fs.rmSync(databasePath, { force: true });
 });
 
+it("saves configured order atomically and rejects duplicate, missing, or unknown IDs", async () => {
+  expect(
+    modelConfigDb.reorderModelConfigs(["hidden-model", "chat-model"]),
+  ).toBe(true);
+  expect(
+    (await modelConfigDb.listModelConfigs()).map((model) => model.id),
+  ).toEqual(["hidden-model", "chat-model"]);
+  for (const ids of [
+    ["chat-model"],
+    ["chat-model", "chat-model"],
+    ["chat-model", "missing"],
+  ]) {
+    expect(modelConfigDb.reorderModelConfigs(ids)).toBe(false);
+    expect(
+      (await modelConfigDb.listModelConfigs()).map((model) => model.id),
+    ).toEqual(["hidden-model", "chat-model"]);
+  }
+});
+
+it("appends new models and preserves order when an old editor submits a configuration", async () => {
+  modelConfigDb.reorderModelConfigs(["hidden-model", "chat-model"]);
+  const input = ModelConfigSchema.parse({
+    label: "A new model",
+    providerId: "custom",
+    apiFormat: "openai-chat",
+    baseUrl: "https://example.test/v1",
+    model: "new",
+    sortOrder: 0,
+  });
+  const created = await modelConfigDb.createModelConfig(input);
+  expect(
+    (await modelConfigDb.listModelConfigs()).map((model) => model.id),
+  ).toEqual(["hidden-model", "chat-model", created.id]);
+  await modelConfigDb.updateModelConfig("chat-model", input);
+  expect(
+    (await modelConfigDb.listModelConfigs()).map((model) => model.id),
+  ).toEqual(["hidden-model", "chat-model", created.id]);
+});
+
 describe("task model assignment", () => {
   it("assigns a model that is hidden from chat", () => {
     const result = modelConfigDb.setTaskModelConfig("hidden-model");

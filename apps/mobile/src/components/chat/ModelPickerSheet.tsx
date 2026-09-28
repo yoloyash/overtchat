@@ -12,7 +12,6 @@ import type {
   ModelReasoningLevel,
   PublicModelConfig,
 } from "@overtchat/shared";
-import { favoriteModelsFirst } from "@overtchat/shared";
 import {
   forwardRef,
   useCallback,
@@ -36,7 +35,7 @@ import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { useTheme } from "@/lib/theme";
 import {
   useModelPreferences,
-  useSetModelFavorite,
+  useSetDefaultModel,
 } from "@/lib/queries/modelPreferences";
 
 type ModelPickerPanel = "models" | "thinking";
@@ -80,8 +79,8 @@ export const ModelPickerSheet = forwardRef<
   const [search, setSearch] = useState("");
   const [searchExpanded, setSearchExpanded] = useState(false);
   const preferences = useModelPreferences();
-  const setFavorite = useSetModelFavorite();
-  const favoriteModelIds = preferences.data?.favoriteModelIds;
+  const setDefault = useSetDefaultModel();
+  const defaultModelId = preferences.data?.defaultModelId;
   const [panel, setPanel] = useState<ModelPickerPanel>("models");
   const sheetMaxHeight = Math.min(640, Math.round(height * 0.86));
   const showSearch =
@@ -115,13 +114,13 @@ export const ModelPickerSheet = forwardRef<
   }));
 
   const filteredModels = useMemo(() => {
-    const sorted = favoriteModelsFirst(models, favoriteModelIds);
+    const sorted = models;
     if (!searchTerm) return sorted;
     const q = searchTerm.toLowerCase();
     return sorted.filter((m) =>
       [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
-  }, [models, searchTerm, favoriteModelIds]);
+  }, [models, searchTerm]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -388,24 +387,23 @@ export const ModelPickerSheet = forwardRef<
                 key={model.id}
                 model={model}
                 selected={model.id === selectedId}
-                isFavorite={favoriteModelIds?.includes(model.id) === true}
-                favoritePending={
-                  setFavorite.isPending &&
-                  setFavorite.variables?.modelConfigId === model.id
+                isDefault={defaultModelId === model.id}
+                defaultPending={
+                  setDefault.isPending &&
+                  (setDefault.variables?.defaultModelId ?? defaultModelId) ===
+                    model.id
                 }
-                favoriteDisabled={
-                  preferences.isPending || setFavorite.isPending
-                }
-                onSetFavorite={() =>
-                  setFavorite.mutate(
+                defaultDisabled={!preferences.data || setDefault.isPending}
+                onSetDefault={() =>
+                  setDefault.mutate(
                     {
-                      modelConfigId: model.id,
-                      favorite: !favoriteModelIds?.includes(model.id),
+                      defaultModelId:
+                        defaultModelId === model.id ? null : model.id,
                     },
                     {
                       onError: (error) =>
                         Alert.alert(
-                          "Couldn't save model favorites",
+                          "Couldn't save default model",
                           error.message,
                         ),
                     },
@@ -502,19 +500,19 @@ export function reasoningLabel(level: ChatReasoningLevel): string {
 function ModelRow({
   model,
   selected,
-  isFavorite,
+  isDefault,
   onPress,
-  onSetFavorite,
-  favoriteDisabled,
-  favoritePending,
+  onSetDefault,
+  defaultDisabled,
+  defaultPending,
 }: {
   model: PublicModelConfig;
   selected: boolean;
-  isFavorite: boolean;
+  isDefault: boolean;
   onPress: () => void;
-  onSetFavorite: () => void;
-  favoriteDisabled: boolean;
-  favoritePending: boolean;
+  onSetDefault: () => void;
+  defaultDisabled: boolean;
+  defaultPending: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
   return (
@@ -568,31 +566,31 @@ function ModelRow({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={
-          isFavorite
-            ? `Remove ${model.label} from favorites`
-            : `Add ${model.label} to favorites`
+          isDefault
+            ? `Clear default model: ${model.label}`
+            : `Set ${model.label} as default`
         }
         accessibilityHint={
-          isFavorite
-            ? "Remove this model from your favorites"
-            : "Keep this model at the top of the list"
+          isDefault
+            ? "New chats will use the first available model"
+            : "Use this model for new chats on all your devices"
         }
-        accessibilityState={{ disabled: favoriteDisabled }}
-        disabled={favoriteDisabled}
-        onPress={onSetFavorite}
+        accessibilityState={{ disabled: defaultDisabled }}
+        disabled={defaultDisabled}
+        onPress={onSetDefault}
         style={({ pressed }) => [
           styles.backButton,
-          { opacity: pressed || favoriteDisabled ? 0.6 : 1 },
+          { opacity: pressed || defaultDisabled ? 0.6 : 1 },
         ]}
       >
-        {favoritePending ? (
+        {defaultPending ? (
           <ActivityIndicator size="small" color={colors.mutedForeground} />
         ) : (
           <Ionicons
-            name={isFavorite ? "star" : "star-outline"}
+            name={isDefault ? "star" : "star-outline"}
             size={18}
             color={
-              isFavorite ? colors.popoverForeground : colors.mutedForeground
+              isDefault ? colors.popoverForeground : colors.mutedForeground
             }
           />
         )}

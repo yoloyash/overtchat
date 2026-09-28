@@ -154,11 +154,6 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
     .boolean()
     .nullish()
     .transform((value) => value ?? true),
-  sortOrder: z
-    .number()
-    .int()
-    .nullish()
-    .transform((value) => value ?? 0),
 })
   .superRefine((value, context) => {
     validateProviderConnection(value, context);

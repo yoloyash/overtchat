@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useModelPreferences, useSetModelFavorite } from "./modelPreferences";
+import { useModelPreferences, useSetDefaultModel } from "./modelPreferences";
 import { queryKeys } from "./keys";
 const request = vi.hoisted(() => vi.fn<typeof fetch>());
 vi.mock("@/lib/auth/client", () => ({
@@ -17,13 +17,13 @@ vi.mock("@/lib/api", () => ({
 }));
 let root: Root;
 let client: QueryClient;
-let favorite: ReturnType<typeof useSetModelFavorite>;
+let defaultModel: ReturnType<typeof useSetDefaultModel>;
 const key = queryKeys.modelPreferences("https://chat.example", "user");
 function Probe() {
   useModelPreferences();
-  const mutation = useSetModelFavorite();
+  const mutation = useSetDefaultModel();
   useEffect(() => {
-    favorite = mutation;
+    defaultModel = mutation;
   }, [mutation]);
   return null;
 }
@@ -40,18 +40,18 @@ beforeEach(() => {
     window.document.getElementById("root") as unknown as HTMLElement,
   );
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(key, { favoriteModelIds: [] });
+  client.setQueryData(key, { defaultModelId: null });
 });
 afterEach(async () => {
   await act(async () => root.unmount());
   client.clear();
   vi.unstubAllGlobals();
 });
-it("does not let a delayed refresh overwrite a successful favorite save", async () => {
+it("does not let a delayed refresh overwrite a successful default model save", async () => {
   let finishRefresh!: (response: Response) => void;
   request.mockImplementation((_url, init) =>
     init?.method === "PUT"
-      ? Promise.resolve(Response.json({ favoriteModelIds: ["one"] }))
+      ? Promise.resolve(Response.json({ defaultModelId: "one" }))
       : new Promise((resolve) => {
           finishRefresh = resolve;
         }),
@@ -65,11 +65,11 @@ it("does not let a delayed refresh overwrite a successful favorite save", async 
   );
   expect(request).toHaveBeenCalledTimes(1);
   await act(async () => {
-    await favorite.mutateAsync({ modelConfigId: "one", favorite: true });
+    await defaultModel.mutateAsync({ defaultModelId: "one" });
   });
-  expect(client.getQueryData(key)).toEqual({ favoriteModelIds: ["one"] });
+  expect(client.getQueryData(key)).toEqual({ defaultModelId: "one" });
   await act(async () => {
-    finishRefresh(Response.json({ favoriteModelIds: [] }));
+    finishRefresh(Response.json({ defaultModelId: null }));
   });
-  expect(client.getQueryData(key)).toEqual({ favoriteModelIds: ["one"] });
+  expect(client.getQueryData(key)).toEqual({ defaultModelId: "one" });
 });

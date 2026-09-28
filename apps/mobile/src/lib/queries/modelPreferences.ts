@@ -9,6 +9,7 @@ export function useModelPreferences() {
   return useQuery({
     queryKey: queryKeys.modelPreferences(getApiBase(), session?.user.id ?? ""),
     enabled: !!session,
+    staleTime: 0,
     queryFn: async ({ signal }): Promise<ModelPreferences> => {
       const response = await authFetch(
         `${getApiBase()}/api/model-preferences`,
@@ -16,19 +17,18 @@ export function useModelPreferences() {
           signal,
         },
       );
-      if (!response.ok) throw new Error("Couldn't load model favorites");
+      if (!response.ok) throw new Error("Couldn't load default model");
       return response.json();
     },
   });
 }
 
-export function useSetModelFavorite() {
+export function useSetDefaultModel() {
   const qc = useQueryClient();
   const { data: session } = getAuthClient().useSession();
   return useMutation({
     mutationFn: async (input: {
-      modelConfigId: string;
-      favorite: boolean;
+      defaultModelId: string | null;
     }): Promise<ModelPreferences> => {
       const response = await authFetch(
         `${getApiBase()}/api/model-preferences`,
@@ -38,7 +38,7 @@ export function useSetModelFavorite() {
           body: JSON.stringify(input),
         },
       );
-      if (!response.ok) throw new Error("Couldn't save model favorites");
+      if (!response.ok) throw new Error("Couldn't save default model");
       return response.json();
     },
     onSuccess: async (preferences) => {

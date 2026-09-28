@@ -727,21 +727,14 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
   }),
 }));
 
-export const userModelFavorites = sqliteTable(
-  "user_model_favorites",
-  {
-    userId: text("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    modelConfigId: text("model_config_id")
-      .notNull()
-      .references(() => modelConfigs.id, { onDelete: "cascade" }),
-  },
-  (table) => [
-    primaryKey({ columns: [table.userId, table.modelConfigId] }),
-    index("user_model_favorites_modelConfigId_idx").on(table.modelConfigId),
-  ],
-);
+export const userModelPreferences = sqliteTable("user_model_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  defaultModelId: text("default_model_id").references(() => modelConfigs.id, {
+    onDelete: "set null",
+  }),
+});
 
 export const modelConfigs = sqliteTable(
   "model_configs",

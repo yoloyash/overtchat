@@ -3,12 +3,11 @@ import { auth } from "@/lib/auth/server";
 import { preflight, withCors } from "@/lib/cors";
 import {
   getModelPreferences,
-  setModelFavorite,
+  setDefaultModel,
 } from "@/lib/db/modelPreferences";
 
 const inputSchema = z.strictObject({
-  modelConfigId: z.string().trim().min(1),
-  favorite: z.boolean(),
+  defaultModelId: z.string().trim().min(1).nullable(),
 });
 
 export function OPTIONS(req: Request) {
@@ -35,10 +34,9 @@ export async function PUT(req: Request) {
       Response.json({ error: "Invalid model preference" }, { status: 400 }),
     );
   }
-  const preferences = setModelFavorite(
+  const preferences = setDefaultModel(
     session.user.id,
-    parsed.data.modelConfigId,
-    parsed.data.favorite,
+    parsed.data.defaultModelId,
   );
   if (!preferences) {
     return withCors(

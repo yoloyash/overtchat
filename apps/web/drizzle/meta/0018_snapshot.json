@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "38d343fc-4875-4762-9997-bdc634936ec5",
+  "id": "d0b3b41b-fc07-4a67-8791-f2f0d3d35b27",
   "prevId": "9a5d3867-f60c-47e1-b457-814248ab2f1f",
   "tables": {
     "account": {
@@ -2268,37 +2268,29 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "user_model_favorites": {
-      "name": "user_model_favorites",
+    "user_model_preferences": {
+      "name": "user_model_preferences",
       "columns": {
         "user_id": {
           "name": "user_id",
           "type": "text",
-          "primaryKey": false,
+          "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
-        "model_config_id": {
-          "name": "model_config_id",
+        "default_model_id": {
+          "name": "default_model_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         }
       },
-      "indexes": {
-        "user_model_favorites_modelConfigId_idx": {
-          "name": "user_model_favorites_modelConfigId_idx",
-          "columns": [
-            "model_config_id"
-          ],
-          "isUnique": false
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
-        "user_model_favorites_user_id_user_id_fk": {
-          "name": "user_model_favorites_user_id_user_id_fk",
-          "tableFrom": "user_model_favorites",
+        "user_model_preferences_user_id_user_id_fk": {
+          "name": "user_model_preferences_user_id_user_id_fk",
+          "tableFrom": "user_model_preferences",
           "tableTo": "user",
           "columnsFrom": [
             "user_id"
@@ -2309,29 +2301,21 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "user_model_favorites_model_config_id_model_configs_id_fk": {
-          "name": "user_model_favorites_model_config_id_model_configs_id_fk",
-          "tableFrom": "user_model_favorites",
+        "user_model_preferences_default_model_id_model_configs_id_fk": {
+          "name": "user_model_preferences_default_model_id_model_configs_id_fk",
+          "tableFrom": "user_model_preferences",
           "tableTo": "model_configs",
           "columnsFrom": [
-            "model_config_id"
+            "default_model_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
-      "compositePrimaryKeys": {
-        "user_model_favorites_user_id_model_config_id_pk": {
-          "columns": [
-            "user_id",
-            "model_config_id"
-          ],
-          "name": "user_model_favorites_user_id_model_config_id_pk"
-        }
-      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

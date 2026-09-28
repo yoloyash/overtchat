@@ -1,12 +1,10 @@
-CREATE TABLE `user_model_favorites` (
-	`user_id` text NOT NULL,
-	`model_config_id` text NOT NULL,
-	PRIMARY KEY(`user_id`, `model_config_id`),
+CREATE TABLE `user_model_preferences` (
+	`user_id` text PRIMARY KEY NOT NULL,
+	`default_model_id` text,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`model_config_id`) REFERENCES `model_configs`(`id`) ON UPDATE no action ON DELETE cascade
+	FOREIGN KEY (`default_model_id`) REFERENCES `model_configs`(`id`) ON UPDATE no action ON DELETE set null
 );
 --> statement-breakpoint
-CREATE INDEX `user_model_favorites_modelConfigId_idx` ON `user_model_favorites` (`model_config_id`);--> statement-breakpoint
 ALTER TABLE `chats` ADD `model_config_id` text REFERENCES model_configs(id) ON DELETE SET NULL;
 --> statement-breakpoint
 -- Recover the last model used in existing chats when its identity is known.

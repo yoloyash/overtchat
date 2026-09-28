@@ -8,13 +8,11 @@ import {
   type ReasoningEffort,
 } from "@overtchat/shared";
 import { useState } from "react";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import { useModelPreferences } from "@/lib/queries/modelPreferences";
 import type {
   CatalogModelPricing,
   ModelDiscoveryInput,
 } from "@/lib/model-config/schema";
-
-const SELECTED_MODEL_KEY = "overtchat_selected_model";
 
 export interface AvailableModel {
   id: string;
@@ -34,22 +32,23 @@ export function useSelectedModel(
   models: readonly { id: string }[] | null,
   initialModelId?: string | null,
 ): [string, (id: string) => void] {
-  const [rememberedId, remember] = useLocalStorage<string>(
-    SELECTED_MODEL_KEY,
-    "",
-  );
+  const preferences = useModelPreferences();
   const [selection, setSelection] = useState<string | null>(
     initialModelId ?? null,
   );
-  const selectedId = resolveChatModelId(models ?? [], selection, rememberedId);
+  // Wait for this mount's default refresh before initializing a new chat.
+  const waiting =
+    !models?.some((model) => model.id === selection) &&
+    (preferences.isPending || preferences.isFetching);
+  const selectedId = waiting
+    ? ""
+    : resolveChatModelId(
+        models ?? [],
+        selection,
+        preferences.data?.defaultModelId,
+      );
   if (selectedId && selectedId !== selection) setSelection(selectedId);
-  return [
-    selectedId,
-    (id) => {
-      setSelection(id);
-      remember(id);
-    },
-  ];
+  return [selectedId, setSelection];
 }
 
 export async function fetchModelsForProvider(

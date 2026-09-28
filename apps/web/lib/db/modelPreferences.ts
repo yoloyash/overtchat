@@ -1,57 +1,47 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { modelConfigs, userModelFavorites } from "@/lib/db/schema";
+import { modelConfigs, userModelPreferences } from "@/lib/db/schema";
 import type { ModelPreferences } from "@overtchat/shared";
 
 export function getModelPreferences(userId: string): ModelPreferences {
-  return {
-    favoriteModelIds: db
-      .select({ id: userModelFavorites.modelConfigId })
-      .from(userModelFavorites)
-      .where(eq(userModelFavorites.userId, userId))
-      .orderBy(asc(userModelFavorites.modelConfigId))
-      .all()
-      .map((row) => row.id),
-  };
+  return (
+    db
+      .select({ defaultModelId: userModelPreferences.defaultModelId })
+      .from(userModelPreferences)
+      .where(eq(userModelPreferences.userId, userId))
+      .get() ?? { defaultModelId: null }
+  );
 }
 
-/** Set one favorite idempotently, preserving favorites edited on other devices. */
-export function setModelFavorite(
+export function setDefaultModel(
   userId: string,
-  modelConfigId: string,
-  favorite: boolean,
-) {
+  defaultModelId: string | null,
+): ModelPreferences | null {
   return db.transaction((tx) => {
-    if (favorite) {
-      if (
-        !tx
-          .select({ id: modelConfigs.id })
-          .from(modelConfigs)
-          .where(
-            and(
-              eq(modelConfigs.id, modelConfigId),
-              eq(modelConfigs.enabled, true),
-              eq(modelConfigs.modelType, "chat"),
-            ),
-          )
-          .get()
-      )
-        return null;
-      tx.insert(userModelFavorites)
-        .values({ userId, modelConfigId })
-        .onConflictDoNothing()
-        .run();
-    } else {
-      tx.delete(userModelFavorites)
+    if (
+      defaultModelId &&
+      !tx
+        .select({ id: modelConfigs.id })
+        .from(modelConfigs)
         .where(
           and(
-            eq(userModelFavorites.userId, userId),
-            eq(userModelFavorites.modelConfigId, modelConfigId),
+            eq(modelConfigs.id, defaultModelId),
+            eq(modelConfigs.enabled, true),
+            eq(modelConfigs.modelType, "chat"),
           ),
         )
-        .run();
+        .get()
+    ) {
+      return null;
     }
-    return getModelPreferences(userId);
+    tx.insert(userModelPreferences)
+      .values({ userId, defaultModelId })
+      .onConflictDoUpdate({
+        target: userModelPreferences.userId,
+        set: { defaultModelId },
+      })
+      .run();
+    return { defaultModelId };
   });
 }
