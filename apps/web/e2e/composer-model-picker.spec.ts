@@ -196,6 +196,37 @@ test("a failed favorite save leaves the saved preference unchanged", async ({
   ).toEqual({ favoriteModelIds: [] });
 });
 
+test("reopening the picker refreshes favorites changed elsewhere without reloading the chat", async ({
+  page,
+}) => {
+  await preparePicker(page);
+  const picker = page.getByRole("button", {
+    name: /deepseek-v4-flash-preview-long-name, thinking medium/,
+  });
+  await picker.click();
+  await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
+  await expect(
+    page.getByRole("menuitem", {
+      name: "Add Fast Model to favorites",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await page.keyboard.press("Escape");
+  // Another client saves while this chat and its query cache remain mounted.
+  const response = await page.request.put("/api/model-preferences", {
+    data: { modelConfigId: "fast-model", favorite: true },
+  });
+  expect(response.ok()).toBe(true);
+  await picker.click();
+  await expect(
+    page.getByRole("menuitem", {
+      name: "Remove Fast Model from favorites",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(picker).toBeVisible();
+});
+
 test("model and thinking controls live together in the composer", async ({
   page,
 }) => {

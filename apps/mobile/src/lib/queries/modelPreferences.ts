@@ -9,8 +9,13 @@ export function useModelPreferences() {
   return useQuery({
     queryKey: queryKeys.modelPreferences(getApiBase(), session?.user.id ?? ""),
     enabled: !!session,
-    queryFn: async (): Promise<ModelPreferences> => {
-      const response = await authFetch(`${getApiBase()}/api/model-preferences`);
+    queryFn: async ({ signal }): Promise<ModelPreferences> => {
+      const response = await authFetch(
+        `${getApiBase()}/api/model-preferences`,
+        {
+          signal,
+        },
+      );
       if (!response.ok) throw new Error("Couldn't load model favorites");
       return response.json();
     },
@@ -36,7 +41,14 @@ export function useSetModelFavorite() {
       if (!response.ok) throw new Error("Couldn't save model favorites");
       return response.json();
     },
-    onSuccess: (preferences) => {
+    onSuccess: async (preferences) => {
+      // A refresh started before this save must not replace the newer result.
+      await qc.cancelQueries({
+        queryKey: queryKeys.modelPreferences(
+          getApiBase(),
+          session?.user.id ?? "",
+        ),
+      });
       qc.setQueryData(
         queryKeys.modelPreferences(getApiBase(), session?.user.id ?? ""),
         preferences,

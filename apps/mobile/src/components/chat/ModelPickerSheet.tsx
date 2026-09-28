@@ -103,6 +103,7 @@ export const ModelPickerSheet = forwardRef<
 
   useImperativeHandle(ref, () => ({
     present(nextPanel = "models") {
+      void preferences.refetch();
       setSearch("");
       setSearchExpanded(false);
       setPanel(nextPanel);

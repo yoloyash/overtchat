@@ -86,7 +86,9 @@ export function ModelPicker({
   return (
     <Menu.Root
       onOpenChange={(open) => {
-        if (!open) {
+        if (open) {
+          void preferences.refetch();
+        } else {
           setSearch("");
           setSearchExpanded(false);
         }
