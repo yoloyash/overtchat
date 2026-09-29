@@ -32,6 +32,7 @@
     "test:e2e:ui": "npm run test:e2e:ui -w apps/web --",
     "start": "npm run start -w apps/web --",
     "deps:check": "node .github/scripts/check-single-instance-deps.mjs",
+    "deps:lockfile": "npm install --package-lock-only --ignore-scripts --no-audit --no-fund",
     "db:generate": "npm run db:generate -w apps/web --",
     "db:migrate": "npm run db:migrate -w apps/web --",
     "db:studio": "npm run db:studio -w apps/web --",
