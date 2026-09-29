@@ -38,6 +38,24 @@ messages; Redis buffers live events for reconnecting clients. Without Redis,
 generations still complete and clients recover saved messages, but cannot
 replay missed live deltas.
 
+## Dependency updates
+
+Use the pinned npm 10.9.8 for dependency changes, including Dependabot PRs.
+After updating dependencies, regenerate the lockfile from the repository root:
+
+```sh
+npm run deps:lockfile
+```
+
+This uses npm's resolver to regenerate `package-lock.json` without installing
+packages or running lifecycle scripts. Review the diff for unrelated version,
+integrity, or dependency changes and commit the generated lockfile. Avoid
+hand-editing dependency flags or adding overrides just to repair lockfile metadata.
+
+The Validate workflow regenerates the lockfile with the pinned npm and fails if
+it changes. `npm ci` alone does not detect all dependency-flag drift. Run
+`npm ci`, `npm run deps:check`, and the affected workspace checks after regeneration.
+
 ## Model catalog refresh
 
 The weekday `Refresh model catalog` workflow fetches models.dev, validates the

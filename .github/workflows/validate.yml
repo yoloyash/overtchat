@@ -34,6 +34,13 @@ jobs:
       - name: Use pinned npm
         run: npm install --global npm@10.9.8
 
+      # npm ci accepts dependency-flag drift in a lockfile. Require the pinned
+      # npm to reproduce it before installing or testing the dependency tree.
+      - name: Check lockfile reproducibility
+        run: |
+          npm run deps:lockfile
+          git diff --exit-code -- package-lock.json
+
       - run: npm ci
 
       - name: Validate GitHub Actions workflows
