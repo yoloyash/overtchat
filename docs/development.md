@@ -38,6 +38,28 @@ messages; Redis buffers live events for reconnecting clients. Without Redis,
 generations still complete and clients recover saved messages, but cannot
 replay missed live deltas.
 
+## Model catalog refresh
+
+The weekday `Refresh model catalog` workflow fetches models.dev, validates the
+generated catalog and manifest, and opens or updates `automation/model-catalog`.
+To run the same validation locally:
+
+```sh
+npm run catalog:generate
+npm run catalog:check
+npm run test -w apps/web -- \
+  lib/providers/server/model-catalog-artifacts.test.ts \
+  lib/providers/server/model-catalog.test.ts \
+  lib/providers/server/model-cost.test.ts
+```
+
+Commit both generated artifacts together. Lookup and cost arithmetic tests use
+`model-catalog.fixture.ts` for fixed inputs; do not regenerate this fixture or
+assert fixed provider prices or limits against the changing catalog. The artifact
+tests exercise the actual generated catalog, including pricing compatibility for
+every priced model. A legitimate upstream price change should produce a catalog
+diff for review without failing a test that expects yesterday's prices.
+
 ## Chat compaction validation
 
 Regular chat automatically compacts at 80% of the resolved model context window,
