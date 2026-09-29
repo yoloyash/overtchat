@@ -42,7 +42,9 @@ export type SttConfig = {
 };
 
 export type AgentConfig = {
+  // Selected for this installation; pending distinguishes an incomplete attempt.
   installed: boolean;
+  pending?: boolean;
 };
 
 export type VoiceConfig = {

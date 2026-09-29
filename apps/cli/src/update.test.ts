@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   detectDockerCommand: vi.fn(),
   dockerComposeAvailable: vi.fn(),
   installManagedConnector: vi.fn(),
+  checkManagedConnectorPrerequisites: vi.fn(),
+  note: vi.fn(),
   initialSecrets: vi.fn(),
   latestReleaseManifest: vi.fn(),
   outro: vi.fn(),
@@ -28,6 +30,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@clack/prompts", () => ({
   outro: mocks.outro,
+  note: mocks.note,
   spinner: () => ({
     message: mocks.spinnerMessage,
     start: mocks.spinnerStart,
@@ -49,6 +52,7 @@ vi.mock("./config.js", async (importOriginal) => {
 
 vi.mock("./connector.js", () => ({
   installManagedConnector: mocks.installManagedConnector,
+  checkManagedConnectorPrerequisites: mocks.checkManagedConnectorPrerequisites,
 }));
 
 vi.mock("./compose.js", async (importOriginal) => ({
@@ -395,6 +399,7 @@ describe("managed updates", () => {
     expect(mocks.installManagedConnector).toHaveBeenCalledWith(
       expected,
       "management-secret",
+      expect.objectContaining({ onProgress: expect.any(Function), interactive: false }),
     );
     expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expected);
     expect(
@@ -469,7 +474,7 @@ describe("managed updates", () => {
   });
 });
 
-it("recovers native speech after connector failure without downgrading the migrated app", async () => {
+it("commits native speech and the updated app when the optional connector fails", async () => {
   const previous = config({ tts: { provider: "bundled", bundledInstalled: true, accelerator: "apple" }, agents: { installed: true } });
   mocks.readInstallationConfig.mockResolvedValue(previous);
   mocks.latestReleaseManifest.mockResolvedValue({
@@ -477,13 +482,15 @@ it("recovers native speech after connector failure without downgrading the migra
     connectorVersion: "0.4.0", sttVersion: "0.1.0", ...releaseImages,
   });
   const rollback = vi.fn(async () => {});
-  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit: vi.fn(), rollback });
+  const commit = vi.fn();
+  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit, rollback });
   mocks.installManagedConnector.mockRejectedValueOnce(new Error("connector failed"));
-  await expect(update()).rejects.toThrow("connector failed");
-  expect(rollback).toHaveBeenCalledOnce();
-  expect(mocks.requireDocker.mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(2);
+  await update();
+  expect(rollback).not.toHaveBeenCalled();
+  expect(commit).toHaveBeenCalledOnce();
+  expect(mocks.requireDocker.mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(1);
   expect(mocks.writeInstallationConfig).toHaveBeenLastCalledWith(paths, expect.objectContaining({
-    appVersion: "0.15.0", tts: previous.tts,
+    appVersion: "0.15.0", tts: previous.tts, agents: { installed: true, pending: true },
   }));
 });
 
@@ -495,4 +502,21 @@ it("checks updates without Docker, credentials, self-update, or writes", async (
   expect(mocks.updateCliIfNeeded).not.toHaveBeenCalled();
   expect(mocks.prepareFiles).not.toHaveBeenCalled();
   expect(mocks.writeInstallationConfig).not.toHaveBeenCalled();
+});
+
+it("updates the app when connector prerequisites are unavailable", async () => {
+  mocks.readInstallationConfig.mockResolvedValue(config({ agents: { installed: true } }));
+  mocks.checkManagedConnectorPrerequisites.mockRejectedValueOnce(new Error("No user session"));
+  await update();
+  expect(mocks.installManagedConnector).not.toHaveBeenCalled();
+  expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({ agents: { installed: true, pending: true } }));
+  expect(mocks.checkManagedConnectorPrerequisites.mock.invocationCallOrder[0]).toBeLessThan(mocks.prepareFiles.mock.invocationCallOrder[0]);
+  expect(mocks.spinnerStop).toHaveBeenCalledWith("OvertChat updated; Agent Connections pending");
+});
+
+it("retries a pending connector on the next update and clears its warning on success", async () => {
+  mocks.readInstallationConfig.mockResolvedValue(config({ agents: { installed: true, pending: true } }));
+  await update();
+  expect(mocks.installManagedConnector).toHaveBeenCalledOnce();
+  expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({ agents: { installed: true } }));
 });

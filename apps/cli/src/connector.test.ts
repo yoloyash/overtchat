@@ -21,6 +21,7 @@ vi.mock("node:os", () => ({
     homedir: () => "/Users/test",
     tmpdir: () => "/tmp",
     hostname: () => "mac-test",
+    userInfo: () => ({ username: "test" }),
   },
 }));
 import { installManagedConnector } from "./connector.js";
@@ -65,15 +66,24 @@ afterEach(() => {
 });
 
 it("installs a managed Mac connector and waits for its authenticated channel", async () => {
-  await installManagedConnector(config, "fixture-secret");
+  const onProgress = vi.fn();
+  await installManagedConnector(config, "fixture-secret", { onProgress });
+  expect(onProgress.mock.calls.flat()).toEqual([
+    "Checking Agent Connector service support",
+    "Downloading Agent Connector",
+    "Checking Agent Connector executable",
+    "Configuring Agent Connector connection",
+    "Starting Agent Connector service",
+    "Waiting for Agent Connector connection",
+  ]);
   expect(mocks.runCommand).toHaveBeenCalledExactlyOnceWith("launchctl", [
     "print",
     "gui/501",
-  ]);
+  ], { timeoutMs: 10_000 });
   expect(mocks.requireSuccessful).toHaveBeenCalledWith(
     "/Users/test/.local/bin/overtchat-connector",
     ["install-managed"],
-    { input: expect.stringContaining('"connectorId":"test"') },
+    { timeoutMs: 120_000, input: expect.stringContaining('"connectorId":"test"') },
   );
   expect(fetch).toHaveBeenCalledTimes(2);
 });
@@ -101,11 +111,11 @@ it("unloads a failed replacement and restores the previous Mac service", async (
   });
   await expect(
     installManagedConnector(config, "fixture-secret"),
-  ).rejects.toThrow("bootstrap failed");
+  ).rejects.toThrow("Starting Agent Connector service: bootstrap failed");
   expect(mocks.runCommand).toHaveBeenCalledWith("launchctl", [
     "bootout",
     "gui/501/com.overtchat.connector",
-  ]);
+  ], { timeoutMs: 20_000 });
   expect(mocks.rename).toHaveBeenLastCalledWith(
     "/Users/test/.local/bin/overtchat-connector.previous",
     "/Users/test/.local/bin/overtchat-connector",
@@ -113,5 +123,32 @@ it("unloads a failed replacement and restores the previous Mac service", async (
   expect(mocks.runCommand).toHaveBeenLastCalledWith(
     "/Users/test/.local/bin/overtchat-connector",
     ["service-install"],
+    { timeoutMs: 120_000 },
   );
+});
+
+it("cleans up failed downloads and reports their phase without replacing the connector", async () => {
+  vi.stubEnv("OVERTCHAT_CONNECTOR_BINARY", "");
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("unavailable", { status: 503 })));
+  await expect(installManagedConnector(config, "fixture-secret"))
+    .rejects.toThrow("Downloading Agent Connector: Could not download");
+  expect(mocks.rename).not.toHaveBeenCalled();
+  expect(mocks.rm).toHaveBeenCalledWith("/tmp/staged", { recursive: true, force: true });
+});
+
+it("uses noninteractive permission checks and sudo when no terminal is available", async () => {
+  vi.spyOn(process, "platform", "get").mockReturnValue("linux");
+  mocks.commandExists.mockResolvedValue(true);
+  mocks.runCommand.mockImplementation(async (command, args) => ({
+    exitCode: command === "loginctl" && args.includes("enable-linger") ? 1 : 0,
+    stdout: "", stderr: "",
+  }));
+  mocks.requireSuccessful.mockRejectedValueOnce(new Error("sudo: a password is required"));
+  const permission = vi.fn(async (run: () => Promise<void>) => run());
+  await expect(installManagedConnector(config, "fixture-secret", { interactive: false, permission }))
+    .rejects.toThrow("Configuring Agent Connector background permissions: sudo: a password is required");
+  expect(permission).toHaveBeenCalledOnce();
+  expect(mocks.runCommand).toHaveBeenCalledWith("loginctl", ["--no-ask-password", "enable-linger", "test"], { timeoutMs: 10_000 });
+  expect(mocks.requireSuccessful).toHaveBeenCalledWith("sudo", ["-n", "loginctl", "enable-linger", "test"], { inherit: true, timeoutMs: 120_000 });
+  expect(mocks.mkdtemp).not.toHaveBeenCalled();
 });

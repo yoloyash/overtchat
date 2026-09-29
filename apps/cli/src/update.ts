@@ -1,7 +1,7 @@
 import { prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
 import { recoverSpeech } from "./stack.js";
 import { platformServices } from "./platform.js";
-import { outro, spinner } from "@clack/prompts";
+import { outro } from "@clack/prompts";
 import { accessSummary } from "./access.js";
 import {
   initialSecrets,
@@ -11,7 +11,9 @@ import {
   writeInstallationConfig,
   writeSecretsFile,
 } from "./config.js";
-import { installManagedConnector } from "./connector.js";
+import { completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
+import { installationSpinner as spinner } from "./install-progress.js";
+import { protectInstallationSecrets } from "./install-log.js";
 import { renderStackEnvironment } from "./compose.js";
 import {
   detectDockerCommand,
@@ -50,6 +52,7 @@ export async function update(options: { check?: boolean; json?: boolean } = {}):
     throw new Error("Docker Engine and Docker Compose v2 are required.");
   }
   const secrets = await readInstallationSecrets(paths);
+  protectInstallationSecrets(...Object.values(secrets));
   if (
     !secrets.betterAuthSecret ||
     !secrets.managementSecret ||
@@ -79,6 +82,10 @@ export async function update(options: { check?: boolean; json?: boolean } = {}):
     nextConfig = normalizeInstallationConfig(
       platformServices(applyReleaseManifest(config, manifest)),
     );
+    progress.stop("Release versions checked");
+    const interactive = !!process.stdin.isTTY && !!process.stdout.isTTY;
+    const installAgents = await prepareAgentConnections(nextConfig, interactive);
+    progress.start("Preparing OvertChat update");
     await prepareFiles(nextConfig, undefined);
     await writeSecretsFile(
       paths,
@@ -111,18 +118,18 @@ export async function update(options: { check?: boolean; json?: boolean } = {}):
     });
     progress.message("Waiting for OvertChat and database migrations");
     await waitForApp(`http://127.0.0.1:${nextConfig.appPort}`);
-    if (nextConfig.agents.installed) {
-      progress.message("Updating Agent Connections");
-      await installManagedConnector(nextConfig, secrets.managementSecret);
+    if (installAgents) {
+      await completeAgentConnections(nextConfig, secrets.managementSecret, progress, interactive);
     }
     await writeInstallationConfig(paths, nextConfig);
     progress.message("Reconciling bundled services");
     await speechChange.commit();
     speechChange = undefined;
     const reconciliation = await reconcileManagedSidecars(docker, nextConfig);
-    progress.stop("OvertChat is up to date");
+    progress.stop(nextConfig.agents.pending ? "OvertChat updated; Agent Connections pending" : "OvertChat is up to date");
     progressActive = false;
     showSidecarReconciliation(reconciliation);
+    reportPendingAgentConnections(nextConfig);
     outro(nextConfig.access ? accessSummary(nextConfig) : `Open: ${nextConfig.publicUrl}`);
   } catch (error) {
     if (speechChange) {

@@ -75,7 +75,7 @@ it("unloads an existing agent before bootstrapping its replacement", async () =>
   expect(mocks.exec).toHaveBeenCalledWith("launchctl", [
     "bootout",
     "gui/501/com.overtchat.connector",
-  ]);
+  ], { timeout: 10_000, killSignal: "SIGKILL" });
   expect(mocks.writeFile).toHaveBeenCalledWith(
     expect.stringContaining(
       "Library/LaunchAgents/com.overtchat.connector.plist",

@@ -5,7 +5,8 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { assertLaunchAgentAvailable, installLaunchAgent } from "./launchd.js";
 
-const execFileAsync = promisify(execFile);
+const exec = promisify(execFile);
+const execFileAsync = (command: string, args: string[]) => exec(command, args, { timeout: 30_000, killSignal: "SIGKILL" });
 
 function systemdQuote(value: string): string {
   return `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;

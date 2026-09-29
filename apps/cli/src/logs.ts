@@ -1,3 +1,4 @@
+import { installationLogPath } from "./install-log.js";
 import { requireDocker } from "./docker.js";
 import {
   components,
@@ -14,15 +15,15 @@ export async function logs(
   follow: boolean,
   tail: number,
 ): Promise<void> {
-  const { config, paths } = await managedInstallation();
-  if (service === "connector" || service === "speech") {
-    if (!components(config).some((entry) => entry.id === service))
-      throw new Error(`${service} is not installed.`);
-    const files = service === "speech"
-      ? [path.join(paths.stackDirectory, "apple-speech", "speech.log")]
-      : ["connector.log", "connector.error.log"].map((file) =>
+  if (service === "install") {
+    await requireSuccessful("tail", ["-n", String(tail), ...(follow ? ["-F"] : []), installationLogPath()], { inherit: true });
+    return;
+  }
+  // Connector diagnostics must work even if setup never saved installation.json.
+  if (service === "connector") {
+    const files = ["connector.log", "connector.error.log"].map((file) =>
           path.join(os.homedir(), "Library", "Logs", "OvertChat", file));
-    if (service === "connector" && process.platform === "linux") {
+    if (process.platform === "linux") {
       await requireSuccessful(
         "journalctl",
         [
@@ -42,6 +43,12 @@ export async function logs(
         ["-n", String(tail), ...(follow ? ["-F"] : []), ...files],
         { inherit: true },
       );
+    return;
+  }
+  const { config, paths } = await managedInstallation();
+  if (service === "speech") {
+    if (!components(config).some((entry) => entry.id === service)) throw new Error("speech is not installed.");
+    await requireSuccessful("tail", ["-n", String(tail), ...(follow ? ["-F"] : []), path.join(paths.stackDirectory, "apple-speech", "speech.log")], { inherit: true });
     return;
   }
   const selected = service

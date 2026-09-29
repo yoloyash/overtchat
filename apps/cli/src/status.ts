@@ -27,5 +27,5 @@ export async function status(json = false): Promise<void> {
     `Data: ${report.storage!.type} ${report.storage!.source}\nConfiguration: ${report.storage!.config}\nStack: ${report.storage!.stack}`,
   );
   for (const problem of report.problems) console.log(`Warning: ${problem}`);
-  console.log("Troubleshoot: overtchat doctor | overtchat logs --follow");
+  console.log("Troubleshoot: overtchat logs install --tail 100 | overtchat logs --follow");
 }

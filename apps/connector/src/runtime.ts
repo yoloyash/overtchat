@@ -114,6 +114,10 @@ export class ConnectorProcessHost {
     this.managed = new ManagedProcesses(processDirectory);
   }
 
+  startRecovery(): void {
+    this.managed.startRecovery();
+  }
+
   reap(): Promise<void> {
     return this.managed.reap();
   }

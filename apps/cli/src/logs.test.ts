@@ -59,6 +59,14 @@ it("reads Linux connector logs even when Docker is unavailable", async () => {
   );
   expect(managedDocker).not.toHaveBeenCalled();
 });
+
+it.each(["connector", "install"])("reads %s diagnostics before setup has saved its configuration", async (service) => {
+  vi.mocked(managedInstallation).mockRejectedValue(new Error("not managed"));
+  await logs(service, false, 20);
+  expect(managedInstallation).not.toHaveBeenCalled();
+  expect(managedDocker).not.toHaveBeenCalled();
+  expect(requireSuccessful).toHaveBeenCalledOnce();
+});
 it("reads both macOS connector logs without inspecting or controlling its service", async () => {
   vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
   const installation = await managedInstallation();

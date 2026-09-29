@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +18,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 });
 
 import { ManagedProcesses } from "./managed-processes.js";
+import { ConnectorClient } from "./client.js";
 
 const directories: string[] = [];
 const pid = 4242;
@@ -36,7 +37,83 @@ afterEach(async () => {
     rm(directory, { recursive: true, force: true }),
   ));
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   control.run.mockReset();
+});
+
+it("connects while SSH recovery is stalled and cancels recovery before releasing its lock", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-startup-recovery-"));
+  directories.push(directory);
+  const state = path.join(directory, "state.json");
+  const ledger = `${state}.processes`;
+  const lock = path.join(directory, "connector.lock");
+  await mkdir(ledger);
+  for (let index = 0; index < 5; index++) {
+    const id = randomUUID();
+    await writeFile(path.join(ledger, `${id}.json`), JSON.stringify({
+      id, target: { transport: "ssh", alias: "offline-fixture" },
+      root: { pid, started }, signature: "fixture-only", descendants: [],
+    }));
+  }
+  vi.stubEnv("OVERTCHAT_CONNECTOR_STATE", state);
+  vi.stubEnv("OVERTCHAT_CONNECTOR_TIMELINES", path.join(directory, "timelines"));
+  vi.stubEnv("OVERTCHAT_CONNECTOR_LOCK", lock);
+  const probes: AbortSignal[] = [];
+  let lockHeldDuringAbort = false;
+  control.run.mockImplementation(async (_command, _args, options) => {
+    const signal = options.signal as AbortSignal;
+    probes.push(signal);
+    return new Promise((_, reject) => signal.addEventListener("abort", () => {
+      void readFile(lock).then(() => { lockHeldDuringAbort = true; }).finally(() => reject(new Error("aborted")));
+    }, { once: true }));
+  });
+  const requests: string[] = [];
+  vi.stubGlobal("fetch", vi.fn(async (url) => {
+    requests.push(String(url));
+    return new Response(new ReadableStream({ start(controller) { controller.close(); } }));
+  }));
+  const client = await ConnectorClient.create({ serverUrl: "http://127.0.0.1:4717", connectorId: "fixture", token: "fixture" });
+  const running = client.run();
+  try {
+    await vi.waitFor(() => {
+      expect(requests).toContain("http://127.0.0.1:4717/api/host-connectors/channel");
+      expect(probes).toHaveLength(1);
+    });
+  } finally {
+    await client.stop();
+    await running;
+  }
+  expect(probes[0].aborted).toBe(true);
+  expect(lockHeldDuringAbort).toBe(true);
+  expect(await readdir(ledger)).toHaveLength(5);
+  await expect(readFile(lock)).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+it("shares in-flight startup cleanup with recovery for a new launch on the same target", async () => {
+  const target = { transport: "ssh" as const, alias: "test-host" };
+  const f = await fixture(target);
+  let release!: () => void;
+  control.run.mockImplementationOnce(() => new Promise(resolve => {
+    release = () => resolve({ stdout: "", stderr: "" });
+  }));
+  f.manager.startRecovery();
+  await vi.waitFor(() => expect(control.run).toHaveBeenCalledOnce());
+  const spawn = vi.fn(() => { throw new Error("fixture launch reached"); });
+  const launch = f.manager.spawn(target, { command: "fixture", shellMode: "login" }, spawn);
+  const assertion = expect(launch).rejects.toThrow("fixture launch reached");
+  try {
+    // Give the second ledger read time to reach the shared termination promise.
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(spawn).not.toHaveBeenCalled();
+    expect(control.run).toHaveBeenCalledOnce();
+  } finally {
+    release();
+    await assertion;
+    await f.manager.stop();
+  }
+  expect(spawn).toHaveBeenCalledOnce();
+  expect(await readdir(f.directory)).toEqual([]);
 });
 
 async function fixture(target: HostTarget) {

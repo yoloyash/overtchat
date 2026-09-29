@@ -5,6 +5,8 @@ export type CommandResult = {
   stdout: string;
   stderr: string;
   exitCode: number;
+  signal?: NodeJS.Signals | null;
+  timedOut?: boolean;
 };
 
 export type RunOptions = {
@@ -24,9 +26,16 @@ export async function runCommand(
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: commandEnvironment(options.environment ?? process.env),
-      stdio: options.inherit ? ["pipe", "inherit", "inherit"] : "pipe",
-      timeout: options.timeoutMs,
+      stdio: options.inherit ? [options.input === undefined ? "inherit" : "pipe", "inherit", "inherit"] : "pipe",
     });
+    let timedOut = false;
+    let forceKill: NodeJS.Timeout | undefined;
+    const timeout = options.timeoutMs === undefined ? undefined : setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      forceKill = setTimeout(() => child.kill("SIGKILL"), 1_000);
+      forceKill.unref();
+    }, options.timeoutMs);
     let stdout = "";
     let stderr = "";
     if (!options.inherit) {
@@ -39,10 +48,18 @@ export async function runCommand(
         stderr += chunk;
       });
     }
-    child.once("error", reject);
-    child.once("close", (code) => {
-      resolve({ stdout, stderr, exitCode: code ?? 1 });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      clearTimeout(forceKill);
+      reject(error);
     });
+    child.once("close", (code, signal) => {
+      clearTimeout(timeout);
+      clearTimeout(forceKill);
+      resolve({ stdout, stderr, exitCode: timedOut ? 1 : code ?? 1, signal, timedOut });
+    });
+    // A child can exit before consuming its configuration.
+    child.stdin?.on("error", () => {});
     if (options.input !== undefined) child.stdin?.end(options.input);
     else child.stdin?.end();
   });
@@ -61,9 +78,9 @@ export async function requireSuccessful(
   const result = await runCommand(command, args, options);
   if (result.exitCode !== 0) {
     const detail = result.stderr.trim() || result.stdout.trim();
-    throw new Error(
-      `${[command, ...args].join(" ")} failed${detail ? `: ${detail}` : ""}`,
-    );
+    const reason = result.timedOut ? `timed out after ${options.timeoutMs! / 1000}s`
+      : result.signal ? `was terminated by ${result.signal}` : `failed (exit ${result.exitCode})`;
+    throw new Error(`${[command, ...args].join(" ")} ${reason}${detail ? `: ${detail}` : ""}`);
   }
   return result;
 }

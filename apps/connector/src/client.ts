@@ -125,14 +125,17 @@ export class ConnectorClient {
       const processHost = new ConnectorProcessHost(
         `${connectorStatePath(config.connectorId)}.processes`,
       );
-      await processHost.reap();
       journal = await ConnectorStateJournal.open(
         connectorStatePath(config.connectorId),
       );
       timelines = await ConnectorTimelineStore.open(
         connectorTimelinePath(config.connectorId),
       );
-      return new ConnectorClient(config, journal, timelines, lock, processHost);
+      const client = new ConnectorClient(config, journal, timelines, lock, processHost);
+      // Remote cleanup must not delay the authenticated channel. Per-target launches
+      // still await recovery, and shutdown cancels recovery before releasing the lock.
+      processHost.startRecovery();
+      return client;
     } catch (error) {
       await timelines?.close().catch(() => {});
       await journal?.close().catch(() => {});

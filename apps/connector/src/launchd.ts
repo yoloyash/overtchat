@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 
-const exec = promisify(execFile);
+const execAsync = promisify(execFile);
+const exec = (command: string, args: string[]) => execAsync(command, args, { timeout: 10_000, killSignal: "SIGKILL" });
 const label = "com.overtchat.connector";
 
 function xml(value: string): string {

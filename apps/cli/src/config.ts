@@ -208,6 +208,7 @@ export function normalizeInstallationConfig(
 
   return {
     ...config,
+    agents: { ...config.agents },
     search: {
       ...config.search,
       bundledInstalled: config.search.provider === "bundled",

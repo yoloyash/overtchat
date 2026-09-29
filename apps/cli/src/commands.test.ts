@@ -5,6 +5,10 @@ import { readInstallationConfig } from "./config.js";
 import { latestReleaseManifest, updateCliIfNeeded } from "./release.js";
 import { setup } from "./setup.js";
 import { status } from "./status.js";
+vi.mock("./install-log.js", async (original) => ({
+  ...(await original<typeof import("./install-log.js")>()),
+  withInstallationLog: async (_operation: string, run: () => Promise<unknown>) => run(),
+}));
 vi.mock("./config.js", async (original) => ({
   ...(await original<typeof import("./config.js")>()),
   readInstallationConfig: vi.fn(),
