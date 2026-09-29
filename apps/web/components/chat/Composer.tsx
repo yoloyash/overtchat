@@ -550,7 +550,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? "Resume voice to continue"
                 : configured
                   ? "Message… or / for commands"
-                  : "No models configured"
+                  : models === null || models.length > 0
+                    ? "Loading model…"
+                    : "No models configured"
             }
             className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
             value={input}

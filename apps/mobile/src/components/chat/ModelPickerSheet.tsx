@@ -114,10 +114,9 @@ export const ModelPickerSheet = forwardRef<
   }));
 
   const filteredModels = useMemo(() => {
-    const sorted = models;
-    if (!searchTerm) return sorted;
+    if (!searchTerm) return models;
     const q = searchTerm.toLowerCase();
-    return sorted.filter((m) =>
+    return models.filter((m) =>
       [m.label, m.model, m.displayProvider].join(" ").toLowerCase().includes(q),
     );
   }, [models, searchTerm]);

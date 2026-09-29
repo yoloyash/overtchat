@@ -148,6 +148,39 @@ test("search and a single synced default stay independent of existing chats and 
   }
 });
 
+test("a delayed default refresh shows loading instead of model setup", async ({
+  page,
+}) => {
+  await preparePicker(page);
+  await page.request.put("/api/model-preferences", {
+    data: { defaultModelId: "fast-model" },
+  });
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/api/model-preferences", async (route) => {
+    await gate;
+    await route.continue();
+  });
+  try {
+    await page.reload();
+    await expect(page.getByPlaceholder("Loading model…")).toBeVisible();
+    await expect(
+      page.getByText("Add your first model", { exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByText(/No models configured/)).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(
+    page.getByRole("button", { name: "Fast Model", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByPlaceholder("Message… or / for commands"),
+  ).toBeVisible();
+});
+
 test("the header saves the selected model even when filtered out, replaces and clears the default", async ({
   page,
 }) => {

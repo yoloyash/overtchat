@@ -16,6 +16,7 @@ import { AttachmentChip } from "./AttachmentChip";
 
 export function Composer({
   configured,
+  modelLoading = false,
   streaming,
   searchAvailable,
   searchRequested,
@@ -38,6 +39,7 @@ export function Composer({
   onStop,
 }: {
   configured: boolean;
+  modelLoading?: boolean;
   streaming: boolean;
   searchAvailable: boolean;
   searchRequested: boolean;
@@ -211,7 +213,13 @@ export function Composer({
             onChangeText={setInput}
             editable={configured && dictation.status !== "transcribing"}
             multiline
-            placeholder={configured ? "Message…" : "No models configured"}
+            placeholder={
+              configured
+                ? "Message…"
+                : modelLoading
+                  ? "Loading model…"
+                  : "No models configured"
+            }
             placeholderTextColor={colors.mutedForeground}
             style={[
               styles.input,

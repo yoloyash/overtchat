@@ -317,6 +317,8 @@ function ChatSurface({
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
+  const modelLoading =
+    modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
   const reasoningControls = selectedModel?.capabilities?.reasoningControls;
   const storedReasoningLevel = selectedId
@@ -588,11 +590,13 @@ function ChatSurface({
           >
             {modelsError
               ? "Couldn't load models"
-              : configured
-                ? "What can I help with?"
-                : "No models configured"}
+              : modelLoading
+                ? "Loading model…"
+                : configured
+                  ? "What can I help with?"
+                  : "No models configured"}
           </Text>
-          {!configured && !modelsError && (
+          {!configured && !modelsError && !modelLoading && (
             <Text
               style={[
                 styles.emptySub,
@@ -673,6 +677,7 @@ function ChatSurface({
         ) : (
           <Composer
             configured={configured}
+            modelLoading={modelLoading}
             streaming={streaming}
             imageOptions={imageAvailable ? imageOptions : undefined}
             imageModel={imageCapability?.model}
