@@ -78,7 +78,6 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         providerOptions: existing.providerOptions,
         toolCallingEnabled: existing.toolCallingEnabled !== false,
         enabled: existing.enabled,
-        sortOrder: existing.sortOrder,
       };
     }
     return {
@@ -97,7 +96,6 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       providerOptions: null,
       toolCallingEnabled: true,
       enabled: true,
-      sortOrder: 0,
     };
   });
 

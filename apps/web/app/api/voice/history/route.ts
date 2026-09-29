@@ -54,6 +54,7 @@ export async function POST(request: Request) {
 
   const history = voiceHistoryToUiMessages(ticket.chatId, parsed.data.items);
   const result = syncVoiceHistory({
+    modelConfigId: ticket.modelConfigId,
     chatId: ticket.chatId,
     userId: ticket.userId,
     projectId: ticket.projectId,

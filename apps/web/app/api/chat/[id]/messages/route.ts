@@ -38,7 +38,7 @@ export async function GET(
     const page = await getMessagesPage(id, { cursor, limit });
     return withCors(
       req,
-      Response.json({ ...page, projectId: chat.projectId, kind: chat.kind }),
+      Response.json({ ...page, projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId }),
     );
   }
 
@@ -47,6 +47,6 @@ export async function GET(
   const messages = await getMessages(id);
   return withCors(
     req,
-    Response.json({ messages, projectId: chat.projectId, kind: chat.kind }),
+    Response.json({ messages, projectId: chat.projectId, kind: chat.kind, modelConfigId: chat.modelConfigId }),
   );
 }

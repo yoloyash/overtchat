@@ -380,6 +380,9 @@ export const chats = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title"),
+    modelConfigId: text("model_config_id").references(() => modelConfigs.id, {
+      onDelete: "set null",
+    }),
     kind: text("kind", { enum: CHAT_KINDS })
       .$type<ChatKind>()
       .default("text")
@@ -723,6 +726,15 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+export const userModelPreferences = sqliteTable("user_model_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  defaultModelId: text("default_model_id").references(() => modelConfigs.id, {
+    onDelete: "set null",
+  }),
+});
 
 export const modelConfigs = sqliteTable(
   "model_configs",

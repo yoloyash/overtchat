@@ -1,18 +1,18 @@
 "use client";
 
 import {
+  resolveChatModelId,
   REASONING_EFFORTS,
   type ModelCapabilities,
   type ModelReasoningLevel,
   type ReasoningEffort,
 } from "@overtchat/shared";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import { useState } from "react";
+import { useModelPreferences } from "@/lib/queries/modelPreferences";
 import type {
   CatalogModelPricing,
   ModelDiscoveryInput,
 } from "@/lib/model-config/schema";
-
-const SELECTED_MODEL_KEY = "overtchat_selected_model";
 
 export interface AvailableModel {
   id: string;
@@ -28,8 +28,27 @@ export interface AvailableModel {
   catalogPricing?: CatalogModelPricing;
 }
 
-export function useSelectedModel(): [string, (id: string) => void] {
-  return useLocalStorage<string>(SELECTED_MODEL_KEY, "");
+export function useSelectedModel(
+  models: readonly { id: string }[] | null,
+  initialModelId?: string | null,
+): [string, (id: string) => void] {
+  const preferences = useModelPreferences();
+  const [selection, setSelection] = useState<string | null>(
+    initialModelId ?? null,
+  );
+  // Wait for this mount's default refresh before initializing a new chat.
+  const waiting =
+    !models?.some((model) => model.id === selection) &&
+    (preferences.isPending || preferences.isFetching);
+  const selectedId = waiting
+    ? ""
+    : resolveChatModelId(
+        models ?? [],
+        selection,
+        preferences.data?.defaultModelId,
+      );
+  if (selectedId && selectedId !== selection) setSelection(selectedId);
+  return [selectedId, setSelection];
 }
 
 export async function fetchModelsForProvider(
@@ -66,13 +85,9 @@ export async function fetchModelsForProvider(
       {
         id: record.id,
         ...(contextWindow === undefined ? {} : { contextWindow }),
-        ...(catalogContextWindow === undefined
-          ? {}
-          : { catalogContextWindow }),
+        ...(catalogContextWindow === undefined ? {} : { catalogContextWindow }),
         ...(capabilities === undefined ? {} : { capabilities }),
-        ...(catalogCapabilities === undefined
-          ? {}
-          : { catalogCapabilities }),
+        ...(catalogCapabilities === undefined ? {} : { catalogCapabilities }),
         ...(catalogPricing === undefined ? {} : { catalogPricing }),
       },
     ];
@@ -84,12 +99,7 @@ function readCatalogPricing(value: unknown): CatalogModelPricing | undefined {
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const pricingKeys = [
-    "input",
-    "output",
-    "cacheRead",
-    "cacheWrite",
-  ] as const;
+  const pricingKeys = ["input", "output", "cacheRead", "cacheWrite"] as const;
   if (
     typeof record.tiered !== "boolean" ||
     pricingKeys.some(

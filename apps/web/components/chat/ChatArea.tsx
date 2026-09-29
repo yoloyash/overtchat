@@ -102,6 +102,7 @@ interface Props {
   chatKind?: ChatKind;
   initialMessages?: UIMessage[];
   initialMessageCursor?: string | null;
+  initialModelId?: string | null;
   isNew?: boolean;
   projectId?: string | null;
   initialQuery?: string;
@@ -112,6 +113,7 @@ export function ChatArea({
   chatKind,
   initialMessages,
   initialMessageCursor,
+  initialModelId,
   isNew,
   projectId,
   initialQuery,
@@ -123,17 +125,10 @@ export function ChatArea({
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : (modelsData ?? null);
-  const [selectedId, setSelectedId] = useSelectedModel();
-
-  useEffect(() => {
-    if (!models || models.length === 0) return;
-    if (!models.some((m) => m.id === selectedId)) {
-      setSelectedId(models[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models]);
+  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
+  const modelLoading = models === null || (models.length > 0 && !selectedId);
   const selectedModel = models?.find((model) => model.id === selectedId);
   const reasoningControls = selectedModel?.capabilities?.reasoningControls;
   const [reasoningLevels, setReasoningLevels] = useLocalStorage<
@@ -404,9 +399,8 @@ export function ChatArea({
   const showOnboarding =
     isAdmin &&
     !temporary &&
-    !configured &&
     !onboardingDismissed &&
-    models !== null;
+    models?.length === 0;
 
   const requestBody = (action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) => ({
     ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
@@ -706,7 +700,9 @@ export function ChatArea({
       voiceActive={voiceActive}
       voiceUnavailableReason={
         !configured
-          ? "Configure a model before starting voice"
+          ? modelLoading
+            ? "Loading model…"
+            : "Configure a model before starting voice"
           : voiceCapability?.unavailableReason === "stt-unavailable"
             ? "Speech-to-text is disabled"
             : voiceCapability?.unavailableReason === "tts-unavailable"
@@ -725,7 +721,9 @@ export function ChatArea({
                 unavailableReason: streaming
                   ? "Wait for the response to finish"
                   : !configured
-                    ? "Configure a model first"
+                    ? modelLoading
+                      ? "Loading model…"
+                      : "Configure a model first"
                     : messages.length === 0
                       ? "Start a conversation first"
                       : undefined,
@@ -806,7 +804,7 @@ export function ChatArea({
               <h1 className="mb-10 text-center text-2xl font-semibold tracking-tight md:text-3xl">
                 {temporary ? "Temporary chat" : "What can I help with?"}
               </h1>
-              {!configured && (
+              {models?.length === 0 && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
                   No models configured. An admin can add one in Settings →
                   Models.

@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, max } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { modelConfigs } from "@/lib/db/schema";
 import {
@@ -56,6 +56,27 @@ export async function listModelConfigs(): Promise<ModelConfigRow[]> {
     .select()
     .from(modelConfigs)
     .orderBy(asc(modelConfigs.sortOrder), asc(modelConfigs.label));
+}
+
+/** Save a complete order atomically, rejecting lists from an outdated catalog. */
+export function reorderModelConfigs(modelIds: string[]): boolean {
+  return db.transaction((tx) => {
+    const current = tx.select({ id: modelConfigs.id }).from(modelConfigs).all();
+    const ids = new Set(modelIds);
+    if (
+      ids.size !== modelIds.length ||
+      current.length !== ids.size ||
+      current.some((model) => !ids.has(model.id))
+    )
+      return false;
+    modelIds.forEach((id, sortOrder) => {
+      tx.update(modelConfigs)
+        .set({ sortOrder })
+        .where(eq(modelConfigs.id, id))
+        .run();
+    });
+    return true;
+  });
 }
 
 export async function getModelConfig(
@@ -138,7 +159,15 @@ export async function createModelConfig(
     }
     return tx
       .insert(modelConfigs)
-      .values({ id: crypto.randomUUID(), ...input })
+      .values({
+        id: crypto.randomUUID(),
+        ...input,
+        sortOrder:
+          (tx
+            .select({ last: max(modelConfigs.sortOrder) })
+            .from(modelConfigs)
+            .get()?.last ?? -1) + 1,
+      })
       .returning()
       .get();
   });

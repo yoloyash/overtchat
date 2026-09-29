@@ -1,6 +1,7 @@
 export * from "./ping";
 export * from "./models";
 export * from "./model-icons";
+export * from "./model-preferences";
 export * from "./chat";
 export * from "./context-status";
 export * from "./tools";

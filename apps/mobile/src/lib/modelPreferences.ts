@@ -1,18 +1,26 @@
-import * as SecureStore from "expo-secure-store";
-import { useCallback, useState } from "react";
+import { useState } from "react";
+import { resolveChatModelId } from "@overtchat/shared";
+import { useModelPreferences } from "@/lib/queries/modelPreferences";
 
-const SELECTED_MODEL_KEY = "overtchat.selectedModel";
-
-// Like web's selected model, this is a device-local preference shared by chats.
-export function useSelectedModel(): [string | null, (id: string) => void] {
-  const [selectedId, setSelectedId] = useState<string | null>(() =>
-    SecureStore.getItem(SELECTED_MODEL_KEY),
+export function useSelectedModel(
+  models: readonly { id: string }[] | undefined,
+  initialModelId?: string | null,
+): [string, (id: string) => void] {
+  const preferences = useModelPreferences();
+  const [selection, setSelection] = useState<string | null>(
+    initialModelId ?? null,
   );
-
-  const selectModel = useCallback((id: string) => {
-    SecureStore.setItem(SELECTED_MODEL_KEY, id);
-    setSelectedId(id);
-  }, []);
-
-  return [selectedId, selectModel];
+  // Wait for this mount's default refresh before initializing a new chat.
+  const waiting =
+    !models?.some((model) => model.id === selection) &&
+    (preferences.isPending || preferences.isFetching);
+  const selectedId = waiting
+    ? ""
+    : resolveChatModelId(
+        models ?? [],
+        selection,
+        preferences.data?.defaultModelId,
+      );
+  if (selectedId && selectedId !== selection) setSelection(selectedId);
+  return [selectedId, setSelection];
 }

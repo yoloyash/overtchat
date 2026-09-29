@@ -154,6 +154,7 @@ function ChatGate({
       chatId={chatId}
       isNew={isNew}
       initialMessages={hydration?.messages}
+      initialModelId={hydration?.modelConfigId}
       projectId={isNew ? newChatProjectId : (hydration?.projectId ?? null)}
       chatKind={isNew ? "text" : (hydration?.kind ?? "text")}
     />
@@ -161,6 +162,7 @@ function ChatGate({
 }
 
 function ChatSurface({
+  initialModelId,
   chatId,
   isNew,
   initialMessages,
@@ -170,6 +172,7 @@ function ChatSurface({
   chatId: string;
   isNew: boolean;
   initialMessages: UIMessage[] | undefined;
+  initialModelId?: string | null;
   projectId: string | null;
   chatKind: ChatKind;
 }) {
@@ -199,7 +202,7 @@ function ChatSurface({
     refetch: refetchHydration,
   } = useChatMessages(isNew ? null : chatId);
 
-  const [selectedId, setSelectedId] = useSelectedModel();
+  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
   const [searchRequested, setSearchRequested] = useState(false);
   const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const { data: capabilitiesData } = useCapabilities();
@@ -209,13 +212,6 @@ function ChatSurface({
   const reasoningLevels = useReasoningLevels();
   const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
-
-  useEffect(() => {
-    if (!models?.length) return;
-    if (!selectedId || !models.some((m) => m.id === selectedId)) {
-      setSelectedId(models[0].id);
-    }
-  }, [models, selectedId, setSelectedId]);
 
   const transport = useMemo(
     () =>
@@ -321,6 +317,8 @@ function ChatSurface({
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
+  const modelLoading =
+    modelsPending || (!modelsError && (models?.length ?? 0) > 0 && !selectedId);
   const selectedModel = models?.find((m) => m.id === selectedId) ?? null;
   const reasoningControls = selectedModel?.capabilities?.reasoningControls;
   const storedReasoningLevel = selectedId
@@ -592,11 +590,13 @@ function ChatSurface({
           >
             {modelsError
               ? "Couldn't load models"
-              : configured
-                ? "What can I help with?"
-                : "No models configured"}
+              : modelLoading
+                ? "Loading model…"
+                : configured
+                  ? "What can I help with?"
+                  : "No models configured"}
           </Text>
-          {!configured && !modelsError && (
+          {!configured && !modelsError && !modelLoading && (
             <Text
               style={[
                 styles.emptySub,
@@ -677,6 +677,7 @@ function ChatSurface({
         ) : (
           <Composer
             configured={configured}
+            modelLoading={modelLoading}
             streaming={streaming}
             imageOptions={imageAvailable ? imageOptions : undefined}
             imageModel={imageCapability?.model}

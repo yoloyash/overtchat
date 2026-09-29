@@ -16,11 +16,14 @@ const raw = new Database(databasePath);
 raw.pragma("foreign_keys = ON");
 raw.exec(`
   CREATE TABLE user (id TEXT PRIMARY KEY NOT NULL);
+  CREATE TABLE model_configs (id TEXT PRIMARY KEY NOT NULL);
+  INSERT INTO model_configs (id) VALUES ('voice-model');
   CREATE TABLE projects (
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL
   );
   CREATE TABLE chats (
+    model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
     project_id TEXT,
@@ -73,6 +76,14 @@ afterAll(() => {
 });
 
 describe("voice chat persistence", () => {
+  it("remembers the voice session model when saving history", async () => {
+    expect(voiceChats.syncVoiceHistory({
+      chatId: "voice-chat", userId: "user", projectId: null, allowCreate: true,
+      modelConfigId: "voice-model",
+      history: [{ id: "voice-message", role: "user", parts: [{ type: "text", text: "Hello" }] }],
+    }).status).toBe("ok");
+    expect((await chatQueries.getChat("voice-chat", "user"))?.modelConfigId).toBe("voice-model");
+  });
   it("creates a voice chat and idempotently upserts canonical messages", () => {
     const user = {
       id: "voice:chat:user-1",

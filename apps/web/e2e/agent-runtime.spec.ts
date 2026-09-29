@@ -1966,6 +1966,12 @@ test("shows durable turn activity without changing completed tool status", async
     path: testInfo.outputPath("runtime-model-effort-desktop.png"),
     fullPage: true,
   });
+  await modelEffortMenu.getByRole("menuitem", { name: "Search models", exact: true }).click();
+  const modelSearch = page.getByRole("textbox", { name: "Search models" });
+  await modelSearch.fill("no-such-agent-model");
+  await expect(page.getByText("No matching models.", { exact: true })).toBeVisible();
+  await modelSearch.fill(" mini ");
+  await expect(modelEffortMenu.getByRole("menuitem", { name: /GPT-5.6 Mini/u })).toBeVisible();
   await page
     .getByRole("menu", { name: "Model and effort" })
     .getByRole("menuitem", { name: /GPT-5.6 Mini/u })

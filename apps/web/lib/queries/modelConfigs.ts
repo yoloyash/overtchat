@@ -90,6 +90,24 @@ export function useDeleteModelConfig() {
   });
 }
 
+export function useReorderModels() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (modelIds: string[]) => {
+      const response = await fetch("/api/model-configs/order", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelIds }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error ?? "Couldn't save model order");
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: modelConfigKeys.all() }),
+  });
+}
+
 export function useSetTaskModel() {
   const qc = useQueryClient();
   return useMutation({

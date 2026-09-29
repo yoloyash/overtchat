@@ -106,7 +106,8 @@ test("compacts large MCP results between real tool-loop steps without limiting r
     } } });
     expect(imported.ok()).toBeTruthy();
     const chat = (await (await api.get("/api/chats")).json()).chats.find((c: { title: string }) => c.title === title);
-    await page.addInitScript(id => localStorage.setItem("overtchat_selected_model", JSON.stringify(id)), model.id);
+    const preferenceResponse = await api.put("/api/model-preferences", { data: { defaultModelId: model.id } });
+    expect(preferenceResponse.ok()).toBeTruthy();
     await page.goto(`/chat/${chat.id}`);
     await page.getByPlaceholder("Message…").fill("Use lookup twice, then tell me the launch details.");
     await page.getByLabel("Send message").click();

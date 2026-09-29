@@ -31,6 +31,7 @@ raw.exec(`
     id TEXT PRIMARY KEY NOT NULL
   );
   CREATE TABLE chats (
+    model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
     project_id TEXT,
@@ -167,6 +168,21 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("records the model only when the turn is committed and leaves it unchanged on rejected turns", async () => {
+    const input = {
+      chatId: "chat", userId: "user", projectId: null,
+      streamId: "stream", clientRequestId: "request", requestFingerprint: "fingerprint",
+      staleStreamId: null, modelConfigId: "first-model",
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.modelConfigId).toBe("first-model");
+    expect(chatTurns.commitChatTurn({ ...input, userId: "other", clientRequestId: "other" })).toBe("not-found");
+    expect(chatTurns.commitChatTurn({ ...input, clientRequestId: "next", modelConfigId: "other-model" })).toBe("stream-active");
+    expect((await chatDb.getChat("chat", "user"))?.modelConfigId).toBe("first-model");
+    expect(chatTurns.commitChatTurn({ ...input, streamId: "next", clientRequestId: "next", staleStreamId: "stream", modelConfigId: "other-model" })).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.modelConfigId).toBe("other-model");
+  });
+
   it("persists checkpoints with the owned response and invalidates them when editing covered history", async () => {
     seedChat();
     const original = await chatDb.getMessages("chat");

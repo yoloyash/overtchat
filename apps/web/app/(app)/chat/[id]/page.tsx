@@ -22,6 +22,7 @@ export default async function Page({
       chatKind={chat.kind}
       projectId={chat.projectId ?? null}
       initialMessages={initialPage.messages}
+      initialModelId={chat.modelConfigId}
       initialMessageCursor={initialPage.nextCursor}
     />
   );

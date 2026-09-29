@@ -15,6 +15,7 @@ process.env.DATABASE_URL = databasePath;
 const raw = new Database(databasePath);
 raw.exec(`
   CREATE TABLE chats (
+    model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
     project_id TEXT,

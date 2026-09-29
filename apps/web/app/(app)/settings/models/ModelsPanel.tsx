@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,6 +25,7 @@ import {
   useDeleteModelConfig,
   useSetTaskModel,
   useUpdateModelConfig,
+  useReorderModels,
 } from "@/lib/queries/modelConfigs";
 import { cn } from "@/lib/utils";
 import {
@@ -44,6 +45,7 @@ export function ModelsPanel() {
   const deleteMut = useDeleteModelConfig();
   const taskModelMut = useSetTaskModel();
   const updateMut = useUpdateModelConfig();
+  const reorderMut = useReorderModels();
 
   const [query, setQuery] = useState("");
   const [pendingDelete, setPendingDelete] = useState<AdminModelConfig | null>(
@@ -52,6 +54,21 @@ export function ModelsPanel() {
   const [deleteError, setDeleteError] = useState("");
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const taskModel = models.find((model) => model.taskModel) ?? null;
+
+  async function moveModel(id: string, direction: -1 | 1) {
+    const modelIds = models.map((model) => model.id);
+    const index = modelIds.indexOf(id);
+    const next = index + direction;
+    if (index < 0 || next < 0 || next >= modelIds.length) return;
+    [modelIds[index], modelIds[next]] = [modelIds[next], modelIds[index]];
+    try {
+      await reorderMut.mutateAsync(modelIds);
+    } catch (error) {
+      toast.error({
+        title: getErrorMessage(error, "Couldn't save model order"),
+      });
+    }
+  }
 
   const filteredModels = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -96,7 +113,6 @@ export function ModelsPanel() {
           providerOptions: m.providerOptions,
           toolCallingEnabled: m.toolCallingEnabled,
           enabled: next,
-          sortOrder: m.sortOrder,
         },
       });
     } catch (err) {
@@ -241,105 +257,142 @@ export function ModelsPanel() {
           </p>
         </div>
       ) : (
-        <div className="@container divide-y divide-border/70 border-y">
-          {filteredModels.map((m) => {
-            const provider = getProvider(m.providerId);
-            const host = hostnameOf(m.baseUrl);
-            const iconId = modelIconForModel(m.model) ?? provider.iconId;
-            return (
-              <div
-                key={m.id}
-                className={cn(
-                  "grid gap-3 py-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
-                  !m.enabled && "opacity-65",
-                )}
-              >
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
-                    <ModelBrandIcon iconId={iconId} className="size-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span className="min-w-0 truncate text-sm font-medium text-foreground">
-                        {m.label}
-                      </span>
-                      {m.taskModel && (
-                        <span className="rounded-full border bg-accent/50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
-                          Task
+        <div>
+          <p className="mb-3 text-xs text-muted-foreground">
+            {query.trim()
+              ? "Clear search to change model order."
+              : "Use the arrows to set the model order for everyone."}
+          </p>
+          <div className="@container divide-y divide-border/70 border-y">
+            {filteredModels.map((m) => {
+              const provider = getProvider(m.providerId);
+              const host = hostnameOf(m.baseUrl);
+              const iconId = modelIconForModel(m.model) ?? provider.iconId;
+              return (
+                <div
+                  key={m.id}
+                  className={cn(
+                    "grid gap-3 py-3 @xl:grid-cols-[minmax(0,1fr)_auto] @xl:items-center",
+                    !m.enabled && "opacity-65",
+                  )}
+                >
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted/30">
+                      <ModelBrandIcon iconId={iconId} className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="min-w-0 truncate text-sm font-medium text-foreground">
+                          {m.label}
                         </span>
-                      )}
-                      {m.modelType === "image" && (
-                        <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                          Image
+                        {m.taskModel && (
+                          <span className="rounded-full border bg-accent/50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-muted-foreground">
+                            Task
+                          </span>
+                        )}
+                        {m.modelType === "image" && (
+                          <span className="rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            Image
+                          </span>
+                        )}
+                        {m.modelType !== "image" && (
+                          <HealthBadge
+                            id={m.id}
+                            enabled={m.enabled || m.taskModel}
+                          />
+                        )}
+                      </div>
+                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                        <span>{provider.label}</span>
+                        <span
+                          aria-hidden="true"
+                          className="text-muted-foreground/50"
+                        >
+                          /
                         </span>
-                      )}
-                      {m.modelType !== "image" && (
-                        <HealthBadge
-                          id={m.id}
-                          enabled={m.enabled || m.taskModel}
-                        />
-                      )}
-                    </div>
-                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                      <span>{provider.label}</span>
-                      <span
-                        aria-hidden="true"
-                        className="text-muted-foreground/50"
-                      >
-                        /
-                      </span>
-                      <span className="font-mono">{host}</span>
-                    </div>
-                    <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
-                      {m.model}
+                        <span className="font-mono">{host}</span>
+                      </div>
+                      <div className="mt-1 truncate font-mono text-xs text-muted-foreground">
+                        {m.model}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex flex-wrap items-center gap-2 justify-self-end @xl:flex-nowrap">
-                  <div className="flex items-center justify-end gap-2 @2xl:min-w-16">
-                    <span className="hidden text-xs text-muted-foreground @2xl:inline">
-                      {m.enabled ? "On" : "Off"}
-                    </span>
-                    <Switch
-                      checked={m.enabled}
-                      disabled={togglingId !== null}
-                      onCheckedChange={(next) => void toggleEnabled(m, next)}
-                      aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
-                    />
-                  </div>
-                  <div className="h-6 w-px bg-border" aria-hidden="true" />
-                  <div className="flex items-center gap-1.5">
-                    <Button
-                      render={<Link href={`/settings/models/${m.id}`} />}
-                      variant="outline"
-                      size="sm"
-                      aria-label={`Edit ${m.label}`}
-                      title={`Edit ${m.label}`}
-                    >
-                      <Pencil data-icon="inline-start" />
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setDeleteError("");
-                        setPendingDelete(m);
-                      }}
-                      aria-label={`Delete ${m.label}`}
-                      title={`Delete ${m.label}`}
-                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      Delete
-                    </Button>
+                  <div className="flex flex-wrap items-center gap-2 justify-self-end @xl:flex-nowrap">
+                    <div className="flex items-center">
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move ${m.label} up`}
+                        title="Move up"
+                        disabled={
+                          reorderMut.isPending ||
+                          !!query.trim() ||
+                          models[0]?.id === m.id
+                        }
+                        onClick={() => void moveModel(m.id, -1)}
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move ${m.label} down`}
+                        title="Move down"
+                        disabled={
+                          reorderMut.isPending ||
+                          !!query.trim() ||
+                          models[models.length - 1]?.id === m.id
+                        }
+                        onClick={() => void moveModel(m.id, 1)}
+                      >
+                        <ArrowDown />
+                      </Button>
+                    </div>
+                    <div className="flex items-center justify-end gap-2 @2xl:min-w-16">
+                      <span className="hidden text-xs text-muted-foreground @2xl:inline">
+                        {m.enabled ? "On" : "Off"}
+                      </span>
+                      <Switch
+                        checked={m.enabled}
+                        disabled={togglingId !== null}
+                        onCheckedChange={(next) => void toggleEnabled(m, next)}
+                        aria-label={`${m.enabled ? "Disable" : "Enable"} ${m.label}`}
+                      />
+                    </div>
+                    <div className="h-6 w-px bg-border" aria-hidden="true" />
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        render={<Link href={`/settings/models/${m.id}`} />}
+                        variant="outline"
+                        size="sm"
+                        aria-label={`Edit ${m.label}`}
+                        title={`Edit ${m.label}`}
+                      >
+                        <Pencil data-icon="inline-start" />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setDeleteError("");
+                          setPendingDelete(m);
+                        }}
+                        aria-label={`Delete ${m.label}`}
+                        title={`Delete ${m.label}`}
+                        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 data-icon="inline-start" />
+                        Delete
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       )}
 
