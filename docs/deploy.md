@@ -192,7 +192,10 @@ The web app and connector must both support connector protocol 5 for Hermes.
 
 The connector records its OpenCode and Hermes helper processes beside its state journal
 in `<state-file>.processes/`. On restart it verifies process identities and
-cleans up recorded leftovers locally or through the original SSH alias.
+cleans up recorded leftovers locally or through the original SSH alias in the
+background, allowing the connector to connect even when remote hosts are offline.
+New managed launches still await recovery for their target. Shutdown cancels
+background probes and finishes their ledger work before releasing the instance lock.
 Unreachable SSH hosts retain their records and are retried before the next
 managed agent launch on that host. Preserve this directory with the connector state;
 servers left behind by older versions without records are not automatically
@@ -229,6 +232,20 @@ app, selected services, and managed connector while preserving data. Rerun it
 if interrupted. `overtchat update --check` only reports available versions and
 does not require Docker; add `--json` for structured output.
 
+Agent Connections are optional. Setup checks their service prerequisites before
+changing the app. If that check or connector installation fails, interactive
+setup/update offers **Retry** or **Finish without Agent Connections for now**.
+The rest of the installation finishes, and the final output identifies the
+connector as pending. Unattended runs continue with the same warning.
+Working app and speech components are retained; a connector failure does not
+roll them back. Other installation failures still stop setup/update.
+
+The agent selection stays saved so the next `overtchat setup` or `overtchat update`
+retries it. `overtchat status` reports **setup pending**, including when a previous
+connector is still online. To stop managing Agent Connections, run setup and
+select **Set up later** at **Install Agent Connections?**; this skips future
+connector installation attempts but does not uninstall an existing service.
+
 Setup asks **Automatically check for updates?**, with **Yes (recommended)**
 selected for new installations. This enables release notifications in the
 administrator account menu. The app contacts overtchat.com to check for new
@@ -264,11 +281,30 @@ overtchat logs --tail 100             # all selected container services
 overtchat logs app --follow
 overtchat logs connector --follow    # systemd journal or macOS log files
 overtchat logs speech --follow       # native Apple speech
+overtchat logs install --tail 100     # setup/update phases and failure diagnostics
 ```
 
 Service names are `app`, `redis`, `search`, `tts`, `stt`, `voice`, `connector`,
-and `speech`; only installed services are available. Container log output may
-contain application data; review it before sharing.
+`speech`, and `install`. Container and speech logs require a saved installation;
+connector and installation logs are available even if setup failed before saving
+its configuration. Log output may contain application data; review it before
+sharing.
+
+Setup/update displays individual connector phases and elapsed time during waits.
+Permission prompts pause the spinner. Unattended runs do not prompt for sudo;
+if permission is unavailable, Agent Connections remain pending.
+The private `~/.config/overtchat/install.log` records phases, failures, and a short
+connector service log excerpt collected before recovery. Known management/provider
+credentials and connector tokens are redacted. It does not record configuration
+stdin, environment files, or a full transcript of inherited interactive/Docker
+output. The file is retained between attempts and rotated to `install.log.previous`
+at the next run after exceeding 5 MiB. The printed path follows a configured
+`OVERTCHAT_CONFIG_DIR`. If the log cannot be written, terminal diagnostics remain
+available.
+
+For an installation problem, include your OS, the setup/update command, its final
+error or warning, `overtchat status`, and `overtchat logs install --tail 100`.
+For connector startup failures, also include `overtchat logs connector --tail 50`.
 
 ```sh
 docker logs -f overtchat-app

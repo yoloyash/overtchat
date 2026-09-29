@@ -263,6 +263,15 @@ Exercise command help, bare version compatibility, status/version JSON, logs,
 and `update --check`. Check reporting with Docker unavailable and stopped
 components. Verify that update checks do not require Docker, read credentials,
 self-update, or write installation files. Setup and update retain their existing
-provisioning behavior; setup dry runs still write preview files.
+provisioning behavior; setup dry runs still write preview files and an installation log.
+
+Connector installation failures should finish setup/update with a visible pending
+warning, preserve the agent selection, commit successful app/speech changes, and
+retry on the next run. Cover fresh setup, updates, unavailable service prerequisites,
+interactive retry/skip, and unattended runs. Confirm `logs install` and `logs connector`
+work before installation state exists and that diagnostics exclude credentials.
+Verify CLI self-update preserves terminal stdin. Connector recovery tests must show
+that offline SSH hosts do not delay the channel, new launches await target recovery,
+and shutdown cancels probes before releasing the journal's instance lock.
 
 Installer binary and terminal checks are documented in [Release process](release.md).

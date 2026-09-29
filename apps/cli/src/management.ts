@@ -286,7 +286,8 @@ export async function installationReport() {
     const value = response?.connector as
       | { online?: boolean; version?: string }
       | undefined;
-    connector.state = value?.online ? "online" : "offline";
+    connector.state = config.agents.pending ? "setup pending" : value?.online ? "online" : "offline";
+    if (config.agents.pending) report.problems.push("Agent Connections setup is pending. Run overtchat setup to retry; see overtchat logs install.");
     if (value?.online && typeof value.version === "string")
       connector.running = value.version;
   }

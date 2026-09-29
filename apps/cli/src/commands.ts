@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { withInstallationLog } from "./install-log.js";
 import { CLI_VERSION } from "./constants.js";
 import { readInstallationConfig } from "./config.js";
 import { logs } from "./logs.js";
@@ -44,7 +45,7 @@ const commands: Record<
   logs: {
     usage: "logs [service] [--follow|-f] [--tail N]",
     description:
-      "Show Docker service logs (all by default), or connector/native speech logs. Services: app, redis, search, tts, stt, voice, connector, speech. Default: last 100 lines.",
+      "Show Docker service logs (all by default), or connector/native speech logs. Services: app, redis, search, tts, stt, voice, connector, speech, install. Default: last 100 lines.",
     flags: ["--follow", "-f", "--tail"],
   },
 };
@@ -130,7 +131,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
   const json = flags.has("--json");
   switch (command) {
-    case "setup": {
+    case "setup": return withInstallationLog("setup", async () => {
       const options = {
         dryRun: flags.has("--dry-run"),
         defaults: flags.has("--defaults"),
@@ -151,10 +152,10 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         return;
       }
       await setup(options, manifest);
-      return;
-    }
+    });
     case "update":
-      await update({ check: flags.has("--check"), json });
+      if (flags.has("--check")) await update({ check: true, json });
+      else await withInstallationLog("update", () => update());
       return;
     case "status":
       await status(json);

@@ -2,7 +2,7 @@ import { detectAppleSpeech, prepareAppleSpeech, type SpeechChange } from "./appl
 import { platformServices } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { confirm, isCancel, note, outro, spinner } from "@clack/prompts";
+import { confirm, isCancel, note, outro } from "@clack/prompts";
 import {
   defaultInstallationConfig,
   initialSecrets,
@@ -12,7 +12,9 @@ import {
   writeInstallationConfig,
   writeSecretsFile,
 } from "./config.js";
-import { installManagedConnector } from "./connector.js";
+import { completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
+import { installationSpinner as spinner } from "./install-progress.js";
+import { protectInstallationSecrets } from "./install-log.js";
 import {
   renderComposeFile,
   renderStackEnvironment,
@@ -343,6 +345,7 @@ export async function setup(
   const saved = await readInstallationConfig(paths);
   const adopting = installationNeedsAdoption(existing, paths.stackDirectory);
   const previousSecrets = await readInstallationSecrets(paths);
+  protectInstallationSecrets(...Object.values(previousSecrets));
   let config = saved ?? defaultInstallationConfig(existing, manifest);
   config = applyReleaseManifest(config, manifest);
   if (saved) {
@@ -480,6 +483,7 @@ export async function setup(
     existing,
     previousSecrets,
   );
+  protectInstallationSecrets(...Object.values(secrets), config.search.apiKey, config.tts.apiKey, config.stt.apiKey);
   note([
     accessSummary(config),
     `App: ${config.appVersion}`,
@@ -502,6 +506,7 @@ export async function setup(
     outro(`Configuration preview written to ${preview.stackDirectory}. Installed settings were not changed.`);
     return;
   }
+  const installAgents = await prepareAgentConnections(config, !options.defaults);
   await prepareFiles(config, existing?.searxngConfigPath);
   await writeSecretsFile(
     paths,
@@ -597,16 +602,19 @@ export async function setup(
   try {
     progress.message("Preparing local speech");
     speechChange = await prepareAppleSpeech(config, secrets.managementSecret, paths);
-    await startStack(config, saved, secrets, paths, docker, waitForApp);
+    progress.message("Starting OvertChat services");
+    await startStack(config, saved, secrets, paths, docker, async (url) => {
+      progress.message("Waiting for OvertChat and database migrations");
+      await waitForApp(url);
+    });
     stackStarted = true;
     if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
       await removeServe(oldRoute);
     }
     progress.message("Applying provider configuration");
     await syncCapabilities(config, secrets.managementSecret);
-    if (config.agents.installed) {
-      progress.message("Installing Agent Connections");
-      await installManagedConnector(config, secrets.managementSecret);
+    if (installAgents) {
+      await completeAgentConnections(config, secrets.managementSecret, progress, !options.defaults);
     }
     // Record the route before starting Serve so interruption can be recovered.
     config.managedTailscaleRoute = nextRoute;
@@ -615,13 +623,14 @@ export async function setup(
     await speechChange.commit();
     speechChange = undefined;
     const reconciliation = await reconcileManagedSidecars(docker, config);
-    progress.stop("OvertChat is ready");
+    progress.stop(config.agents.pending ? "OvertChat is ready; Agent Connections pending" : "OvertChat is ready");
 
     showSidecarReconciliation(reconciliation);
     const instructions = connectionInstructions(config);
     if (instructions) note(instructions, "Access OvertChat");
     await finishAccess(config, !options.defaults);
     await writeInstallationConfig(paths, config);
+    reportPendingAgentConnections(config);
     outro(accessSummary(config));
     if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
     note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");

@@ -215,7 +215,12 @@ esac
             installed = home / ".local/bin/overtchat"
             if hashlib.sha256(installed.read_bytes()).hexdigest() != digest:
                 raise RuntimeError("setup did not use the supplied CLI artifact")
-            for name in ("config", "stack", "unexpected-docker"):
+            # Setup now starts its diagnostic log before prompting. Cancellation
+            # may leave that log, but must not save installation state or secrets.
+            config = root_path / "config"
+            if config.exists() and {p.name for p in config.iterdir()} != {"install.log"}:
+                raise RuntimeError("setup wrote configuration before confirmation")
+            for name in ("stack", "unexpected-docker"):
                 if (root_path / name).exists():
                     raise RuntimeError(f"setup attempted provisioning: {name}")
             print(f"PASS: {platform} installer accepts LAN customization and blank addresses, then cancels")

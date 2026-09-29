@@ -2,6 +2,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { confirm } from "@clack/prompts";
+import { checkManagedConnectorPrerequisites, installManagedConnector } from "./connector.js";
 import { setup } from "./setup.js";
 import {
   defaultInstallationConfig,
@@ -22,6 +24,10 @@ vi.mock("@clack/prompts", () => ({
   note: vi.fn(),
   outro: vi.fn(),
   spinner: () => ({ start: vi.fn(), stop: vi.fn(), message: vi.fn() }),
+}));
+vi.mock("./connector.js", () => ({
+  checkManagedConnectorPrerequisites: vi.fn(),
+  installManagedConnector: vi.fn(),
 }));
 vi.mock("./prompts.js", () => ({
   promptInstallationConfig: vi.fn(),
@@ -77,6 +83,9 @@ function local(initial: InstallationConfig): InstallationConfig {
 }
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.mocked(checkManagedConnectorPrerequisites).mockReset();
+  vi.mocked(installManagedConnector).mockReset();
+  vi.mocked(confirm).mockReset();
   vi.mocked(removeServe).mockResolvedValue();
   vi.mocked(checkServeRoute).mockResolvedValue();
   vi.mocked(requireDocker)
@@ -300,4 +309,51 @@ it("retains native speech and its selection after a first-install failure", asyn
   await expect(setup(options, manifest)).rejects.toThrow("sync failed");
   expect(rollback).not.toHaveBeenCalled();
   expect((await readInstallationConfig(runtimePaths()))?.tts.accelerator).toBe("apple");
+});
+
+
+it("finishes a fresh installation when the optional connector fails", async () => {
+  vi.mocked(promptInstallationConfig).mockImplementation(async initial => ({
+    ...local(initial), agents: { installed: true },
+  }));
+  vi.mocked(installManagedConnector).mockRejectedValue(new Error("connector startup failed"));
+  vi.mocked(confirm).mockResolvedValue(false);
+  const commit = vi.fn();
+  const rollback = vi.fn();
+  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit, rollback });
+  await setup(options, manifest);
+  expect(commit).toHaveBeenCalledOnce();
+  expect(rollback).not.toHaveBeenCalled();
+  expect(finishAccess).toHaveBeenCalledOnce();
+  expect(await readInstallationConfig(runtimePaths())).toMatchObject({
+    appVersion: manifest.appVersion, agents: { installed: true, pending: true },
+  });
+});
+
+it("checks connector prerequisites before changing stack files and lets setup continue", async () => {
+  vi.mocked(promptInstallationConfig).mockImplementation(async initial => ({
+    ...local(initial), agents: { installed: true },
+  }));
+  vi.mocked(checkManagedConnectorPrerequisites).mockImplementationOnce(async () => {
+    await expect(readFile(runtimePaths().composeFile)).rejects.toThrow();
+    throw new Error("No systemd user session");
+  });
+  vi.mocked(confirm).mockResolvedValue(false);
+  await setup(options, manifest);
+  expect(installManagedConnector).not.toHaveBeenCalled();
+  expect(await readInstallationConfig(runtimePaths())).toMatchObject({
+    agents: { installed: true, pending: true },
+  });
+});
+
+it("retries connector installation without restarting the app and clears pending state", async () => {
+  vi.mocked(promptInstallationConfig).mockImplementation(async initial => ({
+    ...local(initial), agents: { installed: true, pending: true },
+  }));
+  vi.mocked(installManagedConnector).mockRejectedValueOnce(new Error("download timed out"));
+  vi.mocked(confirm).mockResolvedValueOnce(true);
+  await setup(options, manifest);
+  expect(installManagedConnector).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(requireDocker).mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(1);
+  expect((await readInstallationConfig(runtimePaths()))?.agents).toEqual({ installed: true });
 });

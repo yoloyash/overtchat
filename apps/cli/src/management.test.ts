@@ -55,6 +55,18 @@ beforeEach(() => {
   );
 });
 afterEach(() => vi.unstubAllGlobals());
+
+it("keeps an incomplete connector update visible even if an older connector is online", async () => {
+  const selected = config();
+  selected.agents = { installed: true, pending: true } as typeof selected.agents;
+  vi.mocked(readInstallationConfig).mockResolvedValue(selected);
+  vi.stubGlobal("fetch", vi.fn(async (url) => Response.json(String(url).endsWith("/connector")
+    ? { connector: { online: true, version: "0.1.0" } }
+    : { ok: true, name: "overtchat", instanceId: "test-instance", version: selected.appVersion })));
+  const report = await installationReport();
+  expect(report.components.find(item => item.id === "connector")).toMatchObject({ state: "setup pending", running: "0.1.0" });
+  expect(report.problems).toContain("Agent Connections setup is pending. Run overtchat setup to retry; see overtchat logs install.");
+});
 describe("component discovery", () => {
   it("reflects selected GPU/native services without presenting disabled versions as installed", () => {
     const selected = config();

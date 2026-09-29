@@ -38,7 +38,7 @@ type Record = {
   descendants: Identity[];
 };
 
-async function control(target: HostTarget, script: string): Promise<string> {
+async function control(target: HostTarget, script: string, signal?: AbortSignal): Promise<string> {
   const launch = {
     command: "/bin/sh",
     args: ["-c", script],
@@ -48,6 +48,7 @@ async function control(target: HostTarget, script: string): Promise<string> {
     target.transport === "local"
       ? await execFileAsync(launch.command, launch.args, {
           timeout: CONTROL_TIMEOUT_MS,
+          signal,
           maxBuffer: 8 * 1024 * 1024,
         })
       : await execFileAsync(
@@ -55,6 +56,7 @@ async function control(target: HostTarget, script: string): Promise<string> {
           sshCommandArgs(target.alias, `/bin/sh -c ${shellQuote(script)}`),
           {
             timeout: CONTROL_TIMEOUT_MS,
+            signal,
             maxBuffer: 8 * 1024 * 1024,
           },
         );
@@ -81,11 +83,12 @@ export function parseProcessTable(output: string): ProcessRow[] {
   });
 }
 
-async function processTable(target: HostTarget): Promise<ProcessRow[]> {
+async function processTable(target: HostTarget, signal?: AbortSignal): Promise<ProcessRow[]> {
   return parseProcessTable(
     await control(
       target,
       "LC_ALL=C ps -axww -o pid=,ppid=,pgid=,stat=,lstart=,args=",
+      signal,
     ),
   );
 }
@@ -163,7 +166,17 @@ export class ManagedProcesses {
   private readonly stopping = new Map<string, Promise<void>>();
   private readonly retiring = new Set<string>();
 
+  private recovery: Promise<void> | undefined;
+  private readonly recoveryAbort = new AbortController();
+
   constructor(private readonly directory?: string) {}
+
+  startRecovery(): void {
+    if (this.recovery || this.recoveryAbort.signal.aborted) return;
+    this.recovery = this.reap(undefined, this.recoveryAbort.signal).catch((error) => {
+      if (!this.recoveryAbort.signal.aborted) console.warn("Unable to recover managed processes; records retained", error);
+    });
+  }
 
   private async save(record: Record): Promise<void> {
     if (!this.directory) return;
@@ -179,7 +192,7 @@ export class ManagedProcesses {
       await rm(path.join(this.directory, `${record.id}.json`), { force: true });
   }
 
-  async reap(target?: HostTarget): Promise<void> {
+  async reap(target?: HostTarget, signal?: AbortSignal): Promise<void> {
     if (!this.directory) return;
     const files = await readdir(this.directory).catch(
       (error: NodeJS.ErrnoException) => {
@@ -188,6 +201,7 @@ export class ManagedProcesses {
       },
     );
     for (const file of files.filter((file) => file.endsWith(".json"))) {
+      if (signal?.aborted) return;
       const id = file.slice(0, -5);
       if (this.active.has(id) && !this.retiring.has(id)) continue;
       try {
@@ -204,8 +218,11 @@ export class ManagedProcesses {
               record.target.alias !== target.alias))
         )
           continue;
-        await this.terminate(record);
+        // Another launch may have registered this process while we read the ledger.
+        if (this.active.has(id) && !this.retiring.has(id)) continue;
+        await this.terminate(record, signal);
       } catch (error) {
+        if (signal?.aborted) return;
         // In particular, retain unreachable SSH hosts for the next connection.
         console.warn(
           `Unable to recover managed process ${id}: ${error instanceof Error ? error.message : String(error)}`,
@@ -305,21 +322,22 @@ export class ManagedProcesses {
     }
   }
 
-  private terminate(record: Record): Promise<void> {
+  private terminate(record: Record, signal?: AbortSignal): Promise<void> {
     // Failed cleanup remains eligible for reconciliation even in this daemon,
     // for example when an SSH host comes back before the connector restarts.
     this.retiring.add(record.id);
     const existing = this.stopping.get(record.id);
     if (existing) return existing;
-    const stopping = this.stopRecord(record).finally(() =>
+    const stopping = this.stopRecord(record, signal).finally(() =>
       this.stopping.delete(record.id),
     );
     this.stopping.set(record.id, stopping);
     return stopping;
   }
 
-  private async stopRecord(record: Record): Promise<void> {
-    let table = await processTable(record.target);
+  private async stopRecord(record: Record, signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    let table = await processTable(record.target, signal);
     let rows = ownedTree(record, table);
     const ownershipDeadline = Date.now() + OWNERSHIP_RETRY_MS;
     // exec can temporarily hide argv even though PID/start time still match.
@@ -334,7 +352,7 @@ export class ManagedProcesses {
           `Managed process ${record.root.pid} is still running but ownership could not be confirmed; retaining recovery record`,
         );
       await new Promise((resolve) => setTimeout(resolve, 50));
-      table = await processTable(record.target);
+      table = await processTable(record.target, signal);
       rows = ownedTree(record, table);
     }
     if (rows.length) {
@@ -345,21 +363,23 @@ export class ManagedProcesses {
       await control(
         record.target,
         `kill -TERM ${rows.map((row) => row.pid).join(" ")} 2>/dev/null || true`,
+        signal,
       );
       const deadline = Date.now() + GRACE_MS;
       do {
         await new Promise((resolve) => setTimeout(resolve, 50));
-        rows = ownedTree(record, await processTable(record.target));
+        rows = ownedTree(record, await processTable(record.target, signal));
       } while (rows.length && Date.now() < deadline);
       if (rows.length) {
         await control(
           record.target,
           `kill -KILL ${rows.map((row) => row.pid).join(" ")} 2>/dev/null || true`,
+          signal,
         );
         const forceDeadline = Date.now() + GRACE_MS;
         do {
           await new Promise((resolve) => setTimeout(resolve, 50));
-          rows = ownedTree(record, await processTable(record.target));
+          rows = ownedTree(record, await processTable(record.target, signal));
         } while (rows.length && Date.now() < forceDeadline);
         if (rows.length)
           throw new Error("Managed process tree did not exit after SIGKILL");
@@ -372,6 +392,9 @@ export class ManagedProcesses {
   }
 
   async stop(): Promise<void> {
+    // Cancel remote probes and finish ledger work before the instance lock is released.
+    this.recoveryAbort.abort();
+    await this.recovery;
     const results = await Promise.allSettled(
       [...this.active.values()].map(({ record }) => this.terminate(record)),
     );
