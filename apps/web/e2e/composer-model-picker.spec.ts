@@ -87,15 +87,16 @@ test("search and a single synced default stay independent of existing chats and 
   await search.fill(" fast-model ");
   await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).click();
   await fast.click();
-  const star = menu.getByRole("menuitem", {
-    name: "Set Fast Model as default",
+  const setDefault = menu.getByRole("menuitem", {
+    name: "Set as default",
     exact: true,
   });
-  await star.focus();
+  await expect(setDefault).toHaveText("Set as default");
+  await setDefault.focus();
   await page.keyboard.press("Enter");
   await expect(
     menu.getByRole("menuitem", {
-      name: "Clear default model: Fast Model",
+      name: "Clear default",
       exact: true,
     }),
   ).toBeEnabled();
@@ -147,41 +148,68 @@ test("search and a single synced default stay independent of existing chats and 
   }
 });
 
-test("replacing and clearing the default preserves the active model and configured order", async ({
+test("the header saves the selected model even when filtered out, replaces and clears the default", async ({
   page,
 }) => {
   await preparePicker(page);
   const picker = page.getByRole("button", {
     name: /deepseek-v4-flash-preview-long-name, thinking medium/,
   });
-  await picker.click();
+  const fast = page.getByRole("button", { name: "Fast Model", exact: true });
   const menu = page.getByRole("menu");
-  await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
+  await picker.click();
+  await menu.getByRole("menuitem", { name: "Fast Model", exact: true }).click();
+  await fast.click();
   await menu
-    .getByRole("menuitem", { name: "Set Fast Model as default", exact: true })
+    .getByRole("menuitem", { name: "Search models", exact: true })
+    .click();
+  await menu.getByRole("textbox", { name: "Search models" }).fill("deepseek");
+  await expect(
+    menu.getByRole("menuitem", { name: "Fast Model", exact: true }),
+  ).toHaveCount(0);
+  await menu
+    .getByRole("menuitem", {
+      name: "Set as default",
+      exact: true,
+    })
     .click();
   await expect(
-    menu.getByRole("menuitem", {
-      name: "Clear default model: Fast Model",
-      exact: true,
-    }),
+    menu.getByRole("menuitem", { name: "Clear default", exact: true }),
   ).toBeEnabled();
+  expect(
+    await (await page.request.get("/api/model-preferences")).json(),
+  ).toEqual({ defaultModelId: "fast-model" });
+  await menu
+    .getByRole("menuitem", { name: "Close model search", exact: true })
+    .click();
+  await expect(fast).toBeVisible();
   await expect(
     menu.getByRole("menuitem", {
       name: /^(deepseek-v4-flash-preview-long-name|Fast Model)$/,
     }),
-  ).toHaveText(["deepseek-v4-flash-preview-long-name", "Fast Model"]);
-  const second = menu.getByRole("menuitem", {
-    name: "Set deepseek-v4-flash-preview-long-name as default",
+  ).toHaveText(["deepseek-v4-flash-preview-long-name", "Fast ModelDefault"]);
+  await menu
+    .getByRole("menuitem", {
+      name: "deepseek-v4-flash-preview-long-name",
+      exact: true,
+    })
+    .click();
+  await picker.click();
+  const action = menu.getByRole("menuitem", {
+    name: "Set as default",
     exact: true,
   });
-  await second.focus();
+  await action.focus();
   await page.keyboard.press("Enter");
+  await expect(menu.getByText("Default", { exact: true })).toHaveCount(1);
   await expect(
-    menu.getByRole("menuitem", { name: /^Clear default model:/ }),
-  ).toHaveCount(1);
+    menu.getByRole("menuitem", {
+      name: "deepseek-v4-flash-preview-long-name",
+      exact: true,
+    }),
+  ).toContainText("Default");
   const clear = menu.getByRole("menuitem", {
-    name: "Clear default model: deepseek-v4-flash-preview-long-name",
+    name: "Clear default",
     exact: true,
   });
   await expect(clear).toBeEnabled();
@@ -189,9 +217,8 @@ test("replacing and clearing the default preserves the active model and configur
     await (await page.request.get("/api/model-preferences")).json(),
   ).toEqual({ defaultModelId: "reasoning-model" });
   await clear.click();
-  await expect(
-    menu.getByRole("menuitem", { name: /^Clear default model:/ }),
-  ).toHaveCount(0);
+  await expect(menu.getByText("Default", { exact: true })).toHaveCount(0);
+  await expect(action).toBeEnabled();
   expect(
     await (await page.request.get("/api/model-preferences")).json(),
   ).toEqual({ defaultModelId: null });
@@ -214,7 +241,10 @@ test("failed default saves leave the saved preference unchanged", async ({
     .click();
   await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
   await page
-    .getByRole("menuitem", { name: "Set Fast Model as default", exact: true })
+    .getByRole("menuitem", {
+      name: "Set as default",
+      exact: true,
+    })
     .click();
   await expect(
     page.getByRole("alert").filter({ hasText: "Couldn't save default model" }),
@@ -235,7 +265,7 @@ test("reopening the picker refreshes a default changed elsewhere without switchi
   await page.getByRole("menuitem", { name: "Fast Model", exact: true }).hover();
   await expect(
     page.getByRole("menuitem", {
-      name: "Set Fast Model as default",
+      name: "Set as default",
       exact: true,
     }),
   ).toBeEnabled();
@@ -249,11 +279,14 @@ test("reopening the picker refreshes a default changed elsewhere without switchi
   ).toBe(true);
   await picker.click();
   await expect(
+    page.getByRole("menuitem", { name: "Fast Model", exact: true }),
+  ).toContainText("Default");
+  await expect(
     page.getByRole("menuitem", {
-      name: "Clear default model: Fast Model",
+      name: "Set as default",
       exact: true,
     }),
-  ).toBeVisible();
+  ).toBeEnabled();
   await expect(picker).toBeVisible();
   await page.goto("/");
   await expect(
@@ -415,6 +448,7 @@ test("model and thinking controls live together in the composer", async ({
 });
 
 test("long model lists show search immediately", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   await preparePicker(page);
   const db = openE2eDatabase();
   try {
@@ -433,4 +467,24 @@ test("long model lists show search immediately", async ({ page }) => {
   await expect(
     page.getByRole("menuitem", { name: "Search models", exact: true }),
   ).toHaveCount(0);
+  const action = page.getByRole("menuitem", {
+    name: "Set as default",
+    exact: true,
+  });
+  await expect(action).toBeInViewport();
+  await expect(
+    page.getByRole("menu").getByText("Models", { exact: true }),
+  ).toBeInViewport();
+  await expect
+    .poll(() =>
+      page.getByRole("menu").evaluate((menu) => {
+        const button = menu.querySelector('[aria-label="Set as default"]')!;
+        const input = menu.querySelector('input[aria-label="Search models"]')!;
+        return (
+          button.getBoundingClientRect().bottom <=
+          input.getBoundingClientRect().top
+        );
+      }),
+    )
+    .toBe(true);
 });

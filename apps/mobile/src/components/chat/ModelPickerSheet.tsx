@@ -208,6 +208,71 @@ export const ModelPickerSheet = forwardRef<
               </Text>
             ) : null}
           </View>
+          {panel === "models" && !loading && !error && selectedModel ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={
+                defaultModelId === selectedModel.id
+                  ? "Clear default"
+                  : "Set as default"
+              }
+              accessibilityHint={
+                defaultModelId === selectedModel.id
+                  ? "New chats will use the first available model"
+                  : `Use ${selectedModel.label} for new chats on all your devices`
+              }
+              accessibilityState={{
+                disabled: !preferences.data || setDefault.isPending,
+              }}
+              disabled={!preferences.data || setDefault.isPending}
+              onPress={() =>
+                setDefault.mutate(
+                  {
+                    defaultModelId:
+                      defaultModelId === selectedModel.id
+                        ? null
+                        : selectedModel.id,
+                  },
+                  {
+                    onError: (error) =>
+                      Alert.alert("Couldn't save default model", error.message),
+                  },
+                )
+              }
+              style={({ pressed }) => ({
+                minHeight: 48,
+                minWidth: 48,
+                borderWidth: 1,
+                borderColor: colors.border,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                paddingHorizontal: 12,
+                borderRadius: radii.md,
+                backgroundColor: pressed ? colors.accent : "transparent",
+                opacity: !preferences.data || setDefault.isPending ? 0.6 : 1,
+              })}
+            >
+              {setDefault.isPending && (
+                <ActivityIndicator
+                  size="small"
+                  color={colors.mutedForeground}
+                />
+              )}
+              <Text
+                style={{
+                  color: colors.popoverForeground,
+                  fontFamily: fonts.sansMedium,
+                  fontSize: 13,
+                }}
+              >
+                {defaultModelId === selectedModel.id
+                  ? "Clear default"
+                  : "Set as default"}
+              </Text>
+            </Pressable>
+          ) : null}
           {panel === "models" &&
           !loading &&
           !error &&
@@ -388,27 +453,6 @@ export const ModelPickerSheet = forwardRef<
                 model={model}
                 selected={model.id === selectedId}
                 isDefault={defaultModelId === model.id}
-                defaultPending={
-                  setDefault.isPending &&
-                  (setDefault.variables?.defaultModelId ?? defaultModelId) ===
-                    model.id
-                }
-                defaultDisabled={!preferences.data || setDefault.isPending}
-                onSetDefault={() =>
-                  setDefault.mutate(
-                    {
-                      defaultModelId:
-                        defaultModelId === model.id ? null : model.id,
-                    },
-                    {
-                      onError: (error) =>
-                        Alert.alert(
-                          "Couldn't save default model",
-                          error.message,
-                        ),
-                    },
-                  )
-                }
                 onPress={() => {
                   onSelect(model.id);
                   setSearch("");
@@ -502,100 +546,63 @@ function ModelRow({
   selected,
   isDefault,
   onPress,
-  onSetDefault,
-  defaultDisabled,
-  defaultPending,
 }: {
   model: PublicModelConfig;
   selected: boolean;
   isDefault: boolean;
   onPress: () => void;
-  onSetDefault: () => void;
-  defaultDisabled: boolean;
-  defaultPending: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        borderRadius: radii.md,
-        backgroundColor: selected ? colors.accent : "transparent",
-      }}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={model.label}
+      accessibilityHint={isDefault ? "Default model for new chats" : undefined}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.row,
+        {
+          borderRadius: radii.md,
+          backgroundColor: selected || pressed ? colors.accent : "transparent",
+          opacity: pressed ? 0.85 : 1,
+        },
+      ]}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={model.label}
-        accessibilityState={{ selected }}
-        onPress={onPress}
-        style={({ pressed }) => [
-          styles.row,
-          {
-            flex: 1,
-            minWidth: 0,
-            borderRadius: radii.md,
-            backgroundColor: pressed ? colors.accent : "transparent",
-            opacity: pressed ? 0.85 : 1,
-          },
+      <ModelBrandIcon
+        iconId={model.modelIconId ?? model.providerIconId}
+        color={colors.mutedForeground}
+        size={17}
+        style={styles.rowIcon}
+      />
+      <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        style={[
+          styles.label,
+          styles.rowText,
+          { color: colors.popoverForeground, fontFamily: fonts.sansSemiBold },
         ]}
       >
-        <ModelBrandIcon
-          iconId={model.modelIconId ?? model.providerIconId}
-          color={colors.mutedForeground}
-          size={17}
-          style={styles.rowIcon}
-        />
+        {model.label}
+      </Text>
+      {isDefault && (
         <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={[
-            styles.label,
-            styles.rowText,
-            { color: colors.popoverForeground, fontFamily: fonts.sansSemiBold },
-          ]}
+          style={{
+            fontSize: 12,
+            color: colors.mutedForeground,
+            fontFamily: fonts.sansRegular,
+          }}
         >
-          {model.label}
+          Default
         </Text>
-        <View style={{ width: 18 }}>
-          {selected ? (
-            <Ionicons name="checkmark" size={18} color={colors.primary} />
-          ) : null}
-        </View>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={
-          isDefault
-            ? `Clear default model: ${model.label}`
-            : `Set ${model.label} as default`
-        }
-        accessibilityHint={
-          isDefault
-            ? "New chats will use the first available model"
-            : "Use this model for new chats on all your devices"
-        }
-        accessibilityState={{ disabled: defaultDisabled }}
-        disabled={defaultDisabled}
-        onPress={onSetDefault}
-        style={({ pressed }) => [
-          styles.backButton,
-          { opacity: pressed || defaultDisabled ? 0.6 : 1 },
-        ]}
-      >
-        {defaultPending ? (
-          <ActivityIndicator size="small" color={colors.mutedForeground} />
-        ) : (
-          <Ionicons
-            name={isDefault ? "star" : "star-outline"}
-            size={18}
-            color={
-              isDefault ? colors.popoverForeground : colors.mutedForeground
-            }
-          />
+      )}
+      <View style={{ width: 18 }}>
+        {selected && (
+          <Ionicons name="checkmark" size={18} color={colors.primary} />
         )}
-      </Pressable>
-    </View>
+      </View>
+    </Pressable>
   );
 }
 

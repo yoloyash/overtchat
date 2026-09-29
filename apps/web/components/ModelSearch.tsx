@@ -12,6 +12,7 @@ export function ModelSearch({
   expanded,
   onExpanded,
   heading,
+  actions,
 }: {
   count: number;
   search: string;
@@ -19,6 +20,7 @@ export function ModelSearch({
   expanded: boolean;
   onExpanded: (value: boolean) => void;
   heading?: ReactNode;
+  actions?: ReactNode;
 }) {
   const toggleRef = useRef<HTMLDivElement>(null);
   const alwaysVisible = count > 7;
@@ -39,6 +41,7 @@ export function ModelSearch({
             </div>
           )}
         </div>
+        {actions}
         {!alwaysVisible && count > 0 && (
           <Menu.Item
             ref={toggleRef}

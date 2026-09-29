@@ -7,8 +7,8 @@ import type {
   ModelReasoningControls,
   ModelReasoningLevel,
 } from "@overtchat/shared";
-import { Brain, Check, ChevronDown, Loader2, Star } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Brain, Check, ChevronDown, Loader2 } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { ModelSearch } from "@/components/ModelSearch";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { cn } from "@/lib/utils";
@@ -166,6 +166,53 @@ export function ModelPicker({
               onSearch={setSearch}
               expanded={searchExpanded}
               onExpanded={setSearchExpanded}
+              actions={
+                selected ? (
+                  <Menu.Item
+                    closeOnClick={false}
+                    disabled={!preferences.data || setDefault.isPending}
+                    aria-label={
+                      defaultModelId === selected.id
+                        ? "Clear default"
+                        : "Set as default"
+                    }
+                    title={
+                      defaultModelId === selected.id
+                        ? "New chats will use the first available model"
+                        : `Use ${selected.label} for new chats`
+                    }
+                    onClick={() =>
+                      setDefault.mutate(
+                        {
+                          defaultModelId:
+                            defaultModelId === selected.id ? null : selected.id,
+                        },
+                        {
+                          onError: (error) =>
+                            toast.error({ title: error.message }),
+                        },
+                      )
+                    }
+                    className={cn(
+                      buttonVariants({
+                        variant: "outline",
+                        size: "sm",
+                      }),
+                      "h-8 cursor-pointer text-xs text-foreground data-[highlighted]:bg-muted data-[disabled]:cursor-wait data-[disabled]:opacity-50 max-md:h-11",
+                      "bg-transparent dark:bg-transparent",
+                    )}
+                  >
+                    {setDefault.isPending && (
+                      <Loader2
+                        className={cn("size-3", motionClasses.spinner)}
+                      />
+                    )}
+                    {defaultModelId === selected.id
+                      ? "Clear default"
+                      : "Set as default"}
+                  </Menu.Item>
+                ) : null
+              }
             />
 
             <div>
@@ -176,75 +223,35 @@ export function ModelPicker({
                 </div>
               ) : (
                 filteredModels.map((m) => (
-                  <div
+                  <Menu.Item
                     key={m.id}
+                    aria-label={m.label}
+                    aria-description={
+                      defaultModelId === m.id
+                        ? "Default model for new chats"
+                        : undefined
+                    }
+                    onClick={() => onSelect(m.id)}
                     className={cn(
-                      "group/model flex items-center rounded-md hover:bg-accent focus-within:bg-accent",
+                      "flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
                       m.id === selectedId && "bg-accent text-accent-foreground",
                     )}
                   >
-                    <Menu.Item
-                      onClick={() => onSelect(m.id)}
-                      className="flex min-h-10 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md px-2.5 py-2 outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                    >
-                      <ModelBrandIcon
-                        iconId={m.modelIconId ?? m.providerIconId}
-                      />
-                      <span className="min-w-0 flex-1 truncate">{m.label}</span>
-                      <span className="flex size-4 shrink-0 items-center justify-center">
-                        {m.id === selectedId && (
-                          <Check className="size-3.5 text-muted-foreground" />
-                        )}
+                    <ModelBrandIcon
+                      iconId={m.modelIconId ?? m.providerIconId}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{m.label}</span>
+                    {defaultModelId === m.id && (
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
+                        Default
                       </span>
-                    </Menu.Item>
-                    <Menu.Item
-                      closeOnClick={false}
-                      disabled={!preferences.data || setDefault.isPending}
-                      aria-label={
-                        defaultModelId === m.id
-                          ? `Clear default model: ${m.label}`
-                          : `Set ${m.label} as default`
-                      }
-                      title={
-                        defaultModelId === m.id
-                          ? "Clear default for new chats"
-                          : "Set as default for new chats"
-                      }
-                      onClick={() =>
-                        setDefault.mutate(
-                          {
-                            defaultModelId:
-                              defaultModelId === m.id ? null : m.id,
-                          },
-                          {
-                            onError: (error) =>
-                              toast.error({ title: error.message }),
-                          },
-                        )
-                      }
-                      className={cn(
-                        "mr-0.5 flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:text-foreground data-[highlighted]:bg-accent data-[highlighted]:text-foreground data-[disabled]:cursor-wait",
-                        defaultModelId !== m.id &&
-                          "[@media(hover:hover)_and_(pointer:fine)]:opacity-0 group-hover/model:opacity-100 group-focus-within/model:opacity-100 data-[highlighted]:opacity-100",
+                    )}
+                    <span className="flex size-4 shrink-0 items-center justify-center">
+                      {m.id === selectedId && (
+                        <Check className="size-3.5 text-muted-foreground" />
                       )}
-                    >
-                      {setDefault.isPending &&
-                      (setDefault.variables?.defaultModelId ??
-                        defaultModelId) === m.id ? (
-                        <Loader2
-                          className={cn("size-3.5", motionClasses.spinner)}
-                        />
-                      ) : (
-                        <Star
-                          className={cn(
-                            "size-3.5",
-                            defaultModelId === m.id &&
-                              "fill-current text-foreground",
-                          )}
-                        />
-                      )}
-                    </Menu.Item>
-                  </div>
+                    </span>
+                  </Menu.Item>
                 ))
               )}
             </div>
