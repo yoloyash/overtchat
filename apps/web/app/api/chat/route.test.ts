@@ -1,6 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/notifications/chat", () => ({ notifyChatComplete: mocks.notifyChatComplete }));
 import { createContextCheckpoint } from "@/lib/chat/context-checkpoint";
+import { countTextTokens } from "@/lib/chat/context-budget";
 import type { MessageStats } from "@/lib/chat/stats";
 
 const mocks = vi.hoisted(() => {
@@ -258,6 +259,13 @@ function existingChat(activeStreamId: string | null = null) {
 }
 
 describe("chat route setup boundary", () => {
+  beforeAll(() => {
+    // Building the real tokenizer's vocabulary can exceed a test's 5s budget
+    // on a busy runner. Pay that one-time cost in setup, keeping route tests
+    // on the default timeout and exercising the real token counts.
+    countTextTokens("Initialize the chat tokenizer.");
+  }, 30_000);
+
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.agentSettings.length = 0;
