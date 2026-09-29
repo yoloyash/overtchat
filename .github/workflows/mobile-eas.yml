@@ -99,6 +99,9 @@ jobs:
             node ../../.github/scripts/check-mobile-push.mjs
           '
 
+      - name: Check mobile native dependency versions
+        run: npm run check:native-deps -w apps/mobile --
+
       - name: Build AAB locally
         working-directory: apps/mobile
         env:
@@ -295,6 +298,9 @@ jobs:
           }
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${expo.version}\n`);
           NODE
+
+      - name: Check mobile native dependency versions
+        run: npm run check:native-deps -w apps/mobile --
 
       - name: Typecheck mobile
         run: npm run typecheck -w apps/mobile --

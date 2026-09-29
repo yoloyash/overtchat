@@ -46,6 +46,9 @@ jobs:
       - name: Check dependency resolution
         run: npm run deps:check
 
+      - name: Check mobile native dependency versions
+        run: npm run check:native-deps -w apps/mobile --
+
       - name: Lint
         run: npm run lint
 

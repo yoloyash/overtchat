@@ -129,8 +129,9 @@ No Apple password or personal MacBook keychain is needed.
    `platform: ios-release` option builds, verifies, and uploads only iOS.
 2. The iOS job checks committed versions, mobile types, and readable production
    Sentry settings, then builds and verifies the signed IPA: bundle ID, version,
-   build number, arm64 executable, production push entitlement, and App Store
-   provisioning. This is an archive check, not an iOS simulator/UI smoke test.
+   build number, arm64 executable, production push entitlement, App Store
+   provisioning, and required ExpoModulesCore symbols in the shipped arm64
+   binaries. These archive checks do not replace device/UI smoke testing.
 3. A `mobile-v*` tag builds both platforms independently. After iOS verification,
    the Mac uploads that exact IPA directly to App Store Connect and waits for
    delivery, with a 30-minute upload timeout. Apple processing happens afterward.
@@ -139,6 +140,30 @@ No Apple password or personal MacBook keychain is needed.
 4. After Apple processes the upload, select that build in App Store Connect,
    complete the version's release details, and submit it for App Review.
    The workflow does not change review submissions or store metadata.
+
+Before submitting to App Review, install the exact uploaded build through
+TestFlight on a physical device running the latest public iOS. Check cold launch,
+server selection, login, chat streaming, background/resume, and camera/QR access.
+Cover a fresh installation and an upgrade with saved settings; also test iPad
+because the app supports tablets. Record the version, build, device, and OS in
+the release validation notes. Archive verification and Expo Go testing do not
+replace this gate.
+
+Keep Expo and its native modules aligned with the selected SDK's recommended
+versions (`npx expo install --fix` from `apps/mobile`), and commit the lockfile.
+PR and release workflows enforce `npm run check:native-deps -w apps/mobile --`.
+The IPA gate checks actual ExpoModulesCore imports/exports because individually
+valid package versions can still contain incompatible precompiled frameworks.
+
+For a launch-crash rejection, collect the rejected build's device crash report
+before rebuilding. A `DYLD` / `Symbol missing` termination happens before
+JavaScript crash reporting can initialize. Fix the native build, increment the
+committed shared Android/iOS build number, and repeat the TestFlight gate.
+Correct the App Store Connect version label to match the intended public
+version and select the verified replacement build before resubmitting. Do not
+reuse an uploaded build number or move an existing mobile release tag.
+See Apple's [rejected-submission procedure](https://developer.apple.com/help/app-store-connect/manage-submissions-to-app-review/manage-a-submission-with-unresolved-issues)
+and Expo's [SDK upgrade procedure](https://docs.expo.dev/workflow/upgrading-expo-sdk-walkthrough/).
 
 The iOS app declares `ios.config.usesNonExemptEncryption: false` in
 `apps/mobile/app.json`. Expo writes `ITSAppUsesNonExemptEncryption = false`
