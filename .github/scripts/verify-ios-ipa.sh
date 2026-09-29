@@ -9,6 +9,7 @@ unzip -q "$IPA" -d "$VERIFY_DIR"
 APPS=("$VERIFY_DIR"/Payload/*.app)
 test "${#APPS[@]}" -eq 1
 APP="${APPS[0]}"
+node .github/scripts/check-ios-expo-abi.mjs "$APP"
 codesign --verify --deep --strict "$APP"
 codesign -d --entitlements :- "$APP" > "$VERIFY_DIR/entitlements.plist" 2>/dev/null
 security cms -D -i "$APP/embedded.mobileprovision" > "$VERIFY_DIR/profile.plist"
