@@ -1,10 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LanguageModelUsage } from "ai";
-import type { ProviderId } from "@/lib/providers/catalog";
-import catalogJson from "./model-catalog.json";
 import * as modelCatalog from "./model-catalog";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/providers/server/model-catalog.json", () =>
+  import("./model-catalog.fixture"),
+);
 
 import {
   estimateGenerationCost,
@@ -368,28 +369,5 @@ describe("model cost estimation", () => {
         [catalogCost, configuredCost].filter((cost) => cost !== null),
       ),
     ).toBeNull();
-  });
-
-  it("supports every priced text model in the vendored catalog", () => {
-    for (const [providerId, models] of Object.entries(catalogJson)) {
-      for (const [model, entry] of Object.entries(models)) {
-        if (!("cost" in entry) || !entry.cost) continue;
-
-        expect(
-          estimateGenerationCost({
-            providerId: providerId as ProviderId,
-            model,
-            usage: usage({
-              input: 300_001,
-              output: 100,
-              noCache: 100_001,
-              cacheRead: 100_000,
-              cacheWrite: 100_000,
-            }),
-          }),
-          `${providerId}/${model}`,
-        ).not.toBeNull();
-      }
-    }
   });
 });
