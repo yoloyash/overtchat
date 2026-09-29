@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/lib/providers/server/model-catalog.json", () =>
+  import("./model-catalog.fixture"),
+);
 
 import {
   catalogCapabilitiesFor,
@@ -11,7 +14,7 @@ import {
   resolveModelContextWindow,
 } from "./model-catalog";
 
-describe("vendored model catalog", () => {
+describe("model catalog lookups with fixed metadata", () => {
   it("looks up context limits by exact provider and model ID", () => {
     expect(catalogContextWindowFor("openai", "gpt-4o")).toBe(128_000);
     expect(
@@ -122,6 +125,13 @@ describe("vendored model catalog", () => {
       output: 15,
       cacheRead: 0.25,
       cacheWrite: 2.5,
+      tiered: true,
+    });
+    expect(catalogPricingFor("openai", "gpt-5.5")).toEqual({
+      input: 5,
+      output: 30,
+      cacheRead: 0.5,
+      cacheWrite: 5,
       tiered: true,
     });
     expect(catalogPricingFor("deepseek", "deepseek-v4-flash")).toEqual({
