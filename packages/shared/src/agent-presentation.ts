@@ -228,7 +228,6 @@ export function foldAgentTranscript(
         item.entries.every((entry) =>
           entry.type === "thinking" ||
           (entry.type === "tool" &&
-            agentToolStatus(entry.tool, false) === "completed" &&
             entry.tool.hasResult && !entry.tool.partial &&
             normalizedToolName(entry.tool.name) !== "speak"),
         )

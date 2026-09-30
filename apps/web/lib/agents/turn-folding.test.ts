@@ -117,14 +117,18 @@ describe("completed agent work", () => {
     ]) expect(fold(messages).some((item) => item.type === "work_summary")).toBe(false);
   });
 
-  it("keeps failed tools and actionable plans outside the fold", () => {
+  it("folds failed tools with successful tools while keeping actionable plans visible", () => {
     const messages = [...turn.slice(0, -1), tool("failed"), result("failed", { isError: true }), {
       role: "assistant", id: "plan", content: [{ type: "plan", text: "Plan", actionable: true }],
     }, text("answer")];
     const rows = fold(messages);
     expect(rows.some((item) => item.type === "work_summary")).toBe(true);
-    expect(rows.some((item) => item.type === "activity")).toBe(true);
+    expect(rows.some((item) => item.type === "activity")).toBe(false);
     expect(rows.some((item) => item.type === "plan")).toBe(true);
+    const summary = rows.find((item) => item.type === "work_summary")!;
+    const expanded = fold(messages, false, new Set([summary.key]));
+    expect(expanded.filter((item) => item.type !== "work_summary"))
+      .toEqual(projectAgentTranscript(messages));
   });
 
   it("keeps earlier turns folded while a later turn runs", () => {
