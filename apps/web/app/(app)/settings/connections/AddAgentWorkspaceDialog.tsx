@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { useMemo, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import {
@@ -445,9 +446,7 @@ export function AddAgentWorkspaceDialog({
                 </div>
               )}
               {discovery.error instanceof Error && (
-                <p className="mt-2 text-xs text-destructive">
-                  {discovery.error.message}
-                </p>
+                <ErrorNotice className="mt-2" message={discovery.error} />
               )}
               {customOpen && (
                 <div className="mt-3 space-y-4 border-t pt-3">
@@ -651,7 +650,7 @@ function DirectoryPicker({
                 <Loader2 className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" />
               </div>
             ) : error ? (
-              <p className="px-3 py-12 text-center text-xs text-destructive">{error}</p>
+              <ErrorNotice className="m-3" message={error} />
             ) : disabled ? (
               <p className="px-3 py-12 text-center text-xs text-muted-foreground">
                 Choose a machine to browse its folders

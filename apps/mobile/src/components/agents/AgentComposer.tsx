@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { ErrorNotice } from "@/components/ErrorNotice";
+import { useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +27,6 @@ import {
 import { uploadFile } from "@/lib/api";
 import type { AgentDraft } from "@/lib/agents/drafts";
 import { dictationErrorMessage } from "@/lib/chat/message";
-import { toastError } from "@/lib/toast";
 import { useDictation } from "@/lib/useDictation";
 import { useTheme } from "@/lib/theme";
 import { AgentButton, AgentText } from "./AgentPrimitives";
@@ -127,12 +127,6 @@ export function AgentComposer({
       };
     });
   });
-
-  useEffect(() => {
-    if (!dictation.error) return;
-    toastError("Dictation", dictationErrorMessage(dictation.error, isAdmin));
-    dictation.clearError();
-  }, [dictation, isAdmin]);
 
   function toggleMic() {
     if (dictation.status === "recording") {
@@ -258,15 +252,20 @@ export function AgentComposer({
         onSteer={(id) => onSteerQueued?.(id)}
         onRemove={(id) => onRemoveQueued?.(id)}
       />
-      {!!error && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss attachment error"
-          onPress={() => setError(undefined)}
-        >
-          <AgentText danger>{error}</AgentText>
-        </Pressable>
+      {dictation.error && (
+        <ErrorNotice
+          message={dictationErrorMessage(dictation.error, isAdmin)}
+          onDismiss={dictation.clearError}
+          action={
+            dictation.error.kind === "empty" || dictation.error.kind === "other" ||
+            (dictation.error.kind === "stt_unavailable" &&
+              !["speech_disabled", "speech_not_configured", "speech_provider_auth"].includes(dictation.error.code ?? ""))
+              ? { label: "Record again", onPress: toggleMic }
+              : undefined
+          }
+        />
       )}
+      {!!error && <ErrorNotice message={error} onDismiss={() => setError(undefined)} />}
       {matches.length > 0 && (
         <ScrollView
           keyboardShouldPersistTaps="handled"

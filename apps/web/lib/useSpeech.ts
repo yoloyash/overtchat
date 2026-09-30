@@ -1,5 +1,6 @@
 "use client";
 
+import { ApiError, apiError, getErrorMessage } from "@overtchat/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type SpeechStatus = "idle" | "loading" | "playing" | "paused";
@@ -27,6 +28,7 @@ export function useSpeech() {
   // source buffer; flips true once endOfStream() (or the blob load) completes.
   const [canSeek, setCanSeek] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string>();
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const mediaSourceRef = useRef<MediaSource | null>(null);
@@ -69,6 +71,7 @@ export function useSpeech() {
   const stop = useCallback(() => {
     teardown();
     setError(null);
+    setErrorCode(undefined);
     lastPlayedRef.current = null;
   }, [teardown]);
 
@@ -97,9 +100,10 @@ export function useSpeech() {
       setActiveId(id);
       setStatus("loading");
 
-      const fail = (msg: string) => {
+      const fail = (msg: string, code?: string) => {
         teardown();
         setError(msg);
+        setErrorCode(code);
       };
 
       // Wired once so external controls (media-chrome's pause button) keep
@@ -145,14 +149,28 @@ export function useSpeech() {
     play(last.id, last.text);
   }, [play]);
 
-  return { activeId, status, canSeek, error, play, stop, retry, audioRef };
+  return {
+    activeId,
+    status,
+    canSeek,
+    error,
+    canRetry: ![
+      "speech_disabled",
+      "speech_not_configured",
+      "speech_provider_auth",
+    ].includes(errorCode ?? ""),
+    play,
+    stop,
+    retry,
+    audioRef,
+  };
 }
 
 async function streamIntoMediaSource(
   mediaSource: MediaSource,
   text: string,
   ac: AbortController,
-  h: { onComplete: () => void; onError: (msg: string) => void },
+  h: { onComplete: () => void; onError: (msg: string, code?: string) => void },
 ): Promise<void> {
   try {
     await new Promise<void>((resolve, reject) => {
@@ -179,7 +197,14 @@ async function streamIntoMediaSource(
       body: JSON.stringify({ text }),
       signal: ac.signal,
     });
-    if (!res.ok || !res.body) throw new Error(`TTS failed (${res.status})`);
+    if (!res.ok)
+      throw apiError(
+        res.status,
+        await res.text().catch(() => ""),
+        "Couldn't play speech. Please try again.",
+        "tts",
+      );
+    if (!res.body) throw new Error("The speech service returned empty audio.");
 
     const sb = mediaSource.addSourceBuffer(MIME);
     const queue: BufferSource[] = [];
@@ -230,7 +255,10 @@ async function streamIntoMediaSource(
   } catch (err) {
     if ((err as Error).name === "AbortError") return;
     console.error("TTS stream error:", err);
-    h.onError(networkErrorMessage(err));
+    h.onError(
+      networkErrorMessage(err),
+      err instanceof ApiError ? err.code : undefined,
+    );
   }
 }
 
@@ -241,7 +269,7 @@ async function playBlobFallback(
   h: {
     setUrl: (u: string) => void;
     onComplete: () => void;
-    onError: (msg: string) => void;
+    onError: (msg: string, code?: string) => void;
   },
 ): Promise<void> {
   try {
@@ -251,7 +279,13 @@ async function playBlobFallback(
       body: JSON.stringify({ text }),
       signal: ac.signal,
     });
-    if (!res.ok) throw new Error(`TTS failed (${res.status})`);
+    if (!res.ok)
+      throw apiError(
+        res.status,
+        await res.text().catch(() => ""),
+        "Couldn't play speech. Please try again.",
+        "tts",
+      );
     const blob = await res.blob();
     if (ac.signal.aborted) return;
     const url = URL.createObjectURL(blob);
@@ -262,15 +296,13 @@ async function playBlobFallback(
   } catch (err) {
     if ((err as Error).name === "AbortError") return;
     console.error("TTS error:", err);
-    h.onError(networkErrorMessage(err));
+    h.onError(
+      networkErrorMessage(err),
+      err instanceof ApiError ? err.code : undefined,
+    );
   }
 }
 
 function networkErrorMessage(err: unknown): string {
-  const msg = (err as Error)?.message ?? "";
-  if (typeof navigator !== "undefined" && navigator.onLine === false) {
-    return "You're offline.";
-  }
-  if (msg.includes("TTS failed")) return "Speech service unavailable.";
-  return "Network error.";
+  return getErrorMessage(err, "Couldn't play speech. Please try again.");
 }

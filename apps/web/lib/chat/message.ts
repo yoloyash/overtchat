@@ -1,3 +1,4 @@
+import { getErrorMessage, speechErrorMessage } from "@overtchat/shared";
 import { remark } from "remark";
 import strip from "strip-markdown";
 import type { UIMessage } from "ai";
@@ -37,23 +38,16 @@ export function dictationErrorMessage(
     case "unsupported":
       return "Your browser doesn't support audio recording.";
     case "stt_unavailable":
-      return isAdmin || err.role === "admin"
-        ? "Speech-to-text isn't configured on this server. Run: overtchat setup"
-        : "Speech-to-text isn't enabled. Ask the admin to enable it.";
+      return speechErrorMessage("stt", err.code) +
+        (!isAdmin && (err.code === "speech_disabled" || err.code === "speech_not_configured")
+          ? " Ask an administrator to enable it." : "");
     case "empty":
       return "No speech detected. Try again.";
     case "other":
-      return err.message || "Transcription failed.";
+      return err.message;
   }
 }
 
 export function chatErrorMessage(error: Error): string {
-  const msg = error.message ?? "";
-  if (
-    error.name === "TypeError" ||
-    /failed to fetch|networkerror|network request failed|load failed/i.test(msg)
-  ) {
-    return "Can't reach the server. Check your connection and try again.";
-  }
-  return msg || "Something went wrong. Please try again.";
+  return getErrorMessage(error, "Couldn't complete the response. Please try again.");
 }

@@ -1,3 +1,4 @@
+import { apiError } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
 import { AgentHttpError } from "./stream";
 
@@ -11,14 +12,9 @@ export async function agentFetch(
       error?: string;
     } | null;
     throw new AgentHttpError(
-      body?.error ??
-        (response.status === 401
-          ? "Your session expired. Sign in again."
-          : response.status === 403
-            ? "Agent Connections are not available for this account."
-            : response.status === 404
-              ? "This agent session or workspace is no longer available."
-              : `Request failed (${response.status}).`),
+      apiError(response.status, body, response.status === 404
+        ? "This agent session or workspace is no longer available."
+        : "Could not complete the agent request. Please try again.").message,
       response.status,
     );
   }

@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { useEffect, useState } from "react";
 import { Alert, View } from "react-native";
 import type {
@@ -96,7 +97,7 @@ export function AgentControls({
       visible={visible}
       onClose={close}
     >
-      {!!error && <AgentText danger>{error}</AgentText>}
+      {!!error && <ErrorNotice message={error} />}
       {!!notice && <AgentText muted>{notice}</AgentText>}
       {panel !== "settings" && (
         <AgentButton

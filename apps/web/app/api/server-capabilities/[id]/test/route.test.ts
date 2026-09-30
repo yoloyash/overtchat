@@ -161,7 +161,9 @@ describe("speech connection test", () => {
     mocks.fetch.mockResolvedValue(
       new Response("Unauthorized", { status: 401 }),
     );
-    expect((await testRequest(id)).status).toBe(502);
+    const response = await testRequest(id);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({ code: "speech_provider_auth", error: expect.stringContaining("server's credentials") });
   });
 
   it.each(["text/html", "application/json", "audio/mpeg"])(

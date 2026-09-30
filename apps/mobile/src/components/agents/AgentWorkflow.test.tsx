@@ -2114,10 +2114,11 @@ describe("agent dictation", () => {
   it("surfaces a dictation failure and clears it", async () => {
     mocks.dictation.error = { kind: "stt_unavailable", role: "admin" };
     await render();
-    expect(toastError).toHaveBeenCalledWith(
-      "Dictation",
-      expect.stringContaining("overtchat setup"),
-    );
+    expect(container.textContent).toContain("transcription service is temporarily unavailable");
+    expect(container.textContent).not.toContain("overtchat setup");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(mocks.dictation.clearError).not.toHaveBeenCalled();
+    await click("Dismiss error");
     expect(mocks.dictation.clearError).toHaveBeenCalledTimes(1);
   });
 });

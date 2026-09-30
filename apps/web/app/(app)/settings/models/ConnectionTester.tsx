@@ -1,7 +1,9 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
+import { apiError, getErrorMessage } from "@overtchat/shared";
 import { useState } from "react";
-import { CheckCircle2, Loader2, XCircle } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motionClasses } from "@/lib/motion";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
@@ -52,7 +54,7 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
         error?: string;
       };
       if (!res.ok || json.error) {
-        setResult({ ok: false, error: json.error ?? `HTTP ${res.status}` });
+        setResult({ ok: false, error: apiError(res.status, json, "Could not connect to the model provider.").message });
         return;
       }
       setResult({
@@ -63,7 +65,7 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
         outputTokens: json.outputTokens ?? null,
       });
     } catch (e) {
-      setResult({ ok: false, error: e instanceof Error ? e.message : String(e) });
+      setResult({ ok: false, error: getErrorMessage(e, "Could not connect to the model provider.") });
     } finally {
       setPinging(false);
     }
@@ -107,10 +109,7 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
         </div>
       )}
       {result?.ok === false && (
-        <div className="flex items-start gap-1.5 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          <XCircle className="size-3.5 shrink-0 mt-0.5" />
-          <span className="break-words">{result.error}</span>
-        </div>
+        <ErrorNotice message={result.error} onDismiss={() => setResult(null)} />
       )}
     </div>
   );

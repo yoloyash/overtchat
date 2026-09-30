@@ -1,9 +1,10 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, RefreshCw } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { generateId } from "ai";
 import type {
   AgentPromptImage,
@@ -300,33 +301,14 @@ export function NewAgentSessionView({
         <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           <div className="mx-auto max-w-3xl">
             {forkError && (
-              <p role="alert" className="mb-3 text-sm text-destructive">
-                Could not restore the forked conversation. Return to the original
-                session and fork again.
-              </p>
+              <ErrorNotice className="mb-3" message="Could not restore the forked conversation. Return to the original session and fork again." />
             )}
             {catalog.isError && !catalog.data && (
-              <div
-                role="alert"
-                className="mb-3 flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm"
-              >
-                <AlertTriangle className="size-4 shrink-0 text-destructive" />
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                  {catalog.error instanceof Error
-                    ? catalog.error.message
-                    : "Model defaults could not be loaded."}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={catalog.isFetching}
-                  onClick={() => void catalog.refetch()}
-                >
-                  <RefreshCw />
-                  Retry
+              <ErrorNotice className="mb-3" message={catalog.error} fallback="Model defaults could not be loaded." actions={
+                <Button type="button" variant="outline" size="sm" disabled={catalog.isFetching} onClick={() => void catalog.refetch()}>
+                  <RefreshCw /> Retry
                 </Button>
-              </div>
+              } />
             )}
             {forkContext && (
               <label className="mb-3 block text-sm">

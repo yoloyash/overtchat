@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -274,14 +275,7 @@ export function AgentQuestionCard({
           )}
         </View>
       )}
-      {!!error && (
-        <Text
-          accessibilityRole="alert"
-          style={[typography, { color: colors.destructive }]}
-        >
-          {error}
-        </Text>
-      )}
+      {!!error && <ErrorNotice message={error} />}
       <View style={{ gap: 8 }}>
         <Pressable
           accessibilityRole="button"

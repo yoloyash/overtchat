@@ -1,5 +1,7 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
+import { getErrorMessage } from "@/lib/errors";
 import {
   forwardRef,
   useEffect,
@@ -53,7 +55,7 @@ function friendlyError(error: unknown): string {
   if (!window.isSecureContext && window.location.hostname !== "localhost") {
     return "Microphone access requires HTTPS for non-local addresses.";
   }
-  return error instanceof Error ? error.message : "The voice session could not start.";
+  return getErrorMessage(error, "The voice session could not start.");
 }
 
 function statusLabel(
@@ -221,7 +223,7 @@ export const RealtimeVoiceSession = forwardRef<
                 : `${modelLabel} · ${muted ? "Microphone muted" : "Realtime voice"}`}
           </p>
           {saveWarning && (
-            <p className="mt-1 text-xs text-destructive">{saveWarning}</p>
+            <ErrorNotice className="mt-1" message={saveWarning} />
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">

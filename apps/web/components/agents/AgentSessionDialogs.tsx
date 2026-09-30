@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ExternalLink, Loader2 } from "lucide-react";
@@ -312,7 +313,7 @@ export function AgentUsageDialog({
               Loading account usage…
             </div>
           ) : error ? (
-            <p className="mt-5 text-sm text-destructive">{error}</p>
+            <ErrorNotice className="mt-5" message={error} />
           ) : usage ? (
             <div className="mt-5 space-y-5">
               {usage.windows.length > 0 && (
@@ -586,9 +587,7 @@ function DialogActions({ children }: { children: React.ReactNode }) {
 
 function DialogError({ children }: { children: React.ReactNode }) {
   return (
-    <p role="alert" className="text-sm text-destructive">
-      {children}
-    </p>
+    <ErrorNotice message={children} />
   );
 }
 

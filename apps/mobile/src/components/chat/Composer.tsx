@@ -1,16 +1,16 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { Ionicons } from "@expo/vector-icons";
 import type { ImageGenerationOptions, ModelBrandIconId } from "@overtchat/shared";
 import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { ImageOptions } from "./ImageOptions";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AttachmentMeta } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { useTheme } from "@/lib/theme";
-import { toastError } from "@/lib/toast";
 import { useDictation } from "@/lib/useDictation";
 import { AttachmentChip } from "./AttachmentChip";
 
@@ -74,12 +74,6 @@ export function Composer({
     });
   });
 
-  useEffect(() => {
-    if (!dictation.error) return;
-    toastError("Dictation", dictationErrorMessage(dictation.error, isAdmin));
-    dictation.clearError();
-  }, [dictation, isAdmin]);
-
   function submit() {
     const text = input.trim();
     if (streaming || uploading || !configured) return;
@@ -122,34 +116,22 @@ export function Composer({
 
   return (
     <View style={styles.wrapper}>
+      {dictation.error && (
+        <ErrorNotice
+          message={dictationErrorMessage(dictation.error, isAdmin)}
+          onDismiss={dictation.clearError}
+          action={
+            dictation.error.kind === "empty" || dictation.error.kind === "other" ||
+            (dictation.error.kind === "stt_unavailable" &&
+              !["speech_disabled", "speech_not_configured", "speech_provider_auth"].includes(dictation.error.code ?? ""))
+              ? { label: "Record again", onPress: toggleMic }
+              : undefined
+          }
+        />
+      )}
       {imageOptions && onImageOptions ? <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} /> : null}
-      {uploadError ? (
-        <Pressable
-          onPress={onDismissUploadError}
-          accessibilityRole="button"
-          accessibilityLabel="Dismiss upload error"
-          style={[
-            styles.errorBanner,
-            {
-              backgroundColor: colors.muted,
-              borderColor: colors.destructive,
-              borderRadius: radii.md,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.errorText,
-              {
-                color: colors.destructive,
-                fontFamily: fonts.sansMedium,
-              },
-            ]}
-          >
-            {uploadError}
-          </Text>
-        </Pressable>
-      ) : null}
+      {uploadError && <ErrorNotice message={uploadError} onDismiss={onDismissUploadError} />}
+
       <View
         style={[
           styles.bar,
@@ -464,14 +446,6 @@ export function Composer({
 
 const styles = StyleSheet.create({
   wrapper: { gap: 6 },
-  errorBanner: {
-    minHeight: 48,
-    justifyContent: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  errorText: { fontSize: 13 },
   bar: {
     flexDirection: "column",
     paddingHorizontal: 8,

@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
@@ -220,16 +221,16 @@ export function SettingsNotice({
   tone = "muted",
   className,
 }: SettingsNoticeProps) {
+  if (tone === "error") return <ErrorNotice message={children} className={className} />;
   return (
     <p
       role={
-        tone === "error" ? "alert" : tone === "success" ? "status" : undefined
+        tone === "success" ? "status" : undefined
       }
       className={cn(
         "text-sm leading-5",
         tone === "muted" && "text-muted-foreground",
         tone === "success" && "text-ring",
-        tone === "error" && "text-destructive",
         className,
       )}
     >

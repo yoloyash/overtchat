@@ -1,5 +1,6 @@
 "use client";
 
+import { apiError } from "@overtchat/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { VoiceCapability } from "@overtchat/shared";
 import type {
@@ -18,7 +19,7 @@ export function useServerCapabilities() {
     queryKey: serverCapabilityKeys.list(),
     queryFn: async (): Promise<AdminServicesSnapshot> => {
       const response = await fetch("/api/server-capabilities");
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) throw apiError(response.status, await response.json().catch(() => null), "Could not load server services.");
       return (await response.json()) as AdminServicesSnapshot;
     },
   });
@@ -39,7 +40,7 @@ export function useUpdateServerCapability() {
         error?: string;
       };
       if (!response.ok || !body.capability || !body.voice) {
-        throw new Error(body.error ?? `HTTP ${response.status}`);
+        throw apiError(response.status, body, "Could not complete the service request.");
       }
       return { capability: body.capability, voice: body.voice };
     },
@@ -75,7 +76,12 @@ export function useTestServerCapability() {
         error?: string;
       };
       if (!response.ok || !body.message) {
-        throw new Error(body.error ?? `HTTP ${response.status}`);
+        throw apiError(
+          response.status,
+          body,
+          "Could not connect to the provider.",
+          input.id === "stt" || input.id === "tts" ? input.id : undefined,
+        );
       }
       return { message: body.message };
     },
