@@ -1,6 +1,5 @@
 "use client";
 
-import { getErrorMessage } from "@/lib/errors";
 import type { ReactNode } from "react";
 import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 import { AlertTriangle, CheckCircle2, X, XCircle } from "lucide-react";
@@ -29,8 +28,6 @@ export const toast = {
   },
   error(input: ToastInput) {
     const options = normalizeInput(input);
-    if (typeof options.title === "string") options.title = getErrorMessage(options.title);
-    if (typeof options.description === "string") options.description = getErrorMessage(options.description);
     toastManager.add({
       ...options,
       type: "error",

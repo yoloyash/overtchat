@@ -63,67 +63,12 @@ export function speechErrorMessage(
   }
 }
 
-function messageValue(value: unknown): unknown {
-  if (value instanceof Error) return value.message;
-  if (value && typeof value === "object") {
-    const body = value as Record<string, unknown>;
-    return body.error ?? body.message;
-  }
-  return value;
-}
-
-/** Keep useful prose, but never present response documents or stack traces as UI. */
+/** Only normalized API errors carry a message intended for display. */
 export function getErrorMessage(
   error: unknown,
   fallback = "Something went wrong. Please try again.",
 ): string {
-  let value = messageValue(error);
-  for (let depth = 0; depth < 5; depth++) {
-    if (value && typeof value === "object") {
-      value = messageValue(value);
-      continue;
-    }
-    if (typeof value !== "string") return fallback;
-    const message = value.trim();
-    if (!message) return fallback;
-    if (/^[{[]/.test(message)) {
-      try {
-        value = JSON.parse(message);
-        continue;
-      } catch {
-        return fallback;
-      }
-    }
-    if (
-      /^(?:TypeError:\s*)?(?:failed to fetch|fetch failed|networkerror.*|network request failed|load failed)$/i.test(
-        message,
-      )
-    ) {
-      // Only a transport exception establishes a client connection failure.
-      // A provider's "fetch failed" string can arrive in a successful HTTP exchange.
-      return error instanceof TypeError || (error instanceof Error && error.name === "NetworkError")
-        ? "Can't reach the server. Check your connection and try again."
-        : fallback;
-    }
-    if (
-      error instanceof Error &&
-      ["TypeError", "SyntaxError", "ReferenceError"].includes(error.name)
-    )
-      return fallback;
-    if (/^(?:HTTP |Request failed \()?401\)?$|^unauthorized$/i.test(message))
-      return "Your session has expired. Sign in again.";
-    if (/^(?:HTTP |Request failed \()?403\)?$|^forbidden$/i.test(message))
-      return "You don't have permission to do this.";
-    if (
-      message.length > 500 ||
-      /<\/?[a-z][^>]*>|\n\s*at\s|\b(?:ECONNREFUSED|ENOTFOUND|ETIMEDOUT)\b|^(?:TypeError|SyntaxError|ReferenceError):|^(?:HTTP \d{3}|\[object Object\]|[a-z]+_[a-z_]+)$/i.test(
-        message,
-      )
-    )
-      return fallback;
-    return message;
-  }
-  return fallback;
+  return error instanceof ApiError ? error.message : fallback;
 }
 
 /** Accepts decoded JSON or legacy text. HTTP status alone never implies missing setup. */
@@ -151,7 +96,7 @@ export function apiError(
   let message: string;
   if (service && isSpeechErrorCode(code))
     message = speechErrorMessage(service, code);
-  else if (status === 401) message = "Your session has expired. Sign in again.";
+  else if (status === 401) message = "Sign in to continue.";
   else if (status === 403) message = "You don't have permission to do this.";
   else if (status === 429) message = "Too many requests. Try again shortly.";
   else if (service && status >= 500)
@@ -159,6 +104,15 @@ export function apiError(
       service,
       status === 504 ? "speech_timeout" : undefined,
     );
-  else message = getErrorMessage(decoded, fallback);
+  // OvertChat's API error field is public display copy. Do not unwrap nested
+  // provider payloads, interpret message text, or display unknown coded errors.
+  else if (
+    !code &&
+    decoded &&
+    typeof decoded === "object" &&
+    "error" in decoded &&
+    typeof decoded.error === "string"
+  ) message = decoded.error;
+  else message = fallback;
   return new ApiError(message, status, code);
 }

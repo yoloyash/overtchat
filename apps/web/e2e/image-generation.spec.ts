@@ -411,7 +411,7 @@ test("retains a completed image when the subsequent chat model step fails", asyn
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();
   await expect(
-    page.getByText(/Chat model failed after image creation/).first(),
+    page.getByRole("alert").filter({ hasText: "Couldn't complete the response. Please try again." }),
   ).toBeVisible();
   await page.reload();
   await expect(page.locator("[data-image-generation] img")).toBeVisible();

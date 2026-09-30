@@ -64,25 +64,18 @@ async function fetchSpeech(
   url: string,
   init: RequestInit,
 ): Promise<Response> {
-  const timeout = new AbortController();
-  // Bound connection/inference startup, but do not truncate a successful audio stream.
-  const timer = setTimeout(() => timeout.abort(), 60_000);
   try {
     const response = await fetch(url, {
       ...init,
-      signal: AbortSignal.any([request.signal, timeout.signal]),
+      signal: request.signal,
     });
     return response.ok ? response : upstreamFailure(service, response);
   } catch (error) {
     // A cancelled caller must not be reported as a service outage.
     if (request.signal.aborted) throw error;
-    const code = timeout.signal.aborted
-      ? "speech_timeout"
-      : "speech_unreachable";
+    const code = "speech_unreachable";
     console.warn("Speech provider request failed", { service, code });
-    return speechFailure(service, code, timeout.signal.aborted ? 504 : 502);
-  } finally {
-    clearTimeout(timer);
+    return speechFailure(service, code, 502);
   }
 }
 

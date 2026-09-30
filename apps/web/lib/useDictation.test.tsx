@@ -74,7 +74,7 @@ it.each([
   [502, { code: "speech_unreachable" }, "Couldn't reach"],
   [503, { code: "speech_disabled" }, "turned off"],
   [503, { code: "speech_not_configured" }, "hasn't been set up"],
-  [401, { error: "Unauthorized" }, "Sign in again"],
+  [401, { error: "Unauthorized" }, "Sign in to continue"],
 ])(
   "renders HTTP %s according to explicit reason, not status alone",
   async (status, body, message) => {

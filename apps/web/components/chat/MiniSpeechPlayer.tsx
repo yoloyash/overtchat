@@ -33,7 +33,7 @@ export function MiniSpeechPlayer({
 
   return (
     <div hidden={!visible} className="mx-auto mt-2 w-full max-w-md px-4">
-      <div hidden={!error}>
+      {error && (
         <ErrorNotice
           message={error}
           onDismiss={stop}
@@ -55,14 +55,14 @@ export function MiniSpeechPlayer({
             </>
           }
         />
-      </div>
+      )}
 
       <div
         hidden={!active || error !== null}
         className="flex items-center gap-1 rounded-2xl border bg-card px-2 py-1 shadow-sm"
       >
         <AudioPlayer className="flex-1">
-          <audio ref={audioRef} slot="media" />
+          <audio ref={audioRef} slot="media" tabIndex={-1} />
           <AudioPlayerControlBar>
             <AudioPlayerPlayButton disabled={loading} />
             {canSeek ? (

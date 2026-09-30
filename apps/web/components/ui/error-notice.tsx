@@ -14,6 +14,7 @@ export function ErrorNotice({
   onDismiss,
   className,
 }: {
+  // Strings are display copy supplied by the caller; exceptions are normalized.
   message: unknown;
   fallback?: string;
   title?: string;
@@ -37,7 +38,7 @@ export function ErrorNotice({
         <div className="space-y-1 break-words [overflow-wrap:anywhere]">
           {title && <p className="font-medium text-foreground">{title}</p>}
           <p className="text-foreground">
-            {getErrorMessage(message, fallback)}
+            {typeof message === "string" ? message : getErrorMessage(message, fallback)}
           </p>
         </div>
         {actions && (

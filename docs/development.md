@@ -155,7 +155,13 @@ Speech failures distinguish disabled or missing configuration from an unreachabl
 provider, timeout, rejected credentials, rate limiting, and invalid responses.
 The proxy returns a public message and stable `code`; clients must not infer
 configuration state from HTTP 503. Provider response bodies stay out of public
-errors. Web and mobile share the message parser in `packages/shared/src/errors.ts`.
+errors. Web and mobile share code-to-message mapping in `packages/shared/src/errors.ts`.
+The API boundary accepts known codes and the documented `{ error: string }`
+public message field. Endpoints own that display copy; do not put raw provider
+bodies there. Unknown codes, malformed responses, and unclassified exceptions
+use the operation's fallback. Only normalized `ApiError` messages are displayed
+from exceptions. Do not diagnose failures by parsing their
+message text. Notice and toast strings are display copy supplied by the caller.
 
 Use the web/native `ErrorNotice` beside failed operations that need recovery;
 keep field validation beside its field and use existing toasts for brief action

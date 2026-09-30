@@ -2,45 +2,39 @@ import { describe, expect, it } from "vitest";
 import { apiError, getErrorMessage } from "@overtchat/shared";
 
 describe("public error messages", () => {
-  it("extracts legacy and nested JSON messages without displaying the envelope", () => {
-    expect(
-      getErrorMessage(
-        new Error('{"error":{"message":"Choose a model first."}}'),
-      ),
-    ).toBe("Choose a model first.");
-    expect(getErrorMessage({ message: "Image exceeds 10MB" })).toBe(
-      "Image exceeds 10MB",
-    );
+  it("displays messages explicitly normalized at the API boundary", () => {
+    const error = apiError(503, { code: "speech_unreachable" }, "Failed", "stt");
+    expect(getErrorMessage(error)).toBe("Couldn't reach the transcription service. Try again shortly.");
   });
 
   it.each([
+    new Error("unauthorized"),
+    new TypeError("Failed to fetch"),
+    { message: "Choose a model first." },
+    '{"error":{"message":"Choose a model first."}}',
     "<!DOCTYPE html><html>Bad gateway</html>",
-    '{"invalid":true}',
-    "{broken",
     "stt_unavailable",
-    "Error: failure\n    at foo (server.js:1)",
     "connect ECONNREFUSED 127.0.0.1:9999",
     "x".repeat(501),
-  ])("uses a useful fallback for diagnostic output: %s", (message) => {
-    expect(getErrorMessage(message, "Couldn't save changes.")).toBe(
-      "Couldn't save changes.",
-    );
+  ])("uses the operation fallback for an unclassified failure: %s", (error) => {
+    expect(getErrorMessage(error, "Couldn't save changes.")).toBe("Couldn't save changes.");
   });
 
-  it("does not diagnose arbitrary TypeErrors as a network outage", () => {
-    expect(
-      getErrorMessage(
-        new TypeError("Cannot read properties of undefined"),
-        "Couldn't finish.",
-      ),
-    ).toBe("Couldn't finish.");
-    expect(getErrorMessage(new TypeError("Failed to fetch"))).toContain(
-      "Check your connection",
-    );
+  it("does not interpret arbitrary response text or unknown error codes", () => {
+    for (const body of ["unauthorized", { error: { message: "forbidden" } }, { code: "new_provider_error", error: "Check your connection" }]) {
+      expect(apiError(502, body, "Couldn't finish.").message).toBe("Couldn't finish.");
+    }
+  });
+
+  it("preserves the API's explicit public error field without interpreting it", () => {
+    expect(apiError(400, { error: "Choose a model first." }, "Failed").message)
+      .toBe("Choose a model first.");
+    expect(apiError(502, { error: "unauthorized" }, "Failed").message)
+      .toBe("unauthorized");
   });
 
   it("does not blame the user's connection for a provider fetch error", () => {
-    expect(apiError(502, { error: "fetch failed" }, "The provider could not complete the request.").message)
+    expect(apiError(502, "fetch failed", "The provider could not complete the request.").message)
       .toBe("The provider could not complete the request.");
   });
 
@@ -77,7 +71,7 @@ describe("public error messages", () => {
       apiError(502, { code: "speech_provider_auth" }, "Failed", "tts").message,
     ).toContain("server's credentials");
     expect(apiError(401, "Unauthorized", "Failed", "tts").message).toContain(
-      "Sign in again",
+      "Sign in to continue",
     );
   });
 });

@@ -9,6 +9,7 @@ export function ErrorNotice({
   onDismiss,
   action,
 }: {
+  // Strings are display copy supplied by the caller; exceptions are normalized.
   message: unknown;
   fallback?: string;
   onDismiss?: () => void;
@@ -45,7 +46,7 @@ export function ErrorNotice({
             lineHeight: 19,
           }}
         >
-          {getErrorMessage(message, fallback)}
+          {typeof message === "string" ? message : getErrorMessage(message, fallback)}
         </Text>
         {action && (
           <Pressable

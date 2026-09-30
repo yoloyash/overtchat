@@ -44,7 +44,7 @@ export function dictationErrorMessage(
     case "empty":
       return "No speech detected. Try again.";
     case "other":
-      return getErrorMessage(err.message, "Couldn't transcribe this recording. Please try again.");
+      return err.message;
   }
 }
 

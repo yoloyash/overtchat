@@ -76,7 +76,12 @@ export function useTestServerCapability() {
         error?: string;
       };
       if (!response.ok || !body.message) {
-        throw apiError(response.status, body, "Could not complete the service request.");
+        throw apiError(
+          response.status,
+          body,
+          "Could not connect to the provider.",
+          input.id === "stt" || input.id === "tts" ? input.id : undefined,
+        );
       }
       return { message: body.message };
     },

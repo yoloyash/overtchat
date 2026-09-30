@@ -247,26 +247,23 @@ for (const service of ["stt", "tts"] as const) {
       await expect(call(controller.signal)).rejects.toBe(error);
     });
 
-    it("bounds an unresponsive provider and identifies the timeout", async () => {
+    it("allows a slow provider to finish without imposing a new deadline", async () => {
       vi.useFakeTimers();
       try {
         capability.mockReturnValue(configured);
-        vi.stubGlobal(
-          "fetch",
-          vi.fn(
-            (_url, init) =>
-              new Promise((_resolve, reject) => {
-                init.signal.addEventListener("abort", () =>
-                  reject(new DOMException("Aborted", "AbortError")),
-                );
-              }),
-          ),
-        );
+        let signal: AbortSignal | undefined;
+        vi.stubGlobal("fetch", vi.fn((_url, init) => {
+          signal = init.signal;
+          return new Promise((resolve) => setTimeout(() => resolve(
+            service === "stt"
+              ? Response.json({ text: "Hello" })
+              : new Response("audio", { headers: { "content-type": "audio/mpeg" } }),
+          ), 90_000));
+        }));
         const result = call();
-        await vi.advanceTimersByTimeAsync(60_000);
-        const response = await result;
-        expect(response.status).toBe(504);
-        expect(await response.json()).toMatchObject({ code: "speech_timeout" });
+        await vi.advanceTimersByTimeAsync(90_000);
+        expect((await result).status).toBe(200);
+        expect(signal?.aborted).toBe(false);
       } finally {
         vi.useRealTimers();
       }

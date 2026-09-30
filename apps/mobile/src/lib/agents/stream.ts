@@ -1,3 +1,4 @@
+import { ApiError } from "@overtchat/shared";
 import {
   applyEnvelopeToReplica,
   applyLegacyEnvelopeToReplica,
@@ -10,12 +11,12 @@ import {
   type AgentRuntimeSnapshot,
 } from "@overtchat/agent-bridge";
 
-export class AgentHttpError extends Error {
+export class AgentHttpError extends ApiError {
   constructor(
     message: string,
     readonly status: number,
   ) {
-    super(message);
+    super(message, status);
   }
 }
 

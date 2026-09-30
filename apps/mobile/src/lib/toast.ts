@@ -7,5 +7,5 @@ export function toastSuccess(title: string, message?: string) {
 
 export function toastError(title: string, error?: unknown) {
   const message = error == null ? undefined : getErrorMessage(error);
-  Burnt.toast({ title: getErrorMessage(title), message, preset: "error", haptic: "error" });
+  Burnt.toast({ title, message, preset: "error", haptic: "error" });
 }

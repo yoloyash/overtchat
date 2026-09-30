@@ -81,7 +81,7 @@ test("shows failures and ignores results from a draft edited during a test", asy
     await pending;
     await route.fulfill({
       status: 502,
-      json: { error: "Could not reach the provider." },
+      json: { code: "speech_unreachable", error: "Could not reach the provider." },
     });
   });
   await service.getByRole("button", { name: "Test connection" }).click();
@@ -97,7 +97,7 @@ test("shows failures and ignores results from a draft edited during a test", asy
 
   await service.getByRole("button", { name: "Test connection" }).click();
   await expect(service.getByRole("alert")).toHaveText(
-    "Could not reach the provider.",
+    "Couldn't reach the speech playback service. Try again shortly.",
   );
   await selectProvider(page, "Text-to-speech", "Disabled");
   await expect(service.getByRole("alert")).toHaveCount(0);

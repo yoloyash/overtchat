@@ -1,4 +1,4 @@
-import { getErrorMessage, speechErrorMessage } from "@overtchat/shared";
+import { speechErrorMessage } from "@overtchat/shared";
 import type { DictationError } from "@/lib/useDictation";
 
 export function dictationErrorMessage(
@@ -17,6 +17,6 @@ export function dictationErrorMessage(
     case "empty":
       return "No speech detected. Try again.";
     case "other":
-      return getErrorMessage(err.message, "Couldn't transcribe this recording. Please try again.");
+      return err.message;
   }
 }
