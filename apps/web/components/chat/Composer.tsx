@@ -509,7 +509,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <>
-      <DictateError error={dictation.error} isAdmin={isAdmin} />
+      <DictateError
+        error={dictation.error}
+        isAdmin={isAdmin}
+        onDismiss={dictation.clearError}
+        onRecordAgain={() => {
+          onBeforeDictate?.();
+          void dictation.start();
+        }}
+      />
       <div className="relative">
         {menuOpen && query && (
           <SlashCommandMenu

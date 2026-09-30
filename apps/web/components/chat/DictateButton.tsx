@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { Loader2, Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { dictationErrorMessage } from "@/lib/chat/message";
@@ -49,11 +51,7 @@ export function DictateButton({
       }}
       disabled={transcribing || (disabled && !recording)}
       aria-label={
-        recording
-          ? "Stop dictation"
-          : transcribing
-            ? "Transcribing"
-            : "Dictate"
+        recording ? "Stop dictation" : transcribing ? "Transcribing" : "Dictate"
       }
       aria-pressed={recording}
     >
@@ -72,14 +70,51 @@ export function DictateButton({
 export function DictateError({
   error,
   isAdmin,
+  onDismiss,
+  onRecordAgain,
 }: {
   error: DictationError | null;
   isAdmin: boolean;
+  onDismiss: () => void;
+  onRecordAgain: () => void;
 }) {
   if (!error) return null;
+  const setupRequired =
+    error.kind === "stt_unavailable" &&
+    (error.code === "speech_disabled" ||
+      error.code === "speech_not_configured" ||
+      error.code === "speech_provider_auth");
+  const canRecordAgain =
+    error.kind === "empty" ||
+    error.kind === "other" ||
+    (error.kind === "stt_unavailable" && !setupRequired);
   return (
-    <p className="mb-2 text-sm text-destructive">
-      {dictationErrorMessage(error, isAdmin)}
-    </p>
+    <ErrorNotice
+      className="mb-2"
+      message={dictationErrorMessage(error, isAdmin)}
+      onDismiss={onDismiss}
+      actions={
+        <>
+          {canRecordAgain && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onRecordAgain}
+            >
+              Record again
+            </Button>
+          )}
+          {isAdmin && error.kind === "stt_unavailable" && (
+            <Link
+              href="/settings/services"
+              className="text-xs underline underline-offset-4"
+            >
+              Speech settings
+            </Link>
+          )}
+        </>
+      }
+    />
   );
 }

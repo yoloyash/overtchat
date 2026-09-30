@@ -1,5 +1,6 @@
 "use client";
 
+import { apiError } from "@overtchat/shared";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
@@ -28,7 +29,7 @@ async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
     error?: string;
   } | null;
-  return new Error(data?.error ?? `HTTP ${response.status}`);
+  return apiError(response.status, data, "Could not complete the request. Please try again.");
 }
 
 async function fetchAgentConnections(): Promise<AgentConnectionListItem[]> {

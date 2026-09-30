@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
@@ -40,6 +41,7 @@ export function MessageList({
   speech,
   refreshing,
   onRefresh,
+  onReconnect,
   onStartEdit,
   onCancelEdit,
   onSaveEdit,
@@ -57,6 +59,7 @@ export function MessageList({
   speech: ReturnType<typeof useSpeech>;
   refreshing?: boolean;
   onRefresh?: () => void;
+  onReconnect?: () => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
@@ -124,26 +127,8 @@ export function MessageList({
           …
         </Text>
       )}
-      {error && (
-        <View
-          style={[
-            styles.error,
-            { borderColor: colors.destructive, backgroundColor: colors.muted },
-          ]}
-        >
-          <Text
-            style={[
-              styles.errorText,
-              {
-                color: colors.destructive,
-                fontFamily: fonts.sansRegular,
-              },
-            ]}
-          >
-            {error.message || "Something went wrong."}
-          </Text>
-        </View>
-      )}
+      {error && <ErrorNotice message={error} fallback="Couldn't complete the response. Please try again." action={onReconnect ? { label: "Reconnect", onPress: onReconnect } : undefined} />}
+
     </>
   );
 
@@ -263,12 +248,6 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   pending: { fontSize: 18, paddingVertical: 4 },
-  error: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: 12,
-  },
-  errorText: { fontSize: 14 },
   scrollToBottomContainer: {
     position: "absolute",
     left: 0,

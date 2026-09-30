@@ -1,4 +1,11 @@
 import {
+  apiError,
+  getErrorMessage,
+  isSpeechErrorCode,
+  speechErrorMessage,
+  type SpeechErrorCode,
+} from "@overtchat/shared";
+import {
   RecordingPresets,
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
@@ -13,7 +20,7 @@ export type DictationStatus = "idle" | "recording" | "transcribing";
 export type DictationError =
   | { kind: "permission" }
   | { kind: "unsupported" }
-  | { kind: "stt_unavailable"; role: "admin" | "user" }
+  | { kind: "stt_unavailable"; role?: "admin" | "user"; code?: SpeechErrorCode }
   | { kind: "empty" }
   | { kind: "other"; message: string };
 
@@ -45,7 +52,10 @@ export function useDictation(onResult: (text: string) => void) {
       }).catch(() => {});
       setError({
         kind: "other",
-        message: e instanceof Error ? e.message : "Could not start recording",
+        message: getErrorMessage(
+          e,
+          "Couldn't start recording. Please try again.",
+        ),
       });
       setStatus("idle");
     }
@@ -81,29 +91,42 @@ export function useDictation(onResult: (text: string) => void) {
         body: form,
       });
 
-      if (res.status === 503) {
-        const j = (await res.json().catch(() => ({}))) as {
-          role?: "admin" | "user";
-        };
-        setError({ kind: "stt_unavailable", role: j.role ?? "user" });
-        setStatus("idle");
-        return;
-      }
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        setError({ kind: "other", message: text || `HTTP ${res.status}` });
+        const failure = apiError(
+          res.status,
+          await res.text().catch(() => ""),
+          "Couldn't transcribe this recording. Please try again.",
+          "stt",
+        );
+        setError(
+          isSpeechErrorCode(failure.code)
+            ? { kind: "stt_unavailable", code: failure.code }
+            : { kind: "other", message: failure.message },
+        );
         setStatus("idle");
         return;
       }
 
-      const j = (await res.json().catch(() => ({}))) as { text?: string };
-      const out = (j.text ?? "").trim();
+      const j = (await res.json().catch(() => null)) as {
+        text?: unknown;
+      } | null;
+      if (typeof j?.text !== "string") {
+        setError({
+          kind: "other",
+          message: speechErrorMessage("stt", "speech_invalid_response"),
+        });
+        return;
+      }
+      const out = j.text.trim();
       if (out) onResult(out);
       else setError({ kind: "empty" });
     } catch (e) {
       setError({
         kind: "other",
-        message: e instanceof Error ? e.message : "Transcription failed",
+        message: getErrorMessage(
+          e,
+          "Couldn't transcribe this recording. Please try again.",
+        ),
       });
     } finally {
       setStatus("idle");

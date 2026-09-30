@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { Feather } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
@@ -16,6 +17,7 @@ export function MiniSpeechPlayer({
     currentTime,
     duration,
     error,
+    canRetry,
     pause,
     resume,
     seek,
@@ -28,49 +30,9 @@ export function MiniSpeechPlayer({
   if (!visible) return null;
 
   if (error) {
-    return (
-      <View style={styles.wrap}>
-        <View
-          style={[
-            styles.row,
-            {
-              backgroundColor: colors.muted,
-              borderColor: colors.destructive,
-              borderRadius: radii.xxl,
-            },
-          ]}
-        >
-          <Feather name="alert-triangle" size={16} color={colors.destructive} />
-          <Text
-            numberOfLines={2}
-            style={[
-              styles.errorText,
-              { color: colors.foreground, fontFamily: fonts.sansRegular },
-            ]}
-          >
-            {error}
-          </Text>
-          <Pressable
-            onPress={retry}
-            hitSlop={8}
-            style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Retry"
-          >
-            <Feather name="rotate-ccw" size={16} color={colors.foreground} />
-          </Pressable>
-          <Pressable
-            onPress={() => stop()}
-            hitSlop={8}
-            style={({ pressed }) => [styles.iconBtn, { opacity: pressed ? 0.5 : 1 }]}
-            accessibilityRole="button"
-            accessibilityLabel="Dismiss"
-          >
-            <Feather name="x" size={16} color={colors.mutedForeground} />
-          </Pressable>
-        </View>
-      </View>
-    );
+    return <View style={styles.wrap}>
+      <ErrorNotice message={error} onDismiss={stop} action={canRetry ? { label: "Retry playback", onPress: retry } : undefined} />
+    </View>;
   }
 
   const loading = status === "loading";
@@ -199,9 +161,5 @@ const styles = StyleSheet.create({
     fontVariant: ["tabular-nums"],
     minWidth: 36,
     textAlign: "right",
-  },
-  errorText: {
-    flex: 1,
-    fontSize: 13,
   },
 });

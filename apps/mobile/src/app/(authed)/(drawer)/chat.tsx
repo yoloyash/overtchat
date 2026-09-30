@@ -627,6 +627,7 @@ function ChatSurface({
           streaming={streaming}
           status={status}
           error={error}
+          onReconnect={() => { if (!streaming) void reconcileGeneration(); }}
           editingId={editingId}
           speech={speech}
           refreshing={!isNew && hydrationFetching && !streaming}

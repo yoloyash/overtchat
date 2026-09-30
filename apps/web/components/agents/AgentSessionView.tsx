@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { generateId } from "ai";
 import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
 
@@ -19,7 +20,6 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import {
-  AlertTriangle,
   Loader2,
   LockKeyhole,
   RefreshCw,
@@ -569,17 +569,8 @@ export function AgentSessionView({
           <SidebarToggle />
         </header>
         <div className="flex flex-1 items-center justify-center px-6">
-          <div className="max-w-md text-center">
-            <AlertTriangle className="mx-auto size-5 text-destructive" />
-            <p className="mt-3 text-sm font-medium">
-              {providerLabel} session could not be opened
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {session.error instanceof Error
-                ? session.error.message
-                : "The connection failed."}
-            </p>
-          </div>
+          <ErrorNotice className="max-w-md" title={`${providerLabel} session could not be opened`}
+            message={session.error} fallback="The connection failed. Please try again." />
         </div>
       </div>
     );
@@ -740,7 +731,7 @@ export function AgentSessionView({
             }
           />
 
-          <MiniSpeechPlayer speech={speech} />
+          <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
               <AgentSessionContext

@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  speechErrorMessage,
+  type SpeechErrorCode,
+  type SpeechService,
+} from "@overtchat/shared";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
 
 type SpeechConfig = Pick<
@@ -19,14 +24,71 @@ function providerHeaders(apiKey: string | null): HeadersInit {
   return apiKey ? { Authorization: `Bearer ${apiKey}` } : {};
 }
 
-export interface TranscriptionOptions {
-  actorRole?: "admin" | "user";
+function speechFailure(
+  service: SpeechService,
+  code: SpeechErrorCode,
+  status: number,
+): Response {
+  const response = Response.json(
+    { error: speechErrorMessage(service, code), code },
+    {
+      status,
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
+  return response;
+}
+
+async function upstreamFailure(
+  service: SpeechService,
+  response: Response,
+): Promise<Response> {
+  await response.body?.cancel().catch(() => {});
+  // Log status, never provider bodies, credentials, URLs, or submitted content.
+  console.warn("Speech provider rejected request", {
+    service,
+    status: response.status,
+  });
+  if (response.status === 401 || response.status === 403)
+    return speechFailure(service, "speech_provider_auth", 502);
+  if (response.status === 429)
+    return speechFailure(service, "speech_rate_limited", 429);
+  if (response.status === 408 || response.status === 504)
+    return speechFailure(service, "speech_timeout", 504);
+  return speechFailure(service, "speech_provider_error", 502);
+}
+
+async function fetchSpeech(
+  service: SpeechService,
+  request: Request,
+  url: string,
+  init: RequestInit,
+): Promise<Response> {
+  const timeout = new AbortController();
+  // Bound connection/inference startup, but do not truncate a successful audio stream.
+  const timer = setTimeout(() => timeout.abort(), 60_000);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: AbortSignal.any([request.signal, timeout.signal]),
+    });
+    return response.ok ? response : upstreamFailure(service, response);
+  } catch (error) {
+    // A cancelled caller must not be reported as a service outage.
+    if (request.signal.aborted) throw error;
+    const code = timeout.signal.aborted
+      ? "speech_timeout"
+      : "speech_unreachable";
+    console.warn("Speech provider request failed", { service, code });
+    return speechFailure(service, code, timeout.signal.aborted ? 504 : 502);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function proxyTranscription(
   request: Request,
   capability: SpeechConfig = getServerCapability("stt"),
-  options: TranscriptionOptions = {},
 ): Promise<Response> {
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_AUDIO_BYTES) {
@@ -36,15 +98,9 @@ export async function proxyTranscription(
     capability.provider === "bundled"
       ? process.env.OVERTCHAT_BUNDLED_STT_URL || "http://stt:5092"
       : capability.baseUrl || process.env.STT_URL;
-  if (capability.provider === "disabled" || !baseUrl) {
-    return Response.json(
-      {
-        error: "stt_unavailable",
-        ...(options.actorRole ? { role: options.actorRole } : {}),
-      },
-      { status: 503 },
-    );
-  }
+  if (capability.provider === "disabled")
+    return speechFailure("stt", "speech_disabled", 503);
+  if (!baseUrl) return speechFailure("stt", "speech_not_configured", 503);
   const incoming = await request.formData().catch(() => null);
   const file = incoming?.get("file");
   if (!(file instanceof File)) {
@@ -64,28 +120,48 @@ export async function proxyTranscription(
   if (typeof language === "string" && language.trim()) {
     outgoing.append("language", language.trim());
   }
-  const upstream = await fetch(apiEndpoint(baseUrl, "/audio/transcriptions"), {
-    method: "POST",
-    body: outgoing,
-    headers: providerHeaders(capability.provider === "bundled" ? process.env.OVERTCHAT_BUNDLED_SPEECH_TOKEN || null : capability.apiKey),
-    signal: request.signal,
-  }).catch(() => null);
-  if (!upstream) {
-    return Response.json(
-      {
-        error: "stt_unavailable",
-        ...(options.actorRole ? { role: options.actorRole } : {}),
-      },
-      { status: 503 },
-    );
-  }
-  return new Response(await upstream.arrayBuffer(), {
-    status: upstream.status,
-    headers: {
-      "Content-Type": upstream.headers.get("content-type") ?? "application/json",
-      "Cache-Control": "no-store",
+  const upstream = await fetchSpeech(
+    "stt",
+    request,
+    apiEndpoint(baseUrl, "/audio/transcriptions"),
+    {
+      method: "POST",
+      body: outgoing,
+      headers: providerHeaders(
+        capability.provider === "bundled"
+          ? process.env.OVERTCHAT_BUNDLED_SPEECH_TOKEN || null
+          : capability.apiKey,
+      ),
     },
-  });
+  );
+  if (!upstream.ok) return upstream;
+  try {
+    const bytes = await upstream.arrayBuffer();
+    const contentType =
+      upstream.headers.get("content-type") ?? "application/json";
+    if (responseFormat !== "text") {
+      let result: unknown;
+      try {
+        result = JSON.parse(new TextDecoder().decode(bytes));
+      } catch {
+        /* Invalid provider response. */
+      }
+      if (
+        !result ||
+        typeof result !== "object" ||
+        !("text" in result) ||
+        typeof result.text !== "string"
+      ) {
+        return speechFailure("stt", "speech_invalid_response", 502);
+      }
+    }
+    return new Response(bytes, {
+      headers: { "Content-Type": contentType, "Cache-Control": "no-store" },
+    });
+  } catch (error) {
+    if (request.signal.aborted) throw error;
+    return speechFailure("stt", "speech_unreachable", 502);
+  }
 }
 
 export async function proxySpeech(
@@ -93,52 +169,70 @@ export async function proxySpeech(
   defaultFormat: "mp3" | "pcm",
   capability: SpeechConfig = getServerCapability("tts"),
 ): Promise<Response> {
-  const body = (await request.json().catch(() => null)) as
-    | {
-        input?: string;
-        text?: string;
-        voice?: string;
-        response_format?: string;
-      }
-    | null;
-  const input = (body?.input ?? body?.text)?.trim();
+  const body = (await request.json().catch(() => null)) as {
+    input?: string;
+    text?: string;
+    voice?: string;
+    response_format?: string;
+  } | null;
+  const rawInput = body?.input ?? body?.text;
+  const input = typeof rawInput === "string" ? rawInput.trim() : "";
   if (!input) return new Response("Missing text", { status: 400 });
   if (input.length > MAX_SPEECH_CHARS) {
-    return new Response(`Text exceeds ${MAX_SPEECH_CHARS} chars`, { status: 413 });
+    return new Response(`Text exceeds ${MAX_SPEECH_CHARS} chars`, {
+      status: 413,
+    });
   }
   const baseUrl =
     capability.provider === "bundled"
       ? process.env.OVERTCHAT_BUNDLED_TTS_URL || "http://kokoro:8880"
       : capability.baseUrl || process.env.KOKORO_URL;
-  if (capability.provider === "disabled" || !baseUrl) {
-    return Response.json({ error: "tts_unavailable" }, { status: 503 });
-  }
+  if (capability.provider === "disabled")
+    return speechFailure("tts", "speech_disabled", 503);
+  if (!baseUrl) return speechFailure("tts", "speech_not_configured", 503);
   const requestedFormat = body?.response_format;
   const responseFormat =
     requestedFormat && SPEECH_FORMATS.has(requestedFormat)
       ? requestedFormat
       : defaultFormat;
-  const upstream = await fetch(apiEndpoint(baseUrl, "/audio/speech"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...providerHeaders(capability.provider === "bundled" ? process.env.OVERTCHAT_BUNDLED_SPEECH_TOKEN || null : capability.apiKey),
+  const upstream = await fetchSpeech(
+    "tts",
+    request,
+    apiEndpoint(baseUrl, "/audio/speech"),
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...providerHeaders(
+          capability.provider === "bundled"
+            ? process.env.OVERTCHAT_BUNDLED_SPEECH_TOKEN || null
+            : capability.apiKey,
+        ),
+      },
+      body: JSON.stringify({
+        model: capability.model ?? "kokoro",
+        voice: body?.voice ?? capability.voice ?? "af_heart",
+        input,
+        response_format: responseFormat,
+        stream: true,
+      }),
     },
-    body: JSON.stringify({
-      model: capability.model ?? "kokoro",
-      voice: body?.voice ?? capability.voice ?? "af_heart",
-      input,
-      response_format: responseFormat,
-      stream: true,
-    }),
-    signal: request.signal,
-  }).catch(() => null);
-  if (!upstream?.ok || !upstream.body) {
-    return new Response("TTS upstream unavailable", { status: 502 });
+  );
+  if (!upstream.ok) return upstream;
+  const contentType =
+    upstream.headers.get("content-type") ?? "application/octet-stream";
+  if (
+    !upstream.body ||
+    (!contentType.startsWith("audio/") &&
+      !contentType.startsWith("application/octet-stream"))
+  ) {
+    await upstream.body?.cancel().catch(() => {});
+    return speechFailure("tts", "speech_invalid_response", 502);
   }
   return new Response(upstream.body, {
     headers: {
-      "Content-Type": upstream.headers.get("content-type") ?? "application/octet-stream",
+      "Content-Type":
+        upstream.headers.get("content-type") ?? "application/octet-stream",
       "Cache-Control": "no-store",
     },
   });

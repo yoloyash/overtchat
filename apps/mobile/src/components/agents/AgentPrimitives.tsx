@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import {
   BottomSheetBackdrop,
   BottomSheetModal,
@@ -152,8 +153,7 @@ export function AgentFeedback({
   return (
     <View style={{ padding: 16, gap: 8 }}>
       {loading && <ActivityIndicator color={colors.mutedForeground} />}
-      {!!error && <AgentText danger>{error}</AgentText>}
-      {!!error && retry && <AgentButton label="Retry" onPress={retry} />}
+      {!!error && <ErrorNotice message={error} action={retry ? { label: "Retry", onPress: retry } : undefined} />}
     </View>
   );
 }

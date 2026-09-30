@@ -772,7 +772,7 @@ export function ChatArea({
         onToggleTemporary={() => setTemporary((t) => !t)}
       />
 
-      <MiniSpeechPlayer speech={speech} />
+      <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
 
       {dropActive && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">

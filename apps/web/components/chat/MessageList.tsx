@@ -1,10 +1,10 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import {
-  AlertTriangle,
   ChevronDown,
   LoaderCircle,
   RotateCcw,
@@ -364,22 +364,10 @@ function ChatErrorBubble({
   onReconnect: () => void;
 }) {
   return (
-    <div
-      role="alert"
-      className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
-    >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1">
-        <p className="text-foreground">{chatErrorMessage(error)}</p>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onReconnect}
-        className="shrink-0"
-      >
+    <ErrorNotice message={chatErrorMessage(error)} actions={
+      <Button variant="outline" size="sm" onClick={onReconnect}>
         <RotateCcw /> Reconnect
       </Button>
-    </div>
+    } />
   );
 }

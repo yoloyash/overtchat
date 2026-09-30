@@ -1,3 +1,4 @@
+import { getErrorMessage } from "@overtchat/shared";
 import * as Burnt from "burnt";
 
 export function toastSuccess(title: string, message?: string) {
@@ -5,11 +6,6 @@ export function toastSuccess(title: string, message?: string) {
 }
 
 export function toastError(title: string, error?: unknown) {
-  const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : undefined;
-  Burnt.toast({ title, message, preset: "error", haptic: "error" });
+  const message = error == null ? undefined : getErrorMessage(error);
+  Burnt.toast({ title: getErrorMessage(title), message, preset: "error", haptic: "error" });
 }

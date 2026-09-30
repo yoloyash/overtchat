@@ -586,7 +586,15 @@ export function AgentComposer({
         </section>
       )}
 
-      <DictateError error={dictation.error} isAdmin={isAdmin} />
+      <DictateError
+        error={dictation.error}
+        isAdmin={isAdmin}
+        onDismiss={dictation.clearError}
+        onRecordAgain={() => {
+          onBeforeDictate?.();
+          void dictation.start();
+        }}
+      />
 
       <div className="relative flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
         {attachments.length > 0 && (

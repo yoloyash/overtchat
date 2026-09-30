@@ -151,6 +151,32 @@ list screens, and horizontal tool/code scrolling on agent detail screens.
 
 ## Speech
 
+Speech failures distinguish disabled or missing configuration from an unreachable
+provider, timeout, rejected credentials, rate limiting, and invalid responses.
+The proxy returns a public message and stable `code`; clients must not infer
+configuration state from HTTP 503. Provider response bodies stay out of public
+errors. Web and mobile share the message parser in `packages/shared/src/errors.ts`.
+
+Use the web/native `ErrorNotice` beside failed operations that need recovery;
+keep field validation beside its field and use existing toasts for brief action
+feedback. Actions belong to the operation: dictation records again because failed
+recordings are discarded, playback can retry, and agent commands must not be
+automatically replayed when their outcome is unknown. Keep operator setup commands
+in settings and deployment help.
+
+Validate speech error handling with:
+
+```sh
+npm run test -w apps/web -- lib/errors.test.ts lib/speech/proxy.test.ts
+npm run test -w apps/mobile --
+E2E_PORT=4729 npm run test:e2e -w apps/web -- error-feedback.spec.ts speech-services.spec.ts voice.spec.ts
+```
+
+The browser regression uses a local fake provider and recorder to exercise real
+proxy failures, draft preservation, dismissal, and recovery at desktop/mobile
+viewport sizes. Also check microphone permissions and playback on native devices
+when changing their platform audio hooks.
+
 `speech/stt/` contains CPU/CUDA STT containers; `speech/apple/` contains native
 Kokoro/PyTorch MPS and Parakeet/MLX inference. Container TTS uses upstream Kokoro
 images. Realtime orchestration remains in `voice/`.

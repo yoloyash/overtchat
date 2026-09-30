@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import {
   Check,
   Loader2,
@@ -40,9 +41,7 @@ export function SshHostPicker({
             <Loader2 className="size-4 animate-spin text-muted-foreground motion-reduce:animate-none" />
           </div>
         ) : error ? (
-          <p className="px-4 py-8 text-center text-xs text-destructive">
-            {error}
-          </p>
+          <ErrorNotice className="m-3" message={error} />
         ) : hosts.length === 0 ? (
           <div className="flex h-24 flex-col items-center justify-center px-4 text-center">
             <Monitor className="size-4 text-muted-foreground" />

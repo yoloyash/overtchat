@@ -1,3 +1,4 @@
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { useState } from "react";
 import { Linking, View } from "react-native";
 import type {
@@ -86,7 +87,7 @@ export function AgentInteraction({
         </AgentText>
       )}
       {!!(error || linkError) && (
-        <AgentText danger>{error || linkError}</AgentText>
+        <ErrorNotice message={error || linkError} />
       )}
       {!tool && (
         <View style={{ gap: 4 }}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { useId, useRef, useState } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import type { AgentInteractionValue } from "@overtchat/agent-bridge";
@@ -204,9 +205,7 @@ export function AgentQuestionCard({
         )}
       </div>
       {error && (
-        <p role="alert" className="px-3 text-destructive">
-          {error}
-        </p>
+        <ErrorNotice message={error} />
       )}
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
         <button

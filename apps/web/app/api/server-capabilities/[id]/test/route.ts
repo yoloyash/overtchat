@@ -1,3 +1,4 @@
+import { apiError } from "@overtchat/shared";
 import { auth } from "@/lib/auth/server";
 import { serverCapabilityInputSchema } from "@/lib/capabilities/schema";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
@@ -101,10 +102,8 @@ export async function POST(
       );
     }
     if (!response.ok) {
-      await response.body?.cancel();
-      throw new Error(
-        "Connection failed. Check the API base URL, credentials, and model.",
-      );
+      const failure = apiError(response.status, await response.text().catch(() => ""), "Could not connect to the provider.", id);
+      return Response.json({ error: failure.message, code: failure.code }, { status: failure.status });
     }
     if (id === "tts") {
       const contentType = response.headers.get("content-type") ?? "";

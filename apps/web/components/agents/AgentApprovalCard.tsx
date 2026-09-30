@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { useId } from "react";
 import { Loader2, ShieldQuestion } from "lucide-react";
 import { approvalDetails } from "@overtchat/shared/agent-tool-details";
@@ -80,9 +81,7 @@ export function AgentApprovalCard({
         </div>
       )}
       {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <ErrorNotice message={error} />
       )}
       <div className="flex flex-wrap gap-2">
         {approval.choices.map((choice) => (

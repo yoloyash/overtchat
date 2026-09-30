@@ -1,5 +1,6 @@
 "use client";
 
+import { apiError } from "@overtchat/shared";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { generateId } from "ai";
@@ -45,7 +46,7 @@ async function responseError(response: Response): Promise<Error> {
     error?: string;
   } | null;
   return new AgentSessionHttpError(
-    data?.error ?? `HTTP ${response.status}`,
+    apiError(response.status, data, "Could not complete the agent request. Please try again.").message,
     response.status,
   );
 }
