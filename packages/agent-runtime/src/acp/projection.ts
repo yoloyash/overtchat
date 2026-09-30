@@ -17,6 +17,8 @@ export type AcpMessage = {
   toolName?: string;
   isError?: boolean;
   overtchatPartial?: boolean;
+  timestamp?: number;
+  updatedAt?: number;
 };
 
 export function contentPart(content: ContentBlock, thinking = false): Part {

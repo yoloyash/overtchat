@@ -3,8 +3,10 @@ import * as Clipboard from "expo-clipboard";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
+import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import {
   projectAgentTranscript,
+  foldAgentTranscript,
   agentActiveTurnStart,
   describeAgentActivity,
   describeAgentTool,
@@ -26,6 +28,9 @@ import type { useSpeech } from "@/lib/useSpeech";
 import { AgentToolRow, AgentToolDetails } from "./AgentToolDetails";
 import { AgentButton, AgentText, AgentSheet } from "./AgentPrimitives";
 import { AgentImage } from "./AgentImage";
+import { AgentWorkSummary } from "./AgentWorkSummary";
+
+const revealWork = FadeIn.delay(180).duration(140).reduceMotion(ReduceMotion.System);
 
 const position = {
   autoscrollToBottomThreshold: 0.15,
@@ -51,11 +56,53 @@ export function AgentTranscript({
   disabled: boolean;
 }) {
   const { colors } = useTheme();
-  const items = useMemo(
+  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
+  const projectedItems = useMemo(
     () => projectAgentTranscript(snapshot.messages),
     [snapshot.messages],
   );
+  const unsettled = snapshot.status !== "idle" || Boolean(
+    snapshot.error || snapshot.pendingInteraction || snapshot.state.isCompacting || question,
+  );
+  const items = useMemo(
+    () => foldAgentTranscript(projectedItems, { unsettled, expanded: expandedTurns }),
+    [projectedItems, unsettled, expandedTurns],
+  );
   const list = useRef<FlashListRef<AgentTranscriptItem>>(null);
+  const [disclosing, setDisclosing] = useState(false);
+  const disclosureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const disclosureAnchor = useRef<{ key: string; offset: number } | null>(null);
+  const toggleWork = useCallback((key: string) => {
+    const index = items.findIndex((item) => item.key === key);
+    const layout = list.current?.getLayout(index);
+    disclosureAnchor.current = layout && list.current
+      ? { key, offset: layout.y - list.current.getAbsoluteLastScrollOffset() } : null;
+    list.current?.prepareForLayoutAnimationRender();
+    setDisclosing(true);
+    clearTimeout(disclosureTimer.current);
+    disclosureTimer.current = setTimeout(() => {
+      disclosureAnchor.current = null;
+      setDisclosing(false);
+    }, 360);
+    setExpandedTurns((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, [items]);
+  const restoreDisclosurePosition = useCallback(() => {
+    const anchor = disclosureAnchor.current;
+    if (!anchor || !list.current) return;
+    const index = items.findIndex((item) => item.key === anchor.key);
+    const layout = list.current.getLayout(index);
+    if (layout) {
+      const offset = Math.max(0, layout.y - anchor.offset);
+      if (Math.abs(list.current.getAbsoluteLastScrollOffset() - offset) > 1) {
+        list.current.scrollToOffset({ offset, animated: false });
+      }
+    }
+  }, [items]);
   const [away, setAway] = useState(false);
   const userScrolled = useRef(false);
   const measureFrame = useRef<number | null>(null);
@@ -80,6 +127,7 @@ export function AgentTranscript({
   }, []);
   useEffect(
     () => () => {
+      clearTimeout(disclosureTimer.current);
       if (measureFrame.current !== null)
         cancelAnimationFrame(measureFrame.current);
     },
@@ -96,12 +144,14 @@ export function AgentTranscript({
         extraData={{ activeId: speech.activeId, status: speech.status, active }}
         keyExtractor={(item) => item.key}
         getItemType={(item) => item.type}
-        maintainVisibleContentPosition={position}
+        maintainVisibleContentPosition={disclosing ? { startRenderingFromBottom: true } : position}
+        onCommitLayoutEffect={restoreDisclosurePosition}
         keyboardDismissMode="interactive"
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
         onLoad={() => jumpToLatest(false)}
         onScrollBeginDrag={() => {
+          disclosureAnchor.current = null;
           userScrolled.current = true;
         }}
         onLayout={measurePosition}
@@ -134,17 +184,20 @@ export function AgentTranscript({
           )
         }
         renderItem={({ item, index }) => (
-          <TranscriptItem
-            speech={speech}
-            turnActive={index >= activeTurnStart}
-            item={item}
-            active={active}
-            disabled={disabled}
-            onImplementPlan={onImplementPlan}
-            onFork={onFork}
-            onRewind={onRewind}
-            capabilities={snapshot.capabilities}
-          />
+          <Animated.View key={item.key} entering={disclosing ? revealWork : undefined}>
+            <TranscriptItem
+              speech={speech}
+              turnActive={index >= activeTurnStart}
+              item={item}
+              onToggleWork={toggleWork}
+              active={active}
+              disabled={disabled}
+              onImplementPlan={onImplementPlan}
+              onFork={onFork}
+              onRewind={onRewind}
+              capabilities={snapshot.capabilities}
+            />
+          </Animated.View>
         )}
         ListFooterComponent={
           question ?? (active ? <AgentText muted>Working…</AgentText> : null)
@@ -182,6 +235,7 @@ const TranscriptItem = memo(function TranscriptItem({
   speech,
   turnActive,
   item,
+  onToggleWork,
   active,
   disabled,
   onImplementPlan,
@@ -192,6 +246,7 @@ const TranscriptItem = memo(function TranscriptItem({
   speech: ReturnType<typeof useSpeech>;
   turnActive: boolean;
   item: AgentTranscriptItem;
+  onToggleWork: (key: string) => void;
   active: boolean;
   capabilities: AgentRuntimeCapabilities;
   disabled: boolean;
@@ -202,6 +257,16 @@ const TranscriptItem = memo(function TranscriptItem({
   const { colors, radii } = useTheme();
   let content;
   switch (item.type) {
+    case "work_summary": {
+      content = (
+        <AgentWorkSummary
+          expanded={item.expanded}
+          durationMs={item.durationMs}
+          onPress={() => onToggleWork(item.key)}
+        />
+      );
+      break;
+    }
     case "assistant_text":
       content = (
         <View>

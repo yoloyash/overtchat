@@ -511,7 +511,17 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   await expect(transcriptActions).toHaveCount(1);
   snapshot.status = "idle";
   await page.reload();
+  await expect(transcriptActions).toHaveCount(2);
+  await expect(page.getByText("Checking the files", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Finished checking", { exact: true })).toBeVisible();
+  const workSummary = page.getByTestId("agent-work-summary");
+  await expect(workSummary).toHaveAttribute("aria-expanded", "false");
+  await workSummary.click();
+  await expect(workSummary).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Checking the files", { exact: true })).toBeVisible();
   await expect(transcriptActions).toHaveCount(3);
+  await workSummary.click();
+  await expect(page.getByText("Checking the files", { exact: true })).toHaveCount(0);
   snapshot.messages = completedMessages;
   await page.reload();
   await page.mouse.move(0, 0);
@@ -1405,6 +1415,9 @@ test("shows durable turn activity without changing completed tool status", async
 
   const genericActivity = page.getByTestId("agent-run-activity");
   await expect(genericActivity).toHaveCount(0);
+  const completedWork = page.getByRole("button", { name: "Worked for 4m 6s", exact: true });
+  await expect(completedWork).toHaveAttribute("aria-expanded", "false");
+  await completedWork.click();
   await expect(
     page.locator('[data-activity-sequence="single"]'),
   ).toHaveCount(1);
@@ -1421,7 +1434,7 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("I'm auditing the release state before merging anything."),
   ).toBeVisible();
   const completedTurn = page.getByTestId("agent-turn-footer");
-  await expect(completedTurn).toContainText("Worked for 4m 6s");
+  await expect(completedTurn).not.toContainText("Worked for 4m 6s");
   await expect(
     completedTurn.getByRole("button", { name: "Copy response" }),
   ).toBeVisible();
@@ -2280,4 +2293,74 @@ test("shows durable turn activity without changing completed tool status", async
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => retryRequested).toBe(true);
+});
+
+test("folds long completed work smoothly, anchors disclosures, and respects reduced motion", async ({ page }, testInfo) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Motion Tester");
+  await page.locator("#email").fill("motion@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.messages = [
+    { role: "user", id: "user", content: "Check this", timestamp: 100000 },
+    { role: "assistant", id: "progress", timestamp: 103000, content: [{ type: "text", text: Array.from({ length: 25 }, (_, i) => `Progress line ${i}`).join("\n\n") }] },
+    { role: "assistant", id: "answer", timestamp: 165000, content: [{ type: "text", text: Array.from({ length: 20 }, (_, i) => `Answer line ${i}`).join("\n\n") }] },
+  ];
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    const sources: EventTarget[] = [];
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor(url: string) {
+        super();
+        if (url.includes("/api/agent-sessions/")) sources.push(this);
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() { const i = sources.indexOf(this); if (i >= 0) sources.splice(i, 1); }
+    }
+    Object.assign(window, {
+      EventSource: FakeEventSource,
+      __motionEmit: (snapshot: unknown) => sources.forEach((source) => source.dispatchEvent(new MessageEvent("runtime", {
+        data: JSON.stringify({ epoch: "motion", sequence: 1, type: "snapshot", data: snapshot }),
+      }))),
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  await expect(page.getByText("Progress line 0", { exact: true })).toBeVisible();
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  const heights = await page.evaluate(async (completed) => {
+    const paragraph = [...document.querySelectorAll("p")].find((node) => node.textContent === "Progress line 0")!;
+    const row = paragraph.closest("[data-transcript-row]")!;
+    const heights = [row.getBoundingClientRect().height];
+    (window as unknown as { __motionEmit: (snapshot: unknown) => void }).__motionEmit(completed);
+    const end = performance.now() + 420;
+    while (performance.now() < end) {
+      await new Promise(requestAnimationFrame);
+      heights.push(row.getBoundingClientRect().height);
+    }
+    return heights;
+  }, snapshot);
+  expect(heights[0]).toBeGreaterThan(500);
+  expect(heights.some((height) => height > 5 && height < heights[0] - 5)).toBe(true);
+  expect(heights.at(-1)).toBe(0);
+  await expect(page.getByText("Progress line 0", { exact: true })).toHaveCount(0);
+  const summary = page.getByRole("button", { name: "Worked for 1m 5s", exact: true });
+  await summary.scrollIntoViewIfNeeded();
+  const before = (await summary.boundingBox())!.y;
+  await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
+  await expect(summary.locator("svg")).toHaveCSS("rotate", "90deg");
+  await expect.poll(async () => Math.abs((await summary.boundingBox())!.y - before)).toBeLessThan(2);
+  await expect(page.getByText("Progress line 0", { exact: true })).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await summary.click();
+  await expect(page.getByText("Progress line 0", { exact: true })).toHaveCount(0);
+  await expect(summary.locator("svg")).toHaveCSS("transition-duration", "0s");
+  await expect(page.getByText("Answer line 0", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("completed-work.png") });
 });

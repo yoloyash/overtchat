@@ -104,6 +104,14 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
   }
 
   private publish(messages: AcpMessage[]): void {
+    // ACP history replay has no original timestamps. Stamp only live events;
+    // using replay time would invent durations for imported conversations.
+    if (this.loading) return;
+    const now = Date.now();
+    for (const message of messages) {
+      message.timestamp ??= now;
+      message.updatedAt = now;
+    }
     for (const turnId of new Set(
       messages.map((message) => message.overtchatTurnId),
     )) {
@@ -468,7 +476,15 @@ export class AcpRuntimeClient implements AgentRuntimeClient {
   private finishTurn(): void {
     if (!this.streaming || this.activePrompt) return;
     this.cancelPermissions();
-    this.publish(this.projection.endTurn());
+    const changed = this.projection.endTurn();
+    // Streaming can keep appending to the same message. Its creation time is
+    // not the end of the response; retain completion time as well.
+    const last = this.projection.messages.at(-1);
+    const answer = [...this.projection.messages].reverse().find((message) =>
+      message.role === "assistant" && message.overtchatTurnId === last?.overtchatTurnId,
+    );
+    if (answer?.timestamp !== undefined && !changed.includes(answer)) changed.push(answer);
+    this.publish(changed);
     this.streaming = false;
     if (!this.stopped) {
       this.emit({ type: "turn_end" });

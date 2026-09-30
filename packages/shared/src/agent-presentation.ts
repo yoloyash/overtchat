@@ -84,7 +84,13 @@ export type AgentTaskListSnapshot = {
   tasks: AgentTask[];
 };
 
-export type AgentTranscriptItem =
+export type AgentTranscriptItem = {
+  turnId?: string;
+  interrupted?: boolean;
+  timestamp?: number;
+  updatedAt?: number;
+  folded?: boolean;
+} & (
   | {
       type: "message";
       key: string;
@@ -96,6 +102,8 @@ export type AgentTranscriptItem =
       text: string;
       messageId: string | null;
       actionable: boolean;
+      responseId?: string;
+      phase?: string;
     }
   | {
       type: "assistant_error";
@@ -134,7 +142,161 @@ export type AgentTranscriptItem =
       type: "task_list";
       key: string;
       snapshot: AgentTaskListSnapshot;
-    };
+    }
+  | {
+      type: "work_summary";
+      key: string;
+      durationMs: number | null;
+      expanded: boolean;
+    });
+
+/** Fold settled work for display only; the canonical transcript stays intact. */
+export function foldAgentTranscript(
+  items: readonly AgentTranscriptItem[],
+  options: {
+    unsettled: boolean;
+    expanded: ReadonlySet<string>;
+    /** Keep stable row identities while the client animates them closed. */
+    retainFolded?: boolean;
+  },
+): AgentTranscriptItem[] {
+  const output: AgentTranscriptItem[] = [];
+  let activeStart = agentActiveTurnStart(items, options.unsettled);
+  // A steering message need not start a new native turn. Keep the whole
+  // unfinished turn visible, including work before that user message.
+  if (options.unsettled) {
+    const lastFooter = items.map((item) => item.type).lastIndexOf("turn_footer");
+    const unfinished = items.slice(lastFooter + 1);
+    const latestTurnId = [...unfinished].reverse().find((item) => item.turnId)?.turnId;
+    if (latestTurnId) {
+      activeStart = Math.min(activeStart, lastFooter + 1 + unfinished.findIndex((item) => item.turnId === latestTurnId));
+    }
+  }
+  let start = 0;
+  let turnId: string | undefined;
+
+  const flush = (end: number) => {
+    const turn = items.slice(start, end);
+    const turnStart = start;
+    start = end;
+    turnId = undefined;
+    const answer = [...turn].reverse().find(
+      (item) => item.type === "assistant_text",
+    );
+    if (
+      end > activeStart ||
+      answer?.type !== "assistant_text" ||
+      answer.phase === "commentary" ||
+      turn.some((item) => item.interrupted || item.type === "assistant_error")
+    ) {
+      output.push(...turn);
+      return;
+    }
+
+    const answerIndex = turn.lastIndexOf(answer);
+    // A stopped run can end with tools after its last progress message. That
+    // message is not a final answer, even when the runtime is now idle.
+    if (turn.slice(answerIndex + 1).some((item) =>
+      item.type === "activity" &&
+      item.entries.some((entry) => entry.type === "tool"),
+    )) {
+      output.push(...turn);
+      return;
+    }
+
+    const responseId = answer.responseId ?? answer.messageId;
+    let answerStart = answerIndex;
+    for (let index = answerIndex - 1; index >= 0; index--) {
+      const item = turn[index];
+      if (
+        item.type === "activity" &&
+        item.entries.every((entry) => entry.type === "thinking")
+      ) continue;
+      if (item.type !== "assistant_text" || item.phase === "commentary") break;
+      const sameResponse = answer.phase === "final_answer"
+        ? item.phase === "final_answer"
+        : responseId !== null && (item.responseId ?? item.messageId) === responseId;
+      if (!sameResponse) break;
+      answerStart = index;
+    }
+
+    const hidden = new Set<string>();
+    turn.forEach((item, index) => {
+      if (item.type === "assistant_text" && index < answerStart) hidden.add(item.key);
+      if (
+        item.type === "activity" &&
+        item.entries.every((entry) =>
+          entry.type === "thinking" ||
+          (entry.type === "tool" &&
+            entry.tool.hasResult && !entry.tool.partial &&
+            normalizedToolName(entry.tool.name) !== "speak"),
+        )
+      ) hidden.add(item.key);
+    });
+    if (!hidden.size) {
+      output.push(...turn);
+      return;
+    }
+
+    const firstHidden = turn.find((item) => hidden.has(item.key))!;
+    const key = `work:${items[turnStart].key}`;
+    const expanded = options.expanded.has(key);
+    const footer = turn.find((item) => item.type === "turn_footer");
+    const boundary = items[turnStart - 1];
+    const startedAt = (
+      boundary?.type === "message" && roleOf(boundary.message) === "user"
+        ? boundary.timestamp : undefined
+    ) ?? turn[0]?.timestamp;
+    // Late background notices are not part of the time spent on the answer.
+    const endedAt = answer.updatedAt ?? answer.timestamp;
+    const recordedDuration = footer?.type === "turn_footer" ? footer.durationMs : null;
+    const durationMs = recordedDuration ?? (
+      startedAt !== undefined && endedAt !== undefined && endedAt > startedAt
+        ? endedAt - startedAt : null
+    );
+    for (const item of turn) {
+      if (item === firstHidden) {
+        output.push({
+          type: "work_summary", key, expanded,
+          durationMs,
+        });
+      }
+      if (expanded || !hidden.has(item.key)) {
+        output.push(item.type === "turn_footer" ? { ...item, durationMs: null } : item);
+      } else if (options.retainFolded) {
+        output.push({ ...item, folded: true });
+      }
+    }
+  };
+
+  items.forEach((item, index) => {
+    const user = item.type === "message" && roleOf(item.message) === "user";
+    if (user || (item.turnId && turnId && item.turnId !== turnId)) flush(index);
+    if (user) {
+      output.push(item);
+      start = index + 1;
+    } else {
+      turnId ??= item.turnId;
+      if (item.type === "turn_footer") flush(index + 1);
+    }
+  });
+  flush(items.length);
+  return output;
+}
+
+export function agentWorkLabel(durationMs: number | null): string {
+  if (durationMs === null) return "Worked";
+  const seconds = Math.max(1, Math.round(durationMs / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  const duration = [
+    hours ? `${hours}h` : "",
+    minutes ? `${minutes}m` : "",
+    remainder ? `${remainder}s` : "",
+  ].filter(Boolean).join(" ");
+  return `Worked for ${duration}`;
+}
 
 export type AgentToolStatus =
   | "running"
@@ -227,6 +389,7 @@ export function groupAgentToolActivity(
         : {
             ...first,
             entries: pending.flatMap((item) => item.entries),
+            ...(pending.some((item) => item.interrupted) ? { interrupted: true } : {}),
           },
     );
     pending = [];
@@ -234,6 +397,7 @@ export function groupAgentToolActivity(
 
   for (const item of items) {
     if (isGroupableToolActivity(item)) {
+      if (pending.length && pending[0].turnId !== item.turnId) flush();
       pending.push(item);
       continue;
     }
@@ -583,7 +747,7 @@ export function projectAgentTranscript(
     });
   };
 
-  messages.forEach((message, messageIndex) => {
+  const projectMessage = (message: unknown, messageIndex: number) => {
     const record = recordOf(message);
     if (!record) return;
     const role = roleOf(message);
@@ -721,6 +885,8 @@ export function projectAgentTranscript(
             key: `assistant:${partIdentity}`,
             text: partRecord.text,
             messageId,
+            phase: "commentary",
+            ...(actionsOwnedByFooter ? { responseId: identity } : {}),
             actionable:
               partIndex === lastTextIndex &&
               messageId !== null &&
@@ -769,6 +935,8 @@ export function projectAgentTranscript(
             key: `assistant:${partIdentity}`,
             text: partRecord.text,
             messageId,
+            ...(typeof partRecord.phase === "string" ? { phase: partRecord.phase } : {}),
+            ...(actionsOwnedByFooter ? { responseId: identity } : {}),
             actionable:
               partIndex === lastTextIndex &&
               messageId !== null &&
@@ -858,6 +1026,24 @@ export function projectAgentTranscript(
       key: `${role || "message"}:${identity}:${messageIndex}`,
       message,
     });
+  };
+  messages.forEach((message, index) => {
+    const start = items.length;
+    projectMessage(message, index);
+    const record = recordOf(message);
+    const timestamp = typeof record?.timestamp === "number" ? record.timestamp
+      : typeof record?.timestamp === "string" ? Date.parse(record.timestamp) : NaN;
+    const updatedAt = typeof record?.updatedAt === "number" ? record.updatedAt
+      : typeof record?.updatedAt === "string" ? Date.parse(record.updatedAt) : NaN;
+    for (let itemIndex = start; itemIndex < items.length; itemIndex++) {
+      const item = items[itemIndex];
+      if (Number.isFinite(timestamp)) item.timestamp = timestamp;
+      if (Number.isFinite(updatedAt)) item.updatedAt = updatedAt;
+      if (typeof record?.overtchatTurnId === "string") item.turnId = record.overtchatTurnId;
+      if (["aborted", "error", "cancelled", "interrupted"].includes(String(record?.stopReason))) {
+        item.interrupted = true;
+      }
+    }
   });
   return groupAgentToolActivity(items);
 }
