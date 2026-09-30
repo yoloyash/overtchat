@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   invalidDismiss: vi.fn(),
   backHandlers: new Set<() => boolean>(),
   scrollToEnd: vi.fn(),
+  scrollToOffset: vi.fn(),
   listHandlers: {} as {
     onLoad?: () => void;
     onScrollBeginDrag?: () => void;
@@ -353,6 +354,9 @@ vi.mock("@shopify/flash-list", async () => {
         mocks.listHandlers = props;
         useImperativeHandle(ref, () => ({
           scrollToEnd: mocks.scrollToEnd,
+          scrollToOffset: mocks.scrollToOffset,
+          getLayout: (index: number) => ({ y: index * 100 }),
+          prepareForLayoutAnimationRender: vi.fn(),
           getWindowSize: () => ({ height: mocks.measurements.viewport }),
           getChildContainerDimensions: () => ({
             height: mocks.measurements.height,
@@ -371,6 +375,17 @@ vi.mock("@shopify/flash-list", async () => {
         );
       },
     ),
+  };
+});
+vi.mock("react-native-reanimated", async () => {
+  const { useRef } = await import("react");
+  const { View } = await import("react-native");
+  const transition = { delay: () => transition, duration: () => transition, reduceMotion: () => transition };
+  return {
+    default: { View }, FadeIn: transition, ReduceMotion: { System: "system" },
+    useSharedValue: (value: number) => useRef({ value }).current,
+    useAnimatedStyle: (style: () => unknown) => style(),
+    withTiming: (value: number) => value,
   };
 });
 vi.mock("@/lib/queries/agents", () => ({
@@ -646,8 +661,16 @@ describe("agent history actions", () => {
     expect(forkButtons()).toHaveLength(1);
     mocks.snapshot!.status = "idle";
     await render();
+    expect(speechButtons()).toHaveLength(2);
+    expect(forkButtons()).toHaveLength(2);
+    expect(container.textContent).not.toContain("Checking the files");
+    expect(container.textContent).toContain("Finished checking");
+    await click("Worked");
     expect(speechButtons()).toHaveLength(3);
     expect(forkButtons()).toHaveLength(3);
+    expect(container.textContent).toContain("Checking the files");
+    await click("Worked");
+    expect(container.textContent).not.toContain("Checking the files");
   });
 
   it("opens a fork draft with attached history without sending a prompt", async () => {

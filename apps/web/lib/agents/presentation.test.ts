@@ -89,6 +89,7 @@ describe("projectAgentTranscript", () => {
       {
         type: "notification",
         key: "notification:4",
+        timestamp: 4,
         notification: {
           level: "info",
           message: "Background job bg_4 completed",

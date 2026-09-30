@@ -183,6 +183,53 @@ async function idle(client: ReturnType<typeof startHermesRuntime>) {
 }
 
 describe("ACP runtime using the official SDK over stdio", () => {
+  it("records live message and completion times without timing replayed history", async () => {
+    let now = 1_000;
+    const setup = fixture({
+      prompt: async () => {
+        now = 4_000;
+        await setup.update({
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Hello " },
+        });
+        now = 8_000;
+        await setup.update({
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "world" },
+        });
+        now = 11_000;
+        return { stopReason: "end_turn" };
+      },
+    });
+    const client = setup.start(true);
+    const history = (await client.getMessages()).messages;
+    expect(history).toHaveLength(2);
+    for (const message of history) {
+      expect(message).not.toHaveProperty("timestamp");
+      expect(message).not.toHaveProperty("updatedAt");
+    }
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+    try {
+      const events: AgentRuntimeEvent[] = [];
+      client.onEvent((event) => events.push(event));
+      await client.prompt("New prompt");
+      await idle(client);
+      const messages = (await client.getMessages()).messages;
+      expect(messages.slice(0, 2)).toEqual(history);
+      expect(messages[2]).toMatchObject({ role: "user", timestamp: 1_000 });
+      expect(messages[3]).toMatchObject({
+        role: "assistant", timestamp: 4_000, updatedAt: 11_000,
+        content: [{ type: "text", text: "Hello world" }],
+      });
+      expect(events.filter((event) => event.type === "overtchat_turn_update").at(-1))
+        .toMatchObject({ messages: expect.arrayContaining([
+          expect.objectContaining({ role: "assistant", updatedAt: 11_000 }),
+        ]) });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it.each([
     { withImages: false, stopReason: "cancelled" as const },
     { withImages: true, stopReason: "cancelled" as const },
@@ -667,7 +714,9 @@ describe("ACP runtime using the official SDK over stdio", () => {
     );
     await client.prompt("hello", [], { clientMessageId: "submission-1" });
     await idle(client);
-    expect(projected).toEqual((await client.getMessages()).messages);
+    // Reconciliation also retains the provider's user timestamp separately.
+    expect(projected).toMatchObject((await client.getMessages()).messages);
+    expect(projected[0]).toHaveProperty("overtchatProviderTimestamp", Reflect.get(projected[0] as object, "timestamp"));
     expect(projected).toMatchObject([
       { role: "user", overtchatSubmissionId: "submission-1" },
       {

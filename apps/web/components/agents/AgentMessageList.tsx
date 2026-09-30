@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   Check,
   ChevronDown,
+  ChevronRight,
   Copy,
   Info,
   GitBranch,
@@ -39,6 +40,8 @@ import {
   describeAgentActivity,
   presentAgentError,
   projectAgentTranscript,
+  foldAgentTranscript,
+  agentWorkLabel,
   type AgentActivitySequencePosition,
   type AgentErrorPresentation,
   type AgentTranscriptItem,
@@ -56,6 +59,7 @@ import { AgentRewindMenu } from "./AgentRewindMenu";
 import type { AgentRewindMode } from "@overtchat/agent-bridge";
 import { AgentLinkIcon } from "./AgentLinkIcon";
 import { AgentWorkspaceLink } from "./AgentWorkspaceLink";
+import { AgentTranscriptMotion, useAgentDisclosureAnchor } from "./AgentTranscriptMotion";
 
 export type { AgentRunActivity } from "./AgentActivity";
 
@@ -145,15 +149,32 @@ export function AgentMessageList({
   onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
   onImplementPlan: (plan: string) => void;
 }) {
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({
       initial: "instant",
       resize: "instant",
     });
-  const transcript = useMemo(
+  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
+  const projectedTranscript = useMemo(
     () => projectAgentTranscript(messages),
     [messages],
   );
+  const unsettled = streaming || Boolean(activity || error || question);
+  const transcript = useMemo(
+    () => foldAgentTranscript(projectedTranscript, { unsettled, expanded: expandedTurns, retainFolded: true }),
+    [projectedTranscript, unsettled, expandedTurns],
+  );
+  const anchorDisclosure = useAgentDisclosureAnchor();
+  const toggleWork = (key: string, button: HTMLElement) => {
+    stopScroll();
+    anchorDisclosure(button, scrollRef.current);
+    setExpandedTurns((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   const footerMessageIds = useMemo(
     () => new Set(
       transcript.flatMap((item) =>
@@ -213,7 +234,7 @@ export function AgentMessageList({
           ) : (
             <div className="flex flex-col">
               {transcriptGroups.map((group) => (
-                <div className="group flex flex-col" key={group[0].item.key}>
+                <AgentTranscriptMotion key={group[0].item.key} collapsed={group.every(({ item }) => item.folded)}>
                   {group.map(({ item, index }) => {
                     const previous = transcript[index - 1];
                     const sequencePosition = agentActivitySequencePosition(
@@ -239,6 +260,7 @@ export function AgentMessageList({
                         <AgentTranscriptRow
                           speech={speech}
                           item={item}
+                          onToggleWork={toggleWork}
                           active={streaming && index === transcript.length - 1}
                           turnActive={index >= activeTurnStart}
                           hasTurnFooter={
@@ -257,7 +279,7 @@ export function AgentMessageList({
                       </div>
                     );
                   })}
-                </div>
+                </AgentTranscriptMotion>
               ))}
               {activity && !question && !activityAlreadyVisible && (
                 <AgentRunIndicator
@@ -294,6 +316,7 @@ export function AgentMessageList({
 function AgentTranscriptRow({
   speech,
   item,
+  onToggleWork,
   active,
   turnActive,
   hasTurnFooter,
@@ -307,6 +330,7 @@ function AgentTranscriptRow({
 }: {
   speech: ReturnType<typeof useSpeech>;
   item: AgentTranscriptItem;
+  onToggleWork: (key: string, button: HTMLElement) => void;
   active: boolean;
   turnActive: boolean;
   hasTurnFooter: boolean;
@@ -318,6 +342,22 @@ function AgentTranscriptRow({
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  if (item.type === "work_summary") {
+    return (
+      <div className="flex items-center border-b border-border/60 pb-2 pt-1">
+        <button
+          type="button"
+          aria-expanded={item.expanded}
+          onClick={(event) => onToggleWork(item.key, event.currentTarget)}
+          className="flex min-h-8 cursor-pointer items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums motion-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          data-testid="agent-work-summary"
+        >
+          {agentWorkLabel(item.durationMs)}
+          <ChevronRight className={cn("size-3.5 motion-transform", item.expanded && "rotate-90")} />
+        </button>
+      </div>
+    );
+  }
   if (item.type === "message") {
     return (
       <AgentMessage
