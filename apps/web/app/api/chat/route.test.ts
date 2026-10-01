@@ -372,7 +372,7 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("returns a CORS-wrapped configuration error without mutating chat", async () => {
+  it("returns a configuration error without mutating chat", async () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mocks.createConfiguredLanguageModel.mockImplementation(() => {
       throw new ProviderConfigurationError("unsupported Bedrock model");
@@ -381,9 +381,6 @@ describe("chat route setup boundary", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "exp://mobile",
-    );
     await expect(response.text()).resolves.toContain(
       "unsupported Bedrock model",
     );
@@ -436,9 +433,6 @@ describe("chat route setup boundary", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(500);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "exp://mobile",
-    );
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
     expect(mocks.cancelRegister).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
@@ -966,7 +960,6 @@ describe("chat route setup boundary", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("X-OvertChat-Generation")).toBe("resumed");
     expect(mocks.resumeChatStreamResponse).toHaveBeenCalledWith(
-      expect.any(Request),
       "existing-stream",
     );
     expect(mocks.getModelConfig).not.toHaveBeenCalled();

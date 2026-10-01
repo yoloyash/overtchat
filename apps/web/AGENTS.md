@@ -28,9 +28,17 @@ chat delivery.
 
 ## Authentication boundaries
 
-Better Auth sessions authorize browser and mobile APIs. Database operations
-must also scope resources by the authenticated user; checking only that a
-session exists is insufficient.
+Better Auth sessions authorize browser and mobile APIs. Clients on other
+origins, such as the desktop app, send the session token as
+`Authorization: Bearer` through Better Auth's bearer plugin, so routes resolve
+sessions only through `auth.api.getSession()`. Database operations must also
+scope resources by the authenticated user; checking only that a session exists
+is insufficient.
+
+`proxy.ts` applies CORS to every `/api` route for the origins allowed by
+`lib/cors.ts`; routes do not set CORS headers or export `OPTIONS` handlers.
+Increment `CLIENT_API_LEVEL` in `@overtchat/shared/ping` when a change breaks
+existing bundled clients.
 
 Host Connector routes authenticate connector tokens. Internal management routes
 authenticate `OVERTCHAT_MANAGEMENT_SECRET`. Keep both separate from user

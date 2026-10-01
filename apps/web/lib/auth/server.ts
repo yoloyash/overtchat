@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin } from "better-auth/plugins";
+import { admin, bearer } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { nextCookies } from "better-auth/next-js";
 import { APIError } from "better-auth/api";
@@ -23,6 +23,9 @@ export const auth = betterAuth({
   },
   plugins: [
     admin({ defaultRole: "user", adminRole: "admin" }),
+    // Clients on other origins, like the desktop app, send the session token
+    // as `Authorization: Bearer` and receive it in `set-auth-token`.
+    bearer(),
     expo(),
     nextCookies(),
   ],
