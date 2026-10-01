@@ -66,7 +66,6 @@ import {
   WEB_TOOL_NAMES,
   WEB_SEARCH_CITATION_PROMPT,
 } from "@/lib/tools";
-import { corsHeaders, preflight, withCors } from "@/lib/cors";
 import { auth } from "@/lib/auth/server";
 import {
   chatRequestFingerprint,
@@ -123,22 +122,18 @@ import { resumeChatStreamResponse } from "@/lib/streams/http";
 
 export const maxDuration = 300;
 
-export function OPTIONS(req: Request) {
-  return preflight(req);
-}
-
 export async function POST(req: Request) {
   try {
     return await handlePost(req);
   } catch (error) {
-    return chatErrorResponse(req, error);
+    return chatErrorResponse(error);
   }
 }
 
 async function handlePost(req: Request): Promise<Response> {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session) {
-    return withCors(req, new Response("Unauthorized", { status: 401 }));
+    return new Response("Unauthorized", { status: 401 });
   }
   const userId = session.user.id;
   const parsedRequest = await parseChatRequest(req);
@@ -166,7 +161,6 @@ async function handlePost(req: Request): Promise<Response> {
     );
     if (existingGeneration) {
       return duplicateGenerationResponse({
-        req,
         generation: existingGeneration,
         chatId,
         requestFingerprint,
@@ -176,20 +170,14 @@ async function handlePost(req: Request): Promise<Response> {
 
   const modelConfig = await getModelConfig(modelConfigId);
   if (!modelConfig || modelConfig.modelType === "image" || !modelConfig.enabled) {
-    return withCors(
-      req,
-      new Response("Model config not found", { status: 404 }),
-    );
+    return new Response("Model config not found", { status: 404 });
   }
 
   const existingChat = temporary ? null : await getChat(chatId, userId);
   if (existingChat?.kind === "voice") {
-    return withCors(
-      req,
-      new Response("Voice chats must continue through realtime voice", {
-        status: 409,
-      }),
-    );
+    return new Response("Voice chats must continue through realtime voice", {
+      status: 409,
+    });
   }
   let staleStreamId: string | null = null;
   if (existingChat?.activeStreamId) {
@@ -201,12 +189,9 @@ async function handlePost(req: Request): Promise<Response> {
       cancelRegistry.has(existingChat.activeStreamId) ||
       activeGeneration?.status === "running"
     ) {
-      return withCors(
-        req,
-        new Response("Stream already in progress for this chat", {
-          status: 409,
-        }),
-      );
+      return new Response("Stream already in progress for this chat", {
+        status: 409,
+      });
     }
     staleStreamId = existingChat.activeStreamId;
   }
@@ -216,7 +201,7 @@ async function handlePost(req: Request): Promise<Response> {
     ? await getProject(resolvedProjectId, userId)
     : null;
   if (resolvedProjectId && !project) {
-    return withCors(req, new Response("Project not found", { status: 404 }));
+    return new Response("Project not found", { status: 404 });
   }
 
   const activePersonalization = temporary
@@ -449,7 +434,6 @@ async function handlePost(req: Request): Promise<Response> {
           throw new Error("Idempotent generation claim disappeared");
         }
         return duplicateGenerationResponse({
-          req,
           generation,
           chatId,
           requestFingerprint,
@@ -457,32 +441,23 @@ async function handlePost(req: Request): Promise<Response> {
       } else if (commitResult === "idempotency-conflict") {
         cancelRegistry.unregister(streamId);
         await mcpBinding?.release();
-        return withCors(
-          req,
-          new Response("Client request ID was already used", { status: 409 }),
-        );
+        return new Response("Client request ID was already used", { status: 409 });
       } else if (commitResult === "stream-active") {
         cancelRegistry.unregister(streamId);
         await mcpBinding?.release();
-        return withCors(
-          req,
-          new Response("Stream already in progress for this chat", {
-            status: 409,
-          }),
-        );
+        return new Response("Stream already in progress for this chat", {
+          status: 409,
+        });
       } else if (commitResult === "history-conflict") {
         cancelRegistry.unregister(streamId);
         await mcpBinding?.release();
-        return withCors(
-          req,
-          new Response("Chat history changed; refresh and try again", {
-            status: 409,
-          }),
-        );
+        return new Response("Chat history changed; refresh and try again", {
+          status: 409,
+        });
       } else {
         cancelRegistry.unregister(streamId);
         await mcpBinding?.release();
-        return withCors(req, new Response("Not found", { status: 404 }));
+        return new Response("Not found", { status: 404 });
       }
     } catch (error) {
       cancelRegistry.unregister(streamId);
@@ -677,7 +652,7 @@ async function handlePost(req: Request): Promise<Response> {
     }
 
     const streamContext = temporary ? null : getStreamContext();
-    const streamHeaders = corsHeaders(req);
+    const streamHeaders = new Headers();
     streamHeaders.set("Content-Encoding", "none");
     let emitInferenceActivity:
       ((activity: InferenceActivity) => void) | undefined;
@@ -1026,12 +1001,10 @@ function readContextCalibration(
 }
 
 async function duplicateGenerationResponse({
-  req,
   generation,
   chatId,
   requestFingerprint,
 }: {
-  req: Request;
   generation: ChatGenerationRow;
   chatId: string;
   requestFingerprint: string;
@@ -1040,20 +1013,14 @@ async function duplicateGenerationResponse({
     generation.chatId !== chatId ||
     generation.requestFingerprint !== requestFingerprint
   ) {
-    return withCors(
-      req,
-      new Response("Client request ID was already used", { status: 409 }),
-    );
+    return new Response("Client request ID was already used", { status: 409 });
   }
   if (generation.status !== "running") {
-    return withCors(
-      req,
-      new Response("Generation request was already completed", { status: 409 }),
-    );
+    return new Response("Generation request was already completed", { status: 409 });
   }
 
   try {
-    const response = await resumeChatStreamResponse(req, generation.id);
+    const response = await resumeChatStreamResponse(generation.id);
     if (response) {
       response.headers.set("X-OvertChat-Generation", "resumed");
       return response;
@@ -1061,10 +1028,7 @@ async function duplicateGenerationResponse({
   } catch (error) {
     console.warn("[generation-idempotency] failed to attach duplicate", error);
   }
-  return withCors(
-    req,
-    new Response("Generation is already in progress", { status: 409 }),
-  );
+  return new Response("Generation is already in progress", { status: 409 });
 }
 
 function observeChatStream(
@@ -1132,23 +1096,17 @@ function observeChatStream(
   });
 }
 
-function chatErrorResponse(req: Request, error: unknown): Response {
+function chatErrorResponse(error: unknown): Response {
   if (error instanceof ChatRequestError) {
-    return withCors(req, new Response(error.message, { status: error.status }));
+    return new Response(error.message, { status: error.status });
   }
   if (isProviderConfigurationError(error)) {
     console.warn("[chat-config]", error.message);
-    return withCors(
-      req,
-      new Response(`Model configuration error: ${error.message}`, {
-        status: 503,
-      }),
-    );
+    return new Response(`Model configuration error: ${error.message}`, {
+      status: 503,
+    });
   }
 
   console.error("[chat-route]", error);
-  return withCors(
-    req,
-    new Response("Unable to start chat generation", { status: 500 }),
-  );
+  return new Response("Unable to start chat generation", { status: 500 });
 }

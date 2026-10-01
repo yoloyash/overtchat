@@ -18,6 +18,7 @@ export default defineConfig({
       "app/**/*.test.tsx",
       "lib/**/*.test.ts",
       "lib/**/*.test.tsx",
+      "proxy.test.ts",
     ],
   },
 });

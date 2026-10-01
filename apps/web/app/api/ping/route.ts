@@ -1,20 +1,13 @@
-import type { PingResponse } from "@overtchat/shared";
-import { withCors, preflight } from "@/lib/cors";
+import { CLIENT_API_LEVEL, type PingResponse } from "@overtchat/shared";
 import { APP_VERSION } from "@/lib/version";
 
-export function GET(req: Request) {
+export function GET() {
   const body: PingResponse & { instanceId?: string } = {
     ok: true,
     name: "overtchat",
     version: APP_VERSION,
+    apiLevel: CLIENT_API_LEVEL,
     instanceId: process.env.OVERTCHAT_INSTANCE_ID || undefined,
   };
-  return withCors(
-    req,
-    Response.json(body, { headers: { "Cache-Control": "no-store" } }),
-  );
-}
-
-export function OPTIONS(req: Request) {
-  return preflight(req);
+  return Response.json(body, { headers: { "Cache-Control": "no-store" } });
 }

@@ -10,7 +10,6 @@ import {
   type PublicModelConfig,
 } from "@/lib/model-config/schema";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
-import { preflight, withCors } from "@/lib/cors";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import {
   resolveModelCapabilities,
@@ -44,14 +43,10 @@ function toPublic(row: ModelConfigRow): PublicModelConfig {
   };
 }
 
-export function OPTIONS(req: Request) {
-  return preflight(req);
-}
-
 export async function GET(req: Request) {
   const session = await auth.api.getSession({ headers: req.headers });
   if (!session)
-    return withCors(req, new Response("Unauthorized", { status: 401 }));
+    return new Response("Unauthorized", { status: 401 });
 
   const url = new URL(req.url);
   const wantAdmin = url.searchParams.get("admin") === "1";
@@ -59,19 +54,13 @@ export async function GET(req: Request) {
 
   if (wantAdmin) {
     if (session.user.role !== "admin") {
-      return withCors(req, new Response("Forbidden", { status: 403 }));
+      return new Response("Forbidden", { status: 403 });
     }
-    return withCors(
-      req,
-      Response.json({ modelConfigs: rows.map(toAdminModelConfig) }),
-    );
+    return Response.json({ modelConfigs: rows.map(toAdminModelConfig) });
   }
-  return withCors(
-    req,
-    Response.json({
-      modelConfigs: rows.filter((r) => r.enabled && r.modelType !== "image").map(toPublic),
-    }),
-  );
+  return Response.json({
+    modelConfigs: rows.filter((r) => r.enabled && r.modelType !== "image").map(toPublic),
+  });
 }
 
 export async function POST(req: Request) {
