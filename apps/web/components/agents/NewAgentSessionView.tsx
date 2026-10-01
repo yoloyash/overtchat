@@ -9,7 +9,6 @@ import { generateId } from "ai";
 import type {
   AgentPromptImage,
   AgentProviderId,
-  AgentSessionLaunchConfig,
 } from "@overtchat/agent-bridge";
 import {
   agentPromptWithHistory,
@@ -151,6 +150,7 @@ export function NewAgentSessionView({
   function updateProviderPreferences(
     updates: Parameters<typeof mergeAgentProviderPreferences>[0]["updates"],
   ) {
+    if (provider === "codex") return;
     setStoredPreferences(
       mergeAgentProviderPreferences({ preferences, provider, updates }),
     );
@@ -187,13 +187,7 @@ export function NewAgentSessionView({
       return false;
     }
 
-    const launchConfig: AgentSessionLaunchConfig = {
-      model: selectedModel.id,
-      ...(selection.thinkingOptionId
-        ? { thinkingOptionId: selection.thinkingOptionId }
-        : {}),
-      ...(selection.modeId ? { modeId: selection.modeId } : {}),
-    };
+    const launchConfig = selection.launchConfig;
     updateProviderPreferences({
       model: selectedModel.id,
       ...(selection.modeId ? { mode: selection.modeId } : {}),
@@ -347,6 +341,30 @@ export function NewAgentSessionView({
                 >
                   Remove
                 </Button>
+              </div>
+            )}
+            {provider === "codex" && (
+              <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+                <span>
+                  {Object.keys(selection.launchConfig).length
+                    ? "Custom Codex settings"
+                    : "Using Codex defaults"}
+                </span>
+                {Object.keys(selection.launchConfig).length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => {
+                      setModelId("");
+                      setThinkingOptionId("");
+                      setModeId("");
+                    }}
+                  >
+                    Use Codex defaults
+                  </Button>
+                )}
               </div>
             )}
             <AgentComposer

@@ -63,7 +63,7 @@ describe("agent session draft", () => {
     );
   });
 
-  it("restores valid provider preferences over catalog defaults", () => {
+  it("ignores remembered Codex choices so new chats use configured defaults", () => {
     const selection = resolveAgentSessionDraftSelection({
       provider: "codex",
       catalog,
@@ -77,9 +77,10 @@ describe("agent session draft", () => {
       modeId: "",
     });
 
-    expect(selection.model?.id).toBe("first");
-    expect(selection.thinkingOptionId).toBe("low");
-    expect(selection.modeId).toBe("full");
+    expect(selection.model?.id).toBe("default");
+    expect(selection.thinkingOptionId).toBe("");
+    expect(selection.modeId).toBe("auto");
+    expect(selection.launchConfig).toEqual({});
   });
 
   it("uses catalog defaults when preferences are stale", () => {
@@ -95,6 +96,28 @@ describe("agent session draft", () => {
     expect(selection.model?.id).toBe("default");
     expect(selection.thinkingOptionId).toBe("");
     expect(selection.modeId).toBe("auto");
+  });
+
+  it("sends only explicit Codex settings, including fork selections", () => {
+    const selection = resolveAgentSessionDraftSelection({
+      provider: "codex", catalog, modelId: "first", thinkingOptionId: "", modeId: "",
+    });
+    expect(selection.model?.id).toBe("first");
+    expect(selection.thinkingOptionId).toBe("high");
+    expect(selection.launchConfig).toEqual({ model: "first" });
+    expect(resolveAgentSessionDraftSelection({
+      provider: "codex", catalog, modelId: "", thinkingOptionId: "high", modeId: "full",
+    }).launchConfig).toEqual({ thinkingOptionId: "high", modeId: "full" });
+  });
+
+  it("retains remembered choices for other providers", () => {
+    const selection = resolveAgentSessionDraftSelection({
+      provider: "pi",
+      catalog: { ...catalog, provider: "pi", models: catalog.models.map((model) => ({ ...model, provider: "pi" })) },
+      preferences: { model: "first", mode: "full", thinkingByModel: { first: "low" } },
+      modelId: "", thinkingOptionId: "", modeId: "",
+    });
+    expect(selection.launchConfig).toEqual({ model: "first", thinkingOptionId: "low", modeId: "full" });
   });
 
   it("exposes OMP permissions before its model catalog loads", () => {
