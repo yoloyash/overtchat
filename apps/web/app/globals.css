@@ -180,6 +180,47 @@
   html[data-sidebar-collapsed] [data-desktop-sidebar-panel] {
     translate: -100% 0;
   }
+
+  /*
+   * Desktop app window chrome (see @overtchat/shared/desktop). The UI draws
+   * under the titlebar: header rows drag the window, their controls stay
+   * clickable, and the leading edge clears the window controls.
+   */
+  html[data-desktop-shell] {
+    overscroll-behavior: none;
+  }
+
+  html[data-desktop-shell] :is([data-titlebar], [data-desktop-sidebar]) :is(a, img) {
+    -webkit-user-drag: none;
+  }
+
+  html[data-desktop-shell] [data-titlebar] {
+    -webkit-app-region: drag;
+    user-select: none;
+  }
+
+  html[data-desktop-shell] [data-titlebar] :is(a, button, input, select, textarea, label, [role="button"], [role="tab"], [role="combobox"], [contenteditable="true"]),
+  html[data-desktop-shell] :is([role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"], [role="presentation"]) {
+    -webkit-app-region: no-drag;
+  }
+
+  html[data-desktop-shell] [data-titlebar-inset] {
+    padding-left: max(0.75rem, var(--desktop-titlebar-inset, 0px));
+  }
+
+  html[data-desktop-shell] main [data-titlebar-leading] {
+    transition: margin-left var(--motion-duration-slow) var(--motion-ease-standard);
+  }
+
+  html[data-desktop-shell][data-sidebar-collapsed] main [data-titlebar-leading] {
+    margin-left: max(0px, calc(var(--desktop-titlebar-inset, 0px) - 1.25rem));
+  }
+
+  @media (max-width: 767px) {
+    html[data-desktop-shell] main [data-titlebar-leading] {
+      margin-left: max(0px, calc(var(--desktop-titlebar-inset, 0px) - 1.25rem));
+    }
+  }
 }
 
 @media (forced-colors: active) {

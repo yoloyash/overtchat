@@ -571,7 +571,7 @@ export function AgentSessionView({
   if (!snapshot) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center border-b px-3">
+        <header data-titlebar className="flex h-12 shrink-0 items-center border-b px-3">
           <SidebarToggle />
         </header>
         <div className="flex flex-1 items-center justify-center px-6">
@@ -1015,8 +1015,8 @@ export function AgentSessionView({
 function AgentSessionLoading({ providerLabel }: { providerLabel: string }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <div className="size-8 rounded-md motion-skeleton" />
+      <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+        <div data-titlebar-leading className="size-8 rounded-md motion-skeleton" />
         <div className="h-4 w-48 rounded motion-skeleton" />
       </div>
       <div className="flex flex-1 items-center justify-center">

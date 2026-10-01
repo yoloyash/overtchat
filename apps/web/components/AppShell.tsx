@@ -17,6 +17,7 @@ import {
   SIDEBAR_COLLAPSED_STORAGE_KEY,
 } from "@/lib/sidebar";
 import { useIsMobile } from "@/lib/useIsMobile";
+import { desktopBridge } from "@/lib/desktop";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -94,6 +95,24 @@ export function AppShell({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [closeMobile, navigate]);
+
+  // Menu commands from the desktop app.
+  useEffect(() => {
+    return desktopBridge()?.onCommand((command) => {
+      if (command === "new-chat") {
+        closeMobile();
+        void navigate({ to: "/" });
+      } else if (command === "search-chats") {
+        setPaletteOpen(true);
+      } else if (command === "open-settings") {
+        closeMobile();
+        void navigate({ to: "/settings" });
+      } else if (command === "toggle-sidebar") {
+        if (isMobile) setOpenMobile(!openMobile);
+        else setCollapsed(!collapsed);
+      }
+    });
+  }, [closeMobile, collapsed, isMobile, navigate, openMobile, setCollapsed, setOpenMobile]);
 
   return (
     <SidebarContext.Provider

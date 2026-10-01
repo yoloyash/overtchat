@@ -21,6 +21,7 @@ import {
   type Point,
   type Size,
 } from "@/lib/chat/diagram-viewport";
+import { serverUrl } from "@/lib/api-url";
 
 type DiagramImage = Size & { url: string };
 
@@ -270,7 +271,7 @@ export function DiagramViewport({
           {/* SVG images isolate diagram markup and IDs from the chat document. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={image.url}
+            src={serverUrl(image.url)}
             alt={alt}
             draggable={false}
             className="pointer-events-none absolute left-1/2 top-1/2 max-w-none select-none"

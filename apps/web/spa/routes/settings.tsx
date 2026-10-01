@@ -59,7 +59,7 @@ export const settingsRoute = createRoute({
   component: function SettingsLayout() {
     return (
       <div className="flex h-full flex-col overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
+        <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
           <SidebarToggle />
           <span className="text-sm font-semibold tracking-tight">Settings</span>
           <div className="flex-1" />

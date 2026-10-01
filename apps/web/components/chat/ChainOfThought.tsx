@@ -26,6 +26,7 @@ import {
 import { parseMcpToolName } from "@overtchat/shared";
 import type { DynamicToolUIPart } from "ai";
 import { ThinkingContent } from "./ThinkingContent";
+import { serverUrl } from "@/lib/api-url";
 
 type ReasoningPart = { type: "reasoning"; text: string; state?: string };
 export type ActivityPart =
@@ -346,7 +347,7 @@ function FetchStep({ part }: { part: FetchUrlPart }) {
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={page.uploadUrl}
+          src={serverUrl(page.uploadUrl)}
           alt=""
           loading="lazy"
           className="size-12 shrink-0 rounded-md bg-muted object-cover"

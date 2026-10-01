@@ -9,6 +9,7 @@ import { formatSize, humanMediaLabel } from "@/lib/chat/attachments";
 import { useLibrary } from "@/lib/queries/library";
 import type { LibraryItem } from "@/lib/library";
 import { cn } from "@/lib/utils";
+import { serverUrl } from "@/lib/api-url";
 
 interface LibraryBrowserProps {
   selected?: ReadonlyMap<string, LibraryItem>;
@@ -102,7 +103,7 @@ export function LibraryBrowser({ selected, attachedUrls, onToggle }: LibraryBrow
                   {onToggle ? (
                     <button type="button" className={className} aria-label={item.filename} aria-pressed={checked} disabled={attached} onClick={() => onToggle(item)}>{content}</button>
                   ) : (
-                    <a className={className} href={item.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.filename}`}>{content}</a>
+                    <a className={className} href={serverUrl(item.url)} target="_blank" rel="noopener noreferrer" aria-label={`Open ${item.filename}`}>{content}</a>
                   )}
                 </li>
               );
@@ -133,7 +134,7 @@ function LibraryPreview({ item, grid }: { item: LibraryItem; grid: boolean }) {
       {item.category === "image" ? (
         // Authenticated upload URLs are already local and should bypass optimization.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={item.url} alt="" loading="lazy" className="size-full object-cover" />
+        <img src={serverUrl(item.url)} alt="" loading="lazy" className="size-full object-cover" />
       ) : (
         <CategoryIcon category={item.category} className={cn("text-muted-foreground", grid ? "size-10" : "size-6")} />
       )}

@@ -23,7 +23,7 @@ export function ChatHeader({
   onToggleTemporary: () => void;
 }) {
   return (
-    <header className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
+    <header data-titlebar className="flex h-12 shrink-0 items-center gap-1 border-b px-3">
       <SidebarToggle />
       {title ? (
         <h1

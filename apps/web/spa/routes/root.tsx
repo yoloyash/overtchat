@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AuthFrame } from "@/components/auth/AuthFrame";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
 import { projectListQuery } from "@/lib/queries/projects";
@@ -50,16 +51,9 @@ export const appRoute = createRoute({
 
 function AuthLayout() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-10">
-      <div className="mb-8 flex items-center gap-2">
-        <span className="font-brand text-lg font-semibold tracking-tight">
-          overtchat
-        </span>
-      </div>
-      <div className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm">
-        <Outlet />
-      </div>
-    </div>
+    <AuthFrame>
+      <Outlet />
+    </AuthFrame>
   );
 }
 

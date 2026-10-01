@@ -13,6 +13,7 @@ export function SidebarToggle({ className }: { className?: string }) {
       variant="ghost"
       size="icon-sm"
       aria-label="Open sidebar"
+      data-titlebar-leading
       className={cn(!collapsed && "md:hidden", className)}
       onClick={openSidebar}
     >
