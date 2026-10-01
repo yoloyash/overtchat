@@ -179,6 +179,49 @@ test("new chats submit without crypto.randomUUID on HTTP origins", async ({ page
   expect(errors).toEqual([]);
 });
 
+test("a new chat keeps streaming when its URL moves to the saved chat", async ({
+  page,
+}) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Draft Handoff Tester");
+  await page.locator("#email").fill("draft-handoff@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedModel();
+  await page.reload();
+
+  const historyRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/^\/api\/chat\/[^/]+\/messages$/u.test(new URL(request.url()).pathname)) {
+      historyRequests.push(request.url());
+    }
+  });
+  // The composer moves out of the empty state on send; the header does not.
+  const header = await page.locator("header").elementHandle();
+  if (!header) throw new Error("Chat header did not render");
+
+  try {
+    await page.getByPlaceholder("Message…").fill("Stream across the URL change.");
+    await page.getByLabel("Send message").click();
+    await firstChunk.promise;
+    await expect(page).toHaveURL(/\/chat\/[^/]+$/u);
+    await expect(page.getByText("Before reload.", { exact: false })).toBeVisible();
+
+    continueStream.resolve();
+    await expect(
+      page.getByText("Before reload. After reload.", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    continueStream.resolve();
+  }
+
+  // The chat that was already on screen stays mounted and is not refetched.
+  expect(await header.evaluate((element) => element.isConnected)).toBe(true);
+  expect(historyRequests).toEqual([]);
+  expect(streamingRequests).toBe(1);
+});
+
 test("sidebar tracks generation after leaving the active chat", async ({
   page,
 }) => {
