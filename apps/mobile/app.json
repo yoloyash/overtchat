@@ -2,7 +2,7 @@
   "expo": {
     "name": "overtchat",
     "slug": "overtchat",
-    "version": "1.10.0",
+    "version": "1.11.0",
     "orientation": "portrait",
     "scheme": "overtchat",
     "userInterfaceStyle": "automatic",
@@ -10,14 +10,14 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.overtchat.mobile",
-      "buildNumber": "19",
+      "buildNumber": "20",
       "config": {
         "usesNonExemptEncryption": false
       }
     },
     "android": {
       "package": "com.overtchat.mobile",
-      "versionCode": 19,
+      "versionCode": 20,
       "predictiveBackGestureEnabled": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

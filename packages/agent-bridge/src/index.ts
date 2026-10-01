@@ -23,7 +23,7 @@ import {
 /** Increment only for a breaking web-to-connector wire contract change. */
 export const HOST_CONNECTOR_PROTOCOL_VERSION = 5;
 /** Published connector artifact version; independent of wire compatibility. */
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.12.3";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.12.4";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
