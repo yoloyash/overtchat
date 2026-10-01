@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { Pressable } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/lib/theme";
 import { AgentButton, AgentSheet } from "./AgentPrimitives";
 
 export function AgentForkMenu({
@@ -8,6 +11,7 @@ export function AgentForkMenu({
   disabled: boolean;
   onFork: (chooseWorkspace: boolean) => Promise<void>;
 }) {
+  const { colors } = useTheme();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   async function fork(chooseWorkspace: boolean) {
@@ -22,11 +26,24 @@ export function AgentForkMenu({
   }
   return (
     <>
-      <AgentButton
-        label="Fork conversation"
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Fork conversation"
+        accessibilityState={{ disabled: disabled || pending }}
         disabled={disabled || pending}
         onPress={() => setOpen(true)}
-      />
+        style={({ pressed }) => ({
+          width: 44,
+          height: 44,
+          borderRadius: 10,
+          alignItems: "center",
+          justifyContent: "center",
+          opacity: disabled || pending ? 0.45 : 1,
+          backgroundColor: pressed ? colors.muted : "transparent",
+        })}
+      >
+        <Ionicons name="git-branch-outline" size={18} color={colors.mutedForeground} />
+      </Pressable>
       <AgentSheet
         title="Fork conversation"
         visible={open}

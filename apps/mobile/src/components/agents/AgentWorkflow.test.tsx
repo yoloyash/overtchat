@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
   alert: vi.fn(),
   copy: vi.fn(),
   stopSpeech: vi.fn(),
+  playSpeech: vi.fn(),
   dictation: {
     status: "idle" as "idle" | "recording" | "transcribing",
     error: null as { kind: string; role?: string } | null,
@@ -282,6 +283,7 @@ vi.mock("@/lib/useSpeech", () => ({
     activeId: null,
     status: "idle",
     stop: mocks.stopSpeech,
+    play: mocks.playSpeech,
   }),
 }));
 vi.mock("@/components/chat/MiniSpeechPlayer", () => ({
@@ -666,11 +668,29 @@ describe("agent history actions", () => {
     expect(container.textContent).not.toContain("Checking the files");
     expect(container.textContent).toContain("Finished checking");
     await click("Worked");
-    expect(speechButtons()).toHaveLength(3);
-    expect(forkButtons()).toHaveLength(3);
+    expect(speechButtons()).toHaveLength(2);
+    expect(forkButtons()).toHaveLength(2);
     expect(container.textContent).toContain("Checking the files");
     await click("Worked");
     expect(container.textContent).not.toContain("Checking the files");
+  });
+
+  it("uses one action row for a completed native turn and reads the footer response", async () => {
+    mocks.snapshot!.messages = [
+      { role: "user", id: "user", content: "Check" },
+      { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking" }] },
+      { role: "assistant", id: "answer", content: [{ type: "text", text: "Summary" }, { type: "text", text: "Details" }] },
+      { role: "turnFooter", messageId: "boundary", content: "Summary\n\nDetails", durationMs: 2000 },
+    ];
+    await render();
+    await click("Worked for 2s");
+    expect(container.querySelectorAll('button[aria-label="Read aloud"]')).toHaveLength(1);
+    expect(container.querySelectorAll('button[aria-label="Copy response"]')).toHaveLength(1);
+    expect(container.querySelectorAll('button[aria-label="Fork conversation"]')).toHaveLength(1);
+    await click("Read aloud");
+    expect(mocks.playSpeech).toHaveBeenCalledWith(expect.any(String), "Summary\n\nDetails");
+    await click("Copy response");
+    expect(mocks.copy).toHaveBeenCalledWith("Summary\n\nDetails");
   });
 
   it("opens a fork draft with attached history without sending a prompt", async () => {
@@ -687,6 +707,9 @@ describe("agent history actions", () => {
     };
     mocks.send.mockResolvedValue({ forkContext });
     await render();
+    const forkTrigger = container.querySelector('button[aria-label="Fork conversation"]')!;
+    expect(forkTrigger.textContent).not.toContain("Fork conversation");
+    expect(forkTrigger.querySelector('[data-icon="git-branch-outline"]')).not.toBeNull();
     await click("Fork conversation");
     await click("Fork in new session");
     expect(mocks.send).toHaveBeenCalledWith({

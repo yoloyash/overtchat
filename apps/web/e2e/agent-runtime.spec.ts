@@ -519,7 +519,7 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   await workSummary.click();
   await expect(workSummary).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Checking the files", { exact: true })).toBeVisible();
-  await expect(transcriptActions).toHaveCount(3);
+  await expect(transcriptActions).toHaveCount(2);
   await workSummary.click();
   await expect(page.getByText("Checking the files", { exact: true })).toHaveCount(0);
   snapshot.messages = completedMessages;
@@ -2330,6 +2330,7 @@ test("folds long completed work smoothly, anchors disclosures, and respects redu
   });
   await page.goto(`/agents/${SESSION_ID}`);
   await expect(page.getByText("Progress line 0", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(0);
   snapshot.status = "idle";
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
@@ -2349,11 +2350,16 @@ test("folds long completed work smoothly, anchors disclosures, and respects redu
   expect(heights.some((height) => height > 5 && height < heights[0] - 5)).toBe(true);
   expect(heights.at(-1)).toBe(0);
   await expect(page.getByText("Progress line 0", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Copy response", exact: true })).toHaveCount(1);
   const summary = page.getByRole("button", { name: "Worked for 1m 5s", exact: true });
   await summary.scrollIntoViewIfNeeded();
   const before = (await summary.boundingBox())!.y;
   await summary.click();
   await expect(summary).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Copy response", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Fork from this response", exact: true })).toHaveCount(1);
   await expect(summary.locator("svg")).toHaveCSS("rotate", "90deg");
   await expect.poll(async () => Math.abs((await summary.boundingBox())!.y - before)).toBeLessThan(2);
   await expect(page.getByText("Progress line 0", { exact: true })).toBeVisible();

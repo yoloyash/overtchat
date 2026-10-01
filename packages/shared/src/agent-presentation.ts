@@ -321,6 +321,69 @@ export function agentActiveTurnStart(
   return 0;
 }
 
+export type AgentResponseActions = {
+  text: string;
+  messageId: string | null;
+};
+
+/** One action owner per settled turn, independent of work disclosure state. */
+export function agentResponseActions(
+  items: readonly AgentTranscriptItem[],
+  unsettled: boolean,
+): ReadonlyMap<string, AgentResponseActions> {
+  const actions = new Map<string, AgentResponseActions>();
+  let turn: AgentTranscriptItem[] = [];
+  let turnId: string | undefined;
+  const flush = (settled: boolean) => {
+    const footer = turn.find((item) => item.type === "turn_footer");
+    const answerIndex = turn.map((item) => item.type).lastIndexOf("assistant_text");
+    const answer = turn[answerIndex];
+    if (footer?.type === "turn_footer") {
+      actions.set(footer.key, { text: footer.text, messageId: footer.messageId });
+    } else if (
+      settled && answer?.type === "assistant_text" && answer.phase !== "commentary" &&
+      !turn.slice(answerIndex + 1).some((item) => item.type === "activity" &&
+        item.entries.some((entry) => entry.type === "tool"))
+    ) {
+      const texts = [answer.text];
+      const responseId = answer.responseId ?? answer.messageId;
+      for (let index = answerIndex - 1; index >= 0; index--) {
+        const item = turn[index];
+        if (item.type === "activity" && item.entries.every((entry) => entry.type === "thinking")) continue;
+        if (item.type !== "assistant_text" || item.phase === "commentary") break;
+        const sameResponse = answer.phase === "final_answer"
+          ? item.phase === "final_answer"
+          : responseId !== null && (item.responseId ?? item.messageId) === responseId;
+        if (!sameResponse) break;
+        texts.unshift(item.text);
+      }
+      actions.set(answer.key, {
+        text: texts.join("\n\n"),
+        messageId: answer.actionable ? answer.messageId : null,
+      });
+    }
+    turn = [];
+    turnId = undefined;
+  };
+
+  for (const item of items) {
+    const user = item.type === "message" && roleOf(item.message) === "user";
+    // A steering message with the same native turn ID does not complete a
+    // response. Keep it in the turn so final text cannot span across the user.
+    const steering = user && item.turnId !== undefined && item.turnId === turnId;
+    if ((user && !steering) || (item.turnId && turnId && item.turnId !== turnId)) {
+      flush(true);
+    }
+    if (!user || steering) {
+      turn.push(item);
+      turnId ??= item.turnId;
+      if (item.type === "turn_footer") flush(true);
+    }
+  }
+  flush(!unsettled);
+  return actions;
+}
+
 export type AgentToolPresentation = {
   category: AgentToolCategory;
   label: string;
