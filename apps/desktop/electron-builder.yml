@@ -1,0 +1,28 @@
+appId: com.overtchat.desktop
+productName: overtchat
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+  # Do not collect production dependencies from the workspace root.
+  - "!node_modules/**/*"
+asar: true
+# Main and preload bundle their dependencies; there are no native app modules.
+npmRebuild: false
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+mac:
+  target: dir
+  category: public.app-category.productivity
+  minimumSystemVersion: "13.0"
+  darkModeSupport: true
+  icon: build/icon.png
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: OvertChat uses your microphone for dictation and voice conversations.
