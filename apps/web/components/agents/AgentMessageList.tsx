@@ -37,6 +37,7 @@ import { remarkAgentLinks } from "@/lib/agents/links";
 import {
   agentActivitySequencePosition,
   agentActiveTurnStart,
+  agentResponseActions,
   describeAgentActivity,
   presentAgentError,
   projectAgentTranscript,
@@ -45,6 +46,7 @@ import {
   type AgentActivitySequencePosition,
   type AgentErrorPresentation,
   type AgentTranscriptItem,
+  type AgentResponseActions,
 } from "@/lib/agents/presentation";
 import { cn } from "@/lib/utils";
 import {
@@ -175,13 +177,9 @@ export function AgentMessageList({
       return next;
     });
   };
-  const footerMessageIds = useMemo(
-    () => new Set(
-      transcript.flatMap((item) =>
-        item.type === "turn_footer" && item.messageId ? [item.messageId] : [],
-      ),
-    ),
-    [transcript],
+  const responseActions = useMemo(
+    () => agentResponseActions(projectedTranscript, unsettled),
+    [projectedTranscript, unsettled],
   );
   const transcriptGroups = useMemo(() => {
     const groups: Array<Array<{ item: AgentTranscriptItem; index: number }>> = [];
@@ -263,11 +261,7 @@ export function AgentMessageList({
                           onToggleWork={toggleWork}
                           active={streaming && index === transcript.length - 1}
                           turnActive={index >= activeTurnStart}
-                          hasTurnFooter={
-                            item.type === "assistant_text" &&
-                            item.messageId !== null &&
-                            footerMessageIds.has(item.messageId)
-                          }
+                          responseActions={responseActions.get(item.key)}
                           rewindOptions={rewindOptions}
                           canForkMessages={canForkMessages}
                           actionsDisabled={actionsDisabled}
@@ -319,7 +313,7 @@ function AgentTranscriptRow({
   onToggleWork,
   active,
   turnActive,
-  hasTurnFooter,
+  responseActions,
   rewindOptions,
   canForkMessages,
   actionsDisabled,
@@ -333,7 +327,7 @@ function AgentTranscriptRow({
   onToggleWork: (key: string, button: HTMLElement) => void;
   active: boolean;
   turnActive: boolean;
-  hasTurnFooter: boolean;
+  responseActions: AgentResponseActions | undefined;
   rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
   actionsDisabled: boolean;
@@ -372,16 +366,16 @@ function AgentTranscriptRow({
     return (
       <div className="group/assistant relative text-sm leading-relaxed">
         <Markdown streaming={active}>{item.text}</Markdown>
-        {!hasTurnFooter && (
+        {responseActions && (
           <div className="mt-2">
-            <MessageActions show={!turnActive} alwaysVisible>
-              <AgentCopyButton text={item.text} disabled={actionsDisabled} />
-              <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
-              {canForkMessages && item.actionable && item.messageId && (
+            <MessageActions show alwaysVisible>
+              <AgentCopyButton text={responseActions.text} disabled={actionsDisabled} />
+              <AgentSpeakButton id={item.key} text={responseActions.text} speech={speech} />
+              {canForkMessages && responseActions.messageId && (
                 <AgentForkMenu
                   disabled={actionsDisabled}
                   onFork={(chooseWorkspace) =>
-                    onForkMessage(item.messageId!, chooseWorkspace)
+                    onForkMessage(responseActions.messageId!, chooseWorkspace)
                   }
                 />
               )}

@@ -8,10 +8,12 @@ import {
   projectAgentTranscript,
   foldAgentTranscript,
   agentActiveTurnStart,
+  agentResponseActions,
   describeAgentActivity,
   describeAgentTool,
   type AgentActivityEntry,
   type AgentTranscriptItem,
+  type AgentResponseActions,
 } from "@overtchat/shared/agent-presentation";
 import { AgentForkMenu } from "./AgentForkMenu";
 import { AgentRewindMenu } from "./AgentRewindMenu";
@@ -67,6 +69,10 @@ export function AgentTranscript({
   const items = useMemo(
     () => foldAgentTranscript(projectedItems, { unsettled, expanded: expandedTurns }),
     [projectedItems, unsettled, expandedTurns],
+  );
+  const responseActions = useMemo(
+    () => agentResponseActions(projectedItems, unsettled),
+    [projectedItems, unsettled],
   );
   const list = useRef<FlashListRef<AgentTranscriptItem>>(null);
   const [disclosing, setDisclosing] = useState(false);
@@ -189,6 +195,7 @@ export function AgentTranscript({
               speech={speech}
               turnActive={index >= activeTurnStart}
               item={item}
+              responseActions={responseActions.get(item.key)}
               onToggleWork={toggleWork}
               active={active}
               disabled={disabled}
@@ -235,6 +242,7 @@ const TranscriptItem = memo(function TranscriptItem({
   speech,
   turnActive,
   item,
+  responseActions,
   onToggleWork,
   active,
   disabled,
@@ -246,6 +254,7 @@ const TranscriptItem = memo(function TranscriptItem({
   speech: ReturnType<typeof useSpeech>;
   turnActive: boolean;
   item: AgentTranscriptItem;
+  responseActions: AgentResponseActions | undefined;
   onToggleWork: (key: string) => void;
   active: boolean;
   capabilities: AgentRuntimeCapabilities;
@@ -271,16 +280,14 @@ const TranscriptItem = memo(function TranscriptItem({
       content = (
         <View>
           <MarkdownBody text={item.text} />
-          {!turnActive && item.actionable && item.messageId && onFork && (
-            <AgentForkMenu
+          {responseActions && (
+            <ResponseActions
+              id={item.key}
+              actions={responseActions}
+              speech={speech}
               disabled={disabled}
-              onFork={(chooseWorkspace) =>
-                onFork(item.messageId!, chooseWorkspace)
-              }
+              onFork={onFork}
             />
-          )}
-          {!turnActive && (
-            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
           )}
         </View>
       );
@@ -305,16 +312,17 @@ const TranscriptItem = memo(function TranscriptItem({
       break;
     case "turn_footer":
       content = (
-        <View>
-          <TurnFooter item={item} />
-          {item.messageId && onFork && (
-            <AgentForkMenu
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          {responseActions && (
+            <ResponseActions
+              id={item.key}
+              actions={responseActions}
+              speech={speech}
               disabled={disabled}
-              onFork={(chooseWorkspace) =>
-                onFork(item.messageId!, chooseWorkspace)
-              }
+              onFork={onFork}
             />
           )}
+          <TurnFooter item={item} />
         </View>
       );
       break;
@@ -418,6 +426,33 @@ const TranscriptItem = memo(function TranscriptItem({
   return <View style={{ paddingBottom: 14 }}>{content}</View>;
 });
 
+function ResponseActions({
+  id,
+  actions,
+  speech,
+  disabled,
+  onFork,
+}: {
+  id: string;
+  actions: AgentResponseActions;
+  speech: ReturnType<typeof useSpeech>;
+  disabled: boolean;
+  onFork?: (messageId: string, chooseWorkspace: boolean) => Promise<void>;
+}) {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {!!actions.text && <CopyResponseButton key={actions.text} text={actions.text} />}
+      <AgentSpeakButton id={id} text={actions.text} speech={speech} />
+      {actions.messageId && onFork && (
+        <AgentForkMenu
+          disabled={disabled}
+          onFork={(chooseWorkspace) => onFork(actions.messageId!, chooseWorkspace)}
+        />
+      )}
+    </View>
+  );
+}
+
 function AgentSpeakButton({
   id,
   text,
@@ -472,8 +507,7 @@ function TurnFooter({
 }: {
   item: Extract<AgentTranscriptItem, { type: "turn_footer" }>;
 }) {
-  // Footer text is the full response for clipboard actions, not another message.
-  if (!item.text && item.durationMs === null) return null;
+  if (item.durationMs === null) return null;
   const seconds =
     item.durationMs === null ? null : Math.round(item.durationMs / 1000);
   const duration =
@@ -484,7 +518,6 @@ function TurnFooter({
         : `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-      {!!item.text && <CopyResponseButton key={item.text} text={item.text} />}
       {duration !== null && <AgentText muted>Worked for {duration}</AgentText>}
     </View>
   );
