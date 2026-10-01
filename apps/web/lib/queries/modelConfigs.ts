@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { modelConfigKeys } from "@/lib/queries/keys";
 import type {
   AdminModelConfig,
@@ -21,16 +26,18 @@ export function useModelConfigs() {
   });
 }
 
+export const adminModelConfigsQuery = queryOptions({
+  queryKey: modelConfigKeys.adminList(),
+  queryFn: async (): Promise<AdminModelConfig[]> => {
+    const r = await fetch(apiUrl("/api/model-configs?admin=1"));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const json = (await r.json()) as { modelConfigs: AdminModelConfig[] };
+    return json.modelConfigs;
+  },
+});
+
 export function useAdminModelConfigs() {
-  return useQuery({
-    queryKey: modelConfigKeys.adminList(),
-    queryFn: async (): Promise<AdminModelConfig[]> => {
-      const r = await fetch(apiUrl("/api/model-configs?admin=1"));
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const json = (await r.json()) as { modelConfigs: AdminModelConfig[] };
-      return json.modelConfigs;
-    },
-  });
+  return useQuery(adminModelConfigsQuery);
 }
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {

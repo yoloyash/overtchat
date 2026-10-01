@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { userKeys } from "@/lib/queries/keys";
 import { apiUrl } from "@/lib/api-url";
 
@@ -15,16 +20,18 @@ export type UserRow = {
   banned?: boolean | null;
 };
 
+export const usersQuery = queryOptions({
+  queryKey: userKeys.list(),
+  queryFn: async (): Promise<UserRow[]> => {
+    const r = await fetch(apiUrl("/api/users"));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const json = (await r.json()) as { users: UserRow[] };
+    return json.users;
+  },
+});
+
 export function useUsers() {
-  return useQuery({
-    queryKey: userKeys.list(),
-    queryFn: async (): Promise<UserRow[]> => {
-      const r = await fetch(apiUrl("/api/users"));
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const json = (await r.json()) as { users: UserRow[] };
-      return json.users;
-    },
-  });
+  return useQuery(usersQuery);
 }
 
 export function useInvalidateUsers() {

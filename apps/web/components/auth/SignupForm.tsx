@@ -1,15 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
-import { bootstrapSignUp } from "@/app/(auth)/signup/actions";
+import { authClient } from "@/lib/auth/client";
+import { useResetAuthState } from "@/lib/queries/auth";
 
 export function SignupForm() {
-  const router = useRouter();
+  const navigate = useNavigate();
+  const resetAuthState = useResetAuthState();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,18 +22,19 @@ export function SignupForm() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
-    const { error } = await bootstrapSignUp({
+    // The server only accepts public signup while it has no users.
+    const { error } = await authClient.signUp.email({
       name: name.trim(),
       email,
       password,
     });
     if (error) {
-      setError(error);
+      setError(error.message ?? "Signup failed");
       setSubmitting(false);
       return;
     }
-    router.replace("/");
-    router.refresh();
+    resetAuthState();
+    await navigate({ to: "/", replace: true });
   }
 
   return (

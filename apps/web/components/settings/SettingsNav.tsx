@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import {
   Bot,
   Brain,
@@ -28,8 +27,20 @@ import {
 import { cn } from "@/lib/utils";
 import { authClient } from "@/lib/auth/client";
 
+type SettingsPath =
+  | "/settings/general"
+  | "/settings/personalization"
+  | "/settings/tools"
+  | "/settings/profile"
+  | "/settings/account"
+  | "/settings/data"
+  | "/settings/models"
+  | "/settings/services"
+  | "/settings/connections"
+  | "/settings/users";
+
 type Item = {
-  href: string;
+  href: SettingsPath;
   label: string;
   icon: typeof Cpu;
   beta?: boolean;
@@ -79,8 +90,8 @@ const ADMIN_GROUP: Group = {
 };
 
 export function SettingsNav() {
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const navigate = useNavigate();
   const { data: session } = authClient.useSession();
   const isAdmin = session?.user?.role === "admin";
 
@@ -97,7 +108,7 @@ export function SettingsNav() {
         <Select
           value={currentItem.href}
           onValueChange={(href) => {
-            if (href && href !== currentItem.href) router.push(href);
+            if (href && href !== currentItem.href) void navigate({ to: href });
           }}
         >
           <SelectTrigger aria-label="Settings page" className="w-full">
@@ -169,7 +180,7 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
   const Icon = item.icon;
   return (
     <Link
-      href={item.href}
+      to={item.href}
       aria-current={active ? "page" : undefined}
       className={cn(
         "flex min-h-9 shrink-0 items-center gap-2 rounded-lg px-2.5 py-2 text-sm motion-colors outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
@@ -181,7 +192,7 @@ function NavLink({ item, pathname }: { item: Item; pathname: string }) {
       <Icon className="size-3.5 shrink-0" />
       <span>{item.label}</span>
       {item.beta && <BetaBadge />}
-      <LinkPendingIndicator />
+      <LinkPendingIndicator to={item.href} />
     </Link>
   );
 }

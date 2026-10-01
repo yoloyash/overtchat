@@ -2,6 +2,7 @@
 
 import {
   type QueryClient,
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -34,11 +35,13 @@ async function fetchChats(): Promise<ChatListItem[]> {
   return json.chats;
 }
 
+export const chatListQuery = queryOptions({
+  queryKey: chatKeys.list(),
+  queryFn: fetchChats,
+});
+
 export function useChats() {
-  return useQuery({
-    queryKey: chatKeys.list(),
-    queryFn: fetchChats,
-  });
+  return useQuery(chatListQuery);
 }
 
 async function fetchActiveChatIds(): Promise<string[]> {
@@ -56,10 +59,14 @@ export function activeChatsRefetchInterval(
     : false;
 }
 
+export const activeChatIdsQuery = queryOptions({
+  queryKey: chatKeys.active(),
+  queryFn: fetchActiveChatIds,
+});
+
 export function useActiveChatIds() {
   return useQuery({
-    queryKey: chatKeys.active(),
-    queryFn: fetchActiveChatIds,
+    ...activeChatIdsQuery,
     staleTime: 1_000,
     refetchOnMount: "always",
     refetchOnWindowFocus: "always",
@@ -95,23 +102,37 @@ export function useChatUsage(id: string, enabled = true) {
   });
 }
 
+export type ChatMessagesPage = {
+  messages: UIMessage[];
+  nextCursor: string | null;
+  projectId: string | null;
+  kind: ChatKind;
+  modelConfigId: string | null;
+};
+
+/** Fetches one page of a chat's history, newest first. Null when the chat does not exist. */
+export async function fetchChatMessagesPage(
+  id: string,
+  cursor?: string,
+): Promise<ChatMessagesPage | null> {
+  const params = new URLSearchParams({
+    ...(cursor ? { cursor } : {}),
+    limit: String(CHAT_MESSAGE_PAGE_SIZE),
+  });
+  const response = await fetch(
+    apiUrl(`/api/chat/${encodeURIComponent(id)}/messages?${params}`),
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as ChatMessagesPage;
+}
+
 export function useLoadOlderChatMessages(id: string) {
   return useMutation({
     mutationFn: async (cursor: string) => {
-      const params = new URLSearchParams({
-        cursor,
-        limit: String(CHAT_MESSAGE_PAGE_SIZE),
-      });
-      const response = await fetch(
-        apiUrl(`/api/chat/${encodeURIComponent(id)}/messages?${params}`),
-      );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return (await response.json()) as {
-        messages: UIMessage[];
-        nextCursor: string | null;
-        projectId: string | null;
-        kind: ChatKind;
-      };
+      const page = await fetchChatMessagesPage(id, cursor);
+      if (!page) throw new Error("HTTP 404");
+      return page;
     },
   });
 }

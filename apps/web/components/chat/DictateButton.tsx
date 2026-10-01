@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { Loader2, Mic, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -107,7 +107,7 @@ export function DictateError({
           )}
           {isAdmin && error.kind === "stt_unavailable" && (
             <Link
-              href="/settings/services"
+              to="/settings/services"
               className="text-xs underline underline-offset-4"
             >
               Speech settings

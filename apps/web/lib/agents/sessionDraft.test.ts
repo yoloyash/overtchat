@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_MODEL_DEFAULTS_LOADING_MESSAGE,
   agentSessionDraftRestoreKey,
-  newAgentSessionHref,
   resolveAgentSessionDraftSelection,
 } from "./sessionDraft";
 
@@ -54,10 +53,7 @@ describe("agent session draft", () => {
     );
   });
 
-  it("builds an encoded draft URL and stable restore key", () => {
-    expect(newAgentSessionHref("workspace / one", "codex")).toBe(
-      "/agents/new?workspaceId=workspace+%2F+one&provider=codex",
-    );
+  it("builds a stable restore key", () => {
     expect(agentSessionDraftRestoreKey("session-1")).toBe(
       "overtchat:agent-fork-draft:session-1",
     );

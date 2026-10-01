@@ -2,7 +2,6 @@
 
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import { Menu } from "@base-ui/react/menu";
-import Image from "next/image";
 import {
   ChartNoAxesColumnIncreasing,
   Copy,
@@ -96,7 +95,8 @@ export function AgentSessionHeader({
           )}
           aria-hidden="true"
         >
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src={providerVisual.icon}
             alt=""
             className="size-4 object-contain"

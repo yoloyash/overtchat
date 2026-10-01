@@ -1,15 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link, useRouter } from "@tanstack/react-router";
 import { Activity, ImageIcon } from "lucide-react";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { authClient } from "@/lib/auth/client";
-import { activityKeys } from "@/lib/queries/keys";
+import { activityKeys, authKeys } from "@/lib/queries/keys";
 import {
   SettingsActions,
   SettingsNotice,
@@ -80,8 +79,11 @@ export function ProfileForm({
     setSavedName(trimmedName);
     setSavedImage(normalizedImage ?? "");
     setStatus("ok");
-    await queryClient.invalidateQueries({ queryKey: activityKeys.all() });
-    router.refresh();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: activityKeys.all() }),
+      queryClient.invalidateQueries({ queryKey: authKeys.session() }),
+    ]);
+    await router.invalidate();
   }
 
   return (
@@ -92,7 +94,7 @@ export function ProfileForm({
         action={
           <Button
             variant="outline"
-            render={<Link href={`/activity/${userId}`} />}
+            render={<Link to="/activity/$userId" params={{ userId }} />}
           >
             <Activity />
             View activity profile

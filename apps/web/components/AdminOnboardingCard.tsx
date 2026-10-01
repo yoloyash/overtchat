@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ export function AdminOnboardingCard({
             title="Add your first model"
             description="Anthropic, Google Gemini, or any OpenAI-compatible endpoint."
             action={
-              <Button render={<Link href="/settings/models/new" />} size="sm">
+              <Button render={<Link to="/settings/models/new" />} size="sm">
                 <Plus /> {modelDone ? "Add another" : "Add model"}
               </Button>
             }

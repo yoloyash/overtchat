@@ -1,7 +1,12 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type {
   AvailableMcpServer,
   McpServer,
@@ -16,30 +21,34 @@ async function responseError(response: Response): Promise<Error> {
   return apiError(response.status, body, "Could not complete the request. Please try again.");
 }
 
+export const mcpServersQuery = queryOptions({
+  queryKey: mcpServerKeys.adminList(),
+  queryFn: async (): Promise<McpServer[]> => {
+    const response = await fetch(apiUrl("/api/mcp-servers"));
+    if (!response.ok) throw await responseError(response);
+    const body = (await response.json()) as { mcpServers: McpServer[] };
+    return body.mcpServers;
+  },
+});
+
+export const availableMcpServersQuery = queryOptions({
+  queryKey: mcpServerKeys.availableList(),
+  queryFn: async (): Promise<AvailableMcpServer[]> => {
+    const response = await fetch(apiUrl("/api/mcp-server-preferences"));
+    if (!response.ok) throw await responseError(response);
+    const body = (await response.json()) as {
+      mcpServers: AvailableMcpServer[];
+    };
+    return body.mcpServers;
+  },
+});
+
 export function useMcpServers() {
-  return useQuery({
-    queryKey: mcpServerKeys.adminList(),
-    queryFn: async (): Promise<McpServer[]> => {
-      const response = await fetch(apiUrl("/api/mcp-servers"));
-      if (!response.ok) throw await responseError(response);
-      const body = (await response.json()) as { mcpServers: McpServer[] };
-      return body.mcpServers;
-    },
-  });
+  return useQuery(mcpServersQuery);
 }
 
 export function useAvailableMcpServers() {
-  return useQuery({
-    queryKey: mcpServerKeys.availableList(),
-    queryFn: async (): Promise<AvailableMcpServer[]> => {
-      const response = await fetch(apiUrl("/api/mcp-server-preferences"));
-      if (!response.ok) throw await responseError(response);
-      const body = (await response.json()) as {
-        mcpServers: AvailableMcpServer[];
-      };
-      return body.mcpServers;
-    },
-  });
+  return useQuery(availableMcpServersQuery);
 }
 
 export function useMcpServerHealth(id: string) {

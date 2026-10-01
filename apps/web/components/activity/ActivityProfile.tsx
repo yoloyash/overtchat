@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
@@ -24,7 +24,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
           This activity profile could not be loaded.
         </p>
         <Link
-          href="/activity"
+          to="/activity"
           className="text-sm font-medium text-foreground underline underline-offset-4"
         >
           Return to leaderboard
@@ -36,7 +36,7 @@ export function ActivityProfile({ userId }: { userId: string }) {
   return (
     <div className="@container mx-auto w-full max-w-5xl px-4 py-8 md:px-8 md:py-10">
       <Link
-        href="/activity"
+        to="/activity"
         className="inline-flex items-center gap-2 rounded-sm text-xs font-medium text-muted-foreground motion-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
       >
         <ArrowLeft className="size-4" />

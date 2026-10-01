@@ -2,7 +2,7 @@
 
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Pencil, Plus, Server, Trash2 } from "lucide-react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,7 +78,7 @@ export function McpServersPanel() {
         title="Manage MCP servers"
         description="Connect external tool servers and choose who can use them. Commands run inside the OvertChat server environment."
         action={
-          <Button render={<Link href="/settings/tools/mcp/new" />} size="sm">
+          <Button render={<Link to="/settings/tools/mcp/new" />} size="sm">
             <Plus /> Add server
           </Button>
         }
@@ -163,7 +163,7 @@ export function McpServersPanel() {
                 </Select>
                 <div className="h-6 w-px bg-border" aria-hidden="true" />
                 <Button
-                  render={<Link href={`/settings/tools/mcp/${server.id}`} />}
+                  render={<Link to="/settings/tools/mcp/$id" params={{ id: server.id }} />}
                   variant="outline"
                   size="sm"
                 >

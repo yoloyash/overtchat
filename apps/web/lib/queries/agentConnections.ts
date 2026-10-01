@@ -2,7 +2,12 @@
 
 import { apiError } from "@overtchat/shared";
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -42,10 +47,14 @@ async function fetchAgentConnections(): Promise<AgentConnectionListItem[]> {
   return data.connections;
 }
 
+export const agentConnectionListQuery = queryOptions({
+  queryKey: agentConnectionKeys.list(),
+  queryFn: fetchAgentConnections,
+});
+
 export function useAgentConnections() {
   return useQuery({
-    queryKey: agentConnectionKeys.list(),
-    queryFn: fetchAgentConnections,
+    ...agentConnectionListQuery,
     refetchInterval: (query) =>
       query.state.data?.some(agentConnectionHasRunningSession)
         ? 2_000

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -23,25 +24,37 @@ async function fetchProjects(): Promise<ProjectListItem[]> {
   return json.projects;
 }
 
-async function fetchProject(id: string): Promise<ProjectListItem> {
+/** Null when the project does not exist. */
+export async function fetchProject(id: string): Promise<ProjectListItem | null> {
   const r = await fetch(apiUrl(`/api/projects/${id}`));
+  if (r.status === 404) return null;
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = (await r.json()) as { project: ProjectListItem };
   return json.project;
 }
 
-export function useProjects() {
-  return useQuery({
-    queryKey: projectKeys.list(),
-    queryFn: fetchProjects,
+export const projectListQuery = queryOptions({
+  queryKey: projectKeys.list(),
+  queryFn: fetchProjects,
+});
+
+export function projectQuery(id: string) {
+  return queryOptions({
+    queryKey: projectKeys.detail(id),
+    queryFn: async () => {
+      const project = await fetchProject(id);
+      if (!project) throw new Error("HTTP 404");
+      return project;
+    },
   });
 }
 
+export function useProjects() {
+  return useQuery(projectListQuery);
+}
+
 export function useProject(id: string) {
-  return useQuery({
-    queryKey: projectKeys.detail(id),
-    queryFn: () => fetchProject(id),
-  });
+  return useQuery(projectQuery(id));
 }
 
 export function useCreateProject() {

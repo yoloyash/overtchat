@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { Dialog } from "@base-ui/react/dialog";
 import { SidebarContext } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
@@ -27,7 +27,7 @@ export function AppShell({
   sidebar: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [openMobileRoute, setOpenMobileRoute] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -36,9 +36,7 @@ export function AppShell({
     false,
   );
   const drawerRef = useRef<HTMLElement | null>(null);
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const routeKey = `${pathname}?${searchParams.toString()}`;
+  const routeKey = useLocation({ select: (location) => location.href });
   const openMobile = isMobile && openMobileRoute === routeKey;
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
@@ -90,12 +88,12 @@ export function AppShell({
       } else if (key === "o" && e.shiftKey) {
         e.preventDefault();
         closeMobile();
-        router.push("/");
+        void navigate({ to: "/" });
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [closeMobile, router]);
+  }, [closeMobile, navigate]);
 
   return (
     <SidebarContext.Provider

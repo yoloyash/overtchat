@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
@@ -20,7 +19,7 @@ import {
 } from "@/lib/queries/projects";
 
 export function ProjectPanel({ projectId }: { projectId: string }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { data: project } = useProject(projectId);
   const { data: chats = [] } = useChats();
   const updateMut = useUpdateProject(projectId);
@@ -114,7 +113,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
         title: "Project deleted",
         description: "Chats from the project moved to your main list.",
       });
-      router.push("/");
+      void navigate({ to: "/" });
     } catch (err) {
       setDeleteError(getErrorMessage(err, "Failed to delete project."));
     }
@@ -231,7 +230,7 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
               <h2 className="text-base font-semibold tracking-tight">Chats</h2>
               <Button
                 size="sm"
-                render={<Link href={`/?projectId=${project.id}`} />}
+                render={<Link to="/" search={{ projectId: project.id }} />}
               >
                 <Plus /> New chat
               </Button>
@@ -245,7 +244,8 @@ export function ProjectPanel({ projectId }: { projectId: string }) {
                 {projectChats.map((c) => (
                   <li key={c.id}>
                     <Link
-                      href={`/chat/${c.id}`}
+                      to="/chat/$id"
+                      params={{ id: c.id }}
                       className="block truncate px-3 py-2.5 text-sm motion-colors hover:bg-accent"
                     >
                       {c.title ?? "Untitled"}

@@ -1,8 +1,7 @@
 "use client";
 
 import { ArrowLeft, Globe2, Plus, Trash2 } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +50,7 @@ function values(items: string[]): ValueRow[] {
 }
 
 export function McpServerEditor({ server }: { server?: McpServer }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const createServer = useCreateMcpServer();
   const updateServer = useUpdateMcpServer();
   const existingConfig = server?.config;
@@ -164,7 +163,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
         title: server ? "MCP server updated" : "MCP server added",
         description: input.name,
       });
-      router.push("/settings/tools");
+      void navigate({ to: "/settings/tools" });
     } catch (cause) {
       setError(getErrorMessage(cause, "Failed to save MCP server"));
     }
@@ -176,7 +175,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
         <SettingsPageHeader
           leading={
             <Button
-              render={<Link href="/settings/tools" />}
+              render={<Link to="/settings/tools" />}
               variant="ghost"
               size="icon-sm"
               aria-label="Back to tools"
@@ -331,7 +330,7 @@ export function McpServerEditor({ server }: { server?: McpServer }) {
         {error && <SettingsNotice tone="error">{error}</SettingsNotice>}
 
         <SettingsActions>
-          <Button variant="outline" render={<Link href="/settings/tools" />}>
+          <Button variant="outline" render={<Link to="/settings/tools" />}>
             Cancel
           </Button>
           <Button type="submit" disabled={saving}>

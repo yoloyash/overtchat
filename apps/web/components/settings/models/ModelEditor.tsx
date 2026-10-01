@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import type { ModelCapabilities } from "@overtchat/shared";
 import { ArrowLeft } from "lucide-react";
@@ -53,7 +52,7 @@ type ModelEditorDraft = Omit<ModelConfigInput, "pricing"> & {
 };
 
 export function ModelEditor({ modelId }: ModelEditorProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { data: list = [] } = useAdminModelConfigs();
   const existing: AdminModelConfig | undefined = modelId
     ? list.find((m) => m.id === modelId)
@@ -287,7 +286,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           description: input.label,
         });
       }
-      router.push("/settings/models");
+      void navigate({ to: "/settings/models" });
     } catch (err) {
       setSaveError(getErrorMessage(err, "Failed to save model"));
     }
@@ -300,7 +299,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         description="Configure a model that everyone on this server can use."
         leading={
           <Button
-            render={<Link href="/settings/models" />}
+            render={<Link to="/settings/models" />}
             variant="ghost"
             size="icon-sm"
             aria-label="Back to models"
@@ -540,7 +539,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <Button
             type="button"
             variant="outline"
-            render={<Link href="/settings/models" />}
+            render={<Link to="/settings/models" />}
           >
             Cancel
           </Button>

@@ -18,7 +18,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Loader2,
   LockKeyhole,
@@ -240,7 +240,7 @@ export function AgentSessionView({
   initialSessionName: string;
 }) {
   const providerLabel = agentProviderMetadata(provider).label;
-  const router = useRouter();
+  const navigate = useNavigate();
   const session = useAgentSession(sessionId);
   const speech = useSpeech();
   const stopSpeech = speech.stop;
@@ -456,9 +456,15 @@ export function AgentSessionView({
           agentForkDraftKey(draftId),
           JSON.stringify(result.forkContext),
         );
-        router.push(
-          `/agents/new?workspaceId=${encodeURIComponent(workspaceId)}&provider=${provider}&fork=${draftId}${options.chooseWorkspace ? "&chooseWorkspace=1" : ""}`,
-        );
+        void navigate({
+          to: "/agents/new",
+          search: {
+            workspaceId,
+            provider,
+            fork: draftId,
+            chooseWorkspace: options.chooseWorkspace ? "1" : undefined,
+          },
+        });
         return true;
       }
       if (input.type === "rewind" || input.type === "edit_message") {
@@ -479,14 +485,14 @@ export function AgentSessionView({
             draft,
           );
         }
-        router.push(`/agents/${result.sessionId}`);
+        void navigate({ to: "/agents/$id", params: { id: result.sessionId } });
         return true;
       }
       if (input.type === "new_session") {
         if (!result.sessionId) {
           throw new Error(`${providerLabel} did not return the new session.`);
         }
-        router.push(`/agents/${result.sessionId}`);
+        void navigate({ to: "/agents/$id", params: { id: result.sessionId } });
         return true;
       }
       if (options.closeRename) setRenameOpen(false);

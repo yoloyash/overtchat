@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ChevronRight } from "lucide-react";
 import {
@@ -151,7 +151,8 @@ export function ActivityLeaderboard() {
             data?.entries.map((entry, index) => (
               <Link
                 key={entry.userId}
-                href={`/activity/${entry.userId}`}
+                to="/activity/$userId"
+                params={{ userId: entry.userId }}
                 className="group grid min-h-20 grid-cols-[2.25rem_minmax(0,1fr)_auto_1.25rem] items-center gap-2 border-b border-border/60 px-4 py-4 motion-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring last:border-b-0 hover:bg-muted/45 @3xl:grid-cols-[2.5rem_minmax(0,1fr)_6rem_5.5rem_5.5rem_5.5rem_1.5rem] @3xl:gap-0"
               >
                 <span

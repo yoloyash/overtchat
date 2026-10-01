@@ -1,8 +1,7 @@
 "use client";
 
-import Image from "next/image";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Popover } from "@base-ui/react/popover";
 import {
@@ -68,7 +67,7 @@ export function ConnectionsPanel({
 }: {
   initialAddOpen?: boolean;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { data: connections = [], error: listError } = useAgentConnections();
   const { data: connectors = [], error: connectorError } = useHostConnectors();
   const connector = connectors[0];
@@ -175,7 +174,7 @@ export function ConnectionsPanel({
   function setAddDialogOpen(open: boolean) {
     setAddOpen(open);
     if (!open && initialAddOpen) {
-      router.replace("/settings/connections", { scroll: false });
+      void navigate({ to: "/settings/connections", replace: true, resetScroll: false });
     }
   }
 
@@ -208,7 +207,8 @@ export function ConnectionsPanel({
                     )}
                     title={provider.label}
                   >
-                    <Image
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
                       src={visual.icon}
                       alt=""
                       className="size-4 object-contain"

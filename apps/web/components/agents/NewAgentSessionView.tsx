@@ -1,9 +1,8 @@
 "use client";
 
 import { ErrorNotice } from "@/components/ui/error-notice";
-import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { RefreshCw } from "lucide-react";
 import { generateId } from "ai";
 import type {
@@ -49,17 +48,21 @@ export function NewAgentSessionView({
   workspaceId,
   workspaceName,
   workspacePath,
+  forkId,
+  chooseWorkspace,
 }: {
   provider: AgentProviderId;
   workspaceId: string;
   workspaceName: string;
   workspacePath: string;
+  /** Session-storage draft holding the conversation being forked. */
+  forkId: string | null;
+  /** Focus the workspace picker so a fork can move to another workspace. */
+  chooseWorkspace: boolean;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { data: authSession } = authClient.useSession();
   const isAdmin = authSession?.user.role === "admin";
-  const search = useSearchParams();
-  const forkId = search.get("fork");
   const [forkContext, setForkContext] = useState<AgentForkContext | null>(null);
   const [forkLoaded, setForkLoaded] = useState(false);
   const providerMetadata = agentProviderMetadata(provider);
@@ -246,7 +249,7 @@ export function NewAgentSessionView({
       });
     } finally {
       if (forkId) window.sessionStorage.removeItem(agentForkDraftKey(forkId));
-      router.replace(`/agents/${sessionId}`);
+      void navigate({ to: "/agents/$id", params: { id: sessionId }, replace: true });
     }
     return true;
   }
@@ -266,7 +269,8 @@ export function NewAgentSessionView({
             )}
             aria-hidden="true"
           >
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={providerVisual.icon}
               alt=""
               className="size-4 object-contain"
@@ -314,7 +318,7 @@ export function NewAgentSessionView({
               <label className="mb-3 block text-sm">
                 Workspace
                 <select
-                  autoFocus={search.get("chooseWorkspace") === "1"}
+                  autoFocus={chooseWorkspace}
                   aria-label="Fork workspace"
                   className="mt-1 block w-full rounded-md border bg-background p-2"
                   value={targetWorkspaceId}

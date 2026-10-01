@@ -1,7 +1,12 @@
 "use client";
 
 import { apiError } from "@overtchat/shared";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { VoiceCapability } from "@overtchat/shared";
 import type {
   AdminServerCapability,
@@ -15,15 +20,17 @@ export interface AdminServicesSnapshot {
   voice: VoiceCapability;
 }
 
+export const serverCapabilitiesQuery = queryOptions({
+  queryKey: serverCapabilityKeys.list(),
+  queryFn: async (): Promise<AdminServicesSnapshot> => {
+    const response = await fetch(apiUrl("/api/server-capabilities"));
+    if (!response.ok) throw apiError(response.status, await response.json().catch(() => null), "Could not load server services.");
+    return (await response.json()) as AdminServicesSnapshot;
+  },
+});
+
 export function useServerCapabilities() {
-  return useQuery({
-    queryKey: serverCapabilityKeys.list(),
-    queryFn: async (): Promise<AdminServicesSnapshot> => {
-      const response = await fetch(apiUrl("/api/server-capabilities"));
-      if (!response.ok) throw apiError(response.status, await response.json().catch(() => null), "Could not load server services.");
-      return (await response.json()) as AdminServicesSnapshot;
-    },
-  });
+  return useQuery(serverCapabilitiesQuery);
 }
 
 export function useUpdateServerCapability() {

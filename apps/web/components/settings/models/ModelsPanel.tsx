@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { ArrowDown, ArrowUp, Pencil, Plus, Search, Trash2 } from "lucide-react";
@@ -163,7 +163,7 @@ export function ModelsPanel() {
         description="Manage chat, image, and background task models. One image model can be enabled at a time."
         action={
           models.length > 0 ? (
-            <Button render={<Link href="/settings/models/new" />} size="sm">
+            <Button render={<Link to="/settings/models/new" />} size="sm">
               <Plus /> Add model
             </Button>
           ) : undefined
@@ -242,7 +242,7 @@ export function ModelsPanel() {
         <div className="border-y border-dashed px-6 py-14 text-center">
           <p className="text-sm text-muted-foreground">No models configured.</p>
           <Button
-            render={<Link href="/settings/models/new" />}
+            render={<Link to="/settings/models/new" />}
             className="mt-4"
             size="sm"
           >
@@ -363,7 +363,7 @@ export function ModelsPanel() {
                     <div className="h-6 w-px bg-border" aria-hidden="true" />
                     <div className="flex items-center gap-1.5">
                       <Button
-                        render={<Link href={`/settings/models/${m.id}`} />}
+                        render={<Link to="/settings/models/$id" params={{ id: m.id }} />}
                         variant="outline"
                         size="sm"
                         aria-label={`Edit ${m.label}`}

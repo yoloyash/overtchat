@@ -1,7 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { Dialog } from "@base-ui/react/dialog";
 import type {
   AgentProviderId,
@@ -9,7 +8,6 @@ import type {
 } from "@overtchat/agent-bridge";
 import { useSidebar } from "@/components/sidebar-context";
 import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
-import { newAgentSessionHref } from "@/lib/agents/sessionDraft";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -30,14 +28,17 @@ export function NewAgentSessionDialog({
   targets: NewAgentSessionTarget[];
   machineLabel: string;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { closeMobile } = useSidebar();
   const workspace = targets[0]!.workspace;
 
   function selectAgent(target: NewAgentSessionTarget) {
     onOpenChange(false);
     closeMobile();
-    router.push(newAgentSessionHref(target.workspace.id, target.provider));
+    void navigate({
+      to: "/agents/new",
+      search: { workspaceId: target.workspace.id, provider: target.provider },
+    });
   }
 
   return (
@@ -84,7 +85,8 @@ export function NewAgentSessionDialog({
                       icon.darkSurface && "bg-zinc-950",
                     )}
                   >
-                    <Image
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
                       src={icon.icon}
                       alt=""
                       className="size-5 object-contain"

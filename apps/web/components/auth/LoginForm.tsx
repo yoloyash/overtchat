@@ -1,15 +1,17 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
+import { useResetAuthState } from "@/lib/queries/auth";
 
 export function LoginForm() {
-  const router = useRouter();
+  const navigate = useNavigate();
+  const resetAuthState = useResetAuthState();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -25,8 +27,8 @@ export function LoginForm() {
       setSubmitting(false);
       return;
     }
-    router.replace("/");
-    router.refresh();
+    resetAuthState();
+    await navigate({ to: "/", replace: true });
   }
 
   return (
