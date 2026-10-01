@@ -1,15 +1,14 @@
-import { createRoute, Outlet, redirect } from "@tanstack/react-router";
+import {
+  createRoute,
+  lazyRouteComponent,
+  Outlet,
+  redirect,
+} from "@tanstack/react-router";
 import { Activity } from "lucide-react";
 import {
   isAgentProviderId,
   type AgentConnectionListItem,
 } from "@overtchat/agent-bridge";
-import { ActivityLeaderboard } from "@/components/activity/ActivityLeaderboard";
-import { ActivityProfile } from "@/components/activity/ActivityProfile";
-import { AgentSessionView } from "@/components/agents/AgentSessionView";
-import { NewAgentSessionView } from "@/components/agents/NewAgentSessionView";
-import { LibraryBrowser } from "@/components/library/LibraryBrowser";
-import { ProjectPanel } from "@/components/projects/ProjectPanel";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { agentSessionDisplayTitle } from "@/lib/agents/sidebar";
 import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
@@ -20,9 +19,32 @@ import {
   ChatPending,
   ProjectPending,
 } from "@/spa/pending";
+import { withPages } from "@/spa/lazy";
 import { findInListQuery } from "@/spa/loaders";
 import { appRoute } from "@/spa/routes/root";
 import { optionalString } from "@/spa/search";
+
+// Each page's code downloads when it is first opened.
+const ActivityProfile = lazyRouteComponent(
+  () => import("@/components/activity/ActivityProfile"),
+  "ActivityProfile",
+);
+const AgentSessionView = lazyRouteComponent(
+  () => import("@/components/agents/AgentSessionView"),
+  "AgentSessionView",
+);
+const NewAgentSessionView = lazyRouteComponent(
+  () => import("@/components/agents/NewAgentSessionView"),
+  "NewAgentSessionView",
+);
+const LibraryBrowser = lazyRouteComponent(
+  () => import("@/components/library/LibraryBrowser"),
+  "LibraryBrowser",
+);
+const ProjectPanel = lazyRouteComponent(
+  () => import("@/components/projects/ProjectPanel"),
+  "ProjectPanel",
+);
 
 export const projectRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -33,10 +55,13 @@ export const projectRoute = createRoute({
     context.queryClient.setQueryData(projectQuery(params.id).queryKey, project);
   },
   pendingComponent: ProjectPending,
-  component: function ProjectPage() {
-    const { id } = projectRoute.useParams();
-    return <ProjectPanel projectId={id} />;
-  },
+  component: withPages(
+    function ProjectPage() {
+      const { id } = projectRoute.useParams();
+      return <ProjectPanel projectId={id} />;
+    },
+    ProjectPanel,
+  ),
 });
 
 export const newAgentSessionRoute = createRoute({
@@ -74,21 +99,24 @@ export const newAgentSessionRoute = createRoute({
   },
   gcTime: 0,
   pendingComponent: ChatPending,
-  component: function NewAgentSessionPage() {
-    const { provider, workspace } = newAgentSessionRoute.useLoaderData();
-    const { fork, chooseWorkspace } = newAgentSessionRoute.useSearch();
-    return (
-      <NewAgentSessionView
-        key={`${workspace.id}:${provider}:${fork ?? ""}`}
-        provider={provider}
-        workspaceId={workspace.id}
-        workspaceName={workspace.name}
-        workspacePath={workspace.path}
-        forkId={fork ?? null}
-        chooseWorkspace={chooseWorkspace === "1"}
-      />
-    );
-  },
+  component: withPages(
+    function NewAgentSessionPage() {
+      const { provider, workspace } = newAgentSessionRoute.useLoaderData();
+      const { fork, chooseWorkspace } = newAgentSessionRoute.useSearch();
+      return (
+        <NewAgentSessionView
+          key={`${workspace.id}:${provider}:${fork ?? ""}`}
+          provider={provider}
+          workspaceId={workspace.id}
+          workspaceName={workspace.name}
+          workspacePath={workspace.path}
+          forkId={fork ?? null}
+          chooseWorkspace={chooseWorkspace === "1"}
+        />
+      );
+    },
+    NewAgentSessionView,
+  ),
 });
 
 export const agentSessionRoute = createRoute({
@@ -120,44 +148,50 @@ export const agentSessionRoute = createRoute({
   },
   gcTime: 0,
   pendingComponent: ChatPending,
-  component: function AgentSessionPage() {
-    const { id } = agentSessionRoute.useParams();
-    const { provider, workspace, initialSessionName } =
-      agentSessionRoute.useLoaderData();
-    return (
-      <AgentSessionView
-        sessionId={id}
-        provider={provider}
-        workspaceId={workspace.id}
-        workspaceName={workspace.name}
-        workspacePath={workspace.path}
-        initialSessionName={initialSessionName}
-      />
-    );
-  },
+  component: withPages(
+    function AgentSessionPage() {
+      const { id } = agentSessionRoute.useParams();
+      const { provider, workspace, initialSessionName } =
+        agentSessionRoute.useLoaderData();
+      return (
+        <AgentSessionView
+          sessionId={id}
+          provider={provider}
+          workspaceId={workspace.id}
+          workspaceName={workspace.name}
+          workspacePath={workspace.path}
+          initialSessionName={initialSessionName}
+        />
+      );
+    },
+    AgentSessionView,
+  ),
 });
 
 export const libraryRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/library",
   pendingComponent: AppPending,
-  component: function LibraryPage() {
-    return (
-      <div className="flex min-h-0 flex-1 flex-col">
-        <header className="flex h-12 shrink-0 items-center gap-2 px-3">
-          <SidebarToggle />
-          <span className="text-sm font-medium">Library</span>
-        </header>
-        <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
-          <div className="px-4 pb-4 pt-6 sm:px-6">
-            <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-            <p className="mt-2 text-sm text-muted-foreground">Files from your saved chats. Reuse them with “Add from library” in any chat.</p>
+  component: withPages(
+    function LibraryPage() {
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <header className="flex h-12 shrink-0 items-center gap-2 px-3">
+            <SidebarToggle />
+            <span className="text-sm font-medium">Library</span>
+          </header>
+          <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col">
+            <div className="px-4 pb-4 pt-6 sm:px-6">
+              <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+              <p className="mt-2 text-sm text-muted-foreground">Files from your saved chats. Reuse them with “Add from library” in any chat.</p>
+            </div>
+            <LibraryBrowser />
           </div>
-          <LibraryBrowser />
         </div>
-      </div>
-    );
-  },
+      );
+    },
+    LibraryBrowser,
+  ),
 });
 
 export const activityRoute = createRoute({
@@ -183,15 +217,21 @@ export const activityIndexRoute = createRoute({
   getParentRoute: () => activityRoute,
   path: "/",
   pendingComponent: ActivityPending,
-  component: ActivityLeaderboard,
+  component: lazyRouteComponent(
+    () => import("@/components/activity/ActivityLeaderboard"),
+    "ActivityLeaderboard",
+  ),
 });
 
 export const activityProfileRoute = createRoute({
   getParentRoute: () => activityRoute,
   path: "$userId",
   pendingComponent: ActivityPending,
-  component: function ActivityProfilePage() {
-    const { userId } = activityProfileRoute.useParams();
-    return <ActivityProfile userId={userId} />;
-  },
+  component: withPages(
+    function ActivityProfilePage() {
+      const { userId } = activityProfileRoute.useParams();
+      return <ActivityProfile userId={userId} />;
+    },
+    ActivityProfile,
+  ),
 });

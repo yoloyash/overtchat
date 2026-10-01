@@ -1,20 +1,14 @@
-import { createRoute, Link, Outlet, redirect } from "@tanstack/react-router";
+import {
+  createRoute,
+  lazyRouteComponent,
+  Link,
+  Outlet,
+  redirect,
+} from "@tanstack/react-router";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
 import { SettingsNav } from "@/components/settings/SettingsNav";
-import { AccountForm } from "@/components/settings/account/AccountForm";
-import { ConnectionsPanel } from "@/components/settings/connections/ConnectionsPanel";
-import { DataForm } from "@/components/settings/data/DataForm";
-import { GeneralForm } from "@/components/settings/general/GeneralForm";
-import { ModelEditor } from "@/components/settings/models/ModelEditor";
-import { ModelsPanel } from "@/components/settings/models/ModelsPanel";
-import { PersonalizationForm } from "@/components/settings/personalization/PersonalizationForm";
-import { ProfileForm } from "@/components/settings/profile/ProfileForm";
-import { ServicesPanel } from "@/components/settings/services/ServicesPanel";
-import { McpServerEditor } from "@/components/settings/tools/mcp/McpServerEditor";
-import { ToolsForm } from "@/components/settings/tools/ToolsForm";
-import { UsersPanel } from "@/components/settings/users/UsersPanel";
 import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
 import {
   availableMcpServersQuery,
@@ -23,10 +17,41 @@ import {
 import { adminModelConfigsQuery } from "@/lib/queries/modelConfigs";
 import { serverCapabilitiesQuery } from "@/lib/queries/serverCapabilities";
 import { usersQuery } from "@/lib/queries/users";
+import { withPages } from "@/spa/lazy";
 import { SettingsPending } from "@/spa/pending";
 import { findInListQuery } from "@/spa/loaders";
 import { appRoute } from "@/spa/routes/root";
 import { optionalString } from "@/spa/search";
+
+// Each section's code downloads when it is first opened.
+const AccountForm = lazyRouteComponent(
+  () => import("@/components/settings/account/AccountForm"),
+  "AccountForm",
+);
+const ConnectionsPanel = lazyRouteComponent(
+  () => import("@/components/settings/connections/ConnectionsPanel"),
+  "ConnectionsPanel",
+);
+const ModelEditor = lazyRouteComponent(
+  () => import("@/components/settings/models/ModelEditor"),
+  "ModelEditor",
+);
+const ProfileForm = lazyRouteComponent(
+  () => import("@/components/settings/profile/ProfileForm"),
+  "ProfileForm",
+);
+const McpServerEditor = lazyRouteComponent(
+  () => import("@/components/settings/tools/mcp/McpServerEditor"),
+  "McpServerEditor",
+);
+const ToolsForm = lazyRouteComponent(
+  () => import("@/components/settings/tools/ToolsForm"),
+  "ToolsForm",
+);
+const UsersPanel = lazyRouteComponent(
+  () => import("@/components/settings/users/UsersPanel"),
+  "UsersPanel",
+);
 
 export const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
@@ -81,43 +106,58 @@ export const settingsIndexRoute = createRoute({
 export const generalSettingsRoute = createRoute({
   ...settingsPage,
   path: "general",
-  component: GeneralForm,
+  component: lazyRouteComponent(
+    () => import("@/components/settings/general/GeneralForm"),
+    "GeneralForm",
+  ),
 });
 
 export const accountSettingsRoute = createRoute({
   ...settingsPage,
   path: "account",
-  component: function AccountPage() {
-    const { session } = accountSettingsRoute.useRouteContext();
-    return <AccountForm email={session.user.email} />;
-  },
+  component: withPages(
+    function AccountPage() {
+      const { session } = accountSettingsRoute.useRouteContext();
+      return <AccountForm email={session.user.email} />;
+    },
+    AccountForm,
+  ),
 });
 
 export const profileSettingsRoute = createRoute({
   ...settingsPage,
   path: "profile",
-  component: function ProfilePage() {
-    const { session } = profileSettingsRoute.useRouteContext();
-    return (
-      <ProfileForm
-        userId={session.user.id}
-        name={session.user.name}
-        image={session.user.image ?? null}
-      />
-    );
-  },
+  component: withPages(
+    function ProfilePage() {
+      const { session } = profileSettingsRoute.useRouteContext();
+      return (
+        <ProfileForm
+          userId={session.user.id}
+          name={session.user.name}
+          image={session.user.image ?? null}
+        />
+      );
+    },
+    ProfileForm,
+  ),
 });
 
 export const personalizationSettingsRoute = createRoute({
   ...settingsPage,
   path: "personalization",
-  component: PersonalizationForm,
+  component: lazyRouteComponent(
+    () => import("@/components/settings/personalization/PersonalizationForm"),
+    "PersonalizationForm",
+  ),
 });
 
 export const dataSettingsRoute = createRoute({
   ...settingsPage,
   path: "data",
-  component: DataForm,
+  component: lazyRouteComponent(
+    () => import("@/components/settings/data/DataForm"),
+    "DataForm",
+  ),
 });
 
 export const connectionsSettingsRoute = createRoute({
@@ -129,16 +169,19 @@ export const connectionsSettingsRoute = createRoute({
   beforeLoad: requireAdmin,
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(agentConnectionListQuery),
-  component: function ConnectionsPage() {
-    const { add } = connectionsSettingsRoute.useSearch();
-    const initialAddOpen = add === "1";
-    return (
-      <ConnectionsPanel
-        key={initialAddOpen ? "add-agent-workspace" : "agents"}
-        initialAddOpen={initialAddOpen}
-      />
-    );
-  },
+  component: withPages(
+    function ConnectionsPage() {
+      const { add } = connectionsSettingsRoute.useSearch();
+      const initialAddOpen = add === "1";
+      return (
+        <ConnectionsPanel
+          key={initialAddOpen ? "add-agent-workspace" : "agents"}
+          initialAddOpen={initialAddOpen}
+        />
+      );
+    },
+    ConnectionsPanel,
+  ),
 });
 
 export const modelsSettingsRoute = createRoute({
@@ -147,7 +190,10 @@ export const modelsSettingsRoute = createRoute({
   beforeLoad: requireAdmin,
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(adminModelConfigsQuery),
-  component: ModelsPanel,
+  component: lazyRouteComponent(
+    () => import("@/components/settings/models/ModelsPanel"),
+    "ModelsPanel",
+  ),
 });
 
 export const newModelSettingsRoute = createRoute({
@@ -156,9 +202,12 @@ export const newModelSettingsRoute = createRoute({
   beforeLoad: requireAdmin,
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(adminModelConfigsQuery),
-  component: function NewModelPage() {
-    return <ModelEditor />;
-  },
+  component: withPages(
+    function NewModelPage() {
+      return <ModelEditor />;
+    },
+    ModelEditor,
+  ),
 });
 
 export const modelSettingsRoute = createRoute({
@@ -173,10 +222,13 @@ export const modelSettingsRoute = createRoute({
     );
     if (!model) throw redirect({ to: "/settings/models" });
   },
-  component: function ModelPage() {
-    const { id } = modelSettingsRoute.useParams();
-    return <ModelEditor modelId={id} />;
-  },
+  component: withPages(
+    function ModelPage() {
+      const { id } = modelSettingsRoute.useParams();
+      return <ModelEditor modelId={id} />;
+    },
+    ModelEditor,
+  ),
 });
 
 export const servicesSettingsRoute = createRoute({
@@ -185,7 +237,10 @@ export const servicesSettingsRoute = createRoute({
   beforeLoad: requireAdmin,
   loader: ({ context }) =>
     context.queryClient.ensureQueryData(serverCapabilitiesQuery),
-  component: ServicesPanel,
+  component: lazyRouteComponent(
+    () => import("@/components/settings/services/ServicesPanel"),
+    "ServicesPanel",
+  ),
 });
 
 export const toolsSettingsRoute = createRoute({
@@ -198,10 +253,13 @@ export const toolsSettingsRoute = createRoute({
         ? context.queryClient.ensureQueryData(mcpServersQuery)
         : undefined,
     ]),
-  component: function ToolsPage() {
-    const { isAdmin } = toolsSettingsRoute.useRouteContext();
-    return <ToolsForm isAdmin={isAdmin} />;
-  },
+  component: withPages(
+    function ToolsPage() {
+      const { isAdmin } = toolsSettingsRoute.useRouteContext();
+      return <ToolsForm isAdmin={isAdmin} />;
+    },
+    ToolsForm,
+  ),
 });
 
 /** MCP server editors only exist for administrators. */
@@ -213,9 +271,12 @@ export const newMcpServerSettingsRoute = createRoute({
   ...settingsPage,
   path: "tools/mcp/new",
   beforeLoad: requireToolsAdmin,
-  component: function NewMcpServerPage() {
-    return <McpServerEditor />;
-  },
+  component: withPages(
+    function NewMcpServerPage() {
+      return <McpServerEditor />;
+    },
+    McpServerEditor,
+  ),
 });
 
 export const mcpServerSettingsRoute = createRoute({
@@ -232,10 +293,13 @@ export const mcpServerSettingsRoute = createRoute({
     return { server };
   },
   gcTime: 0,
-  component: function McpServerPage() {
-    const { server } = mcpServerSettingsRoute.useLoaderData();
-    return <McpServerEditor server={server} />;
-  },
+  component: withPages(
+    function McpServerPage() {
+      const { server } = mcpServerSettingsRoute.useLoaderData();
+      return <McpServerEditor server={server} />;
+    },
+    McpServerEditor,
+  ),
 });
 
 export const usersSettingsRoute = createRoute({
@@ -243,8 +307,11 @@ export const usersSettingsRoute = createRoute({
   path: "users",
   beforeLoad: requireAdmin,
   loader: ({ context }) => context.queryClient.ensureQueryData(usersQuery),
-  component: function UsersPage() {
-    const { session } = usersSettingsRoute.useRouteContext();
-    return <UsersPanel currentUserId={session.user.id} />;
-  },
+  component: withPages(
+    function UsersPage() {
+      const { session } = usersSettingsRoute.useRouteContext();
+      return <UsersPanel currentUserId={session.user.id} />;
+    },
+    UsersPanel,
+  ),
 });

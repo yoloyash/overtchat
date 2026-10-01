@@ -1,6 +1,8 @@
-import { createRoute, redirect } from "@tanstack/react-router";
-import { LoginForm } from "@/components/auth/LoginForm";
-import { SignupForm } from "@/components/auth/SignupForm";
+import {
+  createRoute,
+  lazyRouteComponent,
+  redirect,
+} from "@tanstack/react-router";
 import { fetchSetupRequired, sessionQuery } from "@/lib/queries/auth";
 import { authRoute } from "@/spa/routes/root";
 
@@ -12,7 +14,10 @@ export const loginRoute = createRoute({
     if (session) throw redirect({ to: "/" });
     if (await fetchSetupRequired()) throw redirect({ to: "/signup" });
   },
-  component: LoginForm,
+  component: lazyRouteComponent(
+    () => import("@/components/auth/LoginForm"),
+    "LoginForm",
+  ),
 });
 
 export const signupRoute = createRoute({
@@ -21,5 +26,8 @@ export const signupRoute = createRoute({
   beforeLoad: async () => {
     if (!(await fetchSetupRequired())) throw redirect({ to: "/login" });
   },
-  component: SignupForm,
+  component: lazyRouteComponent(
+    () => import("@/components/auth/SignupForm"),
+    "SignupForm",
+  ),
 });
