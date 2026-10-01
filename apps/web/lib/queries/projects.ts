@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 
 export type ProjectListItem = {
@@ -16,14 +17,14 @@ export type ProjectListItem = {
 };
 
 async function fetchProjects(): Promise<ProjectListItem[]> {
-  const r = await fetch("/api/projects");
+  const r = await fetch(apiUrl("/api/projects"));
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = (await r.json()) as { projects: ProjectListItem[] };
   return json.projects;
 }
 
 async function fetchProject(id: string): Promise<ProjectListItem> {
-  const r = await fetch(`/api/projects/${id}`);
+  const r = await fetch(apiUrl(`/api/projects/${id}`));
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = (await r.json()) as { project: ProjectListItem };
   return json.project;
@@ -50,7 +51,7 @@ export function useCreateProject() {
       name: string;
       instructions?: string | null;
     }): Promise<ProjectListItem> => {
-      const r = await fetch("/api/projects", {
+      const r = await fetch(apiUrl("/api/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -73,7 +74,7 @@ export function useUpdateProject(id: string) {
       name?: string;
       instructions?: string | null;
     }) => {
-      const r = await fetch(`/api/projects/${id}`, {
+      const r = await fetch(apiUrl(`/api/projects/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -91,7 +92,7 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const r = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+      const r = await fetch(apiUrl(`/api/projects/${id}`), { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
     },
     onSuccess: () => {

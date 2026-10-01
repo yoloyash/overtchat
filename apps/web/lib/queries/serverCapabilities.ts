@@ -8,6 +8,7 @@ import type {
   ServerCapabilityInput,
 } from "@/lib/capabilities/schema";
 import { serverCapabilityKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 export interface AdminServicesSnapshot {
   capabilities: AdminServerCapability[];
@@ -18,7 +19,7 @@ export function useServerCapabilities() {
   return useQuery({
     queryKey: serverCapabilityKeys.list(),
     queryFn: async (): Promise<AdminServicesSnapshot> => {
-      const response = await fetch("/api/server-capabilities");
+      const response = await fetch(apiUrl("/api/server-capabilities"));
       if (!response.ok) throw apiError(response.status, await response.json().catch(() => null), "Could not load server services.");
       return (await response.json()) as AdminServicesSnapshot;
     },
@@ -29,7 +30,7 @@ export function useUpdateServerCapability() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: ServerCapabilityInput) => {
-      const response = await fetch(`/api/server-capabilities/${input.id}`, {
+      const response = await fetch(apiUrl(`/api/server-capabilities/${input.id}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -66,7 +67,7 @@ export function useTestServerCapability() {
     mutationFn: async (
       input: ServerCapabilityInput,
     ): Promise<{ message: string }> => {
-      const response = await fetch(`/api/server-capabilities/${input.id}/test`, {
+      const response = await fetch(apiUrl(`/api/server-capabilities/${input.id}/test`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),

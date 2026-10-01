@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { ChatGenerationState } from "@overtchat/shared";
 import type { UIMessage } from "ai";
+import { apiUrl } from "@/lib/api-url";
 
 const POLL_DELAY_MS = 1_500;
 
@@ -59,7 +60,7 @@ export function useChatGenerationRecovery({
     const recovery = (async () => {
       while (epochRef.current === epoch) {
         const response = await fetch(
-          `/api/chat/${encodeURIComponent(chatId)}/stream/status`,
+          apiUrl(`/api/chat/${encodeURIComponent(chatId)}/stream/status`),
           { cache: "no-store" },
         );
         if (!response.ok) {

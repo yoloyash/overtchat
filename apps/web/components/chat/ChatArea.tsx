@@ -89,6 +89,7 @@ import {
   type RealtimeVoiceSessionHandle,
 } from "./RealtimeVoiceSession";
 import type { VoiceTranscriptUpdate } from "@/lib/voice/client";
+import { apiUrl } from "@/lib/api-url";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 const REASONING_LEVELS_STORAGE_KEY = "overtchat_reasoning_levels";
@@ -230,7 +231,7 @@ export function ChatArea({
   const [transport] = useState(
     () =>
       new DefaultChatTransport<UIMessage>({
-        api: "/api/chat",
+        api: apiUrl("/api/chat"),
         prepareSendMessagesRequest: ({
           messages,
           body,
@@ -455,7 +456,7 @@ export function ChatArea({
     setContextStatus(null);
     stop();
     if (!temporary) {
-      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
+      void fetch(apiUrl(`/api/chat/${chatId}/stream/cancel`), { method: "POST" }).catch(
         () => undefined,
       );
     }

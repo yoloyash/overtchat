@@ -8,6 +8,7 @@ import type {
   AgentWorkspaceGitStatus,
 } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -20,7 +21,7 @@ async function fetchAgentWorkspaceGitStatus(
   id: string,
 ): Promise<AgentWorkspaceGitStatus> {
   const response = await fetch(
-    `/api/agent-workspaces/${encodeURIComponent(id)}/git-status`,
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/git-status`),
   );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as { status: AgentWorkspaceGitStatus })
@@ -57,7 +58,7 @@ async function fetchAgentWorkspaceDirectory(
 ): Promise<AgentWorkspaceDirectoryListing> {
   const params = new URLSearchParams({ path });
   const response = await fetch(
-    `/api/agent-workspaces/${encodeURIComponent(id)}/files?${params}`,
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/files?${params}`),
   );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as {
@@ -85,7 +86,7 @@ async function fetchAgentWorkspaceFile(
 ): Promise<AgentWorkspaceFilePreview> {
   const params = new URLSearchParams({ path });
   const response = await fetch(
-    `/api/agent-workspaces/${encodeURIComponent(id)}/file?${params}`,
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/file?${params}`),
   );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as { file: AgentWorkspaceFilePreview }).file;

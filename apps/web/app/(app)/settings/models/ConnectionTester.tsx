@@ -7,6 +7,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { motionClasses } from "@/lib/motion";
 import type { ApiFormat, ProviderId } from "@/lib/providers/catalog";
+import { apiUrl } from "@/lib/api-url";
 
 export interface PingArgs {
   providerId: ProviderId;
@@ -41,7 +42,7 @@ export function ConnectionTester({ args, disabled }: ConnectionTesterProps) {
     setPinging(true);
     setResult(null);
     try {
-      const res = await fetch("/api/model-configs/ping", {
+      const res = await fetch(apiUrl("/api/model-configs/ping"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(args),

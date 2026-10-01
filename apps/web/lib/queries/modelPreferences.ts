@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ModelPreferences } from "@overtchat/shared";
 import { authClient } from "@/lib/auth/client";
 import { modelPreferenceKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 export function useModelPreferences() {
   const { data: session } = authClient.useSession();
@@ -12,7 +13,7 @@ export function useModelPreferences() {
     enabled: !!session,
     staleTime: 0,
     queryFn: async ({ signal }): Promise<ModelPreferences> => {
-      const response = await fetch("/api/model-preferences", { signal });
+      const response = await fetch(apiUrl("/api/model-preferences"), { signal });
       if (!response.ok) throw new Error("Couldn't load default model");
       return response.json();
     },
@@ -26,7 +27,7 @@ export function useSetDefaultModel() {
     mutationFn: async (input: {
       defaultModelId: string | null;
     }): Promise<ModelPreferences> => {
-      const response = await fetch("/api/model-preferences", {
+      const response = await fetch(apiUrl("/api/model-preferences"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),

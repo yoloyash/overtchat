@@ -24,6 +24,7 @@ import {
   type VoiceToolActivityUpdate,
   type VoiceTranscriptUpdate,
 } from "@/lib/voice/client";
+import { apiUrl } from "@/lib/api-url";
 
 export interface RealtimeVoiceSessionHandle {
   sendMessage: (text: string) => void;
@@ -128,7 +129,7 @@ export const RealtimeVoiceSession = forwardRef<
 
     async function start() {
       try {
-        const response = await fetch("/api/voice/session", {
+        const response = await fetch(apiUrl("/api/voice/session"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -161,7 +162,7 @@ export const RealtimeVoiceSession = forwardRef<
           onHistoryItems: (items) => {
             callbacksRef.current.onHistoryItems(items);
             persistQueueRef.current = persistQueueRef.current.then(async () => {
-              const syncResponse = await fetch("/api/voice/history", {
+              const syncResponse = await fetch(apiUrl("/api/voice/history"), {
                 method: "POST",
                 headers: {
                   Authorization: `Bearer ${grant.token}`,

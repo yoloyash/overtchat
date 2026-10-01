@@ -3,6 +3,7 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { libraryKeys } from "@/lib/queries/keys";
 import type { LibraryPage } from "@/lib/library";
+import { apiUrl } from "@/lib/api-url";
 
 export function useLibrary(query: string) {
   return useInfiniteQuery({
@@ -11,7 +12,7 @@ export function useLibrary(query: string) {
     queryFn: async ({ pageParam, signal }): Promise<LibraryPage> => {
       const params = new URLSearchParams({ q: query });
       if (pageParam) params.set("cursor", pageParam);
-      const response = await fetch(`/api/library?${params}`, { signal });
+      const response = await fetch(apiUrl(`/api/library?${params}`), { signal });
       if (!response.ok) throw new Error("Could not load your library.");
       return response.json();
     },

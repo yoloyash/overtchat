@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { userKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 export type UserRole = "user" | "admin";
 
@@ -18,7 +19,7 @@ export function useUsers() {
   return useQuery({
     queryKey: userKeys.list(),
     queryFn: async (): Promise<UserRow[]> => {
-      const r = await fetch("/api/users");
+      const r = await fetch(apiUrl("/api/users"));
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const json = (await r.json()) as { users: UserRow[] };
       return json.users;
@@ -41,7 +42,7 @@ export function useSetUserRole() {
       userId: string;
       role: UserRole;
     }): Promise<UserRow> => {
-      const response = await fetch(`/api/users/${userId}/role`, {
+      const response = await fetch(apiUrl(`/api/users/${userId}/role`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),

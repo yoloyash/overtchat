@@ -19,6 +19,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "../_components/SettingsRows";
+import { apiUrl } from "@/lib/api-url";
 
 type ImportResult = {
   format: string;
@@ -49,7 +50,7 @@ export function DataForm() {
     form.append("file", file);
 
     try {
-      const res = await fetch("/api/import", { method: "POST", body: form });
+      const res = await fetch(apiUrl("/api/import"), { method: "POST", body: form });
       const body = (await res.json()) as ImportResult | { error?: string };
       if (!res.ok) {
         setImportError(
@@ -136,7 +137,7 @@ export function DataForm() {
           align="center"
           controlAlign="end"
         >
-          <Button type="button" variant="outline" render={<a href="/api/export" />}>
+          <Button type="button" variant="outline" render={<a href={apiUrl("/api/export")} />}>
             <Download data-icon="inline-start" />
             Download export
           </Button>

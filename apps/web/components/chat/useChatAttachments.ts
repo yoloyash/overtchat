@@ -8,6 +8,7 @@ import {
   isSupportedAttachment,
   unsupportedAttachmentMessage,
 } from "@/lib/chat/attachments";
+import { apiUrl } from "@/lib/api-url";
 
 export interface ChatAttachment {
   id: number;
@@ -125,7 +126,7 @@ export function useChatAttachments() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: form });
+      const res = await fetch(apiUrl("/api/uploads"), { method: "POST", body: form });
       const json = (await res.json().catch(() => ({}))) as {
         url?: string;
         mediaType?: string;

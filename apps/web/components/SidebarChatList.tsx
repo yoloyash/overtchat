@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
 import { useReducedMotion } from "@/lib/useReducedMotion";
+import { apiUrl } from "@/lib/api-url";
 
 interface Chat {
   id: string;
@@ -310,7 +311,7 @@ export function SidebarItem({
                   </Menu.Portal>
                 </Menu.SubmenuRoot>
                 <Menu.Item
-                  render={<a href={`/api/chat/${chat.id}/export`} download />}
+                  render={<a href={apiUrl(`/api/chat/${chat.id}/export`)} download />}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <Download className="size-3.5 shrink-0 text-muted-foreground" />
