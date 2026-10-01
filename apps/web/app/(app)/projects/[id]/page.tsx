@@ -6,7 +6,7 @@ import { getProject } from "@/lib/db/projects";
 import { getQueryClient } from "@/lib/queryClient";
 import { projectKeys } from "@/lib/queries/keys";
 import type { ProjectListItem } from "@/lib/queries/projects";
-import { ProjectPanel } from "./ProjectPanel";
+import { ProjectPanel } from "@/components/projects/ProjectPanel";
 
 export default async function Page({
   params,

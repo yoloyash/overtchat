@@ -17,7 +17,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 type SaveStatus = "idle" | "submitting" | "ok";
 

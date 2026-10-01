@@ -24,7 +24,7 @@ import {
 import {
   SettingsActions,
   SettingsNotice,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 export function MemoryDialog({
   memory,

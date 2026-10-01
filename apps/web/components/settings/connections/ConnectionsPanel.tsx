@@ -56,7 +56,7 @@ import {
   SettingsPage,
   SettingsPageHeader,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { AddAgentWorkspaceDialog } from "./AddAgentWorkspaceDialog";
 
 type PendingDetach =

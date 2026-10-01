@@ -11,7 +11,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { AvailableMcpServersPanel } from "./AvailableMcpServersPanel";
 import { McpServersPanel } from "./McpServersPanel";
 

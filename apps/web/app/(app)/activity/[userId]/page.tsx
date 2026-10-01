@@ -1,4 +1,4 @@
-import { ActivityProfile } from "../_components/ActivityProfile";
+import { ActivityProfile } from "@/components/activity/ActivityProfile";
 
 export default async function ActivityProfilePage({
   params,

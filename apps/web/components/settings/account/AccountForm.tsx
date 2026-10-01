@@ -11,7 +11,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 export function AccountForm({ email }: { email: string }) {
   const [currentPassword, setCurrentPassword] = useState("");

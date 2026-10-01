@@ -1,4 +1,4 @@
-import { ActivityLeaderboard } from "./_components/ActivityLeaderboard";
+import { ActivityLeaderboard } from "@/components/activity/ActivityLeaderboard";
 
 export default function ActivityPage() {
   return <ActivityLeaderboard />;

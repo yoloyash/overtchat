@@ -2,7 +2,7 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SidebarToggle } from "@/components/SidebarToggle";
-import { SettingsNav } from "./SettingsNav";
+import { SettingsNav } from "@/components/settings/SettingsNav";
 
 export default function SettingsLayout({
   children,

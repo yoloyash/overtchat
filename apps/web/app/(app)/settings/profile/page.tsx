@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
-import { ProfileForm } from "./ProfileForm";
+import { ProfileForm } from "@/components/settings/profile/ProfileForm";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });

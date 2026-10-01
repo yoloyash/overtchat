@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { count } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { user } from "@/lib/db/schema";
-import { SignupForm } from "./SignupForm";
+import { SignupForm } from "@/components/auth/SignupForm";
 
 export const dynamic = "force-dynamic";
 

@@ -8,7 +8,7 @@ import {
 } from "@/lib/db/mcpServers";
 import { getQueryClient } from "@/lib/queryClient";
 import { mcpServerKeys } from "@/lib/queries/keys";
-import { ToolsForm } from "./ToolsForm";
+import { ToolsForm } from "@/components/settings/tools/ToolsForm";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });

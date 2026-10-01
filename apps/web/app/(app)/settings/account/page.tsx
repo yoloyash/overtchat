@@ -1,7 +1,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/server";
-import { AccountForm } from "./AccountForm";
+import { AccountForm } from "@/components/settings/account/AccountForm";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });

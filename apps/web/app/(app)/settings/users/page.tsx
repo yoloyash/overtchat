@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { getQueryClient } from "@/lib/queryClient";
 import { userKeys } from "@/lib/queries/keys";
 import type { UserRow } from "@/lib/queries/users";
-import { UsersPanel } from "./UsersPanel";
+import { UsersPanel } from "@/components/settings/users/UsersPanel";
 
 export default async function Page() {
   const h = await headers();

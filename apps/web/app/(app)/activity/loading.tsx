@@ -1,4 +1,4 @@
-import { ActivityMetric } from "./_components/ActivityMetric";
+import { ActivityMetric } from "@/components/activity/ActivityMetric";
 
 export default function ActivityLoading() {
   return (

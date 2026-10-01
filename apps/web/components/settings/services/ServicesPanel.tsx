@@ -30,7 +30,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 type ProviderOption = {
   value: string;

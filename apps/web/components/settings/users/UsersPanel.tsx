@@ -26,7 +26,7 @@ import {
   SettingsPage,
   SettingsPageHeader,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { AddUserDialog } from "./AddUserDialog";
 
 type PendingRoleChange = {

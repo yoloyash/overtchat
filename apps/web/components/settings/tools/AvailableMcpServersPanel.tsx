@@ -14,7 +14,7 @@ import {
   SettingsEmptyState,
   SettingsNotice,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 export function AvailableMcpServersPanel() {
   const { data: servers = [], isPending, error } = useAvailableMcpServers();

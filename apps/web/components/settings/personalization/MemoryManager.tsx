@@ -10,7 +10,7 @@ import type {
   PersonalizationSnapshot,
 } from "@/lib/personalization/schema";
 import { useClearMemories } from "@/lib/queries/personalization";
-import { SettingsSection } from "../_components/SettingsRows";
+import { SettingsSection } from "../SettingsRows";
 import {
   ClearMemoriesButton,
   DeleteMemoryButton,

@@ -19,7 +19,7 @@ import {
   SettingsNotice,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 export function ProfileEditor({
   personalization,

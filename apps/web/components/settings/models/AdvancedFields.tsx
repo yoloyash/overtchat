@@ -9,7 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type { CatalogModelPricing } from "@/lib/model-config/schema";
 import { cn } from "@/lib/utils";
-import { SettingsRow, SettingsSection } from "../_components/SettingsRows";
+import { SettingsRow, SettingsSection } from "../SettingsRows";
 
 function parseProviderOptions(text: string): string | null {
   if (!text.trim()) return null;

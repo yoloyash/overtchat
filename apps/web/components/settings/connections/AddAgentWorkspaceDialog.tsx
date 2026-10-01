@@ -50,7 +50,7 @@ import { cn } from "@/lib/utils";
 import {
   SettingsActions,
   SettingsNotice,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { SshHostPicker } from "./SshHostPicker";
 
 type Transport = "local" | "ssh";

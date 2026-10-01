@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Check, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AddUserDialog } from "@/app/(app)/settings/users/AddUserDialog";
+import { AddUserDialog } from "@/components/settings/users/AddUserDialog";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import { cn } from "@/lib/utils";
 

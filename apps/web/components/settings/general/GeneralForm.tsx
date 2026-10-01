@@ -11,14 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SettingsChoiceGroup } from "../_components/SettingsChoiceGroup";
+import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
 import { Switch } from "@/components/ui/switch";
 import {
   SettingsPage,
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import {
   DEFAULT_FONT_ID,
   FONT_OPTIONS,

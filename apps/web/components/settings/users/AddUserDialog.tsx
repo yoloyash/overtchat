@@ -19,7 +19,7 @@ import { authClient } from "@/lib/auth/client";
 import {
   SettingsActions,
   SettingsNotice,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 type Role = "user" | "admin";
 

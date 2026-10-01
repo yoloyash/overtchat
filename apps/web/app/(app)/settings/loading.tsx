@@ -1,4 +1,4 @@
-import { SettingsPage } from "./_components/SettingsRows";
+import { SettingsPage } from "@/components/settings/SettingsRows";
 
 export default function SettingsLoading() {
   return (

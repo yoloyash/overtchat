@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth/server";
 import { listModelConfigs, toAdminModelConfig } from "@/lib/db/modelConfigs";
 import { getQueryClient } from "@/lib/queryClient";
 import { modelConfigKeys } from "@/lib/queries/keys";
-import { ModelsPanel } from "./ModelsPanel";
+import { ModelsPanel } from "@/components/settings/models/ModelsPanel";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });

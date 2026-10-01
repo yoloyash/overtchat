@@ -25,9 +25,9 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../../_components/SettingsRows";
+} from "@/components/settings/SettingsRows";
 
-import { SettingsChoiceGroup } from "../../_components/SettingsChoiceGroup";
+import { SettingsChoiceGroup } from "@/components/settings/SettingsChoiceGroup";
 
 type Pair = { id: string; key: string; value: string };
 type ValueRow = { id: string; value: string };

@@ -16,6 +16,7 @@ export default defineConfig({
     include: [
       "app/**/*.test.ts",
       "app/**/*.test.tsx",
+      "components/**/*.test.ts",
       "lib/**/*.test.ts",
       "lib/**/*.test.tsx",
       "proxy.test.ts",

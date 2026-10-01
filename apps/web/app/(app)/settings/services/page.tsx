@@ -9,7 +9,7 @@ import {
 import { getQueryClient } from "@/lib/queryClient";
 import { serverCapabilityKeys } from "@/lib/queries/keys";
 import { getVoiceCapability } from "@/lib/voice/capability";
-import { ServicesPanel } from "./ServicesPanel";
+import { ServicesPanel } from "@/components/settings/services/ServicesPanel";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });

@@ -41,7 +41,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 
 export interface ModelEditorProps {
   /** When provided, editor loads the existing config from cache; otherwise a new one is being created. */

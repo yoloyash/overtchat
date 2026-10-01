@@ -36,7 +36,7 @@ import {
   type ProviderId,
 } from "@/lib/providers/catalog";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
-import { SettingsRow } from "../_components/SettingsRows";
+import { SettingsRow } from "../SettingsRows";
 
 export interface ConnectionDraft {
   providerId: ProviderId;

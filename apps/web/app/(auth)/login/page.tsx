@@ -4,7 +4,7 @@ import { auth } from "@/lib/auth/server";
 import { count } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { user } from "@/lib/db/schema";
-import { LoginForm } from "./LoginForm";
+import { LoginForm } from "@/components/auth/LoginForm";
 
 export default async function Page() {
   const session = await auth.api.getSession({ headers: await headers() });

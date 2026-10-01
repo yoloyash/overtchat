@@ -26,7 +26,7 @@ import {
   SettingsEmptyState,
   SettingsNotice,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { McpHealthBadge } from "./McpHealthBadge";
 
 export function McpServersPanel() {

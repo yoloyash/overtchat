@@ -6,7 +6,7 @@ import {
   SettingsNotice,
   SettingsPage,
   SettingsPageHeader,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { MemoryManager } from "./MemoryManager";
 import { ProfileEditor } from "./ProfileEditor";
 

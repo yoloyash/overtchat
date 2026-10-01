@@ -6,7 +6,7 @@ import { listAgentConnections } from "@/lib/db/agentConnections";
 import { withConnectorSessionDirectory } from "@/lib/agents/connector/directory";
 import { getQueryClient } from "@/lib/queryClient";
 import { agentConnectionKeys } from "@/lib/queries/keys";
-import { ConnectionsPanel } from "./ConnectionsPanel";
+import { ConnectionsPanel } from "@/components/settings/connections/ConnectionsPanel";
 
 export default async function Page({
   searchParams,

@@ -34,7 +34,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { HealthBadge } from "./HealthBadge";
 import { motionClasses } from "@/lib/motion";
 

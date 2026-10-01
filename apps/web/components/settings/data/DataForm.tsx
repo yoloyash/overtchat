@@ -18,7 +18,7 @@ import {
   SettingsPageHeader,
   SettingsRow,
   SettingsSection,
-} from "../_components/SettingsRows";
+} from "../SettingsRows";
 import { apiUrl } from "@/lib/api-url";
 
 type ImportResult = {
