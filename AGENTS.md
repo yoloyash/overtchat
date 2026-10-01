@@ -23,6 +23,7 @@ runbook instead of copying its instructions.
 | --- | --- |
 | `apps/web` | Self-hosted Next.js product: UI, auth, SQLite persistence, chat APIs, and the authenticated Host Connector relay |
 | `apps/mobile` | Expo client for an operator-supplied OvertChat server |
+| `apps/desktop` | Electron client that bundles the web UI for an operator-supplied OvertChat server |
 | `apps/site` | Static `overtchat.com` export, installer assets, and release manifest |
 | `apps/cli` | Linux/macOS management CLI for setup, adoption, updates, and managed Compose state |
 | `apps/connector` | Host-native daemon that owns live coding-agent sessions and process execution |

@@ -27,6 +27,7 @@ origin, configure `EXTRA_TRUSTED_ORIGINS` and Next.js `allowedDevOrigins`.
 | --- | --- |
 | `npm run dev:web` | Web only |
 | `npm run dev:mobile` | Expo client |
+| `npm run dev:desktop` | Electron client, with the web UI hot-reloaded from source |
 | `npm run dev:site` | Public site |
 | `npm run dev:reset-connector` | Reset an incompatible disposable connector journal |
 | `npm run dev:managed` | Exercise production provisioning from the worktree |
@@ -148,6 +149,23 @@ the remembered Agents section expansion, recent agent selection, workspace
 chat creation, and opening both chat types from push notifications. Check native
 Back alongside the conversation menu, edge-only drawer swipes on chat and agent
 list screens, and horizontal tool/code scrolling on agent detail screens.
+
+## Desktop validation
+
+The desktop app needs a server at its API level, so run one from the same
+worktree, e.g. `npm run dev:web`, and connect to it from `npm run dev:desktop`.
+Development builds keep their server, sign-in, and window state in an
+`overtchat-dev` profile, separate from installed builds.
+
+```sh
+npm run typecheck -w apps/desktop --
+npm run build -w apps/desktop --
+```
+
+`npm run start -w apps/desktop --` runs the production build. Check connecting
+(including an outdated server and a wrong address), signing in and out, chat
+streaming, uploaded images, the menu commands, Change Server, zoom, fullscreen,
+and the macOS titlebar with the sidebar open and collapsed.
 
 ## Speech
 
