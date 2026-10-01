@@ -22,4 +22,6 @@ export type DesktopCommand = (typeof DESKTOP_COMMANDS)[number];
 export interface DesktopBridge {
   /** Subscribes to menu commands and returns an unsubscribe function. */
   onCommand(listener: (command: DesktopCommand) => void): () => void;
+  /** Forgets the active server and its sign-in, then shows the connect screen. */
+  changeServer(): Promise<void>;
 }

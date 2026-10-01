@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { AuthFrame } from "@/components/auth/AuthFrame";
+import { DesktopServer } from "@/components/auth/DesktopServer";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
 import { projectListQuery } from "@/lib/queries/projects";
@@ -51,7 +52,7 @@ export const appRoute = createRoute({
 
 function AuthLayout() {
   return (
-    <AuthFrame>
+    <AuthFrame footer={<DesktopServer />}>
       <Outlet />
     </AuthFrame>
   );

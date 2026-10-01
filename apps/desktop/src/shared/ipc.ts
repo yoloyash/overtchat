@@ -41,6 +41,4 @@ export interface DesktopShellBridge extends DesktopBridge {
   boot(): Promise<BootState>;
   /** Saves a reachable, compatible server as the active one. The UI reloads after. */
   connect(address: string): Promise<ConnectResult>;
-  /** Forgets the active server and its sign-in, then shows the connect screen. */
-  changeServer(): Promise<void>;
 }
