@@ -165,7 +165,7 @@ export const RealtimeVoiceSession = forwardRef<
               const syncResponse = await fetch(apiUrl("/api/voice/history"), {
                 method: "POST",
                 headers: {
-                  Authorization: `Bearer ${grant.token}`,
+                  "X-OvertChat-Voice-Ticket": grant.token,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({ items }),

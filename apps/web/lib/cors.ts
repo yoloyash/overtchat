@@ -21,7 +21,8 @@ export function corsHeaders(origin: string): Headers {
   return new Headers({
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, Cookie",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, Cookie, X-OvertChat-Voice-Ticket",
     "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
     // Response headers clients read: the bearer session token on sign-in and
     // stream identity on chat generations.

@@ -31,18 +31,12 @@ const inputSchema = z.object({
   items: z.array(historyItem).min(1).max(256),
 });
 
-function bearerToken(request: Request): string | null {
-  const authorization = request.headers.get("authorization");
-  return authorization?.startsWith("Bearer ")
-    ? authorization.slice("Bearer ".length).trim() || null
-    : null;
-}
-
 export async function POST(request: Request) {
   const session = await auth.api.getSession({ headers: request.headers });
   if (!session) return new Response("Unauthorized", { status: 401 });
 
-  const token = bearerToken(request);
+  // Its own header, since bundled clients send their session as `Authorization`.
+  const token = request.headers.get("x-overtchat-voice-ticket")?.trim();
   const ticket = token ? verifyVoiceTicket(token) : null;
   if (!ticket || ticket.userId !== session.user.id) {
     return new Response("Voice session expired or invalid", { status: 401 });
