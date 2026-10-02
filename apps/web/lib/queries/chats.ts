@@ -2,6 +2,7 @@
 
 import {
   type QueryClient,
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
@@ -11,6 +12,7 @@ import type { ChatKind } from "@overtchat/shared";
 import { CHAT_MESSAGE_PAGE_SIZE } from "@/lib/chat/history";
 import { chatKeys, libraryKeys } from "@/lib/queries/keys";
 import type { ChatUsageResponse, UsageTotals } from "@/lib/usage/types";
+import { apiUrl } from "@/lib/api-url";
 
 export type ChatListItem = {
   id: string;
@@ -27,21 +29,23 @@ export type ActiveChatIdsResponse = {
 export const ACTIVE_CHATS_POLL_MS = 2_000;
 
 async function fetchChats(): Promise<ChatListItem[]> {
-  const r = await fetch("/api/chats");
+  const r = await fetch(apiUrl("/api/chats"));
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = (await r.json()) as { chats: ChatListItem[] };
   return json.chats;
 }
 
+export const chatListQuery = queryOptions({
+  queryKey: chatKeys.list(),
+  queryFn: fetchChats,
+});
+
 export function useChats() {
-  return useQuery({
-    queryKey: chatKeys.list(),
-    queryFn: fetchChats,
-  });
+  return useQuery(chatListQuery);
 }
 
 async function fetchActiveChatIds(): Promise<string[]> {
-  const response = await fetch("/api/chats/active", { cache: "no-store" });
+  const response = await fetch(apiUrl("/api/chats/active"), { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = (await response.json()) as ActiveChatIdsResponse;
   return body.activeChatIds;
@@ -55,10 +59,14 @@ export function activeChatsRefetchInterval(
     : false;
 }
 
+export const activeChatIdsQuery = queryOptions({
+  queryKey: chatKeys.active(),
+  queryFn: fetchActiveChatIds,
+});
+
 export function useActiveChatIds() {
   return useQuery({
-    queryKey: chatKeys.active(),
-    queryFn: fetchActiveChatIds,
+    ...activeChatIdsQuery,
     staleTime: 1_000,
     refetchOnMount: "always",
     refetchOnWindowFocus: "always",
@@ -84,7 +92,7 @@ export function useChatUsage(id: string, enabled = true) {
     queryKey: chatKeys.usage(id),
     queryFn: async (): Promise<UsageTotals> => {
       const response = await fetch(
-        `/api/chat/${encodeURIComponent(id)}/usage`,
+        apiUrl(`/api/chat/${encodeURIComponent(id)}/usage`),
       );
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const body = (await response.json()) as ChatUsageResponse;
@@ -94,23 +102,37 @@ export function useChatUsage(id: string, enabled = true) {
   });
 }
 
+export type ChatMessagesPage = {
+  messages: UIMessage[];
+  nextCursor: string | null;
+  projectId: string | null;
+  kind: ChatKind;
+  modelConfigId: string | null;
+};
+
+/** Fetches one page of a chat's history, newest first. Null when the chat does not exist. */
+export async function fetchChatMessagesPage(
+  id: string,
+  cursor?: string,
+): Promise<ChatMessagesPage | null> {
+  const params = new URLSearchParams({
+    ...(cursor ? { cursor } : {}),
+    limit: String(CHAT_MESSAGE_PAGE_SIZE),
+  });
+  const response = await fetch(
+    apiUrl(`/api/chat/${encodeURIComponent(id)}/messages?${params}`),
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return (await response.json()) as ChatMessagesPage;
+}
+
 export function useLoadOlderChatMessages(id: string) {
   return useMutation({
     mutationFn: async (cursor: string) => {
-      const params = new URLSearchParams({
-        cursor,
-        limit: String(CHAT_MESSAGE_PAGE_SIZE),
-      });
-      const response = await fetch(
-        `/api/chat/${encodeURIComponent(id)}/messages?${params}`,
-      );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return (await response.json()) as {
-        messages: UIMessage[];
-        nextCursor: string | null;
-        projectId: string | null;
-        kind: ChatKind;
-      };
+      const page = await fetchChatMessagesPage(id, cursor);
+      if (!page) throw new Error("HTTP 404");
+      return page;
     },
   });
 }
@@ -119,7 +141,7 @@ export function useRenameChat() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, title }: { id: string; title: string }) => {
-      const r = await fetch(`/api/chats/${id}`, {
+      const r = await fetch(apiUrl(`/api/chats/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title }),
@@ -134,7 +156,7 @@ export function useDeleteChat() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const r = await fetch(`/api/chats/${id}`, { method: "DELETE" });
+      const r = await fetch(apiUrl(`/api/chats/${id}`), { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
     },
     onSuccess: () => Promise.all([
@@ -154,7 +176,7 @@ export function useMoveChat() {
       id: string;
       projectId: string | null;
     }) => {
-      const r = await fetch(`/api/chats/${id}`, {
+      const r = await fetch(apiUrl(`/api/chats/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ projectId }),

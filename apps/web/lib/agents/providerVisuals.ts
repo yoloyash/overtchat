@@ -1,14 +1,8 @@
-import type { StaticImageData } from "next/image";
-import codexIcon from "@/assets/agent-providers/codex.png";
-import claudeIcon from "@/assets/agent-providers/claude-code.png";
-import ompIcon from "@/assets/agent-providers/omp.svg";
-import openCodeIcon from "@/assets/agent-providers/opencode.svg";
-import piIcon from "@/assets/agent-providers/pi.svg";
-import hermesIcon from "@/assets/agent-providers/hermes.png";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 
 export type AgentProviderVisual = {
-  icon: StaticImageData;
+  /** Served from `public/agent-providers`. */
+  icon: string;
   darkSurface?: boolean;
 };
 
@@ -16,10 +10,10 @@ export const AGENT_PROVIDER_VISUALS: Record<
   AgentProviderId,
   AgentProviderVisual
 > = {
-  pi: { icon: piIcon },
-  omp: { icon: ompIcon, darkSurface: true },
-  codex: { icon: codexIcon, darkSurface: true },
-  opencode: { icon: openCodeIcon, darkSurface: true },
-  claude: { icon: claudeIcon },
-  hermes: { icon: hermesIcon },
+  pi: { icon: "/agent-providers/pi.svg" },
+  omp: { icon: "/agent-providers/omp.svg", darkSurface: true },
+  codex: { icon: "/agent-providers/codex.png", darkSurface: true },
+  opencode: { icon: "/agent-providers/opencode.svg", darkSurface: true },
+  claude: { icon: "/agent-providers/claude-code.png" },
+  hermes: { icon: "/agent-providers/hermes.png" },
 };

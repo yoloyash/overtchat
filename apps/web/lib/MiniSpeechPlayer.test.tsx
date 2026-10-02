@@ -1,4 +1,11 @@
+import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
 import { expect, it, vi } from "vitest";
 import type { useSpeech } from "@/lib/useSpeech";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
@@ -17,10 +24,21 @@ function idleSpeech(): ReturnType<typeof useSpeech> {
   };
 }
 
+const router = createRouter({
+  routeTree: createRootRoute(),
+  history: createMemoryHistory(),
+});
+
+function render(element: ReactElement): string {
+  return renderToStaticMarkup(
+    <RouterContextProvider router={router}>{element}</RouterContextProvider>,
+  );
+}
+
 it("keeps idle player markup independent of session hydration", () => {
   const speech = idleSpeech();
-  const anonymous = renderToStaticMarkup(<MiniSpeechPlayer speech={speech} />);
-  const admin = renderToStaticMarkup(<MiniSpeechPlayer speech={speech} isAdmin />);
+  const anonymous = render(<MiniSpeechPlayer speech={speech} />);
+  const admin = render(<MiniSpeechPlayer speech={speech} isAdmin />);
   expect(admin).toBe(anonymous);
   expect(admin).not.toContain('role="alert"');
   expect(admin).not.toContain("Speech settings");
@@ -30,7 +48,7 @@ it("keeps idle player markup independent of session hydration", () => {
 
 it("shows recovery and admin settings when playback actually fails", () => {
   const speech = { ...idleSpeech(), error: "Couldn't reach the speech playback service." };
-  const markup = renderToStaticMarkup(<MiniSpeechPlayer speech={speech} isAdmin />);
+  const markup = render(<MiniSpeechPlayer speech={speech} isAdmin />);
   expect(markup).toContain('role="alert"');
   expect(markup).toContain("Retry playback");
   expect(markup).toContain("Speech settings");

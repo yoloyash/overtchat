@@ -13,6 +13,7 @@ import type {
   CatalogModelPricing,
   ModelDiscoveryInput,
 } from "@/lib/model-config/schema";
+import { apiUrl } from "@/lib/api-url";
 
 export interface AvailableModel {
   id: string;
@@ -54,7 +55,7 @@ export function useSelectedModel(
 export async function fetchModelsForProvider(
   input: ModelDiscoveryInput,
 ): Promise<AvailableModel[]> {
-  const res = await fetch("/api/models", {
+  const res = await fetch(apiUrl("/api/models"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),

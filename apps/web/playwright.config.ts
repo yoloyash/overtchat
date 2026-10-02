@@ -36,6 +36,7 @@ export default defineConfig({
       MIGRATIONS_FOLDER: path.resolve(__dirname, "drizzle"),
       BETTER_AUTH_SECRET: "testsecret1234567890123456789012",
       BETTER_AUTH_URL: baseURL,
+      OVERTCHAT_E2E_DISABLE_AUTH_RATE_LIMIT: "1",
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

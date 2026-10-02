@@ -133,3 +133,8 @@ export const appUpdateKeys = {
   all: () => ["appUpdate"] as const,
   status: () => [...appUpdateKeys.all(), "status"] as const,
 };
+
+export const authKeys = {
+  all: () => ["auth"] as const,
+  session: () => [...authKeys.all(), "session"] as const,
+};

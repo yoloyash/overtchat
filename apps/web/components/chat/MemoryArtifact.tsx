@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import { Link } from "@tanstack/react-router";
 import {
   Check,
   ChevronDown,
@@ -66,7 +66,7 @@ export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
           />
         </button>
         <Button
-          render={<Link href="/settings/personalization" />}
+          render={<Link to="/settings/personalization" />}
           variant="ghost"
           size="xs"
           className="text-muted-foreground"

@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -40,7 +39,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const { closeMobile, closeSidebar, openPalette } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
 
   const { data: chats = [] } = useChats();
   const { data: activeChatIds = [] } = useActiveChatIds();
@@ -99,12 +98,13 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         <nav className="flex flex-col gap-0.5 py-1">
           <Link
-            href="/"
+            to="/"
             onClick={(e) => {
               closeMobile();
               if (pathname === "/") {
+                // Reloading `/` starts a new draft and keeps its project.
                 e.preventDefault();
-                router.refresh();
+                void router.invalidate();
               }
             }}
             className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
@@ -112,7 +112,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
             <Pencil className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">New chat</span>
             <Shortcut keys={["Ctrl", "Shift", "O"]} />
-            <LinkPendingIndicator />
+            <LinkPendingIndicator to="/" />
           </Link>
           <button
             type="button"
@@ -127,7 +127,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
             <Shortcut keys={["Ctrl", "K"]} />
           </button>
           <Link
-            href="/library"
+            to="/library"
             onClick={closeMobile}
             aria-current={pathname === "/library" ? "page" : undefined}
             className={cn(
@@ -137,10 +137,10 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           >
             <Library className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">Library</span>
-            <LinkPendingIndicator />
+            <LinkPendingIndicator to="/library" />
           </Link>
           <Link
-            href="/activity"
+            to="/activity"
             onClick={closeMobile}
             className={cn(
               "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
@@ -149,7 +149,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           >
             <Activity className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">Activity</span>
-            <LinkPendingIndicator />
+            <LinkPendingIndicator to="/activity" />
           </Link>
         </nav>
 
@@ -326,7 +326,8 @@ function AdminAgentWorkspaces() {
               </Menu.Portal>
             </Menu.Root>
             <Link
-              href="/settings/connections?add=1"
+              to="/settings/connections"
+              search={{ add: "1" }}
               onClick={closeMobile}
               aria-label="Add workspace"
               title="Add workspace"

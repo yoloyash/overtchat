@@ -8,6 +8,7 @@ import {
   type SpeechErrorCode,
 } from "@overtchat/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api-url";
 
 export type DictationStatus = "idle" | "recording" | "transcribing";
 
@@ -128,7 +129,7 @@ export function useDictation(onResult: (text: string) => void): Dictation {
             : "ogg";
         const fd = new FormData();
         fd.append("file", blob, `dictation.${ext}`);
-        const res = await fetch("/api/transcribe", {
+        const res = await fetch(apiUrl("/api/transcribe"), {
           method: "POST",
           body: fd,
         });

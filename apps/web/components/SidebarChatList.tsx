@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
@@ -28,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
 import { useReducedMotion } from "@/lib/useReducedMotion";
+import { apiUrl } from "@/lib/api-url";
 
 interface Chat {
   id: string;
@@ -100,8 +100,8 @@ export function SidebarItem({
   currentProjectId?: string | null;
   generating?: boolean;
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const active = pathname === `/chat/${chat.id}`;
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
   const { closeMobile, drawerRef } = useSidebar();
@@ -147,7 +147,7 @@ export function SidebarItem({
       await deleteMut.mutateAsync(chat.id);
       setDeleteOpen(false);
       toast.success("Chat deleted");
-      if (active) router.push("/");
+      if (active) void navigate({ to: "/" });
     } catch (err) {
       setDeleteError(getErrorMessage(err, "Failed to delete"));
     }
@@ -196,7 +196,8 @@ export function SidebarItem({
     <>
       <li className="group flex items-center">
         <Link
-          href={`/chat/${chat.id}`}
+          to="/chat/$id"
+          params={{ id: chat.id }}
           onClick={closeMobile}
           className={cn(
             "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
@@ -310,7 +311,7 @@ export function SidebarItem({
                   </Menu.Portal>
                 </Menu.SubmenuRoot>
                 <Menu.Item
-                  render={<a href={`/api/chat/${chat.id}/export`} download />}
+                  render={<a href={apiUrl(`/api/chat/${chat.id}/export`)} download />}
                   className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
                 >
                   <Download className="size-3.5 shrink-0 text-muted-foreground" />

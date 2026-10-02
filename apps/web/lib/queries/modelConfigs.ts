@@ -1,18 +1,24 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { modelConfigKeys } from "@/lib/queries/keys";
 import type {
   AdminModelConfig,
   ModelConfigInput,
   PublicModelConfig,
 } from "@/lib/model-config/schema";
+import { apiUrl } from "@/lib/api-url";
 
 export function useModelConfigs() {
   return useQuery({
     queryKey: modelConfigKeys.publicList(),
     queryFn: async (): Promise<PublicModelConfig[]> => {
-      const r = await fetch("/api/model-configs");
+      const r = await fetch(apiUrl("/api/model-configs"));
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const json = (await r.json()) as { modelConfigs: PublicModelConfig[] };
       return json.modelConfigs;
@@ -20,16 +26,18 @@ export function useModelConfigs() {
   });
 }
 
+export const adminModelConfigsQuery = queryOptions({
+  queryKey: modelConfigKeys.adminList(),
+  queryFn: async (): Promise<AdminModelConfig[]> => {
+    const r = await fetch(apiUrl("/api/model-configs?admin=1"));
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const json = (await r.json()) as { modelConfigs: AdminModelConfig[] };
+    return json.modelConfigs;
+  },
+});
+
 export function useAdminModelConfigs() {
-  return useQuery({
-    queryKey: modelConfigKeys.adminList(),
-    queryFn: async (): Promise<AdminModelConfig[]> => {
-      const r = await fetch("/api/model-configs?admin=1");
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const json = (await r.json()) as { modelConfigs: AdminModelConfig[] };
-      return json.modelConfigs;
-    },
-  });
+  return useQuery(adminModelConfigsQuery);
 }
 
 function invalidateAll(qc: ReturnType<typeof useQueryClient>) {
@@ -41,7 +49,7 @@ export function useCreateModelConfig() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: ModelConfigInput) => {
-      const r = await fetch("/api/model-configs", {
+      const r = await fetch(apiUrl("/api/model-configs"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -65,7 +73,7 @@ export function useUpdateModelConfig() {
       id: string;
       input: ModelConfigInput;
     }) => {
-      const r = await fetch(`/api/model-configs/${id}`, {
+      const r = await fetch(apiUrl(`/api/model-configs/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -83,7 +91,7 @@ export function useDeleteModelConfig() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const r = await fetch(`/api/model-configs/${id}`, { method: "DELETE" });
+      const r = await fetch(apiUrl(`/api/model-configs/${id}`), { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
     },
     onSuccess: () => invalidateAll(qc),
@@ -94,7 +102,7 @@ export function useReorderModels() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (modelIds: string[]) => {
-      const response = await fetch("/api/model-configs/order", {
+      const response = await fetch(apiUrl("/api/model-configs/order"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelIds }),
@@ -112,7 +120,7 @@ export function useSetTaskModel() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (modelConfigId: string | null) => {
-      const r = await fetch("/api/model-configs/task-model", {
+      const r = await fetch(apiUrl("/api/model-configs/task-model"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modelConfigId }),
@@ -148,7 +156,7 @@ export function useModelHealth(id: string) {
     gcTime: 10 * 60 * 1000,
     retry: false,
     queryFn: async (): Promise<ModelHealth> => {
-      const r = await fetch(`/api/model-configs/${id}/health`, {
+      const r = await fetch(apiUrl(`/api/model-configs/${id}/health`), {
         method: "POST",
       });
       if (!r.ok) {

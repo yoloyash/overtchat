@@ -30,6 +30,7 @@ import {
   agentConnectionKeys,
   agentSessionKeys,
 } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 class AgentSessionHttpError extends ApiError {
   constructor(
@@ -64,7 +65,7 @@ export async function sendAgentSessionCommand(
   id: string,
   command: AgentSessionCommand,
 ): Promise<AgentSessionCommandResult> {
-  const response = await fetch(`/api/agent-sessions/${id}`, {
+  const response = await fetch(apiUrl(`/api/agent-sessions/${id}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(command),
@@ -94,7 +95,7 @@ async function fetchAgentSession(
   const after = current?.cursor
     ? `?after=${encodeURIComponent(formatAgentRuntimeCursor(current.cursor))}`
     : "";
-  const response = await fetch(`/api/agent-sessions/${id}${after}`, {
+  const response = await fetch(apiUrl(`/api/agent-sessions/${id}${after}`), {
     cache: "no-store",
   });
   if (!response.ok) throw await responseError(response);
@@ -245,7 +246,7 @@ export function useAgentSession(id: string) {
         params.set("after", formatAgentRuntimeCursor(cursor));
       }
       const source = new EventSource(
-        `/api/agent-sessions/${id}/events?${params.toString()}`,
+        apiUrl(`/api/agent-sessions/${id}/events?${params.toString()}`),
       );
       events = source;
       source.onopen = () => {
@@ -456,7 +457,7 @@ export function useAgentSessionCommand(id: string) {
 export function useAgentSessionUsage(id: string) {
   return useMutation({
     mutationFn: async (): Promise<AgentUsageSnapshot> => {
-      const response = await fetch(`/api/agent-sessions/${id}`, {
+      const response = await fetch(apiUrl(`/api/agent-sessions/${id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "show_usage" }),

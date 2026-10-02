@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { ChevronRight, Plus } from "lucide-react";
@@ -61,7 +60,7 @@ function ProjectNode({
   projectOptions: ProjectOption[];
   activeChatIds: ReadonlySet<string>;
 }) {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const active = pathname === `/projects/${project.id}`;
   const hasActiveChat = project.chats.some(
@@ -86,7 +85,8 @@ function ProjectNode({
           />
         </button>
         <Link
-          href={`/projects/${project.id}`}
+          to="/projects/$id"
+          params={{ id: project.id }}
           onClick={closeMobile}
           className={cn(
             "flex-1 truncate rounded-md px-1 py-1 text-sm motion-colors hover:bg-sidebar-accent",
@@ -96,7 +96,8 @@ function ProjectNode({
           {project.name}
         </Link>
         <Link
-          href={`/?projectId=${project.id}`}
+          to="/"
+          search={{ projectId: project.id }}
           onClick={closeMobile}
           aria-label={`New chat in ${project.name}`}
           className={cn(
@@ -137,7 +138,7 @@ export function CreateProjectDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const createMut = useCreateProject();
   const [name, setName] = useState("");
   const [error, setError] = useState("");
@@ -164,7 +165,7 @@ export function CreateProjectDialog({
             title: "Project created",
             description: trimmed,
           });
-          router.push(`/projects/${id}`);
+          void navigate({ to: "/projects/$id", params: { id } });
         },
         onError: (err) => {
           setError(getErrorMessage(err, "Failed to create project."));

@@ -624,10 +624,13 @@ test("switches OpenAI to Gemini in Models, edits images, and removes tools when 
   await page
     .getByRole("button", { name: "Add to message", exact: true })
     .click();
+  // Wait for the menu so the absence check below inspects its items.
+  await expect(page.getByRole("menu")).toBeVisible();
   await expect(
     page.getByRole("menuitem", { name: /Create image/ }),
   ).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
   const requestCount = chatRequests.length;
   await page.locator("textarea").fill("Hello again");
   await page.getByRole("button", { name: "Send message", exact: true }).click();

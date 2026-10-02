@@ -1,8 +1,6 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
   ChevronDown,
@@ -36,7 +34,6 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 import { motionClasses } from "@/lib/motion";
 import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
-import { newAgentSessionHref } from "@/lib/agents/sessionDraft";
 import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
@@ -71,8 +68,8 @@ function WorkspaceNode({
   group: AgentWorkspaceGroup;
   providerFilter: AgentProviderId | null;
 }) {
-  const pathname = usePathname();
-  const router = useRouter();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const navigate = useNavigate();
   const { closeMobile } = useSidebar();
   const [createOpen, setCreateOpen] = useState(false);
   const hasActiveSession = group.sessions.some(
@@ -129,7 +126,10 @@ function WorkspaceNode({
     }
     setOpen(true);
     closeMobile();
-    router.push(newAgentSessionHref(target.workspace.id, target.provider));
+    void navigate({
+      to: "/agents/new",
+      search: { workspaceId: target.workspace.id, provider: target.provider },
+    });
   }
 
   return (
@@ -284,14 +284,15 @@ function WorkspaceGitMeta({
 }
 
 function SessionLink({ item }: { item: AgentWorkspaceSession }) {
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const { session, provider } = item;
   const title = agentSessionDisplayTitle(session) || "New session";
   return (
     <li>
       <Link
-        href={`/agents/${session.id}`}
+        to="/agents/$id"
+        params={{ id: session.id }}
         onClick={closeMobile}
         title={`${title} · ${agentProviderMetadata(provider).label}`}
         className={cn(
@@ -321,7 +322,8 @@ function ProviderLogo({ provider }: { provider: AgentProviderId }) {
       )}
       aria-hidden="true"
     >
-      <Image src={icon.icon} alt="" className="size-2.5 object-contain" />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={icon.icon} alt="" className="size-2.5 object-contain" />
     </span>
   );
 }

@@ -2,6 +2,7 @@
 
 import { ApiError, apiError, getErrorMessage } from "@overtchat/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api-url";
 
 export type SpeechStatus = "idle" | "loading" | "playing" | "paused";
 
@@ -191,7 +192,7 @@ async function streamIntoMediaSource(
     });
     if (ac.signal.aborted) return;
 
-    const res = await fetch("/api/tts", {
+    const res = await fetch(apiUrl("/api/tts"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
@@ -273,7 +274,7 @@ async function playBlobFallback(
   },
 ): Promise<void> {
   try {
-    const res = await fetch("/api/tts", {
+    const res = await fetch(apiUrl("/api/tts"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),

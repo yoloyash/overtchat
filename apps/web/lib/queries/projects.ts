@@ -1,11 +1,13 @@
 "use client";
 
 import {
+  queryOptions,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { chatKeys, projectKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 
 export type ProjectListItem = {
@@ -16,31 +18,43 @@ export type ProjectListItem = {
 };
 
 async function fetchProjects(): Promise<ProjectListItem[]> {
-  const r = await fetch("/api/projects");
+  const r = await fetch(apiUrl("/api/projects"));
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = (await r.json()) as { projects: ProjectListItem[] };
   return json.projects;
 }
 
-async function fetchProject(id: string): Promise<ProjectListItem> {
-  const r = await fetch(`/api/projects/${id}`);
+/** Null when the project does not exist. */
+export async function fetchProject(id: string): Promise<ProjectListItem | null> {
+  const r = await fetch(apiUrl(`/api/projects/${id}`));
+  if (r.status === 404) return null;
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const json = (await r.json()) as { project: ProjectListItem };
   return json.project;
 }
 
-export function useProjects() {
-  return useQuery({
-    queryKey: projectKeys.list(),
-    queryFn: fetchProjects,
+export const projectListQuery = queryOptions({
+  queryKey: projectKeys.list(),
+  queryFn: fetchProjects,
+});
+
+export function projectQuery(id: string) {
+  return queryOptions({
+    queryKey: projectKeys.detail(id),
+    queryFn: async () => {
+      const project = await fetchProject(id);
+      if (!project) throw new Error("HTTP 404");
+      return project;
+    },
   });
 }
 
+export function useProjects() {
+  return useQuery(projectListQuery);
+}
+
 export function useProject(id: string) {
-  return useQuery({
-    queryKey: projectKeys.detail(id),
-    queryFn: () => fetchProject(id),
-  });
+  return useQuery(projectQuery(id));
 }
 
 export function useCreateProject() {
@@ -50,7 +64,7 @@ export function useCreateProject() {
       name: string;
       instructions?: string | null;
     }): Promise<ProjectListItem> => {
-      const r = await fetch("/api/projects", {
+      const r = await fetch(apiUrl("/api/projects"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
@@ -73,7 +87,7 @@ export function useUpdateProject(id: string) {
       name?: string;
       instructions?: string | null;
     }) => {
-      const r = await fetch(`/api/projects/${id}`, {
+      const r = await fetch(apiUrl(`/api/projects/${id}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(patch),
@@ -91,7 +105,7 @@ export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const r = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+      const r = await fetch(apiUrl(`/api/projects/${id}`), { method: "DELETE" });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
     },
     onSuccess: () => {

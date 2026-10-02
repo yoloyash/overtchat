@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Pencil, Search, X } from "lucide-react";
@@ -41,7 +41,7 @@ export function SearchChatsPalette({
   open: boolean;
   onOpenChange: (v: boolean) => void;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const { data: allChats = [] } = useChats();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -114,14 +114,17 @@ export function SearchChatsPalette({
   function activate(row: Row) {
     if (row.kind === "new") {
       handleOpenChange(false);
-      router.push("/");
+      void navigate({ to: "/" });
     } else if (row.kind === "chat") {
       handleOpenChange(false);
-      router.push(`/chat/${row.chat.id}`);
+      void navigate({ to: "/chat/$id", params: { id: row.chat.id } });
     } else if (row.kind === "hit") {
       handleOpenChange(false);
-      const suffix = row.hit.messageId ? `#m-${row.hit.messageId}` : "";
-      router.push(`/chat/${row.hit.chatId}${suffix}`);
+      void navigate({
+        to: "/chat/$id",
+        params: { id: row.hit.chatId },
+        hash: row.hit.messageId ? `m-${row.hit.messageId}` : undefined,
+      });
     }
   }
 

@@ -10,8 +10,6 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
-import { QueryProvider } from "@/components/QueryProvider";
-import { ToastProvider } from "@/components/ui/toast";
 import { FONT_STORAGE_KEY, fontCssValueById } from "@/lib/fonts";
 import {
   SIDEBAR_COLLAPSED_ATTRIBUTE,
@@ -103,11 +101,8 @@ export default function RootLayout({
     >
       <body className="h-full">
         <script dangerouslySetInnerHTML={{ __html: fontScript + sidebarScript }} />
-        <QueryProvider>
-          <ThemeProvider>
-            <ToastProvider>{children}</ToastProvider>
-          </ThemeProvider>
-        </QueryProvider>
+        {/* Server-rendered so the theme is applied before the UI bundle loads. */}
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );

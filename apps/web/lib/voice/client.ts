@@ -16,6 +16,7 @@ import {
   type WebSearchResult,
 } from "@overtchat/shared";
 import { completedVoiceHistory } from "@/lib/voice/history";
+import { apiUrl } from "@/lib/api-url";
 
 export type VoiceClientStatus =
   | "connecting"
@@ -54,7 +55,7 @@ const AUDIO_SAMPLE_RATE = 24_000;
 const MIC_CHUNK_MS = 40;
 
 function websocketUrl(path: string): string {
-  const url = new URL(path, window.location.href);
+  const url = new URL(apiUrl(path), window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
 }
@@ -89,7 +90,7 @@ async function executeVoiceTool(
   input: unknown,
 ): Promise<VoiceToolResult> {
   try {
-    const response = await fetch("/api/voice/tools", {
+    const response = await fetch(apiUrl("/api/voice/tools"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name, input }),

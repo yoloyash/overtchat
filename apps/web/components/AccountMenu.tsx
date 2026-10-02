@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Menu } from "@base-ui/react/menu";
@@ -25,6 +24,7 @@ import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { MobileAppDialog } from "@/components/MobileAppDialog";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { useResetAuthState } from "@/lib/queries/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -36,7 +36,8 @@ import { clearComposerDraftsForUser } from "@/lib/chat/composer-drafts";
 const UPDATE_COMMAND = "overtchat update";
 
 export function AccountMenu() {
-  const router = useRouter();
+  const navigate = useNavigate();
+  const resetAuthState = useResetAuthState();
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const [mobileAppOrigin, setMobileAppOrigin] = useState<string | null>(null);
   const { data: session, isPending } = authClient.useSession();
@@ -67,8 +68,8 @@ export function AccountMenu() {
         return;
       }
       if (session?.user.id) clearComposerDraftsForUser(session.user.id);
-      router.replace("/login");
-      router.refresh();
+      resetAuthState();
+      await navigate({ to: "/login", replace: true });
     } catch (err) {
       toast.error({
         title: "Failed to log out",
@@ -159,7 +160,7 @@ export function AccountMenu() {
             <Menu.Separator className="mx-1 my-1 h-px bg-border" />
             <Menu.Item
               render={
-                <Link href="/settings/profile" onClick={closeMobile} />
+                <Link to="/settings/profile" onClick={closeMobile} />
               }
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
@@ -168,7 +169,7 @@ export function AccountMenu() {
             </Menu.Item>
             <Menu.Item
               render={
-                <Link href="/settings/general" onClick={closeMobile} />
+                <Link to="/settings/general" onClick={closeMobile} />
               }
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
@@ -185,7 +186,7 @@ export function AccountMenu() {
             {isAdmin && (
               <Menu.Item
                 render={
-                  <Link href="/settings/models" onClick={closeMobile} />
+                  <Link to="/settings/models" onClick={closeMobile} />
                 }
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
               >

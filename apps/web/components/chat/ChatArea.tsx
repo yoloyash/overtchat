@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DefaultChatTransport, generateId, type FileUIPart, type UIMessage } from "ai";
@@ -89,6 +89,7 @@ import {
   type RealtimeVoiceSessionHandle,
 } from "./RealtimeVoiceSession";
 import type { VoiceTranscriptUpdate } from "@/lib/voice/client";
+import { apiUrl } from "@/lib/api-url";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
 const REASONING_LEVELS_STORAGE_KEY = "overtchat_reasoning_levels";
@@ -106,6 +107,8 @@ interface Props {
   isNew?: boolean;
   projectId?: string | null;
   initialQuery?: string;
+  /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
+  onPersisted?: () => void;
 }
 
 export function ChatArea({
@@ -117,9 +120,10 @@ export function ChatArea({
   isNew,
   projectId,
   initialQuery,
+  onPersisted,
 }: Props) {
   const qc = useQueryClient();
-  const router = useRouter();
+  const navigate = useNavigate();
   const { openPalette } = useSidebar();
   const { data: chats } = useChats();
 
@@ -230,7 +234,7 @@ export function ChatArea({
   const [transport] = useState(
     () =>
       new DefaultChatTransport<UIMessage>({
-        api: "/api/chat",
+        api: apiUrl("/api/chat"),
         prepareSendMessagesRequest: ({
           messages,
           body,
@@ -455,7 +459,7 @@ export function ChatArea({
     setContextStatus(null);
     stop();
     if (!temporary) {
-      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
+      void fetch(apiUrl(`/api/chat/${chatId}/stream/cancel`), { method: "POST" }).catch(
         () => undefined,
       );
     }
@@ -466,9 +470,9 @@ export function ChatArea({
     isNewRef.current = false;
     setChatPersisted(true);
     setComposerDraftScope(chatComposerDraftScope(chatId));
-    window.history.replaceState(null, "", `/chat/${chatId}`);
+    onPersisted?.();
     return true;
-  }, [chatId]);
+  }, [chatId, onPersisted]);
 
   const markGenerationStarted = useCallback(() => {
     if (!temporaryRef.current) {
@@ -732,9 +736,9 @@ export function ChatArea({
         temporary: canToggleTemporary
           ? { active: temporary, onToggle: () => setTemporary((t) => !t) }
           : undefined,
-        onNewChat: () => router.push("/"),
+        onNewChat: () => void navigate({ to: "/" }),
         onSearchChats: openPalette,
-        onOpenSettings: () => router.push("/settings"),
+        onOpenSettings: () => void navigate({ to: "/settings" }),
         onSelectModel: handleSelectModel,
       }}
       onSelectReasoningLevel={(level) =>

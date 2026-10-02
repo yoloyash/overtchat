@@ -1,14 +1,21 @@
 # Web app guidance
 
-This workspace is the self-hosted OvertChat product: a Next.js App Router
-server, browser client, mobile API, and SQLite persistence layer. SQLite is the
+This workspace is the self-hosted OvertChat product: a Next.js server, the
+browser client, the mobile API, and the SQLite persistence layer. SQLite is the
 application source of truth. Redis is optional infrastructure for reconnectable
 chat delivery.
 
 ## Architecture
 
-- `app/(app)` contains authenticated product routes, `app/(auth)` contains
-  login and bootstrap signup, and `app/api` serves browser and mobile clients.
+- `app/api` serves browser, desktop, and mobile clients. Every other path is
+  served by `app/[[...slug]]`, which renders the client-only UI in `spa/`.
+- `spa/` is the browser application: TanStack Router routes, loaders, and the
+  `App` entry. The desktop app bundles the same `App`. UI code reaches the
+  server only through `/api`, resolved with `apiUrl()`. It must not import
+  server modules or `next/*` routing, image, or header APIs.
+- Route loaders and `beforeLoad` guards read data through the `queryOptions`
+  in `lib/queries`, so the hooks start with that data already cached. A missing
+  resource redirects, and any other failure surfaces as an error.
 - `components/AppShell.tsx`, `components/Sidebar.tsx`, and
   `components/chat/ChatArea.tsx` form the main browser application.
 - `lib/db` owns schema, queries, transactions, migrations, and search indexing.
