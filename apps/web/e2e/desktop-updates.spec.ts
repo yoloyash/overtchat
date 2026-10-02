@@ -109,7 +109,10 @@ test("members can retry their desktop without server controls", async ({ page })
   await expect(page.getByRole("button", { name: "Server update available", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: /Desktop Tester/ }).click();
   await expect(page.getByRole("menuitem", { name: "Administration" })).toHaveCount(0);
+  await page.mouse.move(400, 400);
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.keyboard.press("Escape");
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await setUpdateState(page, { ...available, status: "error", message: "Download interrupted" });
   const retry = page.getByRole("button", { name: "Retry desktop update", exact: true });
   await retry.hover();
