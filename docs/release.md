@@ -138,7 +138,9 @@ The app is stapled before creating the ZIP and DMG; the DMG is also submitted
 and stapled separately. Verification checks the app recovered from both
 downloads, bundle/version/architecture, Developer ID team, secure timestamp,
 runtime entitlements, packaged files, Electron fuses, staple, and Gatekeeper.
-This pipeline provides downloadable releases; it does not add an in-app updater.
+The packaging scripts also generate updater metadata from the final downloadable
+bytes, after notarization. Publishing the qualified draft triggers the
+[desktop update feed](#desktop-update-feed) workflow.
 
 ### Apple credentials
 
@@ -181,7 +183,8 @@ For a release, merge the versioned commit into `main`, then create the matching
 `desktop-vX.Y.Z` tag. The draft contains
 `overtchat-X.Y.Z-mac-arm64.{dmg,zip}` and
 `overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, and
-checksums for each platform/architecture.
+checksums for each platform/architecture, plus `stable-arm64-mac.yml`,
+`stable-x64-mac.yml`, and `stable-linux.yml`.
 Never move a tag or replace assets after publication. A failed build can resume
 its still-unpublished draft; manual builds only upload workflow artifacts.
 
@@ -220,14 +223,14 @@ The desktop workflow builds Linux **x64** downloads using electron-builder's
 standard `AppImage`, `deb`, `rpm`, and `tar.gz` targets. It uses the same bundled
 UI, desktop version, and `desktop-vX.Y.Z` tag as macOS. Windows and Linux ARM64
 are not part of this release. No paid signing account is required for these
-direct GitHub downloads; this workflow does not provision an APT/YUM repository
-or an in-app updater.
+direct GitHub downloads; this workflow does not provision an APT/YUM repository.
+In-app updates use the [desktop update feed](#desktop-update-feed).
 
 The Linux job builds and verifies all four formats on PRs, manual dispatches,
 and release tags, without Apple credentials. PR and manual builds retain
 downloads as workflow artifacts. Tags add these assets to the verified draft:
 
-- `overtchat-X.Y.Z-linux-x64.AppImage`
+- `overtchat-linux-x64.AppImage` (stable filename preserves shortcuts on update)
 - `overtchat-X.Y.Z-linux-x64.deb`
 - `overtchat-X.Y.Z-linux-x64.rpm`
 - `overtchat-X.Y.Z-linux-x64.tar.gz`
@@ -249,6 +252,10 @@ do not conflict with the management CLI's `overtchat` command. These packages in
 helper with mode `4755`. On compatible AppArmor systems, they install a profile
 allowing user namespaces for `/opt/overtchat/overtchat-desktop`; uninstall removes and
 unloads the profile. Installation never disables system-wide restrictions.
+The Debian dependencies include Chromium's audio library under either Ubuntu
+package name. The RPM's post-transaction hook preserves the executable link
+and AppArmor profile after an upgrade, including replacement of older packages
+whose removal hook cleans up that integration during the transaction.
 
 AppImage and tarball builds are portable and do not perform a privileged
 installation. They require working unprivileged user/network namespaces; test
@@ -298,6 +305,103 @@ desktop environment, package format, and app version. Before publishing:
 Publish the existing desktop draft only after its macOS and Linux gates pass,
 using the publication command in the macOS section. Never replace public assets
 or move a published tag.
+
+## Desktop update feed
+
+`.github/workflows/desktop-update-feed.yml` runs when a stable `desktop-vX.Y.Z`
+release is published. Drafts and prereleases do not change the public feed.
+It downloads the immutable GitHub assets, verifies checksums and metadata,
+and publishes the three channel YAML files under `desktop/` in Cloudflare R2
+bucket `overtchat-updates`, served at `https://updates.overtchat.com`.
+Installer URLs remain version-pinned GitHub release URLs; desktop publication
+does not depend on server/CLI/mobile promotion or the marketing site's build.
+
+Configure repository secrets `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, and
+`CLOUDFLARE_R2_PUBLIC_URL` (`https://updates.overtchat.com`). The R2 key needs
+Object Read & Write for this bucket. The workflow also accepts the existing
+`CLOUDFLARE_ACCOUNT_ID` repository variable. Keep the public custom domain
+accessible without authentication and caching disabled for channel YAML files.
+Credentials are used only by CI, never embedded in the desktop app.
+
+Rerun failed publication with:
+
+```sh
+gh workflow run desktop-update-feed.yml --ref main -f tag=desktop-vX.Y.Z
+```
+
+Publication is serialized and conditional on the previous object ETag. Older
+releases cannot overwrite newer feeds; rerunning the same version is idempotent
+only if its metadata is unchanged. Fix a bad public release with a higher
+desktop patch version, never by replacing its assets or repointing an older feed.
+Publishing releases from another GitHub Actions workflow with its default
+`GITHUB_TOKEN` does not trigger a second workflow; if replacing the human
+publication step, explicitly dispatch this feed workflow too.
+
+The updater uses `electron-updater`'s generic provider. Mac channels separate
+arm64/x64; Linux's channel contains AppImage, `.deb`, and `.rpm`, selected by
+the installed format. Tar installs remain manual. Channel metadata includes
+`clientApiLevel`: main checks an exact match with the selected server before
+downloading and again before installation. Offline checks accept only the
+installed client's API level. A single stable feed does not retain an older
+API-compatible release once a newer release has replaced it.
+
+Before publishing, qualify an actual higher-version update on both signed Mac
+architectures and Linux formats: discovery without downloading, clicking to
+download, progress, retry after a network interruption, postponing restart,
+explicit restart, saved login, and normal quit
+without installation. Check both newer/older server API mismatches, switching
+servers after download, and updates before sign-in. Native Linux package
+updates require working privilege authentication; AppImage updates need a
+writable file. The first updater release needs a manual install and two
+candidate builds to qualify the restart path. Verify the public channel URLs
+after publication before announcing the release.
+
+### Qualifying the first in-app update
+
+Use a private, lower-version build of the updater-capable code as the baseline;
+the public desktop 0.1.0 predates the updater. On a temporary reviewed branch,
+change only Builder's `publish.url` to `http://127.0.0.1:4931/`, then manually
+dispatch `desktop-release.yml` on that branch. These workflow artifacts are
+test builds; never replace the public 0.1.0 tag or assets.
+
+Build the final higher-version candidate with the production configuration.
+Download and merge its Mac and Linux workflow artifacts into a private local
+directory and verify all three checksum files. Serve that directory with:
+
+```sh
+node .github/scripts/serve-desktop-update-test.mjs <candidate-directory>
+```
+
+The helper validates installer hashes and sizes, changes only the in-memory
+test metadata URLs, and serves on loopback. The candidate installers retain
+their exact signed release bytes and production update configuration. Run the
+baseline, download and postpone the candidate, quit normally, relaunch the
+baseline, then explicitly update and verify the installed version and saved
+login. Add `4931 --interrupt-once` to test a failed download. Restore the fixture
+with `curl -X POST http://127.0.0.1:4931/__resume`, then retry from the app.
+The automated native Mac qualification uses the exact workflow artifact pair,
+without rebuilding or publishing them:
+
+```sh
+gh workflow run desktop-release.yml --ref <reviewed-ref> \
+  -f qualification_baseline_run=<baseline-run-id> \
+  -f qualification_candidate_run=<candidate-run-id>
+```
+
+It checks discovery without download, both server API mismatches, interrupted
+download/retry, a server becoming incompatible after download, normal quit
+without installation, a real Squirrel install/relaunch, and encrypted login
+retention on native arm64 and x64 runners. These jobs need read-only repository
+and artifact access; they receive no signing or Cloudflare secrets. They use
+an isolated, unlocked test Keychain containing only a generated encryption key
+for the test app, then restore the runner's original Keychain configuration.
+Use a writable test app location. Close an existing Mac instance and back up
+its profile before testing; restore it afterward. Linux tests can isolate the
+profile with `XDG_CONFIG_HOME`; use a dedicated test user with no existing
+desktop instance. Verify AppImage replacement and native package
+authentication separately. After qualification, publish the exact reviewed
+candidate and verify the public R2 feed workflow.
 
 ## Mobile release
 

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, screen, shell, type WebContents } from "electron";
+import { app, autoUpdater, BrowserWindow, nativeTheme, screen, shell, type WebContents } from "electron";
 import path from "node:path";
 import type { DesktopCommand } from "@overtchat/shared/desktop";
 import { IPC } from "../shared/ipc";
@@ -28,6 +28,11 @@ let mainWindow: BrowserWindow | null = null;
 let quitting = false;
 
 app.on("before-quit", () => {
+  quitting = true;
+});
+// Squirrel closes windows before app's before-quit event. Allow those closes
+// instead of applying macOS's normal hide-on-close behavior during an update.
+autoUpdater.on("before-quit-for-update", () => {
   quitting = true;
 });
 

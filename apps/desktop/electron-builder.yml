@@ -10,6 +10,9 @@ files:
 asar: true
 # Main and preload bundle their dependencies; there are no native app modules.
 npmRebuild: false
+publish:
+  provider: generic
+  url: https://updates.overtchat.com/desktop/
 electronFuses:
   runAsNode: false
   enableNodeOptionsEnvironmentVariable: false

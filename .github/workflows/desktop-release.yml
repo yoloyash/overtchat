@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - ".github/workflows/desktop-release.yml"
+      - ".github/workflows/desktop-update-feed.yml"
       - ".github/scripts/*desktop-mac*"
       - ".github/scripts/*desktop-linux*"
+      - ".github/scripts/*desktop-update*"
       - "apps/desktop/**"
       - "apps/web/**"
       - "packages/shared/**"
@@ -14,6 +16,15 @@ on:
   push:
     tags: ["desktop-v*"]
   workflow_dispatch:
+    inputs:
+      qualification_baseline_run:
+        description: Private loopback baseline build run ID (qualification only)
+        required: false
+        type: string
+      qualification_candidate_run:
+        description: Exact candidate build run ID (skips rebuilding; requires baseline)
+        required: false
+        type: string
 
 permissions: {}
 
@@ -23,6 +34,7 @@ concurrency:
 
 jobs:
   build:
+    if: '!inputs.qualification_candidate_run'
     permissions:
       contents: read
     strategy:
@@ -59,6 +71,8 @@ jobs:
           if (process.env.RELEASE_TAG) assert.equal(process.env.RELEASE_TAG, `desktop-v${version}`);
           JS
       - run: npm run typecheck -w apps/desktop --
+      - run: npm run test -w apps/desktop --
+      - run: node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
       - name: Package without release credentials for PR validation
         if: github.event_name == 'pull_request'
         env:
@@ -92,10 +106,12 @@ jobs:
             apps/desktop/release/overtchat-*-mac-${{ matrix.arch }}.dmg
             apps/desktop/release/overtchat-*-mac-${{ matrix.arch }}.zip
             apps/desktop/release/desktop-checksums-${{ matrix.arch }}.txt
+            apps/desktop/release/stable-${{ matrix.arch }}-mac.yml
           if-no-files-found: error
           retention-days: 7
 
   build-linux:
+    if: '!inputs.qualification_candidate_run'
     permissions:
       contents: read
     runs-on: ubuntu-22.04
@@ -115,6 +131,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y binutils rpm cpio desktop-file-utils xvfb xauth dbus-x11 gnome-keyring libsecret-tools libgtk-3-0 libnss3 libasound2 libgbm1
       - run: npm run typecheck -w apps/desktop --
+      - run: npm run test -w apps/desktop --
       - name: Package and verify every Linux download
         run: bash .github/scripts/package-desktop-linux.sh
       - name: Install and smoke test the Debian package
@@ -156,7 +173,7 @@ jobs:
           unshare --user --map-root-user --net true
           portable=$(mktemp -d)
           trap 'rm -rf "$portable"' EXIT
-          appimages=("$GITHUB_WORKSPACE"/apps/desktop/release/overtchat-*-linux-x64.AppImage)
+          appimages=("$GITHUB_WORKSPACE"/apps/desktop/release/overtchat-linux-x64.AppImage)
           test "${#appimages[@]}" = 1
           (cd "$portable" && "${appimages[0]}" --appimage-extract >/dev/null)
           DESKTOP_SMOKE_ARTIFACT_DIR="$DESKTOP_SMOKE_ARTIFACT_DIR/appimage" xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs "$portable/squashfs-root/AppRun" session
@@ -177,11 +194,12 @@ jobs:
         with:
           name: desktop-linux-x64
           path: |
-            apps/desktop/release/overtchat-*-linux-x64.AppImage
+            apps/desktop/release/overtchat-linux-x64.AppImage
             apps/desktop/release/overtchat-*-linux-x64.deb
             apps/desktop/release/overtchat-*-linux-x64.rpm
             apps/desktop/release/overtchat-*-linux-x64.tar.gz
             apps/desktop/release/desktop-checksums-linux-x64.txt
+            apps/desktop/release/stable-linux.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -229,6 +247,75 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  qualify-mac:
+    if: github.event_name == 'workflow_dispatch' && inputs.qualification_candidate_run
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+      - run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Download exact signed baseline and candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BASELINE_RUN: ${{ inputs.qualification_baseline_run }}
+          CANDIDATE_RUN: ${{ inputs.qualification_candidate_run }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          [[ "$BASELINE_RUN" =~ ^[0-9]+$ && "$CANDIDATE_RUN" =~ ^[0-9]+$ ]]
+          gh run download "$BASELINE_RUN" --name "desktop-mac-$ARCH" --dir baseline
+          gh run download "$CANDIDATE_RUN" --name "desktop-mac-$ARCH" --dir candidate
+          (cd baseline && shasum -a 256 --check "desktop-checksums-$ARCH.txt")
+          (cd candidate && shasum -a 256 --check "desktop-checksums-$ARCH.txt")
+          ditto -x -k baseline/overtchat-*-mac-"$ARCH".zip baseline/app
+          node .github/scripts/verify-desktop-mac.mjs baseline/app/overtchat.app "$ARCH" notarized 0.1.0
+      - name: Qualify real update and saved login
+        shell: bash
+        run: |
+          keychain="$RUNNER_TEMP/overtchat-upgrade.keychain-db"
+          password="$(openssl rand -base64 32)"
+          original_default="$(security default-keychain -d user | sed -E 's/^ *"//; s/"$//')"
+          original_list=()
+          while IFS= read -r item; do original_list+=("$item"); done < <(security list-keychains -d user | sed -E 's/^ *"//; s/"$//')
+          cleanup() {
+            security default-keychain -d user -s "$original_default"
+            security list-keychains -d user -s "${original_list[@]}"
+            security delete-keychain "$keychain"
+          }
+          trap cleanup EXIT
+          security create-keychain -p "$password" "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 1200 "$keychain"
+          security default-keychain -d user -s "$keychain"
+          security list-keychains -d user -s "$keychain"
+          security add-generic-password -a overtchat -s "overtchat Safe Storage" -w "$(openssl rand -base64 32)" -T "$GITHUB_WORKSPACE/baseline/app/overtchat.app/Contents/MacOS/overtchat" "$keychain"
+          node .github/scripts/qualify-desktop-update.mjs baseline/app/overtchat.app/Contents/MacOS/overtchat candidate "$(node -p 'require("./apps/desktop/package.json").version')"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: desktop-update-qualification-${{ matrix.arch }}
+          path: ${{ runner.temp }}/overtchat-update-qualification-*/qualification.log
+          if-no-files-found: ignore
+          retention-days: 7
+
   draft-release:
     if: github.event_name == 'push'
     needs: [build, build-linux, smoke-linux-ubuntu24]
@@ -254,9 +341,10 @@ jobs:
           version="${TAG#desktop-v}"
           expected=$(printf '%s\n' \
             desktop-checksums-arm64.txt desktop-checksums-x64.txt desktop-checksums-linux-x64.txt \
+            stable-arm64-mac.yml stable-x64-mac.yml stable-linux.yml \
             "overtchat-$version-mac-arm64.dmg" "overtchat-$version-mac-arm64.zip" \
             "overtchat-$version-mac-x64.dmg" "overtchat-$version-mac-x64.zip" \
-            "overtchat-$version-linux-x64.AppImage" "overtchat-$version-linux-x64.deb" \
+            overtchat-linux-x64.AppImage "overtchat-$version-linux-x64.deb" \
             "overtchat-$version-linux-x64.rpm" "overtchat-$version-linux-x64.tar.gz" | LC_ALL=C sort)
           actual=$(find release -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           test "$actual" = "$expected"

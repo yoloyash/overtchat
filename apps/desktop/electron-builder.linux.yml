@@ -22,12 +22,30 @@ linux:
     entry:
       Keywords: chat;AI;
 appImage:
+  # Preserve the executable path across updates, including user-created shortcuts.
+  artifactName: overtchat-linux-x64.AppImage
   # Do not disable the sandbox in the desktop entry. Main also refuses the
   # runtime launcher's --no-sandbox fallback before any renderer is created.
   executableArgs: []
 deb:
   packageName: overtchat-desktop
+  # Builder's defaults omit Chromium's audio library on minimal installations.
+  # The alternative covers Ubuntu before and after the time64 transition.
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libuuid1
+    - libsecret-1-0
+    - libasound2 | libasound2t64
   afterInstall: build/linux/after-install.tpl
 rpm:
   packageName: overtchat-desktop
   afterInstall: build/linux/after-install.tpl
+  fpm:
+    - --rpm-posttrans
+    - build/linux/after-transaction.sh

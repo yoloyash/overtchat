@@ -5,7 +5,7 @@ import type { ServerProblem } from "../shared/ipc";
 const PING_TIMEOUT_MS = 8_000;
 
 export type PingResult =
-  | { ok: true; version: string | null; problem: ServerProblem | null }
+  | { ok: true; version: string | null; apiLevel: number; problem: ServerProblem | null }
   | { ok: false; message: string };
 
 /**
@@ -69,6 +69,7 @@ export async function pingServer(origin: string): Promise<PingResult> {
   return {
     ok: true,
     version: typeof body.version === "string" ? body.version : null,
+    apiLevel: Number.isSafeInteger(body.apiLevel) && body.apiLevel! > 0 ? body.apiLevel! : 0,
     problem: compatibility(body),
   };
 }

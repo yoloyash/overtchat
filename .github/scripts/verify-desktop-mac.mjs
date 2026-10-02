@@ -9,10 +9,11 @@ import { listPackage } from "@electron/asar";
 import { FuseV1Options, getCurrentFuseWire } from "@electron/fuses";
 import { FuseState } from "@electron/fuses/dist/constants.js";
 
-const [app, architecture, mode] = process.argv.slice(2);
+const [app, architecture, mode, expectedVersion] = process.argv.slice(2);
 assert(app && ["arm64", "x64"].includes(architecture) &&
   ["adhoc", "signed", "notarized"].includes(mode),
-"Usage: node verify-desktop-mac.mjs app.app arm64|x64 adhoc|signed|notarized");
+"Usage: node verify-desktop-mac.mjs app.app arm64|x64 adhoc|signed|notarized [expected-version]");
+assert(!expectedVersion || /^\d+\.\d+\.\d+$/.test(expectedVersion));
 
 function run(command, args, input) {
   const result = spawnSync(command, args, { encoding: "utf8", input });
@@ -21,7 +22,7 @@ function run(command, args, input) {
 }
 
 const info = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", path.join(app, "Contents/Info.plist")]));
-const version = JSON.parse(readFileSync("apps/desktop/package.json", "utf8")).version;
+const version = expectedVersion ?? JSON.parse(readFileSync("apps/desktop/package.json", "utf8")).version;
 assert.equal(info.CFBundleIdentifier, "com.overtchat.desktop");
 assert.equal(info.CFBundleShortVersionString, version);
 assert.equal(info.CFBundleVersion, version);

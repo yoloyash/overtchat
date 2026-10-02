@@ -7,6 +7,7 @@ import { configurePermissions } from "./permissions";
 import { handleAppScheme, registerAppScheme } from "./protocol";
 import { flushSettings, loadSettings } from "./settings";
 import { getMainWindow, openMainWindow } from "./window";
+import { startUpdates } from "./updates";
 
 app.setName("overtchat");
 // AppImage launchers can inject this switch when namespaces are unavailable.
@@ -53,6 +54,7 @@ if (!app.requestSingleInstanceLock()) {
     registerIpc();
     installMenu();
     openMainWindow();
+    startUpdates();
 
     app.on("activate", () => {
       openMainWindow();

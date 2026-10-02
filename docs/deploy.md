@@ -255,8 +255,8 @@ system blocks them, use the native package; do not disable the sandbox with
 For AppImage, make the file executable and launch it:
 
 ```sh
-chmod +x overtchat-0.1.0-linux-x64.AppImage
-./overtchat-0.1.0-linux-x64.AppImage
+chmod +x overtchat-linux-x64.AppImage
+./overtchat-linux-x64.AppImage
 ```
 
 If mounting is unavailable, add `--appimage-extract-and-run`. The sandbox
@@ -269,13 +269,25 @@ until you quit.
 
 ### Desktop updates
 
-Desktop updates are manual and independent of `overtchat update`, which updates
-the server stack. Verify downloads against the release's SHA-256 checksum file.
-Quit the app before replacing it in Applications on Mac or installing a newer
-Linux package; your settings and securely saved sign-in are retained. For
-portable builds, replace the extracted app or AppImage. Linux package removal
-preserves your user settings. Windows and Linux ARM64 downloads are not yet
-available.
+Installed macOS, Linux AppImage, `.deb`, and `.rpm` builds check for desktop
+updates at startup and every four hours. Click the desktop download icon next
+to your sidebar profile to download in the background. It shows download
+progress, then an update-ready icon. Click it and choose **Update and restart**,
+or **Later** to keep chatting. Quitting normally does not install the update.
+Native **Check for Updates…**
+also works before sign-in. Linux package updates may prompt for administrator
+authentication. Keep AppImages in a writable location.
+
+The separate server icon opens update instructions and appears for administrators.
+`overtchat update` updates the server stack. A desktop update requiring a newer
+server waits until the server is updated; ask its administrator if needed.
+
+Tar archive installations update manually. For these, or to recover from an
+update failure, verify downloads against the release's SHA-256 checksum file,
+quit the app, and replace it or install the newer package. Settings and securely
+saved sign-in are retained. Builds installed before the in-app updater was added
+need one manual upgrade. Linux package removal preserves your user settings.
+Windows and Linux ARM64 downloads are not yet available.
 
 ## Mobile
 

@@ -81,7 +81,8 @@ hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
 node .github/scripts/verify-desktop-mac.mjs "$MOUNT/overtchat.app" "$ARCH" notarized
 hdiutil detach "$MOUNT"
 MOUNT=""
+UPDATE_METADATA="$(node --import tsx .github/scripts/desktop-update-metadata.mjs mac "$ARCH")"
 (
   cd apps/desktop/release
-  shasum -a 256 "overtchat-$VERSION-mac-$ARCH.dmg" "overtchat-$VERSION-mac-$ARCH.zip" > "desktop-checksums-$ARCH.txt"
+  shasum -a 256 "overtchat-$VERSION-mac-$ARCH.dmg" "overtchat-$VERSION-mac-$ARCH.zip" "$UPDATE_METADATA" > "desktop-checksums-$ARCH.txt"
 )

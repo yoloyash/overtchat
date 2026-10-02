@@ -15,6 +15,7 @@ import {
   setServer,
 } from "./settings";
 import { applyColorScheme, getMainWindow, isAppSender, restartUi } from "./window";
+import { checkDesktopUpdates, desktopUpdates, downloadDesktopUpdate, installDesktopUpdate, setUpdateOrigin } from "./updates";
 
 function fromApp(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
   return isAppSender(event.sender, event.senderFrame?.url);
@@ -48,30 +49,39 @@ async function boot(): Promise<BootState> {
 async function connect(address: string): Promise<ConnectResult> {
   const origin = typeof address === "string" ? serverOrigin(address) : null;
   if (!origin) return { ok: false, message: "Enter a server address, like chat.example.com." };
+  setUpdateOrigin(null);
   const result = await pingServer(origin);
   if (!result.ok) return result;
   const version = result.version ? `OvertChat ${result.version}` : "an older OvertChat";
   if (result.problem?.kind === "server-outdated") {
+    setUpdateOrigin(origin);
     return {
       ok: false,
       message: `${displayHost(origin)} runs ${version}. Update the server to use the desktop app.`,
     };
   }
   if (result.problem?.kind === "app-outdated") {
+    setUpdateOrigin(origin);
     return {
       ok: false,
       message: `${displayHost(origin)} runs ${version}, which is newer than this app. Update the desktop app.`,
     };
   }
   setServer(origin, address.trim());
+  setUpdateOrigin(null);
   return { ok: true };
 }
 
 export function registerIpc(): void {
+  handle(IPC.updateState, desktopUpdates.getState);
+  handle(IPC.checkForUpdates, checkDesktopUpdates);
+  handle(IPC.downloadUpdate, downloadDesktopUpdate);
+  handle(IPC.installUpdate, installDesktopUpdate);
   handle(IPC.boot, boot);
   handle(IPC.connect, connect);
   handle(IPC.changeServer, () => {
     clearServer();
+    setUpdateOrigin(null);
     restartUi();
   });
   handle(IPC.windowState, (): ShellWindowState => ({

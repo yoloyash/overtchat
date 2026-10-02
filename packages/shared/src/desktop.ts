@@ -19,9 +19,22 @@ export const DESKTOP_COMMANDS = [
 
 export type DesktopCommand = (typeof DESKTOP_COMMANDS)[number];
 
+export interface DesktopUpdateState {
+  currentVersion: string;
+  status: "idle" | "checking" | "available" | "downloading" | "ready" | "installing" | "blocked" | "error" | "unsupported";
+  availableVersion: string | null;
+  downloadPercent: number | null;
+  message: string | null;
+}
+
 export interface DesktopBridge {
   /** Subscribes to menu commands and returns an unsubscribe function. */
   onCommand(listener: (command: DesktopCommand) => void): () => void;
   /** Forgets the active server and its sign-in, then shows the connect screen. */
   changeServer(): Promise<void>;
+  getUpdateState(): Promise<DesktopUpdateState>;
+  onUpdateState(listener: (state: DesktopUpdateState) => void): () => void;
+  checkForUpdates(): Promise<DesktopUpdateState>;
+  downloadUpdate(): Promise<DesktopUpdateState>;
+  installUpdate(): Promise<void>;
 }

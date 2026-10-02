@@ -1,5 +1,6 @@
-import { app, Menu, shell, type MenuItemConstructorOptions } from "electron";
+import { app, dialog, Menu, shell, type MenuItemConstructorOptions } from "electron";
 import { clearServer } from "./settings";
+import { checkDesktopUpdates, downloadDesktopUpdate, installDesktopUpdate, setUpdateOrigin } from "./updates";
 import {
   changeZoom,
   navigateHistory,
@@ -12,7 +13,34 @@ const isMac = process.platform === "darwin";
 
 function changeServer(): void {
   clearServer();
+  setUpdateOrigin(null);
   restartUi();
+}
+
+async function checkUpdates(): Promise<void> {
+  const state = await checkDesktopUpdates();
+  const ready = state.status === "ready";
+  const available = state.status === "available";
+  const { response } = await dialog.showMessageBox({
+    type: state.status === "error" ? "error" : "info",
+    title: "Desktop app updates",
+    message: ready ? `Desktop v${state.availableVersion} is ready to install.`
+      : available ? `Desktop v${state.availableVersion} is available.`
+      : state.status === "downloading" ? `Downloading desktop v${state.availableVersion} in the background.`
+        : state.message ?? "No compatible desktop update is available.",
+    detail: `Installed desktop version: v${state.currentVersion}`,
+    buttons: ready ? ["Later", "Restart to update"] : available ? ["Later", "Download update"] : ["OK"],
+    defaultId: 0,
+    cancelId: 0,
+  });
+  if ((ready || available) && response === 1) {
+    try {
+      if (ready) await installDesktopUpdate();
+      else await downloadDesktopUpdate();
+    } catch (error) {
+      dialog.showErrorBox("Could not update the desktop app", error instanceof Error ? error.message : "Try checking for updates again.");
+    }
+  }
 }
 
 export function installMenu(): void {
@@ -22,6 +50,7 @@ export function installMenu(): void {
           label: app.name,
           submenu: [
             { role: "about" },
+            { label: "Check for Updates…", click: () => { void checkUpdates(); } },
             { type: "separator" },
             { label: "Settings…", accelerator: "Cmd+,", click: () => sendCommand("open-settings") },
             { label: "Change Server…", click: changeServer },
@@ -121,6 +150,7 @@ export function installMenu(): void {
     {
       role: "help",
       submenu: [
+        ...(!isMac ? [{ label: "Check for Updates…", click: () => { void checkUpdates(); } }] : []),
         { label: "OvertChat Website", click: () => void shell.openExternal("https://overtchat.com") },
         {
           label: "Report an Issue",
