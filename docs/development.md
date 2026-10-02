@@ -188,6 +188,8 @@ Developer ID signing identity.
 Repeat the checks above in the `.app`, including sign-in across a full quit and
 relaunch, microphone access, and loading images from the selected server.
 Local packaging does not produce a publicly distributable, notarized release.
+See [Desktop macOS release](release.md#desktop-macos-release) for Developer ID
+signing, notarization, CI builds, and the release validation gate.
 
 ## Speech
 

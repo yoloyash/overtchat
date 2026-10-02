@@ -13,6 +13,7 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "package:mac": "npm run build && electron-builder --mac dir --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false",
+    "package:mac:release": "npm run build && electron-builder --config electron-builder.release.yml --mac --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "devDependencies": {
