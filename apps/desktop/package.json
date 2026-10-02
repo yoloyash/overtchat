@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "private": true,
   "description": "OvertChat desktop app for an operator-supplied server",
+  "author": "OvertChat contributors",
+  "homepage": "https://overtchat.com",
   "type": "module",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
+    "package:mac": "npm run build && electron-builder --mac dir --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
   },
   "devDependencies": {
@@ -27,6 +30,7 @@
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "electron-vite": "^5.0.0",
     "typescript": "~6.0.3",
     "vite": "^7.0.0"

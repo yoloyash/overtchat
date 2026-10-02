@@ -167,6 +167,28 @@ npm run build -w apps/desktop --
 streaming, uploaded images, the menu commands, Change Server, zoom, fullscreen,
 and the macOS titlebar with the sidebar open and collapsed.
 
+On a Mac, package a local application with:
+
+```sh
+npm run package:mac -w apps/desktop --
+```
+
+Open `apps/desktop/release/mac-arm64/overtchat.app` on Apple Silicon, or
+`apps/desktop/release/mac/overtchat.app` on Intel. The command builds for the
+current Mac's architecture; append `--arm64` or `--x64` to select one explicitly.
+It uses ad-hoc signing without notarization or publishing. The shared
+`electron-builder.yml` defines the bundle identity, packaged files, icon, and
+microphone permissions for future release builds.
+
+Packaged builds use the `overtchat` profile, separate from `overtchat-dev`.
+Launch the `.app` normally and approve its macOS Keychain prompt to test saved
+sign-in. A command-line test process may be unable to show that prompt, and
+ad-hoc rebuilds can request access again. Public releases need a consistent
+Developer ID signing identity.
+Repeat the checks above in the `.app`, including sign-in across a full quit and
+relaunch, microphone access, and loading images from the selected server.
+Local packaging does not produce a publicly distributable, notarized release.
+
 ## Speech
 
 Speech failures distinguish disabled or missing configuration from an unreachable
