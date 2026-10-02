@@ -4,7 +4,6 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { readFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -27,6 +26,7 @@ if (isMac) {
   const running = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" }).stdout;
   assert(!/^\S*\/overtchat\.app\/Contents\/MacOS\/overtchat(?:\s|$)/m.test(running), "Quit existing installed desktop apps before qualification");
 }
+assert.equal(mainPids().length, 0, "Quit existing desktop apps before qualification; use a dedicated Linux test user");
 const directory = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? tmpdir(), "overtchat-update-qualification-"));
 const config = path.join(directory, "config");
 await mkdir(config);
@@ -114,17 +114,15 @@ async function quit() {
   browser = page = null;
 }
 function mainPids() {
-  const result = spawnSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" });
+  const result = spawnSync("ps", ["-axo", "uid=,pid=,command="], { encoding: "utf8" });
+  assert.equal(result.status, 0, "Qualification requires the system ps command");
   return result.stdout.split("\n").flatMap(line => {
-    const match = line.trim().match(/^(\d+)\s+(.+)$/);
-    if (!match) return [];
-    if (isMac) return match[2] === executable || match[2].startsWith(`${executable} `) ? [Number(match[1])] : [];
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(.+)$/);
+    if (!match || Number(match[1]) !== process.getuid()) return [];
+    if (isMac) return match[3] === executable || match[3].startsWith(`${executable} `) ? [Number(match[2])] : [];
     // Package relaunch uses the resolved executable; AppImage mounts change
-    // paths. Match only main processes carrying this test's isolated profile.
-    if (!/^\S*\/overtchat(?:-desktop)?(?:\s|$)/.test(match[2]) || match[2].includes("--type=")) return [];
-    try {
-      return readFileSync(`/proc/${match[1]}/environ`, "utf8").split("\0").includes(`XDG_CONFIG_HOME=${config}`) ? [Number(match[1])] : [];
-    } catch { return []; }
+    // paths. Run with a dedicated test user and refuse any existing main app.
+    return /^\S*\/overtchat(?:-desktop)?(?:\s|$)/.test(match[3]) && !match[3].includes("--type=") ? [Number(match[2])] : [];
   });
 }
 async function restoreMacProfile() {
