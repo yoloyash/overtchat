@@ -170,6 +170,13 @@ Coding-agent executables and credentials belong on the Host Connector machine
 or selected SSH host. Configure connections on the web before using them on
 Android or iOS.
 
+New Codex chats use the execution host's effective Codex configuration, including
+the model provider, model, reasoning effort, and permissions. Configure a local
+endpoint in Codex's `config.toml` on that host; its URL must be reachable from
+there. OvertChat includes the configured model even when Codex's model catalog
+omits it. Selections made in the new-chat composer override only those settings;
+**Use Codex defaults** clears them. Existing sessions retain their resume behavior.
+
 Hermes uses its native ACP interface. Install and configure Hermes on the
 connector machine or SSH target, then verify `hermes acp --version` and
 `hermes acp --check`. If ACP dependencies or credentials are missing, follow

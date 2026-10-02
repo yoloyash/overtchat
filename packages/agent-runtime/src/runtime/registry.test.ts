@@ -1860,7 +1860,7 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
-  it("resolves provider defaults into an explicit launch tuple", async () => {
+  it("leaves omitted Codex settings for the provider to resolve at launch", async () => {
     const registry = new AgentRuntimeRegistry({
         resolveImages: async () => [],
       });
@@ -1873,11 +1873,7 @@ describe("agent runtime", () => {
       cwd: "/workspace",
     });
 
-    expect(created.launchConfig).toEqual({
-      model: "default-model",
-      thinkingOptionId: "high",
-      modeId: "auto",
-    });
+    expect(created.launchConfig).toEqual({});
     expect(mocks.launches).toContainEqual(
       expect.objectContaining(created.launchConfig),
     );
@@ -1921,7 +1917,19 @@ describe("agent runtime", () => {
 
     expect(resolveCatalog).toHaveBeenCalledOnce();
     expect(mocks.fetchCatalog).not.toHaveBeenCalled();
-    expect(created.launchConfig.model).toBe("cached-model");
+    expect(created.launchConfig).toEqual({});
+    await registry.stopAll();
+  });
+
+  it("validates an explicit Codex model without filling in unrelated defaults", async () => {
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const descriptor = {
+      connectionId: "connection", workspaceId: "workspace", provider: "codex" as const,
+      target: { transport: "local" as const }, executable: "codex", cwd: "/workspace",
+    };
+    const created = await registry.create("explicit", descriptor, { model: "default-model" });
+    expect(created.launchConfig).toEqual({ model: "default-model" });
+    await expect(registry.create("invalid", descriptor, { model: "missing" })).rejects.toThrow("not available");
     await registry.stopAll();
   });
 

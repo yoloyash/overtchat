@@ -931,11 +931,7 @@ describe("native agent screen workflows", () => {
       "/api/agent-workspaces/workspace/sessions",
       {
         provider: "codex",
-        launchConfig: {
-          model: "first",
-          modeId: "safe",
-          thinkingOptionId: "low",
-        },
+        launchConfig: {},
       },
       expect.any(AbortSignal),
     );
@@ -980,11 +976,7 @@ describe("native agent screen workflows", () => {
     await click("Send message");
     expect(mocks.api.mock.calls[0][1]).toEqual({
       provider: "codex",
-      launchConfig: {
-        model: "preferred",
-        thinkingOptionId: "high",
-        modeId: "safe",
-      },
+      launchConfig: {},
     });
   });
   it("retains optional model controls without requiring a selection before writing", async () => {
@@ -1008,7 +1000,6 @@ describe("native agent screen workflows", () => {
       launchConfig: {
         model: "second",
         thinkingOptionId: "high",
-        modeId: "safe",
       },
     });
   });
@@ -1037,6 +1028,17 @@ describe("native agent screen workflows", () => {
       },
     });
     expect(mocks.replace.mock.lastCall?.[0].params.id).toBe("created");
+  });
+  it("can reset a deliberate Codex selection to provider defaults", async () => {
+    await render(<NewAgentScreen />);
+    await input("Use the defaults");
+    await click("Model, effort, and permissions");
+    await click("Reasoning effort");
+    await click("High");
+    await click("Done");
+    await click("Use Codex defaults");
+    await click("Send message");
+    expect(mocks.api.mock.calls[0][1]).toEqual({ provider: "codex", launchConfig: {} });
   });
   it("preserves attached fork history and retry identity when its first send fails", async () => {
     mocks.draft.forkContext = { text: "Previous history", launchConfig: { model: model.id } };

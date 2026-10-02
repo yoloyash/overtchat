@@ -382,6 +382,9 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   // Localhost exposes this secure-context API even over HTTP. Remove it on
   // every navigation to reproduce the capabilities of a plain HTTP LAN origin.
   await page.addInitScript(() => {
+    localStorage.setItem("overtchat:agent-create-preferences", JSON.stringify({
+      providerPreferences: { codex: { model: "gpt-5.6", thinkingByModel: { "gpt-5.6": "low" } } },
+    }));
     Object.defineProperty(crypto, "randomUUID", {
       configurable: true,
       value: undefined,
@@ -415,8 +418,10 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
     });
   });
   let createdSessions = 0;
+  const launches: Array<Record<string, unknown>> = [];
   await page.route("**/api/agent-workspaces/workspace/sessions", (route) => {
     createdSessions += 1;
+    launches.push(route.request().postDataJSON());
     return route.fulfill({ json: { session: { id: SESSION_ID } } });
   });
   const forkHistory =
@@ -454,10 +459,13 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   releaseCatalog();
   await expect(composer).toBeEnabled();
   await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
+  await expect(page.getByText("Using Codex defaults", { exact: true })).toBeVisible();
   await composer.fill("First agent prompt over HTTP");
   await composer.press("Enter");
   await expect.poll(() => submittedCommands.length).toBe(1);
   await page.waitForURL(`**/agents/${SESSION_ID}`);
+  expect(launches[0]).toMatchObject({ provider: "codex", launchConfig: {} });
+  expect(launches[0].launchConfig).toEqual({});
 
   await composer.fill("Follow-up agent prompt over HTTP");
   await composer.press("Enter");
@@ -548,6 +556,7 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
   await composer.fill("Continue the fork");
   await composer.press("Enter");
   await expect.poll(() => createdSessions).toBe(2);
+  expect(launches[1].launchConfig).toEqual({ model: imageModel.id, thinkingOptionId: "high" });
   await expect
     .poll(() => submittedCommands.at(-1))
     .toMatchObject({
