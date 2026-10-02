@@ -91,6 +91,10 @@ export class AgentSessionStream {
     this.options.onStatus("paused");
   }
 
+  updateReplica(replica: AgentSessionReplica) {
+    if (replica.snapshot.sessionId === this.options.id) this.replica = replica;
+  }
+
   reconnect() {
     if (!this.active) return;
     this.controller?.abort();
@@ -126,20 +130,21 @@ export class AgentSessionStream {
         controller.signal,
       );
       const data = (await response.json()) as {
-        snapshot: AgentRuntimeSnapshot;
+        snapshot?: AgentRuntimeSnapshot;
         sync?: unknown;
       };
       if (!current()) return;
       if (
-        data.snapshot?.sessionId !== this.options.id ||
-        (data.sync !== undefined && !isAgentSessionSync(data.sync))
+        (data.snapshot !== undefined && data.snapshot.sessionId !== this.options.id) ||
+        (data.sync !== undefined && !isAgentSessionSync(data.sync)) ||
+        (isAgentSessionSync(data.sync) && data.sync.reset && data.sync.snapshot.sessionId !== this.options.id)
       ) {
         throw new Error("The server returned an invalid agent session.");
       }
       commit(
         replicaFromOpenResult(
           {
-            snapshot: data.snapshot,
+            ...(data.snapshot ? { snapshot: data.snapshot } : {}),
             ...(isAgentSessionSync(data.sync) ? { sync: data.sync } : {}),
           },
           this.replica,

@@ -692,6 +692,7 @@ export function AgentSessionView({
           )}
 
           <AgentMessageList
+            history={{ hasOlder: Boolean(snapshot.history?.beforeCursor), loading: session.history.isPending, error: session.history.error?.message, load: () => session.history.mutate() }}
             speech={speech}
             question={snapshot.pendingInteraction?.approvalKind === "tool" ? (
               <AgentApprovalCard

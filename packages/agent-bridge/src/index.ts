@@ -1,3 +1,4 @@
+import { isAgentTurnDelta } from "./message-delta";
 import type {
   AgentConnectionDraft,
   AgentDiscoveryTarget,
@@ -21,10 +22,14 @@ import {
 } from "./agents";
 
 /** Increment only for a breaking web-to-connector wire contract change. */
-export const HOST_CONNECTOR_PROTOCOL_VERSION = 5;
+export const HOST_CONNECTOR_PROTOCOL_VERSION = 6;
 /** Published connector artifact version; independent of wire compatibility. */
 export const HOST_CONNECTOR_RELEASE_VERSION = "0.12.4";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
+/** Headroom below Next.js's default 10 MiB proxy buffer. */
+export const HOST_CONNECTOR_EVENT_BATCH_BYTES = 8 * 1024 * 1024;
+export const HOST_CONNECTOR_FRAGMENT_BYTES = 1024 * 1024;
+export const HOST_CONNECTOR_MAX_EVENT_BYTES = 128 * 1024 * 1024;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
@@ -45,6 +50,8 @@ export * from "./history";
 export * from "./commands";
 export * from "./state";
 export * from "./replica";
+export * from "./transcript";
+export * from "./message-delta";
 
 export type ConnectorTarget =
   | { transport: "local" }
@@ -125,6 +132,7 @@ export type AgentDaemonRequest =
       session: AgentDaemonSessionDescriptor;
       after?: AgentRuntimeCursor;
     }
+  | { type: "session_history"; session: AgentDaemonSessionDescriptor; before: string }
   | {
       type: "session_command";
       commandId: string;
@@ -199,12 +207,34 @@ export type HostConnectorEventBatch = {
   protocolVersion: typeof HOST_CONNECTOR_PROTOCOL_VERSION;
   connectorEpoch: string;
   events: HostConnectorEvent[];
+  /** One event can span requests; it is acknowledged only after reassembly. */
+  fragment?: HostConnectorEventFragment;
+};
+
+export type HostConnectorEventFragment = {
+  sequence: number;
+  digest: string;
+  index: number;
+  totalBytes: number;
+  data: string;
 };
 
 export type HostConnectorEventAck = {
   connectorEpoch: string;
   acknowledgedSequence: number;
+  nextFragmentIndex?: number;
 };
+
+export function isHostConnectorEventFragment(value: unknown): value is HostConnectorEventFragment {
+  return isRecord(value) && Number.isSafeInteger(value.sequence) && Number(value.sequence) > 0 &&
+    typeof value.digest === "string" && /^[a-f0-9]{64}$/u.test(value.digest) &&
+    Number.isSafeInteger(value.totalBytes) && Number(value.totalBytes) > 0 &&
+    Number(value.totalBytes) <= HOST_CONNECTOR_MAX_EVENT_BYTES &&
+    Number.isSafeInteger(value.index) && Number(value.index) >= 0 &&
+    Number(value.index) < Math.ceil(Number(value.totalBytes) / HOST_CONNECTOR_FRAGMENT_BYTES) &&
+    typeof value.data === "string" && value.data.length <= Math.ceil(HOST_CONNECTOR_FRAGMENT_BYTES / 3) * 4 &&
+    value.data.length > 0 && value.data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/u.test(value.data);
+}
 
 export function parseHostConnectorCapabilities(
   value: string | null | undefined,
@@ -350,6 +380,8 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
         isAgentDaemonSessionDescriptor(value.session) &&
         (value.after === undefined || isAgentRuntimeCursor(value.after))
       );
+    case "session_history":
+      return isAgentDaemonSessionDescriptor(value.session) && typeof value.before === "string" && value.before.length > 0 && value.before.length <= 2048;
     case "session_command":
       return (
         isNonEmptyString(value.commandId) &&
@@ -436,8 +468,9 @@ export function isAgentRuntimeEnvelope(
     ? isNonEmptyString(value.data.sessionId) &&
         ["idle", "running", "exited"].includes(String(value.data.status))
     : isNonEmptyString(value.data.type) &&
+      (value.data.type !== "overtchat_turn_delta" || isAgentTurnDelta(value.data)) &&
       (value.data.type !== "usage_update" ||
-        agentUsageUpdateSchema.safeParse(value.data.usage).success);
+        agentUsageUpdateSchema.safeParse(Reflect.get(value.data, "usage")).success);
 }
 
 export function isAgentSessionDirectoryEntry(

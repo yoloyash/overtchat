@@ -328,6 +328,7 @@ function AgentSession({
       )}
       {snapshot && (
         <AgentTranscript
+                  history={{ hasOlder: Boolean(snapshot.history?.beforeCursor), loading: session.history.isPending, error: session.history.error?.message, load: () => session.history.mutate() }}
           onFork={async (messageId, chooseWorkspace) => {
             await execute(
               { type: "fork_message", messageId },

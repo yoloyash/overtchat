@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   sessionError: undefined as string | undefined,
   send: vi.fn(),
   reconnect: vi.fn(),
+  history: { mutate: vi.fn(), isPending: false, error: null as Error | null },
   replace: vi.fn(),
   push: vi.fn(),
   navigate: vi.fn(),
@@ -349,6 +350,7 @@ vi.mock("@shopify/flash-list", async () => {
           data: unknown[];
           renderItem: (args: { item: unknown; index: number }) => ReactNode;
           ListEmptyComponent: ReactNode;
+          ListHeaderComponent: ReactNode;
           ListFooterComponent: ReactNode;
         } & typeof mocks.listHandlers,
         ref,
@@ -367,6 +369,7 @@ vi.mock("@shopify/flash-list", async () => {
         }));
         return (
           <div>
+            {props.ListHeaderComponent}
             {props.data.length
               ? props.data.map((item, i) => (
                   <div key={i}>{props.renderItem({ item, index: i })}</div>
@@ -396,6 +399,7 @@ vi.mock("@/lib/queries/agents", () => ({
     status: mocks.status,
     error: mocks.sessionError,
     reconnect: mocks.reconnect,
+    history: mocks.history,
   }),
   useAgentCommand: () => ({ mutateAsync: mocks.send, isPending: false }),
   useAgentConnections: () => ({
@@ -454,6 +458,8 @@ const model = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.storage.clear();
+  mocks.history.isPending = false;
+  mocks.history.error = null;
   mocks.pathname = "/chat";
   mocks.canGoBack = false;
   mocks.params = { id: "session", workspace: "workspace", name: "Project", provider: "codex" };
@@ -606,6 +612,23 @@ describe("agent context usage", () => {
 });
 
 describe("agent history actions", () => {
+  it("loads older native transcript pages and exposes loading and retry feedback", async () => {
+    mocks.snapshot!.history = { beforeCursor: "older" };
+    await render();
+    await click("Load older messages");
+    expect(mocks.history.mutate).toHaveBeenCalledTimes(1);
+    mocks.history.isPending = true;
+    await render();
+    expect(container.querySelector('button[aria-label="Loading…"]')?.hasAttribute("disabled")).toBe(true);
+    mocks.history.isPending = false;
+    mocks.history.error = new Error("History changed. Try again.");
+    await render();
+    expect(container.textContent).toContain("History changed. Try again.");
+    mocks.snapshot!.history.beforeCursor = null;
+    await render();
+    expect(container.querySelector('button[aria-label="Load older messages"]')).toBeNull();
+  });
+
   it("rewinds from a native message and preserves an existing draft", async () => {
     mocks.snapshot!.capabilities.rewindConversation = true;
     mocks.snapshot!.messages = [

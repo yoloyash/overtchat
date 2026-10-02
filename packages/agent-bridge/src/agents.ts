@@ -687,6 +687,8 @@ export const agentUsageUpdateSchema = z.object({
 export type AgentUsageUpdate = z.infer<typeof agentUsageUpdateSchema>;
 
 export type AgentRuntimeSnapshot = {
+  /** Present only on a client transcript window, never the canonical timeline. */
+  history?: { beforeCursor: string | null };
   sessionId: string;
   provider: AgentProviderId;
   capabilities: AgentRuntimeCapabilities;

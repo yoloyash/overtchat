@@ -42,6 +42,7 @@ const position = {
 
 export function AgentTranscript({
   speech,
+  history,
   snapshot,
   question,
   onImplementPlan,
@@ -50,6 +51,12 @@ export function AgentTranscript({
   disabled,
 }: {
   speech: ReturnType<typeof useSpeech>;
+  history?: {
+    hasOlder: boolean;
+    loading: boolean;
+    error?: string;
+    load: () => void;
+  };
   snapshot: AgentRuntimeSnapshot;
   question?: React.ReactElement;
   onImplementPlan: (plan: string) => void;
@@ -145,6 +152,18 @@ export function AgentTranscript({
     <View style={{ flex: 1 }}>
       <FlashList
         ref={list}
+        ListHeaderComponent={
+          history?.hasOlder ? (
+            <View style={{ paddingBottom: 16 }}>
+              <AgentButton
+                label={history.loading ? "Loading…" : "Load older messages"}
+                disabled={history.loading}
+                onPress={history.load}
+              />
+              {history.error && <AgentText danger>{history.error}</AgentText>}
+            </View>
+          ) : undefined
+        }
         style={{ flex: 1 }}
         data={items}
         extraData={{ activeId: speech.activeId, status: speech.status, active }}
@@ -441,7 +460,9 @@ function ResponseActions({
 }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center" }}>
-      {!!actions.text && <CopyResponseButton key={actions.text} text={actions.text} />}
+      {!!actions.text && (
+        <CopyResponseButton key={actions.text} text={actions.text} />
+      )}
       <AgentSpeakButton id={id} text={actions.text} speech={speech} />
       {actions.messageId && onFork && (
         <AgentForkMenu

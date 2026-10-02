@@ -6,8 +6,8 @@ import {
   rm,
 } from "node:fs/promises";
 import path from "node:path";
+import { boundedEventBatch } from "./event-batch.js";
 import {
-  HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   agentPromptImageSchema,
   isAgentDaemonSessionDescriptor,
   isHostConnectorEvent,
@@ -435,7 +435,7 @@ export class ConnectorStateJournal {
   }
 
   eventBatch(): HostConnectorEvent[] {
-    return this.state.events.slice(0, HOST_CONNECTOR_EVENT_BATCH_LIMIT);
+    return boundedEventBatch(this.state.events);
   }
 
   async acknowledge(

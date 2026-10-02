@@ -414,3 +414,35 @@ that offline SSH hosts do not delay the channel, new launches await target recov
 and shutdown cancels probes before releasing the journal's instance lock.
 
 Installer binary and terminal checks are documented in [Release process](release.md).
+
+## Agent transport validation
+
+Connector delivery uses an 8 MiB serialized JSON request budget. A single larger
+journal event is transferred in 1 MiB fragments, verified by digest, and
+acknowledged only after the complete event commits. Existing connector journals
+remain readable. Live events alternate with durable batches so backlog recovery
+also lets active sessions update. Events above 128 MiB return an explicit response
+error or a live reconciliation hint rather than trapping the entire queue.
+
+Codex emits changed messages and appended text with expected offsets. Missing
+baselines trigger authoritative reconciliation. Initial and reset snapshots load
+ten recent user prompts, keeping each native turn intact; older messages load
+through a session-scoped cursor. The connector retains the complete canonical
+transcript. Replay exceeding the byte budget falls back to the recent window.
+
+Run the bridge/runtime/connector tests and typechecks, connector build, web
+checks, and mobile checks. The browser regression below runs a real connector
+journal, authenticated HTTP relay, production Next.js proxy, SSE stream, and UI.
+Only provider execution is deterministic. It creates disposable local data and
+does not read production accounts or databases.
+
+```sh
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
+```
+
+The test drains production-sized replies plus one event larger than 10 MiB,
+loads all older pages, queues and steers a message, and verifies live text before
+refreshing. Unit regressions additionally cover receiver restart during fragments,
+Unicode byte accounting, cursor invalidation after rewind, unchanged tool results,
+and timeline persistence. Also verify foreground reconnect and history paging on
+Android and iOS before releasing bundled clients.

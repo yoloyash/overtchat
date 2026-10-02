@@ -3,6 +3,10 @@ import { AppState } from "react-native";
 import { useIsFocused } from "expo-router/react-navigation";
 import * as Network from "expo-network";
 import {
+  isAgentHistoryPage,
+  prependAgentHistoryPage,
+} from "@overtchat/agent-bridge";
+import {
   skipToken,
   useMutation,
   useQuery,
@@ -135,11 +139,32 @@ export function useAgentSession(id: string) {
       stream.current = null;
     };
   }, [id, server, active, queryClient]);
+  const history = useMutation({
+    mutationFn: async () => {
+      const current = queryClient.getQueryData<AgentSessionReplica>(key);
+      const before = current?.snapshot.history?.beforeCursor;
+      if (!before) return;
+      const response = await agentFetch(
+        `/api/agent-sessions/${encodeURIComponent(id)}?before=${encodeURIComponent(before)}`,
+        { cache: "no-store" },
+      );
+      const page: unknown = await response.json();
+      if (!isAgentHistoryPage(page) || page.sessionId !== id)
+        throw new Error("Invalid agent history page.");
+      queryClient.setQueryData<AgentSessionReplica>(key, (latest) => {
+        if (!latest) return latest;
+        const next = prependAgentHistoryPage(latest, page);
+        stream.current?.updateReplica(next);
+        return next;
+      });
+    },
+  });
   return {
     snapshot: query.data?.snapshot,
     status,
     error,
     reconnect: () => stream.current?.reconnect(),
+    history,
   };
 }
 

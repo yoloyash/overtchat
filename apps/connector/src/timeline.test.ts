@@ -116,6 +116,55 @@ afterEach(async () => {
 });
 
 describe("connector session timeline", () => {
+  it("bounds replay and initial history while retaining the full canonical transcript after restart", async () => {
+    const { directory, store } = await createStore();
+    const canonical = {
+      ...snapshot(),
+      messages: Array.from({ length: 25 }, (_, i) => ({
+        id: `user-${i}`,
+        role: "user",
+        content: `prompt-${i}`,
+        overtchatTurnId: `turn-${i}`,
+      })),
+    };
+    const initial = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      canonical,
+    );
+    for (let i = 0; i < 3; i++)
+      await store.commit(
+        SESSION_ID,
+        runtimeEvent({
+          type: "overtchat_turn_update",
+          turnId: "turn-24",
+          messages: [
+            {
+              id: "user-24",
+              role: "user",
+              content: "x".repeat(3 * 1024 * 1024),
+              overtchatTurnId: "turn-24",
+            },
+          ],
+        }),
+      );
+    const sync = await store.sync(SESSION_ID, initial);
+    expect(sync.reset).toBe(true);
+    if (!sync.reset) throw new Error("Expected a bounded reset");
+    expect(sync.snapshot.messages).toHaveLength(10);
+    const before = sync.snapshot.history!.beforeCursor!;
+    expect((await store.history(SESSION_ID, before)).messages).toHaveLength(10);
+    await store.close();
+    const restored = await reopen(directory);
+    const saved = JSON.parse(
+      (await readFile(timelineFile(directory), "utf8")).split("\n")[0]!,
+    );
+    expect(saved.snapshot.messages).toHaveLength(25);
+    expect((await restored.history(SESSION_ID, before)).messages).toHaveLength(
+      10,
+    );
+  });
+
   it("persists a rewind with a new epoch even when the native session ID stays the same", async () => {
     const { directory, store } = await createStore();
     const old = {

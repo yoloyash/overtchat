@@ -429,20 +429,20 @@ export class ConnectorDaemon {
           session: created.session,
           launchConfig: created.launchConfig,
           snapshot: sync.reset ? sync.snapshot : created.runtime.snapshot(),
-          ...(this.serverCapabilities.has("session-sync-v1") ? { sync } : {}),
         };
       }
       case "open_session": {
-        const runtime = await this.open(request.session);
+        await this.open(request.session);
         this.assertAccepting();
         const sync = await this.timelines.sync(
           request.session.sessionId,
           request.after,
         );
-        return {
-          snapshot: sync.reset ? sync.snapshot : runtime.snapshot(),
-          ...(this.serverCapabilities.has("session-sync-v1") ? { sync } : {}),
-        };
+        return { sync };
+      }
+      case "session_history": {
+        await this.open(request.session);
+        return this.timelines.history(request.session.sessionId, request.before);
       }
       case "session_command":
         if (request.command.type === "show_usage") {

@@ -15,6 +15,8 @@ import type {
 import {
   isAgentRuntimeEnvelope,
   isAgentSessionSync,
+  isAgentHistoryPage,
+  prependAgentHistoryPage,
 } from "@overtchat/agent-bridge";
 import {
   applyEnvelopeToReplica,
@@ -103,7 +105,13 @@ async function fetchAgentSession(
     snapshot?: AgentRuntimeSnapshot;
     sync?: unknown;
   };
-  if (data.snapshot?.sessionId !== id) {
+  if (
+    (data.snapshot && data.snapshot.sessionId !== id) ||
+    (isAgentSessionSync(data.sync) &&
+      data.sync.reset &&
+      data.sync.snapshot.sessionId !== id) ||
+    (!data.snapshot && !isAgentSessionSync(data.sync))
+  ) {
     throw new Error("The Host Connector opened a different session.");
   }
   let sync: AgentSessionSync | undefined;
@@ -114,7 +122,7 @@ async function fetchAgentSession(
     sync = data.sync;
   }
   const result: AgentSessionOpenResult = {
-    snapshot: data.snapshot,
+    ...(data.snapshot ? { snapshot: data.snapshot } : {}),
     ...(sync ? { sync } : {}),
   };
   return replicaFromOpenResult(result, current);
@@ -157,6 +165,35 @@ export function useAgentSession(id: string) {
     },
     select: (replica) => replica.snapshot,
     retry: false,
+  });
+
+  const history = useMutation({
+    mutationFn: async () => {
+      const current = queryClient.getQueryData<AgentSessionReplica>(
+        agentSessionKeys.detail(id),
+      );
+      const before = current?.snapshot.history?.beforeCursor;
+      if (!before) return;
+      const response = await fetch(
+        apiUrl(
+          `/api/agent-sessions/${id}?before=${encodeURIComponent(before)}`,
+        ),
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw await responseError(response);
+      const page: unknown = await response.json();
+      if (!isAgentHistoryPage(page) || page.sessionId !== id)
+        throw new Error("Invalid agent history page.");
+      queryClient.setQueryData<AgentSessionReplica>(
+        agentSessionKeys.detail(id),
+        (latest) => {
+          if (!latest) return latest;
+          const next = prependAgentHistoryPage(latest, page);
+          replicaRef.current = next;
+          return next;
+        },
+      );
+    },
   });
 
   const sessionReady = query.data !== undefined;
@@ -349,7 +386,7 @@ export function useAgentSession(id: string) {
     };
   }, [id, queryClient, sessionReady]);
 
-  return { ...query, streamStatus };
+  return { ...query, streamStatus, history };
 }
 
 export function useAgentSessionCommand(id: string) {
