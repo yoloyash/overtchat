@@ -252,6 +252,10 @@ do not conflict with the management CLI's `overtchat` command. These packages in
 helper with mode `4755`. On compatible AppArmor systems, they install a profile
 allowing user namespaces for `/opt/overtchat/overtchat-desktop`; uninstall removes and
 unloads the profile. Installation never disables system-wide restrictions.
+The Debian dependencies include Chromium's audio library under either Ubuntu
+package name. The RPM's post-transaction hook preserves the executable link
+and AppArmor profile after an upgrade, including replacement of older packages
+whose removal hook cleans up that integration during the transaction.
 
 AppImage and tarball builds are portable and do not perform a privileged
 installation. They require working unprivileged user/network namespaces; test
@@ -394,7 +398,8 @@ an isolated, unlocked test Keychain containing only a generated encryption key
 for the test app, then restore the runner's original Keychain configuration.
 Use a writable test app location. Close an existing Mac instance and back up
 its profile before testing; restore it afterward. Linux tests can isolate the
-profile with `XDG_CONFIG_HOME`. Verify AppImage replacement and native package
+profile with `XDG_CONFIG_HOME`; use a dedicated test user with no existing
+desktop instance. Verify AppImage replacement and native package
 authentication separately. After qualification, publish the exact reviewed
 candidate and verify the public R2 feed workflow.
 
