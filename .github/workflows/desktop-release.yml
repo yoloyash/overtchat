@@ -1,10 +1,11 @@
-name: Build macOS desktop app
+name: Build desktop app
 
 on:
   pull_request:
     paths:
       - ".github/workflows/desktop-release.yml"
       - ".github/scripts/*desktop-mac*"
+      - ".github/scripts/*desktop-linux*"
       - "apps/desktop/**"
       - "apps/web/**"
       - "packages/shared/**"
@@ -94,9 +95,143 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  build-linux:
+    permissions:
+      contents: read
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Install Linux packaging and smoke dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils rpm cpio desktop-file-utils xvfb xauth dbus-x11 gnome-keyring libsecret-tools libgtk-3-0 libnss3 libasound2 libgbm1
+      - run: npm run typecheck -w apps/desktop --
+      - name: Package and verify every Linux download
+        run: bash .github/scripts/package-desktop-linux.sh
+      - name: Install and smoke test the Debian package
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+        run: |
+          sudo apt-get install -y ./apps/desktop/release/overtchat-*-linux-x64.deb
+          test "$(stat -c '%u:%a' /opt/overtchat/chrome-sandbox)" = 0:4755
+          # Same code with a higher package version tests first-release upgrades
+          # without changing the candidate downloads or the source version.
+          upgrade_version=$(node -p 'const v=require("./apps/desktop/package.json").version.split(".").map(Number); v[2]++; v.join(".")')
+          node node_modules/electron-builder/out/cli/cli.js --projectDir apps/desktop --config electron-builder.linux.yml --linux deb --x64 --publish never \
+            --config.extraMetadata.version="$upgrade_version" --config.directories.output="$RUNNER_TEMP/desktop-upgrade"
+          export UPGRADE_DEB="$RUNNER_TEMP/desktop-upgrade/overtchat-$upgrade_version-linux-x64.deb"
+          test "$(dpkg-deb --field "$UPGRADE_DEB" Version)" = "$upgrade_version"
+          xvfb-run -a dbus-run-session -- bash <<'SH'
+          set -euo pipefail
+          printf '%s' 'test-only-keyring-password' | gnome-keyring-daemon --unlock --components=secrets
+          DESKTOP_SMOKE_UPGRADE_DEB="$UPGRADE_DEB" node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop persistent
+          node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop session
+          SH
+          sudo apt-get remove -y overtchat-desktop
+          test ! -e /usr/bin/overtchat-desktop
+          test ! -e /etc/apparmor.d/overtchat-desktop
+      - name: Verify Fedora RPM installation and removal
+        run: |
+          docker run --rm --volume "$PWD/apps/desktop/release:/artifacts:ro" fedora:44 bash -euo pipefail -c '
+            dnf install -y desktop-file-utils /artifacts/overtchat-*-linux-x64.rpm
+            test "$(stat -c "%u:%a" /opt/overtchat/chrome-sandbox)" = 0:4755
+            test -x /usr/bin/overtchat-desktop
+            desktop-file-validate /usr/share/applications/com.overtchat.desktop.desktop
+            dnf remove -y overtchat-desktop
+            test ! -e /usr/bin/overtchat-desktop
+          '
+      - name: Smoke test portable formats with the kernel sandbox
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-portable
+        run: |
+          unshare --user --map-root-user --net true
+          portable=$(mktemp -d)
+          trap 'rm -rf "$portable"' EXIT
+          appimages=("$GITHUB_WORKSPACE"/apps/desktop/release/overtchat-*-linux-x64.AppImage)
+          test "${#appimages[@]}" = 1
+          (cd "$portable" && "${appimages[0]}" --appimage-extract >/dev/null)
+          DESKTOP_SMOKE_ARTIFACT_DIR="$DESKTOP_SMOKE_ARTIFACT_DIR/appimage" xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs "$portable/squashfs-root/AppRun" session
+          APPIMAGE_EXTRACT_AND_RUN=1 DESKTOP_SMOKE_ARTIFACT_DIR="$DESKTOP_SMOKE_ARTIFACT_DIR/appimage-runtime" xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs "${appimages[0]}" session
+          mkdir "$portable/tar"
+          tar -xzf apps/desktop/release/overtchat-*-linux-x64.tar.gz -C "$portable/tar"
+          executable=$(find "$portable/tar" -maxdepth 2 -type f -name overtchat-desktop)
+          test -n "$executable"
+          DESKTOP_SMOKE_ARTIFACT_DIR="$DESKTOP_SMOKE_ARTIFACT_DIR/tar" xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs "$executable" session
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: desktop-smoke-linux-x64
+          path: ${{ runner.temp }}/desktop-smoke*
+          if-no-files-found: ignore
+          retention-days: 7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: desktop-linux-x64
+          path: |
+            apps/desktop/release/overtchat-*-linux-x64.AppImage
+            apps/desktop/release/overtchat-*-linux-x64.deb
+            apps/desktop/release/overtchat-*-linux-x64.rpm
+            apps/desktop/release/overtchat-*-linux-x64.tar.gz
+            apps/desktop/release/desktop-checksums-linux-x64.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke-linux-ubuntu24:
+    needs: build-linux
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+      - run: npm ci
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desktop-linux-x64
+          path: release
+      - name: Install and smoke test the Debian package on Ubuntu 24.04
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth dbus-x11 gnome-keyring libsecret-tools ./release/overtchat-*-linux-x64.deb
+          test "$(stat -c '%u:%a' /opt/overtchat/chrome-sandbox)" = 0:4755
+          xvfb-run -a dbus-run-session -- bash <<'SH'
+          set -euo pipefail
+          printf '%s' 'test-only-keyring-password' | gnome-keyring-daemon --unlock --components=secrets
+          node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop persistent
+          node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop session
+          SH
+          sudo apt-get remove -y overtchat-desktop
+          test ! -e /usr/bin/overtchat-desktop
+          test ! -e /etc/apparmor.d/overtchat-desktop
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: desktop-smoke-linux-ubuntu24
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   draft-release:
     if: github.event_name == 'push'
-    needs: build
+    needs: [build, build-linux, smoke-linux-ubuntu24]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -106,6 +241,10 @@ jobs:
           pattern: desktop-mac-*
           merge-multiple: true
           path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: desktop-linux-x64
+          path: release
       - name: Create or resume a verified draft release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -114,12 +253,14 @@ jobs:
         run: |
           version="${TAG#desktop-v}"
           expected=$(printf '%s\n' \
-            desktop-checksums-arm64.txt desktop-checksums-x64.txt \
+            desktop-checksums-arm64.txt desktop-checksums-x64.txt desktop-checksums-linux-x64.txt \
             "overtchat-$version-mac-arm64.dmg" "overtchat-$version-mac-arm64.zip" \
-            "overtchat-$version-mac-x64.dmg" "overtchat-$version-mac-x64.zip" | LC_ALL=C sort)
+            "overtchat-$version-mac-x64.dmg" "overtchat-$version-mac-x64.zip" \
+            "overtchat-$version-linux-x64.AppImage" "overtchat-$version-linux-x64.deb" \
+            "overtchat-$version-linux-x64.rpm" "overtchat-$version-linux-x64.tar.gz" | LC_ALL=C sort)
           actual=$(find release -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           test "$actual" = "$expected"
-          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt)
+          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt)
 
           if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-draft; then
             test "$(cat release-draft)" = true || {
@@ -140,5 +281,5 @@ jobs:
           for asset in release/*; do
             cmp "$asset" "$verification_directory/$(basename "$asset")"
           done
-          (cd "$verification_directory" && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt)
-          echo 'Verified draft ready. Complete the macOS install, restart, and upgrade checks in docs/release.md before publishing.' >> "$GITHUB_STEP_SUMMARY"
+          (cd "$verification_directory" && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt)
+          echo 'Verified draft ready. Complete the desktop install, restart, and upgrade checks in docs/release.md before publishing.' >> "$GITHUB_STEP_SUMMARY"

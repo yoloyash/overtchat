@@ -191,6 +191,38 @@ Local packaging does not produce a publicly distributable, notarized release.
 See [Desktop macOS release](release.md#desktop-macos-release) for Developer ID
 signing, notarization, CI builds, and the release validation gate.
 
+On Linux x64, build all downloadable formats without publishing:
+
+```sh
+npm run package:linux -w apps/desktop --
+```
+
+Install `binutils`, `rpm`, `cpio`, and `desktop-file-utils` to also run
+`bash .github/scripts/package-desktop-linux.sh`, which verifies the unpacked
+app and the app extracted from each download and writes SHA-256 checksums.
+The output is under `apps/desktop/release/` with the prefix
+`overtchat-X.Y.Z-linux-x64`. See [Desktop Linux release](release.md#desktop-linux-release)
+for installation, sandbox requirements, credential storage, and native validation.
+
+The packaged Linux smoke test requires a regular user, Xvfb, a session D-Bus,
+and the Electron runtime libraries. It uses isolated XDG settings and a local
+API fixture, never a production account. For the session-only storage case:
+
+```sh
+xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop session
+```
+
+The `persistent` case additionally needs an unlocked GNOME Secret Service in
+the same D-Bus session. Pass `kwallet5` or `kwallet6` as a third argument to
+test an unlocked KDE Wallet instead. CI shows the complete GNOME setup. The test checks rendered
+login, preload IPC, main-process bearer transport, sign-out, three process
+launches, encrypted persistence or session-only fallback, and the renderer's
+kernel seccomp filter and PID namespace. It does not replace the live-server,
+microphone, desktop integration, and upgrade checks in the release runbook.
+Set `DESKTOP_SMOKE_UPGRADE_DEB` to a higher-version candidate to install it
+between the first two launches and verify encrypted sign-in survives; this
+test requires noninteractive `sudo apt-get` access in an isolated test system.
+
 ## Speech
 
 Speech failures distinguish disabled or missing configuration from an unreachable

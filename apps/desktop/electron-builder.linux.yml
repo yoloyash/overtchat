@@ -1,0 +1,33 @@
+extends: ./electron-builder.yml
+toolsets:
+  # Builder's recommended static runtime avoids the obsolete FUSE 2 dependency.
+  appimage: "1.0.3"
+electronFuses:
+  enableNodeCliInspectArguments: false
+linux:
+  target:
+    - AppImage
+    - deb
+    - rpm
+    - tar.gz
+  executableName: overtchat-desktop
+  # These targets call x64 x86_64/amd64 differently; keep download names uniform.
+  artifactName: overtchat-${version}-linux-x64.${ext}
+  syncDesktopName: true
+  category: Network
+  icon: build/icon.png
+  maintainer: "OvertChat contributors <yash@boomer-hub.uk>"
+  vendor: OvertChat
+  desktop:
+    entry:
+      Keywords: chat;AI;
+appImage:
+  # Do not disable the sandbox in the desktop entry. Main also refuses the
+  # runtime launcher's --no-sandbox fallback before any renderer is created.
+  executableArgs: []
+deb:
+  packageName: overtchat-desktop
+  afterInstall: build/linux/after-install.tpl
+rpm:
+  packageName: overtchat-desktop
+  afterInstall: build/linux/after-install.tpl
