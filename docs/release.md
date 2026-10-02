@@ -52,8 +52,9 @@ Do not change unrelated manifest fields.
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol.
 - **Desktop:** The desktop workflow creates a verified draft for a component
-  tag. Follow [Desktop macOS release](#desktop-macos-release) to validate and
-  publish it; desktop downloads do not use manifest promotion.
+  tag. Follow [Desktop macOS release](#desktop-macos-release) and
+  [Desktop Linux release](#desktop-linux-release) to validate and publish it;
+  desktop downloads do not use manifest promotion.
 - **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
   `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
   images, and dispatches promotion.
@@ -76,7 +77,7 @@ npm before creating `desktop-vX.Y.Z`; desktop releases do not change the server
 image, managed-install manifest, or mobile version.
 
 `.github/workflows/desktop-release.yml` builds on native Apple Silicon and Intel
-GitHub-hosted Macs:
+GitHub-hosted Macs, plus Linux x64 (see the Linux section below):
 
 - PRs package and verify an ad-hoc app without release credentials.
 - Manual dispatches build signed, notarized DMG and ZIP downloads and retain
@@ -84,7 +85,7 @@ GitHub-hosted Macs:
   it executes with signing and Apple API credentials. The workflow must first
   exist on the default branch for GitHub's manual dispatch UI to expose it.
 - `desktop-v*` tags build the same downloads and create a **draft** GitHub
-  release after both architectures pass. The workflow downloads the uploaded
+  release after both Mac architectures and Linux pass. The workflow downloads the uploaded
   assets again and compares their bytes and SHA-256 checksums. It does not
   publish the draft or change GitHub's Latest release.
 
@@ -142,7 +143,8 @@ gh workflow run desktop-release.yml --ref <reviewed-ref>
 For a release, merge the versioned commit into `main`, then create the matching
 `desktop-vX.Y.Z` tag. The draft contains
 `overtchat-X.Y.Z-mac-arm64.{dmg,zip}` and
-`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, plus architecture-specific checksums.
+`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, and
+checksums for each platform/architecture.
 Never move a tag or replace assets after publication. A failed build can resume
 its still-unpublished draft; manual builds only upload workflow artifacts.
 
@@ -174,6 +176,91 @@ For local release builds, use `bash .github/scripts/package-desktop-mac.sh arm64
 private local credential source. The script signs, notarizes, verifies, and
 writes checksums without publishing. `npm run package:mac -w apps/desktop --`
 remains the credential-free development packaging command.
+
+## Desktop Linux release
+
+The desktop workflow builds Linux **x64** downloads using electron-builder's
+standard `AppImage`, `deb`, `rpm`, and `tar.gz` targets. It uses the same bundled
+UI, desktop version, and `desktop-vX.Y.Z` tag as macOS. Windows and Linux ARM64
+are not part of this release. No paid signing account is required for these
+direct GitHub downloads; this workflow does not provision an APT/YUM repository
+or an in-app updater.
+
+The Linux job builds and verifies all four formats on PRs, manual dispatches,
+and release tags, without Apple credentials. PR and manual builds retain
+downloads as workflow artifacts. Tags add these assets to the verified draft:
+
+- `overtchat-X.Y.Z-linux-x64.AppImage`
+- `overtchat-X.Y.Z-linux-x64.deb`
+- `overtchat-X.Y.Z-linux-x64.rpm`
+- `overtchat-X.Y.Z-linux-x64.tar.gz`
+- `desktop-checksums-linux-x64.txt`
+
+The verifier checks x86-64 ELF architecture, package version, ASAR contents,
+Electron fuses, package metadata, desktop entries, and all recovered bundles.
+Linux Electron does not enforce embedded ASAR integrity: the configured fuse
+does not provide macOS-style tamper protection on Linux. Verify the SHA-256
+checksums from the release before installing downloads.
+
+### Installation and sandbox
+
+On Debian/Ubuntu, use `sudo apt install ./overtchat-X.Y.Z-linux-x64.deb`.
+On Fedora, use `sudo dnf install ./overtchat-X.Y.Z-linux-x64.rpm`.
+Launch **overtchat** from the application menu or run `overtchat-desktop` as your
+regular desktop user. The package and executable use `overtchat-desktop` so they
+do not conflict with the management CLI's `overtchat` command. These packages install Chromium's root-owned sandbox
+helper with mode `4755`. On compatible AppArmor systems, they install a profile
+allowing user namespaces for `/opt/overtchat/overtchat-desktop`; uninstall removes and
+unloads the profile. Installation never disables system-wide restrictions.
+
+AppImage and tarball builds are portable and do not perform a privileged
+installation. They require working unprivileged user/network namespaces; test
+with `unshare --user --map-root-user --net true`. Ubuntu 24.04's AppArmor policy
+can block these portable paths: use the `.deb` there. Do not use `--no-sandbox`
+as an installation workaround. Main refuses this flag, including the generated
+AppImage launcher's fallback, before creating any renderer.
+
+To run an AppImage, make it executable with `chmod +x` and open it. We pin
+electron-builder's recommended static runtime toolset `1.0.3`, which removes
+the legacy FUSE 2 dependency. Where mounting is unavailable, run the AppImage
+with `--appimage-extract-and-run`; this still requires a working Chromium
+sandbox. For the tarball, extract it and run its `overtchat-desktop` executable as a
+regular user. Portable formats do not install application-menu entries.
+
+Saved login uses the desktop's OS secret store (GNOME Secret Service or KDE
+Wallet). When no usable store exists, the session lasts until the app quits.
+The `basic_text` backend is never used to persist a bearer token. Installing
+an OS secret store does not migrate an in-memory session; sign in again.
+
+### Validation before publication
+
+CI installs, launches, and removes the `.deb` on Ubuntu 22.04 and 24.04, checks
+Fedora RPM installation/removal in a container, and launches the AppImage's
+extracted and extract-and-run entrypoints plus the tarball. The packaged smoke uses a local API
+fixture and inspects the renderer's kernel sandbox; failure diagnostics are
+retained. Ubuntu 22.04 also tests a higher-version package made from the same
+code, retaining encrypted login through the installation. The source version
+and candidate downloads are not changed. Packaging alone does not qualify a Linux release.
+
+Download the exact candidate and verify its checksums. Record the distro,
+desktop environment, package format, and app version. Before publishing:
+
+1. Install/launch the `.deb` on Ubuntu 22.04 and 24.04, and the `.rpm` on
+   Fedora. Verify application-menu icons, sandboxed launch, and clean uninstall.
+2. Launch AppImage and tarball on a system with working user namespaces;
+   test the AppImage itself, including its mount or extract-and-run entrypoint.
+3. Against a compatible server, check server selection, login, chat streaming,
+   uploaded images/downloads, external links, microphone capture/playback,
+   menus, and Change Server. Check both X11 and Wayland desktop sessions.
+4. Verify saved login across two full quit/relaunches with GNOME and KDE
+   credential stores. Verify no token is saved when the store is unavailable.
+5. Upgrade a previous installation while retaining settings and saved login.
+   For the first release, use two candidate builds. Removing the package must
+   leave the user's settings intact while removing installed launchers/profile.
+
+Publish the existing desktop draft only after its macOS and Linux gates pass,
+using the publication command in the macOS section. Never replace public assets
+or move a published tag.
 
 ## Mobile release
 

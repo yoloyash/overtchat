@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, dialog } from "electron";
 import path from "node:path";
 import { configureServerAuth } from "./auth";
 import { registerIpc } from "./ipc";
@@ -9,6 +9,13 @@ import { flushSettings, loadSettings } from "./settings";
 import { getMainWindow, openMainWindow } from "./window";
 
 app.setName("overtchat");
+// AppImage launchers can inject this switch when namespaces are unavailable.
+// Refuse it before creating any renderer; sandbox:true cannot override it.
+if (process.platform === "linux" && app.commandLine.hasSwitch("no-sandbox")) {
+  dialog.showErrorBox("Cannot start overtchat",
+    "OvertChat requires the Linux sandbox. Install the .deb or .rpm package, or use a system with working unprivileged user namespaces. See overtchat's Linux installation instructions.");
+  app.exit(1);
+}
 // Development builds keep their own server, sign-in, and window state.
 app.setPath(
   "userData",

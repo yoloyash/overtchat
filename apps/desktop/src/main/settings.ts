@@ -41,6 +41,12 @@ function settingsFile(): string {
   return path.join(app.getPath("userData"), "settings.json");
 }
 
+/** Linux's basic backend uses a public fallback key, not an OS secret store. */
+function canPersistSession(): boolean {
+  return safeStorage.isEncryptionAvailable() &&
+    (process.platform !== "linux" || safeStorage.getSelectedStorageBackend() !== "basic_text");
+}
+
 export function loadSettings(): void {
   try {
     const parsed = JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as Partial<Settings>;
@@ -57,6 +63,7 @@ export function loadSettings(): void {
   token = null;
   if (settings.sessionToken) {
     try {
+      if (!canPersistSession()) throw new Error("OS credential storage is unavailable");
       token = safeStorage.decryptString(Buffer.from(settings.sessionToken, "base64"));
     } catch (error) {
       console.error("[settings] failed to decrypt the session token; sign in again", error);
@@ -119,7 +126,7 @@ export function getSessionToken(): string | null {
 export function setSessionToken(next: string | null): void {
   if (next === token) return;
   token = next;
-  if (next && !safeStorage.isEncryptionAvailable()) {
+  if (next && !canPersistSession()) {
     console.warn("[settings] OS encryption is unavailable; the sign-in lasts until the app quits");
     update({ sessionToken: null });
     return;
