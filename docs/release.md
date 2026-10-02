@@ -375,6 +375,22 @@ their exact signed release bytes and production update configuration. Run the
 baseline, download and postpone the candidate, quit normally, relaunch the
 baseline, then explicitly update and verify the installed version and saved
 login. Add `4931 --interrupt-once` to test a failed download followed by retry.
+The automated native Mac qualification uses the exact workflow artifact pair,
+without rebuilding or publishing them:
+
+```sh
+gh workflow run desktop-release.yml --ref <reviewed-ref> \
+  -f qualification_baseline_run=<baseline-run-id> \
+  -f qualification_candidate_run=<candidate-run-id>
+```
+
+It checks discovery without download, both server API mismatches, interrupted
+download/retry, a server becoming incompatible after download, normal quit
+without installation, a real Squirrel install/relaunch, and encrypted login
+retention on native arm64 and x64 runners. These jobs need read-only repository
+and artifact access; they receive no signing or Cloudflare secrets. They use
+an isolated, unlocked test Keychain containing only a generated encryption key
+for the test app, then restore the runner's original Keychain configuration.
 Use a writable test app location. Close an existing Mac instance and back up
 its profile before testing; restore it afterward. Linux tests can isolate the
 profile with `XDG_CONFIG_HOME`. Verify AppImage replacement and native package

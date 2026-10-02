@@ -1,7 +1,7 @@
 // Serve exact candidate installers on loopback, without touching a public feed.
 import assert from "node:assert/strict";
 import { createReadStream } from "node:fs";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -16,7 +16,9 @@ assert(Number.isSafeInteger(port) && port > 0 && port < 65536);
 assert(!interruptArgument || interruptArgument === "--interrupt-once");
 const origin = `http://127.0.0.1:${port}`;
 const responses = new Map();
-for (const name of ["stable-arm64-mac.yml", "stable-x64-mac.yml", "stable-linux.yml"]) {
+const channels = (await readdir(directory)).filter((name) => ["stable-arm64-mac.yml", "stable-x64-mac.yml", "stable-linux.yml"].includes(name));
+assert(channels.length > 0, "No candidate update metadata found");
+for (const name of channels) {
   const metadata = parse(await readFile(path.join(directory, name), "utf8"));
   for (const file of metadata.files) {
     const filename = path.basename(new URL(file.url).pathname);
