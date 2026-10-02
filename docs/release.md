@@ -5,7 +5,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 
 ## Rules
 
-- Version the CLI, app, realtime voice, connector, STT, and mobile app independently.
+- Version the CLI, app, realtime voice, connector, STT, mobile, and desktop apps independently.
 - Publish and verify all selected artifacts before deploying the manifest.
 - Use strict `X.Y.Z` versions. Never reuse a published tag or artifact.
 - Managed installs do not downgrade. Roll back with a higher patch version.
@@ -24,6 +24,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
 | Bundled images | Manifest Redis, SearXNG, or Kokoro image digest | None |
 | Mobile | See [Mobile release](#mobile-release) | `mobile-vX.Y.Z` |
+| Desktop | `apps/desktop/package.json`; workspace lockfile entry | `desktop-vX.Y.Z` |
 
 Do not change unrelated manifest fields.
 
@@ -50,6 +51,9 @@ Do not change unrelated manifest fields.
   the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
   retain the current protocol.
+- **Desktop:** The desktop workflow creates a verified draft for a component
+  tag. Follow [Desktop macOS release](#desktop-macos-release) to validate and
+  publish it; desktop downloads do not use manifest promotion.
 - **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
   `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
   images, and dispatches promotion.
@@ -63,6 +67,113 @@ Do not change unrelated manifest fields.
   unavailable after retries. Checksum, installer, and platform verification
   failures remain fatal. A manual promotion with `require_complete: true` also
   fails when artifacts are unavailable.
+
+## Desktop macOS release
+
+The Electron desktop client has an independent version in
+`apps/desktop/package.json`. Update its lockfile workspace entry with the pinned
+npm before creating `desktop-vX.Y.Z`; desktop releases do not change the server
+image, managed-install manifest, or mobile version.
+
+`.github/workflows/desktop-release.yml` builds on native Apple Silicon and Intel
+GitHub-hosted Macs:
+
+- PRs package and verify an ad-hoc app without release credentials.
+- Manual dispatches build signed, notarized DMG and ZIP downloads and retain
+  them as workflow artifacts for seven days. Dispatch a trusted, reviewed ref;
+  it executes with signing and Apple API credentials. The workflow must first
+  exist on the default branch for GitHub's manual dispatch UI to expose it.
+- `desktop-v*` tags build the same downloads and create a **draft** GitHub
+  release after both architectures pass. The workflow downloads the uploaded
+  assets again and compares their bytes and SHA-256 checksums. It does not
+  publish the draft or change GitHub's Latest release.
+
+The release configuration extends the local packaging configuration and requires
+Developer ID signing, hardened runtime, and app notarization. The build script
+imports the exported certificate into an isolated temporary keychain using
+[GitHub's documented macOS signing setup](https://docs.github.com/en/actions/how-tos/deploy/deploy-to-third-party-platforms/sign-xcode-applications), then Electron Builder signs the nested
+Electron binaries through `CSC_KEYCHAIN`. The script restores the original
+keychain search list and removes its temporary keychain on exit. This avoids
+the incorrect keychain password used by Electron Builder 26.15.3's `CSC_LINK`
+importer. Node CLI inspection is disabled in release builds.
+The app is stapled before creating the ZIP and DMG; the DMG is also submitted
+and stapled separately. Verification checks the app recovered from both
+downloads, bundle/version/architecture, Developer ID team, secure timestamp,
+runtime entitlements, packaged files, Electron fuses, staple, and Gatekeeper.
+This pipeline provides downloadable releases; it does not add an in-app updater.
+
+### Apple credentials
+
+Use a **Developer ID Application** certificate for team `C35DR2MHM7`, created
+with the G2 authority. An iOS Apple Distribution certificate cannot sign these
+downloads. Export the certificate **with its private key** as a password-protected
+`.p12` from Keychain Access. Keep local private keys, exports, and their password
+files outside the repository in a private directory with mode `0700`, with
+private files at `0600`. Keep the bundle ID `com.overtchat.desktop` and signing
+team stable across releases.
+
+Configure these GitHub Actions repository secrets through GitHub's secrets UI
+or `gh secret set` via standard input:
+
+- `MACOS_DEVELOPER_ID_P12`: the base64-encoded `.p12`, including certificate and
+  private key. Supply the encoding directly to standard input, without logging it.
+- `MACOS_DEVELOPER_ID_PASSWORD`: the `.p12` export password.
+- `ASC_API_KEY_ID`, `ASC_API_ISSUER_ID`, `ASC_API_PRIVATE_KEY`: an App Store
+  Connect **team** API key with notarization access. The existing iOS upload
+  key can be reused; individual API keys are not supported by this setup.
+
+The credentialed build fails before packaging if any required secret is missing.
+Private API key material is written only to a temporary private directory and
+removed on exit. PRs never receive these credentials. Do not add a
+`pull_request_target` signing path or run a manual build against an untrusted ref.
+Renew the certificate before its actual expiry and update both `.p12` secrets
+together. Do not revoke a certificate that signed public releases without
+checking the consequences for those releases.
+
+### Build and publication
+
+After the workflow is available on the default branch, build a reviewed ref
+without creating a release:
+
+```sh
+gh workflow run desktop-release.yml --ref <reviewed-ref>
+```
+
+For a release, merge the versioned commit into `main`, then create the matching
+`desktop-vX.Y.Z` tag. The draft contains
+`overtchat-X.Y.Z-mac-arm64.{dmg,zip}` and
+`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, plus architecture-specific checksums.
+Never move a tag or replace assets after publication. A failed build can resume
+its still-unpublished draft; manual builds only upload workflow artifacts.
+
+Before publishing, download the exact candidate and verify its checksums. On
+each supported architecture, open the downloaded DMG normally, drag the app to
+Applications, and launch it through Finder. Record version, architecture, and
+macOS version, and check:
+
+1. Gatekeeper accepts the downloaded app; server selection, login, and chat
+   streaming work against a compatible server.
+2. Approve the initial Keychain request using **Always Allow**. Completely quit
+   and relaunch twice; the session restores without repeated consent. First
+   access from an ad-hoc development build to a Developer ID build may ask again.
+3. Microphone access, uploaded images, native menus, and Change Server work.
+4. Upgrade an existing signed installation with saved settings and sign-in;
+   verify data and Keychain access survive the upgrade. The first release needs
+   a fresh install and a signed candidate-to-candidate upgrade test.
+
+The build checks do not replace this UI and upgrade gate. After it passes,
+publish the verified draft explicitly without changing the other components'
+Latest release:
+
+```sh
+gh release edit desktop-vX.Y.Z --draft=false --latest=false
+```
+
+For local release builds, use `bash .github/scripts/package-desktop-mac.sh arm64`
+(or `x64`) with the same secret names loaded into the environment through a
+private local credential source. The script signs, notarizes, verifies, and
+writes checksums without publishing. `npm run package:mac -w apps/desktop --`
+remains the credential-free development packaging command.
 
 ## Mobile release
 

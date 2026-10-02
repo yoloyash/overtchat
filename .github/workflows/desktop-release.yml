@@ -1,0 +1,140 @@
+name: Build macOS desktop app
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/desktop-release.yml"
+      - ".github/scripts/*desktop-mac*"
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "package-lock.json"
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            app-directory: mac-arm64
+          - runner: macos-15-intel
+            arch: x64
+            app-directory: mac
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Validate desktop version and release tag
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          const version = JSON.parse(readFileSync('apps/desktop/package.json')).version;
+          assert(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version), 'Expected strict X.Y.Z desktop version');
+          if (process.env.RELEASE_TAG) assert.equal(process.env.RELEASE_TAG, `desktop-v${version}`);
+          JS
+      - run: npm run typecheck -w apps/desktop --
+      - name: Package without release credentials for PR validation
+        if: github.event_name == 'pull_request'
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: npm run package:mac -w apps/desktop -- "--$ARCH"
+      - name: Verify PR bundle
+        if: github.event_name == 'pull_request'
+        env:
+          APP_DIRECTORY: ${{ matrix.app-directory }}
+          ARCH: ${{ matrix.arch }}
+        run: node .github/scripts/verify-desktop-mac.mjs "apps/desktop/release/$APP_DIRECTORY/overtchat.app" "$ARCH" adhoc
+      - name: Sign, notarize, and verify downloadable artifacts
+        if: github.event_name != 'pull_request'
+        env:
+          ARCH: ${{ matrix.arch }}
+          MACOS_DEVELOPER_ID_P12: ${{ secrets.MACOS_DEVELOPER_ID_P12 }}
+          MACOS_DEVELOPER_ID_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_PASSWORD }}
+          ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
+          ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: bash .github/scripts/package-desktop-mac.sh "$ARCH"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: github.event_name != 'pull_request'
+        with:
+          name: desktop-mac-${{ matrix.arch }}
+          path: |
+            apps/desktop/release/overtchat-*-mac-${{ matrix.arch }}.dmg
+            apps/desktop/release/overtchat-*-mac-${{ matrix.arch }}.zip
+            apps/desktop/release/desktop-checksums-${{ matrix.arch }}.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  draft-release:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: desktop-mac-*
+          merge-multiple: true
+          path: release
+      - name: Create or resume a verified draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#desktop-v}"
+          expected=$(printf '%s\n' \
+            desktop-checksums-arm64.txt desktop-checksums-x64.txt \
+            "overtchat-$version-mac-arm64.dmg" "overtchat-$version-mac-arm64.zip" \
+            "overtchat-$version-mac-x64.dmg" "overtchat-$version-mac-x64.zip" | LC_ALL=C sort)
+          actual=$(find release -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
+          test "$actual" = "$expected"
+          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt)
+
+          if gh release view "$TAG" --json isDraft --jq '.isDraft' > release-draft; then
+            test "$(cat release-draft)" = true || {
+              echo "Release $TAG is already public and immutable." >&2
+              exit 1
+            }
+          else
+            gh release create "$TAG" --draft --verify-tag --latest=false \
+              --title "OvertChat Desktop v$version" --generate-notes
+          fi
+          test "$(gh release view "$TAG" --json isDraft --jq '.isDraft')" = true
+          gh release upload "$TAG" release/* --clobber
+          actual=$(gh release view "$TAG" --json assets --jq '.assets[].name' | LC_ALL=C sort)
+          test "$actual" = "$expected"
+          verification_directory=$(mktemp -d)
+          trap 'rm -rf "$verification_directory"' EXIT
+          gh release download "$TAG" --dir "$verification_directory"
+          for asset in release/*; do
+            cmp "$asset" "$verification_directory/$(basename "$asset")"
+          done
+          (cd "$verification_directory" && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt)
+          echo 'Verified draft ready. Complete the macOS install, restart, and upgrade checks in docs/release.md before publishing.' >> "$GITHUB_STEP_SUMMARY"
