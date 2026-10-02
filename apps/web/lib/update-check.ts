@@ -61,6 +61,11 @@ async function fetchLatestVersion(): Promise<string | null> {
 }
 
 export async function getAppUpdateStatus(): Promise<AppUpdateStatus> {
+  // Local UI testing uses the real authenticated endpoint, including from Electron.
+  if (process.env.NODE_ENV === "development" && process.env.OVERTCHAT_SERVER_UPDATE_PREVIEW === "1") {
+    const [major, minor, patch] = parseVersion(APP_VERSION) ?? [0, 0, 0];
+    return { currentVersion: APP_VERSION, latestVersion: `${major}.${minor}.${patch + 1}`, updateAvailable: true };
+  }
   const latest = updateCheckDisabled() ? null : await fetchLatestVersion();
   return {
     currentVersion: APP_VERSION,

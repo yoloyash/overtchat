@@ -159,6 +159,7 @@ Development builds keep their server, sign-in, and window state in an
 
 ```sh
 npm run typecheck -w apps/desktop --
+npm run test -w apps/desktop --
 npm run build -w apps/desktop --
 ```
 
@@ -166,6 +167,37 @@ npm run build -w apps/desktop --
 (including an outdated server and a wrong address), signing in and out, chat
 streaming, uploaded images, the menu commands, Change Server, zoom, fullscreen,
 and the macOS titlebar with the sidebar open and collapsed.
+Development builds show manual download options and never download or install
+an update. Force a desktop UI state while running the web server normally:
+
+```sh
+OVERTCHAT_DESKTOP_UPDATE_PREVIEW=available npm run dev:desktop
+```
+
+Click the desktop download icon to simulate progress and reach the ready icon.
+Click it to test the **Later** / **Update and restart** confirmation.
+Other presets are `ready`, `downloading`, `error`, `blocked`, and
+`idle`. Preview restarts leave the app running. Installed apps ignore this
+variable. To show both desktop and server update actions, start the local web
+server in another terminal with:
+
+```sh
+OVERTCHAT_SERVER_UPDATE_PREVIEW=1 npm run dev:web
+```
+
+Connect Electron to that local server and sign in as an administrator. The
+server flag returns a simulated newer version through the authenticated update
+endpoint, even when normal update checks are disabled. Production servers
+ignore it. The sidebar update regression uses an injected bridge:
+
+```sh
+E2E_PORT=4797 npm run test:e2e -w apps/web -- sidebar.spec.ts desktop-updates.spec.ts
+node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
+```
+
+The tests cover compatibility, download/retry/restart state, separate desktop
+and server actions, final artifact hashes, and monotonic feed publication.
+Qualify real signed and Linux native updates using the release runbook.
 
 On a Mac, package a local application with:
 
@@ -201,7 +233,8 @@ Install `binutils`, `rpm`, `cpio`, and `desktop-file-utils` to also run
 `bash .github/scripts/package-desktop-linux.sh`, which verifies the unpacked
 app and the app extracted from each download and writes SHA-256 checksums.
 The output is under `apps/desktop/release/` with the prefix
-`overtchat-X.Y.Z-linux-x64`. See [Desktop Linux release](release.md#desktop-linux-release)
+`overtchat-X.Y.Z-linux-x64`, except the AppImage's stable filename
+`overtchat-linux-x64.AppImage`. See [Desktop Linux release](release.md#desktop-linux-release)
 for installation, sandbox requirements, credential storage, and native validation.
 
 The packaged Linux smoke test requires a regular user, Xvfb, a session D-Bus,

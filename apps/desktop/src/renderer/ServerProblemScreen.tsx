@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 import type { ServerProblem } from "../shared/ipc";
 import { hostOf, shell } from "./shell";
 
@@ -60,6 +61,9 @@ export function ServerProblemScreen({
         <p className="mt-1 text-sm text-muted-foreground">{message}</p>
       </header>
       <div className="flex flex-col gap-2">
+        {problem.kind === "app-outdated" && (
+          <DesktopUpdateAction alwaysVisible />
+        )}
         <Button disabled={checking} onClick={() => void retry()} className="w-full">
           {checking ? "Checking…" : "Try again"}
         </Button>

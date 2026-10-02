@@ -9,6 +9,11 @@ export const IPC = {
   fullscreen: "desktop:fullscreen",
   theme: "desktop:theme",
   command: "desktop:command",
+  updateState: "desktop:update-state",
+  updateStateChanged: "desktop:update-state-changed",
+  checkForUpdates: "desktop:check-for-updates",
+  downloadUpdate: "desktop:download-update",
+  installUpdate: "desktop:install-update",
 } as const;
 
 export type ColorScheme = "light" | "dark";

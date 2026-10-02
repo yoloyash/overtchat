@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - ".github/workflows/desktop-release.yml"
+      - ".github/workflows/desktop-update-feed.yml"
       - ".github/scripts/*desktop-mac*"
       - ".github/scripts/*desktop-linux*"
+      - ".github/scripts/*desktop-update*"
       - "apps/desktop/**"
       - "apps/web/**"
       - "packages/shared/**"
@@ -59,6 +61,8 @@ jobs:
           if (process.env.RELEASE_TAG) assert.equal(process.env.RELEASE_TAG, `desktop-v${version}`);
           JS
       - run: npm run typecheck -w apps/desktop --
+      - run: npm run test -w apps/desktop --
+      - run: node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
       - name: Package without release credentials for PR validation
         if: github.event_name == 'pull_request'
         env:
@@ -92,6 +96,7 @@ jobs:
             apps/desktop/release/overtchat-*-mac-${{ matrix.arch }}.dmg
             apps/desktop/release/overtchat-*-mac-${{ matrix.arch }}.zip
             apps/desktop/release/desktop-checksums-${{ matrix.arch }}.txt
+            apps/desktop/release/stable-${{ matrix.arch }}-mac.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -115,6 +120,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y binutils rpm cpio desktop-file-utils xvfb xauth dbus-x11 gnome-keyring libsecret-tools libgtk-3-0 libnss3 libasound2 libgbm1
       - run: npm run typecheck -w apps/desktop --
+      - run: npm run test -w apps/desktop --
       - name: Package and verify every Linux download
         run: bash .github/scripts/package-desktop-linux.sh
       - name: Install and smoke test the Debian package
@@ -156,7 +162,7 @@ jobs:
           unshare --user --map-root-user --net true
           portable=$(mktemp -d)
           trap 'rm -rf "$portable"' EXIT
-          appimages=("$GITHUB_WORKSPACE"/apps/desktop/release/overtchat-*-linux-x64.AppImage)
+          appimages=("$GITHUB_WORKSPACE"/apps/desktop/release/overtchat-linux-x64.AppImage)
           test "${#appimages[@]}" = 1
           (cd "$portable" && "${appimages[0]}" --appimage-extract >/dev/null)
           DESKTOP_SMOKE_ARTIFACT_DIR="$DESKTOP_SMOKE_ARTIFACT_DIR/appimage" xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs "$portable/squashfs-root/AppRun" session
@@ -177,11 +183,12 @@ jobs:
         with:
           name: desktop-linux-x64
           path: |
-            apps/desktop/release/overtchat-*-linux-x64.AppImage
+            apps/desktop/release/overtchat-linux-x64.AppImage
             apps/desktop/release/overtchat-*-linux-x64.deb
             apps/desktop/release/overtchat-*-linux-x64.rpm
             apps/desktop/release/overtchat-*-linux-x64.tar.gz
             apps/desktop/release/desktop-checksums-linux-x64.txt
+            apps/desktop/release/stable-linux.yml
           if-no-files-found: error
           retention-days: 7
 
@@ -254,9 +261,10 @@ jobs:
           version="${TAG#desktop-v}"
           expected=$(printf '%s\n' \
             desktop-checksums-arm64.txt desktop-checksums-x64.txt desktop-checksums-linux-x64.txt \
+            stable-arm64-mac.yml stable-x64-mac.yml stable-linux.yml \
             "overtchat-$version-mac-arm64.dmg" "overtchat-$version-mac-arm64.zip" \
             "overtchat-$version-mac-x64.dmg" "overtchat-$version-mac-x64.zip" \
-            "overtchat-$version-linux-x64.AppImage" "overtchat-$version-linux-x64.deb" \
+            overtchat-linux-x64.AppImage "overtchat-$version-linux-x64.deb" \
             "overtchat-$version-linux-x64.rpm" "overtchat-$version-linux-x64.tar.gz" | LC_ALL=C sort)
           actual=$(find release -maxdepth 1 -type f -printf '%f\n' | LC_ALL=C sort)
           test "$actual" = "$expected"

@@ -138,7 +138,9 @@ The app is stapled before creating the ZIP and DMG; the DMG is also submitted
 and stapled separately. Verification checks the app recovered from both
 downloads, bundle/version/architecture, Developer ID team, secure timestamp,
 runtime entitlements, packaged files, Electron fuses, staple, and Gatekeeper.
-This pipeline provides downloadable releases; it does not add an in-app updater.
+The packaging scripts also generate updater metadata from the final downloadable
+bytes, after notarization. Publishing the qualified draft triggers the
+[desktop update feed](#desktop-update-feed) workflow.
 
 ### Apple credentials
 
@@ -181,7 +183,8 @@ For a release, merge the versioned commit into `main`, then create the matching
 `desktop-vX.Y.Z` tag. The draft contains
 `overtchat-X.Y.Z-mac-arm64.{dmg,zip}` and
 `overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, and
-checksums for each platform/architecture.
+checksums for each platform/architecture, plus `stable-arm64-mac.yml`,
+`stable-x64-mac.yml`, and `stable-linux.yml`.
 Never move a tag or replace assets after publication. A failed build can resume
 its still-unpublished draft; manual builds only upload workflow artifacts.
 
@@ -227,7 +230,7 @@ The Linux job builds and verifies all four formats on PRs, manual dispatches,
 and release tags, without Apple credentials. PR and manual builds retain
 downloads as workflow artifacts. Tags add these assets to the verified draft:
 
-- `overtchat-X.Y.Z-linux-x64.AppImage`
+- `overtchat-linux-x64.AppImage` (stable filename preserves shortcuts on update)
 - `overtchat-X.Y.Z-linux-x64.deb`
 - `overtchat-X.Y.Z-linux-x64.rpm`
 - `overtchat-X.Y.Z-linux-x64.tar.gz`
@@ -298,6 +301,57 @@ desktop environment, package format, and app version. Before publishing:
 Publish the existing desktop draft only after its macOS and Linux gates pass,
 using the publication command in the macOS section. Never replace public assets
 or move a published tag.
+
+## Desktop update feed
+
+`.github/workflows/desktop-update-feed.yml` runs when a stable `desktop-vX.Y.Z`
+release is published. Drafts and prereleases do not change the public feed.
+It downloads the immutable GitHub assets, verifies checksums and metadata,
+and publishes the three channel YAML files under `desktop/` in Cloudflare R2
+bucket `overtchat-updates`, served at `https://updates.overtchat.com`.
+Installer URLs remain version-pinned GitHub release URLs; desktop publication
+does not depend on server/CLI/mobile promotion or the marketing site's build.
+
+Configure repository secrets `CLOUDFLARE_ACCOUNT_ID`,
+`CLOUDFLARE_R2_ACCESS_KEY_ID`, `CLOUDFLARE_R2_SECRET_ACCESS_KEY`, and
+`CLOUDFLARE_R2_PUBLIC_URL` (`https://updates.overtchat.com`). The R2 key needs
+Object Read & Write for this bucket. The workflow also accepts the existing
+`CLOUDFLARE_ACCOUNT_ID` repository variable. Keep the public custom domain
+accessible without authentication and caching disabled for channel YAML files.
+Credentials are used only by CI, never embedded in the desktop app.
+
+Rerun failed publication with:
+
+```sh
+gh workflow run desktop-update-feed.yml --ref main -f tag=desktop-vX.Y.Z
+```
+
+Publication is serialized and conditional on the previous object ETag. Older
+releases cannot overwrite newer feeds; rerunning the same version is idempotent
+only if its metadata is unchanged. Fix a bad public release with a higher
+desktop patch version, never by replacing its assets or repointing an older feed.
+Publishing releases from another GitHub Actions workflow with its default
+`GITHUB_TOKEN` does not trigger a second workflow; if replacing the human
+publication step, explicitly dispatch this feed workflow too.
+
+The updater uses `electron-updater`'s generic provider. Mac channels separate
+arm64/x64; Linux's channel contains AppImage, `.deb`, and `.rpm`, selected by
+the installed format. Tar installs remain manual. Channel metadata includes
+`clientApiLevel`: main checks an exact match with the selected server before
+downloading and again before installation. Offline checks accept only the
+installed client's API level. A single stable feed does not retain an older
+API-compatible release once a newer release has replaced it.
+
+Before publishing, qualify an actual higher-version update on both signed Mac
+architectures and Linux formats: discovery without downloading, clicking to
+download, progress, retry after a network interruption, postponing restart,
+explicit restart, saved login, and normal quit
+without installation. Check both newer/older server API mismatches, switching
+servers after download, and updates before sign-in. Native Linux package
+updates require working privilege authentication; AppImage updates need a
+writable file. The first updater release needs a manual install and two
+candidate builds to qualify the restart path. Verify the public channel URLs
+after publication before announcing the release.
 
 ## Mobile release
 

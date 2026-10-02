@@ -22,6 +22,8 @@ linux:
     entry:
       Keywords: chat;AI;
 appImage:
+  # Preserve the executable path across updates, including user-created shortcuts.
+  artifactName: overtchat-linux-x64.AppImage
   # Do not disable the sandbox in the desktop entry. Main also refuses the
   # runtime launcher's --no-sandbox fallback before any renderer is created.
   executableArgs: []

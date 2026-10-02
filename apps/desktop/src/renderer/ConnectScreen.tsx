@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { shell } from "./shell";
+import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 
 export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
   const [address, setAddress] = useState(lastAddress);
@@ -80,6 +81,9 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
           Set one up
         </a>
       </p>
+      <div className="text-center">
+        <DesktopUpdateAction alwaysVisible />
+      </div>
     </form>
   );
 }

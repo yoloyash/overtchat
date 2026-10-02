@@ -17,7 +17,8 @@
     "package:mac": "npm run build && electron-builder --mac dir --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false",
     "package:mac:release": "npm run build && electron-builder --config electron-builder.release.yml --mac --publish never",
     "package:linux": "npm run build && electron-builder --config electron-builder.linux.yml --linux --x64 --publish never",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "node --import tsx --test src/main/*.test.ts"
   },
   "devDependencies": {
     "@fontsource-variable/fraunces": "^5.3.0",
@@ -35,6 +36,7 @@
     "@vitejs/plugin-react": "^5.0.0",
     "electron": "44.5.1",
     "electron-builder": "26.15.3",
+    "electron-updater": "6.8.9",
     "electron-vite": "^5.0.0",
     "typescript": "~6.0.3",
     "vite": "^7.0.0"

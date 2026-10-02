@@ -4,6 +4,7 @@ import {
   DESKTOP_SHELL_ATTRIBUTE,
   DESKTOP_TITLEBAR_INSET_PROPERTY,
   type DesktopCommand,
+  type DesktopUpdateState,
 } from "@overtchat/shared/desktop";
 import { IPC, type DesktopShellBridge, type ShellWindowState } from "../shared/ipc";
 
@@ -83,6 +84,15 @@ function exposeBridge(): void {
     boot: () => ipcRenderer.invoke(IPC.boot),
     connect: (address) => ipcRenderer.invoke(IPC.connect, address),
     changeServer: () => ipcRenderer.invoke(IPC.changeServer),
+    getUpdateState: () => ipcRenderer.invoke(IPC.updateState),
+    checkForUpdates: () => ipcRenderer.invoke(IPC.checkForUpdates),
+    downloadUpdate: () => ipcRenderer.invoke(IPC.downloadUpdate),
+    installUpdate: () => ipcRenderer.invoke(IPC.installUpdate),
+    onUpdateState(listener) {
+      const onState = (_event: Electron.IpcRendererEvent, state: DesktopUpdateState) => listener(state);
+      ipcRenderer.on(IPC.updateStateChanged, onState);
+      return () => { ipcRenderer.removeListener(IPC.updateStateChanged, onState); };
+    },
   };
   contextBridge.exposeInMainWorld("overtchatDesktop", bridge);
 }

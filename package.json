@@ -26,7 +26,7 @@
     "test:dev": "node --test scripts/dev.test.mjs .github/scripts/*.test.mjs",
     "build": "turbo run build",
     "lint": "npm run speech:check && npm run lint:dev && turbo run lint",
-    "lint:dev": "eslint --config apps/cli/eslint.config.mjs scripts/dev.mjs scripts/dev.test.mjs .github/scripts/assert-image-platforms.mjs .github/scripts/assert-image-platforms.test.mjs .github/scripts/assert-owned-image.mjs .github/scripts/assert-owned-image.test.mjs .github/scripts/check-mobile-push.mjs .github/scripts/check-mobile-push.test.mjs .github/scripts/check-ios-expo-abi.mjs .github/scripts/check-ios-expo-abi.test.mjs .github/scripts/verify-desktop-mac.mjs .github/scripts/verify-desktop-linux.mjs .github/scripts/smoke-desktop-linux.mjs",
+    "lint:dev": "eslint --config apps/cli/eslint.config.mjs scripts/dev.mjs scripts/dev.test.mjs .github/scripts/assert-image-platforms.mjs .github/scripts/assert-image-platforms.test.mjs .github/scripts/assert-owned-image.mjs .github/scripts/assert-owned-image.test.mjs .github/scripts/check-mobile-push.mjs .github/scripts/check-mobile-push.test.mjs .github/scripts/check-ios-expo-abi.mjs .github/scripts/check-ios-expo-abi.test.mjs .github/scripts/verify-desktop-mac.mjs .github/scripts/verify-desktop-linux.mjs .github/scripts/smoke-desktop-linux.mjs .github/scripts/desktop-update-metadata.mjs .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.mjs .github/scripts/publish-desktop-updates.test.mjs",
     "typecheck": "turbo run typecheck",
     "test": "npm run test:dev && turbo run test",
     "test:e2e": "npm run test:e2e -w apps/web --",
@@ -46,7 +46,10 @@
     "speech:check": "node scripts/bundle-apple-speech.mjs --check"
   },
   "devDependencies": {
-    "turbo": "^2.9.6"
+    "@aws-sdk/client-s3": "3.1145.0",
+    "tsx": "4.23.1",
+    "turbo": "^2.9.6",
+    "yaml": "2.9.0"
   },
   "dependencies": {
     "expo-crypto": "~56.0.3"
