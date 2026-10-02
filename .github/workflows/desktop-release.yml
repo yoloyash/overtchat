@@ -62,6 +62,10 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           ARCH: ${{ matrix.arch }}
+          # Builder skips even ad-hoc signatures in PRs by default. This step
+          # explicitly uses identity "-" and receives no release credentials.
+          CSC_FOR_PULL_REQUEST: "true"
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run package:mac -w apps/desktop -- "--$ARCH"
       - name: Verify PR bundle
         if: github.event_name == 'pull_request'
