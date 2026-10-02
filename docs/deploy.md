@@ -209,6 +209,74 @@ details and your server's LAN or HTTPS URL. Everyone uses the enabled models
 with their own chats and projects. Only the first account uses public signup;
 administrators create subsequent accounts.
 
+## Desktop
+
+The desktop app connects to your existing OvertChat server. It does not install
+the server or run models locally. First install or update the server using the
+manager above, then download a published **`desktop-v*`** release from the
+[release log](https://overtchat.com/releases/). Drafts and prereleases are not
+listed there. Desktop 0.1.0 requires the API-level-1 server contract introduced
+in server 0.23.0; older released servers cannot run it. The app checks API
+compatibility before loading your chats and explains when the server or app
+needs updating.
+
+### macOS desktop
+
+Choose `mac-arm64.dmg` for Apple Silicon or `mac-x64.dmg` for Intel. Open the
+downloaded DMG, drag **overtchat** to Applications, and launch it from there.
+Published Mac downloads are Developer ID signed and notarized. ZIP downloads
+are also available for each architecture.
+
+Enter your server URL and sign in with your existing account. When macOS first
+asks for access to **overtchat Safe Storage**, choose **Always Allow** to retain
+sign-in across launches. Allow microphone access when using voice features.
+Use **Change Server** in the app menu to connect to another installation.
+
+### Linux desktop
+
+Linux downloads support **x64**. Use the `.deb` on Debian/Ubuntu, including
+Ubuntu 24.04, or the `.rpm` on Fedora:
+
+```sh
+sudo apt install ./overtchat-0.1.0-linux-x64.deb
+# Fedora instead:
+sudo dnf install ./overtchat-0.1.0-linux-x64.rpm
+```
+
+Replace the version in these filenames with your downloaded release. Launch
+**overtchat** from the application menu or run `overtchat-desktop` as your
+regular user. The existing `overtchat` command manages the server.
+
+AppImage and tar.gz downloads require working unprivileged user/network
+namespaces. Check with `unshare --user --map-root-user --net true`. If your
+system blocks them, use the native package; do not disable the sandbox with
+`--no-sandbox`. Ubuntu 24.04's default AppArmor policy can block portable builds.
+
+For AppImage, make the file executable and launch it:
+
+```sh
+chmod +x overtchat-0.1.0-linux-x64.AppImage
+./overtchat-0.1.0-linux-x64.AppImage
+```
+
+If mounting is unavailable, add `--appimage-extract-and-run`. The sandbox
+requirements still apply. For tar.gz, extract the archive and run its
+`overtchat-desktop` executable. Portable formats do not install menu entries.
+
+Saved sign-in requires GNOME Secret Service or KDE Wallet. Without a usable
+credential store, sign in again after quitting; the app keeps your session only
+until you quit.
+
+### Desktop updates
+
+Desktop updates are manual and independent of `overtchat update`, which updates
+the server stack. Verify downloads against the release's SHA-256 checksum file.
+Quit the app before replacing it in Applications on Mac or installing a newer
+Linux package; your settings and securely saved sign-in are retained. For
+portable builds, replace the extracted app or AppImage. Linux package removal
+preserves your user settings. Windows and Linux ARM64 downloads are not yet
+available.
+
 ## Mobile
 
 Install from [Google Play](https://play.google.com/store/apps/details?id=com.overtchat.mobile)
