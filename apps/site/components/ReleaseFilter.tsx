@@ -2,13 +2,15 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
+import type { ReleasePlatform } from "@/lib/releases";
 
-type ReleaseFilterValue = "all" | "web" | "mobile";
+type ReleaseFilterValue = "all" | ReleasePlatform;
 
 const filters: Array<{ value: ReleaseFilterValue; label: string }> = [
   { value: "all", label: "All releases" },
   { value: "web", label: "Web" },
   { value: "mobile", label: "Mobile" },
+  { value: "desktop", label: "Desktop" },
 ];
 
 export function ReleaseFilter({

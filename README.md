@@ -55,6 +55,13 @@ overtchat update    # update the managed installation
 
 [Installation, existing Compose adoption, backups, and troubleshooting →](docs/deploy.md)
 
+Use the server in your browser, on mobile, or with the desktop app for macOS
+(Apple Silicon/Intel) and Linux x64. Published desktop downloads appear in the
+[release log](https://overtchat.com/releases/); see
+[desktop installation and updates](docs/deploy.md#desktop). Desktop 0.1.0 needs
+server 0.23.0's API contract. The desktop app connects to your server; it does
+not install one.
+
 ## The useful parts, together
 
 - **A conversation you can focus on.** Readable answers, collapsible reasoning

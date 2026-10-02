@@ -1,4 +1,4 @@
-export type ReleasePlatform = "web" | "mobile";
+export type ReleasePlatform = "web" | "mobile" | "desktop";
 
 export interface ReleaseAsset {
   name: string;
@@ -38,6 +38,7 @@ function httpsUrlValue(value: unknown): string | null {
 }
 
 export function classifyReleaseTag(tagName: string): ReleasePlatform | null {
+  if (/^desktop-v\d/i.test(tagName)) return "desktop";
   if (/^mobile-v\d/i.test(tagName)) return "mobile";
   if (/^v\d/i.test(tagName)) return "web";
   return null;

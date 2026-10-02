@@ -69,7 +69,44 @@ Do not change unrelated manifest fields.
   failures remain fatal. A manual promotion with `require_complete: true` also
   fails when artifacts are unavailable.
 
+## Coordinated server and desktop launch
+
+Merge the desktop stack before publishing server 0.23.0 and desktop 0.1.0.
+Use a release-preparation PR to select `appVersion: 0.23.0` in the candidate
+manifest and Compose default, verify the desktop package/lockfile version, and
+add desktop downloads to the site's release log. Keep unrelated components at
+their existing versions unless their release inputs changed. The public
+installation guide is [Deploy: Desktop](deploy.md#desktop).
+
+After merging preparation, keep the reviewed release commit fixed:
+
+1. Run a trusted manual desktop build on that commit to verify hosted Developer
+   ID signing and notarization. Run the final server candidate as a canary and
+   verify existing web/mobile clients and the released connector.
+2. Create `desktop-v0.1.0` on the reviewed commit. This creates a private draft,
+   not a public release. Qualify its exact downloaded artifacts using both
+   desktop sections below, including fresh installation and upgrades.
+3. Only after qualification, create `v0.23.0` on the same commit. The app tag
+   automatically publishes the image and GitHub release and dispatches stable
+   promotion; it has no manual draft gate. Verify the published image revision,
+   amd64/arm64 platforms, successful promotion, and the live install manifest.
+4. Take a fresh consistent database backup and record deployment configuration
+   and the current image before moving production off its canary. Wait until
+   the live manifest selects 0.23.0 before running the managed update. Verify
+   the actual running image, installation record, login, chat, and services.
+5. Publish the qualified desktop draft with `--latest=false`. Verify the public
+   assets and rebuilt site's desktop release/download entries before announcing
+   the combined launch. Desktop is independent of manifest promotion, so the
+   server workflow does not wait for desktop qualification automatically.
+
+Do not move published tags or replace public assets. Keep the backup for
+recovery; normal managed rollback is a new, higher patch release as described
+in the rules above.
+
 ## Desktop macOS release
+
+Public desktop installation and update instructions live in
+[Deploy: Desktop](deploy.md#desktop).
 
 The Electron desktop client has an independent version in
 `apps/desktop/package.json`. Update its lockfile workspace entry with the pinned

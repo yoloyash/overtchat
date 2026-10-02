@@ -1538,8 +1538,9 @@ a:focus-visible,
   border-top: 1px solid var(--border);
 }
 
-.release-collection[data-filter="web"] [data-platform="mobile"],
-.release-collection[data-filter="mobile"] [data-platform="web"] {
+.release-collection[data-filter="web"] [data-platform]:not([data-platform="web"]),
+.release-collection[data-filter="mobile"] [data-platform]:not([data-platform="mobile"]),
+.release-collection[data-filter="desktop"] [data-platform]:not([data-platform="desktop"]) {
   display: none;
 }
 
@@ -1584,6 +1585,11 @@ a:focus-visible,
 .platform-mobile {
   background: var(--accent);
   color: var(--accent-foreground);
+}
+
+.platform-desktop {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
 }
 
 .release-card-header {
