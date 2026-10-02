@@ -34,8 +34,13 @@ for (const name of channels) {
   responses.set(`/${name}`, { body: stringify(metadata) });
 }
 let interrupted = false;
+let resumed = !interruptArgument;
 const server = createServer((request, response) => {
   const pathname = decodeURIComponent(new URL(request.url, origin).pathname);
+  if (interruptArgument && request.method === "POST" && pathname === "/__resume") {
+    resumed = true;
+    return response.writeHead(204).end();
+  }
   const entry = responses.get(pathname);
   if (request.method !== "GET" || !entry) return response.writeHead(404).end();
   response.setHeader("Cache-Control", "no-store");
@@ -43,6 +48,9 @@ const server = createServer((request, response) => {
     response.setHeader("Content-Type", "application/yaml");
     return response.end(entry.body);
   }
+  // Chromium can transparently retry a reset connection. Keep the fixture
+  // unavailable until the driver explicitly retries, so the UI sees a failure.
+  if (interrupted && !resumed) return response.writeHead(503).end();
   response.setHeader("Content-Length", entry.size);
   const stream = createReadStream(entry.artifact);
   stream.on("error", () => response.destroy());
@@ -50,10 +58,11 @@ const server = createServer((request, response) => {
   if (interruptArgument && !interrupted) {
     interrupted = true;
     stream.once("data", (chunk) => {
-      response.write(chunk);
-      response.destroy();
-      stream.destroy();
-      process.stdout.write(`Interrupted ${pathname}; retry will serve the full candidate.\n`);
+      response.write(chunk, () => {
+        response.destroy();
+        stream.destroy();
+        process.stdout.write(`Interrupted ${pathname}; waiting for explicit retry.\n`);
+      });
     });
   } else stream.pipe(response);
 });

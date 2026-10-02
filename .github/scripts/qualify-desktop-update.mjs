@@ -146,6 +146,7 @@ try {
   const interrupted = await page.evaluate(() => window.overtchatDesktop.downloadUpdate());
   assert.equal(interrupted.status, "error", "Interrupted download must be retryable");
   assert(output.includes("Interrupted"));
+  assert((await fetch("http://127.0.0.1:4931/__resume", { method: "POST" })).ok);
   assert.equal((await page.evaluate(() => window.overtchatDesktop.downloadUpdate())).status, "ready");
   apiLevel = 2;
   await assert.rejects(page.evaluate(() => window.overtchatDesktop.installUpdate()), /support/);
