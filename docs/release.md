@@ -374,7 +374,8 @@ test metadata URLs, and serves on loopback. The candidate installers retain
 their exact signed release bytes and production update configuration. Run the
 baseline, download and postpone the candidate, quit normally, relaunch the
 baseline, then explicitly update and verify the installed version and saved
-login. Add `4931 --interrupt-once` to test a failed download followed by retry.
+login. Add `4931 --interrupt-once` to test a failed download. Restore the fixture
+with `curl -X POST http://127.0.0.1:4931/__resume`, then retry from the app.
 The automated native Mac qualification uses the exact workflow artifact pair,
 without rebuilding or publishing them:
 

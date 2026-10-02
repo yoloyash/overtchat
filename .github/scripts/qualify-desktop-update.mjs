@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -21,6 +22,7 @@ assert(executableArgument && candidates && /^\d+\.\d+\.\d+$/.test(version),
 const executable = path.resolve(executableArgument);
 const isMac = process.platform === "darwin";
 assert(isMac || process.platform === "linux");
+if (!isMac) assert.notEqual(process.getuid(), 0, "Qualify desktop updates as a regular user");
 if (isMac) {
   const running = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" }).stdout;
   assert(!/^\S*\/overtchat\.app\/Contents\/MacOS\/overtchat(?:\s|$)/m.test(running), "Quit existing installed desktop apps before qualification");
@@ -99,7 +101,14 @@ async function launch() {
 }
 async function quit() {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
-  await page.keyboard.press(isMac ? "Meta+Q" : "Control+Q").catch(() => {});
+  if (isMac) {
+    // CDP keyboard events stay inside Chromium and do not invoke native menus.
+    // A standard Quit Apple event exercises Electron's normal app.quit path.
+    const app = path.resolve(executable, "../../..");
+    const result = spawnSync("osascript", ["-e", `tell application ${JSON.stringify(app)} to quit`], { encoding: "utf8", timeout: 10_000 });
+    assert.equal(result.status, 0, result.stderr);
+  }
+  else await page.close().catch(() => {});
   await waitFor("normal app quit", () => child.exitCode !== null || child.signalCode !== null, 15_000);
   await browser.close().catch(() => {});
   browser = page = null;
@@ -108,7 +117,14 @@ function mainPids() {
   const result = spawnSync("ps", ["-axo", "pid=,command="], { encoding: "utf8" });
   return result.stdout.split("\n").flatMap(line => {
     const match = line.trim().match(/^(\d+)\s+(.+)$/);
-    return match && (match[2] === executable || match[2].startsWith(`${executable} `)) ? [Number(match[1])] : [];
+    if (!match) return [];
+    if (isMac) return match[2] === executable || match[2].startsWith(`${executable} `) ? [Number(match[1])] : [];
+    // Package relaunch uses the resolved executable; AppImage mounts change
+    // paths. Match only main processes carrying this test's isolated profile.
+    if (!/^\S*\/overtchat(?:-desktop)?(?:\s|$)/.test(match[2]) || match[2].includes("--type=")) return [];
+    try {
+      return readFileSync(`/proc/${match[1]}/environ`, "utf8").split("\0").includes(`XDG_CONFIG_HOME=${config}`) ? [Number(match[1])] : [];
+    } catch { return []; }
   });
 }
 async function restoreMacProfile() {
