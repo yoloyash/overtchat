@@ -12,7 +12,7 @@ asar: true
 npmRebuild: false
 publish:
   provider: generic
-  url: https://updates.overtchat.com/desktop/
+  url: http://127.0.0.1:4931/
 electronFuses:
   runAsNode: false
   enableNodeOptionsEnvironmentVariable: false
