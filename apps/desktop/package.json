@@ -1,7 +1,7 @@
 {
   "name": "@overtchat/desktop",
   "productName": "overtchat",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "OvertChat desktop app for an operator-supplied server",
   "author": "OvertChat contributors",

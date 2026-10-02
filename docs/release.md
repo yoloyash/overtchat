@@ -223,8 +223,8 @@ The desktop workflow builds Linux **x64** downloads using electron-builder's
 standard `AppImage`, `deb`, `rpm`, and `tar.gz` targets. It uses the same bundled
 UI, desktop version, and `desktop-vX.Y.Z` tag as macOS. Windows and Linux ARM64
 are not part of this release. No paid signing account is required for these
-direct GitHub downloads; this workflow does not provision an APT/YUM repository
-or an in-app updater.
+direct GitHub downloads; this workflow does not provision an APT/YUM repository.
+In-app updates use the [desktop update feed](#desktop-update-feed).
 
 The Linux job builds and verifies all four formats on PRs, manual dispatches,
 and release tags, without Apple credentials. PR and manual builds retain
@@ -352,6 +352,34 @@ updates require working privilege authentication; AppImage updates need a
 writable file. The first updater release needs a manual install and two
 candidate builds to qualify the restart path. Verify the public channel URLs
 after publication before announcing the release.
+
+### Qualifying the first in-app update
+
+Use a private, lower-version build of the updater-capable code as the baseline;
+the public desktop 0.1.0 predates the updater. On a temporary reviewed branch,
+change only Builder's `publish.url` to `http://127.0.0.1:4931/`, then manually
+dispatch `desktop-release.yml` on that branch. These workflow artifacts are
+test builds; never replace the public 0.1.0 tag or assets.
+
+Build the final higher-version candidate with the production configuration.
+Download and merge its Mac and Linux workflow artifacts into a private local
+directory and verify all three checksum files. Serve that directory with:
+
+```sh
+node .github/scripts/serve-desktop-update-test.mjs <candidate-directory>
+```
+
+The helper validates installer hashes and sizes, changes only the in-memory
+test metadata URLs, and serves on loopback. The candidate installers retain
+their exact signed release bytes and production update configuration. Run the
+baseline, download and postpone the candidate, quit normally, relaunch the
+baseline, then explicitly update and verify the installed version and saved
+login. Add `4931 --interrupt-once` to test a failed download followed by retry.
+Use a writable test app location. Close an existing Mac instance and back up
+its profile before testing; restore it afterward. Linux tests can isolate the
+profile with `XDG_CONFIG_HOME`. Verify AppImage replacement and native package
+authentication separately. After qualification, publish the exact reviewed
+candidate and verify the public R2 feed workflow.
 
 ## Mobile release
 
