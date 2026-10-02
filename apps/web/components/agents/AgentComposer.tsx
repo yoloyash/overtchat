@@ -52,6 +52,7 @@ import {
   AgentComposerControls,
   type AgentComposerControlsProps,
 } from "./AgentComposerControls";
+import { serverUrl } from "@/lib/api-url";
 
 function commandSource(source: AgentSlashCommand["source"]): string {
   const labels: Record<AgentSlashCommand["source"], string> = {
@@ -738,7 +739,9 @@ function AgentImageChip({
   attachment: ChatAttachment;
   onRemove: () => void;
 }) {
-  const src = attachment.previewUrl ?? attachment.part?.url;
+  const src =
+    attachment.previewUrl ??
+    (attachment.part?.url && serverUrl(attachment.part.url));
   return (
     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border bg-muted">
       {src && (

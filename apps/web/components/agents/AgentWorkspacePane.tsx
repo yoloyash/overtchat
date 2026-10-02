@@ -171,7 +171,7 @@ function WorkspaceTabs({
   onClose: () => void;
 }) {
   return (
-    <header className="flex h-12 shrink-0 border-b bg-muted/15">
+    <header data-titlebar className="flex h-12 shrink-0 border-b bg-muted/15">
       <div
         role="tablist"
         aria-label="Workspace views"

@@ -83,7 +83,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <>
-      <div className="flex h-12 shrink-0 items-center justify-between px-3">
+      <div data-titlebar data-titlebar-inset className="flex h-12 shrink-0 items-center justify-between px-3">
         <span className="font-brand text-sm font-semibold tracking-tight">overtchat</span>
         <button
           type="button"

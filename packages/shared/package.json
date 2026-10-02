@@ -15,7 +15,8 @@
     "./agent-tool-details": "./src/agent-tool-details.ts",
     "./agent-interaction": "./src/agent-interaction.ts",
     "./context-meter": "./src/context-meter.ts",
-    "./mobile-connection": "./src/mobile-connection.ts"
+    "./mobile-connection": "./src/mobile-connection.ts",
+    "./desktop": "./src/desktop.ts"
   },
   "scripts": {
     "theme:generate": "tsx scripts/generate-theme-css.ts",

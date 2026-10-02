@@ -26,10 +26,14 @@ vi.mock("@/lib/title", () => ({ ensureChatTitle: mocks.ensureChatTitle }));
 
 import { POST } from "./route";
 
-function request(items: unknown[], authorization = "Bearer ticket") {
+function request(items: unknown[], headers: Record<string, string> = {}) {
   return new Request("http://app.test/api/voice/history", {
     method: "POST",
-    headers: { authorization, "Content-Type": "application/json" },
+    headers: {
+      "X-OvertChat-Voice-Ticket": "ticket",
+      "Content-Type": "application/json",
+      ...headers,
+    },
     body: JSON.stringify({ items }),
   });
 }
@@ -114,6 +118,38 @@ describe("voice history sync", () => {
     await expect(response.json()).resolves.toMatchObject({
       chat: { id: "chat-1", title: "Greeting" },
     });
+  });
+
+  it("keeps Authorization for a bearer session alongside the ticket", async () => {
+    const response = await POST(
+      request(
+        [
+          {
+            type: "message",
+            id: "user-item",
+            previousId: null,
+            role: "user",
+            status: "completed",
+            text: "Hello",
+          },
+        ],
+        { Authorization: "Bearer session" },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.verifyTicket).toHaveBeenCalledWith("ticket");
+    const { headers } = mocks.getSession.mock.calls[0][0] as { headers: Headers };
+    expect(headers.get("authorization")).toBe("Bearer session");
+  });
+
+  it("requires a ticket", async () => {
+    const response = await POST(
+      request([], { "X-OvertChat-Voice-Ticket": "" }),
+    );
+
+    expect(response.status).toBe(401);
+    expect(mocks.verifyTicket).not.toHaveBeenCalled();
   });
 
   it("requires the authenticated user and signed ticket to agree", async () => {

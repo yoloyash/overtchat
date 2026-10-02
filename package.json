@@ -18,6 +18,7 @@
     "dev": "node scripts/dev.mjs",
     "dev:web": "node scripts/dev.mjs --web-only",
     "dev:mobile": "npm run dev -w apps/mobile --",
+    "dev:desktop": "npm run dev -w apps/desktop --",
     "dev:site": "npm run dev -w apps/site --",
     "dev:managed": "npm run dev -w apps/cli -- setup --development",
     "dev:down": "docker compose -f compose.dev.yml down",

@@ -73,6 +73,7 @@ import {
   type ChatAttachment,
   useChatAttachments,
 } from "./useChatAttachments";
+import { serverUrl } from "@/lib/api-url";
 
 export interface ComposerHandle {
   addFiles: (files: readonly File[]) => void;
@@ -808,7 +809,7 @@ function AttachmentChip({
   // Images render as a thumbnail while uploading/ready. On failure we fall back
   // to the row chip below so the actual error reason has room to show.
   if (isImage && status !== "error") {
-    const src = attachment.previewUrl ?? part?.url;
+    const src = attachment.previewUrl ?? (part?.url && serverUrl(part.url));
     return (
       <div className="group/chip relative h-16 w-16 overflow-hidden rounded-lg border bg-muted">
         {src && (

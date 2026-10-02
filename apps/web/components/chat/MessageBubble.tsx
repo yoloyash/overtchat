@@ -45,6 +45,7 @@ import {
   MessageActions,
   MessageActionButton as ActionButton,
 } from "./MessageActions";
+import { serverUrl } from "@/lib/api-url";
 
 const CITATION_REMARK_PLUGINS = [
   ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
@@ -268,10 +269,10 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
   const label = part.filename ?? (isImage ? "image" : "file");
   if (isImage) {
     return (
-      <a href={part.url} target="_blank" rel="noopener noreferrer">
+      <a href={serverUrl(part.url)} target="_blank" rel="noopener noreferrer">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={part.url}
+          src={serverUrl(part.url)}
           alt={label}
           className="max-h-64 max-w-full rounded-xl border object-cover"
         />

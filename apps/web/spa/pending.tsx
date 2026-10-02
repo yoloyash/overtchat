@@ -5,8 +5,8 @@ import { SettingsPage } from "@/components/settings/SettingsRows";
 export function AppPending() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <div className="size-8 rounded-md motion-skeleton" />
+      <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+        <div data-titlebar-leading className="size-8 rounded-md motion-skeleton" />
         <div className="h-4 w-36 rounded motion-skeleton" />
       </div>
       <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col justify-end gap-6 px-4 py-8">
@@ -23,8 +23,8 @@ export function AppPending() {
 export function ChatPending() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <div className="size-8 rounded-md motion-skeleton" />
+      <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+        <div data-titlebar-leading className="size-8 rounded-md motion-skeleton" />
         <div className="h-4 w-48 rounded motion-skeleton" />
       </div>
       <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 px-4 pt-10 pb-8">
@@ -43,8 +43,8 @@ export function ChatPending() {
 export function ProjectPending() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <div className="size-8 rounded-md motion-skeleton" />
+      <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+        <div data-titlebar-leading className="size-8 rounded-md motion-skeleton" />
         <div className="h-4 w-44 rounded motion-skeleton" />
       </div>
       <div className="mx-auto w-full max-w-3xl space-y-8 px-4 py-8 md:px-8">

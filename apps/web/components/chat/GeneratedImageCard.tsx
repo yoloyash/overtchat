@@ -8,6 +8,7 @@ import {
 } from "@overtchat/shared";
 import { Download, ImageIcon, Loader2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { serverUrl } from "@/lib/api-url";
 
 export function GeneratedImageCard({
   part,
@@ -55,21 +56,21 @@ export function GeneratedImageCard({
           className="overflow-hidden rounded-xl border bg-card"
         >
           <a
-            href={image.url}
+            href={serverUrl(image.url)}
             target="_blank"
             rel="noopener noreferrer"
             aria-label="Open generated image"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={image.url}
+              src={serverUrl(image.url)}
               alt={part.output?.prompt ?? "Generated image"}
               className="max-h-[32rem] w-full object-contain"
             />
           </a>
           <div className="flex flex-wrap items-center gap-2 p-2">
             <a
-              href={image.url}
+              href={serverUrl(image.url)}
               download={image.filename}
               className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs hover:bg-accent"
             >

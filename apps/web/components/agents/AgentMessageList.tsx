@@ -62,6 +62,7 @@ import type { AgentRewindMode } from "@overtchat/agent-bridge";
 import { AgentLinkIcon } from "./AgentLinkIcon";
 import { AgentWorkspaceLink } from "./AgentWorkspaceLink";
 import { AgentTranscriptMotion, useAgentDisclosureAnchor } from "./AgentTranscriptMotion";
+import { serverUrl } from "@/lib/api-url";
 
 export type { AgentRunActivity } from "./AgentActivity";
 
@@ -746,7 +747,7 @@ function UserMessage({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={index}
-          src={image.src}
+          src={serverUrl(image.src)}
           alt={image.alt}
           className="max-h-64 max-w-[80%] rounded-lg border object-contain"
         />
