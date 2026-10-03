@@ -1,8 +1,8 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
-import { chatGenerations, chats, messages } from "@/lib/db/schema";
+import { chatGenerations, chats, messages, projects } from "@/lib/db/schema";
 import {
   CHAT_MESSAGE_PAGE_SIZE,
   type ChatMessagePage,
@@ -81,12 +81,65 @@ export async function listChats(
   userId: string,
   limit = 100,
 ): Promise<ChatRow[]> {
+  // Pins are independent of the recent-chat window, including project chats.
+  const recentIds = db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(eq(chats.userId, userId))
+    .orderBy(desc(chats.updatedAt), desc(chats.id))
+    .limit(limit);
   return db
     .select()
     .from(chats)
-    .where(eq(chats.userId, userId))
-    .orderBy(desc(chats.updatedAt))
-    .limit(limit);
+    .where(
+      // Scope both branches to the owner, and let SQLite use the pin/ID indexes
+      // instead of scanning the user's entire history for the outer filter.
+      or(
+        and(eq(chats.userId, userId), eq(chats.pinned, true)),
+        inArray(chats.id, recentIds),
+      ),
+    )
+    .orderBy(desc(chats.updatedAt), desc(chats.id));
+}
+
+export type ChatMetadataPatch = {
+  title?: string;
+  projectId?: string | null;
+  pinned?: boolean;
+};
+
+/** Validates the destination and applies all metadata fields atomically. */
+export async function updateChatMetadata(
+  id: string,
+  userId: string,
+  input: ChatMetadataPatch,
+): Promise<boolean> {
+  return db.transaction((tx) => {
+    if (input.projectId != null) {
+      const project = tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.userId, userId)))
+        .get();
+      if (!project) return false;
+    }
+    const title = input.title?.trim().slice(0, 200);
+    const rows = tx
+      .update(chats)
+      .set({
+        ...(title ? { title } : {}),
+        ...(input.projectId !== undefined ? { projectId: input.projectId } : {}),
+        ...(input.pinned !== undefined ? { pinned: input.pinned } : {}),
+        // Override $onUpdate for pin-only writes: organization is not activity.
+        updatedAt: title || input.projectId !== undefined
+          ? new Date()
+          : sql`${chats.updatedAt}`,
+      })
+      .where(and(eq(chats.id, id), eq(chats.userId, userId)))
+      .returning({ id: chats.id })
+      .all();
+    return rows.length > 0;
+  });
 }
 
 export async function listActiveChatIds(userId: string): Promise<string[]> {

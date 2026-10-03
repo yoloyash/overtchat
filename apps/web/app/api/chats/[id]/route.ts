@@ -1,12 +1,13 @@
 import { auth } from "@/lib/auth/server";
-import { deleteChat, renameChat } from "@/lib/db/chats";
+import { deleteChat, updateChatMetadata } from "@/lib/db/chats";
+import { z } from "zod";
 import { closeChatMcpRuntime } from "@/lib/mcp/manager";
-import { moveChatToProject } from "@/lib/db/projects";
 
-type PatchBody = {
-  title?: string;
-  projectId?: string | null;
-};
+const patchSchema = z.object({
+  title: z.string().optional(),
+  projectId: z.string().nullable().optional(),
+  pinned: z.boolean().optional(),
+});
 
 export async function PATCH(
   req: Request,
@@ -16,15 +17,12 @@ export async function PATCH(
   if (!session) return new Response("Unauthorized", { status: 401 });
 
   const { id } = await params;
-  const body = (await req.json()) as PatchBody;
+  const parsed = patchSchema.safeParse(await req.json().catch(() => null));
+  if (!parsed.success) return new Response("Invalid request", { status: 400 });
+  const body = parsed.data;
 
-  if (typeof body.title === "string") {
-    await renameChat(id, session.user.id, body.title);
-  }
-  if (body.projectId !== undefined) {
-    const ok = await moveChatToProject(id, session.user.id, body.projectId);
-    if (!ok) return new Response("Not found", { status: 404 });
-  }
+  const ok = await updateChatMetadata(id, session.user.id, body);
+  if (!ok) return new Response("Not found", { status: 404 });
   return new Response(null, { status: 204 });
 }
 

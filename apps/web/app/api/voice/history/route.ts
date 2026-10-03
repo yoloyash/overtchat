@@ -77,6 +77,7 @@ export async function POST(request: Request) {
       ? {
           id: chat.id,
           title: chat.title,
+          pinned: chat.pinned,
           kind: chat.kind,
           projectId: chat.projectId,
           updatedAt: chat.updatedAt.getTime(),

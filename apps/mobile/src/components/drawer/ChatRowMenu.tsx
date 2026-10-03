@@ -1,4 +1,4 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Popover, {
@@ -7,7 +7,7 @@ import Popover, {
 } from "react-native-popover-view";
 import { useTheme } from "@/lib/theme";
 
-export type ChatRowAction = "rename" | "move" | "delete";
+export type ChatRowAction = "pin" | "unpin" | "rename" | "move" | "delete";
 
 const ACTION_META: Record<
   ChatRowAction,
@@ -17,6 +17,8 @@ const ACTION_META: Record<
     destructive?: boolean;
   }
 > = {
+  pin: { label: "Pin", icon: "bookmark" },
+  unpin: { label: "Unpin", icon: "bookmark" },
   rename: { label: "Rename", icon: "edit-3" },
   move: { label: "Move to project", icon: "folder" },
   delete: { label: "Delete", icon: "trash-2", destructive: true },
@@ -25,15 +27,23 @@ const ACTION_META: Record<
 export function ChatRowMenu({
   from,
   visible,
+  pinned,
+  pinPending,
+  pinningSupported,
   onSelect,
   onClose,
 }: {
   from: Rect | null;
   visible: boolean;
+  pinned: boolean;
+  pinPending: boolean;
+  pinningSupported: boolean;
   onSelect: (action: ChatRowAction) => void;
   onClose: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const actions: ChatRowAction[] = ["rename", "move", "delete"];
+  if (pinningSupported) actions.unshift(pinned ? "unpin" : "pin");
 
   return (
     <Popover
@@ -52,7 +62,7 @@ export function ChatRowMenu({
       backgroundStyle={{ backgroundColor: "rgba(0,0,0,0.15)" }}
     >
       <View style={styles.menu}>
-        {(Object.keys(ACTION_META) as ChatRowAction[]).map((a) => {
+        {actions.map((a) => {
           const meta = ACTION_META[a];
           const tint = meta.destructive
             ? colors.destructive
@@ -62,6 +72,7 @@ export function ChatRowMenu({
               key={a}
               accessibilityRole="button"
               accessibilityLabel={meta.label}
+              disabled={pinPending && (a === "pin" || a === "unpin")}
               onPress={() => {
                 Haptics.selectionAsync().catch(() => {});
                 onClose();
@@ -80,7 +91,11 @@ export function ChatRowMenu({
               >
                 {meta.label}
               </Text>
-              <Feather name={meta.icon} size={16} color={tint} />
+              {a === "pin" || a === "unpin" ? (
+                <Ionicons name="pin-outline" size={16} color={tint} />
+              ) : (
+                <Feather name={meta.icon} size={16} color={tint} />
+              )}
             </Pressable>
           );
         })}

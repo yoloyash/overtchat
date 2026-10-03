@@ -134,6 +134,13 @@
       "when": 1790633274021,
       "tag": "0018_model_preferences",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1791025431476,
+      "tag": "0019_chat_pinning",
+      "breakpoints": true
     }
   ]
 }
