@@ -515,6 +515,7 @@ function ChatSurface({
           id: chatId,
           title: null,
           kind: "text",
+          pinned: false,
           projectId,
           updatedAt: Date.now(),
         };

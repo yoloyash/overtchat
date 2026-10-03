@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
-import { SidebarChatList } from "@/components/SidebarChatList";
+import { SidebarChatList, SidebarItem } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
   CreateProjectDialog,
@@ -58,10 +58,11 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const unprojected = useMemo(
     () =>
       chats
-        .filter((c) => c.projectId == null)
+        .filter((c) => c.projectId == null && !c.pinned)
         .map((c) => ({
           id: c.id,
           title: c.title,
+          pinned: c.pinned,
           kind: c.kind,
           updatedAt: c.updatedAt,
         })),
@@ -71,12 +72,12 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const projectsWithChats = useMemo(() => {
     const byProject = new Map<
       string,
-      { id: string; title: string | null; kind: "text" | "voice" }[]
+      { id: string; title: string | null; kind: "text" | "voice"; pinned: boolean }[]
     >();
     for (const c of chats) {
       if (!c.projectId) continue;
       const list = byProject.get(c.projectId) ?? [];
-      list.push({ id: c.id, title: c.title, kind: c.kind });
+      list.push({ id: c.id, title: c.title, kind: c.kind, pinned: c.pinned });
       byProject.set(c.projectId, list);
     }
     return projectOptions.map((p) => ({
@@ -157,6 +158,23 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           </Link>
         </nav>
 
+        {chats.some((chat) => chat.pinned) && (
+          <section aria-label="Pinned chats">
+            <SectionLabel>Pinned</SectionLabel>
+            <ul className="flex flex-col gap-0.5">
+              {chats.filter((chat) => chat.pinned).map((chat) => (
+                <SidebarItem
+                  key={chat.id}
+                  chat={chat}
+                  projects={projectOptions}
+                  currentProjectId={chat.projectId}
+                  generating={activeChats.has(chat.id)}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+
         <SectionLabel>Projects</SectionLabel>
         <SidebarProjects
           projects={projectsWithChats}
@@ -175,6 +193,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
         <SidebarChatList
           chats={unprojected}
+          emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
           projects={projectOptions}
           activeChatIds={activeChats}
         />

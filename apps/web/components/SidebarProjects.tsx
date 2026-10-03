@@ -20,7 +20,7 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 
 interface ProjectWithChats extends ProjectOption {
-  chats: { id: string; title: string | null; kind: ChatKind }[];
+  chats: { id: string; title: string | null; kind: ChatKind; pinned: boolean }[];
 }
 
 export function SidebarProjects({

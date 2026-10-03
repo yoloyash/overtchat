@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -11,6 +11,8 @@ import {
   MoreHorizontal,
   LoaderCircle,
   Pencil,
+  Pin,
+  PinOff,
   Trash2,
 } from "lucide-react";
 import type { ChatKind } from "@overtchat/shared";
@@ -20,6 +22,7 @@ import {
   useDeleteChat,
   useMoveChat,
   useRenameChat,
+  useSetChatPinned,
 } from "@/lib/queries/chats";
 import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
@@ -33,6 +36,7 @@ interface Chat {
   id: string;
   title: string | null;
   kind: ChatKind;
+  pinned: boolean;
 }
 
 interface DatedChat extends Chat {
@@ -48,10 +52,12 @@ export function SidebarChatList({
   chats,
   projects,
   activeChatIds,
+  emptyMessage = "No chats yet",
 }: {
   chats: DatedChat[];
   projects: ProjectOption[];
   activeChatIds: ReadonlySet<string>;
+  emptyMessage?: string;
 }) {
   if (chats.length === 0) {
     return (
@@ -60,7 +66,7 @@ export function SidebarChatList({
           Recents
         </div>
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          No chats yet
+          {emptyMessage}
         </p>
       </>
     );
@@ -109,6 +115,8 @@ export function SidebarItem({
   const renameMut = useRenameChat();
   const deleteMut = useDeleteChat();
   const moveMut = useMoveChat();
+  const pinMut = useSetChatPinned();
+  const rowRef = useRef<HTMLLIElement>(null);
 
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(chat.title ?? "");
@@ -118,6 +126,28 @@ export function SidebarItem({
   const markTitleRevealComplete = useCallback(() => {
     setRevealNextTitle(false);
   }, []);
+
+  async function togglePin() {
+    const row = rowRef.current;
+    const sidebar = row?.closest("aside");
+    const hadFocus = row?.contains(document.activeElement);
+    try {
+      await pinMut.mutateAsync({ id: chat.id, pinned: !chat.pinned });
+      // A pin moves the row between lists. Keep keyboard focus in the sidebar.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      if (hadFocus && !row?.isConnected && document.activeElement === document.body) {
+        const target = sidebar?.querySelector<HTMLAnchorElement>(
+          `[data-chat-id="${CSS.escape(chat.id)}"] a`,
+        ) ?? sidebar?.querySelector<HTMLButtonElement>('button[aria-label="Search chats"]');
+        target?.focus();
+      }
+    } catch (err) {
+      toast.error({
+        title: chat.pinned ? "Failed to unpin chat" : "Failed to pin chat",
+        description: getErrorMessage(err, "Please try again."),
+      });
+    }
+  }
 
   function commitRename() {
     const next = draft.trim();
@@ -194,7 +224,7 @@ export function SidebarItem({
 
   return (
     <>
-      <li className="group flex items-center">
+      <li ref={rowRef} data-chat-id={chat.id} className="group flex items-center">
         <Link
           to="/chat/$id"
           params={{ id: chat.id }}
@@ -254,6 +284,18 @@ export function SidebarItem({
                     motionClasses.popup,
                   )}
                 >
+                <Menu.Item
+                  onClick={togglePin}
+                  disabled={pinMut.isPending}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                >
+                  {chat.pinned ? (
+                    <PinOff className="size-3.5 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <Pin className="size-3.5 shrink-0 text-muted-foreground" />
+                  )}
+                  <span>{chat.pinned ? "Unpin" : "Pin"}</span>
+                </Menu.Item>
                 <Menu.Item
                   onClick={() => {
                     setDraft(chat.title ?? "");
@@ -329,6 +371,19 @@ export function SidebarItem({
             </Menu.Portal>
           </Menu.Root>
         </div>
+        <button
+          type="button"
+          aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}
+          title={chat.pinned ? "Unpin chat" : "Pin chat"}
+          disabled={pinMut.isPending}
+          onClick={togglePin}
+          className={cn(
+            "mr-0.5 flex size-5.5 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-accent hover:text-foreground disabled:opacity-50 max-md:size-7.5",
+            !chat.pinned && "pointer-events-none opacity-0 motion-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus:pointer-events-auto focus:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100",
+          )}
+        >
+          <Pin aria-hidden="true" className={cn("size-3.5", chat.pinned && "fill-current")} />
+        </button>
       </li>
 
       <AlertDialog.Root

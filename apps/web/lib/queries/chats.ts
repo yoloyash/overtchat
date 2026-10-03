@@ -17,6 +17,7 @@ import { apiUrl } from "@/lib/api-url";
 export type ChatListItem = {
   id: string;
   title: string | null;
+  pinned: boolean;
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;
@@ -147,6 +148,21 @@ export function useRenameChat() {
         body: JSON.stringify({ title }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.list() }),
+  });
+}
+
+export function useSetChatPinned() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, pinned }: { id: string; pinned: boolean }) => {
+      const response = await fetch(apiUrl(`/api/chats/${encodeURIComponent(id)}`), {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: chatKeys.list() }),
   });

@@ -33,6 +33,7 @@ export interface RealtimeVoiceSessionHandle {
 interface PersistedVoiceChat {
   id: string;
   title: string | null;
+  pinned: boolean;
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;

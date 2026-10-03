@@ -23,6 +23,7 @@ import {
   useDeleteChat,
   useMoveChat,
   useRenameChat,
+  useSetChatPinned,
   type ChatListItem,
 } from "@/lib/queries/chats";
 import {
@@ -42,6 +43,7 @@ type ListEntry =
   | { kind: "section"; key: string; label: string }
   | { kind: "project-row"; key: string; project: ProjectListItem; expanded: boolean; isActive: boolean }
   | { kind: "project-chat"; key: string; chat: ChatListItem; isActive: boolean }
+  | { kind: "pinned-chat"; key: string; chat: ChatListItem; isActive: boolean }
   | { kind: "project-empty"; key: string }
   | { kind: "new-project"; key: string }
   | { kind: "date-header"; key: string; label: DateBucket }
@@ -73,6 +75,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const renameMutation = useRenameChat();
   const deleteMutation = useDeleteChat();
   const moveMutation = useMoveChat();
+  const pinMutation = useSetChatPinned();
   const createProjectMutation = useCreateProject();
 
   const renameSheetRef = useRef<BottomSheetModal>(null);
@@ -113,7 +116,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           const list = byProject.get(c.projectId) ?? [];
           list.push(c);
           byProject.set(c.projectId, list);
-        } else {
+        } else if (!c.pinned) {
           flat.push(c);
         }
       }
@@ -136,6 +139,19 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const entries = useMemo<ListEntry[]>(() => {
     const out: ListEntry[] = [];
     const projectList = projects ?? [];
+
+    const pinned = (chats ?? []).filter((chat) => chat.pinned);
+    if (pinned.length > 0) {
+      out.push({ kind: "section", key: "s-pinned", label: "Pinned" });
+      for (const chat of pinned) {
+        out.push({
+          kind: "pinned-chat",
+          key: `pin-${chat.id}`,
+          chat,
+          isActive: chat.id === activeChatId,
+        });
+      }
+    }
 
     if (projectList.length > 0) {
       out.push({ kind: "section", key: "s-projects", label: "Projects" });
@@ -184,7 +200,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     }
 
     return out;
-  }, [projects, expanded, chatsByProject, unprojected, activeChatId, activeProjectId]);
+  }, [chats, projects, expanded, chatsByProject, unprojected, activeChatId, activeProjectId]);
 
   function toggleProject(id: string) {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -234,6 +250,18 @@ export function AppDrawer(props: DrawerContentComponentProps) {
       {
         onSuccess: () => toastSuccess("Renamed"),
         onError: (e) => toastError("Couldn't rename chat", e),
+      },
+    );
+  }
+
+  function togglePin(item: ChatListItem) {
+    pinMutation.mutate(
+      { id: item.id, pinned: !item.pinned },
+      {
+        onError: (error) => toastError(
+          item.pinned ? "Couldn't unpin chat" : "Couldn't pin chat",
+          error,
+        ),
       },
     );
   }
@@ -398,6 +426,8 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     indented
                     onTap={openChat}
                     onRename={openRename}
+                    onPin={togglePin}
+                    pinPending={pinMutation.isPending}
                     onMove={openMove}
                     onDelete={openDeleteConfirm}
                   />
@@ -436,6 +466,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     {entry.label}
                   </Text>
                 );
+              case "pinned-chat":
               case "chat-row":
                 return (
                   <ChatRow
@@ -443,6 +474,8 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     isActive={entry.isActive}
                     onTap={openChat}
                     onRename={openRename}
+                    onPin={togglePin}
+                    pinPending={pinMutation.isPending}
                     onMove={openMove}
                     onDelete={openDeleteConfirm}
                   />
@@ -656,6 +689,8 @@ function ChatRow({
   indented = false,
   onTap,
   onRename,
+  onPin,
+  pinPending,
   onMove,
   onDelete,
 }: {
@@ -664,6 +699,8 @@ function ChatRow({
   indented?: boolean;
   onTap: (item: ChatListItem) => void;
   onRename: (item: ChatListItem) => void;
+  onPin: (item: ChatListItem) => void;
+  pinPending: boolean;
   onMove: (item: ChatListItem) => void;
   onDelete: (item: ChatListItem) => void;
 }) {
@@ -711,13 +748,24 @@ function ChatRow({
             color={colors.mutedForeground}
           />
         ) : null}
+        {item.pinned && (
+          <Ionicons
+            name="pin"
+            size={14}
+            color={colors.mutedForeground}
+            accessibilityLabel="Pinned chat"
+          />
+        )}
       </Pressable>
       <ChatRowMenu
         from={menu.anchorRect}
         visible={menu.visible}
+        pinned={!!item.pinned}
+        pinPending={pinPending}
         onClose={menu.close}
         onSelect={(action) => {
           if (action === "rename") onRename(item);
+          else if (action === "pin" || action === "unpin") onPin(item);
           else if (action === "move") onMove(item);
           else onDelete(item);
         }}

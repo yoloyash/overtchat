@@ -199,6 +199,23 @@ stale targets, provider failure, cancellation, temporary chats, search indexing,
 and usage recording. On Android and iOS, also check the Continue action/menu,
 Stop, and reopening the saved response.
 
+## Chat pinning validation
+
+Chat pins are stored on the server and appear in the web/Electron sidebar and
+native mobile drawer. The chat list includes every pin alongside its recent-chat
+window. Pinning preserves activity timestamps and project membership.
+
+```sh
+npm run test -w apps/web -- lib/db/chats.test.ts 'app/api/chats/[id]/route.test.ts'
+E2E_PORT=4727 npm run test:e2e -w apps/web -- chat-pinning.spec.ts
+npm run typecheck -w apps/mobile --
+```
+
+The browser regression covers keyboard pinning, persistence, older pins, project
+shortcuts and moves, failed writes, deletion, and the touch drawer. On native
+Android and iOS, also check the drawer's long-press Pin/Unpin actions, refresh,
+and reopening the app.
+
 ## Mobile validation
 
 For Agent Connections changes:

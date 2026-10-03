@@ -70,6 +70,7 @@ describe("voice history sync", () => {
       mocks.getChat.mockResolvedValue({
         id: "chat-1",
         title: "Greeting",
+        pinned: true,
         kind: "voice",
         projectId: null,
         updatedAt: new Date(1_000),
@@ -116,7 +117,7 @@ describe("voice history sync", () => {
       fallbackModelConfig: { id: "model-1", enabled: true },
     });
     await expect(response.json()).resolves.toMatchObject({
-      chat: { id: "chat-1", title: "Greeting" },
+      chat: { id: "chat-1", title: "Greeting", pinned: true },
     });
   });
 

@@ -28,6 +28,7 @@ raw.exec(`
     user_id TEXT NOT NULL,
     project_id TEXT,
     title TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     kind TEXT NOT NULL DEFAULT 'text',
     active_stream_id TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),

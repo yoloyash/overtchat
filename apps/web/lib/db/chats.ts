@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
 import { chatGenerations, chats, messages } from "@/lib/db/schema";
@@ -81,12 +81,39 @@ export async function listChats(
   userId: string,
   limit = 100,
 ): Promise<ChatRow[]> {
+  // Pins are independent of the recent-chat window, including project chats.
+  const recentIds = db
+    .select({ id: chats.id })
+    .from(chats)
+    .where(eq(chats.userId, userId))
+    .orderBy(desc(chats.updatedAt), desc(chats.id))
+    .limit(limit);
   return db
     .select()
     .from(chats)
-    .where(eq(chats.userId, userId))
-    .orderBy(desc(chats.updatedAt))
-    .limit(limit);
+    .where(
+      // Scope both branches to the owner, and let SQLite use the pin/ID indexes
+      // instead of scanning the user's entire history for the outer filter.
+      or(
+        and(eq(chats.userId, userId), eq(chats.pinned, true)),
+        inArray(chats.id, recentIds),
+      ),
+    )
+    .orderBy(desc(chats.updatedAt), desc(chats.id));
+}
+
+export async function setChatPinned(
+  id: string,
+  userId: string,
+  pinned: boolean,
+): Promise<boolean> {
+  const rows = await db
+    .update(chats)
+    // Override the schema's $onUpdate: pinning is organization, not activity.
+    .set({ pinned, updatedAt: sql`${chats.updatedAt}` })
+    .where(and(eq(chats.id, id), eq(chats.userId, userId)))
+    .returning({ id: chats.id });
+  return rows.length > 0;
 }
 
 export async function listActiveChatIds(userId: string): Promise<string[]> {
