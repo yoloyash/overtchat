@@ -19,6 +19,7 @@ export async function GET(request: Request) {
           },
         ]),
       ),
+      chatPinning: true,
       images: getImageCapability(),
       voice: getVoiceCapability(),
     },

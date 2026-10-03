@@ -29,6 +29,7 @@ export function ChatRowMenu({
   visible,
   pinned,
   pinPending,
+  pinningSupported,
   onSelect,
   onClose,
 }: {
@@ -36,10 +37,13 @@ export function ChatRowMenu({
   visible: boolean;
   pinned: boolean;
   pinPending: boolean;
+  pinningSupported: boolean;
   onSelect: (action: ChatRowAction) => void;
   onClose: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const actions: ChatRowAction[] = ["rename", "move", "delete"];
+  if (pinningSupported) actions.unshift(pinned ? "unpin" : "pin");
 
   return (
     <Popover
@@ -58,7 +62,7 @@ export function ChatRowMenu({
       backgroundStyle={{ backgroundColor: "rgba(0,0,0,0.15)" }}
     >
       <View style={styles.menu}>
-        {([pinned ? "unpin" : "pin", "rename", "move", "delete"] as ChatRowAction[]).map((a) => {
+        {actions.map((a) => {
           const meta = ACTION_META[a];
           const tint = meta.destructive
             ? colors.destructive

@@ -31,6 +31,7 @@ import {
   useProjects,
   type ProjectListItem,
 } from "@/lib/queries/projects";
+import { useCapabilities } from "@/lib/queries/capabilities";
 import { useTheme } from "@/lib/theme";
 import { toastError, toastSuccess } from "@/lib/toast";
 import { ChatRowMenu } from "./ChatRowMenu";
@@ -67,6 +68,8 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const activeChatId = pathname === "/chat" ? sessionChatId : null;
   const { data: chats, isPending, isFetching, error, refetch } = useChats();
   const { data: projects } = useProjects();
+  const { data: capabilities } = useCapabilities();
+  const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const session = getAuthClient().useSession();
   const user = session.data?.user as
     | { name?: string | null; email?: string | null }
@@ -428,6 +431,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     onRename={openRename}
                     onPin={togglePin}
                     pinPending={pinMutation.isPending}
+                    pinningSupported={pinningSupported}
                     onMove={openMove}
                     onDelete={openDeleteConfirm}
                   />
@@ -476,6 +480,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
                     onRename={openRename}
                     onPin={togglePin}
                     pinPending={pinMutation.isPending}
+                    pinningSupported={pinningSupported}
                     onMove={openMove}
                     onDelete={openDeleteConfirm}
                   />
@@ -691,6 +696,7 @@ function ChatRow({
   onRename,
   onPin,
   pinPending,
+  pinningSupported,
   onMove,
   onDelete,
 }: {
@@ -701,6 +707,7 @@ function ChatRow({
   onRename: (item: ChatListItem) => void;
   onPin: (item: ChatListItem) => void;
   pinPending: boolean;
+  pinningSupported: boolean;
   onMove: (item: ChatListItem) => void;
   onDelete: (item: ChatListItem) => void;
 }) {
@@ -762,6 +769,7 @@ function ChatRow({
         visible={menu.visible}
         pinned={!!item.pinned}
         pinPending={pinPending}
+        pinningSupported={pinningSupported}
         onClose={menu.close}
         onSelect={(action) => {
           if (action === "rename") onRename(item);

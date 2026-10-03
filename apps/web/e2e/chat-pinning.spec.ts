@@ -28,6 +28,17 @@ test("pins persist, include older chats, and keep their project across sidebar a
   } finally {
     db.close();
   }
+  const rejectedPatch = await page.request.patch("/api/chats/recent-chat", {
+    data: { title: "Changed title", pinned: true, projectId: "missing-project" },
+  });
+  expect(rejectedPatch.status()).toBe(404);
+  const unchangedDb = openE2eDatabase();
+  try {
+    expect(unchangedDb.prepare("SELECT title, pinned, project_id FROM chats WHERE id = 'recent-chat'").get())
+      .toEqual({ title: "Weekend Ideas", pinned: 0, project_id: null });
+  } finally {
+    unchangedDb.close();
+  }
   await page.reload();
 
   const sidebar = page.locator("[data-desktop-sidebar]");
@@ -47,6 +58,19 @@ test("pins persist, include older chats, and keep their project across sidebar a
   await expect(pins.getByRole("link", { name: "Weekend Ideas", exact: true })).toBeFocused();
   await expect(sidebar.getByRole("link", { name: "Weekend Ideas", exact: true })).toHaveCount(1);
   await expect(pins.getByRole("link")).toHaveText(["Weekend Ideas", "Old pinned chat"]);
+
+  // Menu items are portaled outside the row, but keyboard focus stays in the sidebar.
+  await row(pins, "Weekend Ideas").getByRole("button", { name: "Chat actions" }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "Unpin", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(sidebar.getByRole("link", { name: "Weekend Ideas", exact: true })).toBeFocused();
+  await expect(pins.getByRole("link", { name: "Weekend Ideas", exact: true })).toHaveCount(0);
+  await row(sidebar, "Weekend Ideas").getByRole("button", { name: "Chat actions" }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("menuitem", { name: "Pin", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(pins.getByRole("link", { name: "Weekend Ideas", exact: true })).toBeFocused();
 
   // Project pinning preserves the project, including its move-menu selection.
   await sidebar.getByRole("button", { name: "Expand", exact: true }).click();
@@ -108,4 +132,52 @@ test("pins persist, include older chats, and keep their project across sidebar a
   } finally {
     verificationDb.close();
   }
+});
+
+test("hides pin controls when an older server does not advertise support", async ({ page }) => {
+  await page.goto("/signup");
+  await page.locator("#name").fill("Legacy Server Admin");
+  await page.locator("#email").fill("legacy-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+
+  const db = openE2eDatabase();
+  try {
+    const owner = db.prepare("SELECT id FROM user LIMIT 1").get() as { id: string };
+    db.prepare("INSERT INTO chats (id, user_id, title) VALUES ('legacy-chat', ?, 'Legacy conversation')").run(owner.id);
+  } finally {
+    db.close();
+  }
+  await page.route("**/api/capabilities", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    delete body.capabilities.chatPinning;
+    await route.fulfill({ response, json: body });
+  });
+  await page.route("**/api/chats", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const chat of body.chats) delete chat.pinned;
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  const sidebar = page.locator("[data-desktop-sidebar]");
+  const row = sidebar.getByRole("link", { name: "Legacy conversation", exact: true }).locator("..");
+  await expect(row.getByRole("link")).toBeVisible();
+  await expect(row.getByRole("button", { name: "Pin chat", exact: true })).toHaveCount(0);
+  await row.getByRole("button", { name: "Chat actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Pin", exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // The browser's touch drawer uses the same support gate.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Open sidebar" }).click();
+  const drawer = page.getByRole("dialog", { name: "Navigation" });
+  const touchRow = drawer.getByRole("link", { name: "Legacy conversation", exact: true }).locator("..");
+  await expect(touchRow.getByRole("button", { name: "Pin chat", exact: true })).toHaveCount(0);
+  await touchRow.getByRole("button", { name: "Chat actions" }).click();
+  await expect(drawer.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
+  await expect(drawer.getByRole("menuitem", { name: "Pin", exact: true })).toHaveCount(0);
 });

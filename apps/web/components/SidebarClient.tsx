@@ -27,6 +27,7 @@ import {
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { useSidebar } from "@/components/sidebar-context";
 import { useActiveChatIds, useChats } from "@/lib/queries/chats";
+import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import { useProjects } from "@/lib/queries/projects";
 import {
   useAgentConnectionSessionDirectory,
@@ -45,6 +46,8 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
 
+  const { data: capabilities } = usePublicCapabilities();
+  const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const { data: chats = [] } = useChats();
   const { data: activeChatIds = [] } = useActiveChatIds();
   const { data: projects = [] } = useProjects();
@@ -72,7 +75,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const projectsWithChats = useMemo(() => {
     const byProject = new Map<
       string,
-      { id: string; title: string | null; kind: "text" | "voice"; pinned: boolean }[]
+      { id: string; title: string | null; kind: "text" | "voice"; pinned?: boolean }[]
     >();
     for (const c of chats) {
       if (!c.projectId) continue;
@@ -169,6 +172,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
                   projects={projectOptions}
                   currentProjectId={chat.projectId}
                   generating={activeChats.has(chat.id)}
+                  pinningSupported={pinningSupported}
                 />
               ))}
             </ul>
@@ -179,6 +183,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
         <SidebarProjects
           projects={projectsWithChats}
           activeChatIds={activeChats}
+          pinningSupported={pinningSupported}
         />
         <button
           type="button"
@@ -196,6 +201,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
           projects={projectOptions}
           activeChatIds={activeChats}
+          pinningSupported={pinningSupported}
         />
       </div>
 

@@ -17,7 +17,7 @@ import { apiUrl } from "@/lib/api-url";
 export type ChatListItem = {
   id: string;
   title: string | null;
-  pinned: boolean;
+  pinned?: boolean;
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;

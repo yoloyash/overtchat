@@ -6,7 +6,7 @@ import { queryKeys } from "@/lib/queries/keys";
 export type ChatListItem = {
   id: string;
   title: string | null;
-  pinned: boolean;
+  pinned?: boolean;
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;

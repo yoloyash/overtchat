@@ -3,9 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   deleteChat: vi.fn(),
-  renameChat: vi.fn(),
-  setChatPinned: vi.fn(),
-  moveChatToProject: vi.fn(),
+  updateChatMetadata: vi.fn(),
   closeChatMcpRuntime: vi.fn(),
 }));
 
@@ -15,11 +13,7 @@ vi.mock("@/lib/auth/server", () => ({
 }));
 vi.mock("@/lib/db/chats", () => ({
   deleteChat: mocks.deleteChat,
-  renameChat: mocks.renameChat,
-  setChatPinned: mocks.setChatPinned,
-}));
-vi.mock("@/lib/db/projects", () => ({
-  moveChatToProject: mocks.moveChatToProject,
+  updateChatMetadata: mocks.updateChatMetadata,
 }));
 vi.mock("@/lib/mcp/manager", () => ({
   closeChatMcpRuntime: mocks.closeChatMcpRuntime,
@@ -31,7 +25,7 @@ describe("chat pinning", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
-    mocks.setChatPinned.mockResolvedValue(true);
+    mocks.updateChatMetadata.mockResolvedValue(true);
   });
 
   function patch(body: unknown) {
@@ -46,26 +40,34 @@ describe("chat pinning", () => {
 
   it.each([true, false])("sets pinned=%s for the authenticated owner", async (pinned) => {
     expect((await patch({ pinned })).status).toBe(204);
-    expect(mocks.setChatPinned).toHaveBeenCalledWith("chat", "user", pinned);
-    expect(mocks.renameChat).not.toHaveBeenCalled();
-    expect(mocks.moveChatToProject).not.toHaveBeenCalled();
+    expect(mocks.updateChatMetadata).toHaveBeenCalledWith("chat", "user", { pinned });
+  });
+
+  it("passes combined fields to one atomic metadata operation", async () => {
+    const body = { title: "Renamed", pinned: true, projectId: "project" };
+    expect((await patch(body)).status).toBe(204);
+    expect(mocks.updateChatMetadata).toHaveBeenCalledExactlyOnceWith("chat", "user", body);
+  });
+
+  it("returns 404 when the atomic metadata operation rejects a destination", async () => {
+    mocks.updateChatMetadata.mockResolvedValue(false);
+    expect((await patch({ pinned: true, projectId: "missing-project" })).status).toBe(404);
   });
 
   it("rejects unauthenticated requests", async () => {
     mocks.getSession.mockResolvedValue(null);
     expect((await patch({ pinned: true })).status).toBe(401);
-    expect(mocks.setChatPinned).not.toHaveBeenCalled();
+    expect(mocks.updateChatMetadata).not.toHaveBeenCalled();
   });
 
   it("returns 404 when the user does not own the chat or it is missing", async () => {
-    mocks.setChatPinned.mockResolvedValue(false);
+    mocks.updateChatMetadata.mockResolvedValue(false);
     expect((await patch({ pinned: true })).status).toBe(404);
   });
 
   it.each(["true", 1, null, {}, []])("rejects an invalid pin value before any mutation: %j", async (pinned) => {
     expect((await patch({ title: "New title", pinned })).status).toBe(400);
-    expect(mocks.setChatPinned).not.toHaveBeenCalled();
-    expect(mocks.renameChat).not.toHaveBeenCalled();
+    expect(mocks.updateChatMetadata).not.toHaveBeenCalled();
   });
 
   it("rejects malformed JSON", async () => {
@@ -74,7 +76,7 @@ describe("chat pinning", () => {
       { params: Promise.resolve({ id: "chat" }) },
     );
     expect(response.status).toBe(400);
-    expect(mocks.setChatPinned).not.toHaveBeenCalled();
+    expect(mocks.updateChatMetadata).not.toHaveBeenCalled();
   });
 });
 

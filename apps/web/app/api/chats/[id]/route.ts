@@ -1,8 +1,7 @@
 import { auth } from "@/lib/auth/server";
-import { deleteChat, renameChat, setChatPinned } from "@/lib/db/chats";
+import { deleteChat, updateChatMetadata } from "@/lib/db/chats";
 import { z } from "zod";
 import { closeChatMcpRuntime } from "@/lib/mcp/manager";
-import { moveChatToProject } from "@/lib/db/projects";
 
 const patchSchema = z.object({
   title: z.string().optional(),
@@ -22,18 +21,8 @@ export async function PATCH(
   if (!parsed.success) return new Response("Invalid request", { status: 400 });
   const body = parsed.data;
 
-  if (body.pinned !== undefined) {
-    const ok = await setChatPinned(id, session.user.id, body.pinned);
-    if (!ok) return new Response("Not found", { status: 404 });
-  }
-
-  if (typeof body.title === "string") {
-    await renameChat(id, session.user.id, body.title);
-  }
-  if (body.projectId !== undefined) {
-    const ok = await moveChatToProject(id, session.user.id, body.projectId);
-    if (!ok) return new Response("Not found", { status: 404 });
-  }
+  const ok = await updateChatMetadata(id, session.user.id, body);
+  if (!ok) return new Response("Not found", { status: 404 });
   return new Response(null, { status: 204 });
 }
 

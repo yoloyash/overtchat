@@ -54,6 +54,12 @@ describe("public capabilities", () => {
     expect(JSON.stringify(body)).not.toContain("private");
   });
 
+  it("advertises chat pinning to bundled clients", async () => {
+    await expect((await GET(request)).json()).resolves.toMatchObject({
+      capabilities: { chatPinning: true },
+    });
+  });
+
   it("advertises realtime voice when it is ready", async () => {
     const response = await GET(request);
 

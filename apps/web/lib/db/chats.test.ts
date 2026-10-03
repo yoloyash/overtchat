@@ -15,7 +15,7 @@ raw.pragma("foreign_keys = ON");
 fixture.db = drizzle(raw);
 const migrationsFolder = path.resolve("drizzle");
 migrate(fixture.db as ReturnType<typeof drizzle>, { migrationsFolder });
-const { getChat, listChats, listChatsByProject, setChatPinned, deleteChat } = await import("./chats");
+const { getChat, listChats, listChatsByProject, updateChatMetadata, deleteChat } = await import("./chats");
 const { moveChatToProject, deleteProject } = await import("./projects");
 
 afterAll(() => raw.close());
@@ -37,7 +37,7 @@ describe("persistent chat pins", () => {
     seed("chat", 1234, "owner", "project");
     expect((await getChat("chat", "owner"))?.pinned).toBe(false);
     for (const pinned of [true, true, false, false]) {
-      expect(await setChatPinned("chat", "owner", pinned)).toBe(true);
+      expect(await updateChatMetadata("chat", "owner", { pinned })).toBe(true);
       expect(await getChat("chat", "owner")).toMatchObject({
         pinned, projectId: "project", updatedAt: new Date(1234),
       });
@@ -46,9 +46,42 @@ describe("persistent chat pins", () => {
 
   it("never updates another user's chat or inserts a missing chat", async () => {
     seed("private", 1, "other");
-    expect(await setChatPinned("private", "owner", true)).toBe(false);
-    expect(await setChatPinned("missing", "owner", true)).toBe(false);
+    expect(await updateChatMetadata("private", "owner", { pinned: true })).toBe(false);
+    expect(await updateChatMetadata("missing", "owner", { pinned: true })).toBe(false);
     expect((await getChat("private", "other"))?.pinned).toBe(false);
+  });
+
+  it.each(["missing-project", "private-project"])("rejects a combined patch without changing any fields for %s", async (projectId) => {
+    seed("chat", 1234);
+    raw.prepare("INSERT INTO projects (id, user_id, name) VALUES ('private-project', 'other', 'Private')").run();
+    expect(await updateChatMetadata("chat", "owner", {
+      title: "Changed title", pinned: true, projectId,
+    })).toBe(false);
+    expect(await getChat("chat", "owner")).toMatchObject({
+      title: "chat", pinned: false, projectId: null, updatedAt: new Date(1234),
+    });
+  });
+
+  it("applies a combined patch to an owned chat and project", async () => {
+    seed("chat", 1234);
+    expect(await updateChatMetadata("chat", "owner", {
+      title: "  Changed title  ", pinned: true, projectId: "project",
+    })).toBe(true);
+    const chat = await getChat("chat", "owner");
+    expect(chat).toMatchObject({ title: "Changed title", pinned: true, projectId: "project" });
+    expect(chat!.updatedAt.getTime()).toBeGreaterThan(1234);
+    expect(await updateChatMetadata("chat", "owner", { pinned: false, projectId: null })).toBe(true);
+    expect(await getChat("chat", "owner")).toMatchObject({ pinned: false, projectId: null });
+  });
+
+  it("does not apply a combined patch to another user's chat", async () => {
+    seed("private", 1234, "other");
+    expect(await updateChatMetadata("private", "owner", {
+      title: "Changed title", pinned: true, projectId: "project",
+    })).toBe(false);
+    expect(await getChat("private", "other")).toMatchObject({
+      title: "private", pinned: false, projectId: null, updatedAt: new Date(1234),
+    });
   });
 
   it("includes all old pins outside the 100-chat window, sorted and deduplicated by activity", async () => {
@@ -56,23 +89,23 @@ describe("persistent chat pins", () => {
     seed("project-pin", 2, "owner", "project");
     seed("other-pin", 3, "other");
     for (let i = 0; i < 110; i++) seed(`recent-${i}`, 1000 + i);
-    await setChatPinned("old-pin", "owner", true);
-    await setChatPinned("project-pin", "owner", true);
-    await setChatPinned("recent-109", "owner", true);
-    await setChatPinned("other-pin", "other", true);
+    await updateChatMetadata("old-pin", "owner", { pinned: true });
+    await updateChatMetadata("project-pin", "owner", { pinned: true });
+    await updateChatMetadata("recent-109", "owner", { pinned: true });
+    await updateChatMetadata("other-pin", "other", { pinned: true });
     const rows = await listChats("owner");
     expect(rows).toHaveLength(102);
     expect(rows[0].id).toBe("recent-109");
     expect(rows.slice(-2).map((chat) => chat.id)).toEqual(["project-pin", "old-pin"]);
     expect(rows.filter((chat) => chat.id === "recent-109")).toHaveLength(1);
     expect(rows.every((chat) => chat.userId === "owner")).toBe(true);
-    await setChatPinned("old-pin", "owner", false);
+    await updateChatMetadata("old-pin", "owner", { pinned: false });
     expect((await listChats("owner")).some((chat) => chat.id === "old-pin")).toBe(false);
   });
 
   it("keeps pins through project moves and project deletion, and removes deleted chats", async () => {
     seed("chat");
-    await setChatPinned("chat", "owner", true);
+    await updateChatMetadata("chat", "owner", { pinned: true });
     expect(await moveChatToProject("chat", "owner", "project")).toBe(true);
     expect((await listChatsByProject("project", "owner"))[0].pinned).toBe(true);
     await deleteProject("project", "owner");

@@ -203,18 +203,21 @@ Stop, and reopening the saved response.
 
 Chat pins are stored on the server and appear in the web/Electron sidebar and
 native mobile drawer. The chat list includes every pin alongside its recent-chat
-window. Pinning preserves activity timestamps and project membership.
+window. Pinning preserves activity timestamps and project membership. Bundled
+clients show Pin/Unpin only when `/api/capabilities` advertises `chatPinning: true`;
+older servers retain their existing chat controls.
 
 ```sh
-npm run test -w apps/web -- lib/db/chats.test.ts 'app/api/chats/[id]/route.test.ts'
+npm run test -w apps/web -- lib/db/chats.test.ts 'app/api/chats/[id]/route.test.ts' app/api/capabilities/route.test.ts
 E2E_PORT=4727 npm run test:e2e -w apps/web -- chat-pinning.spec.ts
+npm run test -w apps/mobile -- src/components/drawer/ChatRowMenu.test.tsx
 npm run typecheck -w apps/mobile --
 ```
 
-The browser regression covers keyboard pinning, persistence, older pins, project
-shortcuts and moves, failed writes, deletion, and the touch drawer. On native
-Android and iOS, also check the drawer's long-press Pin/Unpin actions, refresh,
-and reopening the app.
+The browser regression covers inline/menu keyboard pinning, older-server support,
+persistence, older pins, project shortcuts and moves, failed writes, deletion,
+and the touch drawer. On native Android and iOS, also check the drawer's
+long-press Pin/Unpin actions, refresh, and reopening the app.
 
 ## Mobile validation
 
