@@ -41,9 +41,8 @@ import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
 import {
   useAgentConnections,
   useAgentProviderSnapshot,
-  useDeleteAgentConnection,
   useDeleteHostConnector,
-  useDeleteAgentWorkspace,
+  useDeleteAgentWorkspaceGroup,
   useCreateHostConnectorPairing,
   useHostConnectors,
   useTestAgentConnection,
@@ -76,8 +75,7 @@ export function ConnectionsPanel({
     [connections],
   );
   const testMutation = useTestAgentConnection();
-  const deleteConnectionMutation = useDeleteAgentConnection();
-  const deleteWorkspaceMutation = useDeleteAgentWorkspace();
+  const deleteWorkspaceGroupMutation = useDeleteAgentWorkspaceGroup();
   const pairingMutation = useCreateHostConnectorPairing();
   const deleteConnectorMutation = useDeleteHostConnector();
   const [addOpen, setAddOpen] = useState(initialAddOpen);
@@ -121,13 +119,7 @@ export function ConnectionsPanel({
         setPairing(null);
         toast.success({ title: "Host Connector removed" });
       } else {
-        for (const { connection, workspace } of pendingDetach.group.targets) {
-          if (connection.workspaces.length === 1) {
-            await deleteConnectionMutation.mutateAsync(connection.id);
-          } else {
-            await deleteWorkspaceMutation.mutateAsync(workspace.id);
-          }
-        }
+        await deleteWorkspaceGroupMutation.mutateAsync(pendingDetach.group);
         toast.success({
           title: "Workspace removed",
           description: pendingDetach.group.name,
@@ -142,8 +134,7 @@ export function ConnectionsPanel({
   }
 
   const detaching =
-    deleteConnectionMutation.isPending ||
-    deleteWorkspaceMutation.isPending ||
+    deleteWorkspaceGroupMutation.isPending ||
     deleteConnectorMutation.isPending;
 
   async function createPairing() {

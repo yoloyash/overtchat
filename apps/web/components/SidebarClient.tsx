@@ -6,6 +6,9 @@ import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
   Check,
+  ChevronRight,
+  ListFilter,
+  GripVertical,
   FolderPlus,
   Library,
   MoreHorizontal,
@@ -34,6 +37,7 @@ import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const { closeMobile, closeSidebar, openPalette } = useSidebar();
@@ -187,6 +191,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 function AdminAgentWorkspaces() {
   const { data: connections = [] } = useAgentConnections();
   const refresh = useRefreshAllAgentWorkspaces();
+  const [organizing, setOrganizing] = useState(false);
   useAgentConnectionSessionDirectory(connections);
   const { closeMobile, drawerRef } = useSidebar();
   const [providerFilter, setProviderFilter] = useState<AgentProviderId | null>(
@@ -197,11 +202,13 @@ function AdminAgentWorkspaces() {
   );
   const providers = useMemo(
     () =>
-      [...new Set(
-        connections
-          .filter((connection) => connection.workspaces.length > 0)
-          .map((connection) => connection.provider),
-      )].sort(),
+      [
+        ...new Set(
+          connections
+            .filter((connection) => connection.workspaces.length > 0)
+            .map((connection) => connection.provider),
+        ),
+      ].sort(),
     [connections],
   );
   const activeProviderFilter =
@@ -244,98 +251,136 @@ function AdminAgentWorkspaces() {
     <>
       <SectionLabel
         action={
-          <span className="flex items-center gap-0.5">
-            <Menu.Root>
-              <Menu.Trigger
-                aria-label={
-                  activeProviderFilter
-                    ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                    : "Agent workspace options"
-                }
-                title={
-                  activeProviderFilter
-                    ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                    : "Workspace options"
-                }
-                className={cn(
-                  "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
-                  activeProviderFilter && "bg-sidebar-accent text-foreground",
-                )}
-              >
-                <MoreHorizontal className="size-3.5" />
-                {activeProviderFilter && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
-                  />
-                )}
-              </Menu.Trigger>
-              <Menu.Portal container={drawerRef}>
-                <Menu.Positioner side="bottom" align="end" sideOffset={6}>
-                  <Menu.Popup
-                    className={cn(
-                      "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-                      motionClasses.popup,
-                    )}
-                  >
-                    {providers.length > 1 && (
-                      <>
-                        <Menu.Group>
-                          <Menu.GroupLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                            Show chats from
-                          </Menu.GroupLabel>
-                          <Menu.RadioGroup
-                            value={activeProviderFilter ?? "all"}
-                            onValueChange={(value) =>
-                              setProviderFilter(
-                                value === "all"
-                                  ? null
-                                  : (value as AgentProviderId),
-                              )
-                            }
-                          >
-                            <ProviderFilterMenuItem value="all" label="All agents" />
-                            {providers.map((provider) => (
-                              <ProviderFilterMenuItem
-                                key={provider}
-                                value={provider}
-                                label={agentProviderMetadata(provider).label}
-                              />
-                            ))}
-                          </Menu.RadioGroup>
-                        </Menu.Group>
-                        <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-                      </>
-                    )}
-                    <Menu.Item
-                      disabled={refresh.isPending}
-                      onClick={() => void refreshAllChats()}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                    >
-                      <RefreshCw
-                        className={cn(
-                          "size-3.5 shrink-0 text-muted-foreground",
-                          refresh.isPending &&
-                            "animate-spin motion-reduce:animate-none",
-                        )}
-                      />
-                      <span>Refresh all chats</span>
-                    </Menu.Item>
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
-            <Link
-              to="/settings/connections"
-              search={{ add: "1" }}
-              onClick={closeMobile}
-              aria-label="Add workspace"
-              title="Add workspace"
-              className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+          organizing ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs normal-case tracking-normal"
+              onClick={() => setOrganizing(false)}
             >
-              <FolderPlus className="size-3.5" />
-            </Link>
-          </span>
+              Done
+            </Button>
+          ) : (
+            <span className="flex items-center gap-0.5">
+              <Menu.Root>
+                <Menu.Trigger
+                  aria-label={
+                    activeProviderFilter
+                      ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "Agent workspace options"
+                  }
+                  title={
+                    activeProviderFilter
+                      ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "Workspace options"
+                  }
+                  className={cn(
+                    "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
+                    activeProviderFilter && "bg-sidebar-accent text-foreground",
+                  )}
+                >
+                  <MoreHorizontal className="size-3.5" />
+                  {activeProviderFilter && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+                    />
+                  )}
+                </Menu.Trigger>
+                <Menu.Portal container={drawerRef}>
+                  <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+                    <Menu.Popup
+                      className={cn(
+                        "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                        motionClasses.popup,
+                      )}
+                    >
+                      <Menu.Item
+                        onClick={() => setOrganizing(true)}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <GripVertical className="size-3.5 text-muted-foreground" />
+                        <span>Organize workspaces</span>
+                      </Menu.Item>
+                      {providers.length > 1 && (
+                        <Menu.SubmenuRoot>
+                          <Menu.SubmenuTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[popup-open]:bg-accent">
+                            <ListFilter className="size-3.5 text-muted-foreground" />
+                            <span>Filter chats</span>
+                            <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
+                          </Menu.SubmenuTrigger>
+                          <Menu.Portal container={drawerRef}>
+                            <Menu.Positioner
+                              side="right"
+                              align="start"
+                              sideOffset={6}
+                            >
+                              <Menu.Popup
+                                className={cn(
+                                  "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                                  motionClasses.popup,
+                                )}
+                              >
+                                <Menu.RadioGroup
+                                  value={activeProviderFilter ?? "all"}
+                                  onValueChange={(value) =>
+                                    setProviderFilter(
+                                      value === "all"
+                                        ? null
+                                        : (value as AgentProviderId),
+                                    )
+                                  }
+                                >
+                                  <ProviderFilterMenuItem
+                                    value="all"
+                                    label="All agents"
+                                  />
+                                  {providers.map((provider) => (
+                                    <ProviderFilterMenuItem
+                                      key={provider}
+                                      value={provider}
+                                      label={
+                                        agentProviderMetadata(provider).label
+                                      }
+                                    />
+                                  ))}
+                                </Menu.RadioGroup>
+                              </Menu.Popup>
+                            </Menu.Positioner>
+                          </Menu.Portal>
+                        </Menu.SubmenuRoot>
+                      )}
+                      <Menu.Separator className="mx-1 my-1 h-px bg-border" />
+                      <Menu.Item
+                        disabled={refresh.isPending}
+                        onClick={() => void refreshAllChats()}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "size-3.5 shrink-0 text-muted-foreground",
+                            refresh.isPending &&
+                              "animate-spin motion-reduce:animate-none",
+                          )}
+                        />
+                        <span>Refresh all chats</span>
+                      </Menu.Item>
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.Root>
+              <Link
+                to="/settings/connections"
+                search={{ add: "1" }}
+                onClick={closeMobile}
+                aria-label="Add workspace"
+                title="Add workspace"
+                className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+              >
+                <FolderPlus className="size-3.5" />
+              </Link>
+            </span>
+          )
         }
       >
         Agent workspaces
@@ -343,6 +388,7 @@ function AdminAgentWorkspaces() {
       <SidebarAgentWorkspaces
         connections={connections}
         providerFilter={activeProviderFilter}
+        organizing={organizing}
       />
     </>
   );
