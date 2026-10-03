@@ -4,6 +4,8 @@ const queryMock = vi.hoisted(() => vi.fn());
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
 
 import { ClaudeRuntimeClient } from "./client";
+import { claudeProviderAdapter } from "../providers/claude";
+import { AgentSessionRuntime } from "../runtime/registry";
 
 class FakeQuery implements AsyncIterator<unknown> {
   readonly inputs: AsyncIterable<unknown>;
@@ -72,7 +74,187 @@ function nextTask(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+async function createClientForTest() {
+  let query!: FakeQuery;
+  queryMock.mockImplementation((params) => {
+    query = new FakeQuery(params);
+    return query;
+  });
+  const client = new ClaudeRuntimeClient(
+    { transport: "local" },
+    { executable: "claude", cwd: "/workspace", modeId: "default" },
+  );
+  await client.getState();
+  const events: Array<Record<string, unknown>> = [];
+  client.onEvent((event) => events.push(event));
+  return { client, query, events };
+}
+
 describe("Claude runtime client", () => {
+  it.each(["automatic", "manual"])(
+    "keeps %s compaction separate from turn completion",
+    async (trigger) => {
+      const { client, query, events } = await createClientForTest();
+      const runtime = new AgentSessionRuntime(
+        "session",
+        "connection",
+        "workspace",
+        claudeProviderAdapter,
+        client,
+        {
+          state: await client.getState(),
+          messages: (await client.getMessages()).messages,
+          models: await client.getAvailableModels(),
+          commands: await client.getCommands(),
+          stats: await client.getSessionStats(),
+        },
+        {},
+        async () => [],
+        vi.fn(),
+        vi.fn(),
+        [],
+        vi.fn(),
+      );
+      const releaseLease = runtime.acquireLease();
+      vi.useFakeTimers();
+      try {
+        await runtime.command(
+          trigger === "manual"
+            ? { type: "compact" }
+            : { type: "prompt", message: "Keep working" },
+        );
+        await runtime.command(
+          { type: "queue", message: "Next request" },
+          "queued",
+        );
+        query.push({ type: "system", subtype: "status", status: "compacting" });
+        query.push({ type: "system", subtype: "status", status: "compacting" });
+        query.push({
+          type: "system",
+          subtype: "compact_boundary",
+          compact_metadata: {
+            trigger: trigger === "manual" ? "manual" : "auto",
+            post_tokens: 30,
+          },
+        });
+        // Compaction has finished, but Claude is still working on this turn.
+        await vi.advanceTimersByTimeAsync(31_000);
+        expect(runtime.snapshot()).toMatchObject({
+          status: "running",
+          state: { isStreaming: true, isCompacting: false },
+          queuedMessages: [{ id: "queued", message: "Next request" }],
+        });
+        expect(runtime.snapshot().error).toBeUndefined();
+        expect(
+          events.filter((event) => event.type === "compaction_start"),
+        ).toHaveLength(1);
+        expect(
+          events.filter((event) => event.type === "compaction_end"),
+        ).toHaveLength(1);
+        expect(events.some((event) => event.type === "turn_end")).toBe(false);
+
+        query.push({ type: "result", subtype: "success", is_error: false, usage: {} });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(runtime.snapshot().queuedMessages).toEqual([]);
+        const currentInput = await query.inputs[Symbol.asyncIterator]().next();
+        expect(currentInput.value).toMatchObject({
+          message: { content: trigger === "manual" ? "/compact" : "Keep working" },
+        });
+        const nextInput = await query.inputs[Symbol.asyncIterator]().next();
+        expect(nextInput.value).toMatchObject({
+          message: { content: "Next request" },
+        });
+        query.push({ type: "result", subtype: "success", is_error: false, usage: {} });
+        await vi.advanceTimersByTimeAsync(0);
+        expect(runtime.snapshot().status).toBe("idle");
+      } finally {
+        await runtime.stop();
+        releaseLease();
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each([
+    { result: "  Usage: 10 tokens  ", outputTokens: 0, error: false, expected: "Usage: 10 tokens" },
+    { result: "Unknown command: /missing", outputTokens: 0, error: false, expected: "Unknown command: /missing" },
+    { result: "   ", outputTokens: 0, error: false, expected: null },
+    { result: "Model response", outputTokens: 42, error: false, expected: null },
+    { result: "Unreported usage", outputTokens: undefined, error: false, expected: null },
+    { result: "Command failed", outputTokens: 0, error: true, expected: null },
+  ])("preserves command-only output for $result", async ({ result, outputTokens, error, expected }) => {
+    const { client, query, events } = await createClientForTest();
+    try {
+      await client.prompt("/usage");
+      query.push({
+        type: "result", subtype: error ? "error_during_execution" : "success",
+        uuid: "command-result", is_error: error, result,
+        usage: { output_tokens: outputTokens },
+      });
+      await nextTask();
+      const assistantMessages = (await client.getMessages()).messages.filter(
+        (message) => (message as { role?: string }).role === "assistant",
+      );
+      if (expected) {
+        expect(assistantMessages).toEqual([
+          expect.objectContaining({ id: "command-result", content: [{ type: "text", text: expected }] }),
+        ]);
+        expect(events).toContainEqual(expect.objectContaining({
+          type: "message_end",
+          message: expect.objectContaining({ id: "command-result", content: [{ type: "text", text: expected }] }),
+        }));
+      } else {
+        expect(assistantMessages).toEqual([]);
+      }
+      expect(events).toContainEqual({ type: "turn_end" });
+      expect((await client.getState()).isStreaming).toBe(false);
+      if (error) expect(events).toContainEqual({ type: "rpc_error", error: result });
+    } finally {
+      await client.stop();
+    }
+  });
+
+  it.each(["assistant", "stream_event"])(
+    "does not duplicate zero-token %s text and still shows the next command result",
+    async (type) => {
+      const { client, query } = await createClientForTest();
+      try {
+        await client.prompt("Answer");
+        if (type === "assistant") {
+          query.push({
+            type, message: { id: "answer", content: [{ type: "text", text: "The answer" }] },
+          });
+        } else {
+          query.push({ type, event: { type: "message_start", message: { id: "answer" } } });
+          query.push({
+            type, event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "The answer" } },
+          });
+        }
+        query.push({
+          type: "result", subtype: "success", is_error: false, uuid: "answer-result",
+          result: "The answer", usage: { output_tokens: 0 },
+        });
+        await nextTask();
+        expect((await client.getMessages()).messages).toHaveLength(2);
+
+        await client.prompt("/usage");
+        query.push({
+          type: "result", subtype: "success", is_error: false, uuid: "usage-result",
+          result: "Usage: 10 tokens", usage: { output_tokens: 0 },
+        });
+        await nextTask();
+        expect((await client.getMessages()).messages).toEqual([
+          expect.objectContaining({ role: "user" }),
+          expect.objectContaining({ id: "answer", content: [{ type: "text", text: "The answer" }] }),
+          expect.objectContaining({ role: "user" }),
+          expect.objectContaining({ id: "usage-result", content: [{ type: "text", text: "Usage: 10 tokens" }] }),
+        ]);
+      } finally {
+        await client.stop();
+      }
+    },
+  );
+
   it("initializes without a prompt and streams a normalized turn", async () => {
     let query!: FakeQuery;
     queryMock.mockImplementation((params) => {

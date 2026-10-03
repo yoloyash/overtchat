@@ -261,6 +261,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private thinkingOptionId?: string;
   private modeId: PermissionMode;
   private active = false;
+  private activeTurnHasAssistantText = false;
   private compacting = false;
   private stopped = false;
   private restarting = false;
@@ -619,6 +620,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
 
   private startQuery(resume?: string, resumeAt?: string): void {
     const generation = ++this.consumeGeneration;
+    this.activeTurnHasAssistantText = false;
     this.input = new ClaudeInputQueue();
     this.sdkQuery = createSdkQuery({
       prompt: this.input,
@@ -1142,6 +1144,23 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
         error: errors.join("\n") || String(message.result ?? "Claude Code turn failed."),
       });
     }
+    // CLI-only commands can return their output without an assistant message.
+    // Gate on zero model output and text already shown during this turn so
+    // gateways reporting zero tokens do not duplicate a streamed response.
+    const resultText =
+      typeof message.result === "string" ? message.result.trim() : "";
+    if (
+      message.subtype === "success" &&
+      usage?.output_tokens === 0 &&
+      !this.activeTurnHasAssistantText &&
+      resultText
+    ) {
+      const projection = this.ensureAssistant(
+        typeof message.uuid === "string" ? message.uuid : randomUUID(),
+      );
+      projection.content = [{ type: "text", text: resultText }];
+      this.publishAssistant(projection, "message_end");
+    }
     this.finishTurn();
   }
 
@@ -1164,6 +1183,16 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     projection: AssistantProjection,
     type: "message_update" | "message_end",
   ): void {
+    if (
+      projection.content.some(
+        (part) =>
+          part.type === "text" &&
+          typeof part.text === "string" &&
+          part.text.trim(),
+      )
+    ) {
+      this.activeTurnHasAssistantText = true;
+    }
     this.emit({ type, message: { ...projection, content: [...projection.content] } });
   }
 
@@ -1173,6 +1202,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       if (projection) this.publishAssistant(projection, "message_end");
       this.currentStreamMessageId = undefined;
     }
+    this.activeTurnHasAssistantText = false;
     if (!this.active) return;
     this.active = false;
     this.emit({ type: "turn_end" });
