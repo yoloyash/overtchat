@@ -43,3 +43,5 @@ try {
   await restored.close();
   console.log("Native journal: transactions, oversized UTF-8 batching, epoch rebase, restart, receipts, queues, compaction and backup passed.");
 } finally { await rm(directory, { recursive: true, force: true }); }
+
+if (process.argv.includes("--scale")) await import("../../scripts/journal-scale.mjs");

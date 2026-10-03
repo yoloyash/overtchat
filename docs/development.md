@@ -90,9 +90,12 @@ bun build apps/connector/src/test-support/journal-runtime-smoke.ts --compile --o
 E2E_PORT=4747 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
 ```
 
-The connector workflow runs packaged migration/backup and compiled journal
-operation checks on Linux/macOS for both CPU architectures. Development journal
-reset moves the entire connector directory, including WAL and migration archives.
+Run `/tmp/overtchat-journal-smoke --scale` to qualify the same incident workload
+under the compiled Bun runtime. Both qualifications require peak RSS below 1 GiB.
+The connector workflow runs packaged migration/backup, native `SIGKILL`, compiled
+journal operations, and incident-scale checks on Linux/macOS for both CPU
+architectures. Development journal reset moves the entire connector directory,
+including WAL and migration archives.
 Operator backup and upgrade recovery are documented in [Deploy](deploy.md).
 
 ## Model catalog refresh

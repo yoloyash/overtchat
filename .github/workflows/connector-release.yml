@@ -167,7 +167,7 @@ jobs:
           node .github/scripts/smoke-connector-journal.mjs \
             "release/overtchat-connector-$PLATFORM" "journal-smoke/journal-crash-$PLATFORM"
           chmod +x "journal-smoke/journal-smoke-$PLATFORM"
-          "journal-smoke/journal-smoke-$PLATFORM"
+          "journal-smoke/journal-smoke-$PLATFORM" --scale
 
   publish:
     if: github.event_name != 'pull_request'

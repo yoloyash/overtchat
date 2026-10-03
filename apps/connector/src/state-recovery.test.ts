@@ -59,6 +59,19 @@ async function killAt(file: string, action: string, boundary: string) {
 }
 
 describe("connector journal crash recovery", () => {
+  it.each(["truncated", "duplicate-field", "bad-events", "bad-commands", "bad-sessions", "bad-format"])("leaves a %s JSON journal intact", async (fault) => {
+    const { file } = await fixture();
+    const state = legacy();
+    const original = JSON.stringify(state);
+    const malformed = fault === "truncated" ? original.slice(0, -1) :
+      fault === "duplicate-field" ? original.slice(0, -1) + ',"format":3}' :
+      JSON.stringify({ ...state, ...(fault === "bad-events" ? { events: {} } :
+        fault === "bad-commands" ? { commands: null } :
+        fault === "bad-sessions" ? { sessions: [] } : { format: [3] }) });
+    await writeFile(file, malformed);
+    await expect(ConnectorStateJournal.open(file)).rejects.toThrow();
+    expect(await readFile(file, "utf8")).toBe(malformed);
+  });
   it("preserves original state and retries after ENOSPC publishing a committed migration", async () => {
     const { file } = await fixture();
     const original = JSON.stringify(legacy());

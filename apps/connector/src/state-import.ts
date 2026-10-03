@@ -68,6 +68,12 @@ async function importJson(file: string, db: JournalDatabase): Promise<void> {
   let eventIndex = 0;
   let previousSequence: number | undefined;
   let ordered = true;
+  const rootTokens = new Map([
+    ["format", TokenType.NUMBER], ["connectorEpoch", TokenType.STRING],
+    ["nextEventSequence", TokenType.NUMBER], ["acknowledgedSequence", TokenType.NUMBER],
+    ["events", TokenType.LEFT_BRACKET], ["commands", TokenType.LEFT_BRACKET],
+    ["commandResults", TokenType.LEFT_BRACKET], ["sessions", TokenType.LEFT_BRACE],
+  ]);
   const parser = new JSONParser({
     paths: ["$.format", "$.connectorEpoch", "$.nextEventSequence", "$.acknowledgedSequence",
       "$.events.*", "$.commands.*", "$.commandResults.*", "$.sessions.*"],
@@ -84,8 +90,8 @@ async function importJson(file: string, db: JournalDatabase): Promise<void> {
       rootKeys.add(pendingKey);
       expectKey = false;
     } else if (depth === 1 && pendingKey && token !== TokenType.COLON) {
-      if (["events", "commands", "commandResults"].includes(pendingKey) && token !== TokenType.LEFT_BRACKET ||
-          pendingKey === "sessions" && token !== TokenType.LEFT_BRACE) {
+      const expected = rootTokens.get(pendingKey);
+      if (expected !== undefined && token !== expected) {
         throw new Error("Invalid Host Connector state journal.");
       }
       pendingKey = undefined;
