@@ -627,6 +627,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   await expect(page.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
 
   await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "All agents" }),
   ).toBeVisible();
@@ -648,6 +649,7 @@ test("groups providers by directory, filters chats, refreshes globally, and open
       name: "Agent workspace options, filtered by Codex",
     })
     .click();
+  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
   await page.getByRole("menuitemradio", { name: "All agents" }).click();
   await page.screenshot({
     path: testInfo.outputPath("workspace-leading-provider-logos.png"),

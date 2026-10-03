@@ -516,13 +516,43 @@ export async function deleteAgentWorkspace(
   id: string,
   userId: string,
 ): Promise<boolean> {
-  const owned = await getOwnedAgentWorkspace(id, userId);
-  if (!owned) return false;
-  const deleted = await db
-    .delete(agentWorkspaces)
-    .where(eq(agentWorkspaces.id, id))
-    .returning({ id: agentWorkspaces.id });
-  return deleted.length > 0;
+  return db.transaction((tx) => {
+    const owned = tx
+      .select({ connectionId: agentConnections.id, hostId: agentHosts.id })
+      .from(agentWorkspaces)
+      .innerJoin(
+        agentConnections,
+        eq(agentWorkspaces.connectionId, agentConnections.id),
+      )
+      .innerJoin(agentHosts, eq(agentConnections.hostId, agentHosts.id))
+      .where(and(eq(agentWorkspaces.id, id), eq(agentHosts.userId, userId)))
+      .get();
+    if (!owned) return false;
+
+    tx.delete(agentWorkspaces).where(eq(agentWorkspaces.id, id)).run();
+    // Decide from current rows, in the same transaction as the workspace removal.
+    const remainingWorkspace = tx
+      .select({ id: agentWorkspaces.id })
+      .from(agentWorkspaces)
+      .where(eq(agentWorkspaces.connectionId, owned.connectionId))
+      .limit(1)
+      .get();
+    if (!remainingWorkspace) {
+      tx.delete(agentConnections)
+        .where(eq(agentConnections.id, owned.connectionId))
+        .run();
+      const remainingConnection = tx
+        .select({ id: agentConnections.id })
+        .from(agentConnections)
+        .where(eq(agentConnections.hostId, owned.hostId))
+        .limit(1)
+        .get();
+      if (!remainingConnection) {
+        tx.delete(agentHosts).where(eq(agentHosts.id, owned.hostId)).run();
+      }
+    }
+    return true;
+  });
 }
 
 export function syncAgentWorkspaceSessions(

@@ -2,15 +2,21 @@
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { DragDropProvider } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
+import { move } from "@dnd-kit/helpers";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Folder,
   GitBranch,
+  GripVertical,
   Loader2,
   Plus,
   Wifi,
+  Trash2,
 } from "lucide-react";
 import type {
   AgentConnectionListItem,
@@ -34,40 +40,208 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 import { motionClasses } from "@/lib/motion";
 import { AGENT_PROVIDER_VISUALS } from "@/lib/agents/providerVisuals";
-import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
+import {
+  useAgentProviderSnapshot,
+  useDeleteAgentWorkspaceGroup,
+} from "@/lib/queries/agentConnections";
+import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
+import { authClient } from "@/lib/auth/client";
+import { getApiOrigin } from "@/lib/api-url";
+import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  agentWorkspaceOrderStorageKey,
+  orderAgentWorkspaces,
+} from "@/lib/agents/workspaceOrder";
+
+const DEFAULT_WORKSPACE_ORDER: string[] = [];
 
 export function SidebarAgentWorkspaces({
   connections,
   providerFilter,
+  organizing,
 }: {
   connections: AgentConnectionListItem[];
   providerFilter: AgentProviderId | null;
+  organizing: boolean;
 }) {
-  const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
-  if (groups.length === 0) return null;
+  const { data: session } = authClient.useSession();
+  const { drawerRef } = useSidebar();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const removal = useDeleteAgentWorkspaceGroup();
+  const [pendingRemoval, setPendingRemoval] =
+    useState<AgentWorkspaceGroup | null>(null);
+  const [removalError, setRemovalError] = useState("");
+
+  async function confirmRemoval() {
+    if (!pendingRemoval || removal.isPending) return;
+    setRemovalError("");
+    try {
+      await removal.mutateAsync(pendingRemoval);
+      const activeSessionRemoved = pendingRemoval.sessions.some(
+        ({ session }) => location.pathname === `/agents/${session.id}`,
+      );
+      const newWorkspaceId = new URLSearchParams(location.searchStr).get(
+        "workspaceId",
+      );
+      if (
+        activeSessionRemoved ||
+        (location.pathname === "/agents/new" &&
+          pendingRemoval.targets.some(
+            ({ workspace }) => workspace.id === newWorkspaceId,
+          ))
+      ) {
+        void navigate({ to: "/" });
+      }
+      toast.success({
+        title: "Workspace removed",
+        description: pendingRemoval.name,
+      });
+      setPendingRemoval(null);
+    } catch (error) {
+      setRemovalError(
+        error instanceof Error
+          ? error.message
+          : "The workspace could not be removed.",
+      );
+    }
+  }
+
+  const [savedOrder, setSavedOrder] = useLocalStorage<unknown>(
+    agentWorkspaceOrderStorageKey(session?.user.id ?? "", getApiOrigin()),
+    DEFAULT_WORKSPACE_ORDER,
+  );
+  const orderedGroups = useMemo(
+    () => orderAgentWorkspaces(groupAgentWorkspaces(connections), savedOrder),
+    [connections, savedOrder],
+  );
+  // Keep refetches from replacing sortable nodes while dnd-kit moves their DOM.
+  const [dragGroups, setDragGroups] = useState<AgentWorkspaceGroup[] | null>(
+    null,
+  );
+  const groups = dragGroups ?? orderedGroups;
   return (
-    <ul className="flex flex-col gap-0.5">
-      {groups.map((group) => (
-        <WorkspaceNode
-          key={group.key}
-          group={group}
-          providerFilter={providerFilter}
-        />
-      ))}
-    </ul>
+    <>
+      <DragDropProvider
+        onDragStart={() => setDragGroups(orderedGroups)}
+        onDragEnd={(event) => {
+          if (!event.canceled) {
+            setSavedOrder(
+              move(
+                groups.map((group) => group.key),
+                event,
+              ),
+            );
+          }
+          setDragGroups(null);
+        }}
+      >
+        <ul aria-label="Agent workspaces" className="flex flex-col gap-0.5">
+          {groups.map((group, index) => (
+            <WorkspaceNode
+              key={group.key}
+              group={group}
+              index={index}
+              sortable={organizing && groups.length > 1 && Boolean(session)}
+              organizing={organizing}
+              onRemove={() => {
+                setRemovalError("");
+                setPendingRemoval(group);
+              }}
+              providerFilter={providerFilter}
+            />
+          ))}
+        </ul>
+      </DragDropProvider>
+      <AlertDialog.Root
+        open={pendingRemoval !== null}
+        onOpenChange={(next) => {
+          if (!next && !removal.isPending) {
+            setPendingRemoval(null);
+            setRemovalError("");
+          }
+        }}
+      >
+        <AlertDialog.Portal container={drawerRef}>
+          <AlertDialog.Backdrop
+            className={cn(
+              "fixed inset-0 z-50 bg-black/40",
+              motionClasses.overlay,
+            )}
+          />
+          <AlertDialog.Popup
+            className={cn(
+              "fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-card p-5 text-card-foreground shadow-lg outline-none",
+              motionClasses.dialog,
+            )}
+          >
+            <AlertDialog.Title className="text-base font-semibold tracking-tight">
+              Remove workspace?
+            </AlertDialog.Title>
+            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">
+                {pendingRemoval?.name}
+              </span>{" "}
+              and its agent chats will be removed from OvertChat. Files and
+              native agent sessions remain on the host.
+            </AlertDialog.Description>
+            {removalError && (
+              <p role="alert" className="mt-3 text-xs text-destructive">
+                {removalError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <AlertDialog.Close
+                render={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={removal.isPending}
+                  />
+                }
+              >
+                Cancel
+              </AlertDialog.Close>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={removal.isPending}
+                onClick={() => void confirmRemoval()}
+              >
+                {removal.isPending ? "Removing…" : "Remove"}
+              </Button>
+            </div>
+          </AlertDialog.Popup>
+        </AlertDialog.Portal>
+      </AlertDialog.Root>
+    </>
   );
 }
 
 function WorkspaceNode({
   group,
+  index,
+  sortable,
+  organizing,
+  onRemove,
   providerFilter,
 }: {
   group: AgentWorkspaceGroup;
+  index: number;
+  sortable: boolean;
+  organizing: boolean;
+  onRemove: () => void;
   providerFilter: AgentProviderId | null;
 }) {
+  const { ref, handleRef, isDragSource, isDropping } = useSortable({
+    id: group.key,
+    index,
+    disabled: !sortable,
+  });
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
   const { closeMobile } = useSidebar();
@@ -91,9 +265,8 @@ function WorkspaceNode({
     running: hasRunningSession,
   }).data;
   const activeSessionId =
-    group.sessions.find(
-      ({ session }) => pathname === `/agents/${session.id}`,
-    )?.session.id ?? null;
+    group.sessions.find(({ session }) => pathname === `/agents/${session.id}`)
+      ?.session.id ?? null;
   const filteredSessions = providerFilter
     ? group.sessions.filter(({ provider }) => provider === providerFilter)
     : group.sessions;
@@ -133,7 +306,14 @@ function WorkspaceNode({
   }
 
   return (
-    <li>
+    <li
+      ref={ref}
+      data-dropping={isDropping}
+      className={cn(
+        (isDragSource || isDropping) &&
+          "relative z-10 rounded-md bg-sidebar shadow-md",
+      )}
+    >
       <div className="group flex min-w-0 rounded-md motion-colors hover:bg-sidebar-accent">
         <button
           type="button"
@@ -172,22 +352,47 @@ function WorkspaceNode({
             </span>
           </span>
         </button>
+        {organizing ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Remove ${group.name}`}
+            title={`Remove ${group.name}`}
+            className="flex min-h-11 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground motion-colors hover:bg-destructive/10 hover:text-destructive max-md:w-11"
+          >
+            <Trash2 aria-hidden="true" className="size-3.5" />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={startNewSession}
+            disabled={sessionTargets.length === 0}
+            aria-label={`New session in ${group.name}`}
+            title={
+              sessionTargets.length > 0
+                ? `New session in ${group.name}`
+                : "No agents are currently available on this machine"
+            }
+            className={cn(
+              "flex min-h-11 w-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
+              motionClasses.hoverReveal,
+            )}
+          >
+            <Plus className="size-4" />
+          </button>
+        )}
         <button
+          ref={handleRef}
           type="button"
-          onClick={startNewSession}
-          disabled={sessionTargets.length === 0}
-          aria-label={`New session in ${group.name}`}
-          title={
-            sessionTargets.length > 0
-              ? `New session in ${group.name}`
-              : "No agents are currently available on this machine"
-          }
+          disabled={!sortable}
+          aria-label={`Reorder ${group.name}`}
+          title="Drag to reorder"
           className={cn(
-            "flex min-h-11 w-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
-            motionClasses.hoverReveal,
+            "flex min-h-11 w-9 shrink-0 touch-none cursor-grab items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40 max-md:w-11",
+            !organizing && "hidden",
           )}
         >
-          <Plus className="size-4" />
+          <GripVertical aria-hidden="true" className="size-3.5" />
         </button>
       </div>
       {open && (
@@ -197,7 +402,11 @@ function WorkspaceNode({
           ))}
           {filteredSessions.length === 0 && (
             <li className="px-2 py-1.5 text-xs text-muted-foreground">
-              No {providerFilter ? agentProviderMetadata(providerFilter).label : "agent"} chats
+              No{" "}
+              {providerFilter
+                ? agentProviderMetadata(providerFilter).label
+                : "agent"}{" "}
+              chats
             </li>
           )}
           {filteredSessions.length > AGENT_SESSION_PREVIEW_COUNT &&

@@ -30,6 +30,7 @@ import {
   withAgentSessionDirectory,
 } from "@/lib/agents/sidebar";
 import { apiUrl } from "@/lib/api-url";
+import type { AgentWorkspaceGroup } from "@/lib/agents/workspaces";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
@@ -364,6 +365,30 @@ export function useDeleteAgentWorkspace() {
       if (!response.ok) throw await responseError(response);
     },
     onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
+  });
+}
+
+// A sidebar row can represent the same workspace attached to several providers.
+export function useDeleteAgentWorkspaceGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (group: AgentWorkspaceGroup) => {
+      for (const { workspace } of group.targets) {
+        const response = await fetch(
+          apiUrl(`/api/agent-workspaces/${workspace.id}`),
+          {
+            method: "DELETE",
+          },
+        );
+        // A retry after a partial removal may encounter an already removed target.
+        if (!response.ok && response.status !== 404) {
+          throw await responseError(response);
+        }
+      }
+    },
+    // Refresh even when only some provider records were removed.
+    onSettled: () =>
       queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
   });
 }
