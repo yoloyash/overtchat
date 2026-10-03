@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
@@ -41,7 +41,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
-  const { closeMobile, closeSidebar, openPalette } = useSidebar();
+  const { closeMobile, closeSidebar, openPalette, pinFocusRef } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
@@ -52,6 +52,27 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const { data: activeChatIds = [] } = useActiveChatIds();
   const { data: projects = [] } = useProjects();
   const activeChats = useMemo(() => new Set(activeChatIds), [activeChatIds]);
+
+  // Run after React commits the refetched lists, when the destination row exists.
+  useLayoutEffect(() => {
+    const request = pinFocusRef.current;
+    if (!request) return;
+    const chat = chats.find((item) => item.id === request.id);
+    if (chat ? chat.pinned !== request.pinned : request.pinned) return;
+    pinFocusRef.current = null;
+    if (!request.fromMenu && request.row.isConnected) return;
+    const focused = document.activeElement;
+    if (
+      focused !== document.body && focused !== request.focusedElement &&
+      !request.row.contains(focused)
+    ) return;
+    const target = request.sidebar.querySelector<HTMLAnchorElement>(
+      `[data-chat-id="${CSS.escape(request.id)}"] a`,
+    );
+    (target ?? request.sidebar.querySelector<HTMLButtonElement>(
+      'button[aria-label="Search chats"]',
+    ))?.focus();
+  }, [chats, pinFocusRef]);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),

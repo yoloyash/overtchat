@@ -115,13 +115,14 @@ export function SidebarItem({
   const pathname = useLocation({ select: (location) => location.pathname });
   const active = pathname === `/chat/${chat.id}`;
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
-  const { closeMobile, drawerRef } = useSidebar();
+  const { closeMobile, drawerRef, pinFocusRef } = useSidebar();
 
   const renameMut = useRenameChat();
   const deleteMut = useDeleteChat();
   const moveMut = useMoveChat();
   const pinMut = useSetChatPinned();
   const rowRef = useRef<HTMLLIElement>(null);
+  const pinFromMenuRef = useRef(false);
 
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(chat.title ?? "");
@@ -135,19 +136,25 @@ export function SidebarItem({
   async function togglePin(fromMenu = false) {
     const row = rowRef.current;
     const sidebar = row?.closest("aside");
-    // Menu items are portaled outside the row; closing returns focus to it.
     const hadFocus = fromMenu || row?.contains(document.activeElement);
+    pinFromMenuRef.current = fromMenu;
+    const focusRequest = hadFocus && row && sidebar ? {
+      id: chat.id,
+      pinned: !chat.pinned,
+      row,
+      sidebar,
+      focusedElement: document.activeElement,
+      fromMenu,
+    } : null;
+    if (focusRequest) pinFocusRef.current = focusRequest;
     try {
       await pinMut.mutateAsync({ id: chat.id, pinned: !chat.pinned });
-      // A pin moves the row between lists. Keep keyboard focus in the sidebar.
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-      if (hadFocus && !row?.isConnected && document.activeElement === document.body) {
-        const target = sidebar?.querySelector<HTMLAnchorElement>(
-          `[data-chat-id="${CSS.escape(chat.id)}"] a`,
-        ) ?? sidebar?.querySelector<HTMLButtonElement>('button[aria-label="Search chats"]');
-        target?.focus();
-      }
     } catch (err) {
+      pinFromMenuRef.current = false;
+      if (pinFocusRef.current === focusRequest) pinFocusRef.current = null;
+      if (hadFocus && document.activeElement === document.body) {
+        row?.querySelector<HTMLAnchorElement>("a")?.focus();
+      }
       toast.error({
         title: chat.pinned ? "Failed to unpin chat" : "Failed to pin chat",
         description: getErrorMessage(err, "Please try again."),
@@ -270,7 +277,9 @@ export function SidebarItem({
               className="pointer-events-none absolute inset-0 m-auto size-3.5 text-muted-foreground group-hover:hidden group-focus-within:hidden max-md:hidden"
             />
           )}
-          <Menu.Root>
+          <Menu.Root onOpenChange={(open) => {
+            if (open) pinFromMenuRef.current = false;
+          }}>
             <Menu.Trigger
               aria-label="Chat actions"
               className={cn(
@@ -285,6 +294,9 @@ export function SidebarItem({
             <Menu.Portal container={drawerRef}>
               <Menu.Positioner side="right" align="start" sideOffset={6}>
                 <Menu.Popup
+                  // The sidebar restores focus after the list commits. Prevent
+                  // delayed menu cleanup from focusing an obsolete trigger.
+                  finalFocus={() => !pinFromMenuRef.current}
                   className={cn(
                     "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
                     motionClasses.popup,
