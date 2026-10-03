@@ -75,6 +75,13 @@ Do not change unrelated manifest fields.
   failures remain fatal. A manual promotion with `require_complete: true` also
   fails when artifacts are unavailable.
 
+The connector installer artifact is verified against the source at the selected
+`connector-vX.Y.Z` tag. Unreleased installer changes on `main` can accumulate
+until release preparation; they do not need to match the currently published
+installer. A mismatch with the tagged source or a failed tag lookup blocks
+promotion. Version bumps select the next candidate; tags publish its artifacts,
+and stable promotion waits until all selected artifacts are available.
+
 ## Coordinated server and desktop launch
 
 Merge the desktop stack before publishing server 0.23.0 and desktop 0.1.0.
