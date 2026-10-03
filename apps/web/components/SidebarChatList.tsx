@@ -279,6 +279,7 @@ export function SidebarItem({
             aria-label={generating ? `Generating response for ${chat.title?.trim() || "Untitled"}` : "Voice chat"}
             className={cn(
               "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity group-hover:opacity-0 group-focus-within:opacity-0 group-data-[menu-open=true]:opacity-0 max-md:size-7.5 [@media(hover:none)]:opacity-0",
+              !generating && "group-hover:hidden group-focus-within:hidden group-data-[menu-open=true]:hidden max-md:hidden [@media(hover:none)]:hidden",
               chat.pinned && "right-7 max-md:right-9",
             )}
           >
