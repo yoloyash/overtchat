@@ -20,6 +20,7 @@ import {
   contextStatusLabel,
   isManualCompactionMessage,
   isContextStatus,
+  canContinueMessage,
   type ContextStatus,
 } from "@overtchat/shared";
 
@@ -46,6 +47,7 @@ export function MessageList({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  onContinue,
   onImageReference,
   localAnchorRequestKey,
   readOnly = false,
@@ -64,6 +66,7 @@ export function MessageList({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   localAnchorRequestKey: number;
   readOnly?: boolean;
@@ -201,6 +204,11 @@ export function MessageList({
                   onCancelEdit={onCancelEdit}
                   onSaveEdit={onSaveEdit}
                   onRegenerate={onRegenerate}
+                  onContinue={
+                    message.id === latestMessageId && !streaming && canContinueMessage(message)
+                      ? onContinue
+                      : undefined
+                  }
                   onImageReference={onImageReference}
                   readOnly={readOnly}
                 />

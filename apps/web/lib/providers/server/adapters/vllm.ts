@@ -11,5 +11,9 @@ export const vllmAdapter = createOpenAICompatibleAdapter(
     transformRequestBody: (body, config) =>
       applyLocalReasoningLevel(body, config.reasoningLevel),
     acceptsReasoningLevel: true,
+    assistantContinuationOptions: {
+      continue_final_message: true,
+      add_generation_prompt: false,
+    },
   },
 );

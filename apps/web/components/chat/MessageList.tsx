@@ -16,6 +16,7 @@ import {
   contextStatusLabel,
   isManualCompactionMessage,
   isContextStatus,
+  canContinueMessage,
   type ContextStatus,
 } from "@overtchat/shared";
 import {
@@ -43,6 +44,7 @@ export function MessageList({
   loadingOlderMessages,
   onLoadOlderMessages,
   onRegenerate,
+  onContinue,
   onImageReference,
   onEdit,
   onReconnect,
@@ -61,6 +63,7 @@ export function MessageList({
   loadingOlderMessages: boolean;
   onLoadOlderMessages: () => void;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onReconnect: () => void;
@@ -198,6 +201,7 @@ export function MessageList({
                       streaming={streaming && isLast}
                       canAct={!streaming && configured}
                       onRegenerate={onRegenerate}
+                      onContinue={isLast && canContinueMessage(message) ? onContinue : undefined}
                       onImageReference={onImageReference}
                       onEdit={onEdit}
                       speech={speech}

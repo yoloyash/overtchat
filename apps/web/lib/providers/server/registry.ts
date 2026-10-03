@@ -42,6 +42,7 @@ export interface ConfiguredLanguageModel {
   model: LanguageModelV4;
   providerOptions: Record<string, Record<string, JSONValue>> | undefined;
   providerOptionsKey: string;
+  assistantContinuationOptions?: Record<string, Record<string, JSONValue>>;
   promptCacheStrategy: PromptCacheStrategy | undefined;
 }
 
@@ -93,6 +94,16 @@ export function createConfiguredLanguageModel(
           }
         : undefined,
     providerOptionsKey: resolved.providerOptionsKey,
+    ...(resolved.assistantContinuationOptions
+      ? {
+          assistantContinuationOptions: {
+            [resolved.providerOptionsKey]: {
+              ...options,
+              ...resolved.assistantContinuationOptions,
+            } as Record<string, JSONValue>,
+          },
+        }
+      : {}),
     promptCacheStrategy: resolvePromptCacheStrategy(
       resolved.promptCacheKind,
       options,

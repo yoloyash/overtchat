@@ -168,6 +168,37 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("claims continuation without deleting output and updates its row, search index, and usage", async () => {
+    seedChat();
+    const original = (await chatDb.getMessages("chat")).at(-1)!;
+    const input = { chatId: "chat", userId: "user", projectId: null, streamId: "continuation",
+      clientRequestId: "continue-request", requestFingerprint: "continue-fingerprint", staleStreamId: null,
+      continueMessage: original,
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("committed");
+    expect((await chatDb.getMessages("chat")).at(-1)).toEqual(original);
+    expect(chatTurns.commitChatTurn(input)).toBe("duplicate");
+    const parts = [{ type: "text" as const, text: "Old answer continued" }];
+    expect(chatTurns.completeChatStream({ chatId: "chat", streamId: "continuation",
+      assistantMessage: { id: original.id, parts }, usage: {
+        occurredAt: new Date(), providerId: "vllm", model: "fixture", inputTokens: 10, outputTokens: 2,
+      },
+    })).toBe(true);
+    expect(messageIds()).toEqual(["before", "edit", "assistant"]);
+    const saved = (await chatDb.getMessages("chat")).at(-1)!;
+    expect(saved.parts).toEqual(parts);
+    expect(raw.prepare("SELECT created_at FROM messages WHERE id = 'assistant'").get()).toEqual({ created_at: 2000 });
+    expect(raw.prepare("SELECT content FROM messages_fts WHERE message_id = 'assistant'").all())
+      .toEqual([{ content: "Old answer continued" }]);
+    expect(raw.prepare("SELECT COUNT(*) AS count FROM generation_usage").get()).toEqual({ count: 1 });
+    expect(chatTurns.completeChatStream({ chatId: "chat", streamId: "continuation",
+      assistantMessage: { id: original.id, parts },
+    })).toBe(false);
+    expect(chatTurns.commitChatTurn({ ...input, clientRequestId: "stale", streamId: "stale" })).toBe("history-conflict");
+    expect(chatTurns.commitChatTurn({ ...input, continueMessage: saved, streamId: "failed", clientRequestId: "failed" })).toBe("committed");
+    expect(chatTurns.failChatStream({ chatId: "chat", streamId: "failed", error: "provider error" })).toBe(true);
+    expect((await chatDb.getMessages("chat")).at(-1)).toEqual(saved);
+  });
   it("records the model only when the turn is committed and leaves it unchanged on rejected turns", async () => {
     const input = {
       chatId: "chat", userId: "user", projectId: null,

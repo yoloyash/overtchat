@@ -21,6 +21,7 @@ interface OpenAICompatibleAdapterOptions {
   listModels?: ListModels;
   transformRequestBody?: TransformRequestBody;
   acceptsReasoningLevel?: boolean;
+  assistantContinuationOptions?: Record<string, unknown>;
 }
 
 export function createOpenAICompatibleAdapter(
@@ -51,6 +52,7 @@ export function createOpenAICompatibleAdapter(
             : {}),
         }),
         providerOptionsKey: id,
+        assistantContinuationOptions: options.assistantContinuationOptions,
       };
     },
     listModels,
