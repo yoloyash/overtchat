@@ -7,6 +7,9 @@ npm install
 npm run dev
 ```
 
+The full development stack supports Linux and macOS and requires Docker for
+Redis. On other platforms, use `npm run dev:web` to run the web app only.
+
 Open [localhost:4717](http://localhost:4717). This starts the web app, an isolated
 Redis container, and a source Host Connector. Ctrl-C stops web and connector
 processes; `npm run dev:down` stops the retained Redis container. Disposable
