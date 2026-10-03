@@ -26,6 +26,7 @@ import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 import { UpdateActionTooltip } from "@/components/UpdateActionTooltip";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { getApiOrigin } from "@/lib/api-url";
 import { useResetAuthState } from "@/lib/queries/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
@@ -183,7 +184,7 @@ export function AccountMenu() {
               <span>Settings</span>
             </Menu.Item>
             <Menu.Item
-              onClick={() => setMobileAppOrigin(window.location.origin)}
+              onClick={() => setMobileAppOrigin(getApiOrigin() || window.location.origin)}
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Smartphone className="size-3.5 shrink-0 text-muted-foreground" />
