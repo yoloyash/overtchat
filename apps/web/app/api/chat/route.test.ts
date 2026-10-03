@@ -746,6 +746,43 @@ describe("chat route setup boundary", () => {
     },
   );
 
+  it("continues canonical history and applies prefill options only to the initial step", async () => {
+    const answer = { id: "answer", role: "assistant", parts: [{ type: "text", text: "partial" }] };
+    const history = [...messages, answer];
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, messages: [answer],
+      action: { type: "continue", targetAssistantMessageId: answer.id } });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue(history);
+    mocks.createConfiguredLanguageModel.mockReturnValue({ model: "language-model",
+      providerOptions: { vllm: { max_tokens: 24 } },
+      assistantContinuationOptions: { vllm: { max_tokens: 24, continue_final_message: true, add_generation_prompt: false } },
+    });
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+      continueMessage: answer, userMessage: undefined, truncateFromMessageId: undefined,
+    }));
+    expect(mocks.uiStreamOptions?.originalMessages).toEqual(history);
+    const prepare = mocks.agentSettings[0].prepareStep as (input: object) => Promise<Record<string, unknown>>;
+    const base = { messages: convertedMessages, steps: [] };
+    expect(await prepare({ ...base, stepNumber: 0 })).toMatchObject({ providerOptions: {
+      vllm: { max_tokens: 24, continue_final_message: true, add_generation_prompt: false },
+    } });
+    expect(await prepare({ ...base, stepNumber: 1 })).toMatchObject({ providerOptions: { vllm: { max_tokens: 24 } } });
+  });
+
+  it("refuses to continue an interrupted tool input before claiming a stream", async () => {
+    const answer = { id: "answer", role: "assistant", parts: [
+      { type: "dynamic-tool", toolName: "lookup", toolCallId: "call", state: "input-streaming" },
+    ] };
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, messages: [answer],
+      action: { type: "continue", targetAssistantMessageId: answer.id } });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue([...messages, answer]);
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+  });
+
   it("persists a partial assistant when the user aborts", async () => {
     await POST(request());
     const claim = mocks.commitChatTurn.mock.calls[0][0];

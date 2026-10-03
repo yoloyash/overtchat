@@ -533,6 +533,15 @@ function ChatSurface({
     clearAttachments();
   }
 
+  function handleContinue(messageId: string) {
+    if (streaming || !configured || voiceReadOnly || messages.at(-1)?.id !== messageId) return;
+    setContextStatus(null);
+    setLocalAnchorRequestKey((key) => key + 1);
+    void sendMessage(undefined, {
+      body: requestBody({ type: "continue", targetAssistantMessageId: messageId }),
+    });
+  }
+
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
     setLocalAnchorRequestKey((key) => key + 1);
@@ -636,6 +645,7 @@ function ChatSurface({
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
+          onContinue={voiceReadOnly ? undefined : handleContinue}
           onImageReference={imageAvailable ? (file) => {
             addReference(file);
             setImageOptions({ size: "auto", quality: "auto" });

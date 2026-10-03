@@ -124,6 +124,37 @@ summary. Verify `/compact` below the threshold, reload its marker, and continue
 from its saved checkpoint. Verify failed and cancelled compactions do not save a
 replacement checkpoint. Remove the test chat and model config afterward.
 
+## Chat continuation validation
+
+The latest assistant answer ending in text offers **Continue response** on web,
+desktop, and mobile. This sends canonical history ending in that assistant
+message and appends output under the same message ID. Reasoning-only output and
+incomplete tool calls cannot be continued. Backend support for assistant prefill
+varies: vLLM and llama.cpp use explicit continuation flags on the first request
+only; other providers receive the final assistant message with ordinary options.
+There is no automatic retry when a response reaches its output limit.
+
+Run the focused regressions and browser coverage with:
+
+```sh
+npm run test -w apps/web -- lib/chat/continuation.test.ts lib/chat/request.test.ts lib/chat/history.test.ts lib/search/extract.test.ts lib/db/chatTurns.test.ts lib/providers/server/registry.test.ts app/api/chat/route.test.ts
+E2E_PORT=4727 npm run test:e2e -w apps/web -- continuation.spec.ts
+```
+
+To include a live vLLM check, set `CONTINUATION_LIVE_URL` to its `/v1` endpoint:
+
+```sh
+CONTINUATION_LIVE_URL=http://127.0.0.1:8001/v1 E2E_PORT=4727 npm run test:e2e -w apps/web -- continuation.spec.ts
+```
+
+The live test uses the first served model, seeds a JSON prefix in the isolated
+E2E database, and continues with a 24-token output limit until the array is
+complete. It verifies the combined content, stable message ID, and reload.
+Controlled-provider tests cover code fences, normal request flag isolation,
+stale targets, provider failure, cancellation, temporary chats, search indexing,
+and usage recording. On Android and iOS, also check the Continue action/menu,
+Stop, and reopening the saved response.
+
 ## Mobile validation
 
 For Agent Connections changes:

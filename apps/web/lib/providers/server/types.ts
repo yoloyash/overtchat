@@ -24,6 +24,8 @@ export interface ResolvedLanguageModel {
   model: LanguageModelV4;
   providerOptionsKey: string;
   defaultProviderOptions?: Record<string, unknown>;
+  /** Extra options only for a request that prefills the final assistant answer. */
+  assistantContinuationOptions?: Record<string, unknown>;
   /** Applies explicit per-chat controls after saved provider options merge. */
   transformProviderOptions?: (
     options: Record<string, unknown>,

@@ -25,6 +25,13 @@ afterEach(() => {
 });
 
 describe("provider registry", () => {
+  it.each(["vllm", "llamacpp"] as const)("isolates %s assistant prefill options from normal requests", (providerId) => {
+    const configured = createConfiguredLanguageModel({ ...baseConfig, providerId, providerOptions: { max_tokens: 32 } });
+    expect(configured.providerOptions).toEqual({ [providerId]: { max_tokens: 32 } });
+    expect(configured.assistantContinuationOptions).toEqual({ [providerId]: {
+      max_tokens: 32, continue_final_message: true, add_generation_prompt: false,
+    } });
+  });
   it("maps every catalog provider to its matching adapter", () => {
     for (const providerId of PROVIDER_IDS) {
       expect(getProviderAdapter(providerId).id).toBe(providerId);

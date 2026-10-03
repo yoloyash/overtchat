@@ -561,6 +561,16 @@ export function ChatArea({
     void sendMessage(undefined, { body: requestBody({ type: "compact" }) });
   }
 
+  function handleContinue(messageId: string) {
+    if (streaming || !configured || messages.at(-1)?.id !== messageId) return;
+    setInferenceActivity(null);
+    setContextStatus(null);
+    markGenerationStarted();
+    void sendMessage(undefined, {
+      body: requestBody({ type: "continue", targetAssistantMessageId: messageId }),
+    });
+  }
+
   function handleReconnect() {
     if (streaming || !configured) return;
     setInferenceActivity(null);
@@ -840,6 +850,7 @@ export function ChatArea({
             loadingOlderMessages={loadingOlderMessages}
             onLoadOlderMessages={handleLoadOlderMessages}
             onRegenerate={handleRegenerate}
+            onContinue={resolvedChatKind === "voice" ? undefined : handleContinue}
                 onImageReference={imageAvailable ? (file) => {
                   composerRef.current?.addReference(file);
                   setImageOptions({ size: "auto", quality: "auto" });

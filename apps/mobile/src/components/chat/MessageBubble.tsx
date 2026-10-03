@@ -28,6 +28,7 @@ export function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  onContinue,
   onImageReference,
   readOnly = false,
 }: {
@@ -39,6 +40,7 @@ export function MessageBubble({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   readOnly?: boolean;
 }) {
@@ -154,11 +156,12 @@ export function MessageBubble({
     !streaming && hasAnyText
       ? readOnly
         ? ["copy"]
-        : ["copy", "regenerate"]
+        : ["copy", "regenerate", ...(onContinue ? ["continue" as const] : [])]
       : [];
   function onAssistantMenuSelect(action: MessageAction) {
     if (action === "copy") copyText(text);
     else if (action === "regenerate") onRegenerate(message.id);
+    else if (action === "continue") onContinue?.(message.id);
   }
 
   function openAssistantMenu() {
@@ -227,6 +230,7 @@ export function MessageBubble({
             onRegenerate={
               readOnly ? undefined : () => onRegenerate(message.id)
             }
+            onContinue={readOnly || !onContinue ? undefined : () => onContinue(message.id)}
             onSpeak={
               text ? () => void speech.play(message.id, text) : undefined
             }

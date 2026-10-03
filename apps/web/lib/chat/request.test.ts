@@ -27,6 +27,17 @@ const validBody = {
 };
 
 describe("chat request parsing", () => {
+  it("accepts continuation only for the final assistant message", async () => {
+    const action = { type: "continue", targetAssistantMessageId: "answer" };
+    const body = { ...validBody, action, messages: [{
+      id: "answer", role: "assistant", parts: [{ type: "text", text: "partial" }],
+    }] };
+    await expect(parseChatRequest(request(body))).resolves.toMatchObject({ action });
+    await expect(parseChatRequest(request({ ...body, action: { ...action, targetAssistantMessageId: "other" } })))
+      .rejects.toThrow("does not match the assistant");
+    await expect(parseChatRequest(request({ ...validBody, action })))
+      .rejects.toThrow("does not match the assistant");
+  });
   it("accepts a compact request referencing the last assistant without a new user turn", async () => {
     const body = {
       ...validBody,

@@ -51,6 +51,17 @@ export function reconstructPersistedMessages({
     }
     return { messages: storedMessages, persistUserMessage: false };
   }
+  if (action.type === "continue") {
+    const last = storedMessages.at(-1);
+    if (
+      !last || last.role !== "assistant" ||
+      last.id !== action.targetAssistantMessageId ||
+      requestMessages.at(-1)?.id !== last.id
+    ) {
+      throw new ChatHistoryConflictError();
+    }
+    return { messages: storedMessages, persistUserMessage: false };
+  }
   const requestUserMessage = requestMessages.at(-1);
   if (!requestUserMessage || requestUserMessage.role !== "user") {
     throw new ChatHistoryConflictError();

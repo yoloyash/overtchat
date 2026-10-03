@@ -26,6 +26,8 @@ import {
 import {
   CONTEXT_STATUS_DATA_TYPE,
   isManualCompactionMessage,
+  canContinueMessage,
+  joinContinuationTextParts,
   type ContextStatus,
 } from "@overtchat/shared";
 import {
@@ -152,6 +154,7 @@ async function handlePost(req: Request): Promise<Response> {
     clientRequestId,
   } = parsedRequest;
   const manualCompaction = action.type === "compact";
+  const continuing = action.type === "continue";
   const requestFingerprint = chatRequestFingerprint(parsedRequest);
 
   if (!temporary) {
@@ -230,11 +233,21 @@ async function handlePost(req: Request): Promise<Response> {
     }
   } else if (
     !temporary &&
-    (action.type === "edit" || action.type === "regenerate" || manualCompaction)
+    (action.type === "edit" ||
+      action.type === "regenerate" ||
+      manualCompaction ||
+      continuing)
   ) {
     throw new ChatRequestError(
       "Chat history changed; refresh and try again",
       409,
+    );
+  }
+
+  const continueMessage = continuing ? messages.at(-1) : undefined;
+  if (continuing && !canContinueMessage(continueMessage)) {
+    throw new ChatRequestError(
+      "Only an assistant answer ending in text can be continued.",
     );
   }
 
@@ -257,18 +270,22 @@ async function handlePost(req: Request): Promise<Response> {
   const supportsImageInput = modelCapabilities?.inputModalities
     ? modelCapabilities.inputModalities.includes("image")
     : modelCapabilities?.attachment !== false;
-  const { model, providerOptions, promptCacheStrategy } =
-    createConfiguredLanguageModel({
-      providerId: modelConfig.providerId,
-      apiFormat: modelConfig.apiFormat,
-      baseUrl: modelConfig.baseUrl,
-      apiKey: modelConfig.apiKey,
-      model: modelConfig.model,
-      providerOptions: modelConfig.providerOptions,
-      toolCallingEnabled: modelConfig.toolCallingEnabled,
-      supportsImageInput,
-      reasoningLevel,
-    });
+  const {
+    model,
+    providerOptions,
+    promptCacheStrategy,
+    assistantContinuationOptions,
+  } = createConfiguredLanguageModel({
+    providerId: modelConfig.providerId,
+    apiFormat: modelConfig.apiFormat,
+    baseUrl: modelConfig.baseUrl,
+    apiKey: modelConfig.apiKey,
+    model: modelConfig.model,
+    providerOptions: modelConfig.providerOptions,
+    toolCallingEnabled: modelConfig.toolCallingEnabled,
+    supportsImageInput,
+    reasoningLevel,
+  });
   const provider = getProvider(modelConfig.providerId);
   const contextWindow = resolveModelContextWindow(
     modelConfig.contextWindow,
@@ -330,7 +347,11 @@ async function handlePost(req: Request): Promise<Response> {
       : restoredContext.messages,
     userId,
   );
-  const convertedMessages = await convertToModelMessages(inlined, {
+  const convertedMessages = await convertToModelMessages(inlined.map((message) =>
+    message.role === "assistant"
+      ? { ...message, parts: joinContinuationTextParts(message.parts) }
+      : message,
+  ), {
     tools: { ...chatTools, ...imageTools },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
@@ -416,6 +437,7 @@ async function handlePost(req: Request): Promise<Response> {
         requestFingerprint,
         staleStreamId,
         truncateFromMessageId,
+        ...(continueMessage ? { continueMessage } : {}),
         userMessage: persistUserMessage
           ? { id: last.id, parts: last.parts }
           : undefined,
@@ -569,6 +591,16 @@ async function handlePost(req: Request): Promise<Response> {
         ? await contextManager.prepare(stepMessages, steps)
         : stepMessages;
       return {
+        // Subsequent tool-loop steps must start a fresh assistant turn. Never
+        // apply prefill flags to summary generation or ordinary requests.
+        ...(continuing && assistantContinuationOptions
+          ? {
+              providerOptions:
+                stepNumber === 0
+                  ? assistantContinuationOptions
+                  : requestProviderOptions,
+            }
+          : {}),
         messages:
           promptCacheStrategy?.kind === "anthropic"
             ? markAnthropicConversationCacheBoundary(
@@ -829,13 +861,21 @@ async function handlePost(req: Request): Promise<Response> {
         // A completed image is a durable result even if the subsequent language
         // model step fails. Preserve it while discarding broken text fragments.
         const savedParts = streamError
-          ? responseMessage.parts.filter((part) =>
-              isImageToolPart(part) &&
-              part.state === "output-available" &&
-              Array.isArray(part.output?.images) &&
-              part.output.images.some(isGeneratedImage),
-            )
+          ? [
+              ...(continueMessage?.parts ?? []),
+              ...responseMessage.parts
+                .slice(continueMessage?.parts.length ?? 0)
+                .filter((part) =>
+                  isImageToolPart(part) &&
+                  part.state === "output-available" &&
+                  Array.isArray(part.output?.images) &&
+                  part.output.images.some(isGeneratedImage),
+                ),
+            ]
           : responseMessage.parts;
+        const savedMetadata = streamError && continueMessage
+          ? continueMessage.metadata
+          : responseMessage.metadata;
         const assistantMessage =
           savedParts.length > 0 ||
           (manualCompaction &&
@@ -845,15 +885,10 @@ async function handlePost(req: Request): Promise<Response> {
             ? {
                 id: responseMessage.id,
                 parts: savedParts,
-                ...(responseMessage.metadata &&
-                typeof responseMessage.metadata === "object" &&
-                !Array.isArray(responseMessage.metadata)
-                  ? {
-                      metadata: responseMessage.metadata as Record<
-                        string,
-                        unknown
-                      >,
-                    }
+                ...(savedMetadata &&
+                typeof savedMetadata === "object" &&
+                !Array.isArray(savedMetadata)
+                  ? { metadata: savedMetadata as Record<string, unknown> }
                   : {}),
               }
             : undefined;
@@ -872,7 +907,9 @@ async function handlePost(req: Request): Promise<Response> {
                       : "Provider stream failed.",
                 }
               : {}),
-            ...(assistantMessage && completedGenerationUsage
+            ...(assistantMessage &&
+            completedGenerationUsage &&
+            !(continueMessage && streamError)
               ? { usage: completedGenerationUsage }
               : {}),
           });

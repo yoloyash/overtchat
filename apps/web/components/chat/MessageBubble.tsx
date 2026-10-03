@@ -10,6 +10,7 @@ import {
   Loader2,
   Pencil,
   RotateCcw,
+  Play,
   Square,
   Volume2,
   X,
@@ -62,6 +63,7 @@ export function MessageBubble({
   streaming,
   canAct,
   onRegenerate,
+  onContinue,
   onImageReference,
   onEdit,
   speech,
@@ -72,6 +74,7 @@ export function MessageBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
@@ -134,6 +137,7 @@ export function MessageBubble({
       streaming={streaming}
       canAct={canAct}
       onRegenerate={onRegenerate}
+      onContinue={onContinue}
       onImageReference={onImageReference}
       speech={speech}
       showStats={showStats}
@@ -147,6 +151,7 @@ function AssistantBubble({
   streaming,
   canAct,
   onRegenerate,
+  onContinue,
   onImageReference,
   speech,
   showStats,
@@ -156,6 +161,7 @@ function AssistantBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -257,6 +263,13 @@ function AssistantBubble({
             onClick={() => onRegenerate(message.id)}
             icon={<RotateCcw className="size-3.5" />}
           />
+          {onContinue && (
+            <ActionButton
+              label="Continue response"
+              onClick={() => onContinue(message.id)}
+              icon={<Play className="size-3.5" />}
+            />
+          )}
           {showStats && stats && <StatsPopover stats={stats} />}
         </MessageActions>
       )}
