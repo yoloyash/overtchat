@@ -2,12 +2,16 @@
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { DragDropProvider } from "@dnd-kit/react";
+import { useSortable } from "@dnd-kit/react/sortable";
+import { move } from "@dnd-kit/helpers";
 import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
   Folder,
   GitBranch,
+  GripVertical,
   Loader2,
   Plus,
   Wifi,
@@ -38,6 +42,15 @@ import { useAgentProviderSnapshot } from "@/lib/queries/agentConnections";
 import { useAgentWorkspaceGitStatus } from "@/lib/queries/agentWorkspaces";
 import { cn } from "@/lib/utils";
 import { NewAgentSessionDialog } from "@/components/agents/NewAgentSessionDialog";
+import { authClient } from "@/lib/auth/client";
+import { getApiOrigin } from "@/lib/api-url";
+import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  agentWorkspaceOrderStorageKey,
+  orderAgentWorkspaces,
+} from "@/lib/agents/workspaceOrder";
+
+const DEFAULT_WORKSPACE_ORDER: string[] = [];
 
 export function SidebarAgentWorkspaces({
   connections,
@@ -46,28 +59,65 @@ export function SidebarAgentWorkspaces({
   connections: AgentConnectionListItem[];
   providerFilter: AgentProviderId | null;
 }) {
-  const groups = useMemo(() => groupAgentWorkspaces(connections), [connections]);
+  const { data: session } = authClient.useSession();
+  const [savedOrder, setSavedOrder] = useLocalStorage<unknown>(
+    agentWorkspaceOrderStorageKey(session?.user.id ?? "", getApiOrigin()),
+    DEFAULT_WORKSPACE_ORDER,
+  );
+  const orderedGroups = useMemo(
+    () => orderAgentWorkspaces(groupAgentWorkspaces(connections), savedOrder),
+    [connections, savedOrder],
+  );
+  // Keep refetches from replacing sortable nodes while dnd-kit moves their DOM.
+  const [dragGroups, setDragGroups] = useState<AgentWorkspaceGroup[] | null>(null);
+  const groups = dragGroups ?? orderedGroups;
   if (groups.length === 0) return null;
   return (
-    <ul className="flex flex-col gap-0.5">
-      {groups.map((group) => (
-        <WorkspaceNode
-          key={group.key}
-          group={group}
-          providerFilter={providerFilter}
-        />
-      ))}
-    </ul>
+    <DragDropProvider
+      onDragStart={() => setDragGroups(orderedGroups)}
+      onDragEnd={(event) => {
+        if (!event.canceled) {
+          setSavedOrder(
+            move(
+              groups.map((group) => group.key),
+              event,
+            ),
+          );
+        }
+        setDragGroups(null);
+      }}
+    >
+      <ul aria-label="Agent workspaces" className="flex flex-col gap-0.5">
+        {groups.map((group, index) => (
+          <WorkspaceNode
+            key={group.key}
+            group={group}
+            index={index}
+            sortable={groups.length > 1 && Boolean(session)}
+            providerFilter={providerFilter}
+          />
+        ))}
+      </ul>
+    </DragDropProvider>
   );
 }
 
 function WorkspaceNode({
   group,
+  index,
+  sortable,
   providerFilter,
 }: {
   group: AgentWorkspaceGroup;
+  index: number;
+  sortable: boolean;
   providerFilter: AgentProviderId | null;
 }) {
+  const { ref, handleRef, isDragSource, isDropping } = useSortable({
+    id: group.key,
+    index,
+    disabled: !sortable,
+  });
   const pathname = useLocation({ select: (location) => location.pathname });
   const navigate = useNavigate();
   const { closeMobile } = useSidebar();
@@ -133,8 +183,29 @@ function WorkspaceNode({
   }
 
   return (
-    <li>
+    <li
+      ref={ref}
+      data-dropping={isDropping}
+      className={cn(
+        (isDragSource || isDropping) &&
+          "relative z-10 rounded-md bg-sidebar shadow-md",
+      )}
+    >
       <div className="group flex min-w-0 rounded-md motion-colors hover:bg-sidebar-accent">
+        <button
+          ref={handleRef}
+          type="button"
+          disabled={!sortable}
+          aria-label={`Reorder ${group.name}`}
+          title="Drag to reorder"
+          className={cn(
+            "flex w-5 shrink-0 touch-none cursor-grab items-center justify-center rounded-l-md text-muted-foreground hover:text-foreground focus-visible:opacity-100 active:cursor-grabbing max-md:w-8",
+            motionClasses.hoverReveal,
+            !sortable && "hidden",
+          )}
+        >
+          <GripVertical aria-hidden="true" className="size-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}

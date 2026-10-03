@@ -266,7 +266,7 @@ endpoint, even when normal update checks are disabled. Production servers
 ignore it. The sidebar update regression uses an injected bridge:
 
 ```sh
-E2E_PORT=4797 npm run test:e2e -w apps/web -- sidebar.spec.ts desktop-updates.spec.ts
+E2E_PORT=4797 npm run test:e2e -w apps/web -- sidebar.spec.ts agent-workspace-order.spec.ts desktop-updates.spec.ts
 node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
 ```
 
