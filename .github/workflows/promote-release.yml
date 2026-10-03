@@ -191,7 +191,13 @@ jobs:
           grep -Eq '[[:space:]]\*?overtchat-connector-linux-arm64$' \
             "$verification_directory/connector-checksums.txt"
           (cd "$verification_directory" && sha256sum --check connector-checksums.txt)
-          cmp scripts/install-connector.sh "$verification_directory/install-connector.sh"
+          # main may contain unreleased installer changes. Verify the artifact
+          # against the source selected by its release tag.
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/scripts/install-connector.sh?ref=connector-v$CONNECTOR_VERSION" \
+            > "$verification_directory/tagged-install-connector.sh"
+          cmp "$verification_directory/tagged-install-connector.sh" \
+            "$verification_directory/install-connector.sh"
           installer_url="https://github.com/$GITHUB_REPOSITORY/releases/download/connector-v$CONNECTOR_VERSION/install-connector.sh"
           grep -Fx "/install/connector/$CONNECTOR_VERSION $installer_url 302" \
             apps/site/public/_redirects
