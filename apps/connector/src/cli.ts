@@ -2,6 +2,8 @@
 import os from "node:os";
 import {
   normalizeServerUrl,
+  connectorLockPath,
+  connectorStatePath,
   readConnectorConfig,
   writeConnectorConfig,
 } from "./config.js";
@@ -12,6 +14,8 @@ import {
 } from "./service.js";
 import { CONNECTOR_VERSION } from "./version.js";
 import { configureServiceLogging } from "./service-logging.js";
+import { ConnectorInstanceLock } from "./lock.js";
+import { backupConnectorJournal } from "./journal-backup.js";
 
 type ParsedArgs = {
   command: string;
@@ -187,6 +191,15 @@ async function main(): Promise<void> {
       }
       await preflight();
       return;
+    case "journal-backup": {
+      const destination = parsed.values.get("destination");
+      if (!destination || parsed.values.size !== 1) throw new Error("journal-backup requires --destination.");
+      const config = await readConnectorConfig();
+      const lock = await ConnectorInstanceLock.acquire(connectorLockPath(config.connectorId));
+      try { await backupConnectorJournal(connectorStatePath(config.connectorId), destination); }
+      finally { await lock.release(); }
+      return;
+    }
     case "version":
       if (parsed.values.size > 0) {
         throw new Error("The version command does not accept arguments.");
@@ -195,7 +208,7 @@ async function main(): Promise<void> {
       return;
     default:
       throw new Error(
-        "Usage: overtchat-connector <install|install-managed|pair|preflight|run|version>",
+        "Usage: overtchat-connector <install|install-managed|pair|preflight|journal-backup|run|version>",
       );
   }
 }

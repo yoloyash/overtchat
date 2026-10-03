@@ -298,6 +298,9 @@ rollback_upgrade() {
       wait_for_stopped_service || return 1
   fi
   if [ "$state_may_have_changed" = "true" ]; then
+    # A restored standalone snapshot must never replay WAL from the failed
+    # upgrade. The service is stopped and verified above before removing these.
+    rm -f "$connector_state-wal" "$connector_state-shm" || return 1
     if [ "$upgrade_had_state" = "true" ] &&
       [ "$state_backup_ready" = "true" ]; then
       mv -f "$state_backup_path" "$connector_state" || return 1
@@ -426,7 +429,10 @@ if [ "$upgrade" = "true" ]; then
       echo "Unable to stage the Host Connector state for rollback." >&2
       exit 1
     }
-    if ! cp -p "$connector_state" "$state_stage_path" ||
+    # VACUUM INTO requires a new destination. The downloaded binary snapshots
+    # either legacy JSON or SQLite, including committed rows still in its WAL.
+    rm -f "$state_stage_path" || exit 1
+    if ! "$staged_install_path" journal-backup --destination "$state_stage_path" ||
       ! mv -f "$state_stage_path" "$state_backup_path"; then
       echo "Unable to back up the Host Connector state; nothing was upgraded." >&2
       exit 1

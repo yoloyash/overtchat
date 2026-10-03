@@ -154,10 +154,7 @@ process.on("SIGTERM", async () => {
   process.exit(0);
 });
 while (!stopping) {
-  const state = JSON.parse(
-    await readFile(process.env.OVERTCHAT_CONNECTOR_STATE, "utf8"),
-  );
-  if (state.events.length === 0) break;
+  if (Reflect.get(client, "journal").eventBatch().length === 0) break;
   await new Promise((resolve) => setTimeout(resolve, 100));
 }
 console.log("transport-fixture-ready");

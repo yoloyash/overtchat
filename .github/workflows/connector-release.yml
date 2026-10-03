@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - ".github/workflows/connector-release.yml"
+      - ".github/scripts/smoke-connector-journal.mjs"
       - "apps/connector/**"
       - "packages/agent-bridge/**"
       - "packages/agent-runtime/**"
@@ -84,6 +85,21 @@ jobs:
           bun build apps/connector/src/cli.ts \
             --compile --target=bun-darwin-arm64 \
             --outfile dist/connector-release/overtchat-connector-darwin-arm64
+          mkdir -p dist/connector-journal-smoke
+          for pair in \
+            linux-amd64:bun-linux-x64-baseline \
+            linux-arm64:bun-linux-arm64 \
+            darwin-amd64:bun-darwin-x64 \
+            darwin-arm64:bun-darwin-arm64; do
+            platform=${pair%%:*}
+            target=${pair#*:}
+            bun build apps/connector/src/test-support/journal-runtime-smoke.ts \
+              --compile --target="$target" \
+              --outfile "dist/connector-journal-smoke/journal-smoke-$platform"
+            bun build apps/connector/src/test-support/journal-crash-worker.ts \
+              --compile --target="$target" \
+              --outfile "dist/connector-journal-smoke/journal-crash-$platform"
+          done
           (
             cd dist/connector-release
             sha256sum \
@@ -98,6 +114,13 @@ jobs:
         with:
           name: host-connector-release
           path: dist/connector-release/
+          if-no-files-found: error
+          retention-days: 7
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: host-connector-journal-smoke
+          path: dist/connector-journal-smoke/
           if-no-files-found: error
           retention-days: 7
 
@@ -119,10 +142,20 @@ jobs:
             platform: darwin-arm64
     runs-on: ${{ matrix.runner }}
     steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: host-connector-release
           path: release
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: host-connector-journal-smoke
+          path: journal-smoke
       - name: Run the released executable on its target OS and CPU
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -130,6 +163,11 @@ jobs:
         run: |
           chmod +x "release/overtchat-connector-$PLATFORM"
           test "$("release/overtchat-connector-$PLATFORM" version)" = "$VERSION"
+          chmod +x "journal-smoke/journal-crash-$PLATFORM"
+          node .github/scripts/smoke-connector-journal.mjs \
+            "release/overtchat-connector-$PLATFORM" "journal-smoke/journal-crash-$PLATFORM"
+          chmod +x "journal-smoke/journal-smoke-$PLATFORM"
+          "journal-smoke/journal-smoke-$PLATFORM"
 
   publish:
     if: github.event_name != 'pull_request'
