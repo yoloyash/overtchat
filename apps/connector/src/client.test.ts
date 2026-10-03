@@ -1,4 +1,5 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -146,16 +147,13 @@ describe.sequential("connector client compatibility", () => {
     });
     let responseWasDurableBeforeClose = false;
     vi.spyOn(journal, "close").mockImplementation(async () => {
-      const persisted = JSON.parse(
-        await readFile(process.env.OVERTCHAT_CONNECTOR_STATE!, "utf8"),
-      ) as {
-        events: Array<{ payload: HostConnectorEventPayload }>;
-      };
-      responseWasDurableBeforeClose = persisted.events.some(
-        (event) =>
-          event.payload.type === "response" &&
-          event.payload.requestId === "drained-request",
-      );
+      const db = new DatabaseSync(process.env.OVERTCHAT_CONNECTOR_STATE!, { readOnly: true });
+      try {
+        responseWasDurableBeforeClose = db.prepare("SELECT payload_json FROM events").all().some((row) => {
+          const payload = JSON.parse(String(row.payload_json)) as HostConnectorEventPayload;
+          return payload.type === "response" && payload.requestId === "drained-request";
+        });
+      } finally { db.close(); }
       await originalJournalClose();
     });
 

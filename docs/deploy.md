@@ -196,6 +196,36 @@ acknowledged fragments. If delivery repeatedly fails, include the metadata-only
 with the startup diagnostics. A restart retains unacknowledged journal events;
 do not delete connector state to clear a backlog.
 
+The connector journal is SQLite with WAL, at the existing
+`connector-<id>.state.json` path (the filename is retained for managed upgrades).
+Startup streams older JSON journals into a staging database, validates their
+events and command receipts, then atomically replaces the journal after commit
+and checkpoint. The original JSON remains at `<state-file>.legacy`. Keep that
+archive until the updated connector has been verified; it is a migration archive,
+not a current backup after new commands run. Older connectors cannot read the
+SQLite journal. Recovery after normal operation uses a compatible newer version,
+not an older binary with stale state.
+
+Every journal mutation commits before it can be acknowledged. Startup holds an
+exclusive journal lock and removes abandoned regular temporary files matching
+this journal's old writer format, plus interrupted migration staging files.
+It leaves live-writer files, symlinks, canonical timelines, and rollback archives
+alone. If the disk is already full, stop the connector before recovery; never
+delete the main journal, its WAL, or canonical histories to regain space.
+
+For a consistent journal backup, stop the connector service and run:
+
+```sh
+overtchat-connector journal-backup --destination /absolute/path/to/new-snapshot
+```
+
+The destination must be new. SQLite backups include committed WAL data and are
+verified with `integrity_check`; copying only the main database file can miss
+committed events. The managed installer uses this command while the service is
+stopped. On a failed upgrade it restores the standalone snapshot after removing
+the failed attempt's WAL/SHM, before restarting the previous binary. Back up the
+canonical timeline and process-ledger directories separately while stopped.
+
 The connector records its OpenCode and Hermes helper processes beside its state journal
 in `<state-file>.processes/`. On restart it verifies process identities and
 cleans up recorded leftovers locally or through the original SSH alias in the

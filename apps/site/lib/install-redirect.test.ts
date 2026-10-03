@@ -94,6 +94,11 @@ function createUpgradeFixture(
   }
 
   const newConnector = `#!/bin/sh
+if [ "\${1:-}" = "journal-backup" ]; then
+  cp -p "$MOCK_CONNECTOR_STATE" "$3" || exit 1
+  chmod 600 "$3"
+  exit 0
+fi
 if [ "\${1:-}" = "preflight" ]; then
   printf '{"format":2,"migrated":true}\\n' > "$MOCK_CONNECTOR_STATE"
   chmod 600 "$MOCK_CONNECTOR_STATE"
@@ -365,7 +370,7 @@ describe("Host Connector installer redirect", () => {
     expect(readFileSync(installPath, "utf8")).toBe("old connector\n");
     expect(existsSync(`${installPath}.previous`)).toBe(false);
     expect(readFileSync(statePath, "utf8")).toBe(legacyState);
-    expect(statSync(statePath).mode & 0o777).toBe(0o640);
+    expect(statSync(statePath).mode & 0o777).toBe(0o600);
     expect(existsSync(`${statePath}.previous`)).toBe(false);
     expect(readFileSync(configPath, "utf8")).toBe(configContents);
     expect(
@@ -391,7 +396,7 @@ describe("Host Connector installer redirect", () => {
     expect(result.stderr).toContain("state were restored and restarted");
     expect(readFileSync(installPath, "utf8")).toBe("old connector\n");
     expect(readFileSync(statePath, "utf8")).toBe(legacyState);
-    expect(statSync(statePath).mode & 0o777).toBe(0o640);
+    expect(statSync(statePath).mode & 0o777).toBe(0o600);
     expect(
       readFileSync(systemctlCalls, "utf8")
         .split("\n")
@@ -428,7 +433,7 @@ describe("Host Connector installer redirect", () => {
     expect(result.stderr).toContain("state were restored and restarted");
     expect(readFileSync(installPath, "utf8")).toBe("old connector\n");
     expect(readFileSync(statePath, "utf8")).toBe(legacyState);
-    expect(statSync(statePath).mode & 0o777).toBe(0o640);
+    expect(statSync(statePath).mode & 0o777).toBe(0o600);
     expect(
       readFileSync(systemctlCalls, "utf8")
         .split("\n")

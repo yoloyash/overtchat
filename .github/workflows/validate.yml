@@ -67,6 +67,9 @@ jobs:
       - name: Test
         run: npm run test
 
+      - name: Qualify incident-scale connector journal recovery
+        run: npm run test:journal-scale -w apps/connector
+
       - name: Speech transport and codec tests (no Apple models)
         run: |
           python3 -m venv /tmp/overtchat-speech-tests

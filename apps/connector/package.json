@@ -12,11 +12,13 @@
     "build:binary": "bun build src/cli.ts --compile --outfile dist/overtchat-connector",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:journal-scale": "node --expose-gc --max-old-space-size=256 --import tsx scripts/journal-scale.mjs"
   },
   "dependencies": {
     "@overtchat/agent-bridge": "*",
-    "@overtchat/agent-runtime": "*"
+    "@overtchat/agent-runtime": "*",
+    "@streamparser/json": "^0.0.26"
   },
   "devDependencies": {
     "@eslint/js": "^9",

@@ -57,6 +57,47 @@ The Validate workflow regenerates the lockfile with the pinned npm and fails if
 it changes. `npm ci` alone does not detect all dependency-flag drift. Run
 `npm ci`, `npm run deps:check`, and the affected workspace checks after regeneration.
 
+## Connector journal validation
+
+Persistence changes must preserve journal-before-ack ordering, command receipts,
+and canonical timeline recovery. Run the connector tests, typecheck, lint, and
+build, then the incident-scale qualification:
+
+```sh
+npm run test -w apps/connector --
+npm run typecheck -w apps/connector --
+npm run lint -w apps/connector --
+npm run build -w apps/connector --
+npm run test:journal-scale -w apps/connector
+```
+
+The scale check creates disposable synthetic state containing about 610 MB of
+queued events, 6,338 receipts, and 412 sessions. It migrates with a 256 MiB Node
+heap limit, exercises actual connector HTTP delivery through a failed request,
+checks every delivered event by hash, and verifies receipts and queued messages
+survive restart. It reports memory, startup/drain times, and reclaimed disk
+space. The crash regressions use actual subprocess `SIGKILL`, including before
+and after commits and during migration. SQLite page quotas test full-database
+rollback; filesystem publication failures must leave the original JSON intact.
+
+Build the packaged connector and check it without contacting production:
+
+```sh
+npm run build:binary -w apps/connector
+node .github/scripts/smoke-connector-journal.mjs apps/connector/dist/overtchat-connector
+bun build apps/connector/src/test-support/journal-runtime-smoke.ts --compile --outfile /tmp/overtchat-journal-smoke
+/tmp/overtchat-journal-smoke
+E2E_PORT=4747 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
+```
+
+Run `/tmp/overtchat-journal-smoke --scale` to qualify the same incident workload
+under the compiled Bun runtime. Both qualifications require peak RSS below 1 GiB.
+The connector workflow runs packaged migration/backup, native `SIGKILL`, compiled
+journal operations, and incident-scale checks on Linux/macOS for both CPU
+architectures. Development journal reset moves the entire connector directory,
+including WAL and migration archives.
+Operator backup and upgrade recovery are documented in [Deploy](deploy.md).
+
 ## Model catalog refresh
 
 The weekday `Refresh model catalog` workflow fetches models.dev, validates the

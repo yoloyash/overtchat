@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -473,17 +474,15 @@ describe("connector daemon command identity", () => {
       request: { type: "open_session", session },
     });
     expect(openTimeline).toHaveBeenCalledTimes(2);
-    const persisted = JSON.parse(await readFile(file, "utf8")) as {
-      sessions: Record<
-        string,
-        { descriptor: AgentDaemonSessionDescriptor }
-      >;
-    };
-    expect(persisted.sessions.session?.descriptor).toMatchObject({
-      sessionId: "session",
-      providerSessionId: "edited-provider-session",
-      providerSessionPath: "/sessions/edited-provider-session.jsonl",
-    });
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      const row = db.prepare("SELECT state_json FROM sessions WHERE session_id = ?").get("session")!;
+      expect(JSON.parse(String(row.state_json)).descriptor).toMatchObject({
+        sessionId: "session",
+        providerSessionId: "edited-provider-session",
+        providerSessionPath: "/sessions/edited-provider-session.jsonl",
+      });
+    } finally { db.close(); }
     expect(events).toContainEqual({
       type: "response",
       requestId: "edit-request",
@@ -974,14 +973,17 @@ describe("connector daemon command identity", () => {
       ]),
     ).rejects.toThrow();
 
-    expect(journal.sessionQueue("session")).toEqual([]);
+    expect(() => journal.sessionQueue("session")).toThrow("state journal is closed");
+    const restored = await ConnectorStateJournal.open(file);
+    expect(restored.sessionQueue("session")).toEqual([]);
+    await restored.close();
     await expect(readFile(file, "utf8")).resolves.toBe(
       persistedBeforeLateWrite,
     );
   });
 
   it("does not let a late open continuation write after shutdown", async () => {
-    const { journal, timelines } = await openJournal();
+    const { file, journal, timelines } = await openJournal();
     const started = deferred<ReturnType<typeof runtime>>();
     mocks.getOrStart.mockReturnValueOnce(started.promise);
     mocks.stopAll.mockReturnValueOnce(new Promise(() => {}));
@@ -1007,7 +1009,9 @@ describe("connector daemon command identity", () => {
     started.resolve(runtime());
     await handling;
 
-    expect(journal.sessionIds()).toEqual([]);
+    const persisted = new DatabaseSync(file, { readOnly: true });
+    try { expect(persisted.prepare("SELECT session_id FROM sessions").all()).toEqual([]); }
+    finally { persisted.close(); }
     expect(mocks.stopSession).toHaveBeenCalledWith("session");
     expect(emitted).toContainEqual(
       expect.objectContaining({
@@ -1020,7 +1024,7 @@ describe("connector daemon command identity", () => {
   });
 
   it("does not let a late create continuation write after shutdown", async () => {
-    const { journal, timelines } = await openJournal();
+    const { file, journal, timelines } = await openJournal();
     const created = deferred<Awaited<ReturnType<typeof mocks.create>>>();
     mocks.create.mockReturnValueOnce(created.promise);
     const emitted: HostConnectorEventPayload[] = [];
@@ -1061,7 +1065,9 @@ describe("connector daemon command identity", () => {
     });
     await handling;
 
-    expect(journal.sessionIds()).toEqual([]);
+    const persisted = new DatabaseSync(file, { readOnly: true });
+    try { expect(persisted.prepare("SELECT session_id FROM sessions").all()).toEqual([]); }
+    finally { persisted.close(); }
     expect(mocks.stopSession).toHaveBeenCalledWith("session");
     expect(emitted).toContainEqual(
       expect.objectContaining({

@@ -1,9 +1,34 @@
+import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AgentDaemonSessionDescriptor } from "@overtchat/agent-bridge";
 import { ConnectorStateJournal } from "./state.js";
+
+
+function databaseState(file: string) {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    const meta = db.prepare("SELECT * FROM metadata").get()!;
+    return {
+      format: 4,
+      connectorEpoch: meta.connector_epoch,
+      nextEventSequence: meta.next_sequence,
+      acknowledgedSequence: meta.acknowledged_sequence,
+      events: db.prepare("SELECT sequence, payload_json FROM events ORDER BY sequence").all()
+        .map((row) => ({ sequence: row.sequence, payload: JSON.parse(String(row.payload_json)) })),
+      commands: db.prepare("SELECT entry_json FROM commands ORDER BY rowid").all().map((row) => JSON.parse(String(row.entry_json))),
+      sessions: Object.fromEntries(db.prepare("SELECT session_id, state_json FROM sessions").all()
+        .map((row) => [row.session_id, JSON.parse(String(row.state_json))])),
+    };
+  } finally { db.close(); }
+}
+
+async function writeLegacyFile(file: string, content: string) {
+  for (const suffix of ["", "-wal", "-shm"]) await rm(file + suffix, { force: true });
+  await writeFile(file, content);
+}
 
 const directories: string[] = [];
 
@@ -157,7 +182,7 @@ describe("connector state journal", () => {
     await expect(value.flush()).rejects.toThrow("state journal is closed");
     await closing;
 
-    const persisted = JSON.parse(await readFile(file, "utf8"));
+    const persisted = databaseState(file);
     expect(persisted.nextEventSequence).toBe(0);
     expect(persisted.commands).toEqual([]);
     expect(persisted.sessions).not.toHaveProperty("late-session");
@@ -176,7 +201,7 @@ describe("connector state journal", () => {
   it("never re-executes a command left pending across a restart", async () => {
     const { file, value } = await journal();
     await value.beginCommand("message-1", "session", "b".repeat(64));
-    expect(JSON.parse(await readFile(file, "utf8")).commands).toEqual([
+    expect(databaseState(file).commands).toEqual([
       {
         commandId: "message-1",
         sessionId: "session",
@@ -240,7 +265,7 @@ describe("connector state journal", () => {
         },
       },
     };
-    await writeFile(
+    await writeLegacyFile(
       file,
       `${JSON.stringify(
         {
@@ -303,15 +328,17 @@ describe("connector state journal", () => {
       result: { success: true, data: { commandResult: { accepted: true } } },
     });
     await migrated.close();
-    const persisted = await readFile(file, "utf8");
-    expect(JSON.parse(persisted)).toMatchObject({ format: 3 });
+    const persisted = JSON.stringify(databaseState(file));
+    expect(JSON.parse(persisted)).toMatchObject({ format: 4 });
     expect(persisted).not.toContain("x".repeat(10_000));
+    expect(JSON.parse(await readFile(`${file}.legacy`, "utf8"))).toMatchObject({ format: 1 });
   });
 
   it("rejects ambiguous format-2 ledgers with duplicate command identities", async () => {
     const { file, value } = await journal();
     await value.close();
-    const state = JSON.parse(await readFile(file, "utf8"));
+    const state = databaseState(file);
+    state.format = 2;
     state.commands = [
       {
         commandId: "duplicate",
@@ -326,7 +353,7 @@ describe("connector state journal", () => {
         status: "pending",
       },
     ];
-    await writeFile(file, JSON.stringify(state, null, 2));
+    await writeLegacyFile(file, JSON.stringify(state, null, 2));
 
     await expect(ConnectorStateJournal.open(file)).rejects.toThrow(
       "Invalid Host Connector command journal",
@@ -337,15 +364,15 @@ describe("connector state journal", () => {
     const { file, value } = await journal();
     await value.recordSession(session);
     await value.close();
-    const state = JSON.parse(await readFile(file, "utf8"));
+    const state = databaseState(file);
     state.format = 2;
     delete state.sessions.session.descriptor.launchConfig;
-    await writeFile(file, JSON.stringify(state));
+    await writeLegacyFile(file, JSON.stringify(state));
 
     const migrated = await ConnectorStateJournal.open(file);
     await migrated.close();
-    expect(JSON.parse(await readFile(file, "utf8"))).toMatchObject({
-      format: 3,
+    expect(databaseState(file)).toMatchObject({
+      format: 4,
       sessions: {
         session: { descriptor: { launchConfig: {} } },
       },
@@ -355,7 +382,8 @@ describe("connector state journal", () => {
   it("rejects a format-2 transport journal with a missing event", async () => {
     const { file, value } = await journal();
     await value.close();
-    const state = JSON.parse(await readFile(file, "utf8"));
+    const state = databaseState(file);
+    state.format = 2;
     state.nextEventSequence = 2;
     state.events = [
       {
@@ -368,7 +396,7 @@ describe("connector state journal", () => {
         },
       },
     ];
-    await writeFile(file, JSON.stringify(state));
+    await writeLegacyFile(file, JSON.stringify(state));
 
     await expect(ConnectorStateJournal.open(file)).rejects.toThrow(
       "Invalid Host Connector event journal",
