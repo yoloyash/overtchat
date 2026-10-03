@@ -447,7 +447,7 @@ for (const mobile of [false, true]) {
   });
 }
 
-test("removing the last workspace removes its connections, and failed removal can be retried", async ({
+test("removing the last workspace retries a partial failure using only workspace DELETEs", async ({
   page,
 }) => {
   const setNames = await setup(page);
@@ -455,21 +455,23 @@ test("removing the last workspace removes its connections, and failed removal ca
   await page.reload();
   const deleted: string[] = [];
   let fail = true;
-  await page
-    .context()
-    .route("**/api/agent-connections", (route) =>
-      route.fulfill({
-        json: {
-          connections: connections(["Gamma"]).filter(
-            (connection) => !deleted.includes(connection.id),
-          ),
-        },
-      }),
-    );
+  await page.context().route("**/api/agent-connections", (route) =>
+    route.fulfill({
+      json: {
+        connections: connections(["Gamma"]).filter(
+          (connection) => !deleted.includes(`${connection.provider}-Gamma`),
+        ),
+      },
+    }),
+  );
   await page.context().route("**/api/agent-connections/*", (route) => {
     if (route.request().method() !== "DELETE") return route.fallback();
+    throw new Error("Workspace removal must not delete an entire connection");
+  });
+  await page.context().route("**/api/agent-workspaces/*", (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
     const id = new URL(route.request().url()).pathname.split("/").pop()!;
-    if (id === "pi" && fail)
+    if (id === "pi-Gamma" && fail)
       return route.fulfill({ status: 500, json: { error: "Removal failed" } });
     if (deleted.includes(id)) return route.fulfill({ status: 404 });
     deleted.push(id);
@@ -485,10 +487,85 @@ test("removing the last workspace removes its connections, and failed removal ca
   const dialog = page.getByRole("alertdialog", { name: "Remove workspace?" });
   await dialog.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(dialog.getByRole("alert")).toHaveText("Removal failed");
-  expect(deleted).toEqual(["codex"]);
+  expect(deleted).toEqual(["codex-Gamma"]);
   fail = false;
   await dialog.getByRole("button", { name: "Remove", exact: true }).click();
   await expect(dialog).toBeHidden();
-  expect(deleted).toEqual(["codex", "pi"]);
+  expect(deleted).toEqual(["codex-Gamma", "pi-Gamma"]);
   await expect(list(page)).toHaveCount(0);
 });
+
+test("a workspace added while confirmation is open survives removal", async ({
+  page,
+}) => {
+  const setNames = await setup(page, true);
+  setNames(["Gamma"]);
+  await page.reload();
+  await expectOrder(page, ["Gamma"]);
+  await organize(page);
+  await list(page)
+    .getByRole("button", { name: "Remove Gamma", exact: true })
+    .click();
+  const refetch = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/agent-connections",
+  );
+  setNames(["Gamma", "Delta"]);
+  await refetch;
+  await expect(page.locator('ul[aria-label="Agent workspaces"]')).toContainText(
+    "Delta",
+  );
+  const deleted: string[] = [];
+  await page.context().route("**/api/agent-connections", (route) =>
+    route.fulfill({
+      json: {
+        connections: connections(["Gamma", "Delta"]).map((connection) => ({
+          ...connection,
+          workspaces: connection.workspaces.filter(
+            (workspace) => !deleted.includes(workspace.id),
+          ),
+        })),
+      },
+    }),
+  );
+  await page.context().route("**/api/agent-connections/*", (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    throw new Error("Workspace removal must not delete an entire connection");
+  });
+  await page.context().route("**/api/agent-workspaces/*", (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deleted.push(new URL(route.request().url()).pathname.split("/").pop()!);
+    return route.fulfill({ status: 204 });
+  });
+  const dialog = page.getByRole("alertdialog", { name: "Remove workspace?" });
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  expect(deleted).toEqual(["codex-Gamma", "pi-Gamma"]);
+  await expectOrder(page, ["Delta"]);
+});
+
+for (const mobile of [false, true]) {
+  test(`keyboard focus follows Organize and Done${mobile ? " in the mobile drawer" : ""}`, async ({
+    page,
+  }) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page);
+    if (mobile)
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+    const options = page.getByRole("button", {
+      name: "Agent workspace options",
+      exact: true,
+    });
+    await options.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("menuitem", { name: "Organize workspaces" }).focus();
+    await page.keyboard.press("Enter");
+    const done = page.getByRole("button", { name: "Done", exact: true });
+    await expect(done).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(options).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(
+      page.getByRole("menuitem", { name: "Organize workspaces" }),
+    ).toBeVisible();
+  });
+}

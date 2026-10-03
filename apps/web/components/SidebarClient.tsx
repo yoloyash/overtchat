@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
@@ -192,6 +192,14 @@ function AdminAgentWorkspaces() {
   const { data: connections = [] } = useAgentConnections();
   const refresh = useRefreshAllAgentWorkspaces();
   const [organizing, setOrganizing] = useState(false);
+  const doneRef = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
+  const previousOrganizing = useRef(organizing);
+  useEffect(() => {
+    if (previousOrganizing.current === organizing) return;
+    previousOrganizing.current = organizing;
+    (organizing ? doneRef : optionsRef).current?.focus();
+  }, [organizing]);
   useAgentConnectionSessionDirectory(connections);
   const { closeMobile, drawerRef } = useSidebar();
   const [providerFilter, setProviderFilter] = useState<AgentProviderId | null>(
@@ -256,6 +264,7 @@ function AdminAgentWorkspaces() {
               variant="ghost"
               size="sm"
               className="h-6 px-2 text-xs normal-case tracking-normal"
+              ref={doneRef}
               onClick={() => setOrganizing(false)}
             >
               Done
@@ -264,6 +273,7 @@ function AdminAgentWorkspaces() {
             <span className="flex items-center gap-0.5">
               <Menu.Root>
                 <Menu.Trigger
+                  ref={optionsRef}
                   aria-label={
                     activeProviderFilter
                       ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`

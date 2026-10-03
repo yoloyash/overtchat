@@ -374,12 +374,13 @@ export function useDeleteAgentWorkspaceGroup() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (group: AgentWorkspaceGroup) => {
-      for (const { connection, workspace } of group.targets) {
-        const path =
-          connection.workspaces.length === 1
-            ? `/api/agent-connections/${connection.id}`
-            : `/api/agent-workspaces/${workspace.id}`;
-        const response = await fetch(apiUrl(path), { method: "DELETE" });
+      for (const { workspace } of group.targets) {
+        const response = await fetch(
+          apiUrl(`/api/agent-workspaces/${workspace.id}`),
+          {
+            method: "DELETE",
+          },
+        );
         // A retry after a partial removal may encounter an already removed target.
         if (!response.ok && response.status !== 404) {
           throw await responseError(response);
