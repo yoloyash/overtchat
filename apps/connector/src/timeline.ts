@@ -18,6 +18,9 @@ import {
   type AgentRuntimeSnapshot,
   type AgentSessionSync,
   reconcileAgentRuntimeSnapshot,
+  windowAgentSnapshot,
+  agentHistoryPage,
+  type AgentHistoryPage,
 } from "@overtchat/agent-bridge";
 
 const FORMAT = 1;
@@ -326,6 +329,19 @@ export class ConnectorTimelineStore {
     });
   }
 
+  async history(sessionId: string, before: string): Promise<AgentHistoryPage> {
+    this.assertOpen();
+    await this.flushPending(sessionId);
+    return this.enqueue(sessionId, async () => {
+      const state = await this.requireState(sessionId);
+      return agentHistoryPage(
+        state.snapshot,
+        { epoch: state.epoch, sequence: state.sequence },
+        before,
+      );
+    });
+  }
+
   async flush(sessionId: string): Promise<void> {
     this.assertOpen();
     await this.flushPending(sessionId);
@@ -463,7 +479,7 @@ export class ConnectorTimelineStore {
     const reset = (): AgentSessionSync => ({
       reset: true,
       cursor,
-      snapshot: state.snapshot,
+      snapshot: windowAgentSnapshot(state.snapshot, state.epoch),
     });
     if (
       !after ||
@@ -486,7 +502,19 @@ export class ConnectorTimelineStore {
     ) {
       return reset();
     }
-    return { reset: false, cursor, events };
+    if (
+      events.reduce(
+        (bytes, event) => bytes + Buffer.byteLength(JSON.stringify(event)),
+        0,
+      ) >
+      8 * 1024 * 1024
+    )
+      return reset();
+    return {
+      reset: false,
+      cursor,
+      events: events.map((event) => this.clientEnvelope(event)),
+    };
   }
 
   private async load(sessionId: string): Promise<TimelineState | null> {
@@ -685,6 +713,15 @@ export class ConnectorTimelineStore {
     }
   }
 
+  private clientEnvelope(envelope: AgentRuntimeEnvelope): AgentRuntimeEnvelope {
+    return envelope.type === "snapshot"
+      ? {
+          ...envelope,
+          data: windowAgentSnapshot(envelope.data, envelope.epoch),
+        }
+      : envelope;
+  }
+
   private notify(
     state: TimelineState,
     envelopes: AgentRuntimeEnvelope[],
@@ -692,7 +729,7 @@ export class ConnectorTimelineStore {
     for (const envelope of envelopes) {
       for (const subscriber of state.subscribers) {
         try {
-          subscriber(envelope);
+          subscriber(this.clientEnvelope(envelope));
         } catch (error) {
           console.error("Host Connector timeline subscriber failed.", error);
         }

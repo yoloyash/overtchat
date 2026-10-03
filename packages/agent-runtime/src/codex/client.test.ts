@@ -1298,7 +1298,7 @@ describe("CodexRuntimeClient", () => {
       expect.arrayContaining([
         expect.objectContaining({ type: "turn_start", turnId: "turn-1" }),
         expect.objectContaining({
-          type: "overtchat_turn_update",
+          type: "overtchat_turn_delta",
           turnId: "turn-1",
           messages: expect.arrayContaining([
             expect.objectContaining({
@@ -1308,7 +1308,7 @@ describe("CodexRuntimeClient", () => {
             }),
           ]),
         }),
-        expect.objectContaining({ type: "overtchat_turn_update" }),
+        expect.objectContaining({ type: "overtchat_turn_delta" }),
         expect.objectContaining({ type: "turn_end", status: "completed" }),
       ]),
     );
@@ -1454,10 +1454,7 @@ describe("CodexRuntimeClient", () => {
       },
     });
 
-    const update = events.findLast(
-      (event) => event.type === "overtchat_turn_update",
-    );
-    const messages = Array.isArray(update?.messages) ? update.messages : [];
+    const messages = (await client.getMessages()).messages;
     expect(
       messages.map((message) =>
         message && typeof message === "object"

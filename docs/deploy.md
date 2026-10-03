@@ -188,7 +188,13 @@ ACP session history can be reopened after connector restarts; Hermes CLI/gateway
 is not included. Message forks, rewind, session renaming and
 reasoning controls are not exposed by this integration. Approval choices keep
 the scope Hermes advertises, including permanent versus session-only grants.
-The web app and connector must both support connector protocol 5 for Hermes.
+The web app and connector must use the same connector protocol; the current
+source requires protocol 6. Follow the coordinated update procedure below.
+Connector event requests are byte-bounded and oversized individual events use
+acknowledged fragments. If delivery repeatedly fails, include the metadata-only
+`[connector:delivery]` log lines (bytes, event count, fragment index, HTTP status)
+with the startup diagnostics. A restart retains unacknowledged journal events;
+do not delete connector state to clear a backlog.
 
 The connector records its OpenCode and Hermes helper processes beside its state journal
 in `<state-file>.processes/`. On restart it verifies process identities and

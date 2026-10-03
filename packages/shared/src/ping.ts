@@ -3,7 +3,7 @@
  * it when a server change requires clients built for the previous level to
  * update; additive endpoints and fields do not change it.
  */
-export const CLIENT_API_LEVEL = 1;
+export const CLIENT_API_LEVEL = 2;
 
 export interface PingResponse {
   ok: true;

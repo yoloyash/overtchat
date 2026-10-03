@@ -11,6 +11,7 @@ import type {
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import { AGENT_GOAL_STATUSES } from "@overtchat/agent-bridge";
+import { codexTurnDelta } from "./turn-delta";
 import type {
   AgentRuntimeClient,
   AgentRuntimeEvent,
@@ -1008,6 +1009,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private server!: CodexAppServer;
   private readonly subscribers = new Set<(event: AgentRuntimeEvent) => void>();
   private readonly turns = new Map<string, CodexTurn>();
+  private readonly emittedTurns = new Map<string, unknown[]>();
   private readonly pendingInteractions = new Map<string, PendingInteraction>();
   private readonly turnCompletionWaiters = new Map<
     string,
@@ -1724,6 +1726,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private hydrateThread(value: UnknownRecord): void {
     this.thread = parseCodexThread(value.thread);
     this.turns.clear();
+    this.emittedTurns.clear();
     this.subagentOwners.clear();
     this.pendingSubagentNotifications.clear();
     this.activeTurnId = null;
@@ -3074,11 +3077,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   private emitTurn(turn: CodexTurn): void {
-    this.emit({
-      type: "overtchat_turn_update",
-      turnId: turn.id,
-      messages: canonicalTurnMessages(turn),
-    });
+    const messages = canonicalTurnMessages(turn);
+    const delta = codexTurnDelta(turn.id, this.emittedTurns.get(turn.id) ?? [], messages);
+    this.emittedTurns.set(turn.id, structuredClone(messages));
+    if (this.emittedTurns.size > 8) this.emittedTurns.delete(this.emittedTurns.keys().next().value!);
+    this.emit(delta);
   }
 
   private updateTokenUsage(data: UnknownRecord | null): void {

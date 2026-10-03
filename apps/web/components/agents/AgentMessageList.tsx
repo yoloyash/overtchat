@@ -1,7 +1,7 @@
 "use client";
 
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
@@ -119,6 +119,7 @@ function textOfContent(content: unknown): string {
 
 export function AgentMessageList({
   speech,
+  history,
   providerLabel,
   question,
   messages,
@@ -136,6 +137,12 @@ export function AgentMessageList({
   onImplementPlan,
 }: {
   speech: ReturnType<typeof useSpeech>;
+  history?: {
+    hasOlder: boolean;
+    loading: boolean;
+    error?: string;
+    load: () => void;
+  };
   providerLabel: string;
   question?: React.ReactNode;
   messages: unknown[];
@@ -157,6 +164,15 @@ export function AgentMessageList({
       initial: "instant",
       resize: "instant",
     });
+  const historyAnchor = useRef<{ element: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const anchor = historyAnchor.current;
+    if (!anchor || history?.loading) return;
+    if (anchor.element.isConnected && scrollRef.current) {
+      scrollRef.current.scrollTop += anchor.element.getBoundingClientRect().top - anchor.top;
+    }
+    historyAnchor.current = null;
+  }, [messages, history?.loading, scrollRef]);
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
   const projectedTranscript = useMemo(
     () => projectAgentTranscript(messages),
@@ -222,6 +238,28 @@ export function AgentMessageList({
           ref={contentRef}
           className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-8 pb-8"
         >
+          {history?.hasOlder && (
+            <div className="mb-6 text-center">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={history.loading}
+                onClick={() => {
+                  stopScroll();
+                  const element = contentRef.current?.querySelector<HTMLElement>("[data-transcript-row]");
+                  historyAnchor.current = element ? { element, top: element.getBoundingClientRect().top } : null;
+                  history.load();
+                }}
+              >
+                {history.loading ? "Loading…" : "Load older messages"}
+              </Button>
+              {history.error && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {history.error}
+                </p>
+              )}
+            </div>
+          )}
           {messages.length === 0 && !error && !activity && !question ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <Terminal className="size-6 text-muted-foreground" />

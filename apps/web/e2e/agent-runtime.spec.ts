@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
 import { expect, test, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
@@ -2369,4 +2374,149 @@ test("folds long completed work smoothly, anchors disclosures, and respects redu
   await expect(summary.locator("svg")).toHaveCSS("transition-duration", "0s");
   await expect(page.getByText("Answer line 0", { exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("completed-work.png") });
+});
+
+test("drains an oversized connector backlog, pages history, and streams steer without refreshing", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto("/signup");
+  await page.locator("#name").fill("Transport E2E Admin");
+  await page.locator("#email").fill("transport-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-transport-fixture-token";
+  const token = `oct_connector.${secret}`;
+  const db = openE2eDatabase();
+  try {
+    db.prepare(
+      "UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'",
+    ).run(createHash("sha256").update(secret).digest("base64url"));
+  } finally {
+    db.close();
+  }
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "overtchat-transport-e2e-"),
+  );
+  let fixture: ChildProcess | undefined;
+  try {
+    const canonical = runtimeSnapshot(Date.now());
+    canonical.messages = Array.from({ length: 35 }, (_, index) => [
+      {
+        id: `user-${index}`,
+        role: "user",
+        content: `Historical prompt ${index}`,
+        overtchatTurnId: `turn-${index}`,
+        timestamp: index * 2,
+      },
+      {
+        id: `answer-${index}`,
+        role: "assistant",
+        content: [{ type: "text", text: `Historical answer ${index}` }],
+        overtchatTurnId: `turn-${index}`,
+        timestamp: index * 2 + 1,
+      },
+    ]).flat();
+    const configFile = path.join(directory, "fixture.json");
+    await writeFile(
+      configFile,
+      JSON.stringify({
+        snapshot: canonical,
+        directory,
+        connectorId: "connector",
+        token,
+        serverUrl: String(testInfo.project.use.baseURL),
+      }),
+    );
+    fixture = spawn(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        path.resolve(
+          __dirname,
+          "../../connector/scripts/transport-fixture.mjs",
+        ),
+        configFile,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "";
+    fixture.stdout!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    fixture.stderr!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    await expect
+      .poll(
+        () => {
+          if (fixture!.exitCode !== null)
+            throw new Error(`Transport fixture exited: ${output}`);
+          return output.includes("transport-fixture-ready");
+        },
+        { timeout: 45_000 },
+      )
+      .toBe(true)
+      .catch((error: unknown) => {
+        throw new Error(`${String(error)}\n${output}`);
+      });
+    await page.goto(`/agents/${SESSION_ID}`);
+    await expect(
+      page.getByText("Historical prompt 34", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Historical prompt 0", { exact: true }),
+    ).toHaveCount(0);
+    const older = page.getByRole("button", {
+      name: "Load older messages",
+      exact: true,
+    });
+    await older.scrollIntoViewIfNeeded();
+    const anchor = page.getByText("Historical prompt 25", { exact: true });
+    const anchorTop = (await anchor.boundingBox())!.y;
+    for (let index = 0; index < 3; index++) {
+      await older.click();
+      await expect(
+        page.getByRole("button", { name: "Loading…", exact: true }),
+      ).toHaveCount(0);
+      // Allow one line of button/scroll settling, but never a page-sized jump.
+      if (index === 0) await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - anchorTop)).toBeLessThan(32);
+    }
+    await page.getByText("Historical prompt 0", { exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByText("Historical prompt 0", { exact: true })).toBeVisible();
+    await expect(older).toHaveCount(0);
+    const composer = page.getByPlaceholder(
+      "Message Codex or type / for commands",
+    );
+    await composer.fill("Please steer this turn");
+    await composer.press("Enter");
+    await page
+      .getByRole("button", { name: "Steer with queued message", exact: true })
+      .click();
+    await expect(
+      page.getByText("Steer accepted and streamed", { exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText("Steer accepted and streamed", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    if (fixture && fixture.exitCode === null) {
+      fixture.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          fixture!.kill("SIGKILL");
+          resolve();
+        }, 5000);
+        fixture!.once("exit", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
 });

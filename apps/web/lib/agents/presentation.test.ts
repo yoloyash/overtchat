@@ -751,3 +751,10 @@ describe("agentActiveTurnStart", () => {
     expect(agentActiveTurnStart([], true)).toBe(0);
   });
 });
+
+it("retains native message keys when older transcript pages are prepended", () => {
+  const current = { id: "current", role: "user", content: "Recent" };
+  const older = { id: "older", role: "user", content: "Older" };
+  const key = projectAgentTranscript([current])[0]!.key;
+  expect(projectAgentTranscript([older, current])[1]!.key).toBe(key);
+});

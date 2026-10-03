@@ -15,7 +15,6 @@ function harness() {
   const request = vi.fn(async (path: string, signal: AbortSignal) => {
     if (!path.includes("/events"))
       return Response.json({
-        snapshot: snapshot(),
         sync: {
           reset: true,
           cursor: { epoch: "epoch", sequence: 0 },
@@ -82,6 +81,29 @@ describe("native SSE parsing", () => {
 });
 
 describe("agent foreground transport", () => {
+  it("rejects a sync-only open belonging to a different session", async () => {
+    const h = harness();
+    h.request.mockResolvedValueOnce(Response.json({ sync: { reset: true, cursor: { epoch: "epoch", sequence: 0 }, snapshot: { ...snapshot(), sessionId: "other" } } }));
+    h.client.start();
+    await tick();
+    expect(h.onReplica).not.toHaveBeenCalled();
+    expect(h.onStatus.mock.lastCall?.[0]).toBe("reconnecting");
+    h.client.stop();
+  });
+
+  it("keeps prepended history when the next Codex text delta arrives", async () => {
+    const h = harness();
+    h.client.start();
+    await tick();
+    const older = { id: "old", role: "user", content: "Older prompt", overtchatTurnId: "old-turn" };
+    const current = { id: "answer", role: "assistant", content: [{ type: "text", text: "Hello" }], overtchatTurnId: "turn" };
+    h.client.updateReplica({ snapshot: { ...snapshot(), messages: [older, current] }, cursor: { epoch: "epoch", sequence: 0 } });
+    h.push("runtime", { epoch: "epoch", sequence: 1, type: "runtime_event", data: { type: "overtchat_turn_delta", turnId: "turn", order: ["answer"], messages: [], textDeltas: [{ id: "answer", part: 0, field: "text", offset: 5, text: " world" }] } });
+    await tick();
+    expect(h.onReplica.mock.lastCall?.[0].snapshot.messages).toEqual([older, { ...current, content: [{ type: "text", text: "Hello world" }] }]);
+    h.client.stop();
+  });
+
   it("hydrates before subscribing with the authoritative cursor and deduplicates events", async () => {
     const h = harness();
     h.client.start();

@@ -6,6 +6,7 @@ import type {
 } from "./agents";
 import { agentPromptImageSchema, agentUsageUpdateSchema } from "./agents";
 import { agentProviderMetadata } from "./catalog";
+import { applyAgentTurnDelta, isAgentTurnDelta } from "./message-delta";
 
 type AgentRuntimeEvent = Extract<
   AgentRuntimeEnvelope,
@@ -296,6 +297,10 @@ export function applyAgentRuntimeMessageEvent(
   messages: unknown[],
   event: AgentRuntimeEvent,
 ): unknown[] {
+  if (event.type === "overtchat_turn_delta" && isAgentTurnDelta(event)) {
+    const turn = applyAgentTurnDelta(messages, event);
+    return turn ? replaceTurnMessages(messages, event.turnId, turn) : messages;
+  }
   if (
     event.type === "overtchat_turn_update" &&
     typeof event.turnId === "string" &&
@@ -495,6 +500,11 @@ export function applyAgentRuntimeEnvelope(
   if (envelope.type === "snapshot") return envelope.data;
   if (!current) return current;
   const event = envelope.data;
+  if (event.type === "overtchat_turn_delta") {
+    if (!isAgentTurnDelta(event)) return undefined;
+    const turn = applyAgentTurnDelta(current.messages, event);
+    return turn ? { ...current, messages: replaceTurnMessages(current.messages, event.turnId, turn) } : undefined;
+  }
   if (event.type === "usage_update") {
     const stats = applyAgentRuntimeUsageEvent(current.stats, event);
     return stats === current.stats ? current : { ...current, stats };

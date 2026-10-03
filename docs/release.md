@@ -50,7 +50,13 @@ Do not change unrelated manifest fields.
 - **Connector:** The connector workflow verifies Linux/macOS binaries, publishes
   the GitHub release, and dispatches promotion. Increment the bridge protocol only
   for a breaking web-to-connector contract change; ordinary connector releases
-  retain the current protocol.
+  retain the current protocol. Protocol 6 adds byte-bounded batches, fragmented
+  event delivery, paged history, and Codex text deltas. Release the app and
+  connector together, with the connector version changes listed above and the
+  managed manifest promoted only after both artifacts are available. Bundled
+  desktop/mobile clients must also move to client API level 2 for sync-only
+  session opens and history paging. Test the new matched versions and verify
+  older mismatched versions fail with the compatibility message before promotion.
 - **Desktop:** The desktop workflow creates a verified draft for a component
   tag. Follow [Desktop macOS release](#desktop-macos-release) and
   [Desktop Linux release](#desktop-linux-release) to validate and publish it;

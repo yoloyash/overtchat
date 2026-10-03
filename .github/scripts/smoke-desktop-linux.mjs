@@ -3,6 +3,7 @@
 // the normal web E2E suite owns full server/chat behavior.
 /* global window, fetch */
 import assert from "node:assert/strict";
+import { CLIENT_API_LEVEL } from "../../packages/shared/src/ping.ts";
 import { Buffer } from "node:buffer";
 import { spawn, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -43,7 +44,7 @@ const api = createServer(async (request, response) => {
   if (request.method === "OPTIONS") return response.writeHead(204).end();
   const pathname = new URL(request.url, "http://localhost").pathname;
   let body;
-  if (pathname === "/api/ping") body = { name: "overtchat", version: "smoke", apiLevel: 1 };
+  if (pathname === "/api/ping") body = { name: "overtchat", version: "smoke", apiLevel: CLIENT_API_LEVEL };
   else if (pathname === "/api/setup") body = { required: false };
   // Keep the login page visible; the fixture tests shell auth, not chat APIs.
   else if (pathname === "/api/auth/get-session") body = null;

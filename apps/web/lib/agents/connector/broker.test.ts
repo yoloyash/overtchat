@@ -492,6 +492,15 @@ describe("host connector daemon broker", () => {
     });
   });
 
+  it("does not replay notifications when durable and live epochs alternate", async () => {
+    const broker = new HostConnectorBroker();
+    const accepts = vi.spyOn(broker as unknown as { accept(id: string, payload: unknown, fresh: boolean): Promise<void> }, "accept").mockResolvedValue(undefined);
+    await broker.acceptBatch("connector", "durable", [response(1, "request", null)]);
+    await broker.acceptBatch("connector", "live", [response(1, "live", null)]);
+    await broker.acceptBatch("connector", "durable", [response(1, "request", null)]);
+    expect(accepts.mock.calls.map((call) => call[2])).toEqual([true, true, false]);
+  });
+
   it("acknowledges each connector epoch at the delivered batch tail", async () => {
     const broker = new HostConnectorBroker();
 

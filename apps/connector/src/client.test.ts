@@ -4,6 +4,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
+  HOST_CONNECTOR_EVENT_BATCH_BYTES,
+  HOST_CONNECTOR_FRAGMENT_BYTES,
   HOST_CONNECTOR_RELEASE_VERSION,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   type HostConnectorEventBatch,
@@ -49,6 +51,75 @@ afterEach(async () => {
 });
 
 describe.sequential("connector client compatibility", () => {
+  it("restarts a fragmented transfer after receiver state loss without acknowledging it early", async () => {
+    const client = await ConnectorClient.create(await config());
+    const indices: number[] = [];
+    const chunks: Buffer[] = [];
+    let restarted = false;
+    const event = {
+      sequence: 4,
+      payload: {
+        type: "response" as const,
+        requestId: "large",
+        success: true as const,
+        data: "x".repeat(11 * 1024 * 1024),
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        expect(Buffer.byteLength(String(init?.body))).toBeLessThanOrEqual(
+          HOST_CONNECTOR_EVENT_BATCH_BYTES,
+        );
+        const batch = JSON.parse(String(init?.body)) as HostConnectorEventBatch;
+        const fragment = batch.fragment!;
+        indices.push(fragment.index);
+        if (fragment.index === 1 && !restarted) {
+          restarted = true;
+          chunks.length = 0;
+          return Response.json({
+            connectorEpoch: "epoch",
+            acknowledgedSequence: 3,
+            nextFragmentIndex: 0,
+          });
+        }
+        expect(fragment.index).toBe(chunks.length);
+        chunks.push(Buffer.from(fragment.data, "base64"));
+        const count = Math.ceil(
+          fragment.totalBytes / HOST_CONNECTOR_FRAGMENT_BYTES,
+        );
+        const complete = chunks.length === count;
+        if (complete)
+          expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual(event);
+        return Response.json({
+          connectorEpoch: "epoch",
+          acknowledgedSequence: complete ? 4 : 3,
+          nextFragmentIndex: chunks.length,
+        });
+      }),
+    );
+    try {
+      const deliver = Reflect.get(client, "deliverBatch") as (
+        body: HostConnectorEventBatch,
+        signal: AbortSignal,
+      ) => Promise<unknown>;
+      expect(
+        await deliver.call(
+          client,
+          {
+            protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+            connectorEpoch: "epoch",
+            events: [event],
+          },
+          new AbortController().signal,
+        ),
+      ).toMatchObject({ acknowledgedSequence: 4 });
+      expect(indices.slice(0, 4)).toEqual([0, 1, 0, 1]);
+    } finally {
+      await client.stop();
+    }
+  });
+
   it("persists a drained request response when shutdown has already started", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => emptyChannel()));
     const client = await ConnectorClient.create(await config());

@@ -4,6 +4,7 @@ import {
   type AgentRuntimeSnapshot,
   type AgentSessionSync,
 } from "./agents";
+import type { AgentHistoryPage } from "./transcript";
 import { applyAgentRuntimeEnvelope } from "./state";
 
 export type AgentSessionReplica = {
@@ -12,7 +13,7 @@ export type AgentSessionReplica = {
 };
 
 export type AgentSessionOpenResult = {
-  snapshot: AgentRuntimeSnapshot;
+  snapshot?: AgentRuntimeSnapshot;
   sync?: AgentSessionSync;
 };
 
@@ -52,6 +53,8 @@ export function replicaFromOpenResult(
 ): AgentSessionReplica {
   const sync = result.sync;
   if (!sync) {
+    if (!result.snapshot)
+      throw new Error("The session result omitted its snapshot and sync.");
     return {
       snapshot: result.snapshot,
       // A legacy snapshot has no version. Drop the old cursor so the next
@@ -60,7 +63,11 @@ export function replicaFromOpenResult(
       cursor: null,
     };
   }
-  if (sync.reset && sync.snapshot.sessionId !== result.snapshot.sessionId) {
+  if (
+    sync.reset &&
+    result.snapshot &&
+    sync.snapshot.sessionId !== result.snapshot.sessionId
+  ) {
     throw new Error("The authoritative sync belongs to a different session.");
   }
   const replica = applySyncToReplica(current, sync);
@@ -68,6 +75,28 @@ export function replicaFromOpenResult(
     throw new Error("Unable to apply the authoritative session sync.");
   }
   return replica;
+}
+
+export function prependAgentHistoryPage(
+  current: AgentSessionReplica,
+  page: AgentHistoryPage,
+): AgentSessionReplica {
+  if (
+    current.snapshot.sessionId !== page.sessionId ||
+    current.cursor?.epoch !== page.cursor.epoch ||
+    current.cursor.sequence < page.cursor.sequence ||
+    current.snapshot.history?.beforeCursor !== page.anchor
+  ) {
+    throw new Error("Agent history changed while loading. Please try again.");
+  }
+  return {
+    ...current,
+    snapshot: {
+      ...current.snapshot,
+      messages: [...page.messages, ...current.snapshot.messages],
+      history: { beforeCursor: page.beforeCursor },
+    },
+  };
 }
 
 export function applySyncToReplica(
@@ -171,6 +200,11 @@ export function applyEnvelopeToReplica(
   envelope: AgentRuntimeEnvelope,
 ): AgentSessionReplicaUpdate {
   const cursor = replica.cursor;
+  if (
+    envelope.type === "runtime_event" &&
+    envelope.data.type === "overtchat_resync"
+  )
+    return { type: "reconcile", replica };
 
   // Legacy connectors do not return an initial cursor. Their first snapshot
   // establishes one; accepting an initial delta would apply it to an

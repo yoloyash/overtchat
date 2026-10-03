@@ -154,12 +154,27 @@ describe("agent session route", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ snapshot, sync });
+    await expect(response.json()).resolves.toEqual({ sync });
     expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
       type: "open_session",
       session: sessionDescriptor,
       after: { epoch: "old-runtime", sequence: 7 },
     });
+  });
+
+  it("pages only the owned session and rejects a mismatched connector page", async () => {
+    const page = { sessionId: "session", cursor: { epoch: "epoch", sequence: 7 }, anchor: "older", messages: [], beforeCursor: null };
+    mocks.daemonRequest.mockResolvedValueOnce(page);
+    const response = await GET(new Request("http://server.test/api/agent-sessions/session?before=older"), context);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(page);
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", { type: "session_history", session: sessionDescriptor, before: "older" });
+    mocks.daemonRequest.mockResolvedValueOnce({ ...page, sessionId: "other" });
+    expect((await GET(new Request("http://server.test/api/agent-sessions/session?before=older"), context)).status).toBe(400);
+    mocks.getOwnedAgentSession.mockResolvedValueOnce(null);
+    const calls = mocks.daemonRequest.mock.calls.length;
+    expect((await GET(new Request("http://server.test/api/agent-sessions/session?before=older"), context)).status).toBe(404);
+    expect(mocks.daemonRequest).toHaveBeenCalledTimes(calls);
   });
 
   it("forwards submissions with the browser message identity intact", async () => {

@@ -16,6 +16,7 @@ function priority(command: ScheduledCommand["command"]): number {
     case "subscribe_session":
     case "unsubscribe_session":
       return 0;
+    case "session_history":
     case "get_catalog":
     case "list_workspace_directory":
     case "read_workspace_file":

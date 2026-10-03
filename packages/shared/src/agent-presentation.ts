@@ -1086,7 +1086,10 @@ export function projectAgentTranscript(
 
     items.push({
       type: "message",
-      key: `${role || "message"}:${identity}:${messageIndex}`,
+      // Native IDs stay stable when older pages are prepended.
+      key: typeof record?.id === "string"
+        ? `${role || "message"}:${identity}`
+        : `${role || "message"}:${identity}:${messageIndex}`,
       message,
     });
   };

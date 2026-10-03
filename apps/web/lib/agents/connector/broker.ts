@@ -50,6 +50,7 @@ function sessionIdForRequest(request: AgentDaemonRequest): string | undefined {
     case "stop_session":
       return request.sessionId;
     case "open_session":
+    case "session_history":
     case "session_command":
     case "subscribe_session":
       return request.session.sessionId;
@@ -85,7 +86,7 @@ export class HostConnectorBroker {
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly notificationSequences = new Map<
     string,
-    { epoch: string; sequence: number }
+    Map<string, number>
   >();
   private readonly idleNotifications = new AgentIdleNotifications((id) => {
     void notifyAgentIdle(id).catch(() =>
@@ -392,18 +393,21 @@ export class HostConnectorBroker {
       }
     }
     for (const event of events) {
-      const cursor = this.notificationSequences.get(connectorId);
-      const fresh =
-        !cursor ||
-        cursor.epoch !== connectorEpoch ||
-        event.sequence > cursor.sequence;
+      let cursors = this.notificationSequences.get(connectorId);
+      if (!cursors) {
+        cursors = new Map();
+        this.notificationSequences.set(connectorId, cursors);
+      }
+      const sequence = cursors.get(connectorEpoch);
+      const fresh = sequence === undefined || event.sequence > sequence;
       // Claim the notification cursor before yielding: overlapping retry
       // batches must not replay status transitions while metadata is awaited.
-      if (fresh)
-        this.notificationSequences.set(connectorId, {
-          epoch: connectorEpoch,
-          sequence: event.sequence,
-        });
+      if (fresh) {
+        cursors.set(connectorEpoch, event.sequence);
+        // Durable and live traffic have independent epochs and now alternate.
+        // Retain both deduplication cursors while bounding retired identities.
+        if (cursors.size > 8) cursors.delete(cursors.keys().next().value!);
+      }
       await this.accept(connectorId, event.payload, fresh);
     }
     return {
