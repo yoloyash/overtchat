@@ -198,3 +198,78 @@ test("hides pin controls when an older server does not advertise support", async
   await expect(drawer.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
   await expect(drawer.getByRole("menuitem", { name: "Pin", exact: true })).toHaveCount(0);
 });
+
+test.describe("touch generation indicators", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  for (const pinningSupported of [false, true]) {
+    test(`keeps generation visible beside actions with pinning=${pinningSupported}`, async ({ page }) => {
+      await page.route("**/api/chats/active", (route) => route.fulfill({
+        json: { activeChatIds: ["touch-recent", "touch-pin"] },
+      }));
+      if (!pinningSupported) {
+        await page.route("**/api/capabilities", async (route) => {
+          const response = await route.fetch();
+          const body = await response.json();
+          delete body.capabilities.chatPinning;
+          await route.fulfill({ response, json: body });
+        });
+      }
+      await page.goto("/signup");
+      await page.locator("#name").fill("Touch Generation Admin");
+      await page.locator("#email").fill("touch-generation@overtchat-test.local");
+      await page.locator("#password").fill("test-password-123");
+      await page.getByRole("button", { name: "Create account" }).click();
+      await page.waitForURL("**/");
+
+      const db = openE2eDatabase();
+      try {
+        const owner = db.prepare("SELECT id FROM user LIMIT 1").get() as { id: string };
+        const insert = db.prepare("INSERT INTO chats (id, user_id, title, pinned, updated_at) VALUES (?, ?, ?, ?, ?)");
+        insert.run("touch-recent", owner.id, "A long recent conversation that is still generating", 0, Date.now());
+        insert.run("touch-pin", owner.id, "A long pinned conversation that is still generating", Number(pinningSupported), Date.now() - 1);
+      } finally {
+        db.close();
+      }
+      await page.reload();
+      await page.getByRole("button", { name: "Open sidebar" }).tap();
+      const drawer = page.getByRole("dialog", { name: "Navigation" });
+
+      for (const id of ["touch-recent", "touch-pin"]) {
+        const row = drawer.locator(`[data-chat-id="${id}"]`);
+        const status = row.getByRole("status", { name: /Generating response for/ });
+        const actions = row.getByRole("button", { name: "Chat actions" });
+        await expect(status).toHaveCSS("opacity", "1");
+        await expect(actions).toHaveCSS("opacity", "1");
+        async function expectIndicatorSpacing() {
+          const bounds = await row.evaluate((element) => {
+            const link = element.querySelector("a")!;
+            const indicator = element.querySelector('[role="status"]')!.getBoundingClientRect();
+            const action = element.querySelector('button[aria-label="Chat actions"]')!.getBoundingClientRect();
+            return {
+              titleRight: link.getBoundingClientRect().right - parseFloat(getComputedStyle(link).paddingRight),
+              indicatorLeft: indicator.left,
+              indicatorRight: indicator.right,
+              actionLeft: action.left,
+            };
+          });
+          expect(bounds.titleRight).toBeLessThanOrEqual(bounds.indicatorLeft);
+          expect(bounds.indicatorRight).toBeLessThanOrEqual(bounds.actionLeft);
+        }
+        await expectIndicatorSpacing();
+
+        await actions.tap();
+        await expect(drawer.getByRole("menuitem", { name: "Rename", exact: true })).toBeVisible();
+        await expect(status).toHaveCSS("opacity", "1");
+        await expectIndicatorSpacing();
+        await page.keyboard.press("Escape");
+      }
+
+      if (pinningSupported) {
+        await drawer.locator('[data-chat-id="touch-pin"]').getByRole("button", { name: "Unpin chat" }).tap();
+        await expect(drawer.getByRole("region", { name: "Pinned chats" })).toHaveCount(0);
+        await expect(drawer.locator('[data-chat-id="touch-pin"]').getByRole("status")).toHaveCSS("opacity", "1");
+      }
+    });
+  }
+});

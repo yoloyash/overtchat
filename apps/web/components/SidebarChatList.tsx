@@ -243,10 +243,11 @@ export function SidebarItem({
         data-chat-id={chat.id}
         data-menu-open={menuOpen || undefined}
         className={cn(
-          "group relative flex items-center rounded-md motion-colors hover:bg-sidebar-accent",
+          "group relative flex items-center rounded-md motion-colors hover:bg-sidebar-accent [--chat-title-padding:var(--chat-actions-padding)]",
           pinningSupported
             ? "[--chat-actions-padding:3.5rem] max-md:[--chat-actions-padding:4.5rem]"
             : "[--chat-actions-padding:2rem] max-md:[--chat-actions-padding:2.5rem]",
+          generating && "[@media(hover:none)]:[--chat-title-padding:calc(var(--chat-actions-padding)+2rem)]",
           (active || menuOpen) && "bg-sidebar-accent",
         )}
       >
@@ -257,7 +258,7 @@ export function SidebarItem({
           className={cn(
             "block min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm",
             // Hidden actions overlay the title instead of reserving empty space.
-            "group-hover:pr-(--chat-actions-padding) group-focus-within:pr-(--chat-actions-padding) group-data-[menu-open=true]:pr-(--chat-actions-padding) [@media(hover:none)]:pr-(--chat-actions-padding)",
+            "group-hover:pr-(--chat-title-padding) group-focus-within:pr-(--chat-title-padding) group-data-[menu-open=true]:pr-(--chat-title-padding) [@media(hover:none)]:pr-(--chat-title-padding)",
             (chat.pinned || generating || chat.kind === "voice") && "pr-8 max-md:pr-10",
             chat.pinned && (generating || chat.kind === "voice") && "pr-14 max-md:pr-18",
           )}
@@ -278,8 +279,10 @@ export function SidebarItem({
             role={generating ? "status" : undefined}
             aria-label={generating ? `Generating response for ${chat.title?.trim() || "Untitled"}` : "Voice chat"}
             className={cn(
-              "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity group-hover:opacity-0 group-focus-within:opacity-0 group-data-[menu-open=true]:opacity-0 max-md:size-7.5 [@media(hover:none)]:opacity-0",
-              !generating && "group-hover:hidden group-focus-within:hidden group-data-[menu-open=true]:hidden max-md:hidden [@media(hover:none)]:hidden",
+              "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity max-md:size-7.5",
+              generating
+                ? "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0 [@media(hover:hover)]:group-data-[menu-open=true]:opacity-0 [@media(hover:none)]:right-(--chat-actions-padding)"
+                : "group-hover:hidden group-focus-within:hidden group-data-[menu-open=true]:hidden max-md:hidden [@media(hover:none)]:hidden",
               chat.pinned && "right-7 max-md:right-9",
             )}
           >

@@ -209,15 +209,18 @@ older servers retain their existing chat controls.
 
 ```sh
 npm run test -w apps/web -- lib/db/chats.test.ts 'app/api/chats/[id]/route.test.ts' app/api/capabilities/route.test.ts
-E2E_PORT=4727 npm run test:e2e -w apps/web -- chat-pinning.spec.ts
+E2E_PORT=4727 npm run test:e2e -w apps/web -- chat-pinning.spec.ts sidebar.spec.ts voice.spec.ts stream-resumption.spec.ts
 npm run test -w apps/mobile -- src/components/drawer/ChatRowMenu.test.tsx
 npm run typecheck -w apps/mobile --
 ```
 
 The browser regression covers inline/menu keyboard pinning, older-server support,
 persistence, older pins, project shortcuts and moves, failed writes, deletion,
-and the touch drawer. On native Android and iOS, also check the drawer's
-long-press Pin/Unpin actions, refresh, and reopening the app.
+and the touch drawer. Touch generation checks cover pinned and recent rows,
+title/action spacing, open menus, and servers without pinning support; desktop
+checks preserve voice indicators and generation feedback. On native Android and
+iOS, also check the drawer's long-press Pin/Unpin actions, refresh, and reopening
+the app.
 
 ## Mobile validation
 
