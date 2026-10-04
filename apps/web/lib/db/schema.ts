@@ -380,6 +380,7 @@ export const chats = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title"),
+    pinned: integer("pinned", { mode: "boolean" }).default(false).notNull(),
     modelConfigId: text("model_config_id").references(() => modelConfigs.id, {
       onDelete: "set null",
     }),
@@ -398,6 +399,11 @@ export const chats = sqliteTable(
   },
   (table) => [
     index("chats_userId_updatedAt_idx").on(table.userId, table.updatedAt),
+    index("chats_userId_pinned_updatedAt_idx").on(
+      table.userId,
+      table.pinned,
+      table.updatedAt,
+    ),
     index("chats_userId_projectId_updatedAt_idx").on(
       table.userId,
       table.projectId,

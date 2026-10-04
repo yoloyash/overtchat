@@ -20,15 +20,17 @@ import {
 import { useSidebar } from "@/components/sidebar-context";
 
 interface ProjectWithChats extends ProjectOption {
-  chats: { id: string; title: string | null; kind: ChatKind }[];
+  chats: { id: string; title: string | null; kind: ChatKind; pinned?: boolean }[];
 }
 
 export function SidebarProjects({
   projects,
   activeChatIds,
+  pinningSupported,
 }: {
   projects: ProjectWithChats[];
   activeChatIds: ReadonlySet<string>;
+  pinningSupported: boolean;
 }) {
   const projectOptions: ProjectOption[] = projects.map((p) => ({
     id: p.id,
@@ -45,6 +47,7 @@ export function SidebarProjects({
           project={p}
           projectOptions={projectOptions}
           activeChatIds={activeChatIds}
+          pinningSupported={pinningSupported}
         />
       ))}
     </ul>
@@ -55,10 +58,12 @@ function ProjectNode({
   project,
   projectOptions,
   activeChatIds,
+  pinningSupported,
 }: {
   project: ProjectWithChats;
   projectOptions: ProjectOption[];
   activeChatIds: ReadonlySet<string>;
+  pinningSupported: boolean;
 }) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
@@ -122,6 +127,7 @@ function ProjectNode({
                 projects={projectOptions}
                 currentProjectId={project.id}
                 generating={activeChatIds.has(c.id)}
+                pinningSupported={pinningSupported}
               />
             ))
           )}

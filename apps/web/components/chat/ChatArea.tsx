@@ -504,6 +504,7 @@ export function ChatArea({
           id: chatId,
           title: null,
           kind: "text",
+          pinned: false,
           projectId: projectId ?? null,
           updatedAt: Date.now(),
         };

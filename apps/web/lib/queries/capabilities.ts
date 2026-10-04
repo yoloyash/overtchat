@@ -6,6 +6,7 @@ import { apiUrl } from "@/lib/api-url";
 
 interface PublicCapabilitiesResponse {
   capabilities: {
+    chatPinning?: boolean;
     voice: VoiceCapability;
     images: ImageCapability;
     [key: string]: unknown;

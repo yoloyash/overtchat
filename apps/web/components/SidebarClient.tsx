@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useLocation, useRouter } from "@tanstack/react-router";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
-import { SidebarChatList } from "@/components/SidebarChatList";
+import { SidebarChatList, SidebarItem } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
   CreateProjectDialog,
@@ -27,6 +27,7 @@ import {
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { useSidebar } from "@/components/sidebar-context";
 import { useActiveChatIds, useChats } from "@/lib/queries/chats";
+import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import { useProjects } from "@/lib/queries/projects";
 import {
   useAgentConnectionSessionDirectory,
@@ -40,15 +41,38 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
-  const { closeMobile, closeSidebar, openPalette } = useSidebar();
+  const { closeMobile, closeSidebar, openPalette, pinFocusRef } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
   const pathname = useLocation({ select: (location) => location.pathname });
 
+  const { data: capabilities } = usePublicCapabilities();
+  const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const { data: chats = [] } = useChats();
   const { data: activeChatIds = [] } = useActiveChatIds();
   const { data: projects = [] } = useProjects();
   const activeChats = useMemo(() => new Set(activeChatIds), [activeChatIds]);
+
+  // Run after React commits the refetched lists, when the destination row exists.
+  useLayoutEffect(() => {
+    const request = pinFocusRef.current;
+    if (!request) return;
+    const chat = chats.find((item) => item.id === request.id);
+    if (chat ? chat.pinned !== request.pinned : request.pinned) return;
+    pinFocusRef.current = null;
+    if (!request.fromMenu && request.row.isConnected) return;
+    const focused = document.activeElement;
+    if (
+      focused !== document.body && focused !== request.focusedElement &&
+      !request.row.contains(focused)
+    ) return;
+    const target = request.sidebar.querySelector<HTMLAnchorElement>(
+      `[data-chat-id="${CSS.escape(request.id)}"] a`,
+    );
+    (target ?? request.sidebar.querySelector<HTMLButtonElement>(
+      'button[aria-label="Search chats"]',
+    ))?.focus();
+  }, [chats, pinFocusRef]);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),
@@ -58,10 +82,11 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const unprojected = useMemo(
     () =>
       chats
-        .filter((c) => c.projectId == null)
+        .filter((c) => c.projectId == null && !c.pinned)
         .map((c) => ({
           id: c.id,
           title: c.title,
+          pinned: c.pinned,
           kind: c.kind,
           updatedAt: c.updatedAt,
         })),
@@ -71,12 +96,12 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const projectsWithChats = useMemo(() => {
     const byProject = new Map<
       string,
-      { id: string; title: string | null; kind: "text" | "voice" }[]
+      { id: string; title: string | null; kind: "text" | "voice"; pinned?: boolean }[]
     >();
     for (const c of chats) {
       if (!c.projectId) continue;
       const list = byProject.get(c.projectId) ?? [];
-      list.push({ id: c.id, title: c.title, kind: c.kind });
+      list.push({ id: c.id, title: c.title, kind: c.kind, pinned: c.pinned });
       byProject.set(c.projectId, list);
     }
     return projectOptions.map((p) => ({
@@ -157,10 +182,29 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           </Link>
         </nav>
 
+        {chats.some((chat) => chat.pinned) && (
+          <section aria-label="Pinned chats">
+            <SectionLabel>Pinned</SectionLabel>
+            <ul className="flex flex-col gap-0.5">
+              {chats.filter((chat) => chat.pinned).map((chat) => (
+                <SidebarItem
+                  key={chat.id}
+                  chat={chat}
+                  projects={projectOptions}
+                  currentProjectId={chat.projectId}
+                  generating={activeChats.has(chat.id)}
+                  pinningSupported={pinningSupported}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+
         <SectionLabel>Projects</SectionLabel>
         <SidebarProjects
           projects={projectsWithChats}
           activeChatIds={activeChats}
+          pinningSupported={pinningSupported}
         />
         <button
           type="button"
@@ -175,8 +219,10 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
         <SidebarChatList
           chats={unprojected}
+          emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
           projects={projectOptions}
           activeChatIds={activeChats}
+          pinningSupported={pinningSupported}
         />
       </div>
 

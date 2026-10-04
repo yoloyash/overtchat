@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
@@ -11,6 +11,8 @@ import {
   MoreHorizontal,
   LoaderCircle,
   Pencil,
+  Pin,
+  PinOff,
   Trash2,
 } from "lucide-react";
 import type { ChatKind } from "@overtchat/shared";
@@ -20,6 +22,7 @@ import {
   useDeleteChat,
   useMoveChat,
   useRenameChat,
+  useSetChatPinned,
 } from "@/lib/queries/chats";
 import { getErrorMessage } from "@/lib/errors";
 import { useSidebar } from "@/components/sidebar-context";
@@ -33,6 +36,7 @@ interface Chat {
   id: string;
   title: string | null;
   kind: ChatKind;
+  pinned?: boolean;
 }
 
 interface DatedChat extends Chat {
@@ -48,10 +52,14 @@ export function SidebarChatList({
   chats,
   projects,
   activeChatIds,
+  emptyMessage = "No chats yet",
+  pinningSupported,
 }: {
   chats: DatedChat[];
   projects: ProjectOption[];
   activeChatIds: ReadonlySet<string>;
+  emptyMessage?: string;
+  pinningSupported: boolean;
 }) {
   if (chats.length === 0) {
     return (
@@ -60,7 +68,7 @@ export function SidebarChatList({
           Recents
         </div>
         <p className="px-2 py-1 text-xs text-muted-foreground">
-          No chats yet
+          {emptyMessage}
         </p>
       </>
     );
@@ -80,6 +88,7 @@ export function SidebarChatList({
                 chat={c}
                 projects={projects}
                 generating={activeChatIds.has(c.id)}
+                pinningSupported={pinningSupported}
               />
             ))}
           </ul>
@@ -94,23 +103,29 @@ export function SidebarItem({
   projects,
   currentProjectId = null,
   generating = false,
+  pinningSupported,
 }: {
   chat: Chat;
   projects: ProjectOption[];
   currentProjectId?: string | null;
   generating?: boolean;
+  pinningSupported: boolean;
 }) {
   const navigate = useNavigate();
   const pathname = useLocation({ select: (location) => location.pathname });
   const active = pathname === `/chat/${chat.id}`;
   // See AccountMenu for the full explanation; mobile drawer needs in-subtree portaling.
-  const { closeMobile, drawerRef } = useSidebar();
+  const { closeMobile, drawerRef, pinFocusRef } = useSidebar();
 
   const renameMut = useRenameChat();
   const deleteMut = useDeleteChat();
   const moveMut = useMoveChat();
+  const pinMut = useSetChatPinned();
+  const rowRef = useRef<HTMLLIElement>(null);
+  const pinFromMenuRef = useRef(false);
 
   const [renaming, setRenaming] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState(chat.title ?? "");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteError, setDeleteError] = useState("");
@@ -118,6 +133,35 @@ export function SidebarItem({
   const markTitleRevealComplete = useCallback(() => {
     setRevealNextTitle(false);
   }, []);
+
+  async function togglePin(fromMenu = false) {
+    const row = rowRef.current;
+    const sidebar = row?.closest("aside");
+    const hadFocus = fromMenu || row?.contains(document.activeElement);
+    pinFromMenuRef.current = fromMenu;
+    const focusRequest = hadFocus && row && sidebar ? {
+      id: chat.id,
+      pinned: !chat.pinned,
+      row,
+      sidebar,
+      focusedElement: document.activeElement,
+      fromMenu,
+    } : null;
+    if (focusRequest) pinFocusRef.current = focusRequest;
+    try {
+      await pinMut.mutateAsync({ id: chat.id, pinned: !chat.pinned });
+    } catch (err) {
+      pinFromMenuRef.current = false;
+      if (pinFocusRef.current === focusRequest) pinFocusRef.current = null;
+      if (hadFocus && document.activeElement === document.body) {
+        row?.querySelector<HTMLAnchorElement>("a")?.focus();
+      }
+      toast.error({
+        title: chat.pinned ? "Failed to unpin chat" : "Failed to pin chat",
+        description: getErrorMessage(err, "Please try again."),
+      });
+    }
+  }
 
   function commitRename() {
     const next = draft.trim();
@@ -194,14 +238,29 @@ export function SidebarItem({
 
   return (
     <>
-      <li className="group flex items-center">
+      <li
+        ref={rowRef}
+        data-chat-id={chat.id}
+        data-menu-open={menuOpen || undefined}
+        className={cn(
+          "group relative flex items-center rounded-md motion-colors hover:bg-sidebar-accent [--chat-title-padding:var(--chat-actions-padding)]",
+          pinningSupported
+            ? "[--chat-actions-padding:3.5rem] max-md:[--chat-actions-padding:4.5rem]"
+            : "[--chat-actions-padding:2rem] max-md:[--chat-actions-padding:2.5rem]",
+          generating && "[@media(hover:none)]:[--chat-title-padding:calc(var(--chat-actions-padding)+2rem)]",
+          (active || menuOpen) && "bg-sidebar-accent",
+        )}
+      >
         <Link
           to="/chat/$id"
           params={{ id: chat.id }}
           onClick={closeMobile}
           className={cn(
-            "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
-            active && "bg-sidebar-accent",
+            "block min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm",
+            // Hidden actions overlay the title instead of reserving empty space.
+            "group-hover:pr-(--chat-title-padding) group-focus-within:pr-(--chat-title-padding) group-data-[menu-open=true]:pr-(--chat-title-padding) [@media(hover:none)]:pr-(--chat-title-padding)",
+            (chat.pinned || generating || chat.kind === "voice") && "pr-8 max-md:pr-10",
+            chat.pinned && (generating || chat.kind === "voice") && "pr-14 max-md:pr-18",
           )}
         >
           {chat.title ? (
@@ -215,119 +274,162 @@ export function SidebarItem({
             "Untitled"
           )}
         </Link>
-        <div className="relative mr-0.5 size-5.5 shrink-0 max-md:size-7.5">
-          {generating && (
-            <span
-              role="status"
-              aria-label={`Generating response for ${chat.title?.trim() || "Untitled"}`}
-              className="pointer-events-none absolute inset-0 flex items-center justify-center text-muted-foreground motion-opacity group-hover:opacity-0 group-focus-within:opacity-0"
-            >
+        {(generating || chat.kind === "voice") && (
+          <span
+            role={generating ? "status" : undefined}
+            aria-label={generating ? `Generating response for ${chat.title?.trim() || "Untitled"}` : "Voice chat"}
+            className={cn(
+              "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity max-md:size-7.5",
+              generating
+                ? "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0 [@media(hover:hover)]:group-data-[menu-open=true]:opacity-0 [@media(hover:none)]:right-(--chat-actions-padding)"
+                : "group-hover:hidden group-focus-within:hidden group-data-[menu-open=true]:hidden max-md:hidden [@media(hover:none)]:hidden",
+              chat.pinned && "right-7 max-md:right-9",
+            )}
+          >
+            {generating ? (
               <LoaderCircle
                 aria-hidden="true"
                 className={cn("size-3.5", motionClasses.spinner)}
               />
-            </span>
-          )}
-          {chat.kind === "voice" && !generating && (
-            <AudioWaveform
-              aria-label="Voice chat"
-              className="pointer-events-none absolute inset-0 m-auto size-3.5 text-muted-foreground group-hover:hidden group-focus-within:hidden max-md:hidden"
-            />
-          )}
-          <Menu.Root>
+            ) : (
+              <AudioWaveform aria-hidden="true" className="size-3.5" />
+            )}
+          </span>
+        )}
+        <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center gap-0.5">
+          <Menu.Root onOpenChange={(open) => {
+            setMenuOpen(open);
+            if (open) pinFromMenuRef.current = false;
+          }}>
             <Menu.Trigger
               aria-label="Chat actions"
               className={cn(
-                "absolute inset-0 flex items-center justify-center rounded hover:bg-sidebar-accent",
-                generating
-                  ? "opacity-0 motion-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[popup-open]:opacity-100"
-                  : motionClasses.hoverReveal,
+                "pointer-events-auto flex size-5.5 shrink-0 items-center justify-center rounded text-muted-foreground motion-opacity hover:bg-sidebar-border/60 hover:text-foreground max-md:size-7.5",
+                "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[menu-open=true]:opacity-100 [@media(hover:none)]:opacity-100",
               )}
             >
-              <MoreHorizontal className="size-3.5 text-muted-foreground" />
+              <MoreHorizontal className="size-3.5" />
             </Menu.Trigger>
             <Menu.Portal container={drawerRef}>
-              <Menu.Positioner side="right" align="start" sideOffset={6}>
+              <Menu.Positioner
+                anchor={rowRef}
+                side="right"
+                align="start"
+                sideOffset={6}
+                collisionAvoidance={{ side: "flip", align: "shift", fallbackAxisSide: "end" }}
+              >
                 <Menu.Popup
+                  // The sidebar restores focus after the list commits. Prevent
+                  // delayed menu cleanup from focusing an obsolete trigger.
+                  finalFocus={() => !pinFromMenuRef.current}
                   className={cn(
                     "z-50 w-44 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
                     motionClasses.popup,
                   )}
                 >
-                <Menu.Item
-                  onClick={() => {
-                    setDraft(chat.title ?? "");
-                    setRenaming(true);
-                  }}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                >
-                  <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span>Rename</span>
-                </Menu.Item>
-                <Menu.SubmenuRoot>
-                  <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
-                    <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span>Move to</span>
-                    <span className="ml-auto text-muted-foreground">›</span>
-                  </Menu.SubmenuTrigger>
-                  <Menu.Portal container={drawerRef}>
-                    <Menu.Positioner side="right" align="start" sideOffset={6}>
-                      <Menu.Popup
-                        className={cn(
-                          "z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-                          motionClasses.popup,
-                        )}
-                      >
-                        <Menu.Item
-                          onClick={() => moveTo(null)}
-                          disabled={currentProjectId === null}
+                  {pinningSupported && (
+                    <Menu.Item
+                      onClick={() => togglePin(true)}
+                      disabled={pinMut.isPending}
+                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                    >
+                      {chat.pinned ? (
+                        <PinOff className="size-3.5 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Pin className="size-3.5 shrink-0 text-muted-foreground" />
+                      )}
+                      <span>{chat.pinned ? "Unpin" : "Pin"}</span>
+                    </Menu.Item>
+                  )}
+                  <Menu.Item
+                    onClick={() => {
+                      setDraft(chat.title ?? "");
+                      setRenaming(true);
+                    }}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                  >
+                    <Pencil className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span>Rename</span>
+                  </Menu.Item>
+                  <Menu.SubmenuRoot>
+                    <Menu.SubmenuTrigger className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[popup-open]:bg-accent">
+                      <FolderInput className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span>Move to</span>
+                      <span className="ml-auto text-muted-foreground">›</span>
+                    </Menu.SubmenuTrigger>
+                    <Menu.Portal container={drawerRef}>
+                      <Menu.Positioner side="right" align="start" sideOffset={6}>
+                        <Menu.Popup
                           className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                            currentProjectId === null &&
-                              "text-muted-foreground",
+                            "z-50 max-h-64 w-48 overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                            motionClasses.popup,
                           )}
                         >
-                          No project
-                        </Menu.Item>
-                        {projects.length > 0 && (
-                          <div className="my-1 h-px bg-border" />
-                        )}
-                        {projects.map((p) => (
                           <Menu.Item
-                            key={p.id}
-                            onClick={() => moveTo(p.id)}
-                            disabled={p.id === currentProjectId}
+                            onClick={() => moveTo(null)}
+                            disabled={currentProjectId === null}
                             className={cn(
-                              "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                              p.id === currentProjectId &&
+                              "flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                              currentProjectId === null &&
                                 "text-muted-foreground",
                             )}
                           >
-                            <span className="truncate">{p.name}</span>
+                            No project
                           </Menu.Item>
-                        ))}
-                      </Menu.Popup>
-                    </Menu.Positioner>
-                  </Menu.Portal>
-                </Menu.SubmenuRoot>
-                <Menu.Item
-                  render={<a href={apiUrl(`/api/chat/${chat.id}/export`)} download />}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                >
-                  <Download className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span>Export</span>
-                </Menu.Item>
-                <Menu.Item
-                  onClick={requestDelete}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
-                >
-                  <Trash2 className="size-3.5 shrink-0" />
-                  <span>Delete</span>
-                </Menu.Item>
+                          {projects.length > 0 && (
+                            <div className="my-1 h-px bg-border" />
+                          )}
+                          {projects.map((p) => (
+                            <Menu.Item
+                              key={p.id}
+                              onClick={() => moveTo(p.id)}
+                              disabled={p.id === currentProjectId}
+                              className={cn(
+                                "flex cursor-pointer items-center gap-2 truncate rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                                p.id === currentProjectId &&
+                                  "text-muted-foreground",
+                              )}
+                            >
+                              <span className="truncate">{p.name}</span>
+                            </Menu.Item>
+                          ))}
+                        </Menu.Popup>
+                      </Menu.Positioner>
+                    </Menu.Portal>
+                  </Menu.SubmenuRoot>
+                  <Menu.Item
+                    render={<a href={apiUrl(`/api/chat/${chat.id}/export`)} download />}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                  >
+                    <Download className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span>Export</span>
+                  </Menu.Item>
+                  <Menu.Item
+                    onClick={requestDelete}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-destructive outline-none motion-colors data-[highlighted]:bg-accent"
+                  >
+                    <Trash2 className="size-3.5 shrink-0" />
+                    <span>Delete</span>
+                  </Menu.Item>
                 </Menu.Popup>
               </Menu.Positioner>
             </Menu.Portal>
           </Menu.Root>
+          {pinningSupported && (
+            <button
+              type="button"
+              aria-label={chat.pinned ? "Unpin chat" : "Pin chat"}
+              title={chat.pinned ? "Unpin chat" : "Pin chat"}
+              disabled={pinMut.isPending}
+              onClick={() => togglePin()}
+              className={cn(
+                "pointer-events-auto flex size-5.5 shrink-0 items-center justify-center rounded text-muted-foreground motion-opacity hover:bg-sidebar-border/60 hover:text-foreground disabled:opacity-50 max-md:size-7.5",
+                !chat.pinned && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 group-data-[menu-open=true]:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              <Pin aria-hidden="true" className={cn("size-3.5", chat.pinned && "fill-current")} />
+            </button>
+          )}
         </div>
       </li>
 

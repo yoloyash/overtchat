@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { Dialog } from "@base-ui/react/dialog";
-import { SidebarContext } from "@/components/sidebar-context";
+import { SidebarContext, type ChatPinFocusRequest } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
@@ -37,6 +37,7 @@ export function AppShell({
     false,
   );
   const drawerRef = useRef<HTMLElement | null>(null);
+  const pinFocusRef = useRef<ChatPinFocusRequest | null>(null);
   const routeKey = useLocation({ select: (location) => location.href });
   const openMobile = isMobile && openMobileRoute === routeKey;
 
@@ -123,6 +124,7 @@ export function AppShell({
         closeMobile,
         openPalette,
         drawerRef,
+        pinFocusRef,
       }}
     >
       <Dialog.Root
