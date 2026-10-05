@@ -82,6 +82,23 @@ installer. A mismatch with the tagged source or a failed tag lookup blocks
 promotion. Version bumps select the next candidate; tags publish its artifacts,
 and stable promotion waits until all selected artifacts are available.
 
+## Website downloads
+
+The static site's `/downloads/` page selects installers from the newest published
+stable desktop release and the optional APK from the newest stable mobile release
+at build time. It uses the same GitHub release loader as `/releases/`; drafts and
+prereleases are excluded. Missing required desktop DMG, deb, rpm, or AppImage
+assets fail the site build instead of silently mixing versions. Store links remain
+independent of GitHub mobile publication and store review timing.
+
+The existing promotion workflow rebuilds the site on release publication, edits,
+deletion, or site changes on `main`. If promotion defers for incomplete managed
+artifacts, downloads remain at the last deployed snapshot until promotion succeeds.
+After publishing a desktop or mobile release, verify `/downloads/` and its asset
+links as well as `/releases/`. If publication uses `GITHUB_TOKEN`, explicitly
+dispatch promotion as documented above; that token does not trigger release-event
+workflows. The independent desktop update feed does not refresh the marketing site.
+
 ## Coordinated server and desktop launch
 
 Merge the desktop stack before publishing server 0.23.0 and desktop 0.1.0.

@@ -11,6 +11,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1,
     },
     {
+      url: absoluteSiteUrl("/setup/"),
+      changeFrequency: "monthly",
+      priority: 0.9,
+    },
+    {
+      url: absoluteSiteUrl("/downloads/"),
+      changeFrequency: "weekly",
+      priority: 0.9,
+    },
+    {
       url: absoluteSiteUrl("/releases/"),
       changeFrequency: "weekly",
       priority: 0.8,

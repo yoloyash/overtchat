@@ -22,6 +22,10 @@ function formatBytes(bytes: number): string {
 }
 
 export function ReleaseCard({ release }: { release: ProductRelease }) {
+  const downloads = release.assets.filter(
+    (asset) => release.platform !== "desktop" || !/\.(ya?ml|blockmap)$/i.test(asset.name),
+  );
+
   return (
     <article className="release-card" data-platform={release.platform}>
       <div className="release-rail">
@@ -76,9 +80,9 @@ export function ReleaseCard({ release }: { release: ProductRelease }) {
         ) : (
           <p className="release-empty">No additional notes were published for this release.</p>
         )}
-        {release.assets.length > 0 && (
+        {downloads.length > 0 && (
           <div className="release-assets" aria-label="Release downloads">
-            {release.assets.map((asset) => (
+            {downloads.map((asset) => (
               <a href={asset.downloadUrl} key={asset.downloadUrl}>
                 <Download aria-hidden="true" />
                 <span>{asset.name}</span>

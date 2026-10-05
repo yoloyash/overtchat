@@ -5,6 +5,8 @@ installs and updates OvertChat with Docker Compose.
 
 ## Install
 
+For a guided overview, start with [Set up a server](https://overtchat.com/setup/).
+
 ```sh
 curl -fsSL https://overtchat.com/install | sh
 ```
@@ -329,9 +331,11 @@ administrators create subsequent accounts.
 
 The desktop app connects to your existing OvertChat server. It does not install
 the server or run models locally. First install or update the server using the
-manager above, then download a published **`desktop-v*`** release from the
-[release log](https://overtchat.com/releases/). Drafts and prereleases are not
-listed there. Desktop 0.1.0 requires the API-level-1 server contract introduced
+manager above, then choose your platform on the
+[downloads page](https://overtchat.com/downloads/). The
+[release log](https://overtchat.com/releases/) also lists archives, checksums,
+and previous versions. Drafts and prereleases are not listed there.
+Desktop 0.1.0 requires the API-level-1 server contract introduced
 in server 0.23.0; older released servers cannot run it. The app checks API
 compatibility before loading your chats and explains when the server or app
 needs updating.

@@ -81,6 +81,8 @@ a {
 
 button:focus-visible,
 a:focus-visible,
+summary:focus-visible,
+.installation-help pre:focus-visible,
 .trust-strip-inner:focus-visible,
 .code-window pre:focus-visible {
   outline: 3px solid var(--ring);
@@ -159,6 +161,17 @@ a:focus-visible,
 .site-nav > a:not(.icon-button):hover,
 .footer-links a:hover {
   color: var(--foreground);
+}
+
+.nav-setup-short {
+  display: none;
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.45em;
 }
 
 .icon-button {
@@ -1488,6 +1501,229 @@ a:focus-visible,
   padding-bottom: 2rem;
 }
 
+.downloads-grid,
+.download-more {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+}
+
+.download-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 1.4rem;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+  background: var(--card);
+  scroll-margin-top: 6rem;
+}
+
+.download-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  color: var(--muted-foreground);
+}
+
+.download-card h2,
+.download-more h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  font-weight: 650;
+  letter-spacing: -0.045em;
+}
+
+.download-card p,
+.download-more p {
+  margin: 0.5rem 0 0;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+
+.download-card .download-note {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.download-card .text-link {
+  margin-top: 0;
+}
+
+.installation-help {
+  width: 100%;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  font-size: 0.875rem;
+}
+
+.installation-help summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.installation-help ol {
+  padding-left: 1.25rem;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+
+.installation-help li + li {
+  margin-top: 0.5rem;
+}
+
+.installation-help pre {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 1rem;
+  background: var(--background);
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+
+.installation-help .text-link {
+  margin-top: 1rem;
+}
+
+.downloads-grid {
+  align-items: start;
+}
+
+.download-more {
+  margin-top: 3rem;
+  padding-top: 3rem;
+  border-top: 1px solid var(--border);
+  gap: 3rem;
+}
+
+.setup-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.65fr) minmax(0, 1.35fr);
+  align-items: start;
+  gap: clamp(2rem, 5vw, 5rem);
+}
+
+.setup-requirements {
+  padding: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 1.4rem;
+  background: var(--card);
+}
+
+.setup-requirements h2,
+.setup-steps h2 {
+  margin: 0 0 1rem;
+  font-size: 1.5rem;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+}
+
+.setup-requirements > svg {
+  margin-bottom: 1.5rem;
+}
+
+.setup-requirements ul,
+.setup-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.setup-requirements li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-block: 1.25rem;
+  line-height: 1.65;
+}
+
+.setup-requirements li svg {
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.3rem;
+}
+
+.setup-requirements p,
+.setup-steps p {
+  color: var(--muted-foreground);
+  line-height: 1.75;
+}
+
+.setup-requirements p,
+.setup-step-note {
+  font-size: 0.875rem;
+}
+
+.setup-requirements a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.setup-steps > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1.25rem;
+  padding-bottom: 2.5rem;
+}
+
+.setup-steps > li + li {
+  padding-top: 2.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.setup-steps p {
+  margin: 0 0 1rem;
+}
+
+.setup-steps .code-window {
+  margin: 1.5rem 0;
+}
+
+.setup-step-number {
+  display: flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted-foreground);
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 0.7rem;
+}
+
+@media (max-width: 950px) {
+  .setup-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .downloads-grid,
+  .download-more {
+    grid-template-columns: 1fr;
+  }
+
+  .site-nav .nav-downloads {
+    margin-right: 0.5rem;
+  }
+
+  .setup-steps > li {
+    gap: 0.75rem;
+  }
+}
+
 .release-filter {
   position: sticky;
   z-index: 20;
@@ -2259,8 +2495,13 @@ a:focus-visible,
 }
 
 @media (max-width: 700px) {
-  .site-nav > a:not(.icon-button) {
+  .site-nav > a:not(.nav-setup):not(.nav-downloads),
+  .nav-setup-full {
     display: none;
+  }
+
+  .nav-setup-short {
+    display: inline;
   }
 
   .site-nav {

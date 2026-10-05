@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
@@ -18,6 +18,23 @@ function apiRelease(tagName = "v1.0.0") {
 }
 
 describe("fetchGithubReleases", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("fetches fresh release data when rebuilding the static site", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify([apiRelease()]),
+      { headers: { "content-type": "application/json" } },
+    ));
+    vi.stubGlobal("fetch", fetch);
+
+    await fetchGithubReleases();
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/repos/yoloyash/overtchat/releases"),
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
   it("delegates pagination to Octokit with the current API version", async () => {
     const paginate = vi.fn().mockResolvedValue([apiRelease()]);
 
