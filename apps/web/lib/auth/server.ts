@@ -7,6 +7,7 @@ import { count } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import * as schema from "@/lib/db/schema";
 import { claimManagedHostConnector } from "@/lib/db/hostConnectors";
+import { passwordRecovery } from "./password-recovery";
 
 const extraTrustedOrigins =
   process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
@@ -15,7 +16,12 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:4717",
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   trustedOrigins: ["overtchat://", ...extraTrustedOrigins],
+  // The stock endpoint skips password confirmation and leaves sessions active.
+  disabledPaths: ["/admin/set-user-password"],
   rateLimit: {
+    customRules: {
+      "/admin/reset-user-password": { window: 60, max: 5 },
+    },
     // E2E signs up from one address in parallel workers. Everywhere else,
     // Better Auth's default applies: limits are on in production.
     enabled:
@@ -32,6 +38,7 @@ export const auth = betterAuth({
     // as `Authorization: Bearer` and receive it in `set-auth-token`.
     bearer(),
     expo(),
+    passwordRecovery(),
   ],
   databaseHooks: {
     user: {

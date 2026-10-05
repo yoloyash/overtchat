@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -171,6 +172,22 @@ export default function LoginScreen() {
               </Text>
             </Pressable>
 
+            <Pressable
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => Alert.alert(
+                "Forgot password?",
+                "Contact your server administrator to reset your password. Another administrator can also help if you are an admin.\n\nIf all administrators are locked out, the server owner can run overtchat reset-password on the server.",
+              )}
+            >
+              <Text style={[
+                styles.recoveryLink,
+                { color: colors.primary, fontFamily: fonts.sansMedium },
+              ]}>
+                Forgot password?
+              </Text>
+            </Pressable>
+
             {serverHost ? (
               <View style={styles.serverRow}>
                 <Text
@@ -224,6 +241,7 @@ const styles = StyleSheet.create({
   error: { fontSize: 14 },
   cta: { paddingVertical: 12, alignItems: "center", justifyContent: "center" },
   ctaText: { fontSize: 15 },
+  recoveryLink: { fontSize: 14, textAlign: "center" },
   serverRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   serverText: { flex: 1, fontSize: 13 },
   serverLinkText: { fontSize: 13 },

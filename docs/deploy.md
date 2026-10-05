@@ -20,6 +20,7 @@ overtchat setup     # change access, services, or update notifications
 overtchat status    # check versions and service status
 overtchat update    # update the managed stack
 overtchat logs -f   # follow container logs
+overtchat reset-password # recover an account password
 ```
 
 Voice requires both STT and TTS. Bundled Parakeet and Kokoro support native
@@ -53,6 +54,85 @@ connects to the authenticated loopback service on port 5093.
 `speech.log` live in the managed stack's `apple-speech/` directory and are not
 automatically pruned. Setup restores speech routing and the previous native
 service on failure; it does not downgrade the app or database.
+
+## Password recovery
+
+On web, desktop, and mobile, **Forgot password?** explains how to get help.
+Ask an administrator to open **Settings → Users → Reset password** for your
+account. Another administrator can also reset an admin account. The acting
+administrator must enter their own current password, then enter and confirm
+the replacement. Share the replacement privately. Users can change it afterward
+in **Settings → Security**; there is no forced change at the next login.
+
+If the only administrator, or all administrators, are locked out, run this on
+the server as the operating-system user who manages the installation:
+
+```sh
+overtchat reset-password
+```
+
+The command requires an interactive terminal and a running app. It reads the
+saved installation and its management secret, verifies the installation at its
+local port, and prompts for the account email and the replacement password twice.
+Passwords are masked and never passed as command-line arguments. It does not
+require an OvertChat login, follow redirects, or use the public access URL. Use
+the same `OVERTCHAT_CONFIG_DIR` override as setup if the installation uses a
+custom location. An older app or CLI must be updated to support this command.
+
+Every successful recovery signs out all of that account's web, desktop, and
+mobile sessions. Sign in again with the replacement password. Chats, settings,
+and administrator/user roles are preserved. Other accounts remain signed in.
+Recovery does not enable email delivery or provide public self-service reset links.
+
+### Manual installations without the management CLI
+
+The running app also accepts recovery at
+`POST /api/internal/management/password-reset`, authenticated with the app's
+`OVERTCHAT_MANAGEMENT_SECRET`, not a user or Host Connector token. If this secret
+is unset, generate a random value of at least 32 characters, configure it in the
+app's environment, and recreate/restart the app using your existing deployment
+procedure. Keep `BETTER_AUTH_SECRET` and the data mount unchanged.
+
+With Python 3 available on the server host, run the following interactive command.
+Enter the app's published local port (normally 4718 for Compose, or 4717 for a
+source server) and the matching management secret. Both the secret and passwords
+are hidden; the request goes only to loopback and refuses redirects:
+
+```sh
+python3 -c '
+import getpass, json, urllib.request, urllib.error
+port = int(input("Local app port: "))
+if not 1 <= port <= 65535:
+    raise SystemExit("Invalid port.")
+secret = getpass.getpass("Management secret: ")
+email = input("Account email: ").strip().lower()
+password = getpass.getpass("New password: ")
+if not 8 <= len(password) <= 128:
+    raise SystemExit("Use between 8 and 128 characters.")
+if password != getpass.getpass("Confirm new password: "):
+    raise SystemExit("Passwords do not match.")
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+request = urllib.request.Request(
+    f"http://127.0.0.1:{port}/api/internal/management/password-reset",
+    data=json.dumps({"email": email, "newPassword": password}).encode(),
+    headers={"Content-Type": "application/json", "Authorization": f"Bearer {secret}"},
+    method="POST",
+)
+try:
+    with opener.open(request, timeout=15) as response:
+        result = json.load(response)
+except urllib.error.HTTPError as error:
+    raise SystemExit(f"Recovery failed (HTTP {error.code}). Check the email, secret, and app version.")
+except urllib.error.URLError:
+    raise SystemExit("Could not reach the local app.")
+if result.get("status") is not True:
+    raise SystemExit("The server did not confirm recovery.")
+print("Password reset. All sessions for this account have been signed out.")
+'
+```
 
 ## Choose how to access OvertChat
 

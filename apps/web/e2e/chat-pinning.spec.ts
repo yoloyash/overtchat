@@ -263,6 +263,9 @@ test.describe("touch generation indicators", () => {
         await expect(status).toHaveCSS("opacity", "1");
         await expectIndicatorSpacing();
         await page.keyboard.press("Escape");
+        // Closing animates the popup and then restores focus to its trigger.
+        // Finish that transition before opening another menu or moving the row.
+        await expect(drawer.getByRole("menu", { includeHidden: true })).toHaveCount(0);
       }
 
       if (pinningSupported) {
