@@ -59,9 +59,18 @@ export default async function DownloadsPage() {
             Choose Apple Silicon for M-series Macs. Open the DMG and drag
             OvertChat to Applications. Developer ID signed and notarized.
           </p>
-          <a className="text-link" href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#macos-desktop">
-            Installation help <ArrowRight aria-hidden="true" />
-          </a>
+          <details className="installation-help">
+            <summary>How to install on macOS</summary>
+            <ol>
+              <li>Open the downloaded DMG and drag OvertChat to Applications.</li>
+              <li>Launch OvertChat from Applications, enter your server address, and sign in.</li>
+              <li>If macOS asks about OvertChat Safe Storage, choose Always Allow to keep your sign-in across launches.</li>
+            </ol>
+            <p>Allow microphone access when using voice. Use Change Server in the app menu to connect to another server.</p>
+            <a className="text-link" href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#macos-desktop">
+              More help on GitHub <ArrowRight aria-hidden="true" />
+            </a>
+          </details>
         </article>
 
         <article className="download-card" id="linux">
@@ -85,9 +94,23 @@ export default async function DownloadsPage() {
             Use the .deb on Ubuntu or Debian, or the .rpm on Fedora.
             AppImage requires working user namespaces; use the .deb on Ubuntu 24.04.
           </p>
-          <a className="text-link" href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#linux-desktop">
-            Installation help <ArrowRight aria-hidden="true" />
-          </a>
+          <details className="installation-help">
+            <summary>How to install on Linux</summary>
+            <p>Open a terminal in the folder containing your download. Run the command for your package:</p>
+            <p><strong>Ubuntu / Debian</strong></p>
+            <pre tabIndex={0} aria-label="Install the Debian package"><code>{`sudo apt install ./${downloads.deb.name}`}</code></pre>
+            <p><strong>Fedora</strong></p>
+            <pre tabIndex={0} aria-label="Install the RPM package"><code>{`sudo dnf install ./${downloads.rpm.name}`}</code></pre>
+            <p><strong>AppImage</strong></p>
+            <pre tabIndex={0} aria-label="Run the AppImage"><code>{`chmod +x ${downloads.appImage.name}\n./${downloads.appImage.name}`}</code></pre>
+            <p>For .deb and .rpm installs, open OvertChat from your application menu.
+              Enter your server address and sign in.</p>
+            <p>Saved sign-in requires GNOME Secret Service or KDE Wallet.
+              If AppImage cannot start, use your distribution’s package above.</p>
+            <a className="text-link" href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md#linux-desktop">
+              More help on GitHub <ArrowRight aria-hidden="true" />
+            </a>
+          </details>
         </article>
 
         <article className="download-card" id="android">

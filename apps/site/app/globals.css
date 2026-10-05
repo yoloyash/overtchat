@@ -81,6 +81,8 @@ a {
 
 button:focus-visible,
 a:focus-visible,
+summary:focus-visible,
+.installation-help pre:focus-visible,
 .trust-strip-inner:focus-visible,
 .code-window pre:focus-visible {
   outline: 3px solid var(--ring);
@@ -163,6 +165,13 @@ a:focus-visible,
 
 .nav-setup-short {
   display: none;
+}
+
+.site-nav a[aria-current="page"] {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.45em;
 }
 
 .icon-button {
@@ -1501,6 +1510,7 @@ a:focus-visible,
 
 .download-card {
   display: flex;
+  min-width: 0;
   flex-direction: column;
   align-items: flex-start;
   gap: 1.25rem;
@@ -1545,6 +1555,47 @@ a:focus-visible,
 
 .download-card .text-link {
   margin-top: 0;
+}
+
+.installation-help {
+  width: 100%;
+  min-width: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 1rem;
+  font-size: 0.875rem;
+}
+
+.installation-help summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.installation-help ol {
+  padding-left: 1.25rem;
+  color: var(--muted-foreground);
+  line-height: 1.7;
+}
+
+.installation-help li + li {
+  margin-top: 0.5rem;
+}
+
+.installation-help pre {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 1rem;
+  background: var(--background);
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+
+.installation-help .text-link {
+  margin-top: 1rem;
+}
+
+.downloads-grid {
+  align-items: start;
 }
 
 .download-more {

@@ -147,17 +147,17 @@ export default function HomePage() {
             conversations, files, and memories stay on your server.
           </p>
           <div className="button-row">
+            <Link className="button button-primary" href="/setup/">
+              Set up a server
+              <ArrowRight aria-hidden="true" />
+            </Link>
             <a
-              className="button button-primary"
+              className="button"
               href="https://github.com/yoloyash/overtchat"
             >
               <GitHubIcon aria-hidden="true" />
               View on GitHub
             </a>
-            <Link className="button" href="/setup/">
-              Set up a server
-              <ArrowRight aria-hidden="true" />
-            </Link>
           </div>
           <div className="hero-facts" aria-label="Project highlights">
             <span><ShieldCheck aria-hidden="true" /> No OvertChat cloud</span>
