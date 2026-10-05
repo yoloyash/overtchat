@@ -152,6 +152,7 @@ jobs:
           printf '%s' 'test-only-keyring-password' | gnome-keyring-daemon --unlock --components=secrets
           DESKTOP_SMOKE_UPGRADE_DEB="$UPGRADE_DEB" node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop persistent
           node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop session
+          node .github/scripts/smoke-desktop-local-discovery.mjs /usr/bin/overtchat-desktop
           SH
           sudo apt-get remove -y overtchat-desktop
           test ! -e /usr/bin/overtchat-desktop
@@ -235,6 +236,7 @@ jobs:
           printf '%s' 'test-only-keyring-password' | gnome-keyring-daemon --unlock --components=secrets
           node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop persistent
           node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop session
+          node .github/scripts/smoke-desktop-local-discovery.mjs /usr/bin/overtchat-desktop
           SH
           sudo apt-get remove -y overtchat-desktop
           test ! -e /usr/bin/overtchat-desktop

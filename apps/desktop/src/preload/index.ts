@@ -82,6 +82,7 @@ function exposeBridge(): void {
       return () => listeners.delete(listener);
     },
     boot: () => ipcRenderer.invoke(IPC.boot),
+    discoverLocalServers: () => ipcRenderer.invoke(IPC.discoverLocalServers),
     connect: (address) => ipcRenderer.invoke(IPC.connect, address),
     changeServer: () => ipcRenderer.invoke(IPC.changeServer),
     getUpdateState: () => ipcRenderer.invoke(IPC.updateState),

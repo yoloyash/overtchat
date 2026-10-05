@@ -1,14 +1,41 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { shell } from "./shell";
+import { hostOf, shell } from "./shell";
+import type { LocalServer } from "../shared/ipc";
 import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
 
 export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
   const [address, setAddress] = useState(lastAddress);
   const [error, setError] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [localServers, setLocalServers] = useState<LocalServer[]>([]);
+  const [discovering, setDiscovering] = useState(true);
+  const [discoveryAttempt, setDiscoveryAttempt] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setDiscovering(true);
+    void shell.discoverLocalServers().catch(() => []).then((servers) => {
+      if (!active) return;
+      setLocalServers(servers);
+      setDiscovering(false);
+    });
+    return () => { active = false; };
+  }, [discoveryAttempt]);
+
+  async function connect(target: string) {
+    setConnecting(true);
+    setError("");
+    const result = await shell.connect(target);
+    if (!result.ok) {
+      setError(result.message);
+      setConnecting(false);
+      return;
+    }
+    window.location.reload();
+  }
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -16,15 +43,7 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
       setError("Enter your server's address.");
       return;
     }
-    setConnecting(true);
-    setError("");
-    const result = await shell.connect(address);
-    if (!result.ok) {
-      setError(result.message);
-      setConnecting(false);
-      return;
-    }
-    window.location.reload();
+    await connect(address);
   }
 
   return (
@@ -37,6 +56,47 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
           Enter the address you open OvertChat at in your browser.
         </p>
       </header>
+
+      <section aria-label="Servers on this computer" className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-medium">On this computer</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={discovering || connecting}
+            onClick={() => {
+              setError("");
+              setDiscoveryAttempt((attempt) => attempt + 1);
+            }}
+          >
+            Check again
+          </Button>
+        </div>
+        <div role="status" className="text-sm text-muted-foreground">
+          {discovering
+            ? "Looking for OvertChat…"
+            : localServers.length === 0
+              ? "No local server found. You can enter an address below."
+              : "OvertChat found on this computer."}
+        </div>
+        {localServers.map((server) => (
+          <div key={server.origin} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <div className="min-w-0 text-sm">
+              <p className="truncate font-medium">{hostOf(server.origin)}</p>
+              {server.version && <p className="text-muted-foreground">OvertChat {server.version}</p>}
+              {server.problem?.kind === "server-outdated" && <p className="text-muted-foreground">Server update required</p>}
+              {server.problem?.kind === "app-outdated" && <p className="text-muted-foreground">Desktop update required</p>}
+            </div>
+            <Button type="button" size="sm" disabled={connecting} onClick={() => {
+              setAddress(server.origin);
+              void connect(server.origin);
+            }}>
+              Connect
+            </Button>
+          </div>
+        ))}
+      </section>
 
       <div className="space-y-1.5">
         <Label htmlFor="address">Server address</Label>

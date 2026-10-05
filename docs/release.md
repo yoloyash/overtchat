@@ -295,8 +295,10 @@ CI installs, launches, and removes the `.deb` on Ubuntu 22.04 and 24.04, checks
 Fedora RPM installation/removal in a container, and launches the AppImage's
 extracted and extract-and-run entrypoints plus the tarball. The packaged smoke uses a local API
 fixture and inspects the renderer's kernel sandbox; failure diagnostics are
-retained. Ubuntu 22.04 also tests a higher-version package made from the same
-code, retaining encrypted login through the installation. The source version
+retained. Both Ubuntu package checks also exercise same-PC server discovery,
+custom manager ports, explicit connection, saved-server restoration, and
+compatibility/retry behavior through the bundled UI. Ubuntu 22.04 also tests a
+higher-version package made from the same code, retaining encrypted login through the installation. The source version
 and candidate downloads are not changed. Packaging alone does not qualify a Linux release.
 
 Download the exact candidate and verify its checksums. Record the distro,

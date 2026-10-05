@@ -4,6 +4,7 @@ import type { DesktopBridge } from "@overtchat/shared/desktop";
 export const IPC = {
   boot: "desktop:boot",
   connect: "desktop:connect",
+  discoverLocalServers: "desktop:discover-local-servers",
   changeServer: "desktop:change-server",
   windowState: "desktop:window-state",
   fullscreen: "desktop:fullscreen",
@@ -33,6 +34,12 @@ export interface BootState {
   lastAddress: string;
 }
 
+export interface LocalServer {
+  origin: string;
+  version: string | null;
+  problem: ServerProblem | null;
+}
+
 export type ConnectResult = { ok: true } | { ok: false; message: string };
 
 export interface ShellWindowState {
@@ -44,6 +51,8 @@ export interface DesktopShellBridge extends DesktopBridge {
   platform: string;
   /** Checks the saved server and reports what the window should show. */
   boot(): Promise<BootState>;
+  /** Finds local servers without selecting one or changing the session. */
+  discoverLocalServers(): Promise<LocalServer[]>;
   /** Saves a reachable, compatible server as the active one. The UI reloads after. */
   connect(address: string): Promise<ConnectResult>;
 }

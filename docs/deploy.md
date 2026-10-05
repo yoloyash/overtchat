@@ -336,6 +336,14 @@ in server 0.23.0; older released servers cannot run it. The app checks API
 compatibility before loading your chats and explains when the server or app
 needs updating.
 
+The connection screen looks for OvertChat on this computer at ports 4718
+(managed installations) and 4717 (source installations), plus a custom port
+recorded by the local manager. Select **Connect** beside a discovered server,
+or enter your server URL, then sign in with your existing account. Use
+**Check again** after starting a server. Discovery does not select a server
+until you click Connect, and later launches use your saved server. Servers on
+other computers still require their address.
+
 ### macOS desktop
 
 Choose `mac-arm64.dmg` for Apple Silicon or `mac-x64.dmg` for Intel. Open the
@@ -343,8 +351,8 @@ downloaded DMG, drag **overtchat** to Applications, and launch it from there.
 Published Mac downloads are Developer ID signed and notarized. ZIP downloads
 are also available for each architecture.
 
-Enter your server URL and sign in with your existing account. When macOS first
-asks for access to **overtchat Safe Storage**, choose **Always Allow** to retain
+Sign in with your existing account. When macOS first asks for access to
+**overtchat Safe Storage**, choose **Always Allow** to retain
 sign-in across launches. Allow microphone access when using voice features.
 Use **Change Server** in the app menu to connect to another installation.
 

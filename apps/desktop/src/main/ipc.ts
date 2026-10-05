@@ -7,6 +7,7 @@ import {
   type ShellWindowState,
 } from "../shared/ipc";
 import { displayHost, pingServer, serverOrigin } from "./server";
+import { discoverLocalServers } from "./local-discovery";
 import {
   clearServer,
   getLastAddress,
@@ -79,6 +80,13 @@ export function registerIpc(): void {
   handle(IPC.installUpdate, installDesktopUpdate);
   handle(IPC.boot, boot);
   handle(IPC.connect, connect);
+  // React's development StrictMode can mount the connect screen twice.
+  let discovery: ReturnType<typeof discoverLocalServers> | null = null;
+  handle(IPC.discoverLocalServers, () => {
+    if (getServerOrigin()) return [];
+    discovery ??= discoverLocalServers(pingServer).finally(() => { discovery = null; });
+    return discovery;
+  });
   handle(IPC.changeServer, () => {
     clearServer();
     setUpdateOrigin(null);
