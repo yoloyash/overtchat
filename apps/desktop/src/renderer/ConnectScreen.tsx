@@ -28,13 +28,18 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
   async function connect(target: string) {
     setConnecting(true);
     setError("");
-    const result = await shell.connect(target);
-    if (!result.ok) {
-      setError(result.message);
+    try {
+      const result = await shell.connect(target);
+      if (!result.ok) {
+        setError(result.message);
+        return;
+      }
+      window.location.reload();
+    } catch {
+      setError("Couldn't connect to the server. Try again.");
+    } finally {
       setConnecting(false);
-      return;
     }
-    window.location.reload();
   }
 
   async function onSubmit(event: React.FormEvent) {
@@ -80,22 +85,24 @@ export function ConnectScreen({ lastAddress }: { lastAddress: string }) {
               ? "No local server found. You can enter an address below."
               : "OvertChat found on this computer."}
         </div>
-        {localServers.map((server) => (
-          <div key={server.origin} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-            <div className="min-w-0 text-sm">
-              <p className="truncate font-medium">{hostOf(server.origin)}</p>
-              {server.version && <p className="text-muted-foreground">OvertChat {server.version}</p>}
-              {server.problem?.kind === "server-outdated" && <p className="text-muted-foreground">Server update required</p>}
-              {server.problem?.kind === "app-outdated" && <p className="text-muted-foreground">Desktop update required</p>}
-            </div>
-            <Button type="button" size="sm" disabled={connecting} onClick={() => {
-              setAddress(server.origin);
-              void connect(server.origin);
-            }}>
-              Connect
-            </Button>
-          </div>
-        ))}
+        <ul className="space-y-2">
+          {localServers.map((server) => (
+            <li key={server.origin} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <div className="min-w-0 text-sm">
+                <p className="truncate font-medium">{hostOf(server.origin)}</p>
+                {server.version && <p className="text-muted-foreground">OvertChat {server.version}</p>}
+                {server.problem?.kind === "server-outdated" && <p className="text-muted-foreground">Server update required</p>}
+                {server.problem?.kind === "app-outdated" && <p className="text-muted-foreground">Desktop update required</p>}
+              </div>
+              <Button type="button" size="sm" disabled={connecting} onClick={() => {
+                setAddress(server.origin);
+                void connect(server.origin);
+              }}>
+                Connect
+              </Button>
+            </li>
+          ))}
+        </ul>
       </section>
 
       <div className="space-y-1.5">

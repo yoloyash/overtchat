@@ -1,4 +1,4 @@
-// Exercise discovery through the packaged renderer, preload and Electron transport.
+// Exercise discovery through the renderer, preload and Electron transport.
 /* global window */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -10,29 +10,43 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
-import { URL } from "node:url";
+import { pathToFileURL, URL } from "node:url";
 import { CLIENT_API_LEVEL } from "../../packages/shared/src/ping.ts";
 
 const require = createRequire(new URL("../../apps/web/package.json", import.meta.url));
-const { chromium } = require("@playwright/test");
-const [executable] = process.argv.slice(2);
-assert(executable, "Usage: node smoke-desktop-local-discovery.mjs packaged-linux-executable");
-assert.equal(process.platform, "linux");
-assert.notEqual(process.getuid(), 0, "Test the desktop as a regular user");
+const { chromium, _electron: electron } = require("@playwright/test");
+const [executable, mode] = process.argv.slice(2);
+const source = mode === "--source";
+const isMac = process.platform === "darwin";
+assert(executable && (!mode || source), "Usage: node smoke-desktop-local-discovery.mjs packaged-linux-executable|desktop-directory [--source]");
+assert(["linux", "darwin"].includes(process.platform));
+assert(!isMac || source, "macOS smoke uses --source to isolate the application profile");
+if (!isMac) assert.notEqual(process.getuid(), 0, "Test the desktop as a regular user");
 const directory = await mkdtemp(path.join(tmpdir(), "overtchat-local-discovery-smoke-"));
 const config = path.join(directory, "config");
 const manager = path.join(directory, "manager");
 await mkdir(config);
 await mkdir(manager);
+const profile = path.join(config, source ? "overtchat-dev" : "overtchat");
+const wrapper = path.join(directory, "main.mjs");
+if (source) {
+  // Set appData before main derives userData. This also isolates macOS without
+  // moving the operator's profile or interrupting an installed desktop app.
+  const main = pathToFileURL(path.resolve(executable, "out/main/index.js")).href;
+  await writeFile(wrapper, `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(config)});\nawait import(${JSON.stringify(main)});\n`);
+}
 let apiLevel = CLIENT_API_LEVEL;
 let available = true;
+let pingPending = false;
+let releasePing;
+const firstPing = new Promise(resolve => { releasePing = resolve; });
 const api = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "overtchat://app");
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Content-Type", "application/json");
   if (request.url === "/api/ping") {
-    // Leave time to type while discovery is still pending.
-    await delay(400);
+    pingPending = true;
+    await firstPing;
     if (!available) return response.writeHead(503).end("{}");
     return response.end(JSON.stringify({ name: "overtchat", version: "discovery-smoke", apiLevel }));
   }
@@ -45,7 +59,7 @@ const port = api.address().port;
 const origin = `http://localhost:${port}`;
 await writeFile(path.join(manager, "installation.json"), JSON.stringify({ format: 1, appPort: port }));
 
-let child, browser, page;
+let child, browser, page, sourceApp;
 let output = "";
 async function waitFor(label, callback, timeout = 30_000) {
   const deadline = Date.now() + timeout;
@@ -57,10 +71,18 @@ async function waitFor(label, callback, timeout = 30_000) {
   throw new Error(`Timed out waiting for ${label}`, { cause: lastError });
 }
 async function launch() {
-  await rm(path.join(config, "overtchat/DevToolsActivePort"), { force: true });
+  const env = { ...process.env, XDG_CONFIG_HOME: config, OVERTCHAT_CONFIG_DIR: manager,
+    XDG_DATA_HOME: path.join(directory, "data"), XDG_CACHE_HOME: path.join(directory, "cache") };
+  if (source) {
+    sourceApp = await electron.launch({ executablePath: require("electron"), args: [wrapper], chromiumSandbox: true, env });
+    sourceApp.process().stdout?.on("data", chunk => { output += chunk; });
+    sourceApp.process().stderr?.on("data", chunk => { output += chunk; });
+    page = await sourceApp.firstWindow();
+    return;
+  }
+  await rm(path.join(profile, "DevToolsActivePort"), { force: true });
   child = spawn(path.resolve(executable), ["--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--password-store=basic"], {
-    env: { ...process.env, XDG_CONFIG_HOME: config, OVERTCHAT_CONFIG_DIR: manager,
-      XDG_DATA_HOME: path.join(directory, "data"), XDG_CACHE_HOME: path.join(directory, "cache") },
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   });
   child.stdout.on("data", chunk => { output += chunk; });
@@ -68,13 +90,18 @@ async function launch() {
   child.on("error", error => { output += String(error); });
   const endpoint = await waitFor("debugging endpoint", async () => {
     assert(child.exitCode === null && child.signalCode === null, `Desktop exited:\n${output}`);
-    return `http://127.0.0.1:${(await readFile(path.join(config, "overtchat/DevToolsActivePort"), "utf8")).split("\n")[0]}`;
+    return `http://127.0.0.1:${(await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]}`;
   });
   browser = await chromium.connectOverCDP(endpoint);
   page = await waitFor("bundled renderer", () => browser.contexts().flatMap(context => context.pages())
     .find(candidate => candidate.url().startsWith("overtchat://app")));
 }
 async function stop() {
+  if (sourceApp) {
+    await sourceApp.close();
+    sourceApp = page = null;
+    return;
+  }
   if (page) await page.close().catch(() => {});
   if (browser) await browser.close().catch(() => {});
   page = browser = null;
@@ -88,24 +115,30 @@ async function stop() {
   child = null;
 }
 function localCard() {
-  return page.getByRole("region", { name: "Servers on this computer" }).locator("div.rounded-lg").filter({ hasText: `localhost:${port}` });
+  return page.getByRole("region", { name: "Servers on this computer" }).getByRole("listitem")
+    .filter({ has: page.getByText(`localhost:${port}`, { exact: true }) });
 }
 try {
   await launch();
+  await waitFor("discovery request", () => pingPending);
+  await page.getByRole("status").getByText("Looking for OvertChat…", { exact: true }).waitFor();
   await page.getByLabel("Server address").fill("https://manual.example.invalid");
+  releasePing();
   await localCard().getByRole("button", { name: "Connect", exact: true }).waitFor();
   assert.equal(await page.getByLabel("Server address").inputValue(), "https://manual.example.invalid");
   assert.equal((await page.evaluate(() => window.overtchatDesktop.boot())).server, null);
   assert.deepEqual(await page.evaluate(() => [typeof window.require, typeof window.process]), ["undefined", "undefined"]);
-  const cdp = await browser.newBrowserCDPSession();
-  const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
-  const renderer = processInfo.find(info => info.type === "renderer");
-  assert(renderer, "Missing renderer process");
-  const status = await readFile(`/proc/${renderer.id}/status`, "utf8");
-  assert.match(status, /^Seccomp:\s+2$/m);
-  assert.match(status, /^NoNewPrivs:\s+1$/m);
-  assert(status.match(/^NSpid:\s+(.+)$/m)?.[1].trim().split(/\s+/).length >= 2);
-  await cdp.detach();
+  if (browser) {
+    const cdp = await browser.newBrowserCDPSession();
+    const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
+    const renderer = processInfo.find(info => info.type === "renderer");
+    assert(renderer, "Missing renderer process");
+    const status = await readFile(`/proc/${renderer.id}/status`, "utf8");
+    assert.match(status, /^Seccomp:\s+2$/m);
+    assert.match(status, /^NoNewPrivs:\s+1$/m);
+    assert(status.match(/^NSpid:\s+(.+)$/m)?.[1].trim().split(/\s+/).length >= 2);
+    await cdp.detach();
+  }
   await localCard().getByRole("button", { name: "Connect", exact: true }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
   assert.equal((await page.evaluate(() => window.overtchatDesktop.boot())).server.origin, origin);
@@ -145,7 +178,8 @@ try {
   if (process.env.DESKTOP_DISCOVERY_LIVE_ORIGIN) {
     const live = new URL(process.env.DESKTOP_DISCOVERY_LIVE_ORIGIN);
     assert(live.protocol === "http:" && live.hostname === "localhost", "Live smoke must use a localhost server");
-    const card = page.getByRole("region", { name: "Servers on this computer" }).locator("div.rounded-lg").filter({ hasText: live.host });
+    const card = page.getByRole("region", { name: "Servers on this computer" }).getByRole("listitem")
+      .filter({ has: page.getByText(live.host, { exact: true }) });
     await card.getByRole("button", { name: "Connect", exact: true }).click();
     await page.getByRole("heading", { name: /Welcome back|Create the first account/ }).waitFor();
     assert.equal((await page.evaluate(() => window.overtchatDesktop.boot())).server.origin, live.origin);
@@ -154,10 +188,30 @@ try {
       await page.screenshot({ path: path.join(process.env.DESKTOP_SMOKE_ARTIFACT_DIR, "local-discovery-live.png") });
     }
   }
+  if (sourceApp) {
+    // A rejected invoke must leave the form usable. Fault injection stays in
+    // Playwright's main-process evaluation, never in the product bridge.
+    await sourceApp.evaluate(({ ipcMain }) => {
+      ipcMain.removeHandler("desktop:connect");
+      ipcMain.handle("desktop:connect", () => { throw new Error("Smoke IPC failure"); });
+    });
+    if ((await page.evaluate(() => window.overtchatDesktop.boot())).server) {
+      await page.evaluate(() => window.overtchatDesktop.changeServer());
+      await page.getByRole("heading", { name: "Connect to your server" }).waitFor();
+    }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await localCard().getByRole("button", { name: "Connect", exact: true }).click();
+      await page.getByRole("alert").getByText("Couldn't connect to the server. Try again.", { exact: true }).waitFor();
+      assert(await page.getByRole("button", { name: "Continue", exact: true }).isEnabled());
+      assert(await page.getByLabel("Server address").isEnabled());
+    }
+    log("PASS rejected connection IPC shows an error and permits retry");
+  }
 } catch (error) {
   log(output);
   throw error;
 } finally {
+  releasePing();
   await stop();
   api.closeAllConnections();
   await new Promise(resolve => api.close(resolve));

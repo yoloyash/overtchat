@@ -283,6 +283,19 @@ set `DESKTOP_DISCOVERY_LIVE_ORIGIN=http://localhost:4717` while a compatible
 source server is running to also select it and verify its login/setup screen;
 this does not create an account or sign in.
 
+On macOS, the same regression can run the compiled desktop from source with
+Playwright's Electron launcher. It sets an isolated application-data directory
+before loading main, so it can run alongside an installed app without changing
+its profile. This also checks recovery from a rejected connection IPC call:
+
+```sh
+npm run build -w apps/desktop --
+node .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop --source
+```
+
+This exercises the compiled main, preload and renderer on macOS; signed bundle,
+Keychain persistence and updater qualification remain release checks.
+
 `npm run start -w apps/desktop --` runs the production build. Check connecting
 (including an outdated server and a wrong address), signing in and out, chat
 streaming, uploaded images, the menu commands, Change Server, zoom, fullscreen,

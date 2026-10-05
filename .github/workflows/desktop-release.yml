@@ -8,6 +8,7 @@ on:
       - ".github/scripts/*desktop-mac*"
       - ".github/scripts/*desktop-linux*"
       - ".github/scripts/*desktop-update*"
+      - ".github/scripts/smoke-desktop-local-discovery.mjs"
       - "apps/desktop/**"
       - "apps/web/**"
       - "packages/shared/**"
