@@ -5,14 +5,14 @@ import {
   useRef,
   useSyncExternalStore,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChatMessageQueue,
+  getChatQueueStore,
   type ChatGenerationCoordinator,
   type QueuedChatMessage,
 } from "@overtchat/shared";
 import { getApiOrigin } from "@/lib/api-url";
-
-const queues = new Map<string, ChatMessageQueue>();
 
 export function useChatQueue({
   chatId,
@@ -32,16 +32,13 @@ export function useChatQueue({
   ) => Promise<void>;
   generation: ChatGenerationCoordinator;
 }) {
-  const scope = `${getApiOrigin()}:${userId ?? ""}:${chatId}`;
-  const queue = useMemo(() => {
-    if (temporary) return new ChatMessageQueue();
-    let saved = queues.get(scope);
-    if (!saved) {
-      saved = new ChatMessageQueue();
-      queues.set(scope, saved);
-    }
-    return saved;
-  }, [scope, temporary]);
+  const queryClient = useQueryClient();
+  const store = getChatQueueStore(queryClient);
+  const scope = `${getApiOrigin()}:${userId ?? ""}`;
+  const queue = useMemo(
+    () => (temporary ? new ChatMessageQueue() : store.get(scope, chatId)),
+    [store, scope, chatId, temporary],
+  );
   const snapshot = useSyncExternalStore(
     queue.subscribe,
     queue.getSnapshot,
@@ -51,19 +48,24 @@ export function useChatQueue({
   useLayoutEffect(() => {
     latest.current = sendMessage;
   });
-  useEffect(
-    () =>
-      queue.attach({
-        prepare: generation.prepare,
-        cancel: generation.cancel,
-        send: (message) =>
-          latest.current(
-            { text: message.text, files: message.files },
-            { body: message.body },
-          ),
-      }),
-    [generation, queue],
-  );
+  useEffect(() => {
+    const release = temporary
+      ? () => queue.clear()
+      : store.retain(scope, chatId, queue);
+    const detach = queue.attach({
+      prepare: generation.prepare,
+      cancel: generation.cancel,
+      send: (message) =>
+        latest.current(
+          { text: message.text, files: message.files },
+          { body: message.body },
+        ),
+    });
+    return () => {
+      detach();
+      release();
+    };
+  }, [generation, queue, store, scope, chatId, temporary]);
   useEffect(() => {
     if (status === "error") queue.pause();
     queue.setBusy(status === "submitted" || status === "streaming");

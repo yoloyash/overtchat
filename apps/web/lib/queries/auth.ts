@@ -1,3 +1,4 @@
+import { getChatQueueStore } from "@overtchat/shared";
 import { useCallback } from "react";
 import { queryOptions, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
@@ -32,6 +33,7 @@ export function useResetAuthState() {
   const queryClient = useQueryClient();
   const router = useRouter();
   return useCallback(() => {
+    getChatQueueStore(queryClient).clear();
     queryClient.clear();
     router.clearCache();
   }, [queryClient, router]);

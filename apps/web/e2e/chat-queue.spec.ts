@@ -386,3 +386,24 @@ test("Stop wins over Send now while server cancellation is pending", async ({
   pending[1]();
   await expect.poll(async () => (await messages(page)).length).toBe(4);
 });
+
+test("logout clears pending messages before signing back into the same chat", async ({ page }) => {
+  await setup(page);
+  await submit(page, "First");
+  await expect.poll(() => requests.length).toBe(1);
+  const chatUrl = new URL(page.url()).pathname;
+  await submit(page, "Discard on logout");
+  await page.getByRole("link", { name: /^New chat/ }).click();
+  await page.getByText("Queue Tester", { exact: true }).click();
+  await page.getByRole("menuitem", { name: "Log out" }).click();
+  await page.waitForURL("**/login");
+  pending[0]();
+  await page.locator("#email").fill("queue@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL("**/");
+  await page.locator(`a[href="${chatUrl}"]`).first().click();
+  await expect(page.getByText("Partial 1. Finished.", { exact: false })).toBeVisible();
+  await expect(queueRows(page)).toHaveCount(0);
+  expect(requests).toHaveLength(1);
+});

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { ChatMessageQueue, type QueuedChatMessage } from "@overtchat/shared";
+import {
+  ChatMessageQueue,
+  getChatQueueStore,
+  type QueuedChatMessage,
+} from "@overtchat/shared";
 
 const message = (id: string): QueuedChatMessage => ({
   id,
@@ -223,5 +227,52 @@ describe("chat queue", () => {
       sendingId: null,
       messages: [message("next")],
     });
+  });
+});
+
+describe("chat queue lifetime", () => {
+  it("retains pending drafts across navigation but releases empty queues", () => {
+    const store = getChatQueueStore({});
+    const queue = store.get("server:user", "chat");
+    const release = store.retain("server:user", "chat", queue);
+    queue.enqueue(message("pending"));
+    release();
+    expect(store.get("server:user", "chat")).toBe(queue);
+    const releaseAgain = store.retain("server:user", "chat", queue);
+    queue.remove("pending");
+    releaseAgain();
+    expect(store.get("server:user", "chat")).not.toBe(queue);
+  });
+
+  it("isolates owners and clears pending cancellation when a chat or session is removed", async () => {
+    const owner = {};
+    const store = getChatQueueStore(owner);
+    expect(getChatQueueStore(owner)).toBe(store);
+    expect(getChatQueueStore({})).not.toBe(store);
+    const queue = store.get("server:user", "chat");
+    store.retain("server:user", "chat", queue);
+    expect(store.get("other-server:user", "chat")).not.toBe(queue);
+    const cancelled = deferred();
+    const send = vi.fn();
+    queue.attach({
+      prepare: async () => {},
+      cancel: () => cancelled.promise,
+      send,
+    });
+    queue.enqueue(message("pending"));
+    const sending = queue.sendNow("pending");
+    store.deleteChat("chat");
+    cancelled.resolve();
+    await sending;
+    await tick();
+    expect(send).not.toHaveBeenCalled();
+    expect(queue.getSnapshot().messages).toEqual([]);
+    expect(store.get("server:user", "chat")).not.toBe(queue);
+    const another = store.get("server:user", "another");
+    store.retain("server:user", "another", another);
+    another.enqueue(message("private draft"));
+    store.clear();
+    expect(another.getSnapshot().messages).toEqual([]);
+    expect(store.get("server:user", "another")).not.toBe(another);
   });
 });

@@ -33,6 +33,7 @@ import {
   Roboto_500Medium,
   Roboto_600SemiBold,
 } from "@expo-google-fonts/roboto";
+import { getChatQueueStore } from "@overtchat/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setAudioModeAsync } from "expo-audio";
 import { useFonts } from "expo-font";
@@ -156,6 +157,7 @@ function QueryClientScope({ children }: { children: ReactNode }) {
   // This component is remounted when the selected server or authenticated user
   // changes, so server state can never bleed across either identity boundary.
   const [client] = useState(() => new QueryClient());
+  useEffect(() => () => getChatQueueStore(client).clear(), [client]);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 

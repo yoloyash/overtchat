@@ -229,3 +229,55 @@ export class ChatMessageQueue {
       });
   }
 }
+
+/** Owned by a client session/cache, never by a process-wide chat-ID map. */
+class ChatQueueStore {
+  private queues = new Map<
+    string,
+    { chatId: string; queue: ChatMessageQueue }
+  >();
+
+  get(scope: string, chatId: string) {
+    return (
+      this.queues.get(JSON.stringify([scope, chatId]))?.queue ??
+      new ChatMessageQueue()
+    );
+  }
+
+  retain(scope: string, chatId: string, queue: ChatMessageQueue) {
+    const key = JSON.stringify([scope, chatId]);
+    this.queues.set(key, { chatId, queue });
+    return () => {
+      if (
+        this.queues.get(key)?.queue === queue &&
+        !queue.getSnapshot().messages.length
+      ) {
+        this.queues.delete(key);
+      }
+    };
+  }
+
+  deleteChat(chatId: string) {
+    for (const [key, entry] of this.queues) {
+      if (entry.chatId !== chatId) continue;
+      entry.queue.clear();
+      this.queues.delete(key);
+    }
+  }
+
+  clear() {
+    for (const { queue } of this.queues.values()) queue.clear();
+    this.queues.clear();
+  }
+}
+
+const queueStores = new WeakMap<object, ChatQueueStore>();
+
+export function getChatQueueStore(owner: object) {
+  let store = queueStores.get(owner);
+  if (!store) {
+    store = new ChatQueueStore();
+    queueStores.set(owner, store);
+  }
+  return store;
+}
