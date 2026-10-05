@@ -294,7 +294,6 @@ export function ChatArea({
       }
     },
     onError: () => {
-      chatQueue.queue.pause();
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -309,8 +308,7 @@ export function ChatArea({
         void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       }
     },
-    onFinish: ({ message, isError, isAbort }) => {
-      if (isError || isAbort) chatQueue.queue.pause();
+    onFinish: ({ message, isError }) => {
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -357,9 +355,11 @@ export function ChatArea({
       qc.invalidateQueries({ queryKey: activityKeys.all() }),
     ]);
   }, [chatId, qc]);
-  const reconcileGeneration = useChatGenerationRecovery({
+  const generation = useChatGenerationRecovery({
     chatId,
+    temporary,
     enabled: !temporary && chatPersisted,
+    status,
     recoverOnMount: !isNew,
     stopLocalStream: stop,
     resumeStream,
@@ -433,8 +433,7 @@ export function ChatArea({
       markGenerationStarted();
       return sendMessage(message, options);
     },
-    stop,
-    setMessages,
+    generation,
   });
   const dropActive = dragDepth > 0;
 
@@ -473,12 +472,12 @@ export function ChatArea({
     chatQueue.queue.pause();
     setInferenceActivity(null);
     setContextStatus(null);
-    stop();
-    if (!temporary) {
-      void fetch(apiUrl(`/api/chat/${chatId}/stream/cancel`), { method: "POST" }).catch(
-        () => undefined,
-      );
-    }
+    void generation.cancel().catch(() => {
+      toast.error({
+        title: "Could not stop the response",
+        description: "Check your connection and try again.",
+      });
+    });
   }
 
   const markNewChatPersisted = useCallback(() => {
@@ -593,7 +592,7 @@ export function ChatArea({
     if (streaming || !configured) return;
     setInferenceActivity(null);
     setContextStatus(null);
-    void reconcileGeneration();
+    void generation.reconcile().catch(() => undefined);
   }
 
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {

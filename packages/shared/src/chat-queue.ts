@@ -16,12 +16,18 @@ interface QueueSnapshot {
 }
 
 export interface ChatQueueTransport {
-  prepare: (signal: AbortSignal, explicit: boolean) => Promise<void>;
+  /** False means the preceding server turn failed or was stopped. */
+  prepare: (signal: AbortSignal, explicit: boolean) => Promise<boolean | void>;
   cancel: (signal: AbortSignal) => Promise<void>;
   send: (message: QueuedChatMessage) => Promise<void>;
 }
 
-/** Session-local pending drafts. Only a mounted client may dispatch them. */
+type Operation = {
+  phase: "preparing" | "sending" | "cancelling";
+  controller: AbortController;
+};
+
+/** Pending drafts outlive views; operations belong exclusively to one mount. */
 export class ChatMessageQueue {
   private state: QueueSnapshot = {
     messages: [],
@@ -32,10 +38,9 @@ export class ChatMessageQueue {
   };
   private listeners = new Set<() => void>();
   private transport: ChatQueueTransport | null = null;
-  private lifecycle: AbortController | null = null;
+  private owner: object | null = null;
+  private operation: Operation | null = null;
   private busy = true;
-  private running: Promise<void> | null = null;
-  private interrupting = false;
   private immediateId: string | null = null;
 
   getSnapshot = () => this.state;
@@ -51,13 +56,24 @@ export class ChatMessageQueue {
     this.listeners.forEach((listener) => listener());
   }
 
+  private invalidateOperation() {
+    const previous = this.operation;
+    this.operation = null;
+    previous?.controller.abort();
+    this.update({ sendingId: null });
+  }
+
   attach(transport: ChatQueueTransport) {
+    this.invalidateOperation();
+    const owner = {};
+    this.owner = owner;
     this.transport = transport;
-    const lifecycle = new AbortController();
-    this.lifecycle = lifecycle;
+    this.busy = true; // The new owner must reconcile its own status.
     return () => {
-      lifecycle.abort();
-      if (this.lifecycle === lifecycle) this.transport = null;
+      if (this.owner !== owner) return;
+      this.owner = null;
+      this.transport = null;
+      this.invalidateOperation();
     };
   }
 
@@ -67,7 +83,7 @@ export class ChatMessageQueue {
   }
 
   enqueue(message: QueuedChatMessage) {
-    if (!this.busy && !this.running && !this.state.messages.length) {
+    if (!this.busy && !this.operation && !this.state.messages.length) {
       this.immediateId = message.id;
       this.update({ paused: false, error: null });
     }
@@ -77,10 +93,19 @@ export class ChatMessageQueue {
 
   pause() {
     this.update({ paused: true });
+    this.immediateId = null;
+    // A newer Stop wins over every older async completion, including Send now.
+    this.invalidateOperation();
+  }
+
+  clear() {
+    this.pause();
+    this.update({ messages: [], editingId: null, error: null });
   }
 
   remove(id: string) {
     if (id === this.state.sendingId) return;
+    if (this.operation?.phase === "preparing") this.invalidateOperation();
     const messages = this.state.messages.filter((message) => message.id !== id);
     this.update({
       messages,
@@ -92,6 +117,7 @@ export class ChatMessageQueue {
 
   edit(id: string | null) {
     if (id && id === this.state.sendingId) return;
+    if (this.operation?.phase === "preparing") this.invalidateOperation();
     this.update({ editingId: id });
     this.drain();
   }
@@ -110,21 +136,22 @@ export class ChatMessageQueue {
 
   async sendNow(id: string) {
     const transport = this.transport;
-    const signal = this.lifecycle?.signal;
     if (
       !transport ||
-      !signal ||
-      this.interrupting ||
-      this.state.sendingId ||
+      this.operation?.phase === "cancelling" ||
       !this.state.messages.some((message) => message.id === id)
     )
       return;
-    this.interrupting = true;
+    this.invalidateOperation();
+    const operation: Operation = {
+      phase: "cancelling",
+      controller: new AbortController(),
+    };
+    this.operation = operation;
     this.update({ sendingId: id, editingId: null, error: null });
     try {
-      await transport.cancel(signal);
-      await this.running;
-      if (signal.aborted) throw new Error("Queue detached");
+      await transport.cancel(operation.controller.signal);
+      if (this.operation !== operation) return;
       const message = this.state.messages.find((item) => item.id === id);
       if (!message) return;
       this.update({
@@ -137,49 +164,58 @@ export class ChatMessageQueue {
       this.immediateId = id;
       this.busy = false;
     } catch {
-      if (!signal.aborted)
+      if (this.operation === operation)
         this.update({
           paused: true,
           error:
             "Could not stop the response. Your queued message is still here; try Send now again.",
         });
     } finally {
-      this.interrupting = false;
-      this.update({ sendingId: null });
-      this.drain();
+      if (this.operation === operation) {
+        this.operation = null;
+        this.update({ sendingId: null });
+        this.drain();
+      }
     }
   }
 
   private drain() {
     const transport = this.transport;
-    const signal = this.lifecycle?.signal;
     const message = this.state.messages[0];
     if (
       !transport ||
-      !signal ||
-      signal.aborted ||
       !message ||
       this.busy ||
-      this.running ||
-      this.interrupting ||
+      this.operation ||
       this.state.paused ||
       this.state.editingId
     )
       return;
-    this.update({ sendingId: message.id, error: null });
-    const run = (async () => {
-      await transport.prepare(signal, this.immediateId === message.id);
-      if (signal.aborted) throw new Error("Queue detached");
-      if (this.state.paused) return;
+    const operation: Operation = {
+      phase: "preparing",
+      controller: new AbortController(),
+    };
+    this.operation = operation;
+    this.update({ error: null });
+    void (async () => {
+      const ready = await transport.prepare(
+        operation.controller.signal,
+        this.immediateId === message.id,
+      );
+      if (this.operation !== operation) return;
+      if (ready === false) {
+        this.pause();
+        return;
+      }
+      operation.phase = "sending";
       this.update({
         messages: this.state.messages.filter((item) => item.id !== message.id),
-        sendingId: null,
       });
       this.immediateId = null;
       await transport.send(message);
     })()
       .catch(() => {
-        if (!signal.aborted)
+        if (this.operation === operation)
           this.update({
             paused: true,
             error:
@@ -187,10 +223,9 @@ export class ChatMessageQueue {
           });
       })
       .finally(() => {
-        this.running = null;
-        if (!this.interrupting) this.update({ sendingId: null });
+        if (this.operation !== operation) return;
+        this.operation = null;
         this.drain();
       });
-    this.running = run;
   }
 }

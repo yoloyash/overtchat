@@ -21,6 +21,7 @@ function Probe({
   onSettled: () => void;
 }) {
   useChatGenerationRecovery({
+    status: "ready",
     chatId: "chat",
     enabled: true,
     recoverOnMount: false,

@@ -264,7 +264,6 @@ function ChatSurface({
       }
     },
     onError: () => {
-      chatQueue.queue.pause();
       setContextStatus(null);
       setMessages((current) =>
         current.filter(
@@ -274,8 +273,7 @@ function ChatSurface({
         ),
       );
     },
-    onFinish: ({ message, isAbort, isError }) => {
-      if (isAbort || isError) chatQueue.queue.pause();
+    onFinish: ({ message, isAbort }) => {
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -299,10 +297,11 @@ function ChatSurface({
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
   }, [chatId, qc]);
-  const reconcileGeneration = useChatGenerationRecovery({
+  const generation = useChatGenerationRecovery({
     baseURL,
     chatId,
     enabled: chatPersisted,
+    status,
     recoverOnMount: !isNew,
     stopLocalStream: stop,
     resumeStream,
@@ -319,17 +318,15 @@ function ChatSurface({
       setLocalAnchorRequestKey((key) => key + 1);
       return sendMessage(message, options);
     },
-    stop,
-    setMessages,
+    generation,
   });
 
   const handleStop = useCallback(() => {
     chatQueue.queue.pause();
-    stop();
-    void authFetch(`${baseURL}/api/chat/${chatId}/stream/cancel`, {
-      method: "POST",
-    });
-  }, [stop, baseURL, chatId, chatQueue.queue]);
+    void generation
+      .cancel()
+      .catch((error) => toastError("Could not stop the response", error));
+  }, [generation, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
@@ -482,13 +479,13 @@ function ChatSurface({
   useEffect(() => {
     if (error && error !== lastErrorRef.current) {
       if (/abort|connection|fetch|network|socket/i.test(error.message)) {
-        void reconcileGeneration();
+        void generation.reconcile().catch(() => undefined);
       } else {
         toastError("Chat error", error);
       }
     }
     lastErrorRef.current = error;
-  }, [error, reconcileGeneration]);
+  }, [error, generation]);
 
   const userRefreshingMessages = useRef(false);
   const wasFetchingMessages = useRef(false);
@@ -654,7 +651,9 @@ function ChatSurface({
           streaming={streaming}
           status={status}
           error={error}
-          onReconnect={() => { if (!streaming) void reconcileGeneration(); }}
+          onReconnect={() => {
+            if (!streaming) void generation.reconcile().catch(() => undefined);
+          }}
           editingId={editingId}
           speech={speech}
           refreshing={!isNew && hydrationFetching && !streaming}

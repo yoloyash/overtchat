@@ -149,4 +149,79 @@ describe("chat queue", () => {
     });
     expect(send).not.toHaveBeenCalled();
   });
+  it("releases a detached reader and ignores its late failure after remount", async () => {
+    const queue = new ChatMessageQueue();
+    let rejectOld!: (error: Error) => void;
+    const oldReader = new Promise<void>((_, reject) => {
+      rejectOld = reject;
+    });
+    const detach = queue.attach({
+      prepare: async () => {},
+      cancel: async () => {},
+      send: () => oldReader,
+    });
+    queue.setBusy(false);
+    queue.enqueue(message("active"));
+    await tick();
+    queue.setBusy(true);
+    queue.enqueue(message("next"));
+    detach();
+    const send = vi.fn().mockResolvedValue(undefined);
+    queue.attach({ prepare: async () => {}, cancel: async () => {}, send });
+    queue.setBusy(false);
+    await tick();
+    expect(send).toHaveBeenCalledWith(message("next"));
+    rejectOld(new Error("old reader failed"));
+    await tick();
+    expect(queue.getSnapshot()).toMatchObject({ paused: false, error: null });
+  });
+
+  it("Send now does not wait for a stale reader after cancellation is confirmed", async () => {
+    const queue = new ChatMessageQueue();
+    const send = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValue(undefined);
+    queue.attach({ prepare: async () => {}, cancel: async () => {}, send });
+    queue.setBusy(false);
+    queue.enqueue(message("active"));
+    await tick();
+    queue.setBusy(true);
+    queue.enqueue(message("next"));
+    await queue.sendNow("next");
+    await tick();
+    expect(send.mock.calls.map(([item]) => item.id)).toEqual([
+      "active",
+      "next",
+    ]);
+  });
+
+  it("a newer Stop defeats a pending Send now even when cancellation resolves late", async () => {
+    const queue = new ChatMessageQueue();
+    const cancellation = deferred();
+    const send = vi.fn().mockResolvedValue(undefined);
+    let signal!: AbortSignal;
+    queue.attach({
+      prepare: async () => {},
+      cancel: (current) => {
+        signal = current;
+        return cancellation.promise;
+      },
+      send,
+    });
+    queue.enqueue(message("next"));
+    const sending = queue.sendNow("next");
+    queue.pause();
+    expect(signal.aborted).toBe(true);
+    cancellation.resolve();
+    await sending;
+    queue.setBusy(false);
+    await tick();
+    expect(send).not.toHaveBeenCalled();
+    expect(queue.getSnapshot()).toMatchObject({
+      paused: true,
+      sendingId: null,
+      messages: [message("next")],
+    });
+  });
 });

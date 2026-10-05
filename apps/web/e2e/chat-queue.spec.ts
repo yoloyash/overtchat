@@ -333,3 +333,56 @@ test("local model completes queued follow-ups and accepts Send now", async ({
     page.getByText("SEND_NOW_COMPLETE", { exact: false }).last(),
   ).toBeVisible();
 });
+
+test("foreground recovery leaves the queue running and sends the follow-up once", async ({
+  page,
+}) => {
+  await setup(page);
+  await submit(page, "First");
+  await expect(page.getByText("Partial 1.", { exact: false })).toBeVisible();
+  await submit(page, "After recovery");
+  const statusRead = page.waitForResponse("**/stream/status");
+  await page.evaluate(() => window.dispatchEvent(new Event("online")));
+  await statusRead;
+  await expect(
+    page.getByText("Queue paused", { exact: false }),
+  ).not.toBeVisible();
+  pending[0]();
+  await expect.poll(() => requests.length).toBe(2);
+  expect(requests[1].messages.at(-1)?.content).toBe("After recovery");
+  pending[1]();
+  await expect.poll(async () => (await messages(page)).length).toBe(4);
+  expect(requests).toHaveLength(2);
+});
+
+test("Stop wins over Send now while server cancellation is pending", async ({
+  page,
+}) => {
+  await setup(page);
+  await submit(page, "First");
+  await expect(page.getByText("Partial 1.", { exact: false })).toBeVisible();
+  await submit(page, "Keep pending");
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let cancelRequests = 0;
+  await page.route("**/stream/cancel", async (route) => {
+    cancelRequests++;
+    await gate;
+    await route.continue().catch(() => undefined);
+  });
+  await queueRows(page).getByLabel("Send now").click();
+  await expect.poll(() => cancelRequests).toBe(1);
+  await page.getByLabel("Stop generating").click();
+  await expect(page.getByText("Queue paused", { exact: false })).toBeVisible();
+  release();
+  await expect(page.getByLabel("Stop generating")).not.toBeVisible();
+  await expect(queueRows(page)).toHaveCount(1);
+  expect(requests).toHaveLength(1);
+  await page.unroute("**/stream/cancel");
+  await queueRows(page).getByLabel("Send now").click();
+  await expect.poll(() => requests.length).toBe(2);
+  pending[1]();
+  await expect.poll(async () => (await messages(page)).length).toBe(4);
+});
