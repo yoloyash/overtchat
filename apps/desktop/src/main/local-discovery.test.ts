@@ -101,6 +101,13 @@ test("real HTTP discovery validates identity/API level, rejects redirects, and t
   assert.deepEqual((await discover())[0].problem, { kind: "server-outdated", version: "legacy" });
   body = { name: "overtchat", version: "future", apiLevel: CLIENT_API_LEVEL + 1 };
   assert.deepEqual((await discover())[0].problem, { kind: "app-outdated", version: "future" });
+  for (const level of [-1, 0, 1.5, 1e100, "2", null]) {
+    body = { name: "overtchat", version: "invalid", apiLevel: level };
+    const result = await probeServer(origin, fetch);
+    assert(result.ok);
+    assert.equal(result.apiLevel, 0);
+    assert.deepEqual(result.problem, { kind: "server-outdated", version: "invalid" });
+  }
   mode = "invalid";
   assert.deepEqual(await discover(), []);
   mode = "redirect";
@@ -108,4 +115,7 @@ test("real HTTP discovery validates identity/API level, rejects redirects, and t
   assert.equal(redirected, 0);
   mode = "stall";
   assert.deepEqual(await discover(), []);
+  const stalled = await probeServer(origin, fetch, { timeoutMs: 50 });
+  assert(!stalled.ok);
+  assert.equal(stalled.message, `localhost:${port} took too long to respond.`);
 });

@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { LocalServer } from "../shared/ipc";
-import type { probeServer } from "./server-probe";
+import type { ServerProbe } from "./server-probe";
 
 const DISCOVERY_TIMEOUT_MS = 1_500;
 
@@ -13,8 +13,8 @@ export async function localServerOrigins(environment = process.env): Promise<str
   const ports = new Set([4718, 4717]);
   try {
     const config: unknown = JSON.parse(await readFile(path.join(directory, "installation.json"), "utf8"));
-    if (config && typeof config === "object" && Reflect.get(config, "format") === 1) {
-      const port: unknown = Reflect.get(config, "appPort");
+    if (config && typeof config === "object" && "format" in config && config.format === 1 && "appPort" in config) {
+      const port = config.appPort;
       if (typeof port === "number" && Number.isSafeInteger(port) && port >= 1 && port <= 65_535) {
         ports.add(port);
       }
@@ -27,7 +27,7 @@ export async function localServerOrigins(environment = process.env): Promise<str
 
 /** Probes run concurrently; discovery never follows redirects off this PC. */
 export async function discoverLocalServers(
-  ping: (origin: string, options: Parameters<typeof probeServer>[2]) => ReturnType<typeof probeServer>,
+  ping: ServerProbe,
   environment = process.env,
 ): Promise<LocalServer[]> {
   const origins = await localServerOrigins(environment);

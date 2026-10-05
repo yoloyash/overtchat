@@ -7,6 +7,13 @@ export type PingResult =
   | { ok: true; version: string | null; apiLevel: number; problem: ServerProblem | null }
   | { ok: false; message: string };
 
+export interface PingOptions {
+  timeoutMs?: number;
+  redirect?: RequestRedirect;
+}
+
+export type ServerProbe = (origin: string, options?: PingOptions) => Promise<PingResult>;
+
 /**
  * Turns a typed address into a server origin. Like the mobile app, an address
  * without a scheme means `http://`.
@@ -31,9 +38,7 @@ export function displayHost(origin: string): string {
 }
 
 /** Whether a server built for another API level can run this app's UI. */
-function compatibility(body: Partial<PingResponse>): ServerProblem | null {
-  const version = typeof body.version === "string" ? body.version : null;
-  const level = typeof body.apiLevel === "number" ? body.apiLevel : 0;
+function compatibility(version: string | null, level: number): ServerProblem | null {
   if (level < CLIENT_API_LEVEL) return { kind: "server-outdated", version };
   if (level > CLIENT_API_LEVEL) return { kind: "app-outdated", version };
   return null;
@@ -43,22 +48,30 @@ function compatibility(body: Partial<PingResponse>): ServerProblem | null {
 export async function probeServer(
   origin: string,
   request: (input: string, init?: RequestInit) => Promise<Response>,
-  options: { timeoutMs?: number; redirect?: RequestRedirect } = {},
+  options: PingOptions = {},
 ): Promise<PingResult> {
   const host = displayHost(origin);
+  const signal = AbortSignal.timeout(options.timeoutMs ?? PING_TIMEOUT_MS);
   let response: Response;
+  let body: Partial<PingResponse> | null;
   try {
     response = await request(`${origin}/api/ping`, {
       cache: "no-store",
       redirect: options.redirect,
-      signal: AbortSignal.timeout(options.timeoutMs ?? PING_TIMEOUT_MS),
+      signal,
     });
+    try {
+      body = await response.json() as Partial<PingResponse> | null;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      body = null;
+    }
   } catch (error) {
     const reason = error instanceof Error ? error.message : "";
     if (/CERT|SSL/i.test(reason)) {
       return { ok: false, message: `${host} uses a certificate this computer doesn't trust.` };
     }
-    if (error instanceof Error && error.name === "TimeoutError") {
+    if (signal.aborted) {
       return { ok: false, message: `${host} took too long to respond.` };
     }
     return {
@@ -66,14 +79,15 @@ export async function probeServer(
       message: `Nothing answered at ${host}. Check the address and that the server is running.`,
     };
   }
-  const body = (await response.json().catch(() => null)) as Partial<PingResponse> | null;
   if (!response.ok || body?.name !== "overtchat") {
     return { ok: false, message: `${host} responded, but it isn't an OvertChat server.` };
   }
+  const version = typeof body.version === "string" ? body.version : null;
+  const apiLevel = Number.isSafeInteger(body.apiLevel) && body.apiLevel! > 0 ? body.apiLevel! : 0;
   return {
     ok: true,
-    version: typeof body.version === "string" ? body.version : null,
-    apiLevel: Number.isSafeInteger(body.apiLevel) && body.apiLevel! > 0 ? body.apiLevel! : 0,
-    problem: compatibility(body),
+    version,
+    apiLevel,
+    problem: compatibility(version, apiLevel),
   };
 }
