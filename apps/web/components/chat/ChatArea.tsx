@@ -48,6 +48,7 @@ import {
   type StoredMessageStats,
 } from "@/lib/chat/stats";
 import { messagesForChatRequest } from "@/lib/chat/history";
+import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { stripCitationMarkers } from "@/lib/citations";
 import { voiceHistoryToUiMessages } from "@/lib/voice/history";
@@ -293,6 +294,7 @@ export function ChatArea({
       }
     },
     onError: () => {
+      chatQueue.queue.pause();
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -307,7 +309,8 @@ export function ChatArea({
         void qc.invalidateQueries({ queryKey: libraryKeys.all() });
       }
     },
-    onFinish: ({ message, isError }) => {
+    onFinish: ({ message, isError, isAbort }) => {
+      if (isError || isAbort) chatQueue.queue.pause();
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -421,6 +424,18 @@ export function ChatArea({
   });
 
   const streaming = status === "streaming" || status === "submitted";
+  const chatQueue = useChatQueue({
+    chatId,
+    userId: session?.user.id,
+    temporary,
+    status,
+    sendMessage: (message, options) => {
+      markGenerationStarted();
+      return sendMessage(message, options);
+    },
+    stop,
+    setMessages,
+  });
   const dropActive = dragDepth > 0;
 
   function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
@@ -455,6 +470,7 @@ export function ChatArea({
   }
 
   function handleStop() {
+    chatQueue.queue.pause();
     setInferenceActivity(null);
     setContextStatus(null);
     stop();
@@ -513,11 +529,12 @@ export function ChatArea({
         return [next, ...prev];
       });
     }
-    markGenerationStarted();
-    sendMessage(
-      { text, files: attachments },
-      { body: requestBody({ type: "submit" }, searchRequested, imageOptions) },
-    );
+    chatQueue.queue.enqueue({
+      id: generateId(),
+      text,
+      files: attachments,
+      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+    });
     setSearchRequested(false);
     setImageOptions(undefined);
   }
@@ -758,6 +775,7 @@ export function ChatArea({
       onToggleSearch={() => {
         if (searchAvailable) setSearchRequested((selected) => !selected);
       }}
+      chatQueue={chatQueue}
       onSubmit={handleSubmit}
       onStop={handleStop}
       onStartVoice={() => setVoiceActive(true)}

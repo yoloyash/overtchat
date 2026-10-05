@@ -199,6 +199,40 @@ stale targets, provider failure, cancellation, temporary chats, search indexing,
 and usage recording. On Android and iOS, also check the Continue action/menu,
 Stop, and reopening the saved response.
 
+## Chat message queue validation
+
+Regular chat queues messages submitted during generation on web, desktop, and
+mobile. Each queued message retains its attachments and send-time model, search,
+reasoning, and image options. Messages run as separate FIFO turns. Edit changes
+queued text in place without replacing the composer's draft; Delete removes the
+pending message. Send now cancels the current generation, waits for server
+finalization and the local reader, then promotes the selected message ahead of
+other queued turns. Stop and generation errors pause automatic sending; Send now
+resumes it. Editing a queue item holds automatic dispatch until Save or Cancel.
+
+Queues live in client memory, scoped to the user, server, and chat. They survive
+in-app navigation, but dispatch only while that chat is mounted. Reloading the
+web app or restarting the native app clears pending messages. Temporary-chat
+queues are discarded when leaving the chat and never persisted.
+
+```sh
+npm run test -w apps/web -- lib/chat/chat-queue.test.ts lib/chat/history.test.ts app/api/chat/route.test.ts
+npm run test -w apps/mobile --
+E2E_PORT=4831 npm run test:e2e -w apps/web -- chat-queue.spec.ts composer-drafts.spec.ts continuation.spec.ts
+```
+
+The browser tests cover FIFO dispatch, edit/delete, preservation of an unrelated
+draft, attachments, navigation, partial-response persistence after cancellation,
+failed cancellation, provider errors, and temporary chats. Include a local vLLM
+model through the real product routes with:
+
+```sh
+CHAT_QUEUE_LIVE_URL=http://127.0.0.1:8001/v1 E2E_PORT=4831 npm run test:e2e -w apps/web -- chat-queue.spec.ts
+```
+
+Before releasing native clients, also check queue/edit/delete/Send now on Android
+and iOS, including keyboard clearance, chat switching, and foreground recovery.
+
 ## Chat pinning validation
 
 Chat pins are stored on the server and appear in the web/Electron sidebar and

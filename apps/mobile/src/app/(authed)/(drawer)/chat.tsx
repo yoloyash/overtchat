@@ -54,6 +54,7 @@ import { useCapabilities } from "@/lib/queries/capabilities";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
+import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -263,6 +264,7 @@ function ChatSurface({
       }
     },
     onError: () => {
+      chatQueue.queue.pause();
       setContextStatus(null);
       setMessages((current) =>
         current.filter(
@@ -272,7 +274,8 @@ function ChatSurface({
         ),
       );
     },
-    onFinish: ({ message, isAbort }) => {
+    onFinish: ({ message, isAbort, isError }) => {
+      if (isAbort || isError) chatQueue.queue.pause();
       setMessages((current) =>
         current.filter(
           (m) =>
@@ -308,12 +311,25 @@ function ChatSurface({
     onSettled: handleGenerationSettled,
   });
 
+  const chatQueue = useChatQueue({
+    chatId,
+    userId: session.data?.user.id,
+    status,
+    sendMessage: (message, options) => {
+      setLocalAnchorRequestKey((key) => key + 1);
+      return sendMessage(message, options);
+    },
+    stop,
+    setMessages,
+  });
+
   const handleStop = useCallback(() => {
+    chatQueue.queue.pause();
     stop();
     void authFetch(`${baseURL}/api/chat/${chatId}/stream/cancel`, {
       method: "POST",
     });
-  }, [stop, baseURL, chatId]);
+  }, [stop, baseURL, chatId, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
@@ -524,11 +540,12 @@ function ChatSurface({
         return [next, ...prev];
       });
     }
-    setLocalAnchorRequestKey((key) => key + 1);
-    sendMessage(
-      { text, files },
-      { body: requestBody({ type: "submit" }, searchRequested, imageOptions) },
-    );
+    chatQueue.queue.enqueue({
+      id: Crypto.randomUUID(),
+      text,
+      files,
+      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+    });
     setSearchRequested(false);
     setImageOptions(undefined);
     clearAttachments();
@@ -721,6 +738,7 @@ function ChatSurface({
             onPasteImages={(uris) => {
               void addFiles(uris.map(pastedImageToPickedFile));
             }}
+            chatQueue={chatQueue}
             onSubmit={handleSubmit}
             onStop={handleStop}
           />

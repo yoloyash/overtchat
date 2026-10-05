@@ -17,3 +17,4 @@ export * from "./theme/tokens";
 export * from "./images";
 export * from "./errors";
 export * from "./chat-continuation";
+export * from "./chat-queue";
