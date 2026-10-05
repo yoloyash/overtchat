@@ -12,9 +12,11 @@ import type { AttachmentMeta } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { useTheme } from "@/lib/theme";
 import { useDictation } from "@/lib/useDictation";
+import { MessageQueue, type MessageQueueProps } from "./MessageQueue";
 import { AttachmentChip } from "./AttachmentChip";
 
 export function Composer({
+  chatQueue,
   configured,
   modelLoading = false,
   streaming,
@@ -38,6 +40,7 @@ export function Composer({
   onSubmit,
   onStop,
 }: {
+  chatQueue: MessageQueueProps;
   configured: boolean;
   modelLoading?: boolean;
   streaming: boolean;
@@ -76,7 +79,8 @@ export function Composer({
 
   function submit() {
     const text = input.trim();
-    if (streaming || uploading || !configured) return;
+    if (uploading || !configured) return;
+    if (streaming && text.toLowerCase() === "/compact" && !attachments.length) return;
     if (!text && attachments.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
     onSubmit(text, attachments);
@@ -109,13 +113,13 @@ export function Composer({
 
   const canSend =
     (input.trim().length > 0 || attachments.length > 0) &&
-    !streaming &&
     !uploading &&
     configured;
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
   return (
     <View style={styles.wrapper}>
+      <MessageQueue {...chatQueue} />
       {dictation.error && (
         <ErrorNotice
           message={dictationErrorMessage(dictation.error, isAdmin)}
@@ -382,7 +386,7 @@ export function Composer({
             </Pressable>
           ) : null}
 
-          {streaming ? (
+          {streaming && (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Stop generating"
@@ -408,10 +412,11 @@ export function Composer({
                 />
               </View>
             </Pressable>
-          ) : (
+          )}
+          {(canSend || !streaming) && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Send message"
+              accessibilityLabel={streaming ? "Queue message" : "Send message"}
               disabled={!canSend}
               onPress={submit}
               style={({ pressed }) => [

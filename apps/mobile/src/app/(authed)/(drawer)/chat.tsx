@@ -54,6 +54,7 @@ import { useCapabilities } from "@/lib/queries/capabilities";
 import { imageOptionsFromMetadata, type ImageGenerationOptions } from "@overtchat/shared";
 import { useAttachments, type PickedFile } from "@/lib/chat/useAttachments";
 import { useChatSession } from "@/lib/chat/session";
+import { useChatQueue } from "@/lib/chat/useChatQueue";
 import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import { useChatMessages } from "@/lib/queries/chatMessages";
 import { useModelConfigs } from "@/lib/queries/modelConfigs";
@@ -296,10 +297,11 @@ function ChatSurface({
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
   }, [chatId, qc]);
-  const reconcileGeneration = useChatGenerationRecovery({
+  const generation = useChatGenerationRecovery({
     baseURL,
     chatId,
     enabled: chatPersisted,
+    status,
     recoverOnMount: !isNew,
     stopLocalStream: stop,
     resumeStream,
@@ -308,12 +310,23 @@ function ChatSurface({
     onSettled: handleGenerationSettled,
   });
 
+  const chatQueue = useChatQueue({
+    chatId,
+    userId: session.data?.user.id,
+    status,
+    sendMessage: (message, options) => {
+      setLocalAnchorRequestKey((key) => key + 1);
+      return sendMessage(message, options);
+    },
+    generation,
+  });
+
   const handleStop = useCallback(() => {
-    stop();
-    void authFetch(`${baseURL}/api/chat/${chatId}/stream/cancel`, {
-      method: "POST",
-    });
-  }, [stop, baseURL, chatId]);
+    chatQueue.queue.pause();
+    void generation
+      .cancel()
+      .catch((error) => toastError("Could not stop the response", error));
+  }, [generation, chatQueue.queue]);
 
   const streaming = status === "streaming" || status === "submitted";
   const configured = Boolean(selectedId);
@@ -466,13 +479,13 @@ function ChatSurface({
   useEffect(() => {
     if (error && error !== lastErrorRef.current) {
       if (/abort|connection|fetch|network|socket/i.test(error.message)) {
-        void reconcileGeneration();
+        void generation.reconcile().catch(() => undefined);
       } else {
         toastError("Chat error", error);
       }
     }
     lastErrorRef.current = error;
-  }, [error, reconcileGeneration]);
+  }, [error, generation]);
 
   const userRefreshingMessages = useRef(false);
   const wasFetchingMessages = useRef(false);
@@ -524,11 +537,12 @@ function ChatSurface({
         return [next, ...prev];
       });
     }
-    setLocalAnchorRequestKey((key) => key + 1);
-    sendMessage(
-      { text, files },
-      { body: requestBody({ type: "submit" }, searchRequested, imageOptions) },
-    );
+    chatQueue.queue.enqueue({
+      id: Crypto.randomUUID(),
+      text,
+      files,
+      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+    });
     setSearchRequested(false);
     setImageOptions(undefined);
     clearAttachments();
@@ -637,7 +651,9 @@ function ChatSurface({
           streaming={streaming}
           status={status}
           error={error}
-          onReconnect={() => { if (!streaming) void reconcileGeneration(); }}
+          onReconnect={() => {
+            if (!streaming) void generation.reconcile().catch(() => undefined);
+          }}
           editingId={editingId}
           speech={speech}
           refreshing={!isNew && hydrationFetching && !streaming}
@@ -721,6 +737,7 @@ function ChatSurface({
             onPasteImages={(uris) => {
               void addFiles(uris.map(pastedImageToPickedFile));
             }}
+            chatQueue={chatQueue}
             onSubmit={handleSubmit}
             onStop={handleStop}
           />

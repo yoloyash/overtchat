@@ -1,35 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
-import type { ChatGenerationState } from "@overtchat/shared";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  ChatGenerationCoordinator,
+  type ChatGenerationState,
+} from "@overtchat/shared";
 import type { UIMessage } from "ai";
 import { apiUrl } from "@/lib/api-url";
 
-const POLL_DELAY_MS = 1_500;
-
-function delay(ms: number) {
-  return new Promise<void>((resolve) => window.setTimeout(resolve, ms));
-}
-
-function applyTerminalMessage(
-  current: UIMessage[],
-  responseMessage: UIMessage | undefined,
-) {
-  if (!responseMessage) return current;
-  const index = current.findIndex(({ id }) => id === responseMessage.id);
-  if (index === -1) return [...current, responseMessage];
-  const next = [...current];
-  next[index] = responseMessage;
-  return next;
-}
-
-/**
- * Reconciles the mounted transport with the server-owned generation. Mobile
- * browsers can leave a dead fetch looking open, so server status—not the local
- * reader—is authoritative after mount, foreground, and network restoration.
- */
 export function useChatGenerationRecovery({
   chatId,
+  status,
+  temporary = false,
   enabled,
   recoverOnMount,
   stopLocalStream,
@@ -39,9 +21,11 @@ export function useChatGenerationRecovery({
   onSettled,
 }: {
   chatId: string;
+  status: string;
+  temporary?: boolean;
   enabled: boolean;
   recoverOnMount: boolean;
-  stopLocalStream: () => void;
+  stopLocalStream: () => void | Promise<void>;
   resumeStream: () => Promise<void>;
   clearError: () => void;
   setMessages: (
@@ -49,83 +33,86 @@ export function useChatGenerationRecovery({
   ) => void;
   onSettled: () => void;
 }) {
-  const epochRef = useRef(0);
-  const recoveryRef = useRef<Promise<void> | null>(null);
-
-  const reconcile = useCallback(async () => {
-    if (!enabled) return;
-    if (recoveryRef.current) return recoveryRef.current;
-
-    const epoch = epochRef.current;
-    const recovery = (async () => {
-      while (epochRef.current === epoch) {
-        const response = await fetch(
-          apiUrl(`/api/chat/${encodeURIComponent(chatId)}/stream/status`),
-          { cache: "no-store" },
-        );
-        if (!response.ok) {
-          throw new Error(`Could not inspect generation (${response.status})`);
-        }
-        const generation = (await response.json()) as ChatGenerationState;
-
-        if (!generation.active) {
-          setMessages((current) =>
-            applyTerminalMessage(current, generation.responseMessage),
-          );
-          clearError();
-          onSettled();
-          return;
-        }
-
-        // This only aborts the stale client reader. Saved generations use a
-        // distinct server AbortController and stop only via the cancel route.
-        stopLocalStream();
-        clearError();
-        await resumeStream();
-
-        if (
-          epochRef.current !== epoch ||
-          document.visibilityState === "hidden"
-        ) {
-          return;
-        }
-        await delay(POLL_DELAY_MS);
-      }
-    })();
-
-    recoveryRef.current = recovery;
-    try {
-      await recovery;
-    } finally {
-      if (recoveryRef.current === recovery) recoveryRef.current = null;
-    }
-  }, [
-    chatId,
-    clearError,
-    enabled,
-    onSettled,
-    resumeStream,
-    setMessages,
+  const latest = useRef({
+    temporary,
     stopLocalStream,
-  ]);
+    resumeStream,
+    clearError,
+    setMessages,
+    onSettled,
+  });
+  const generation = useMemo(
+    () => new ChatGenerationCoordinator("ready"),
+    [chatId],
+  );
+
+  useLayoutEffect(() => {
+    latest.current = {
+      temporary,
+      stopLocalStream,
+      resumeStream,
+      clearError,
+      setMessages,
+      onSettled,
+    };
+    generation.observeStatus(status);
+  });
+  useEffect(
+    () =>
+      generation.attach({
+        temporary: () => latest.current.temporary,
+        read: async (signal) => {
+          const response = await fetch(
+            apiUrl(`/api/chat/${encodeURIComponent(chatId)}/stream/status`),
+            { signal, cache: "no-store" },
+          );
+          if (response.status === 404) return null;
+          if (!response.ok) throw new Error("Could not inspect generation");
+          return (await response.json()) as ChatGenerationState;
+        },
+        cancel: async (signal) => {
+          const response = await fetch(
+            apiUrl(`/api/chat/${encodeURIComponent(chatId)}/stream/cancel`),
+            { method: "POST", signal },
+          );
+          if (!response.ok) throw new Error("Could not cancel generation");
+        },
+        stopReader: () => latest.current.stopLocalStream(),
+        resumeReader: () => {
+          latest.current.clearError();
+          return latest.current.resumeStream();
+        },
+        apply: (state) => {
+          const message = state.responseMessage;
+          if (message)
+            latest.current.setMessages((current) =>
+              current.some((item) => item.id === message.id)
+                ? current.map((item) =>
+                    item.id === message.id ? message : item,
+                  )
+                : [...current, message],
+            );
+          latest.current.clearError();
+          latest.current.onSettled();
+        },
+        foreground: () => document.visibilityState !== "hidden",
+      }),
+    [generation, chatId],
+  );
 
   useEffect(() => {
     if (!enabled) return;
-
-    const recover = () => void reconcile().catch(() => undefined);
-    const handleVisibility = () => {
+    const recover = () => void generation.reconcile().catch(() => undefined);
+    const visibility = () => {
       if (document.visibilityState === "visible") recover();
     };
-    document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("visibilitychange", visibility);
     window.addEventListener("online", recover);
     if (recoverOnMount) recover();
-
     return () => {
-      epochRef.current += 1;
-      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("online", recover);
     };
-  }, [enabled, reconcile, recoverOnMount]);
-
-  return reconcile;
+  }, [enabled, generation, recoverOnMount]);
+  return generation;
 }

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChatKind } from "@overtchat/shared";
+import { getChatQueueStore, type ChatKind } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
 
@@ -64,7 +64,10 @@ export function useDeleteChat() {
       });
       if (!res.ok) throw new Error(`Failed to delete (${res.status})`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
+    onSuccess: (_, id) => {
+      getChatQueueStore(qc).deleteChat(id);
+      return qc.invalidateQueries({ queryKey: queryKeys.chats() });
+    },
   });
 }
 

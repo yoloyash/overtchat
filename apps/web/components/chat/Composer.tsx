@@ -73,6 +73,7 @@ import {
   type ChatAttachment,
   useChatAttachments,
 } from "./useChatAttachments";
+import { MessageQueue, type MessageQueueProps } from "./MessageQueue";
 import { serverUrl } from "@/lib/api-url";
 
 export interface ComposerHandle {
@@ -96,6 +97,7 @@ export interface ComposerCommandActions {
 }
 
 interface ComposerProps {
+  chatQueue: MessageQueueProps;
   configured: boolean;
   streaming: boolean;
   searchAvailable: boolean;
@@ -134,6 +136,7 @@ interface ComposerProps {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
+  chatQueue,
   configured,
   streaming,
   searchAvailable,
@@ -476,7 +479,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function submit() {
     const text = input.trim();
-    if (streaming || uploading || textInputDisabled) return;
+    if (uploading || textInputDisabled) return;
+    if (streaming && text.toLowerCase() === "/compact" && !readyParts.length) return;
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
     onSubmit(text, readyParts);
@@ -493,6 +497,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing) return;
     if (handleMenuKeyDown(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -519,6 +524,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           void dictation.start();
         }}
       />
+      <MessageQueue {...chatQueue} />
       <div className="relative">
         {menuOpen && query && (
           <SlashCommandMenu
@@ -702,7 +708,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 disabled={voiceActive}
                 onBeforeStart={onBeforeDictate}
               />
-              {streaming ? (
+              {streaming && (
                 <Button
                   size="icon-sm"
                   variant="secondary"
@@ -712,7 +718,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 >
                   <Square className="size-3 fill-current" />
                 </Button>
-              ) : voiceActive && !input.trim() && readyParts.length === 0 ? (
+              )}
+              {voiceActive && !input.trim() && readyParts.length === 0 ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -723,7 +730,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 >
                   <X />
                 </Button>
-              ) : voiceInstalled &&
+              ) : !streaming && voiceInstalled &&
                 voiceEligible &&
                 !input.trim() &&
                 readyParts.length === 0 ? (
@@ -751,7 +758,8 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                       readyParts.length === 0)
                   }
                   onClick={submit}
-                  aria-label="Send message"
+                  aria-label={streaming ? "Queue message" : "Send message"}
+                  title={streaming ? "Send after the current response" : "Send message"}
                 >
                   {uploading ? <Loader2 className={motionClasses.spinner} /> : <ArrowUp />}
                 </Button>
