@@ -5,6 +5,7 @@ import { readInstallationConfig } from "./config.js";
 import { latestReleaseManifest, updateCliIfNeeded } from "./release.js";
 import { setup } from "./setup.js";
 import { status } from "./status.js";
+import { resetPassword } from "./reset-password.js";
 vi.mock("./install-log.js", async (original) => ({
   ...(await original<typeof import("./install-log.js")>()),
   withInstallationLog: async (_operation: string, run: () => Promise<unknown>) => run(),
@@ -20,6 +21,7 @@ vi.mock("./release.js", async (original) => ({
 }));
 vi.mock("./setup.js", () => ({ setup: vi.fn(), waitForApp: vi.fn() }));
 vi.mock("./status.js", () => ({ status: vi.fn() }));
+vi.mock("./reset-password.js", () => ({ resetPassword: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -32,6 +34,7 @@ describe("CLI contract", () => {
     "status",
     "version",
     "logs",
+    "reset-password",
   ])(
     "supports %s --help without loading installation state",
     async (command) => {
@@ -57,6 +60,7 @@ describe("CLI contract", () => {
     ["logs", "--tail"],
     ["update", "--json"],
     ["help", "setup", "extra"],
+    ["reset-password", "--password", "secret"],
   ])("rejects invalid arguments %j", (...args) => {
     expect(() => parseArgs(args)).toThrow();
   });
@@ -64,6 +68,12 @@ describe("CLI contract", () => {
     expect(parseArgs(["logs", "connector", "--tail", "0", "-f"])).toMatchObject(
       { service: "connector", tail: 0, flags: new Set(["--tail", "-f"]) },
     );
+  });
+  it("runs password recovery without setup or updates", async () => {
+    await main(["reset-password"]);
+    expect(resetPassword).toHaveBeenCalledOnce();
+    expect(setup).not.toHaveBeenCalled();
+    expect(latestReleaseManifest).not.toHaveBeenCalled();
   });
   it("shows overview without reconfiguring an existing installation", async () => {
     vi.mocked(readInstallationConfig).mockResolvedValue({ format: 1 } as never);

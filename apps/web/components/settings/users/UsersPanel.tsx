@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AlertDialog } from "@base-ui/react/alert-dialog";
-import { Plus, Trash2 } from "lucide-react";
+import { KeyRound, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -28,6 +28,7 @@ import {
   SettingsSection,
 } from "../SettingsRows";
 import { AddUserDialog } from "./AddUserDialog";
+import { ResetPasswordDialog } from "./ResetPasswordDialog";
 
 type PendingRoleChange = {
   user: UserRow;
@@ -39,6 +40,7 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
   const invalidateUsers = useInvalidateUsers();
   const setRoleMutation = useSetUserRole();
   const [addOpen, setAddOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
   const [pendingDelete, setPendingDelete] = useState<UserRow | null>(null);
   const [pendingRoleChange, setPendingRoleChange] =
     useState<PendingRoleChange | null>(null);
@@ -163,19 +165,29 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
                       Current user
                     </span>
                   ) : (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setDeleteError("");
-                        setPendingDelete(u);
-                      }}
-                      className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                    >
-                      <Trash2 data-icon="inline-start" />
-                      Delete
-                    </Button>
+                    <div className="flex justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setResetTarget(u)}
+                      >
+                        <KeyRound data-icon="inline-start" /> Reset password
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setDeleteError("");
+                          setPendingDelete(u);
+                        }}
+                        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        <Trash2 data-icon="inline-start" />
+                        Delete
+                      </Button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -189,6 +201,13 @@ export function UsersPanel({ currentUserId }: { currentUserId: string }) {
         onOpenChange={setAddOpen}
         onCreated={invalidateUsers}
       />
+      {resetTarget && (
+        <ResetPasswordDialog
+          key={resetTarget.id}
+          target={resetTarget}
+          onClose={() => setResetTarget(null)}
+        />
+      )}
 
       <AlertDialog.Root
         open={pendingRoleChange !== null}

@@ -16,6 +16,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,6 +72,28 @@ export function LoginForm() {
       <Button type="submit" disabled={submitting} className="w-full">
         {submitting ? "Signing in…" : "Sign in"}
       </Button>
+      <Button
+        type="button"
+        variant="link"
+        className="w-full"
+        aria-expanded={showRecovery}
+        aria-controls="password-recovery-help"
+        onClick={() => setShowRecovery((shown) => !shown)}
+      >
+        Forgot password?
+      </Button>
+      {showRecovery && (
+        <div id="password-recovery-help" className="space-y-2 text-sm text-muted-foreground">
+          <p>
+            Contact your server administrator to reset your password. Another
+            administrator can also help if you are an admin.
+          </p>
+          <p>
+            If all administrators are locked out, the server owner can run{" "}
+            <code>overtchat reset-password</code> on the server.
+          </p>
+        </div>
+      )}
     </form>
   );
 }

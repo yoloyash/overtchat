@@ -13,6 +13,7 @@ import {
 import { setup } from "./setup.js";
 import { status } from "./status.js";
 import { update } from "./update.js";
+import { resetPassword } from "./reset-password.js";
 
 const commands: Record<
   string,
@@ -47,6 +48,12 @@ const commands: Record<
     description:
       "Show Docker service logs (all by default), or connector/native speech logs. Services: app, redis, search, tts, stt, voice, connector, speech, install. Default: last 100 lines.",
     flags: ["--follow", "-f", "--tail"],
+  },
+  "reset-password": {
+    usage: "reset-password",
+    description:
+      "Recover a user's or administrator's password on this managed installation. Prompts securely and signs out all of the account's sessions. Requires an interactive terminal and a running app.",
+    flags: [],
   },
 };
 export function usage(command?: string): string {
@@ -131,6 +138,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   }
   const json = flags.has("--json");
   switch (command) {
+    case "reset-password":
+      await resetPassword();
+      return;
     case "setup": return withInstallationLog("setup", async () => {
       const options = {
         dryRun: flags.has("--dry-run"),
