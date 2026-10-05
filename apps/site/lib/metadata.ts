@@ -5,7 +5,7 @@ export const SITE_NAME = "overtchat";
 export const DEFAULT_SITE_TITLE =
   "overtchat — your AI chat, actually yours";
 export const DEFAULT_SITE_DESCRIPTION =
-  "A polished, privacy-first Open WebUI alternative for local and hosted models, with multi-user accounts, realtime local voice, files, search, memory, and mobile.";
+  "A polished, privacy-first Open WebUI alternative for local and hosted models, with multi-user accounts, realtime local voice, files, search, memory, and desktop and mobile apps.";
 
 export function createPageMetadata({
   title,

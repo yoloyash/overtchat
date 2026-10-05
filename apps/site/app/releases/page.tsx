@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { GitHubIcon } from "@/components/GitHubIcon";
 import { ReleaseCard } from "@/components/ReleaseCard";
 import { ReleaseFilter } from "@/components/ReleaseFilter";
 import { createPageMetadata } from "@/lib/metadata";
 import { fetchGithubReleases } from "@/lib/releases.server";
+
+export const dynamic = "force-static";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Releases",
@@ -30,6 +33,9 @@ export default async function ReleasesPage() {
             Follow OvertChat as it gets faster, more capable, and easier to run.
             Every stable web, mobile, and desktop release lands here directly from GitHub.
           </p>
+          <Link className="text-link" href="/downloads/">
+            Choose a download for your device
+          </Link>
           <a
             className="text-link"
             href="https://github.com/yoloyash/overtchat/releases"

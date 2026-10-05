@@ -16,6 +16,7 @@ import {
   MemoryStick,
   MessageSquareText,
   Mic2,
+  Monitor,
   Search,
   Server,
   ShieldCheck,
@@ -25,10 +26,11 @@ import {
   WandSparkles,
 } from "lucide-react";
 import Link from "next/link";
-import { CopyButton } from "@/components/CopyButton";
+import { InstallCommand } from "@/components/InstallCommand";
 import { GitHubIcon } from "@/components/GitHubIcon";
 import { HeroVignette } from "@/components/HeroVignette";
 import { SectionRail } from "@/components/SectionRail";
+import { APP_STORE_URL, GOOGLE_PLAY_URL } from "@/lib/downloads";
 import { HOME_SECTION_IDS } from "@/lib/home-sections";
 import {
   createPageMetadata,
@@ -42,8 +44,6 @@ export const metadata: Metadata = createPageMetadata({
   path: "/",
   absoluteTitle: true,
 });
-
-const quickStart = "curl -fsSL https://overtchat.com/install | sh";
 
 const steps: Array<{
   number: string;
@@ -63,7 +63,7 @@ const steps: Array<{
   {
     number: "03",
     title: "Let them just chat",
-    body: "They sign in from the web, Android, or iOS app. Nobody else needs an inference URL, a shared API key, or a lesson in your model stack.",
+    body: "They sign in from the web, desktop, Android, or iOS app. Nobody else needs an inference URL, a shared API key, or a lesson in your model stack.",
   },
 ];
 
@@ -154,10 +154,10 @@ export default function HomePage() {
               <GitHubIcon aria-hidden="true" />
               View on GitHub
             </a>
-            <a className="button" href={`#${HOME_SECTION_IDS.quickStart}`}>
-              Quick start
+            <Link className="button" href="/setup/">
+              Set up a server
               <ArrowRight aria-hidden="true" />
-            </a>
+            </Link>
           </div>
           <div className="hero-facts" aria-label="Project highlights">
             <span><ShieldCheck aria-hidden="true" /> No OvertChat cloud</span>
@@ -355,7 +355,7 @@ export default function HomePage() {
             <div className="architecture-diagram" aria-hidden="true">
               <div className="architecture-node architecture-client">
                 <Globe2 />
-                <span>Web + mobile</span>
+                <span>Web + desktop + mobile</span>
               </div>
               <div className="architecture-line" />
               <div className="architecture-node architecture-core">
@@ -381,18 +381,18 @@ export default function HomePage() {
         id={HOME_SECTION_IDS.clients}
       >
         <div className="client-card client-card-web">
-          <span className="client-icon"><Globe2 aria-hidden="true" /></span>
+          <span className="client-icon"><Monitor aria-hidden="true" /></span>
           <div className="client-card-body">
-            <p className="eyebrow">Wherever there’s a browser</p>
+            <p className="eyebrow">At your desk</p>
             <h2>Open it. Pick up where you left off.</h2>
             <p>
-              Long conversations stay responsive, active replies survive a
-              disconnect, and every project, file, search, memory, and model is
-              waiting on the server.
+              Use OvertChat in your browser or download the app for macOS or
+              Linux. Connect to your existing server and pick up the same chats,
+              projects, and files.
             </p>
-            <a href="https://github.com/yoloyash/overtchat#quick-start" className="text-link">
-              Self-host the web app <ArrowRight aria-hidden="true" />
-            </a>
+            <Link href="/downloads/" className="text-link">
+              Download for macOS or Linux <ArrowRight aria-hidden="true" />
+            </Link>
           </div>
         </div>
         <div className="client-card client-card-mobile">
@@ -407,13 +407,13 @@ export default function HomePage() {
             </p>
             <div className="store-links">
               <a
-                href="https://play.google.com/store/apps/details?id=com.overtchat.mobile"
+                href={GOOGLE_PLAY_URL}
                 className="text-link"
               >
                 Get it on Google Play <ArrowRight aria-hidden="true" />
               </a>
               <a
-                href="https://apps.apple.com/us/app/overtchat/id6812165221"
+                href={APP_STORE_URL}
                 className="text-link"
               >
                 Get it on the App Store <ArrowRight aria-hidden="true" />
@@ -428,7 +428,7 @@ export default function HomePage() {
         id={HOME_SECTION_IDS.quickStart}
       >
         <div className="quick-start-copy">
-          <p className="eyebrow">Your turn</p>
+          <p className="eyebrow">Set up a server</p>
           <h2 className="section-title">One command between here and yours.</h2>
           <p className="section-lede">
             The guided setup handles Docker, secrets, updates, and optional
@@ -436,25 +436,13 @@ export default function HomePage() {
             first account becomes the administrator.
           </p>
           <div className="button-row">
-            <a
-              className="button"
-              href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md"
-            >
-              Full deployment guide
+            <Link className="button" href="/setup/">
+              Follow the setup guide
               <ArrowRight aria-hidden="true" />
-            </a>
+            </Link>
           </div>
         </div>
-        <div className="code-window">
-          <div className="code-window-header">
-            <div className="window-dots" aria-hidden="true"><span /><span /><span /></div>
-            <span>terminal</span>
-            <CopyButton value={quickStart} />
-          </div>
-          <pre tabIndex={0} aria-label="Quick start commands">
-            <code>{quickStart}</code>
-          </pre>
-        </div>
+        <InstallCommand />
       </section>
 
       <section
@@ -467,7 +455,7 @@ export default function HomePage() {
         </div>
         <div className="release-cta-copy">
           <p className="section-lede">
-            Follow every stable web and mobile release in one chronological log,
+            Follow every stable web, desktop, and mobile release in one chronological log,
             generated directly from the project’s GitHub Releases.
           </p>
           <Link className="button button-primary" href="/releases/">

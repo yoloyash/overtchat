@@ -9,6 +9,8 @@ export function SiteFooter() {
           <p>Your AI chat, running on your side of the internet.</p>
         </div>
         <nav className="footer-links" aria-label="Footer navigation">
+          <Link href="/downloads/">Downloads</Link>
+          <Link href="/setup/">Set up a server</Link>
           <Link href="/releases/">Releases</Link>
           <Link href="/privacy/">Privacy</Link>
           <a href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md">
