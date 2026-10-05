@@ -261,6 +261,41 @@ npm run test -w apps/desktop --
 npm run build -w apps/desktop --
 ```
 
+The connect screen discovers local servers in the background at ports 4718
+and 4717, plus the app port in the manager's public installation state. Custom
+manager locations follow `OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_HOME`; discovery
+never reads `stack.env`. Custom source-development ports still require manual
+entry. Check that discovery preserves typed input, Connect selects a server,
+Check again finds a newly started server, and relaunch keeps the saved server.
+
+A packaged Linux regression uses a disposable API fixture, manager state, and
+application profile to exercise discovery, explicit selection, saved-server
+restoration, compatibility failures, and retry through real preload IPC:
+
+```sh
+xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop/release/linux-unpacked/overtchat-desktop
+```
+
+Build/package first using the Linux instructions below. The same sandbox and
+runtime prerequisites as the packaged Linux smoke test apply. Set
+`DESKTOP_SMOKE_ARTIFACT_DIR` to save a connection-screen screenshot. Optionally
+set `DESKTOP_DISCOVERY_LIVE_ORIGIN=http://localhost:4717` while a compatible
+source server is running to also select it and verify its login/setup screen;
+this does not create an account or sign in.
+
+On macOS, the same regression can run the compiled desktop from source with
+Playwright's Electron launcher. It sets an isolated application-data directory
+before loading main, so it can run alongside an installed app without changing
+its profile. This also checks recovery from a rejected connection IPC call:
+
+```sh
+npm run build -w apps/desktop --
+node .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop --source
+```
+
+This exercises the compiled main, preload and renderer on macOS; signed bundle,
+Keychain persistence and updater qualification remain release checks.
+
 `npm run start -w apps/desktop --` runs the production build. Check connecting
 (including an outdated server and a wrong address), signing in and out, chat
 streaming, uploaded images, the menu commands, Change Server, zoom, fullscreen,
