@@ -97,3 +97,20 @@ jobs:
             test ! -e /app/apps/web/data
             test ! -e /app/apps/web/scripts
           '
+
+  voice:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Build pinned voice engine
+        run: docker build --tag overtchat-voice-test voice
+      - name: Test connection isolation against the engine
+        run: >-
+          docker run --rm --entrypoint python
+          -v "$GITHUB_WORKSPACE/voice:/tests:ro" -w /tests
+          overtchat-voice-test -B -m unittest discover -s /tests -p 'test_*.py'

@@ -217,6 +217,8 @@ export async function POST(request: Request) {
     toolChoice: Object.keys(tools).length ? "auto" : undefined,
     providerOptions: configured.providerOptions,
     abortSignal: request.signal,
+    // The SDK's default error handler logs provider bodies and request context.
+    onError: () => console.warn("Voice model generation failed"),
     ...(typeof body.max_tokens === "number" && body.max_tokens > 0
       ? { maxOutputTokens: Math.floor(body.max_tokens) }
       : {}),
@@ -291,9 +293,8 @@ export async function POST(request: Request) {
         );
         controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
         controller.close();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Model request failed.";
-        controller.enqueue(sse({ error: { message, type: "voice_model_error" } }));
+      } catch {
+        controller.enqueue(sse({ error: { message: "Model request failed.", type: "voice_model_error" } }));
         controller.close();
       }
     },

@@ -8,10 +8,28 @@ import hmac
 import json
 import logging
 import time
+from contextvars import ContextVar
+from copy import copy
+from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 API_KEY_PROTOCOL_PREFIX = "openai-insecure-api-key."
+
+
+@dataclass(frozen=True)
+class VoiceConnection:
+    ticket: str
+
+
+_connection: ContextVar[VoiceConnection | None] = ContextVar("voice_connection", default=None)
+
+
+def _voice_connection(runtime_config: Any) -> VoiceConnection:
+    connection = getattr(runtime_config, "_overtchat_connection", None)
+    if not isinstance(connection, VoiceConnection):
+        raise RuntimeError("Voice request has no authenticated connection")
+    return connection
 
 
 class _SessionModelFilter(logging.Filter):
@@ -81,6 +99,14 @@ class VoiceTicketMiddleware:
                     }
                 )
                 return
+            connection = VoiceConnection(ticket)
+            context_token = _connection.set(connection)
+
+            try:
+                await self.app(scope, receive, send)
+            finally:
+                _connection.reset(context_token)
+            return
         await self.app(scope, receive, send)
 
 
@@ -90,9 +116,12 @@ def install_runtime_hooks(secret: str) -> None:
         BaseOpenAICompatibleHandler,
     )
     from speech_to_speech.api.openai_realtime import server as server_module
+    from speech_to_speech.api.openai_realtime.service import RealtimeService
 
     original_create_app = server_module.create_app
     original_process = BaseOpenAICompatibleHandler.process
+    original_register = RealtimeService.register
+    original_update = RealtimeService.handle_session_update
     logging.getLogger(
         "speech_to_speech.api.openai_realtime.handlers.session"
     ).addFilter(_SessionModelFilter())
@@ -101,11 +130,31 @@ def install_runtime_hooks(secret: str) -> None:
         return VoiceTicketMiddleware(original_create_app(*args, **kwargs), secret)
 
     def process_with_session_model(self: Any, request: Any):
-        session = request.runtime_config.session
-        model = getattr(session, "model", None)
-        if isinstance(model, str) and model and model != "overtchat":
-            self.model_name = model
-        yield from original_process(self, request)
+        # The handler is pooled, and speculative provider workers can outlive a
+        # request. Give each invocation its own model field; never mutate the
+        # pooled handler or derive authorization from browser session config.
+        handler = copy(self)
+        handler.model_name = _voice_connection(request.runtime_config).ticket
+        yield from original_process(handler, request)
+
+    def register_authenticated_session(self: Any) -> str:
+        connection = _connection.get()
+        if connection is None:
+            raise RuntimeError("Voice session has no authenticated connection")
+        conn_id = original_register(self)
+        config = self._state(conn_id).runtime_config
+        object.__setattr__(config, "_overtchat_connection", connection)
+        config.session.model = connection.ticket
+        return conn_id
+
+    def update_authenticated_session(self: Any, conn_id: str, event: Any):
+        connection = _voice_connection(self._state(conn_id).runtime_config)
+        model = getattr(event.session, "model", None)
+        if model is not None and model != connection.ticket:
+            return self.make_error("The voice session model cannot be changed.", "invalid_session_model")
+        return original_update(self, conn_id, event)
 
     server_module.create_app = create_authenticated_app
     BaseOpenAICompatibleHandler.process = process_with_session_model
+    RealtimeService.register = register_authenticated_session
+    RealtimeService.handle_session_update = update_authenticated_session

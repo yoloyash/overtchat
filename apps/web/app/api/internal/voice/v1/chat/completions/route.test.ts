@@ -93,6 +93,28 @@ describe("voice Chat Completions bridge", () => {
       .toBe(401);
   });
 
+  it("does not expose provider request details in stream failures or SDK logs", async () => {
+    mocks.streamText.mockReturnValue({
+      fullStream: (async function* () {
+        yield { type: "error", error: new Error("private provider body and transcript") };
+      })(),
+    });
+    const response = await POST(new Request("http://app.test", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "signed-ticket", messages: [{ role: "user", content: "Hello" }] }),
+    }));
+    const body = await response.text();
+    expect(body).toContain("Model request failed.");
+    expect(body).not.toContain("private provider");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      mocks.streamText.mock.calls[0][0].onError({ error: new Error("private provider body") });
+      expect(warn).toHaveBeenCalledExactlyOnceWith("Voice model generation failed");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("streams OpenAI-compatible chunks from the selected OvertChat model", async () => {
     const response = await POST(
       new Request("http://app.test", {

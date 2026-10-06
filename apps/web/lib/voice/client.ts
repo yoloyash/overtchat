@@ -47,6 +47,7 @@ export interface VoiceClientCallbacks {
   onInputLevel: (level: number) => void;
   onOutputLevel: (level: number) => void;
   onError: (error: Error) => void;
+  onWarning?: (message: string | null) => void;
   onToolActivity: (activity: VoiceToolActivityUpdate) => void;
   onHistoryItems?: (items: VoiceHistoryItem[]) => void;
 }
@@ -199,7 +200,8 @@ export class OvertChatVoiceClient {
   private currentUserItem = "";
   private userText = new Map<string, string>();
   private assistantText = new Map<string, string>();
-  private syncedHistory = new Map<string, string>();
+  // Notification deduplication only. HistorySync separately tracks server ACKs.
+  private emittedHistory = new Map<string, string>();
 
   constructor(grant: VoiceSessionGrant, callbacks: VoiceClientCallbacks) {
     this.grant = grant;
@@ -256,6 +258,7 @@ export class OvertChatVoiceClient {
     this.transport.on("connection_change", (status) => {
       if (status === "disconnected" && !this.closing) {
         this.callbacks.onError(new Error("The voice connection closed unexpectedly."));
+        void this.close();
       }
     });
     this.session.on("audio", (event) => this.onAudio(event.data));
@@ -263,8 +266,9 @@ export class OvertChatVoiceClient {
     this.session.on("history_updated", (history) => {
       this.emitHistoryItems(completedVoiceHistory(history));
     });
-    this.session.on("error", (event) => {
-      console.warn("Recoverable voice session event", event.error);
+    this.session.on("error", () => {
+      // Provider error payloads can contain request bodies or credentials.
+      this.callbacks.onWarning?.("The voice response failed. Please try speaking again.");
     });
 
     await this.session.connect({
@@ -296,6 +300,7 @@ export class OvertChatVoiceClient {
   sendMessage(text: string): void {
     const value = text.trim();
     if (!value || !this.session) return;
+    this.callbacks.onWarning?.(null);
     this.session.sendMessage(value);
   }
 
@@ -419,6 +424,7 @@ export class OvertChatVoiceClient {
   private onTransportEvent(event: TransportEvent): void {
     switch (event.type) {
       case "input_audio_buffer.speech_started": {
+        this.callbacks.onWarning?.(null);
         this.clearPlayback();
         this.currentUserItem = typeof event.item_id === "string" ? event.item_id : "";
         this.callbacks.onStatus("user-speaking");
@@ -426,6 +432,11 @@ export class OvertChatVoiceClient {
       }
       case "input_audio_buffer.speech_stopped":
         this.callbacks.onStatus("thinking");
+        break;
+      case "conversation.item.input_audio_transcription.failed":
+        if (typeof event.item_id === "string") this.userText.delete(event.item_id);
+        this.callbacks.onWarning?.("Your speech could not be transcribed. Please try speaking again.");
+        this.callbacks.onStatus("listening");
         break;
       case "conversation.item.input_audio_transcription.delta": {
         const id = typeof event.item_id === "string" ? event.item_id : this.currentUserItem;
@@ -502,6 +513,9 @@ export class OvertChatVoiceClient {
         break;
       }
       case "response.done":
+        if (event.response?.status === "failed") {
+          this.callbacks.onWarning?.("The voice response failed. Please try speaking again.");
+        }
         this.callbacks.onStatus("listening");
         break;
     }
@@ -510,8 +524,8 @@ export class OvertChatVoiceClient {
   private emitHistoryItems(items: VoiceHistoryItem[]): void {
     const changed = items.filter((item) => {
       const serialized = historyFingerprint(item);
-      if (this.syncedHistory.get(item.id) === serialized) return false;
-      this.syncedHistory.set(item.id, serialized);
+      if (this.emittedHistory.get(item.id) === serialized) return false;
+      this.emittedHistory.set(item.id, serialized);
       return true;
     });
     if (changed.length) this.callbacks.onHistoryItems?.(changed);
