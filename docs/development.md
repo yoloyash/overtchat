@@ -60,6 +60,19 @@ The Validate workflow regenerates the lockfile with the pinned npm and fails if
 it changes. `npm ci` alone does not detect all dependency-flag drift. Run
 `npm ci`, `npm run deps:check`, and the affected workspace checks after regeneration.
 
+KaTeX is temporarily pinned to 0.18.2 in the web workspace and root npm
+override. The published Streamdown math, rehype-katex, Mermaid, and micromark
+math packages still declare 0.16 ranges, which retain the trust-restriction
+security vulnerability fixed in 0.18.2. The override aligns their renderer with
+the imported stylesheet; mixing 0.16 markup with 0.18 CSS breaks equation
+layout. Keep both pins aligned, and remove the override once upstream ranges
+support the patched version. Validate changes with:
+
+```sh
+npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
+E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
+```
+
 ## Connector journal validation
 
 Persistence changes must preserve journal-before-ack ordering, command receipts,
