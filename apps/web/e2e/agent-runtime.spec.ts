@@ -1060,9 +1060,9 @@ test("shows durable turn activity without changing completed tool status", async
     });
   }, snapshot);
 
-  const sessionActivity = page.getByRole("status", {
-    name: "Runtime activity is working",
-  });
+  const sessionActivity = page
+    .getByRole("list", { name: "Agent workspaces", exact: true })
+    .getByRole("status", { name: "Runtime activity is working" });
   await expect(sessionActivity).toBeVisible();
   const agentHeader = page.getByTestId("agent-session-header");
   const agentComposer = page.getByTestId("agent-composer");
@@ -1401,7 +1401,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   await page.getByRole("button", { name: "Collapse Runtime test" }).click();
   const workspaceActivity = page.getByRole("status", {
-    name: "Runtime test has running sessions",
+    name: "1 running chat in Runtime test",
   });
   await expect(workspaceActivity).toBeVisible();
   const [activityBox, newSessionBox] = await Promise.all([

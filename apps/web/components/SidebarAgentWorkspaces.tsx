@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { DragDropProvider } from "@dnd-kit/react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import { move } from "@dnd-kit/helpers";
@@ -10,10 +10,11 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronUp,
-  Folder,
+  FileDiff,
   GitBranch,
   GripVertical,
   Loader2,
+  Monitor,
   Plus,
   Wifi,
   Trash2,
@@ -58,6 +59,8 @@ import {
 } from "@/lib/agents/workspaceOrder";
 
 const DEFAULT_WORKSPACE_ORDER: string[] = [];
+const DEFAULT_EXPANSION: Record<string, boolean> = {};
+const RECENT_CHAT_COUNT = 5;
 
 export function SidebarAgentWorkspaces({
   connections,
@@ -115,17 +118,125 @@ export function SidebarAgentWorkspaces({
     agentWorkspaceOrderStorageKey(session?.user.id ?? "", getApiOrigin()),
     DEFAULT_WORKSPACE_ORDER,
   );
+  const [savedExpansion, setSavedExpansion] = useLocalStorage<unknown>(
+    `overtchat_agent_workspace_expansion:${JSON.stringify([getApiOrigin(), session?.user.id ?? ""])}`,
+    DEFAULT_EXPANSION,
+  );
+  const expansion =
+    savedExpansion &&
+    typeof savedExpansion === "object" &&
+    !Array.isArray(savedExpansion)
+      ? (savedExpansion as Record<string, unknown>)
+      : DEFAULT_EXPANSION;
+  function setExpanded(key: string, open: boolean) {
+    setSavedExpansion({ ...expansion, [key]: open });
+  }
+  const [recentCollapsed, setRecentCollapsed] = useLocalStorage<unknown>(
+    `overtchat_agent_recent_collapsed:${JSON.stringify([getApiOrigin(), session?.user.id ?? ""])}`,
+    false,
+  );
+  const recentListId = useId();
   const orderedGroups = useMemo(
     () => orderAgentWorkspaces(groupAgentWorkspaces(connections), savedOrder),
     [connections, savedOrder],
   );
+  const revealedChatRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session?.user.id) return;
+    const activeGroup = orderedGroups.find((group) =>
+      group.sessions.some(
+        ({ session }) => location.pathname === `/agents/${session.id}`,
+      ),
+    );
+    if (!activeGroup) {
+      revealedChatRef.current = null;
+      return;
+    }
+    const revealKey = JSON.stringify([
+      session.user.id,
+      location.pathname,
+      activeGroup.key,
+    ]);
+    // Reveal on navigation or initial discovery, without undoing a later
+    // manual collapse when the connection list refetches.
+    if (revealedChatRef.current === revealKey) return;
+    revealedChatRef.current = revealKey;
+    if (expansion[activeGroup.key] !== true) {
+      setSavedExpansion({ ...expansion, [activeGroup.key]: true });
+    }
+  }, [
+    location.pathname,
+    orderedGroups,
+    session?.user.id,
+    expansion,
+    setSavedExpansion,
+  ]);
   // Keep refetches from replacing sortable nodes while dnd-kit moves their DOM.
   const [dragGroups, setDragGroups] = useState<AgentWorkspaceGroup[] | null>(
     null,
   );
   const groups = dragGroups ?? orderedGroups;
+  const recentSessions = useMemo(
+    () =>
+      orderedGroups
+        .flatMap((group) =>
+          group.sessions
+            .filter(
+              (item) => !providerFilter || item.provider === providerFilter,
+            )
+            .map((item) => ({ item, group })),
+        )
+        .sort(
+          (left, right) =>
+            (right.item.session.modifiedAt ??
+              right.item.session.createdAt ??
+              0) -
+            (left.item.session.modifiedAt ?? left.item.session.createdAt ?? 0),
+        )
+        .slice(0, RECENT_CHAT_COUNT),
+    [orderedGroups, providerFilter],
+  );
   return (
     <>
+      {recentSessions.length > 0 && !organizing && (
+        <div className="mb-2 border-b border-sidebar-border pb-2">
+          <button
+            type="button"
+            aria-expanded={recentCollapsed !== true}
+            aria-controls={recentListId}
+            title="Most recently updated chats across your workspaces"
+            onClick={() => setRecentCollapsed(recentCollapsed !== true)}
+            className="flex min-h-7 w-full items-center gap-1.5 rounded-md px-1 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground max-md:min-h-11"
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3 shrink-0 motion-transform",
+                recentCollapsed !== true && "rotate-90",
+              )}
+            />
+            <span>Recent chats</span>
+          </button>
+          <ul
+            id={recentListId}
+            aria-label="Recent agent chats"
+            hidden={recentCollapsed === true}
+            className={cn(
+              "flex-col gap-0.5",
+              recentCollapsed === true ? "hidden" : "flex",
+            )}
+          >
+            {recentSessions.map(({ item, group }) => (
+              <SessionLink
+                key={item.session.id}
+                item={item}
+                context={`${group.name} · ${workspaceHostLabel(group)}`}
+                onNavigate={() => setExpanded(group.key, true)}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
       <DragDropProvider
         onDragStart={() => setDragGroups(orderedGroups)}
         onDragEnd={(event) => {
@@ -148,6 +259,12 @@ export function SidebarAgentWorkspaces({
               index={index}
               sortable={organizing && groups.length > 1 && Boolean(session)}
               organizing={organizing}
+              expanded={
+                typeof expansion[group.key] === "boolean"
+                  ? (expansion[group.key] as boolean)
+                  : undefined
+              }
+              onExpandedChange={(next) => setExpanded(group.key, next)}
               onRemove={() => {
                 setRemovalError("");
                 setPendingRemoval(group);
@@ -227,6 +344,8 @@ function WorkspaceNode({
   index,
   sortable,
   organizing,
+  expanded,
+  onExpandedChange,
   onRemove,
   providerFilter,
 }: {
@@ -234,6 +353,8 @@ function WorkspaceNode({
   index: number;
   sortable: boolean;
   organizing: boolean;
+  expanded: boolean | undefined;
+  onExpandedChange: (open: boolean) => void;
   onRemove: () => void;
   providerFilter: AgentProviderId | null;
 }) {
@@ -249,7 +370,8 @@ function WorkspaceNode({
   const hasActiveSession = group.sessions.some(
     ({ session }) => pathname === `/agents/${session.id}`,
   );
-  const [open, setOpen] = useState(hasActiveSession);
+  const open = expanded ?? hasActiveSession;
+  const sessionListId = useId();
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
   const hasRunningSession = group.sessions.some(({ session }) =>
     agentSessionIsRunning(session),
@@ -260,7 +382,6 @@ function WorkspaceNode({
     agentConnectionTarget(representativeTarget.connection),
   );
   const gitStatus = useAgentWorkspaceGitStatus(representativeWorkspace.id, {
-    enabled: open || hasActiveSession,
     active: hasActiveSession,
     running: hasRunningSession,
   }).data;
@@ -270,6 +391,9 @@ function WorkspaceNode({
   const filteredSessions = providerFilter
     ? group.sessions.filter(({ provider }) => provider === providerFilter)
     : group.sessions;
+  const runningCount = filteredSessions.filter(({ session }) =>
+    agentSessionIsRunning(session),
+  ).length;
   const visibleSessionItems = visibleAgentSessions(
     filteredSessions.map(({ session }) => session),
     sessionsExpanded,
@@ -297,7 +421,7 @@ function WorkspaceNode({
       setCreateOpen(true);
       return;
     }
-    setOpen(true);
+    onExpandedChange(true);
     closeMobile();
     void navigate({
       to: "/agents/new",
@@ -314,41 +438,74 @@ function WorkspaceNode({
           "relative z-10 rounded-md bg-sidebar shadow-md",
       )}
     >
-      <div className="group flex min-w-0 rounded-md motion-colors hover:bg-sidebar-accent">
+      <div
+        className={cn(
+          "group relative flex min-w-0 rounded-md motion-colors hover:bg-sidebar-accent",
+          hasActiveSession && "bg-sidebar-accent/60",
+        )}
+      >
         <button
           type="button"
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => onExpandedChange(!open)}
           aria-label={open ? `Collapse ${group.name}` : `Expand ${group.name}`}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-1.5 rounded-l-md px-1 py-1 text-left text-sm"
-          title={group.path}
+          aria-expanded={open}
+          aria-controls={sessionListId}
+          className={cn(
+            "flex min-h-10 min-w-0 flex-1 items-start gap-1.5 rounded-md px-1 py-0.5 text-left text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11",
+            organizing ? "pr-0" : "pr-7 max-md:pr-11",
+          )}
+          title={`${group.path} · ${workspaceHostLabel(group)}`}
         >
           <ChevronRight
+            aria-hidden="true"
             className={cn(
-              "size-3.5 shrink-0 text-muted-foreground motion-transform",
+              "mt-1 size-3 shrink-0 text-muted-foreground motion-transform",
               open && "rotate-90",
             )}
           />
-          <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="flex min-h-8 min-w-0 flex-1 flex-col justify-center">
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate">{group.name}</span>
-              {!open && hasRunningSession && (
-                <RuntimeActivityIndicator
-                  active
-                  label={`${group.name} has running sessions`}
-                />
-              )}
-            </span>
-            <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
-              {group.host.transport === "ssh" && (
-                <span className="flex min-w-0 items-center gap-1">
-                  <Wifi className="size-3 shrink-0" />
-                  <span className="max-w-20 truncate">
-                    {group.host.sshAlias ?? group.host.name}
-                  </span>
+              <span className="min-w-0 flex-1 truncate font-medium leading-5">
+                {group.name}
+              </span>
+              {runningCount > 0 && (
+                <span
+                  role="status"
+                  aria-label={`${runningCount} running ${runningCount === 1 ? "chat" : "chats"} in ${group.name}`}
+                  className="flex shrink-0 items-center gap-1 text-[10px] text-primary"
+                >
+                  <Loader2
+                    aria-hidden="true"
+                    className={cn("size-3", motionClasses.spinner)}
+                  />
+                  <span className="tabular-nums">{runningCount}</span>
                 </span>
               )}
-              <WorkspaceGitMeta status={gitStatus} workspaceId={representativeWorkspace.id} />
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 text-[10px] leading-3 text-muted-foreground">
+              <span
+                className={cn(
+                  "flex min-w-0 items-center gap-1",
+                  gitStatus?.isGit && "max-w-[45%]",
+                )}
+                title={workspaceHostLabel(group)}
+              >
+                {group.host.transport === "ssh" ? (
+                  <Wifi aria-hidden="true" className="size-2.5 shrink-0" />
+                ) : (
+                  <Monitor aria-hidden="true" className="size-2.5 shrink-0" />
+                )}
+                <span className="truncate">{workspaceHostLabel(group)}</span>
+              </span>
+              {gitStatus?.isGit && (
+                <span aria-hidden="true" className="text-muted-foreground/50">
+                  ·
+                </span>
+              )}
+              <WorkspaceGitMeta
+                status={gitStatus}
+                workspaceId={representativeWorkspace.id}
+              />
             </span>
           </span>
         </button>
@@ -358,7 +515,7 @@ function WorkspaceNode({
             onClick={onRemove}
             aria-label={`Remove ${group.name}`}
             title={`Remove ${group.name}`}
-            className="flex min-h-11 w-9 shrink-0 items-center justify-center rounded-md text-muted-foreground motion-colors hover:bg-destructive/10 hover:text-destructive max-md:w-11"
+            className="flex min-h-10 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground motion-colors hover:bg-destructive/10 hover:text-destructive max-md:min-h-11 max-md:w-11"
           >
             <Trash2 aria-hidden="true" className="size-3.5" />
           </button>
@@ -374,7 +531,7 @@ function WorkspaceNode({
                 : "No agents are currently available on this machine"
             }
             className={cn(
-              "flex min-h-11 w-9 shrink-0 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
+              "absolute inset-y-0 right-0 flex w-7 items-center justify-center rounded-r-md text-muted-foreground motion-colors hover:text-foreground focus-visible:text-foreground max-md:w-11",
               motionClasses.hoverReveal,
             )}
           >
@@ -388,56 +545,65 @@ function WorkspaceNode({
           aria-label={`Reorder ${group.name}`}
           title="Drag to reorder"
           className={cn(
-            "flex min-h-11 w-9 shrink-0 touch-none cursor-grab items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40 max-md:w-11",
+            "flex min-h-10 w-7 shrink-0 touch-none cursor-grab items-center justify-center rounded-r-md text-muted-foreground hover:text-foreground active:cursor-grabbing disabled:cursor-default disabled:opacity-40 max-md:min-h-11 max-md:w-11",
             !organizing && "hidden",
           )}
         >
           <GripVertical aria-hidden="true" className="size-3.5" />
         </button>
       </div>
-      {open && (
-        <ul className="flex flex-col gap-0.5 pl-7">
-          {visibleSessions.map((item) => (
-            <SessionLink key={item.session.id} item={item} />
-          ))}
-          {filteredSessions.length === 0 && (
-            <li className="px-2 py-1.5 text-xs text-muted-foreground">
-              No{" "}
-              {providerFilter
-                ? agentProviderMetadata(providerFilter).label
-                : "agent"}{" "}
-              chats
-            </li>
-          )}
-          {filteredSessions.length > AGENT_SESSION_PREVIEW_COUNT &&
-            (sessionsExpanded || hiddenSessionCount > 0) && (
-              <li>
-                <button
-                  type="button"
-                  onClick={() => setSessionsExpanded((current) => !current)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-                >
-                  {sessionsExpanded ? (
-                    <ChevronUp className="size-3.5" />
-                  ) : (
-                    <ChevronDown className="size-3.5" />
-                  )}
-                  <span>
-                    {sessionsExpanded
-                      ? "Show less"
-                      : `Show ${hiddenSessionCount} more`}
-                  </span>
-                </button>
+      <ul
+        id={sessionListId}
+        hidden={!open}
+        className={cn(
+          "ml-2.5 flex-col gap-0.5 border-l border-sidebar-border pl-1.5",
+          open ? "flex" : "hidden",
+        )}
+      >
+        {open && (
+          <>
+            {visibleSessions.map((item) => (
+              <SessionLink key={item.session.id} item={item} />
+            ))}
+            {filteredSessions.length === 0 && (
+              <li className="px-2 py-1.5 text-xs text-muted-foreground">
+                No{" "}
+                {providerFilter
+                  ? agentProviderMetadata(providerFilter).label
+                  : "agent"}{" "}
+                chats
               </li>
             )}
-        </ul>
-      )}
+            {filteredSessions.length > AGENT_SESSION_PREVIEW_COUNT &&
+              (sessionsExpanded || hiddenSessionCount > 0) && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => setSessionsExpanded((current) => !current)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+                  >
+                    {sessionsExpanded ? (
+                      <ChevronUp className="size-3.5" />
+                    ) : (
+                      <ChevronDown className="size-3.5" />
+                    )}
+                    <span>
+                      {sessionsExpanded
+                        ? "Show less"
+                        : `Show ${hiddenSessionCount} more`}
+                    </span>
+                  </button>
+                </li>
+              )}
+          </>
+        )}
+      </ul>
       {sessionTargets.length > 1 && (
         <NewAgentSessionDialog
           open={createOpen}
           onOpenChange={(next) => {
             setCreateOpen(next);
-            if (!next) setOpen(true);
+            if (!next) onExpandedChange(true);
           }}
           targets={sessionTargets}
           machineLabel={
@@ -473,26 +639,39 @@ function WorkspaceGitMeta({
   return (
     <span
       data-testid={`sidebar-workspace-git-status-${workspaceId}`}
-      className="flex min-w-0 flex-1 items-center gap-1 text-[10px] tracking-tight"
+      className="flex min-w-0 flex-1 items-center gap-1 text-[10px]"
       title={detail}
     >
       <span className="flex min-w-0 flex-1 items-center gap-1">
-        <GitBranch className="size-3 shrink-0" />
-        <span className="truncate">
-          {status.branch ?? "Detached HEAD"}
-        </span>
+        <GitBranch aria-hidden="true" className="size-2.5 shrink-0" />
+        <span className="truncate">{status.branch ?? "Detached HEAD"}</span>
       </span>
       {status.dirty && (
         <span
-          className="size-1.5 shrink-0 rounded-full bg-amber-500"
+          className="flex shrink-0 items-center gap-0.5 tabular-nums text-amber-500"
           aria-label={`${status.changedFiles} changed file${status.changedFiles === 1 ? "" : "s"}`}
-        />
+        >
+          <FileDiff aria-hidden="true" className="size-2.5" />
+          {status.changedFiles}
+        </span>
       )}
     </span>
   );
 }
 
-function SessionLink({ item }: { item: AgentWorkspaceSession }) {
+function workspaceHostLabel(group: AgentWorkspaceGroup) {
+  return group.host.sshAlias || group.host.name || "This server";
+}
+
+function SessionLink({
+  item,
+  context,
+  onNavigate,
+}: {
+  item: AgentWorkspaceSession;
+  context?: string;
+  onNavigate?: () => void;
+}) {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { closeMobile } = useSidebar();
   const { session, provider } = item;
@@ -502,16 +681,35 @@ function SessionLink({ item }: { item: AgentWorkspaceSession }) {
       <Link
         to="/agents/$id"
         params={{ id: session.id }}
-        onClick={closeMobile}
-        title={`${title} · ${agentProviderMetadata(provider).label}`}
+        onClick={() => {
+          onNavigate?.();
+          closeMobile();
+        }}
+        aria-current={pathname === `/agents/${session.id}` ? "page" : undefined}
+        title={`${title} · ${agentProviderMetadata(provider).label}${context ? ` · ${context}` : ""}`}
         className={cn(
-          "flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
+          "flex min-h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-xs text-muted-foreground outline-none motion-colors hover:bg-sidebar-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:min-h-11",
+          context && "min-h-10",
           pathname === `/agents/${session.id}` &&
             "bg-sidebar-accent text-foreground",
         )}
       >
         <ProviderLogo provider={provider} />
-        <span className="min-w-0 flex-1 truncate">{title}</span>
+        <span className="min-w-0 flex-1">
+          <span
+            className={cn(
+              "block truncate leading-4",
+              context && "text-sidebar-foreground",
+            )}
+          >
+            {title}
+          </span>
+          {context && (
+            <span className="block truncate text-[10px] leading-3 text-muted-foreground">
+              {context}
+            </span>
+          )}
+        </span>
         <RuntimeActivityIndicator
           active={agentSessionIsRunning(session)}
           label={`${title} is working`}
@@ -545,6 +743,7 @@ function RuntimeActivityIndicator({
   label: string;
 }) {
   return (
+    // Keep a stable slot for working, attention, and other future chat states.
     <span className="flex size-4 shrink-0 items-center justify-center">
       {active && (
         <span
