@@ -372,6 +372,8 @@ node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/pub
 
 The tests cover compatibility, download/retry/restart state, separate desktop
 and server actions, final artifact hashes, and monotonic feed publication.
+Desktop unit tests also cover polling, focus/wake throttling, shutdown cleanup,
+and keeping update actions visible during metadata checks.
 Qualify real signed and Linux native updates using the release runbook.
 
 On a Mac, package a local application with:
