@@ -53,5 +53,8 @@
   },
   "dependencies": {
     "expo-crypto": "~56.0.3"
+  },
+  "overrides": {
+    "katex": "0.18.2"
   }
 }
