@@ -398,9 +398,12 @@ until you quit.
 ### Desktop updates
 
 Installed macOS, Linux AppImage, `.deb`, and `.rpm` builds check for desktop
-updates at startup and every four hours. Click the desktop download icon next
-to your sidebar profile to download in the background. It shows download
-progress, then an update-ready icon. Click it and choose **Update and restart**,
+updates at startup and every ten minutes. Returning to the app or waking the
+computer also checks, at most once per minute across those activity events.
+An available or downloaded update stays visible during background checks.
+Click the desktop download icon next to your sidebar profile to download in
+the background. It shows download progress, then an update-ready icon.
+Click it and choose **Update and restart**,
 or **Later** to keep chatting. Quitting normally does not install the update.
 Native **Check for Updates…**
 also works before sign-in. Linux package updates may prompt for administrator

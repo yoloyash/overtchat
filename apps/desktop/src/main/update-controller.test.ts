@@ -95,6 +95,47 @@ test("check and download failures remain recoverable", async () => {
   assert.equal(f.controller.getState().status, "ready");
 });
 
+test("refreshing metadata keeps an available or downloaded update visible", async () => {
+  for (const status of ["available", "ready"] as const) {
+    const f = fixture();
+    f.events.emit(status === "ready" ? "update-downloaded" : "update-available", { version: "0.1.1" });
+    const before = f.controller.getState();
+    let finishCheck!: () => void;
+    f.setCheck(() => new Promise((resolve) => {
+      f.events.emit("checking-for-update");
+      finishCheck = () => {
+        f.events.emit("update-available", { version: "0.1.1" });
+        resolve(null);
+      };
+    }));
+    const pending = f.controller.check();
+    assert.deepEqual(f.controller.getState(), before);
+    finishCheck();
+    assert.equal((await pending).status, status);
+    assert.equal(f.downloads(), 0);
+    assert.equal(f.installs(), 0);
+  }
+});
+
+test("a fresh check can replace or withdraw a previously available update", async () => {
+  const f = fixture();
+  f.events.emit("update-available", { version: "0.1.1" });
+  f.setCheck(async () => {
+    f.events.emit("checking-for-update");
+    f.events.emit("update-available", { version: "0.1.2" });
+    return null;
+  });
+  assert.equal((await f.controller.check()).availableVersion, "0.1.2");
+  f.setCheck(async () => {
+    f.events.emit("checking-for-update");
+    f.events.emit("update-not-available", { version: "0.1.0" });
+    return null;
+  });
+  const state = await f.controller.check();
+  assert.equal(state.status, "idle");
+  assert.equal(state.availableVersion, null);
+});
+
 test("a compatibility failure discards an earlier download and cannot download or restart", async () => {
   const f = fixture();
   f.events.emit("update-downloaded", { version: "0.1.1" });

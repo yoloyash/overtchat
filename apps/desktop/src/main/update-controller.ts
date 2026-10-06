@@ -40,7 +40,11 @@ export function createUpdateController(
   }
 
   if (!unsupported) {
-    port.on("checking-for-update", () => update({ status: "checking", message: null }));
+    port.on("checking-for-update", () => {
+      // Keep an actionable update visible while refreshing its metadata.
+      if (state.status === "available" || state.status === "ready") return;
+      update({ status: "checking", message: null });
+    });
     port.on("update-available", ({ version }) => {
       if (version === downloadedVersion) {
         update({ status: "ready", availableVersion: version, message: null });

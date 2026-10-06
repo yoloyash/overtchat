@@ -1,4 +1,4 @@
-import { app } from "electron";
+import { app, powerMonitor } from "electron";
 import { autoUpdater, DebUpdater, RpmUpdater } from "electron-updater";
 import { CLIENT_API_LEVEL } from "@overtchat/shared";
 import { IPC } from "../shared/ipc";
@@ -8,6 +8,7 @@ import { getServerOrigin } from "./settings";
 import { pingServer } from "./server";
 import { updateCompatibilityMessage } from "./update-policy";
 import { createUpdatePreview } from "./update-preview";
+import { startUpdateScheduler } from "./update-scheduler";
 
 const preview = !app.isPackaged && process.env.OVERTCHAT_DESKTOP_UPDATE_PREVIEW
   ? createUpdatePreview(app.getVersion(), process.env.OVERTCHAT_DESKTOP_UPDATE_PREVIEW) : null;
@@ -111,8 +112,9 @@ export function startUpdates(): void {
   autoUpdater.allowDowngrade = false;
   // Release downloads are immutable full archives; blockmaps are not published.
   autoUpdater.disableDifferentialDownload = true;
-  void checkDesktopUpdates();
-  const timer = setInterval(() => { void checkDesktopUpdates(); }, 4 * 60 * 60 * 1000);
-  timer.unref();
-  app.once("before-quit", () => clearInterval(timer));
+  startUpdateScheduler(() => {
+    void checkDesktopUpdates().catch((error) => {
+      console.error("Could not check for desktop updates", error);
+    });
+  }, app, powerMonitor);
 }
