@@ -25,6 +25,7 @@ import {
   type VoiceTranscriptUpdate,
 } from "@/lib/voice/client";
 import { apiUrl } from "@/lib/api-url";
+import { VoiceHistorySaveError, VoiceHistorySync } from "@/lib/voice/history-sync";
 
 export interface RealtimeVoiceSessionHandle {
   sendMessage: (text: string) => void;
@@ -110,7 +111,7 @@ export const RealtimeVoiceSession = forwardRef<
       onPersisted,
     };
   }, [onHistoryItems, onPersisted, onTranscript]);
-  const persistQueueRef = useRef(Promise.resolve());
+  const historySyncRef = useRef<VoiceHistorySync | null>(null);
   const [status, setStatus] = useState<VoiceClientStatus>("connecting");
   const [inputLevel, setInputLevel] = useState(0);
   const [outputLevel, setOutputLevel] = useState(0);
@@ -118,6 +119,7 @@ export const RealtimeVoiceSession = forwardRef<
   const [activity, setActivity] = useState<VoiceToolActivityUpdate | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saveWarning, setSaveWarning] = useState<string | null>(null);
+  const [turnWarning, setTurnWarning] = useState<string | null>(null);
 
   useImperativeHandle(ref, () => ({
     sendMessage(text) {
@@ -149,6 +151,28 @@ export const RealtimeVoiceSession = forwardRef<
         }
         if (!mounted) return;
 
+        const historySync = new VoiceHistorySync(async (items) => {
+          const syncResponse = await fetch(apiUrl("/api/voice/history"), {
+            method: "POST",
+            headers: {
+              "X-OvertChat-Voice-Ticket": grant.token,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ items }),
+            signal: AbortSignal.timeout(15_000),
+          });
+          if (!syncResponse.ok) {
+            throw new VoiceHistorySaveError(
+              syncResponse.status >= 500 || [408, 429].includes(syncResponse.status),
+            );
+          }
+          const body = await syncResponse.json() as { chat?: PersistedVoiceChat | null };
+          if (mounted && body.chat) callbacksRef.current.onPersisted(body.chat);
+        }, (message) => {
+          if (mounted) setSaveWarning(message);
+        });
+        historySyncRef.current = historySync;
+
         const client = new OvertChatVoiceClient(grant, {
           onStatus: (next) => mounted && setStatus(next),
           onTranscript: (update) => {
@@ -157,30 +181,13 @@ export const RealtimeVoiceSession = forwardRef<
           onInputLevel: (level) => mounted && setInputLevel(level),
           onOutputLevel: (level) => mounted && setOutputLevel(level),
           onError: (nextError) => mounted && setError(friendlyError(nextError)),
+          onWarning: (message) => mounted && setTurnWarning(message),
           onToolActivity: (nextActivity) => {
             if (mounted) setActivity(nextActivity);
           },
           onHistoryItems: (items) => {
-            callbacksRef.current.onHistoryItems(items);
-            persistQueueRef.current = persistQueueRef.current.then(async () => {
-              const syncResponse = await fetch(apiUrl("/api/voice/history"), {
-                method: "POST",
-                headers: {
-                  "X-OvertChat-Voice-Ticket": grant.token,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ items }),
-              });
-              const body = (await syncResponse.json().catch(() => null)) as
-                | { chat?: PersistedVoiceChat | null }
-                | null;
-              if (!syncResponse.ok) {
-                throw new Error(`Voice history could not be saved (${syncResponse.status}).`);
-              }
-              if (body?.chat) callbacksRef.current.onPersisted(body.chat);
-            }).catch((reason: unknown) => {
-              if (mounted) setSaveWarning(friendlyError(reason));
-            });
+            if (mounted) callbacksRef.current.onHistoryItems(items);
+            historySync.enqueue(items);
           },
         });
         clientRef.current = client;
@@ -196,6 +203,8 @@ export const RealtimeVoiceSession = forwardRef<
     void start();
     return () => {
       mounted = false;
+      // Pending, idempotent saves keep retrying after the audio session ends.
+      historySyncRef.current = null;
       const client = clientRef.current;
       clientRef.current = null;
       if (client) void client.close();
@@ -225,7 +234,14 @@ export const RealtimeVoiceSession = forwardRef<
                 : `${modelLabel} · ${muted ? "Microphone muted" : "Realtime voice"}`}
           </p>
           {saveWarning && (
-            <ErrorNotice className="mt-1" message={saveWarning} />
+            <ErrorNotice className="mt-1" message={saveWarning} actions={
+              <Button variant="outline" size="sm" onClick={() => historySyncRef.current?.retry()}>
+                Retry saving
+              </Button>
+            } />
+          )}
+          {turnWarning && (
+            <ErrorNotice className="mt-1" message={turnWarning} onDismiss={() => setTurnWarning(null)} />
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">

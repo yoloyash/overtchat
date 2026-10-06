@@ -487,6 +487,49 @@ images. Realtime orchestration remains in `voice/`.
 Build STT with `docker compose --profile stt build stt-cpu` or
 `docker compose --profile stt-gpu build stt-gpu`.
 
+### Realtime voice
+
+Voice authorization is bound to the authenticated socket, independently of the
+browser's model field and pooled handler state. Playback completion comes from
+the browser audio worklet. Interruptions truncate at rendered PCM time, including
+after the server has finished generating. The pinned engine has no word timing;
+an interrupted audio item's transcript is cleared from live model context and
+saved as `[Assistant interrupted]`, rather than guessing which words were heard.
+Failed transcript saves stay pending and retry with bounded exponential delay,
+including after End while the page remains open. Reloading the page discards
+unsaved in-memory retries. Non-retryable failures require Retry saving.
+
+Run the focused regressions and build the pinned engine image:
+
+```sh
+npm run test -w apps/web -- lib/voice lib/speech/proxy.test.ts app/api/voice app/api/internal/voice lib/db/voiceChats.test.ts
+docker compose -f voice/compose.test.yml build voice
+docker run --rm --entrypoint python -v "$PWD/voice:/tests:ro" -w /tests overtchat-voice:test -B -m unittest discover -s /tests -p 'test_*.py'
+```
+
+The opt-in browser integration test uses real CPU Parakeet and Kokoro, a
+controlled text provider, the app's real authorization/persistence routes, and
+Chromium audio playback. It uses the normal isolated E2E database and does not
+touch a managed installation. Start speech services first; the test starts the
+voice engine after the app is ready for engine warmup:
+
+```sh
+docker compose -f voice/compose.test.yml up -d stt tts
+VOICE_LIVE_TEST=1 VOICE_URL=http://127.0.0.1:18765 \
+  VOICE_SHARED_SECRET=voice-integration-test-secret \
+  OVERTCHAT_INSTALLED_CAPABILITIES=voice,stt,tts E2E_PORT=4831 \
+  npm run test:e2e -w apps/web -- voice-live.spec.ts
+docker compose -f voice/compose.test.yml down
+```
+
+Set `VOICE_LIVE_MODEL_URL=http://127.0.0.1:8001/v1` on that test command to also
+exercise a complete spoken turn through an existing local vLLM server. The test
+discovers its model and creates only an isolated E2E model configuration.
+
+Only these test containers expose speech ports, bound to loopback. The model
+cache stays in a test-only volume. `OVERTCHAT_VOICE_APP_URL` directs engine
+warmup and inference to the test app; managed deployments retain `http://app:4717`.
+
 ### Apple speech
 
 After changing the server or lockfile, regenerate the payload embedded in the
