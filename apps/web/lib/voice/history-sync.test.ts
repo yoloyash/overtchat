@@ -29,11 +29,26 @@ describe("acknowledged voice history", () => {
       .mockResolvedValue(undefined);
     const sync = new VoiceHistorySync(save, vi.fn());
     sync.enqueue([item()]);
-    sync.enqueue([item("[Assistant interrupted]")]);
+    sync.enqueue([item("Hello again")]);
     expect(save).toHaveBeenCalledTimes(1);
     finish();
     await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
-    expect(save.mock.calls[1][0]).toEqual([item("[Assistant interrupted]")]);
+    expect(save.mock.calls[1][0]).toEqual([item("Hello again")]);
+  });
+
+  it("keeps the latest value even when it matches an earlier ACK", async () => {
+    let finish!: () => void;
+    const save = vi.fn().mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finish = resolve; }))
+      .mockResolvedValue(undefined);
+    const sync = new VoiceHistorySync(save, vi.fn());
+    sync.enqueue([item()]);
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    sync.enqueue([item("Hello again")]);
+    sync.enqueue([item()]);
+    finish();
+    await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(3));
+    expect(save.mock.calls[2][0]).toEqual([item()]);
   });
 
   it("keeps rejected items for an explicit retry without hammering an expired session", async () => {

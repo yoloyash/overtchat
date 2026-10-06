@@ -4,8 +4,7 @@
   `speech-to-speech` engine pinned; do not replace its realtime protocol or
   copy its demo UI.
 - The browser uses the OpenAI Realtime WebSocket transport from `@openai/agents`
-  with a playback interruption override and exchanges mono PCM16 at 24 kHz.
-  Played time belongs to the audio worklet, not the network transport.
+  and exchanges mono PCM16 at 24 kHz.
 - Keep this service internal to the Compose network. Browser traffic reaches
   `/v1/realtime` through OvertChat's same-origin `/api/voice/realtime` rewrite;
   never publish the container port in managed installs.

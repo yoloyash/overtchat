@@ -7,7 +7,6 @@ class OvertChatAudioPlayback extends AudioWorkletProcessor {
     this.inputRate = 24000;
     this.step = this.inputRate / sampleRate;
     this.queue = [];
-    this.items = new Map();
     this.index = 0;
     this.fraction = 0;
     this.playing = false;
@@ -19,27 +18,12 @@ class OvertChatAudioPlayback extends AudioWorkletProcessor {
         this.inputRate = data.inputRate;
         this.step = this.inputRate / sampleRate;
       } else if (data?.kind === "audio" && data.samples instanceof Float32Array) {
-        const key = `${data.item.itemId}:${data.item.contentIndex}`;
-        let item = this.items.get(key);
-        if (!item) {
-          item = { ...data.item, receivedSamples: 0, playedSamples: 0, done: false };
-          this.items.set(key, item);
-        }
-        item.receivedSamples += data.samples.length;
-        this.queue.push({ samples: data.samples, item });
+        this.queue.push(data.samples);
         if (!this.playing) {
           this.playing = true;
           this.fade = FADE_FRAMES;
         }
-      } else if (data?.kind === "done") {
-        const item = this.items.get(`${data.item.itemId}:${data.item.contentIndex}`);
-        if (item) item.done = true;
-        this.notifyDrained();
-      } else if (data?.kind === "clear" || data?.kind === "interrupt") {
-        if (data.kind === "interrupt") {
-          this.port.postMessage({ kind: "interrupted", items: [...this.items.values()] });
-        }
-        this.items.clear();
+      } else if (data?.kind === "clear") {
         this.queue.length = 0;
         this.index = 0;
         this.fraction = 0;
@@ -51,32 +35,21 @@ class OvertChatAudioPlayback extends AudioWorkletProcessor {
 
   read() {
     if (!this.queue.length) return null;
-    const head = this.queue[0].samples;
+    const head = this.queue[0];
     const a = head[this.index];
-    const b = head[this.index + 1] ?? this.queue[1]?.samples[0] ?? a;
+    const b = head[this.index + 1] ?? this.queue[1]?.[0] ?? a;
     return a + (b - a) * this.fraction;
   }
 
   advance() {
-    const item = this.queue[0].item;
-    item.playedSamples = Math.min(item.receivedSamples, item.playedSamples + this.step);
     this.fraction += this.step;
     while (this.fraction >= 1) {
       this.fraction -= 1;
       this.index += 1;
     }
-    while (this.queue.length && this.index >= this.queue[0].samples.length) {
-      this.index -= this.queue[0].samples.length;
+    while (this.queue.length && this.index >= this.queue[0].length) {
+      this.index -= this.queue[0].length;
       this.queue.shift();
-    }
-  }
-
-  notifyDrained() {
-    for (const [key, item] of this.items) {
-      if (item.done && item.playedSamples >= item.receivedSamples - 0.001) {
-        this.items.delete(key);
-        this.port.postMessage({ kind: "drained", item });
-      }
     }
   }
 
@@ -110,7 +83,6 @@ class OvertChatAudioPlayback extends AudioWorkletProcessor {
         channels[channel][frame] = sample;
       }
     }
-    this.notifyDrained();
     return true;
   }
 }

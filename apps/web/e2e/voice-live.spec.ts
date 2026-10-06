@@ -11,7 +11,7 @@ let provider: Server;
 let providerUrl: string;
 let prompts: unknown[] = [];
 let modelFailure = false;
-const answer = "The blue heron lives near the quiet river. It watches the water carefully before taking flight. " .repeat(4);
+const answer = "The blue heron lives near the quiet river.";
 
 test.beforeAll(async () => {
   provider = createServer(async (req, res) => {
@@ -46,7 +46,7 @@ test.afterAll(async () => {
   if (provider) await new Promise<void>(resolve => provider.close(() => resolve()));
 });
 
-test("CPU speech through app origin: playback interruption, history retry, auth, and recovery", async ({ page, request }) => {
+test("CPU speech through app origin: history retry after End, auth, and recovery", async ({ page, request }) => {
   test.setTimeout(240_000);
   resetE2eDatabase();
   prompts = [];
@@ -107,10 +107,11 @@ test("CPU speech through app origin: playback interruption, history retry, auth,
     } catch (error) { return String(error); }
   });
   expect(microphone).toBe("ok");
-  let failedSave = false;
+  let allowSaves = false;
+  let failedSaves = 0;
   await page.route("**/api/voice/history", async route => {
-    if (!failedSave) {
-      failedSave = true;
+    if (!allowSaves) {
+      failedSaves += 1;
       await route.fulfill({ status: 503, json: { error: "Temporary test outage" } });
     } else await route.continue();
   });
@@ -136,28 +137,25 @@ test("CPU speech through app origin: playback interruption, history retry, auth,
   await expect.poll(() => prompts.length, { timeout: 60_000 }).toBeGreaterThan(0);
   expect(JSON.stringify(prompts[0]).toLowerCase()).toContain("heron");
   await expect.poll(() => page.evaluate(() => (window as unknown as { voiceEvents: { type: string }[] }).voiceEvents.some(e => e.type === "response.done")), { timeout: 60_000 }).toBeTruthy();
-  await expect(page.getByRole("button", { name: "Stop assistant" })).toBeVisible();
-  await page.getByRole("button", { name: "Stop assistant" }).click();
-  await expect(page.getByText("[Assistant interrupted]", { exact: true })).toBeVisible({ timeout: 10_000 });
+  expect(failedSaves).toBeGreaterThan(0);
+  await expect(page.getByText(/Retrying automatically/)).toBeVisible();
+  await page.getByRole("button", { name: "End voice session" }).click();
+  allowSaves = true;
+  // The first successful save occurs after the audio component unmounts. It
+  // must still mark the parent chat as saved/voice and refresh the sidebar.
+  await expect(page.getByRole("listitem").filter({ hasText: "Voice test" }).getByLabel("Voice chat"))
+    .toBeVisible({ timeout: 40_000 });
+  await expect(page.getByPlaceholder("Resume voice to continue")).toBeDisabled();
   await expect.poll(() => {
     const db = openE2eDatabase();
     const rows = db.prepare("SELECT parts FROM messages WHERE role='assistant'").all();
     db.close();
     return JSON.stringify(rows);
-  }).toContain("[Assistant interrupted]");
-  expect(failedSave).toBeTruthy();
-  await expect(page.getByText(/Retrying automatically/)).toHaveCount(0);
-  // The next model request must not include the unheard assistant answer.
-  await page.evaluate(() => {
-    const ws = (window as unknown as { voiceSocket: WebSocket }).voiceSocket;
-    ws.send(JSON.stringify({ type: "conversation.item.create", item: { type: "message", role: "user", content: [{ type: "input_text", text: "What next?" }] } }));
-    ws.send(JSON.stringify({ type: "response.create" }));
-  });
-  await expect.poll(() => prompts.length).toBe(2);
-  expect(JSON.stringify(prompts[1])).not.toContain("watches the water");
+  }).toContain(answer);
+  await page.getByRole("button", { name: "Start voice conversation" }).click();
+  await expect(page.getByText("Listening", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("button", { name: "Mute microphone" }).click();
   const doneCount = () => page.evaluate(() => (window as unknown as { voiceEvents: { type: string }[] }).voiceEvents.filter(e => e.type === "response.done").length);
-  await expect.poll(doneCount, { timeout: 60_000 }).toBe(2);
-  await page.getByRole("button", { name: "Stop assistant" }).click();
   const setStt = (url: string) => {
     const db = openE2eDatabase();
     db.prepare("UPDATE server_capabilities SET base_url=? WHERE id='stt'").run(url);
@@ -171,13 +169,12 @@ test("CPU speech through app origin: playback interruption, history retry, auth,
   modelFailure = true;
   await speak();
   await expect(page.getByRole("alert").filter({ hasText: "voice response failed" })).toBeVisible({ timeout: 30_000 });
-  await expect.poll(doneCount, { timeout: 30_000 }).toBe(3);
+  await expect.poll(doneCount, { timeout: 30_000 }).toBe(2);
   modelFailure = false;
   await speak();
-  await expect.poll(() => prompts.length, { timeout: 30_000 }).toBe(3);
-  await expect.poll(doneCount, { timeout: 60_000 }).toBe(4);
+  await expect.poll(() => prompts.length, { timeout: 30_000 }).toBe(2);
+  await expect.poll(doneCount, { timeout: 60_000 }).toBe(3);
   await expect(page.getByRole("alert").filter({ hasText: "voice response failed" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Stop assistant" }).click();
   if (process.env.VOICE_LIVE_MODEL_URL) {
     const baseUrl = process.env.VOICE_LIVE_MODEL_URL.replace(/\/$/, "");
     const models = await (await request.get(`${baseUrl}/models`)).json();
@@ -186,7 +183,7 @@ test("CPU speech through app origin: playback interruption, history retry, auth,
       .run(baseUrl, models.data[0].id, model.id);
     db.close();
     await speak();
-    await expect.poll(doneCount, { timeout: 90_000 }).toBe(5);
+    await expect.poll(doneCount, { timeout: 90_000 }).toBe(4);
     const last = await page.evaluate(() => {
       const events = (window as unknown as { voiceEvents: { type: string; response?: { status: string; output: unknown[] } }[] }).voiceEvents;
       return events.filter(e => e.type === "response.done").at(-1)?.response;

@@ -151,6 +151,8 @@ export const RealtimeVoiceSession = forwardRef<
         }
         if (!mounted) return;
 
+        // Capture this chat's completion callback; the parent survives End.
+        const onSaved = callbacksRef.current.onPersisted;
         const historySync = new VoiceHistorySync(async (items) => {
           const syncResponse = await fetch(apiUrl("/api/voice/history"), {
             method: "POST",
@@ -167,7 +169,7 @@ export const RealtimeVoiceSession = forwardRef<
             );
           }
           const body = await syncResponse.json() as { chat?: PersistedVoiceChat | null };
-          if (mounted && body.chat) callbacksRef.current.onPersisted(body.chat);
+          if (body.chat) onSaved(body.chat);
         }, (message) => {
           if (mounted) setSaveWarning(message);
         });

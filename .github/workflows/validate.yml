@@ -109,7 +109,7 @@ jobs:
           persist-credentials: false
       - name: Build pinned voice engine
         run: docker build --tag overtchat-voice-test voice
-      - name: Test connection isolation and playback history against the engine
+      - name: Test connection isolation against the engine
         run: >-
           docker run --rm --entrypoint python
           -v "$GITHUB_WORKSPACE/voice:/tests:ro" -w /tests

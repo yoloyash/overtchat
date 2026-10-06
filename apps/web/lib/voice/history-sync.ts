@@ -21,7 +21,7 @@ export class VoiceHistorySync {
 
   enqueue(items: VoiceHistoryItem[]): void {
     for (const item of items) {
-      if (this.acknowledged.get(item.id) !== JSON.stringify(item)) {
+      if (this.pending.has(item.id) || this.acknowledged.get(item.id) !== JSON.stringify(item)) {
         this.pending.set(item.id, item);
       }
     }

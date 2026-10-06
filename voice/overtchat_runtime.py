@@ -9,49 +9,17 @@ import json
 import logging
 import time
 from contextvars import ContextVar
-from copy import copy, deepcopy
-from dataclasses import dataclass, field
+from copy import copy
+from dataclasses import dataclass
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 API_KEY_PROTOCOL_PREFIX = "openai-insecure-api-key."
 
 
-@dataclass
+@dataclass(frozen=True)
 class VoiceConnection:
     ticket: str
-    items: dict[str, dict[str, Any]] = field(default_factory=dict)
-    history_ids: dict[str, set[str]] = field(default_factory=dict)
-    audio_ms: dict[str, float] = field(default_factory=dict)
-
-    def observe(self, event: dict[str, Any]) -> None:
-        """Retain protocol items for SDK retrieval, independently of engine IDs."""
-        kind = event.get("type")
-        item_id = event.get("item_id")
-        if kind == "response.output_audio.delta" and isinstance(item_id, str):
-            self.audio_ms[item_id] = self.audio_ms.get(item_id, 0) + len(
-                base64.b64decode(event["delta"])
-            ) / 48  # mono PCM16 at 24 kHz
-        items = []
-        if kind in ("conversation.item.created", "response.output_item.done"):
-            items = [event.get("item")]
-        elif kind == "response.done":
-            items = event.get("response", {}).get("output") or []
-        elif kind == "conversation.item.input_audio_transcription.completed":
-            items = [{
-                "id": item_id, "type": "message", "role": "user",
-                "status": "completed",
-                "content": [{"type": "input_audio", "transcript": event["transcript"]}],
-            }]
-        for item in items:
-            if isinstance(item, dict) and isinstance(item.get("id"), str):
-                self.items[item["id"]] = deepcopy(item)
-        # Only recent items can still be in playback. Bound the retrieval cache.
-        while len(self.items) > 512:
-            oldest = next(iter(self.items))
-            self.items.pop(oldest)
-            self.history_ids.pop(oldest, None)
-            self.audio_ms.pop(oldest, None)
 
 
 _connection: ContextVar[VoiceConnection | None] = ContextVar("voice_connection", default=None)
@@ -134,13 +102,8 @@ class VoiceTicketMiddleware:
             connection = VoiceConnection(ticket)
             context_token = _connection.set(connection)
 
-            async def observe_send(message: dict[str, Any]) -> None:
-                if message.get("type") == "websocket.send" and message.get("text"):
-                    connection.observe(json.loads(message["text"]))
-                await send(message)
-
             try:
-                await self.app(scope, receive, observe_send)
+                await self.app(scope, receive, send)
             finally:
                 _connection.reset(context_token)
             return
@@ -195,94 +158,3 @@ def install_runtime_hooks(secret: str) -> None:
     BaseOpenAICompatibleHandler.process = process_with_session_model
     RealtimeService.register = register_authenticated_session
     RealtimeService.handle_session_update = update_authenticated_session
-    _install_playback_hooks()
-
-
-def _install_playback_hooks() -> None:
-    """Fill the pinned engine's retrieve/truncate gap using Realtime events.
-
-    It generates different IDs for model-history text and wire audio items.
-    Capture that correspondence before response finalization drops it. There
-    are no word timestamps: truncation clears the interrupted item's entire
-    transcript, as opposed to inventing a supposedly heard text prefix.
-    """
-    from openai.types.realtime import ConversationItemTruncatedEvent
-    from pydantic import BaseModel
-    from speech_to_speech.api.openai_realtime import websocket_router
-    from speech_to_speech.api.openai_realtime.handlers.response import ResponseHandler
-
-    original_finish = ResponseHandler.finish_response
-    original_dispatch = websocket_router._dispatch_client_event
-
-    class RetrievedItemEvent(BaseModel):
-        # The pinned Python SDK has the request but lacks this server event.
-        type: str = "conversation.item.retrieved"
-        event_id: str
-        item: dict[str, Any]
-
-    def finish_response(self: Any, conn_id: str, *args: Any, **kwargs: Any):
-        state = self._state(conn_id)
-        connection = _voice_connection(state.runtime_config)
-        chat = state.runtime_config.chat
-        with chat._lock:
-            tracked, _ = chat._provisional_generations.get(state.current_response_key, (set(), set()))
-            history_ids = [item.id for item in chat.buffer
-                           if item.id in tracked and getattr(item, "role", None) == "assistant"]
-        wire_ids = [str(item["item_id"]) for item in state.pending_text_outputs]
-        for index, item_id in enumerate(wire_ids):
-            # Text is grouped between tool calls in both representations. If a
-            # provider groups differently, conservatively discard that response's
-            # text on interruption, preserving function calls and their results.
-            connection.history_ids[item_id] = (
-                {history_ids[index]} if len(history_ids) == len(wire_ids) else set(history_ids)
-            )
-        return original_finish(self, conn_id, *args, **kwargs)
-
-    async def dispatch(unit: Any, session_id: str, raw: dict[str, Any], transport: Any,
-                       transport_kind: str = "websocket") -> None:
-        kind = raw.get("type")
-        if kind not in ("conversation.item.retrieve", "conversation.item.truncate"):
-            await original_dispatch(unit, session_id, raw, transport, transport_kind=transport_kind)
-            return
-        service = unit.service
-        config = service._state(session_id).runtime_config
-        connection = _voice_connection(config)
-        item_id = raw.get("item_id")
-        item = connection.items.get(item_id) if isinstance(item_id, str) else None
-
-        async def reject() -> None:
-            error = service.make_error("Unknown item or invalid audio truncation.", "invalid_conversation_item")
-            error.error.event_id = raw.get("event_id")
-            await transport.send_events([error])
-
-        if item is None:
-            await reject()
-            return
-        if kind == "conversation.item.retrieve":
-            await transport.send_events([RetrievedItemEvent(
-                event_id=service._next_event_id(), item=item,
-            )])
-            return
-        index, end_ms = raw.get("content_index"), raw.get("audio_end_ms")
-        content = item.get("content") or []
-        if (item.get("role") != "assistant" or type(index) is not int
-                or index < 0 or index >= len(content)
-                or content[index].get("type") not in ("audio", "output_audio")
-                or type(end_ms) is not int or end_ms < 0
-                or end_ms > connection.audio_ms.get(item_id, 0)):
-            await reject()
-            return
-        service.response.discard_tool_followup_prefetch(session_id)
-        ids = connection.history_ids.get(item_id, set())
-        chat = config.chat
-        with chat._lock:
-            chat.buffer = [entry for entry in chat.buffer if entry.id not in ids]
-        content[index]["transcript"] = ""
-        item["status"] = "incomplete"
-        await transport.send_events([ConversationItemTruncatedEvent(
-            type="conversation.item.truncated", event_id=service._next_event_id(),
-            item_id=item_id, content_index=index, audio_end_ms=end_ms,
-        )])
-
-    ResponseHandler.finish_response = finish_response
-    websocket_router._dispatch_client_event = dispatch

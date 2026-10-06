@@ -490,14 +490,11 @@ Build STT with `docker compose --profile stt build stt-cpu` or
 ### Realtime voice
 
 Voice authorization is bound to the authenticated socket, independently of the
-browser's model field and pooled handler state. Playback completion comes from
-the browser audio worklet. Interruptions truncate at rendered PCM time, including
-after the server has finished generating. The pinned engine has no word timing;
-an interrupted audio item's transcript is cleared from live model context and
-saved as `[Assistant interrupted]`, rather than guessing which words were heard.
+browser's model field and pooled handler state.
 Failed transcript saves stay pending and retry with bounded exponential delay,
-including after End while the page remains open. Reloading the page discards
-unsaved in-memory retries. Non-retryable failures require Retry saving.
+including after End while the page remains open; successful saves still update
+the parent chat view. Reloading the page discards unsaved in-memory retries.
+Non-retryable failures require Retry saving.
 
 Run the focused regressions and build the pinned engine image:
 
