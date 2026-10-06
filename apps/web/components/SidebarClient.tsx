@@ -235,7 +235,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function AdminAgentWorkspaces() {
-  const { data: connections = [] } = useAgentConnections();
+  const { data: connections = [], isPending } = useAgentConnections();
   const refresh = useRefreshAllAgentWorkspaces();
   const [organizing, setOrganizing] = useState(false);
   const doneRef = useRef<HTMLButtonElement>(null);
@@ -270,7 +270,33 @@ function AdminAgentWorkspaces() {
       ? providerFilter
       : null;
 
-  if (!hasWorkspaces) return null;
+  if (!hasWorkspaces) {
+    return (
+      <>
+        <SectionLabel>Agent workspaces</SectionLabel>
+        {isPending ? (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            Loading workspaces…
+          </p>
+        ) : (
+          <>
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              Connect a folder to start an agent chat.
+            </p>
+            <Link
+              to="/settings/connections"
+              search={{ add: "1" }}
+              onClick={closeMobile}
+              className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground max-md:min-h-11"
+            >
+              <FolderPlus aria-hidden="true" className="size-4 shrink-0" />
+              <span>Add workspace</span>
+            </Link>
+          </>
+        )}
+      </>
+    );
+  }
 
   async function refreshAllChats() {
     try {
@@ -335,7 +361,7 @@ function AdminAgentWorkspaces() {
                     activeProviderFilter && "bg-sidebar-accent text-foreground",
                   )}
                 >
-                  <MoreHorizontal className="size-3.5" />
+                  <MoreHorizontal aria-hidden="true" className="size-3.5" />
                   {activeProviderFilter && (
                     <span
                       aria-hidden="true"
@@ -351,6 +377,19 @@ function AdminAgentWorkspaces() {
                         motionClasses.popup,
                       )}
                     >
+                      <Menu.Item
+                        render={
+                          <Link
+                            to="/settings/connections"
+                            search={{ add: "1" }}
+                            onClick={closeMobile}
+                          />
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <FolderPlus className="size-3.5 text-muted-foreground" />
+                        <span>Add workspace…</span>
+                      </Menu.Item>
                       <Menu.Item
                         onClick={() => setOrganizing(true)}
                         className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
@@ -425,16 +464,6 @@ function AdminAgentWorkspaces() {
                   </Menu.Positioner>
                 </Menu.Portal>
               </Menu.Root>
-              <Link
-                to="/settings/connections"
-                search={{ add: "1" }}
-                onClick={closeMobile}
-                aria-label="Add workspace"
-                title="Add workspace"
-                className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
-              >
-                <FolderPlus className="size-3.5" />
-              </Link>
             </span>
           )
         }

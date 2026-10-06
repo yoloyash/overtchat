@@ -307,11 +307,11 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
 
   await expect(
     page.getByText("Agent workspaces", { exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Add workspace" }),
-  ).toHaveCount(0);
-  await page.goto("/settings/connections");
+  ).toBeVisible();
+  const addWorkspace = page.getByRole("link", { name: "Add workspace", exact: true });
+  await expect(addWorkspace).toHaveAttribute("href", "/settings/connections?add=1");
+  await addWorkspace.click();
+  await page.waitForURL("**/settings/connections?add=1");
   await expect(
     page.getByText(
       "Run coding agents in project folders on this server or over SSH.",
@@ -359,6 +359,10 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
         document.documentElement.clientWidth,
     ),
   ).toBe(true);
+  await page.getByRole("button", { name: "Open sidebar" }).click();
+  await expect(addWorkspace).toBeVisible();
+  await addWorkspace.click();
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toBeHidden();
 });
 
 test("shows the no-re-pair upgrade command for an older connector", async ({
@@ -619,14 +623,18 @@ test("groups providers by directory, filters chats, refreshes globally, and open
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Add workspace" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: `Expand ${workspaceName}` })
     .click();
-  await expect(page.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
+  const workspaces = page.getByRole("list", { name: "Agent workspaces", exact: true });
+  await expect(workspaces.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
+  await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
 
   await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Add workspace…", exact: true }),
+  ).toHaveAttribute("href", "/settings/connections?add=1");
   await page.getByRole("menuitem", { name: "Filter chats" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "All agents" }),
@@ -637,8 +645,8 @@ test("groups providers by directory, filters chats, refreshes globally, and open
     animations: "disabled",
   });
   await page.getByRole("menuitemradio", { name: "Codex" }).click();
-  await expect(page.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "OMP sidebar chat" })).toHaveCount(0);
+  await expect(workspaces.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
+  await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toHaveCount(0);
   await expect(
     page.getByRole("button", {
       name: "Agent workspace options, filtered by Codex",

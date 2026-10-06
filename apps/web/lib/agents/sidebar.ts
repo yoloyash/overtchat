@@ -5,7 +5,7 @@ import type {
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
 
-export const AGENT_SESSION_PREVIEW_COUNT = 8;
+export const AGENT_SESSION_PREVIEW_COUNT = 5;
 
 export function agentSessionDisplayTitle(
   session: Pick<AgentSessionListItem, "name" | "firstMessage">,

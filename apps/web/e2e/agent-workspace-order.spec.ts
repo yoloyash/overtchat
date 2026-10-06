@@ -27,10 +27,14 @@ function connections(names = workspaceNames): AgentConnectionListItem[] {
   }));
 }
 
-async function setup(page: Page, running = false) {
+async function setup(
+  page: Page,
+  running = false,
+  fixture?: AgentConnectionListItem[],
+) {
   let names = [...workspaceNames];
   await page.context().route("**/api/agent-connections", (route) => {
-    const items = connections(names);
+    const items = fixture ?? connections(names);
     if (running) {
       items[0].workspaces[0].sessions.push({
         id: "running-session",
@@ -45,14 +49,12 @@ async function setup(page: Page, running = false) {
     }
     return route.fulfill({ json: { connections: items } });
   });
-  await page
-    .context()
-    .route("**/api/agent-connections/events", (route) =>
-      route.fulfill({
-        contentType: "text/event-stream",
-        body: 'event: snapshot\ndata: {"sessions":[]}\n\n',
-      }),
-    );
+  await page.context().route("**/api/agent-connections/events", (route) =>
+    route.fulfill({
+      contentType: "text/event-stream",
+      body: 'event: snapshot\ndata: {"sessions":[]}\n\n',
+    }),
+  );
   await page.context().route("**/api/agent-connections/discover?*", (route) =>
     route.fulfill({
       json: {
@@ -138,6 +140,232 @@ async function drag(
 }
 
 test.beforeEach(resetE2eDatabase);
+
+function sidebarDesignFixture(): AgentConnectionListItem[] {
+  const items = connections(["overtchat"]);
+  for (const item of items) item.host.name = "macbook";
+  items[0].workspaces[0].sessions = Array.from({ length: 7 }, (_, index) => ({
+    id: `local-${index + 1}`,
+    providerSessionId: `native-${index + 1}`,
+    name: [
+      "Improve workspace navigation",
+      "Review connector reconnects",
+      "Fix mobile composer",
+      "Investigate deployment failure",
+      "Add keyboard shortcuts",
+      "Update search indexing",
+      "Run the release checks",
+    ][index],
+    firstMessage: null,
+    messageCount: 10,
+    createdAt: 100,
+    modifiedAt: 1000 - index,
+    runtimeStatus: index === 6 ? "running" : "idle",
+  }));
+  items[1].workspaces[0].sessions = [
+    {
+      ...items[0].workspaces[0].sessions[0],
+      id: "pi-session",
+      name: "Review the sidebar design",
+      modifiedAt: null,
+      createdAt: 200,
+    },
+  ];
+  items.push({
+    ...items[0],
+    id: "remote",
+    host: {
+      ...items[0].host,
+      id: "remote-host",
+      transport: "ssh",
+      name: "Home server",
+      sshAlias: "home-server-2",
+    },
+    workspaces: [
+      {
+        ...items[0].workspaces[0],
+        id: "remote-workspace",
+        sessions: [
+          {
+            ...items[0].workspaces[0].sessions[0],
+            id: "remote-session",
+            name: "Update the deployment configuration",
+            modifiedAt: 1100,
+          },
+        ],
+      },
+      {
+        id: "long-workspace",
+        name: "a-workspace-with-a-very-long-descriptive-name",
+        path: "/srv/long-workspace",
+        sessions: [],
+      },
+    ],
+  });
+  return items;
+}
+
+for (const mobile of [false, true]) {
+  test(`compact workspace rows expose activity, recent chats, and persistent expansion${mobile ? " on mobile" : ""}`, async ({
+    page,
+  }, testInfo) => {
+    if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await setup(page, false, sidebarDesignFixture());
+    await page
+      .context()
+      .route("**/api/agent-workspaces/*/git-status", (route) =>
+        route.fulfill({
+          json: {
+            status: {
+              isGit: true,
+              branch: "feature/sidebar-with-a-long-branch-name",
+              dirty: true,
+              changedFiles: 3,
+              additions: 8,
+              deletions: 2,
+              lineStatsComplete: true,
+            },
+          },
+        }),
+      );
+    await page
+      .context()
+      .route("**/api/agent-sessions/*", (route) =>
+        route.fulfill({
+          status: 503,
+          json: { error: "Preview session is offline" },
+        }),
+      );
+    await page.reload();
+    if (mobile)
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+
+    const recent = page.getByRole("list", { name: "Recent agent chats" });
+    await expect(recent.getByRole("link")).toHaveCount(5);
+    expect(
+      await recent
+        .getByRole("link")
+        .evaluateAll((links) => links.map((link) => link.getAttribute("href"))),
+    ).toEqual([
+      "/agents/remote-session",
+      "/agents/local-1",
+      "/agents/local-2",
+      "/agents/local-3",
+      "/agents/local-4",
+    ]);
+    await expect(recent).toContainText("overtchat · home-server-2");
+    await expect(recent).toContainText("overtchat · macbook");
+
+    const expand = list(page)
+      .getByRole("button", { name: "Expand overtchat", exact: true })
+      .first();
+    await expect(expand).toContainText("macbook");
+    await expect(
+      expand.getByRole("status", { name: "1 running chat in overtchat" }),
+    ).toBeVisible();
+    await expect(
+      expand.getByLabel("3 changed files", { exact: true }),
+    ).toBeVisible();
+    expect((await expand.boundingBox())!.height).toBe(mobile ? 44 : 40);
+    await expand.click();
+    const local = list(page).locator(":scope > li").first();
+    await expect(local.getByRole("link")).toHaveCount(6);
+    await expect(
+      local.locator('a[href="/agents/local-7"]'),
+    ).toBeVisible();
+    await local.getByRole("button", { name: "Show 2 more" }).click();
+    await expect(local.getByRole("link")).toHaveCount(8);
+    await local.getByRole("button", { name: "Show less" }).click();
+    await expect(local.getByRole("link")).toHaveCount(6);
+
+    // Long names and metadata must fit the sidebar, including on touch screens.
+    expect(
+      await list(page).evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    await (
+      mobile
+        ? page.getByRole("dialog", { name: "Navigation" })
+        : page.locator("[data-desktop-sidebar-panel]")
+    ).screenshot({
+      path: testInfo.outputPath(
+        `workspace-design-${mobile ? "mobile" : "desktop"}.png`,
+      ),
+    });
+    await page.reload();
+    if (mobile)
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+    await expect(
+      local.getByRole("button", { name: "Collapse overtchat" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(local.getByRole("link")).toHaveCount(6);
+
+    await page.getByRole("button", { name: "Recent chats", exact: true }).click();
+    await expect(recent).toBeHidden();
+    await page.reload();
+    if (mobile)
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+    await expect(recent).toBeHidden();
+    await page.getByRole("button", { name: "Recent chats", exact: true }).click();
+
+    await page
+      .getByRole("button", { name: "Agent workspace options", exact: true })
+      .click();
+    const filter = page.getByRole("menuitem", { name: "Filter chats" });
+    if (mobile) await filter.click();
+    else await filter.hover();
+    await page.getByRole("menuitemradio", { name: "Pi", exact: true }).click();
+    await expect(recent.getByRole("link")).toHaveCount(1);
+    await expect(recent).toContainText("Review the sidebar design");
+    await expect(local.getByRole("status")).toHaveCount(0);
+
+    await local.getByRole("button", { name: "Collapse overtchat" }).click();
+    await recent.getByRole("link").click();
+    await page.waitForURL("**/agents/pi-session");
+    if (mobile) {
+      await expect(
+        page.getByRole("dialog", { name: "Navigation" }),
+      ).toBeHidden();
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+    }
+    await expect(
+      local.getByRole("button", { name: "Collapse overtchat" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(
+      local.getByRole("link", {
+        name: "Review the sidebar design",
+        exact: true,
+      }),
+    ).toHaveAttribute("aria-current", "page");
+
+    // A saved collapse must not hide a chat reached outside the Recent list,
+    // including a selected chat older than the five-row preview.
+    await local.getByRole("button", { name: "Collapse overtchat" }).click();
+    await page.goto("/agents/local-6");
+    if (mobile)
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+    await expect(
+      local.getByRole("button", { name: "Collapse overtchat" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await expect(local.locator('a[href="/agents/local-6"]')).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await local.getByRole("button", { name: "Collapse overtchat" }).click();
+    await page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/agent-connections",
+    );
+    await expect(
+      local.getByRole("button", { name: "Expand overtchat" }),
+    ).toHaveAttribute("aria-expanded", "false");
+    await page.reload();
+    if (mobile)
+      await page.getByRole("button", { name: "Open sidebar" }).click();
+    await expect(local.locator('a[href="/agents/local-6"]')).toBeVisible();
+  });
+}
 
 test("mouse and keyboard reorder grouped workspaces, persist locally, and preserve expansion", async ({
   page,
@@ -493,6 +721,8 @@ test("removing the last workspace retries a partial failure using only workspace
   await expect(dialog).toBeHidden();
   expect(deleted).toEqual(["codex-Gamma", "pi-Gamma"]);
   await expect(list(page)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Add workspace", exact: true }))
+    .toHaveAttribute("href", "/settings/connections?add=1");
 });
 
 test("a workspace added while confirmation is open survives removal", async ({
@@ -567,5 +797,16 @@ for (const mobile of [false, true]) {
     await expect(
       page.getByRole("menuitem", { name: "Organize workspaces" }),
     ).toBeVisible();
+    const addWorkspace = page.getByRole("menuitem", {
+      name: "Add workspace…",
+      exact: true,
+    });
+    await expect(page.getByRole("menuitem").first()).toHaveText("Add workspace…");
+    await expect(addWorkspace).toHaveAttribute("href", "/settings/connections?add=1");
+    await addWorkspace.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForURL("**/settings/connections?add=1");
+    if (mobile)
+      await expect(page.getByRole("dialog", { name: "Navigation" })).toBeHidden();
   });
 }
