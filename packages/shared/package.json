@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./theme.css": "./src/theme.css",
     "./theme.rn": "./src/theme.rn.ts",
+    "./theme-backgrounds": "./src/theme.backgrounds.ts",
     "./agent-presentation": "./src/agent-presentation.ts",
     "./agent-history": "./src/agent-history.ts",
     "./agent-creation": "./src/agent-creation.ts",

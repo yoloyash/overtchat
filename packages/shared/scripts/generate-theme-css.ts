@@ -4,9 +4,10 @@
  *   - `src/theme.rn.ts` — sRGB hex values for React Native, which can't parse
  *                         CSS Color Level 4 functional notation. Same key
  *                         shape as the source TS tokens, just hex strings.
+ *   - `src/theme.backgrounds.ts` — opaque hex colors for browser chrome
  *
  * Run via `npm run theme:generate -w packages/shared` after edits to tokens.
- * Both outputs are committed so consumers don't need a build step.
+ * Outputs are committed so consumers don't need a build step.
  */
 
 import { writeFileSync } from "node:fs";
@@ -161,3 +162,17 @@ export const accentSwatchesRgb: Record<AccentId, string> = ${JSON.stringify(swat
 
 writeFileSync(rnOut, rn);
 console.log(`wrote ${rnOut}`);
+
+const backgroundsOut = resolve(__dirname, "../src/theme.backgrounds.ts");
+const backgrounds = Object.fromEntries(ACCENT_OPTIONS.map(({ id }) => [id, {
+  light: accentRn[id].light.background.slice(0, 7),
+  dark: accentRn[id].dark.background.slice(0, 7),
+}]));
+writeFileSync(backgroundsOut, `/* AUTO-GENERATED from packages/shared/src/theme/tokens.ts.
+ * Do not edit by hand — run \`npm run theme:generate -w packages/shared\`. */
+
+import type { AccentId } from "./theme/tokens";
+
+export const accentBackgrounds: Record<AccentId, { light: string; dark: string }> = ${JSON.stringify(backgrounds, null, 2)};
+`);
+console.log(`wrote ${backgroundsOut}`);

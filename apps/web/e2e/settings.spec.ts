@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resetE2eDatabase } from "./helpers/database";
+import { accentBackgrounds } from "@overtchat/shared/theme-backgrounds";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
@@ -143,9 +144,12 @@ test("all settings pages fit narrow screens and MCP transport preserves draft fi
 });
 
 test("accent palettes update live, persist, and stay local to a browser", async ({ page, context, browser }) => {
+  await page.emulateMedia({ colorScheme: "light" });
   await page.goto("/settings/general");
   const accent = page.getByRole("radiogroup", { name: "Accent color" });
   const root = page.locator("html");
+  const chrome = page.locator('meta[name="theme-color"]');
+  await expect(chrome).toHaveCount(1);
   await expect(accent.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();
   const secondTab = await context.newPage();
   await secondTab.goto("/settings/general");
@@ -169,14 +173,25 @@ test("accent palettes update live, persist, and stay local to a browser", async 
   expect(await color()).not.toBe(lightColor);
   await page.reload();
   await expect(root).toHaveAttribute("data-accent", "violet");
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.dark);
   await expect(accent.getByRole("radio", { name: "Violet", exact: true })).toBeChecked();
 
   // The preference must be applied even before the client bundle can hydrate.
   await page.route(/\/_next\/.*\.js(?:\?|$)/, (route) => route.abort());
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(root).toHaveAttribute("data-accent", "violet");
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.dark);
   await page.unrouteAll();
   await page.reload();
+
+  await page.getByRole("radio", { name: "System", exact: true }).click();
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.light);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.dark);
+  await accent.getByRole("radio", { name: "Blue", exact: true }).click();
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.blue.dark);
+  // Its system appearance is light; the accent preference still syncs.
+  await expect(secondTab.locator('meta[name="theme-color"]')).toHaveAttribute("content", accentBackgrounds.blue.light);
 
   const freshContext = await browser.newContext({ storageState: { cookies: await context.cookies(), origins: [] } });
   const freshPage = await freshContext.newPage();

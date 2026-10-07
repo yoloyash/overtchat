@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { formatHex8, wcagContrast } from "culori";
 import { accentPalettesRgb, accentSwatchesRgb, darkTokensRgb, lightTokensRgb } from "../src/theme.rn.ts";
 import { ACCENT_OPTIONS, DEFAULT_ACCENT_ID, resolveAccentId } from "../src/theme/tokens.ts";
+import { accentBackgrounds } from "../src/theme.backgrounds.ts";
 
 const css = readFileSync(new URL("../src/theme.css", import.meta.url), "utf8");
 const cssRules = new Map(Array.from(css.matchAll(/([^{}]+)\{([^{}]+)\}/g), ([, selector, body]) => [
@@ -36,6 +37,7 @@ for (const { id, swatch } of ACCENT_OPTIONS) {
     assert.equal(accentSwatchesRgb[id], formatHex8(swatch));
     for (const scheme of ["light", "dark"]) {
       const colors = accentPalettesRgb[id][scheme];
+      assert.equal(accentBackgrounds[id][scheme], colors.background.slice(0, 7));
       const base = cssRules.get(scheme === "light" ? ":root" : ".dark");
       const selector = `:root${scheme === "dark" ? ".dark" : ""}[data-accent="${id}"]`;
       if (id !== DEFAULT_ACCENT_ID) assert.ok(cssRules.has(selector), selector);
