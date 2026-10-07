@@ -128,7 +128,9 @@ jobs:
         run: npm install --global npm@10.9.8
       - run: npm ci
       - name: Install Linux packaging and smoke dependencies
+        timeout-minutes: 5
         run: |
+          sudo install -m 644 .github/apt-ci.conf /etc/apt/apt.conf.d/99overtchat-ci
           sudo apt-get update
           sudo apt-get install -y binutils rpm cpio desktop-file-utils xvfb xauth dbus-x11 gnome-keyring libsecret-tools libgtk-3-0 libnss3 libasound2 libgbm1
       - run: npm run typecheck -w apps/desktop --
@@ -225,12 +227,16 @@ jobs:
         with:
           name: desktop-linux-x64
           path: release
-      - name: Install and smoke test the Debian package on Ubuntu 24.04
+      - name: Install Debian package and smoke dependencies on Ubuntu 24.04
+        timeout-minutes: 5
+        run: |
+          sudo install -m 644 .github/apt-ci.conf /etc/apt/apt.conf.d/99overtchat-ci
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth dbus-x11 gnome-keyring libsecret-tools ./release/overtchat-*-linux-x64.deb
+      - name: Smoke test the Debian package on Ubuntu 24.04
         env:
           DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
-          sudo apt-get update
-          sudo apt-get install -y xvfb xauth dbus-x11 gnome-keyring libsecret-tools ./release/overtchat-*-linux-x64.deb
           test "$(stat -c '%u:%a' /opt/overtchat/chrome-sandbox)" = 0:4755
           xvfb-run -a dbus-run-session -- bash <<'SH'
           set -euo pipefail

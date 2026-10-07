@@ -15,7 +15,7 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
   workers: 1,
-  reporter: "line",
+  reporter: isCI ? [["line"], ["html", { open: "never" }]] : "line",
   use: {
     baseURL,
     trace: "retain-on-failure",
