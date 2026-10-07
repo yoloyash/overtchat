@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SettingsChoiceGroup } from "../SettingsChoiceGroup";
+import { AccentPicker } from "./AccentPicker";
 import { Switch } from "@/components/ui/switch";
 import {
   SettingsPage,
@@ -115,6 +116,14 @@ export function GeneralForm() {
               ),
             }))}
           />
+        </SettingsRow>
+
+        <SettingsRow
+          title="Accent color"
+          description="Tint the interface on this device. Olive is the default."
+          controlAlign="end"
+        >
+          <AccentPicker />
         </SettingsRow>
 
         <SettingsRow

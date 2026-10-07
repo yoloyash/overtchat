@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createHashHistory } from "@tanstack/react-router";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { ACCENT_STORAGE_KEY, applyAccent } from "@/lib/accent";
 import { setApiOrigin } from "@/lib/api-url";
 import { FONT_STORAGE_KEY, fontCssValueById } from "@/lib/fonts";
 import { SIDEBAR_COLLAPSED_ATTRIBUTE, SIDEBAR_COLLAPSED_STORAGE_KEY } from "@/lib/sidebar";
@@ -29,6 +30,7 @@ function applyStoredPreferences(): void {
     (theme !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
   root.classList.add(dark ? "dark" : "light");
   root.style.colorScheme = dark ? "dark" : "light";
+  applyAccent(stored(ACCENT_STORAGE_KEY));
 
   const font = stored(FONT_STORAGE_KEY);
   const fontValue = typeof font === "string" ? fontCssValueById[font] : undefined;

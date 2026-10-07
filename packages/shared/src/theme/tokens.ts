@@ -3,10 +3,7 @@
  *
  * Web reads these via the generated `theme.css` next to this file
  * (run `npm run theme:generate -w packages/shared` after edits).
- * Mobile imports the TS objects directly via `useTheme()`.
- *
- * Color values use the `oklch(...)` literal form. RN 0.85 accepts this
- * literal verbatim, so values transfer 1:1 to mobile without conversion.
+ * Mobile reads generated sRGB colors from `theme.rn.ts` via `useTheme()`.
  */
 
 export type ColorTokens = {
@@ -126,6 +123,25 @@ export const sidebarDark: SidebarTokens = {
   sidebarBorder: "oklch(1 0 0 / 10%)",
   sidebarRing: "oklch(0.60 0.09 120)",
 };
+
+/** Device-local palette choices, independent of the light/dark preference. */
+export const ACCENT_OPTIONS = [
+  { id: "olive", label: "Olive", hue: 120, swatch: "oklch(0.60 0.10 120)" },
+  { id: "green", label: "Green", hue: 150, swatch: "oklch(0.60 0.12 150)" },
+  { id: "teal", label: "Teal", hue: 185, swatch: "oklch(0.60 0.10 185)" },
+  { id: "blue", label: "Blue", hue: 255, swatch: "oklch(0.60 0.14 255)" },
+  { id: "violet", label: "Violet", hue: 300, swatch: "oklch(0.60 0.14 300)" },
+  { id: "rose", label: "Rose", hue: 355, swatch: "oklch(0.60 0.14 355)" },
+  { id: "amber", label: "Amber", hue: 75, swatch: "oklch(0.65 0.13 75)" },
+  { id: "neutral", label: "Neutral", hue: 0, swatch: "oklch(0.60 0 0)" },
+] as const;
+
+export type AccentId = (typeof ACCENT_OPTIONS)[number]["id"];
+export const DEFAULT_ACCENT_ID: AccentId = "olive";
+
+export function resolveAccentId(value: unknown): AccentId {
+  return ACCENT_OPTIONS.find((option) => option.id === value)?.id ?? DEFAULT_ACCENT_ID;
+}
 
 /**
  * Base radius is 0.625rem (10px at default 16px root). Web derives the

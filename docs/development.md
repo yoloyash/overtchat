@@ -277,6 +277,28 @@ checks preserve voice indicators and generation feedback. On native Android and
 iOS, also check the drawer's long-press Pin/Unpin actions, refresh, and reopening
 the app.
 
+## Appearance validation
+
+Accent colors are device preferences: browser storage is scoped to the origin
+and browser profile, desktop uses its local renderer storage, and mobile uses
+SecureStore. Palettes originate in `packages/shared/src/theme/tokens.ts`;
+regenerate the committed CSS and React Native outputs after palette changes:
+
+```sh
+npm run theme:generate -w packages/shared --
+npm run test -w packages/shared --
+E2E_PORT=4827 npm run test:e2e -w apps/web -- settings.spec.ts
+```
+
+The browser coverage checks live changes across tabs, keyboard selection,
+light/dark mode, reload and pre-hydration application, independent browser
+preferences, default restoration, narrow layouts, and high-contrast focus and
+selection. Shared tests verify generated web/native parity and text/control
+contrast for every preset in light and dark mode. On native clients, also
+select colors in Appearance, switch light/dark/system modes, navigate back to
+chat, and restart the app to verify the tint and selection persist locally.
+Run affected shared, web, desktop, mobile, and site checks for palette changes.
+
 ## Mobile validation
 
 For Agent Connections changes:
