@@ -54,7 +54,8 @@ and theme contracts used by web, mobile, and the static site.
   `package.json` additionally exposes the generated web and React Native theme
   representations.
 - `src/theme/tokens.ts` is the theme source of truth. Do not edit
-  `src/theme.css` or `src/theme.rn.ts` manually; regenerate and commit both with
+  `src/theme.css`, `src/theme.rn.ts`, or `src/theme.backgrounds.ts` manually;
+  regenerate and commit all outputs with
   `npm run theme:generate -w packages/shared --`.
 - Shared contracts must remain valid for every consumer. Put app-specific
   extensions in the consuming workspace rather than weakening a shared type.

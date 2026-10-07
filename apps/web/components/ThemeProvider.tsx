@@ -2,6 +2,7 @@
 
 import { ThemeProvider as NextThemesProvider } from "next-themes";
 import type { ComponentProps } from "react";
+import { AccentPreference } from "./AccentPreference";
 
 export function ThemeProvider({
   children,
@@ -15,6 +16,7 @@ export function ThemeProvider({
       disableTransitionOnChange
       {...props}
     >
+      <AccentPreference />
       {children}
     </NextThemesProvider>
   );

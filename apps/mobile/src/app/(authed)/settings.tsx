@@ -25,6 +25,7 @@ import { FONT_OPTIONS, FONT_SANS } from "@/lib/fonts";
 import { setFontPref, useFontPref } from "@/lib/fontPref";
 import { getServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
+import { AccentPicker } from "@/components/ui/AccentPicker";
 import {
   setWebSearchEnabled,
   useWebSearchEnabled,
@@ -192,6 +193,13 @@ export default function SettingsScreen() {
                 onPress={() => setThemePref(opt.key)}
               />
             ))}
+
+            <Divider />
+            <GroupHeader
+              label="Accent color"
+              sub="Tint the interface on this device. Olive is the default."
+            />
+            <AccentPicker />
 
             <Divider />
             <GroupHeader

@@ -10,6 +10,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { accentScript } from "@/lib/accent";
 import { FONT_STORAGE_KEY, fontCssValueById } from "@/lib/fonts";
 import {
   SIDEBAR_COLLAPSED_ATTRIBUTE,
@@ -82,10 +83,6 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "oklch(0.992 0.004 120)" },
-    { media: "(prefers-color-scheme: dark)", color: "oklch(0.17 0.014 120)" },
-  ],
 };
 
 export default function RootLayout({
@@ -100,7 +97,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="h-full">
-        <script dangerouslySetInnerHTML={{ __html: fontScript + sidebarScript }} />
+        <script dangerouslySetInnerHTML={{ __html: accentScript + fontScript + sidebarScript }} />
         {/* Server-rendered so the theme is applied before the UI bundle loads. */}
         <ThemeProvider>{children}</ThemeProvider>
       </body>

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { resetE2eDatabase } from "./helpers/database";
+import { accentBackgrounds } from "@overtchat/shared/theme-backgrounds";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
@@ -140,4 +141,93 @@ test("all settings pages fit narrow screens and MCP transport preserves draft fi
   await page.screenshot({ path: testInfo.outputPath("mcp-mobile.png") });
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page).toHaveURL(/\/settings\/tools$/);
+});
+
+test("accent palettes update live, persist, and stay local to a browser", async ({ page, context, browser }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/settings/general");
+  const accent = page.getByRole("radiogroup", { name: "Accent color" });
+  const root = page.locator("html");
+  const chrome = page.locator('meta[name="theme-color"]');
+  await expect(chrome).toHaveCount(1);
+  await expect(accent.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();
+  const secondTab = await context.newPage();
+  await secondTab.goto("/settings/general");
+
+  const color = () => root.evaluate((el) => getComputedStyle(el).getPropertyValue("--primary"));
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
+  const defaultColor = await color();
+  for (const label of ["Green", "Teal", "Blue", "Violet", "Rose", "Amber", "Neutral"]) {
+    await accent.getByRole("radio", { name: label, exact: true }).click();
+    await expect(root).toHaveAttribute("data-accent", label.toLowerCase());
+    await expect(secondTab.locator("html")).toHaveAttribute("data-accent", label.toLowerCase());
+    expect(await color()).not.toBe(defaultColor);
+  }
+
+  await accent.getByRole("radio", { name: "Blue", exact: true }).click();
+  await page.keyboard.press("ArrowRight");
+  await expect(accent.getByRole("radio", { name: "Violet", exact: true })).toBeChecked();
+  const lightColor = await color();
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await expect(root).toHaveClass(/dark/);
+  expect(await color()).not.toBe(lightColor);
+  await page.reload();
+  await expect(root).toHaveAttribute("data-accent", "violet");
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.dark);
+  await expect(accent.getByRole("radio", { name: "Violet", exact: true })).toBeChecked();
+
+  // The preference must be applied even before the client bundle can hydrate.
+  await page.route(/\/_next\/.*\.js(?:\?|$)/, (route) => route.abort());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(root).toHaveAttribute("data-accent", "violet");
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.dark);
+  await page.unrouteAll();
+  await page.reload();
+
+  await page.getByRole("radio", { name: "System", exact: true }).click();
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.light);
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.violet.dark);
+  await accent.getByRole("radio", { name: "Blue", exact: true }).click();
+  await expect(chrome).toHaveAttribute("content", accentBackgrounds.blue.dark);
+  // Its system appearance is light; the accent preference still syncs.
+  await expect(secondTab.locator('meta[name="theme-color"]')).toHaveAttribute("content", accentBackgrounds.blue.light);
+
+  const freshContext = await browser.newContext({ storageState: { cookies: await context.cookies(), origins: [] } });
+  const freshPage = await freshContext.newPage();
+  await freshPage.goto(new URL("/settings/general", page.url()).href);
+  await expect(freshPage.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();
+  await freshContext.close();
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await accent.getByRole("radio", { name: "Olive", exact: true }).click();
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
+  await expect(root).toHaveAttribute("data-accent", "olive");
+  expect(await color()).toBe(defaultColor);
+  expect(await root.evaluate((el) => el.scrollWidth)).toBe(375);
+
+  // Shadows disappear in Windows high contrast; focus and selection must survive.
+  await page.emulateMedia({ forcedColors: "active" });
+  await accent.getByRole("radio", { name: "Blue", exact: true }).click();
+  await page.keyboard.press("ArrowRight");
+  const selected = accent.getByRole("radio", { name: "Violet", exact: true });
+  await expect(selected).toBeFocused();
+  await expect(selected).toBeChecked();
+  await expect(selected.locator("svg")).toBeVisible();
+  await expect(selected).toHaveCSS("outline-style", "solid");
+  await expect(selected).toHaveCSS("outline-width", "2px");
+  await expect(accent.locator("svg:visible")).toHaveCount(1);
+  await page.emulateMedia({ forcedColors: "none" });
+
+  await page.setViewportSize({ width: 320, height: 900 });
+  await page.evaluate(() => { document.documentElement.style.fontSize = "200%"; });
+  for (const tile of await accent.getByRole("radio").all()) {
+    expect(await tile.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  }
+  await page.evaluate(() => { document.documentElement.style.removeProperty("font-size"); });
+
+  await page.evaluate(() => localStorage.setItem("overtchat_accent", JSON.stringify("invalid")));
+  await page.reload();
+  await expect(accent.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();
+  await expect(root).toHaveAttribute("data-accent", "olive");
 });

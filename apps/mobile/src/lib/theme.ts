@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useColorScheme } from "react-native";
 import { mobileFonts, radii, type ColorTokens } from "@overtchat/shared";
-import { darkTokensRgb, lightTokensRgb } from "@overtchat/shared/theme.rn";
+import { accentPalettesRgb } from "@overtchat/shared/theme.rn";
+import { useAccentPref } from "@/lib/accentPref";
 import { useThemePref } from "@/lib/appearance";
 import { useFontPref } from "@/lib/fontPref";
 import { FONT_SANS } from "@/lib/fonts";
@@ -18,9 +19,10 @@ export type Theme = {
 export function useTheme(): Theme {
   const pref = useThemePref();
   const fontId = useFontPref();
+  const accentId = useAccentPref();
   const system = useColorScheme() === "dark" ? "dark" : "light";
   const scheme = pref === "system" ? system : pref;
-  const colors = scheme === "dark" ? darkTokensRgb : lightTokensRgb;
+  const colors = accentPalettesRgb[accentId][scheme];
   const fonts = useMemo(
     () => ({ ...mobileFonts, ...FONT_SANS[fontId] }),
     [fontId],
