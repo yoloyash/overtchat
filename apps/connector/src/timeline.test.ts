@@ -116,6 +116,70 @@ afterEach(async () => {
 });
 
 describe("connector session timeline", () => {
+  it("retains a completed Pi/OMP answer through continuation, replay, restart and native history recovery", async () => {
+    const { directory, store } = await createStore();
+    const initial = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      snapshot(),
+    );
+    const draft = {
+      role: "assistant",
+      timestamp: 100,
+      content: [
+        { type: "text", text: "## Draft\n\nKeep the completed answer." },
+      ],
+    };
+    const continuation = { role: "assistant", timestamp: 200, content: [] };
+    // Deliberately replay pre-fix events with no adapter-generated IDs.
+    await commit(store, { type: "message_end", message: draft });
+    await commit(store, { type: "todo_reminder" });
+    await commit(store, { type: "agent_start" });
+    await commit(store, { type: "message_start", message: continuation });
+    await commit(store, {
+      type: "message_end",
+      message: {
+        ...continuation,
+        stopReason: "aborted",
+        errorMessage: "Request was aborted",
+      },
+    });
+    const replay = await store.sync(SESSION_ID, initial);
+    expect(replay.reset).toBe(false);
+    const expected = [
+      draft,
+      {
+        ...continuation,
+        stopReason: "aborted",
+        errorMessage: "Request was aborted",
+      },
+    ];
+    expect(await store.sync(SESSION_ID)).toMatchObject({
+      reset: true,
+      snapshot: { messages: expected },
+    });
+    await store.close();
+    const restored = await reopen(directory);
+    expect(await restored.sync(SESSION_ID)).toMatchObject({
+      reset: true,
+      snapshot: { messages: expected },
+    });
+    // Reopening a provider imports its authoritative history, which can also
+    // restore answers absent from an older, already-compacted checkpoint.
+    const native = expected.map((message, index) => ({
+      ...message,
+      id: `native-${index}`,
+    }));
+    await restored.openSession(SESSION_ID, PROVIDER_SESSION_ID, {
+      ...snapshot(),
+      messages: native,
+    });
+    expect(await restored.sync(SESSION_ID)).toMatchObject({
+      reset: true,
+      snapshot: { messages: native },
+    });
+  });
+
   it("bounds replay and initial history while retaining the full canonical transcript after restart", async () => {
     const { directory, store } = await createStore();
     const canonical = {

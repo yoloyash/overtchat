@@ -13,6 +13,7 @@ import {
 } from "@overtchat/agent-runtime/runtime/jsonl-rpc";
 import { type AgentProcess, type HostTarget, spawnOnHost } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
+import { PiAssistantMessages } from "@overtchat/agent-runtime/pi/assistant-messages";
 
 const READY_TIMEOUT_MS = 30_000;
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
@@ -41,6 +42,7 @@ export class OmpClient {
   private readonly transport: JsonlRpcTransport;
   private readonly subscribers = new Set<(event: OmpEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
+  private readonly assistantMessages = new PiAssistantMessages();
   private readonly ready: Promise<void>;
   private resolveReady: () => void = () => {};
   private rejectReady: (error: Error) => void = () => {};
@@ -149,7 +151,7 @@ export class OmpClient {
     const entries = branch?.messages?.slice(-users.length);
     let userIndex = 0;
     return {
-      messages: messages.map((message) => {
+      messages: this.assistantMessages.reconcileHistory(messages.map((message) => {
         const normalized = identifyOmpMessage(message);
         if (
           !normalized ||
@@ -171,7 +173,7 @@ export class OmpClient {
         return entry && entry.text === text
           ? { ...normalized, id: entry.entryId }
           : normalized;
-      }),
+      })),
     };
   }
 
@@ -188,6 +190,7 @@ export class OmpClient {
     });
     if (result.cancelled) throw new Error("Oh My Pi rewind was cancelled.");
     this.submissionEchoes.clear();
+    this.assistantMessages.clear();
   }
 
   prompt(
@@ -241,6 +244,7 @@ export class OmpClient {
   abort(): Promise<unknown> {
     return this.request({ type: "abort" }).then((result) => {
       this.submissionEchoes.clear();
+      this.assistantMessages.clear();
       return result;
     });
   }
@@ -272,6 +276,7 @@ export class OmpClient {
   async stop(): Promise<void> {
     this.historyGeneration += 1;
     this.submissionEchoes.clear();
+    this.assistantMessages.clear();
     this.failReady(new Error("The Oh My Pi RPC process was stopped."));
     await this.transport.stop();
   }
@@ -289,7 +294,9 @@ export class OmpClient {
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
     const event = mapOmpUiRequest(
-      this.submissionEchoes.annotate(record),
+      this.assistantMessages.annotate(
+        this.submissionEchoes.annotate(record) as OmpEvent,
+      ),
     ) as OmpEvent;
     this.emit(event);
     const message = event.message;

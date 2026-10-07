@@ -227,20 +227,16 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
   if (timestamp !== null) {
     const index = next.findIndex(
       (candidate) =>
-        roleOf(candidate) === role && timestampOf(candidate) === timestamp,
+        roleOf(candidate) === role &&
+        timestampOf(candidate) === timestamp &&
+        // An explicit, different ID denotes a different message, even when
+        // two messages start in the same millisecond. Timestamp matching is
+        // retained for native history and older events without IDs.
+        !(id && idOf(candidate)),
     );
     if (index >= 0) {
       next[index] = message;
       return next;
-    }
-  }
-  if (role === "assistant") {
-    for (let index = next.length - 1; index >= 0; index -= 1) {
-      if (roleOf(next[index]) === "assistant") {
-        next[index] = message;
-        return next;
-      }
-      if (roleOf(next[index]) !== null) break;
     }
   }
   if (role === "toolResult") {

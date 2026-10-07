@@ -21,6 +21,7 @@ import {
   spawnOnHost,
 } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
+import { PiAssistantMessages } from "./assistant-messages";
 
 export type PiLaunch = {
   executable: string;
@@ -57,6 +58,7 @@ export class PiClient {
   private readonly transport: JsonlRpcTransport;
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
+  private readonly assistantMessages = new PiAssistantMessages();
 
   constructor(process: AgentProcess) {
     this.transport = new JsonlRpcTransport(process, "Pi");
@@ -65,7 +67,9 @@ export class PiClient {
         this.transport.fail("Pi RPC event is missing a type.");
         return;
       }
-      const event = this.submissionEchoes.annotate(record);
+      const event = this.assistantMessages.annotate(
+        this.submissionEchoes.annotate(record) as PiRpcEvent,
+      );
       this.emit(
         event.type === "extension_ui_request"
           ? ({ ...event, type: "interaction_request" } as PiRpcEvent)
@@ -130,7 +134,9 @@ export class PiClient {
       }>;
       leafId?: string;
     }>({ type: "get_entries" }).catch(() => null);
-    if (!tree?.entries) return history;
+    if (!tree?.entries) {
+      return { messages: this.assistantMessages.reconcileHistory(history.messages) };
+    }
     const entries = new Map(tree.entries.map((entry) => [entry.id, entry]));
     const branch: typeof tree.entries = [];
     const seen = new Set<string>();
@@ -142,7 +148,7 @@ export class PiClient {
       id = entry.parentId ?? undefined;
     }
     return {
-      messages: history.messages.map((message) => {
+      messages: this.assistantMessages.reconcileHistory(history.messages.map((message) => {
         if (!message || typeof message !== "object") return message;
         const index = branch.findIndex(
           (entry) =>
@@ -154,7 +160,7 @@ export class PiClient {
         if (index < 0) return message;
         const [entry] = branch.splice(index, 1);
         return { ...message, id: entry!.id };
-      }),
+      })),
     };
   }
 
@@ -171,6 +177,7 @@ export class PiClient {
     });
     if (result.cancelled) throw new Error("Pi rewind was cancelled.");
     this.submissionEchoes.clear();
+    this.assistantMessages.clear();
   }
 
   prompt(
@@ -202,6 +209,7 @@ export class PiClient {
   abort(): Promise<unknown> {
     return this.request({ type: "abort" }).then((result) => {
       this.submissionEchoes.clear();
+      this.assistantMessages.clear();
       return result;
     });
   }
@@ -249,6 +257,7 @@ export class PiClient {
 
   stop(): Promise<void> {
     this.submissionEchoes.clear();
+    this.assistantMessages.clear();
     return this.transport.stop();
   }
 
