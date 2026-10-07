@@ -73,6 +73,28 @@ npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
 E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
 ```
 
+## CI browser and desktop smoke diagnostics
+
+Web E2E and Linux desktop dependency installation have a five-minute step
+deadline, separate from test execution. `.github/apt-ci.conf` limits APT
+connection and stalled-download waits to 30 seconds, disables download retries,
+and makes incomplete package-index updates fail. These settings apply only to
+the disposable CI runners; they do not change operator installations.
+
+When a check fails, inspect the failed step first. A dependency-installation
+failure means the tests did not run. Diagnose the package source or runner
+network before changing test assertions or increasing job timeouts.
+
+Web E2E uses both line and HTML reporters in CI. The `playwright-report` artifact
+contains `playwright-report/` and `test-results/`, including retained failure
+traces. Upload is attempted after success, failure, or cancellation when files
+exist; a forcibly terminated runner may not finish reports or upload artifacts.
+After extracting the artifact, open the report with:
+
+```sh
+npx playwright show-report <artifact-directory>/playwright-report
+```
+
 ## Connector journal validation
 
 Persistence changes must preserve journal-before-ack ordering, command receipts,
