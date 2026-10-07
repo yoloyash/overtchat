@@ -52,6 +52,15 @@ Reflect.set(daemon, "handleRequest", async (request) => {
     case "git_status":
       return { isGit: false, files: [], branch: null };
     case "session_command": {
+      const events = config.eventBatches?.[request.command.message];
+      if (events) {
+        for (const data of events) {
+          await timelines.commit(SESSION_ID, {
+            epoch: "provider", sequence: 1, type: "runtime_event", data,
+          });
+        }
+        return {};
+      }
       if (request.command.type === "queue") {
         queuedMessage = request.command.message;
         await timelines.commit(SESSION_ID, {
@@ -128,19 +137,21 @@ Reflect.set(daemon, "handleRequest", async (request) => {
   }
 });
 const journal = Reflect.get(client, "journal");
-for (let index = 0; index < 10; index++)
+if (!config.eventBatches) {
+  for (let index = 0; index < 10; index++)
+    journal.enqueue({
+      type: "response",
+      requestId: `stale-${index}`,
+      success: true,
+      data: "x".repeat(6_565_400),
+    });
   journal.enqueue({
     type: "response",
-    requestId: `stale-${index}`,
+    requestId: "single-oversized",
     success: true,
-    data: "x".repeat(6_565_400),
+    data: "x".repeat(11 * 1024 * 1024),
   });
-journal.enqueue({
-  type: "response",
-  requestId: "single-oversized",
-  success: true,
-  data: "x".repeat(11 * 1024 * 1024),
-});
+}
 await journal.flush();
 const running = client.run();
 

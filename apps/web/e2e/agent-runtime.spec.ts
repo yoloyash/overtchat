@@ -2376,6 +2376,203 @@ test("folds long completed work smoothly, anchors disclosures, and respects redu
   await page.screenshot({ path: testInfo.outputPath("completed-work.png") });
 });
 
+test("preserves an OMP markdown answer through continuation, abort and reload", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.goto("/signup");
+  await page.locator("#name").fill("Transcript E2E Admin");
+  await page.locator("#email").fill("transcript-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-transcript-fixture-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare(
+      "UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'",
+    ).run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare(
+      "UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'",
+    ).run();
+  } finally {
+    db.close();
+  }
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "overtchat-transcript-e2e-"),
+  );
+  let fixture: ChildProcess | undefined;
+  try {
+    const canonical = runtimeSnapshot(Date.now());
+    canonical.provider = "omp";
+    canonical.status = "idle";
+    canonical.activeTurn = null;
+    canonical.state = { isStreaming: false };
+    canonical.messages = [];
+    canonical.models = [];
+    const draft = {
+      role: "assistant",
+      timestamp: 100,
+      content: [
+        {
+          type: "text",
+          text: "## Client downloads\n\nHere is the complete draft.\n\n```markdown\n[Desktop](https://example.com/desktop)\n```",
+        },
+      ],
+    };
+    const tool = {
+      role: "assistant",
+      timestamp: 200,
+      content: [
+        {
+          type: "toolCall",
+          id: "bash-1",
+          name: "bash",
+          arguments: { command: "pwd" },
+        },
+      ],
+    };
+    const aborted = {
+      role: "assistant",
+      timestamp: 400,
+      content: [],
+      stopReason: "aborted",
+      errorMessage: "Request was aborted",
+    };
+    const configFile = path.join(directory, "fixture.json");
+    await writeFile(
+      configFile,
+      JSON.stringify({
+        snapshot: canonical,
+        directory,
+        connectorId: "connector",
+        token: `oct_connector.${secret}`,
+        serverUrl: String(testInfo.project.use.baseURL),
+        eventBatches: {
+          draft: [
+            { type: "agent_start" },
+            { type: "message_start", message: { ...draft, content: [] } },
+            { type: "message_update", message: draft },
+            { type: "message_end", message: { ...draft, stopReason: "stop" } },
+          ],
+          continuation: [
+            { type: "todo_reminder" },
+            { type: "agent_start" },
+            { type: "turn_start" },
+            { type: "message_start", message: { ...tool, content: [] } },
+            { type: "message_update", message: tool },
+            {
+              type: "message_end",
+              message: { ...tool, stopReason: "toolUse" },
+            },
+            {
+              type: "message_end",
+              message: {
+                role: "toolResult",
+                toolCallId: "bash-1",
+                timestamp: 300,
+                content: [{ type: "text", text: "Command aborted" }],
+                isError: true,
+              },
+            },
+            {
+              type: "message_start",
+              message: { ...aborted, errorMessage: undefined },
+            },
+            { type: "message_end", message: aborted },
+            { type: "overtchat_status", status: "idle" },
+          ],
+        },
+      }),
+    );
+    fixture = spawn(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        path.resolve(
+          __dirname,
+          "../../connector/scripts/transport-fixture.mjs",
+        ),
+        configFile,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "";
+    fixture.stdout!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    fixture.stderr!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    await expect
+      .poll(
+        () => {
+          if (fixture!.exitCode !== null)
+            throw new Error(`Transcript fixture exited: ${output}`);
+          return output.includes("transport-fixture-ready");
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    await page.goto(`/agents/${SESSION_ID}`);
+    await expect(
+      page.getByPlaceholder("Message Oh My Pi or type / for commands"),
+    ).toBeVisible();
+    const sendBatch = async (message: string) => {
+      const response = await page.request.post(
+        `/api/agent-sessions/${SESSION_ID}`,
+        { data: { type: "prompt", message } },
+      );
+      expect(response.ok(), await response.text()).toBe(true);
+    };
+    const assertDraft = async () => {
+      await expect(
+        page.getByRole("heading", { name: "Client downloads", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Here is the complete draft.", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("[Desktop](https://example.com/desktop)", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Client downloads", exact: true }),
+      ).toHaveCount(1);
+    };
+    await sendBatch("draft");
+    await assertDraft();
+    await sendBatch("continuation");
+    await expect(
+      page.getByText("Request was aborted", { exact: true }),
+    ).toBeVisible();
+    await assertDraft();
+    await page.reload();
+    await expect(
+      page.getByText("Request was aborted", { exact: true }),
+    ).toBeVisible();
+    await assertDraft();
+  } finally {
+    if (fixture && fixture.exitCode === null) {
+      fixture.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          fixture!.kill("SIGKILL");
+          resolve();
+        }, 5000);
+        fixture!.once("exit", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("drains an oversized connector backlog, pages history, and streams steer without refreshing", async ({
   page,
 }, testInfo) => {

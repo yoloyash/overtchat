@@ -303,7 +303,7 @@ describe("agent runtime event reducer", () => {
       snapshot(),
       event({
         type: "message_start",
-        message: { role: "assistant", content: [] },
+        message: { role: "assistant", id: "streaming", content: [] },
       }),
     )!;
     const second = applyAgentRuntimeEnvelope(
@@ -312,6 +312,7 @@ describe("agent runtime event reducer", () => {
         type: "message_update",
         message: {
           role: "assistant",
+          id: "streaming",
           content: [{ type: "text", text: "Hello back" }],
         },
       }),
@@ -321,10 +322,39 @@ describe("agent runtime event reducer", () => {
       { role: "user", content: "Hello" },
       {
         role: "assistant",
+        id: "streaming",
         content: [{ type: "text", text: "Hello back" }],
       },
     ]);
   });
+
+  it.each([
+    [{ timestamp: 10 }, { timestamp: 20 }],
+    [
+      { id: "draft", timestamp: 10 },
+      { id: "continuation", timestamp: 10 },
+    ],
+    [{}, {}],
+  ])(
+    "keeps completed text when a distinct assistant starts: %j",
+    (firstIdentity, nextIdentity) => {
+      const draft = {
+        role: "assistant",
+        ...firstIdentity,
+        content: [{ type: "text", text: "## Draft\n\nKeep this answer." }],
+      };
+      const first = applyAgentRuntimeEnvelope(
+        snapshot(),
+        event({ type: "message_end", message: draft }),
+      )!;
+      const nextMessage = { role: "assistant", ...nextIdentity, content: [] };
+      const next = applyAgentRuntimeEnvelope(
+        first,
+        event({ type: "message_start", message: nextMessage }),
+      )!;
+      expect(next.messages.slice(-2)).toEqual([draft, nextMessage]);
+    },
+  );
 
   it("atomically restores canonical turn order after optimistic steer races", () => {
     const initial = { ...snapshot(), messages: [] };
