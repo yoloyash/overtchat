@@ -1,3 +1,5 @@
+import { useChatPreferences } from "@/lib/chatPreferences";
+import { readMessageStats } from "@overtchat/shared/message-stats";
 import type { FileUIPart, UIMessage } from "ai";
 import { groupMessageParts, isToolSettled } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
@@ -45,6 +47,8 @@ export function MessageBubble({
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
+  const preferences = useChatPreferences();
+  const stats = preferences.messageStats ? readMessageStats(message) : null;
   const [copied, setCopied] = useState(false);
   const menu = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -129,7 +133,10 @@ export function MessageBubble({
               <Text
                 style={[
                   styles.userText,
-                  { color: colors.secondaryForeground, fontFamily: fonts.sansRegular },
+                  {
+                    color: colors.secondaryForeground,
+                    fontFamily: fonts.sansRegular,
+                  },
                 ]}
                 selectable
               >
@@ -207,9 +214,7 @@ export function MessageBubble({
           const trailingDone =
             trailing.type === "reasoning"
               ? (trailing as { state?: string }).state === "done"
-              : isToolSettled(
-                  trailing as Parameters<typeof isToolSettled>[0],
-                );
+              : isToolSettled(trailing as Parameters<typeof isToolSettled>[0]);
           const active = streaming && isLast && !trailingDone;
           return (
             <ChainOfThought
@@ -220,6 +225,32 @@ export function MessageBubble({
           );
         })}
         {!streaming ? <Sources message={message} /> : null}
+        {!streaming && stats && (
+          <Text
+            style={{
+              color: colors.mutedForeground,
+              fontFamily: fonts.sansRegular,
+              fontSize: 12,
+            }}
+          >
+            {[
+              stats.totalTokens !== undefined
+                ? `${stats.totalTokens.toLocaleString()} tokens`
+                : undefined,
+              stats.responseTokens !== undefined
+                ? `${stats.responseTokens.toLocaleString()} output`
+                : undefined,
+              stats.tps !== undefined
+                ? `${stats.tps.toFixed(1)} tok/s`
+                : undefined,
+              stats.ttftMs !== undefined
+                ? `${(stats.ttftMs / 1000).toFixed(2)}s to first token`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </Text>
+        )}
         {streaming && !hasAnyText ? (
           <Text style={{ color: colors.mutedForeground }}>▍</Text>
         ) : null}
@@ -227,10 +258,10 @@ export function MessageBubble({
           <MessageActions
             copied={copied}
             onCopy={() => copyText(text)}
-            onRegenerate={
-              readOnly ? undefined : () => onRegenerate(message.id)
+            onRegenerate={readOnly ? undefined : () => onRegenerate(message.id)}
+            onContinue={
+              readOnly || !onContinue ? undefined : () => onContinue(message.id)
             }
-            onContinue={readOnly || !onContinue ? undefined : () => onContinue(message.id)}
             onSpeak={
               text ? () => void speech.play(message.id, text) : undefined
             }

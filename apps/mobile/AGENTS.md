@@ -6,9 +6,10 @@ changes require rebuilding the development client.
 
 ## Product boundary
 
-The server URL is selected at runtime and stored on the device. Mobile does not
-implement server setup, first-user signup, or administration; those flows remain
-in the web app.
+The server URL is selected at runtime and stored on the device. Mobile supports
+account settings and server administration through authenticated APIs. Server
+installation and first-user signup remain outside the native app.
+Advanced MCP and agent workspace setup can open the matching web settings page.
 
 ## Architecture
 
@@ -17,6 +18,9 @@ in the web app.
 - `src/app/(authed)/_layout.tsx` owns the active chat session and authenticated
   navigation stack. The drawer selects chats and projects through
   `src/lib/chat/session.ts`.
+- `src/app/(authed)/settings` owns the settings stack. Admin destinations use
+  `AdminGate`; server APIs independently enforce authorization. Keep credentials
+  out of persisted caches and preserve settings scope (device, account, server).
 - `src/lib/server-url.ts` owns the selected server. `src/lib/auth/client.ts`
   creates the Better Auth client for that server, and `src/lib/api.ts` is the
   authenticated HTTP boundary.

@@ -1,4 +1,5 @@
 import { createAuthClient } from "better-auth/react";
+import { adminClient } from "better-auth/client/plugins";
 import { expoClient } from "@better-auth/expo/client";
 import * as SecureStore from "expo-secure-store";
 import { getServerUrl } from "@/lib/server-url";
@@ -9,6 +10,7 @@ function createClient() {
   return createAuthClient({
     baseURL,
     plugins: [
+      adminClient(),
       expoClient({
         scheme: "overtchat",
         storagePrefix: "overtchat",

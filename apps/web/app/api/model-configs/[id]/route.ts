@@ -23,7 +23,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const guard = await requireAdmin(req);
-  if ("error" in guard) return guard.error;
+  if (guard.error) return guard.error;
 
   const { id } = await params;
   const existing = await getModelConfig(id);
@@ -36,7 +36,19 @@ export async function PATCH(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = ModelConfigSchema.safeParse(body);
+  // A narrow availability edit preserves the latest credentials and advanced fields.
+  const availabilityOnly =
+    body !== null &&
+    typeof body === "object" &&
+    !Array.isArray(body) &&
+    Object.keys(body).length === 1 &&
+    "enabled" in body &&
+    typeof body.enabled === "boolean";
+  const parsed = ModelConfigSchema.safeParse(
+    availabilityOnly
+      ? { ...existing, enabled: (body as { enabled: boolean }).enabled }
+      : body,
+  );
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -44,7 +56,8 @@ export async function PATCH(
     );
   }
   try {
-    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image")
+      createConfiguredLanguageModel(parsed.data);
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });
@@ -59,7 +72,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const guard = await requireAdmin(req);
-  if ("error" in guard) return guard.error;
+  if (guard.error) return guard.error;
 
   const { id } = await params;
   await deleteModelConfig(id);
