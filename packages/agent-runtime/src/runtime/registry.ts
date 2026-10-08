@@ -91,12 +91,8 @@ export type AgentRuntimeRegistryOptions = {
   resolveImages: (
     images: readonly AgentPromptImage[],
   ) => Promise<ResolvedAgentImage[]>;
-  /** The connector owns the display transcript across runtime restarts.
-   * Older checkpoints require one authoritative provider import before reuse. */
-  loadTranscript?: (descriptor: AgentSessionDescriptor) => Promise<{
-    messages: unknown[];
-    needsHydration: boolean;
-  } | null>;
+  /** The connector owns the display transcript across runtime restarts. */
+  loadTranscript?: (descriptor: AgentSessionDescriptor) => Promise<unknown[] | null>;
   updateSessionMetadata?: (
     sessionId: string,
     patch: AgentRuntimeMetadataPatch,
@@ -2028,11 +2024,12 @@ export class AgentRuntimeRegistry {
       },
     });
     try {
-      let transcript = await this.options.loadTranscript?.(descriptor);
-      if (transcript && hydrateHistory) transcript = { ...transcript, needsHydration: true };
+      const transcript = await this.options.loadTranscript?.(descriptor);
       const pendingSubmissions = this.options.loadQueuedMessages?.(descriptor.sessionId)
         .some((message) => message.status === "sending" || message.status === "uncertain") ?? false;
-      const initial = await this.loadInitial(adapter, client, transcript, pendingSubmissions);
+      const initial = await this.loadInitial(adapter, client, {
+        transcript, hydrateHistory, pendingSubmissions,
+      });
       const identity = adapter.sessionIdentity(initial.state);
       if (
         identity.providerSessionId !== descriptor.providerSessionId
@@ -2089,14 +2086,18 @@ export class AgentRuntimeRegistry {
   private async loadInitial(
     adapter: AgentProviderAdapter,
     client: AgentRuntimeClient,
-    transcript?: { messages: unknown[]; needsHydration: boolean } | null,
-    pendingSubmissions = false,
+    options: {
+      transcript?: unknown[] | null;
+      hydrateHistory?: boolean;
+      pendingSubmissions?: boolean;
+    } = {},
   ): Promise<AgentRuntimeInitialState> {
+    const { transcript, hydrateHistory, pendingSubmissions } = options;
     const [state, messageData, models, stats, commands] =
       await Promise.all([
         client.getState(),
-        transcript && !transcript.needsHydration && !pendingSubmissions
-          ? Promise.resolve({ messages: transcript.messages })
+        transcript && !hydrateHistory && !pendingSubmissions
+          ? Promise.resolve({ messages: transcript })
           : client.getMessages(),
         client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
         client.getSessionStats().catch(() => emptyStats()),
@@ -2107,10 +2108,9 @@ export class AgentRuntimeRegistry {
       ]);
     return {
       state,
-      messages: reconcileSubmittedUserMessages(
-        transcript?.messages ?? [],
-        transcript && !transcript.needsHydration ? transcript.messages : messageData.messages,
-      ),
+      messages: transcript && !hydrateHistory
+        ? transcript
+        : reconcileSubmittedUserMessages(transcript ?? [], messageData.messages),
       submissionHistory: messageData.messages,
       models,
       stats,

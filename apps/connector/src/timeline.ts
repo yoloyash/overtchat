@@ -24,16 +24,12 @@ import {
 } from "@overtchat/agent-bridge";
 
 const FORMAT = 1;
-// Version the projection separately from the journal format. Older checkpoints
-// may contain role-based merges of compacted provider context and stale rows.
-const TRANSCRIPT_VERSION = 1;
 const COMMIT_DELAY_MS = 25;
 const MAX_TAIL_EVENTS = 500;
 const MAX_TAIL_BYTES = 8 * 1024 * 1024;
 
 type CheckpointRecord = {
   format: 1;
-  transcriptVersion?: number;
   type: "checkpoint";
   sessionId: string;
   providerSessionId: string;
@@ -49,7 +45,6 @@ type EventRecord = {
 };
 
 type TimelineState = {
-  transcriptVersion: number;
   sessionId: string;
   providerSessionId: string;
   file: string;
@@ -91,7 +86,6 @@ function serializeRecord(record: CheckpointRecord | EventRecord): string {
 function checkpointRecord(state: TimelineState): CheckpointRecord {
   return {
     format: FORMAT,
-    transcriptVersion: state.transcriptVersion,
     type: "checkpoint",
     sessionId: state.sessionId,
     providerSessionId: state.providerSessionId,
@@ -114,9 +108,6 @@ function parseCheckpoint(value: unknown): CheckpointRecord {
   if (
     !isRecord(value) ||
     value.format !== FORMAT ||
-    (value.transcriptVersion !== undefined &&
-      value.transcriptVersion !== 0 &&
-      value.transcriptVersion !== TRANSCRIPT_VERSION) ||
     value.type !== "checkpoint" ||
     typeof value.sessionId !== "string" ||
     !value.sessionId ||
@@ -193,22 +184,17 @@ export class ConnectorTimelineStore {
     return new ConnectorTimelineStore(directory);
   }
 
-  /** Restore the display transcript, never a window intended for UI paging.
-   * Legacy projections are returned only as submission-presentation hints;
-   * the runtime must import provider history before they can be trusted. */
+  /** Restore the complete display transcript, never a window intended for UI paging. */
   async readTranscript(
     sessionId: string,
     providerSessionId: string,
-  ): Promise<{ messages: unknown[]; needsHydration: boolean } | null> {
+  ): Promise<unknown[] | null> {
     this.assertOpen();
     await this.flushPending(sessionId);
     return this.enqueue(sessionId, async () => {
       const state = await this.load(sessionId);
       if (!state || state.providerSessionId !== providerSessionId) return null;
-      return {
-        messages: structuredClone(state.snapshot.messages),
-        needsHydration: state.transcriptVersion !== TRANSCRIPT_VERSION,
-      };
+      return structuredClone(state.snapshot.messages);
     });
   }
 
@@ -229,7 +215,6 @@ export class ConnectorTimelineStore {
       let state = await this.load(sessionId);
       if (!state) {
         state = {
-          transcriptVersion: TRANSCRIPT_VERSION,
           sessionId,
           providerSessionId,
           file: this.fileFor(sessionId),
@@ -246,11 +231,7 @@ export class ConnectorTimelineStore {
         return { epoch: state.epoch, sequence: state.sequence };
       }
 
-      if (
-        replaceHistory ||
-        state.providerSessionId !== providerSessionId ||
-        state.transcriptVersion !== TRANSCRIPT_VERSION
-      ) {
+      if (replaceHistory || state.providerSessionId !== providerSessionId) {
         const envelope: AgentRuntimeEnvelope = {
           epoch: crypto.randomUUID(),
           sequence: 1,
@@ -258,7 +239,6 @@ export class ConnectorTimelineStore {
           data: snapshot,
         };
         const replacement: TimelineState = {
-          transcriptVersion: TRANSCRIPT_VERSION,
           sessionId,
           providerSessionId,
           file: state.file,
@@ -619,7 +599,6 @@ export class ConnectorTimelineStore {
         tailBytes += Buffer.byteLength(`${line}\n`);
       }
       const state: TimelineState = {
-        transcriptVersion: checkpoint.transcriptVersion ?? 0,
         sessionId,
         providerSessionId: checkpoint.providerSessionId,
         file,

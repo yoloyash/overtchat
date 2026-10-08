@@ -746,10 +746,10 @@ compacted and omit earlier display rows. Never preserve arbitrary `custom` or
 `toolResult` rows by role or reinsert them using old positions. Only presentation
 attached to an identified submitted user message transfers to its native row.
 
-Timeline checkpoints carry a separate transcript projection version. On first
-open, legacy checkpoints are reimported from the provider and atomically replaced
-with a new epoch. A failed import leaves the old checkpoint recoverable. Later
-restarts retain the repaired timeline, without another provider-history import.
+Existing checkpoints are retained as-is, including any previously misordered
+rows. There is no automatic transcript migration. Explicit `/reload` imports
+native history atomically with a new epoch; a failed import preserves the old
+checkpoint.
 
 Validate this lifecycle through the real runtime and timeline store, plus the
 browser test using a deterministic OMP RPC process and real connector/relay/UI:

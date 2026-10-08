@@ -1,5 +1,4 @@
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -147,9 +146,7 @@ describe("display transcript lifecycle", () => {
     await flush();
     expect(provider.getMessages).toHaveBeenCalledOnce();
     expect(runtime.snapshot().messages).toEqual(displayed);
-    expect(await store.readTranscript("session", "native-session")).toEqual({
-      messages: displayed, needsHydration: false,
-    });
+    expect(await store.readTranscript("session", "native-session")).toEqual(displayed);
     expect(projectAgentTranscript(displayed).at(-1)).toMatchObject({ type: "assistant_text" });
 
     await registry.stopAll();
@@ -162,7 +159,7 @@ describe("display transcript lifecycle", () => {
     expect(provider.getMessages).toHaveBeenCalledOnce();
     await nextRuntime.command({ type: "set_model", modelId: "third/model" });
     await flushNext();
-    expect((await resumed.store.readTranscript("session", "native-session"))?.messages).toEqual(displayed);
+    expect(await resumed.store.readTranscript("session", "native-session")).toEqual(displayed);
 
     // Explicit conversation changes import one whole branch and discard its old rows.
     provider.messages = [];
@@ -170,46 +167,43 @@ describe("display transcript lifecycle", () => {
     await flushNext();
     await resumed.store.openSession("session", "native-session", nextRuntime.snapshot(), true);
     expect(provider.getMessages).toHaveBeenCalledTimes(2);
-    expect((await resumed.store.readTranscript("session", "native-session"))?.messages).toEqual([]);
+    expect(await resumed.store.readTranscript("session", "native-session")).toEqual([]);
   });
 
-  it("repairs a legacy mixed checkpoint atomically and never revives its orphan tools", async () => {
+  it("retains existing misordered history until an explicit reload", async () => {
     const first = await open();
     const runtime = await first.registry.getOrStart(descriptor);
-    const polluted = {
-      ...runtime.snapshot(),
-      messages: [...compacted, ...Array.from({ length: 143 }, (_, i) => ({
-        role: "toolResult", toolCallId: `old-${i}`, content: "old result",
-      })), ...Array.from({ length: 4 }, (_, i) => ({
-        role: "custom", customType: "async-result", content: `Background job bg_${i + 1} completed`,
-      }))],
-    };
-    const oldCursor = await first.store.openSession("session", "native-session", polluted);
+    const existing = [...compacted, {
+      role: "toolResult", toolCallId: "old-call", content: "Misplaced old result",
+    }, {
+      role: "custom", customType: "async-result", content: "Background job bg_1 completed",
+    }];
+    const oldCursor = await first.store.openSession("session", "native-session", {
+      ...runtime.snapshot(), messages: existing,
+    });
     await first.registry.stopAll();
     await first.store.close();
-    const file = path.join(first.directory, `${createHash("sha256").update("session").digest("hex")}.jsonl`);
-    const checkpoint = JSON.parse(await readFile(file, "utf8"));
-    delete checkpoint.transcriptVersion;
-    const legacy = `${JSON.stringify(checkpoint)}\n`;
-    await writeFile(file, legacy);
 
     const resumed = await open(first.directory);
-    expect((await resumed.store.readTranscript("session", "native-session"))?.needsHydration).toBe(true);
-    provider.getMessages.mockRejectedValueOnce(new Error("provider unavailable"));
-    await expect(resumed.registry.getOrStart(descriptor)).rejects.toThrow("provider unavailable");
-    expect(await readFile(file, "utf8")).toBe(legacy);
     provider.messages = compacted;
-    const repairedRuntime = await resumed.registry.getOrStart(descriptor);
-    const flush = await attach(resumed.store, repairedRuntime);
-    const sync = await resumed.store.sync("session", oldCursor);
-    expect(sync).toMatchObject({ reset: true, snapshot: { messages: compacted } });
-    expect(sync.cursor.epoch).not.toBe(oldCursor.epoch);
-    await repairedRuntime.command({ type: "set_model", modelId: "other/model" });
-    await flush();
-    expect(await resumed.store.readTranscript("session", "native-session")).toEqual({
-      messages: compacted, needsHydration: false,
-    });
+    const restored = await resumed.registry.getOrStart(descriptor);
+    await attach(resumed.store, restored);
+    await restored.command({ type: "set_model", modelId: "other/model" });
+    expect(restored.snapshot().messages).toEqual(existing);
+    expect(provider.getMessages).toHaveBeenCalledOnce();
+    expect((await resumed.store.sync("session", oldCursor)).cursor.epoch).toBe(oldCursor.epoch);
     expect(await resumed.store.readTranscript("session", "different-session")).toBeNull();
-    expect(JSON.parse(await readFile(file, "utf8")).transcriptVersion).toBe(1);
+
+    await resumed.registry.stopAll();
+    await resumed.store.flush("session");
+    provider.getMessages.mockRejectedValueOnce(new Error("provider unavailable"));
+    await expect(resumed.registry.getOrStart(descriptor, { hydrateHistory: true }))
+      .rejects.toThrow("provider unavailable");
+    expect(await resumed.store.readTranscript("session", "native-session")).toEqual(existing);
+
+    const reloaded = await resumed.registry.getOrStart(descriptor, { hydrateHistory: true });
+    const cursor = await resumed.store.openSession("session", "native-session", reloaded.snapshot(), true);
+    expect(cursor.epoch).not.toBe(oldCursor.epoch);
+    expect(await resumed.store.readTranscript("session", "native-session")).toEqual(compacted);
   });
 });

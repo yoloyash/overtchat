@@ -167,7 +167,7 @@ describe("agent runtime", () => {
     ] });
     const registry = new AgentRuntimeRegistry({
       resolveImages: async () => [],
-      loadTranscript: async () => ({ messages: displayed, needsHydration: false }),
+      loadTranscript: async () => displayed,
       loadQueuedMessages: () => [{ id: "pending", message: "Continue", status: "sending" }],
       saveQueuedMessages: mocks.saveQueue,
     });
