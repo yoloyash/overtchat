@@ -262,7 +262,7 @@ memory, skills, tools and credentials remain on the execution host.
 
 Hermes sessions support streaming, images, tool approvals, model and permission
 selection, cancellation, queued messages, steering and context compression.
-Steer follows Paseo's generic ACP behavior: cancel the current turn, wait for
+Steer uses ACP cancellation: cancel the current turn, wait for
 cancellation to finish, then send the queued message as a normal prompt in the
 same session. It supports images when the selected model does. This interrupts
 current work; effects from tools that already ran are not undone.

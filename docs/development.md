@@ -732,9 +732,8 @@ Android and iOS before releasing bundled clients.
 
 ## Agent display transcript lifecycle
 
-The connector owns the display transcript. Following Paseo's separation of
-session state and timeline history, model, effort, permissions, usage, name,
-and turn-settlement updates refresh metadata without reimporting provider
+The connector owns the display transcript. Model, effort, permissions, usage,
+name, and turn-settlement updates refresh metadata without reimporting provider
 messages. Provider compaction changes model context, not existing display rows.
 Normal runtime/connector restarts seed the runtime from the complete durable
 timeline; UI history windows are never used as that seed.

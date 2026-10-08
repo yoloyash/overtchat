@@ -1355,7 +1355,7 @@ export class AgentSessionRuntime {
       });
     };
     const operation = (
-      // Like Paseo's ACP fallback, finish cancellation before starting a replacement.
+      // Finish cancellation before starting a replacement turn.
       this.adapter.steering === "restart"
         ? this.abortActiveRun().then(() => {
             if (this.stopped) throw new Error(`${metadata.label} exited.`);
