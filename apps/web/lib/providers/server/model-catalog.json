@@ -1783,6 +1783,52 @@
       "structured_output": true,
       "temperature": true
     },
+    "claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "tiers": [
+          {
+            "cache_read": 0.05,
+            "cache_write": 0.625,
+            "input": 0.5,
+            "output": 2.5,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": false,
+      "reasoning_controls": {
+        "toggle": true,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    },
     "claude-opus-4-5": {
       "context": 200000,
       "output": 64000,
@@ -1989,7 +2035,7 @@
       }
     },
     "claude-sonnet-4-5": {
-      "context": 1000000,
+      "context": 200000,
       "output": 64000,
       "cost": {
         "cache_read": 0.3,
@@ -2012,7 +2058,7 @@
       "temperature": true
     },
     "claude-sonnet-4-5-20250929": {
-      "context": 1000000,
+      "context": 200000,
       "output": 64000,
       "cost": {
         "cache_read": 0.3,
@@ -2095,7 +2141,7 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.2,
+        "cache_read": 0.1,
         "cache_write": 2.5,
         "input": 2,
         "output": 10
@@ -3504,6 +3550,41 @@
       "structured_output": true,
       "temperature": true
     },
+    "anthropic.claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "tiers": [
+          {
+            "cache_read": 0.05,
+            "cache_write": 0.625,
+            "input": 0.5,
+            "output": 2.5,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": false,
+      "temperature": false
+    },
     "anthropic.claude-opus-4-1-20250805-v1:0": {
       "context": 200000,
       "output": 32000,
@@ -3733,7 +3814,7 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.2,
+        "cache_read": 0.1,
         "cache_write": 2.5,
         "input": 2,
         "output": 10
@@ -3862,6 +3943,41 @@
       "reasoning": true,
       "structured_output": true,
       "temperature": true
+    },
+    "au.anthropic.claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.011,
+        "cache_write": 0.1375,
+        "input": 0.11,
+        "output": 0.55,
+        "tiers": [
+          {
+            "cache_read": 0.055,
+            "cache_write": 0.6875,
+            "input": 0.55,
+            "output": 2.75,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": false,
+      "temperature": false
     },
     "au.anthropic.claude-opus-4-6-v1": {
       "context": 1000000,
@@ -4256,6 +4372,41 @@
       "structured_output": true,
       "temperature": true
     },
+    "eu.anthropic.claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.011,
+        "cache_write": 0.1375,
+        "input": 0.11,
+        "output": 0.55,
+        "tiers": [
+          {
+            "cache_read": 0.055,
+            "cache_write": 0.6875,
+            "input": 0.55,
+            "output": 2.75,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": false,
+      "temperature": false
+    },
     "eu.anthropic.claude-opus-4-5-20251101-v1:0": {
       "context": 200000,
       "output": 64000,
@@ -4485,7 +4636,7 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.22,
+        "cache_read": 0.11,
         "cache_write": 2.75,
         "input": 2.2,
         "output": 11
@@ -4612,6 +4763,41 @@
       "reasoning": true,
       "structured_output": true,
       "temperature": true
+    },
+    "global.anthropic.claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.01,
+        "cache_write": 0.125,
+        "input": 0.1,
+        "output": 0.5,
+        "tiers": [
+          {
+            "cache_read": 0.05,
+            "cache_write": 0.625,
+            "input": 0.5,
+            "output": 2.5,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": false,
+      "temperature": false
     },
     "global.anthropic.claude-opus-4-5-20251101-v1:0": {
       "context": 200000,
@@ -4842,7 +5028,7 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.2,
+        "cache_read": 0.1,
         "cache_write": 2.5,
         "input": 2,
         "output": 10
@@ -5554,6 +5740,41 @@
       "reasoning": true,
       "structured_output": true,
       "temperature": true
+    },
+    "jp.anthropic.claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.011,
+        "cache_write": 0.1375,
+        "input": 0.11,
+        "output": 0.55,
+        "tiers": [
+          {
+            "cache_read": 0.055,
+            "cache_write": 0.6875,
+            "input": 0.55,
+            "output": 2.75,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": false,
+      "temperature": false
     },
     "jp.anthropic.claude-opus-4-7": {
       "context": 1000000,
@@ -6959,6 +7180,41 @@
       "structured_output": true,
       "temperature": true
     },
+    "us.anthropic.claude-haiku-5-5": {
+      "context": 1000000,
+      "output": 128000,
+      "cost": {
+        "cache_read": 0.011,
+        "cache_write": 0.1375,
+        "input": 0.11,
+        "output": 0.55,
+        "tiers": [
+          {
+            "cache_read": 0.055,
+            "cache_write": 0.6875,
+            "input": 0.55,
+            "output": 2.75,
+            "tier": {
+              "size": 100000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": false,
+      "temperature": false
+    },
     "us.anthropic.claude-opus-4-1-20250805-v1:0": {
       "context": 200000,
       "output": 32000,
@@ -7210,7 +7466,7 @@
       "context": 1000000,
       "output": 128000,
       "cost": {
-        "cache_read": 0.22,
+        "cache_read": 0.11,
         "cache_write": 2.75,
         "input": 2.2,
         "output": 11
