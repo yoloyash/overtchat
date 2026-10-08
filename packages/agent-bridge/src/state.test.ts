@@ -79,7 +79,7 @@ describe("agent runtime event reducer", () => {
     expect(tool.messages.at(-1)).toMatchObject({ timestamp: 3_456 });
   });
 
-  it("reconciles resumed provider history without dropping connector-only messages", () => {
+  it("imports provider history as a whole instead of retaining rows by role", () => {
     const durable = {
       ...snapshot(),
       status: "exited" as const,
@@ -129,7 +129,6 @@ describe("agent runtime event reducer", () => {
       messages: [
         expect.objectContaining({ id: "provider-user" }),
         expect.objectContaining({ id: "provider-assistant" }),
-        { role: "custom", content: "connector command output" },
       ],
     });
     expect(reconciled).not.toHaveProperty("error");

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -2714,6 +2714,107 @@ test("drains an oversized connector backlog, pages history, and streams steer wi
         });
       });
     }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps OMP history stable after compaction, model changes and connector restart", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto("/signup");
+  await page.locator("#name").fill("Transcript Lifecycle Admin");
+  await page.locator("#email").fill("lifecycle-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-omp-lifecycle-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'").run();
+  } finally { db.close(); }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-lifecycle-"));
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({
+    directory, connectorId: "connector", token: `oct_connector.${secret}`,
+    serverUrl: String(testInfo.project.use.baseURL),
+  }));
+  let fixture: ChildProcess | undefined;
+  let output = "";
+  const start = async () => {
+    output = "";
+    fixture = spawn(process.execPath, ["--import", "tsx",
+      path.resolve(__dirname, "../../connector/scripts/omp-transcript-fixture.mjs"), configFile,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    fixture.stdout!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    fixture.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => {
+      if (fixture!.exitCode !== null) throw new Error(output);
+      return output.includes("omp-transcript-fixture-ready");
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  const stop = async () => {
+    if (!fixture || fixture.exitCode !== null) return;
+    const child = fixture;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+      child.kill("SIGTERM");
+    });
+  };
+  try {
+    await start();
+    await page.goto(`/agents/${SESSION_ID}`);
+    const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
+    await expect(composer).toBeVisible();
+    await composer.fill("Measure startup times");
+    await composer.press("Enter");
+    const answer = page.getByRole("heading", { name: "Measured timings", exact: true });
+    await expect(answer).toBeVisible();
+    await expect(page.getByText("The container is back up and healthy.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    const rows = () => page.locator("[data-transcript-row]").allTextContents();
+    const before = await rows();
+    expect(before.join("\n")).toContain("Earlier work completed.");
+
+    await page.getByTestId("agent-model-effort-trigger").click();
+    const menu = page.getByRole("menu", { name: "Model and effort" });
+    await menu.getByRole("menuitem", { name: /Model.*Model A/u }).click();
+    await menu.getByRole("menuitem", { name: /Model B/u }).click();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect.poll(rows).toEqual(before);
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Effort/u }).click();
+    await menu.getByRole("menuitem", { name: "Low", exact: true }).click();
+    await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
+    await expect.poll(rows).toEqual(before);
+
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect.poll(rows).toEqual(before);
+    await stop();
+    await start();
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
+    await expect.poll(rows).toEqual(before);
+    const requests = (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).trim().split("\n");
+    expect(requests.filter((request) => request === "get_messages")).toHaveLength(1);
+    await page.screenshot({ path: testInfo.outputPath("omp-transcript-after-model-and-restart.png"), fullPage: true });
+    await composer.fill("/reload");
+    await composer.press("Enter");
+    await expect.poll(async () => (await rows()).join("\n")).not.toContain("Earlier work completed.");
+    await expect(answer).toBeVisible();
+    await expect(page.getByText(/Background job bg_[1-4] completed/u)).toHaveCount(0);
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect.poll(async () => (await rows()).join("\n")).not.toContain("Earlier work completed.");
+  } catch (error) {
+    throw new Error(`${String(error)}\nConnector output:\n${output}`, { cause: error });
+  } finally {
+    await stop();
     await rm(directory, { recursive: true, force: true });
   }
 });

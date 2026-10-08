@@ -242,6 +242,37 @@ afterEach(async () => {
 });
 
 describe("connector daemon command identity", () => {
+  it.each(["running", "compacting", "queued", "interaction"])(
+    "rejects a history reload while %s before stopping the provider",
+    async (busy) => {
+      const { journal, timelines } = await openJournal();
+      const events: HostConnectorEventPayload[] = [];
+      mocks.snapshot.mockReturnValue({
+        ...mocks.snapshot(),
+        status: busy === "running" ? "running" : "idle",
+        state: { isCompacting: busy === "compacting" },
+        queuedMessages: busy === "queued" ? [{ id: "queued", message: "Wait", status: "pending" }] : [],
+        pendingInteraction: busy === "interaction" ? { id: "approval" } : undefined,
+      });
+      const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
+      await daemon.handle({
+        type: "request", requestId: "reload", request: {
+          type: "session_command", commandId: "reload-command", session,
+          command: { type: "reload_history" },
+        },
+      });
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "response", success: false,
+        error: "Finish or stop the current turn and clear queued messages before reloading history.",
+      }));
+      expect(mocks.stopSession).not.toHaveBeenCalled();
+      expect(mocks.command).not.toHaveBeenCalled();
+      await daemon.stop();
+      await timelines.close();
+      await journal.close();
+    },
+  );
+
   it("dispatches provider-neutral workspace file operations", async () => {
     const { journal, timelines } = await openJournal();
     const events: HostConnectorEventPayload[] = [];
@@ -916,9 +947,11 @@ describe("connector daemon command identity", () => {
     await journal.close();
   });
 
-  it("bounds shutdown when an accepted provider command never settles", async () => {
+  it.each(["queue", "reload_history"] as const)("bounds shutdown when an accepted %s never settles", async (type) => {
     const { journal, timelines } = await openJournal();
-    mocks.command.mockReturnValueOnce(new Promise(() => {}));
+    const action = type === "reload_history" ? mocks.stopSession : mocks.command;
+    const pending = deferred<void>();
+    action.mockReturnValueOnce(pending.promise);
     const emitted: HostConnectorEventPayload[] = [];
     const daemon = new ConnectorDaemon(
       (event) => emitted.push(event),
@@ -928,8 +961,16 @@ describe("connector daemon command identity", () => {
       undefined,
       5,
     );
-    const handling = daemon.handle(command("request-1"));
-    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalledOnce());
+    const request = command("request-1");
+    if (type === "reload_history" && request.type === "request" &&
+      request.request.type === "session_command") {
+      mocks.snapshot.mockReturnValue({
+        ...mocks.snapshot(), status: "idle", state: { isStreaming: false }, queuedMessages: [],
+      });
+      request.request.command = { type };
+    }
+    const handling = daemon.handle(request);
+    await vi.waitFor(() => expect(action).toHaveBeenCalledOnce());
 
     const stopped = daemon.stop().then(() => true);
     await expect(
@@ -953,6 +994,10 @@ describe("connector daemon command identity", () => {
     );
     await timelines.close();
     await journal.close();
+    pending.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Late settlement cannot restart the agent or touch the closed stores.
+    expect(mocks.getOrStart).toHaveBeenCalledOnce();
   });
 
   it("rejects a late runtime queue write after journal shutdown", async () => {

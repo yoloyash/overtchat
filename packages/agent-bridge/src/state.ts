@@ -346,120 +346,17 @@ export function applyAgentRuntimeMessageEvent(
   return messages;
 }
 
-function isConnectorCheckpointMessage(message: unknown): boolean {
-  // Provider history is authoritative on resume. Keep only rows created by
-  // OvertChat itself and not yet folded into that history. Provider-projected
-  // Codex rows carry a turn id, so they must not survive a fresh projection
-  // merely because their native message is no longer present.
-  if (turnIdOf(message)) return false;
-  const role = roleOf(message);
-  return (
-    role === "custom" ||
-    (role === "toolResult" && toolCallIdOf(message) !== null)
-  );
-}
-
-function freshContainsConnectorMessage(
-  fresh: readonly unknown[],
-  durable: unknown,
-): boolean {
-  const role = roleOf(durable);
-  const submissionId = submissionIdOf(durable);
-  if (submissionId) {
-    return fresh.some(
-      (message) => submissionIdOf(message) === submissionId,
-    );
-  }
-  const toolCallId = toolCallIdOf(durable);
-  if (role === "toolResult" && toolCallId) {
-    return fresh.some(
-      (message) =>
-        roleOf(message) === "toolResult" &&
-        toolCallIdOf(message) === toolCallId,
-    );
-  }
-  const id = idOf(durable);
-  if (id) {
-    return fresh.some(
-      (message) => roleOf(message) === role && idOf(message) === id,
-    );
-  }
-  const timestamp = timestampOf(durable);
-  if (timestamp !== null) {
-    return fresh.some(
-      (message) =>
-        roleOf(message) === role && timestampOf(message) === timestamp,
-    );
-  }
-  const text = textOf(durable);
-  return (
-    role === "custom" &&
-    text !== "" &&
-    fresh.some(
-      (message) => roleOf(message) === "custom" && textOf(message) === text,
-    )
-  );
-}
-
-function endsProviderHistoryUnit(
-  messages: readonly unknown[],
-  index: number,
-): boolean {
-  const turnId = turnIdOf(messages[index]);
-  return !turnId || turnIdOf(messages[index + 1]) !== turnId;
-}
-
-/** Reconcile a freshly resumed provider projection with connector-owned
- * messages that may not have reached the provider's history yet. All runtime
- * metadata and provider history come from `fresh`; only identifiable
- * connector checkpoint rows survive. */
+/** A provider import replaces the entire transcript. Only presentation attached
+ * to an identified user submission transfers to the corresponding native row.
+ * Runtime snapshots already contain the display timeline and need no merging. */
 export function reconcileAgentRuntimeSnapshot(
   durable: AgentRuntimeSnapshot,
   fresh: AgentRuntimeSnapshot,
 ): AgentRuntimeSnapshot {
-  const providerMessages = reconcileSubmittedUserMessages(
-    durable.messages,
-    fresh.messages,
-  );
-  const connectorRowsByProviderUnit = new Map<number, unknown[]>();
-  let providerUnit = 0;
-  for (let index = 0; index < durable.messages.length; index += 1) {
-    const message = durable.messages[index];
-    if (isConnectorCheckpointMessage(message)) {
-      if (!freshContainsConnectorMessage(providerMessages, message)) {
-        const rows = connectorRowsByProviderUnit.get(providerUnit) ?? [];
-        rows.push(message);
-        connectorRowsByProviderUnit.set(providerUnit, rows);
-      }
-      continue;
-    }
-    if (endsProviderHistoryUnit(durable.messages, index)) providerUnit += 1;
-  }
-
-  const messages: unknown[] = [];
-  const insertedUnits = new Set<number>();
-  providerUnit = 0;
-  const insertConnectorRows = () => {
-    if (insertedUnits.has(providerUnit)) return;
-    messages.push(...(connectorRowsByProviderUnit.get(providerUnit) ?? []));
-    insertedUnits.add(providerUnit);
+  return {
+    ...fresh,
+    messages: reconcileSubmittedUserMessages(durable.messages, fresh.messages),
   };
-  for (let index = 0; index < providerMessages.length; index += 1) {
-    const message = providerMessages[index];
-    if (!isConnectorCheckpointMessage(message)) insertConnectorRows();
-    messages.push(message);
-    if (
-      !isConnectorCheckpointMessage(message) &&
-      endsProviderHistoryUnit(providerMessages, index)
-    ) {
-      providerUnit += 1;
-    }
-  }
-  insertConnectorRows();
-  for (const [unit, rows] of connectorRowsByProviderUnit) {
-    if (!insertedUnits.has(unit)) messages.push(...rows);
-  }
-  return { ...fresh, messages };
 }
 
 export function applyAgentRuntimeUsageEvent(

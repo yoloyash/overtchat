@@ -131,6 +131,9 @@ export function normalizeAgentSessionCommand(
     case "new":
       if (invocation.arguments) throw new Error("Usage: /new");
       return { type: "new_session" };
+    case "reload":
+      if (invocation.arguments) throw new Error("Usage: /reload");
+      return { type: "reload_history" };
     default:
       return command;
   }

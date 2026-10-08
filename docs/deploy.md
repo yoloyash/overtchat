@@ -288,6 +288,19 @@ not a current backup after new commands run. Older connectors cannot read the
 SQLite journal. Recovery after normal operation uses a compatible newer version,
 not an older binary with stale state.
 
+Agent display timelines survive model changes, compaction, and connector/runtime
+restarts. On first opening a session after the transcript-lifecycle upgrade, the
+connector reimports its native history once to replace older checkpoints that
+may contain misplaced tool results. Compacted native history may omit older
+conversation rows. The import commits atomically; if the provider is unavailable,
+the prior checkpoint remains on disk and opening can be retried. Native session
+files are not modified by this repair.
+
+Use `/reload` in an idle Agent Connections conversation to deliberately replace
+the displayed history with the agent's current native branch, including changes
+made outside OvertChat. Finish or stop the turn and clear queued messages first.
+Normal page refreshes and connector restarts retain the display history instead.
+
 Every journal mutation commits before it can be acknowledged. Startup holds an
 exclusive journal lock and removes abandoned regular temporary files matching
 this journal's old writer format, plus interrupted migration staging files.

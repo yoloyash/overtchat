@@ -1,5 +1,5 @@
 import { PassThrough } from "node:stream";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildPiArgs, PiClient } from "./client";
 import type {
   AgentProcess,
@@ -61,6 +61,35 @@ class FakeAgentProcess implements AgentProcess {
 }
 
 describe("PiClient", () => {
+  it("resolves a live user entry without replacing history or losing submission identity", async () => {
+    const native = { role: "user", content: "Repeat", timestamp: 200 };
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "get_entries") {
+        fake.reply(command, {
+          leafId: "new-user",
+          entries: [
+            { id: "old-user", parentId: null, type: "message", message: { ...native, timestamp: 100 } },
+            { id: "new-user", parentId: "old-user", type: "message", message: native },
+          ],
+        });
+      } else {
+        fake.stdout.write(`${JSON.stringify({ type: "message_start", message: native })}\n`);
+        fake.stdout.write(`${JSON.stringify({ type: "message_end", message: native })}\n`);
+        fake.reply(command);
+      }
+    });
+    const client = new PiClient(process);
+    const events: unknown[] = [];
+    client.onEvent((event) => events.push(event));
+    await client.prompt("Repeat", [], { clientMessageId: "submission" });
+    await vi.waitFor(() => expect(events.at(-1)).toMatchObject({
+      type: "message_end",
+      message: { ...native, id: "new-user", overtchatSubmissionId: "submission" },
+    }));
+    expect(process.commands.map((command) => command.type)).toEqual(["prompt", "get_entries"]);
+    await client.stop();
+  });
+
   it("builds provider-native RPC launch arguments", () => {
     expect(
       buildPiArgs({
@@ -124,6 +153,10 @@ describe("PiClient", () => {
 
   it("attaches submission identity to provider user-message echoes", async () => {
     const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "get_entries") {
+        fake.reply(command, { entries: [] });
+        return;
+      }
       const clientMessageId =
         command.type === "prompt" ? "client-prompt" : "client-steer";
       const message = {

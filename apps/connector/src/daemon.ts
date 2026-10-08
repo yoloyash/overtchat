@@ -157,6 +157,8 @@ export class ConnectorDaemon {
     configureTcpTunnelOpener(this.processHost.openTcpTunnel);
     this.registry = new AgentRuntimeRegistry({
       resolveImages,
+      loadTranscript: ({ sessionId, providerSessionId }) =>
+        this.timelines.readTranscript(sessionId, providerSessionId),
       updateSessionMetadata: async (sessionId, patch) => {
         const { providerModifiedAt, ...metadata } = patch;
         if (patch.launchConfig) {
@@ -595,8 +597,37 @@ export class ConnectorDaemon {
       }
       let attemptedProviderAction = false;
       try {
-        const runtime = await this.openRuntime(request.session);
+        let runtime = await this.openRuntime(request.session);
         const normalized = runtime.normalizeCommand(request.command);
+        if (normalized.type === "reload_history") {
+          const snapshot = runtime.snapshot();
+          if (
+            snapshot.status === "running" ||
+            snapshot.state.isCompacting === true ||
+            snapshot.pendingInteraction ||
+            snapshot.queuedMessages.length
+          ) {
+            throw new Error(
+              "Finish or stop the current turn and clear queued messages before reloading history.",
+            );
+          }
+          const capture = this.captures.get(request.session.sessionId)!;
+          const descriptor = {
+            ...request.session,
+            providerSessionId: capture.providerSessionId,
+            providerSessionPath: capture.providerSessionPath,
+          };
+          attemptedProviderAction = true;
+          await this.finishCapture(descriptor.sessionId, false);
+          this.assertAccepting();
+          await this.awaitProviderAction(this.registry.stopSession(descriptor.sessionId));
+          this.assertAccepting();
+          runtime = await this.registry.getOrStart(sessionDescriptor(descriptor), {
+            hydrateHistory: true,
+          });
+          await this.assertRuntimeAccepted(descriptor.sessionId);
+          await this.attachTimeline(runtime, descriptor.providerSessionId, descriptor.providerSessionPath, true);
+        }
         attemptedProviderAction = true;
         const data =
           normalized.type === "rewind" || normalized.type === "edit_message"
@@ -606,7 +637,9 @@ export class ConnectorDaemon {
                 ),
               }
             : await this.awaitProviderAction(
-                runtime.command(normalized, request.clientMessageId),
+                normalized.type === "reload_history"
+                  ? Promise.resolve()
+                  : runtime.command(normalized, request.clientMessageId),
               ).then((commandResult) => ({
                 ...(normalized.type === "fork_message" ||
                 normalized.type === "show_usage" ||
@@ -759,7 +792,7 @@ export class ConnectorDaemon {
     });
     this.captures.set(sessionId, capture);
     capture.ready = this.timelines
-      .openSession(sessionId, providerSessionId, runtime.snapshot())
+      .openSession(sessionId, providerSessionId, runtime.snapshot(), replaceHistory)
       .then(() => undefined);
     try {
       await capture.ready;
