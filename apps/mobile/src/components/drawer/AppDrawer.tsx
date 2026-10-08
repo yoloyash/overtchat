@@ -13,6 +13,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { UserAvatar } from "@/components/ui/UserAvatar";
 import { ConfirmSheet } from "@/components/ui/ConfirmSheet";
 import { useMeasuredPopoverAnchor } from "@/components/ui/useMeasuredPopoverAnchor";
 import { getAuthClient } from "@/lib/auth/client";
@@ -50,13 +51,6 @@ type ListEntry =
   | { kind: "date-header"; key: string; label: DateBucket }
   | { kind: "chat-row"; key: string; chat: ChatListItem; isActive: boolean };
 
-function initialsOf(name: string | null | undefined, email: string | null | undefined): string {
-  const source = (name && name.trim()) || (email && email.trim()) || "?";
-  const parts = source.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return source.slice(0, 2).toUpperCase();
-}
-
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { colors, radii, fonts } = useTheme();
   const {
@@ -71,9 +65,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const { data: capabilities } = useCapabilities();
   const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const session = getAuthClient().useSession();
-  const user = session.data?.user as
-    | { name?: string | null; email?: string | null }
-    | undefined;
+  const user = session.data?.user;
 
   const renameMutation = useRenameChat();
   const deleteMutation = useDeleteChat();
@@ -491,21 +483,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
       </View>
 
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
-        <View
-          style={[
-            styles.avatar,
-            { backgroundColor: colors.primary, borderRadius: radii.pill },
-          ]}
-        >
-          <Text
-            style={[
-              styles.avatarText,
-              { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
-            ]}
-          >
-            {initialsOf(user?.name, user?.email)}
-          </Text>
-        </View>
+        <UserAvatar name={user?.name} email={user?.email} image={user?.image} />
         <View style={styles.userInfo}>
           {user?.name ? (
             <Text
@@ -878,8 +856,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
-  avatar: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 13 },
   userInfo: { flex: 1 },
   userName: { fontSize: 14 },
   userEmail: { fontSize: 12 },

@@ -17,7 +17,11 @@
     "./agent-interaction": "./src/agent-interaction.ts",
     "./context-meter": "./src/context-meter.ts",
     "./mobile-connection": "./src/mobile-connection.ts",
-    "./desktop": "./src/desktop.ts"
+    "./desktop": "./src/desktop.ts",
+    "./provider-catalog": "./src/provider-catalog.ts",
+    "./admin-settings": "./src/admin-settings.ts",
+    "./message-stats": "./src/message-stats.ts",
+    "./usage": "./src/usage.ts"
   },
   "scripts": {
     "theme:generate": "tsx scripts/generate-theme-css.ts",

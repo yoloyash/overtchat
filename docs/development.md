@@ -332,6 +332,13 @@ clients do not reproduce all native splash properties.
 
 ## Mobile validation
 
+For settings changes, run the mobile typecheck and focused tests. Shared settings
+contracts also require the affected shared and web checks. Use a short native
+smoke test for navigation, keyboard clearance, and the changed device-specific
+flows; cover API validation and permissions with automated tests. Use disposable
+records for mutation checks and restore any changed preferences. File workflow
+changes need a small import/export fixture, including picker cancellation.
+
 For Agent Connections changes:
 
 ```sh
