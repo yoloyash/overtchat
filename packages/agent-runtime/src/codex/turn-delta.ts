@@ -5,7 +5,7 @@ type Message = {
   content?: string | Array<Record<string, unknown>>;
 } & Record<string, unknown>;
 
-/** Like Paseo/T3, only newly appended text crosses the wire while an item streams. */
+/** Only newly appended text crosses the wire while an item streams. */
 export function codexTurnDelta(
   turnId: string,
   previous: unknown[],

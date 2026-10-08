@@ -10,8 +10,7 @@ import type {
 } from "@overtchat/shared/agent-interaction";
 import { Button } from "@/components/ui/button";
 
-// Inline approvals with bounded tool details, following Paseo's card structure
-// while using OvertChat's transcript, button, and theme primitives.
+// Inline approvals with bounded tool details use shared transcript and UI primitives.
 export function AgentApprovalCard({
   request,
   pending,

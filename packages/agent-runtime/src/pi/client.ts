@@ -59,6 +59,7 @@ export class PiClient {
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
   private readonly assistantMessages = new PiAssistantMessages();
+  private historyGeneration = 0;
 
   constructor(process: AgentProcess) {
     this.transport = new JsonlRpcTransport(process, "Pi");
@@ -75,6 +76,17 @@ export class PiClient {
           ? ({ ...event, type: "interaction_request" } as PiRpcEvent)
           : (event as PiRpcEvent),
       );
+      if (event.type === "message_end" && event.message &&
+        typeof event.message === "object" && Reflect.get(event.message, "role") === "user") {
+        const generation = this.historyGeneration;
+        void this.identifyMessages([event.message]).then(({ messages }) => {
+          if (generation !== this.historyGeneration) return;
+          const message = messages[0];
+          if (message && typeof message === "object" && typeof Reflect.get(message, "id") === "string") {
+            this.emit({ type: "message_end", message });
+          }
+        }).catch(() => {});
+      }
     });
   }
 
@@ -124,6 +136,12 @@ export class PiClient {
     const history = await this.request<{ messages: unknown[] }>({
       type: "get_messages",
     });
+    return this.identifyMessages(history.messages);
+  }
+
+  // Resolve native user identity from session entries without importing model
+  // context into the live display transcript (including after compaction).
+  private async identifyMessages(messages: unknown[]): Promise<{ messages: unknown[] }> {
     // Native entry IDs survive reloads and distinguish repeated identical prompts.
     const tree = await this.request<{
       entries?: Array<{
@@ -135,7 +153,7 @@ export class PiClient {
       leafId?: string;
     }>({ type: "get_entries" }).catch(() => null);
     if (!tree?.entries) {
-      return { messages: this.assistantMessages.reconcileHistory(history.messages) };
+      return { messages: this.assistantMessages.reconcileHistory(messages) };
     }
     const entries = new Map(tree.entries.map((entry) => [entry.id, entry]));
     const branch: typeof tree.entries = [];
@@ -148,7 +166,7 @@ export class PiClient {
       id = entry.parentId ?? undefined;
     }
     return {
-      messages: this.assistantMessages.reconcileHistory(history.messages.map((message) => {
+      messages: this.assistantMessages.reconcileHistory(messages.map((message) => {
         if (!message || typeof message !== "object") return message;
         const index = branch.findIndex(
           (entry) =>
@@ -170,6 +188,7 @@ export class PiClient {
   ): Promise<void> {
     if (mode !== "conversation")
       throw new Error("Pi supports conversation rewind only.");
+    this.historyGeneration += 1;
     // Current Pi exposes this natively over RPC; no transcript files are rewritten.
     const result = await this.request<{ cancelled?: boolean }>({
       type: "fork",
@@ -256,6 +275,7 @@ export class PiClient {
   }
 
   stop(): Promise<void> {
+    this.historyGeneration += 1;
     this.submissionEchoes.clear();
     this.assistantMessages.clear();
     return this.transport.stop();

@@ -729,3 +729,40 @@ refreshing. Unit regressions additionally cover receiver restart during fragment
 Unicode byte accounting, cursor invalidation after rewind, unchanged tool results,
 and timeline persistence. Also verify foreground reconnect and history paging on
 Android and iOS before releasing bundled clients.
+
+## Agent display transcript lifecycle
+
+The connector owns the display transcript. Model, effort, permissions, usage,
+name, and turn-settlement updates refresh metadata without reimporting provider
+messages. Provider compaction changes model context, not existing display rows.
+Normal runtime/connector restarts seed the runtime from the complete durable
+timeline; UI history windows are never used as that seed.
+
+Initial imports, explicit `/reload`, conversation rewinds and provider-native
+resets replace history as a whole. A reload restarts the idle provider and reads
+its current branch, so it also picks up changes made in the native CLI. It rejects
+active turns, pending interactions and queued messages. Native context may be
+compacted and omit earlier display rows. Never preserve arbitrary `custom` or
+`toolResult` rows by role or reinsert them using old positions. Only presentation
+attached to an identified submitted user message transfers to its native row.
+
+Existing checkpoints are retained as-is, including any previously misordered
+rows. There is no automatic transcript migration. Explicit `/reload` imports
+native history atomically with a new epoch; a failed import preserves the old
+checkpoint.
+
+Validate this lifecycle through the real runtime and timeline store, plus the
+browser test using a deterministic OMP RPC process and real connector/relay/UI:
+
+```sh
+npm run test -w apps/connector -- src/transcript-lifecycle.test.ts src/timeline.test.ts src/daemon.test.ts
+npm run test -w packages/agent-runtime --
+npm run test -w packages/agent-bridge --
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'keeps OMP history stable'
+```
+
+Also run the connector journal validation above and the web/mobile consumer
+checks. The browser regression changes model and effort after compaction, reloads
+the page, restarts the connector, and explicitly imports provider history. It
+asserts exact row order and provider history-fetch counts. No production session
+or model credentials are used.

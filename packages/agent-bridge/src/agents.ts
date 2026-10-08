@@ -602,6 +602,7 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     name: z.string().trim().min(1).max(120),
   }),
   z.object({ type: z.literal("new_session") }),
+  z.object({ type: z.literal("reload_history") }),
   z.object({ type: z.literal("show_usage") }),
   z.object({
     type: z.literal("rewind"),

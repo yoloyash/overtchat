@@ -21,8 +21,6 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
 
-// Layout and pagination reference:
-// https://github.com/getpaseo/paseo/blob/d1b705a/packages/app/src/components/question-form-card.tsx
 // Keep serialization shared so web and native preserve the same provider values.
 export function AgentQuestionCard({
   request,

@@ -91,6 +91,8 @@ export type AgentRuntimeRegistryOptions = {
   resolveImages: (
     images: readonly AgentPromptImage[],
   ) => Promise<ResolvedAgentImage[]>;
+  /** The connector owns the display transcript across runtime restarts. */
+  loadTranscript?: (descriptor: AgentSessionDescriptor) => Promise<unknown[] | null>;
   updateSessionMetadata?: (
     sessionId: string,
     patch: AgentRuntimeMetadataPatch,
@@ -127,6 +129,13 @@ function emptyStats(): AgentSessionStats {
     },
     cost: 0,
   };
+}
+
+function runtimeCommands(adapter: AgentProviderAdapter, commands: readonly AgentSlashCommand[]): AgentSlashCommand[] {
+  return [
+    { name: "reload", description: "Reload conversation history from the agent", source: "builtin" },
+    ...adapter.mergeCommands(commands).filter((command) => command.name.toLowerCase() !== "reload"),
+  ];
 }
 
 function messageText(message: unknown): string {
@@ -335,7 +344,7 @@ export class AgentSessionRuntime {
     }
     const restoredQueue = reconcileRestoredQueuedMessages(
       initialQueuedMessages,
-      initial.messages,
+      initial.submissionHistory ?? initial.messages,
     );
     this.queuedMessages = restoredQueue.messages;
     this.activeTurnStartedAt =
@@ -358,6 +367,13 @@ export class AgentSessionRuntime {
     }
 
     client.onEvent((event) => {
+      // Provider-native reset/branch commands explicitly replace history. This
+      // adapter signal stays internal; clients receive an ordinary full snapshot.
+      if (event.type === "overtchat_history_replace" && Array.isArray(event.messages)) {
+        this.messages = reconcileSubmittedUserMessages(this.messages, event.messages);
+        this.publishSnapshot();
+        return;
+      }
       event = {
         ...event,
         // Give reducer-created rows one identity before this event touches
@@ -495,7 +511,7 @@ export class AgentSessionRuntime {
       try {
         const commands = this.adapter.commandsFromEvent(event);
         if (commands) {
-          this.commands = this.adapter.mergeCommands(commands);
+          this.commands = runtimeCommands(this.adapter, commands);
           this.publishSnapshot();
         }
       } catch {
@@ -699,6 +715,7 @@ export class AgentSessionRuntime {
         );
       case "rewind":
       case "edit_message":
+      case "reload_history":
         return Promise.reject(
           new Error("Session history changes must go through the runtime registry."),
         );
@@ -737,13 +754,13 @@ export class AgentSessionRuntime {
         return this.client
           .setModel(command.modelId)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             await this.persistModelLaunchConfig(command.modelId);
             return value;
           });
       case "set_thinking_level":
         return this.client.setThinkingLevel(command.level).then(async (value) => {
-          await this.refresh();
+          await this.refreshState();
           await this.persistLaunchConfig({ thinkingOptionId: command.level });
           return value;
         });
@@ -758,7 +775,7 @@ export class AgentSessionRuntime {
         return this.client
           .setCollaborationMode(command.mode)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             return value;
           });
       case "set_fast_mode":
@@ -770,7 +787,7 @@ export class AgentSessionRuntime {
           );
         }
         return this.client.setFastMode(command.enabled).then(async (value) => {
-          await this.refresh();
+          await this.refreshState();
           return value;
         });
       case "set_mode":
@@ -783,7 +800,7 @@ export class AgentSessionRuntime {
         }
         return this.client.setMode(command.modeId).then(async (value) => {
           if (isAgentProviderNotice(value)) return value;
-          await this.refresh();
+          await this.refreshState();
           await this.persistLaunchConfig({ modeId: command.modeId });
           return value;
         });
@@ -798,7 +815,7 @@ export class AgentSessionRuntime {
         return this.client
           .updateGoal(command.action, command.objective)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             return value;
           });
       case "implement_plan":
@@ -833,12 +850,12 @@ export class AgentSessionRuntime {
         return this.client
           .setAutoCompaction(command.enabled)
           .then(async (value) => {
-            await this.refresh();
+            await this.refreshState();
             return value;
           });
       case "set_session_name":
         return this.client.setSessionName(command.name).then(async (value) => {
-          await this.refresh();
+          await this.refreshState();
           return value;
         });
       case "interaction_response": {
@@ -871,7 +888,7 @@ export class AgentSessionRuntime {
           );
         }
         return this.client.retryInteractive().then(async (value) => {
-          await this.refresh();
+          await this.hydrateHistory();
           return value;
         });
       case "show_usage":
@@ -962,7 +979,8 @@ export class AgentSessionRuntime {
         this.clearPendingInteraction();
         this.eventClassifier.reset();
       }
-      await this.refresh();
+      if (mode === "files") await this.refreshState();
+      else await this.hydrateHistory();
       const identity = this.adapter.sessionIdentity(this.state);
       return {
         session: {
@@ -998,7 +1016,7 @@ export class AgentSessionRuntime {
       );
     }
     const result = await this.client.forkSession(messageId, mode);
-    if (result.replacesCurrentSession) await this.refresh();
+    if (result.replacesCurrentSession) await this.hydrateHistory();
     return result;
   }
 
@@ -1027,27 +1045,19 @@ export class AgentSessionRuntime {
     this.publish({ type: "runtime_event", data: event });
   }
 
-  async refresh(options: { messages?: boolean } = {}): Promise<void> {
+  /** Settings and lifecycle updates never replace the display transcript. */
+  async refreshState(): Promise<void> {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       const usageRevisions = { ...this.usageRevisions };
-      const [state, messageData, stats, commands] =
+      const [state, stats, commands] =
         await Promise.all([
           this.client.getState(),
-          options.messages === false
-            ? Promise.resolve(null)
-            : this.client.getMessages(),
           this.client.getSessionStats().catch(() => this.stats),
           this.client.getCommands().catch(() => this.commands),
         ]);
       this.state = state;
-      if (messageData) {
-        this.messages = reconcileSubmittedUserMessages(
-          this.messages,
-          messageData.messages,
-        );
-      }
-      // A transcript/command fetch can finish after a newer live usage event.
+      // A state/command fetch can finish after a newer live usage event.
       this.stats = {
         ...stats,
         tokens: usageRevisions.tokens === this.usageRevisions.tokens
@@ -1058,20 +1068,10 @@ export class AgentSessionRuntime {
           usageRevisions.contextUsage === this.usageRevisions.contextUsage
             ? stats.contextUsage : this.stats.contextUsage,
       };
-      this.commands = this.adapter.mergeCommands(commands);
+      this.commands = runtimeCommands(this.adapter, commands);
       this.status = state.isStreaming === true ? "running" : "idle";
       if (this.status === "running") this.usagePoller?.start();
       else this.usagePoller?.stop();
-      const reconciledQueue = messageData
-        ? reconcileRestoredQueuedMessages(
-            this.queuedMessages,
-            messageData.messages,
-          )
-        : { messages: this.queuedMessages, changed: false };
-      if (reconciledQueue.changed) {
-        this.queuedMessages = reconciledQueue.messages;
-        await this.publishQueueUpdate();
-      }
       this.activeTurnStartedAt =
         this.status === "running"
           ? (this.activeTurnStartedAt ?? Date.now())
@@ -1090,6 +1090,28 @@ export class AgentSessionRuntime {
       this.refreshPromise = null;
     });
     return this.refreshPromise;
+  }
+
+  /** Import a complete provider branch only when conversation history changes.
+   * Never splice old tool results or notices into a different provider context. */
+  private async hydrateHistory(): Promise<void> {
+    if (this.refreshPromise) await this.refreshPromise;
+    const { messages } = await this.client.getMessages();
+    this.messages = reconcileSubmittedUserMessages(this.messages, messages);
+    await this.refreshState();
+  }
+
+  private async reconcileQueuedSubmissions(): Promise<void> {
+    if (!this.queuedMessages.some((message) =>
+      message.status === "sending" || message.status === "uncertain"
+    )) return;
+    // Provider context can confirm delivery without becoming display history.
+    const { messages } = await this.client.getMessages();
+    const reconciled = reconcileRestoredQueuedMessages(this.queuedMessages, messages);
+    if (reconciled.changed) {
+      this.queuedMessages = reconciled.messages;
+      await this.publishQueueUpdate();
+    }
   }
 
   async stop(): Promise<void> {
@@ -1329,7 +1351,7 @@ export class AgentSessionRuntime {
       });
     };
     const operation = (
-      // Like Paseo's ACP fallback, finish cancellation before starting a replacement.
+      // Finish cancellation before starting a replacement turn.
       this.adapter.steering === "restart"
         ? this.abortActiveRun().then(() => {
             if (this.stopped) throw new Error(`${metadata.label} exited.`);
@@ -1475,9 +1497,8 @@ export class AgentSessionRuntime {
       isCompacting: false,
     };
     try {
-      await this.refresh({
-        messages: this.adapter.refreshMessagesAfterTerminal !== false,
-      });
+      await this.refreshState();
+      await this.reconcileQueuedSubmissions();
     } catch (error) {
       this.error = errorMessage(error);
       this.publish({
@@ -1887,12 +1908,13 @@ export class AgentRuntimeRegistry {
 
   async getOrStart(
     descriptor: AgentSessionDescriptor,
+    options: { hydrateHistory?: boolean } = {},
   ): Promise<AgentSessionRuntime> {
     const existing = this.runtimes.get(descriptor.sessionId);
     if (existing) return existing;
     const starting = this.starts.get(descriptor.sessionId);
     if (starting) return starting.promise;
-    const promise = this.startExisting(descriptor).finally(() => {
+    const promise = this.startExisting(descriptor, options.hydrateHistory).finally(() => {
       this.starts.delete(descriptor.sessionId);
     });
     this.starts.set(descriptor.sessionId, {
@@ -1988,6 +2010,7 @@ export class AgentRuntimeRegistry {
 
   private async startExisting(
     descriptor: AgentSessionDescriptor,
+    hydrateHistory = false,
   ): Promise<AgentSessionRuntime> {
     const adapter = this.adapterFor(descriptor.provider);
     const client = adapter.startSession(descriptor.target, {
@@ -2001,7 +2024,12 @@ export class AgentRuntimeRegistry {
       },
     });
     try {
-      const initial = await this.loadInitial(adapter, client);
+      const transcript = await this.options.loadTranscript?.(descriptor);
+      const pendingSubmissions = this.options.loadQueuedMessages?.(descriptor.sessionId)
+        .some((message) => message.status === "sending" || message.status === "uncertain") ?? false;
+      const initial = await this.loadInitial(adapter, client, {
+        transcript, hydrateHistory, pendingSubmissions,
+      });
       const identity = adapter.sessionIdentity(initial.state);
       if (
         identity.providerSessionId !== descriptor.providerSessionId
@@ -2058,21 +2086,32 @@ export class AgentRuntimeRegistry {
   private async loadInitial(
     adapter: AgentProviderAdapter,
     client: AgentRuntimeClient,
+    options: {
+      transcript?: unknown[] | null;
+      hydrateHistory?: boolean;
+      pendingSubmissions?: boolean;
+    } = {},
   ): Promise<AgentRuntimeInitialState> {
+    const { transcript, hydrateHistory, pendingSubmissions } = options;
     const [state, messageData, models, stats, commands] =
       await Promise.all([
         client.getState(),
-        client.getMessages(),
+        transcript && !hydrateHistory && !pendingSubmissions
+          ? Promise.resolve({ messages: transcript })
+          : client.getMessages(),
         client.getAvailableModels(MODEL_DISCOVERY_TIMEOUT_MS),
         client.getSessionStats().catch(() => emptyStats()),
         client
           .getCommands()
-          .then((commands) => adapter.mergeCommands(commands))
-          .catch(() => adapter.mergeCommands([])),
+          .then((commands) => runtimeCommands(adapter, commands))
+          .catch(() => runtimeCommands(adapter, [])),
       ]);
     return {
       state,
-      messages: messageData.messages,
+      messages: transcript && !hydrateHistory
+        ? transcript
+        : reconcileSubmittedUserMessages(transcript ?? [], messageData.messages),
+      submissionHistory: messageData.messages,
       models,
       stats,
       commands,

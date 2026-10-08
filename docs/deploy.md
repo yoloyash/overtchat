@@ -262,7 +262,7 @@ memory, skills, tools and credentials remain on the execution host.
 
 Hermes sessions support streaming, images, tool approvals, model and permission
 selection, cancellation, queued messages, steering and context compression.
-Steer follows Paseo's generic ACP behavior: cancel the current turn, wait for
+Steer uses ACP cancellation: cancel the current turn, wait for
 cancellation to finish, then send the queued message as a normal prompt in the
 same session. It supports images when the selected model does. This interrupts
 current work; effects from tools that already ran are not undone.
@@ -287,6 +287,17 @@ archive until the updated connector has been verified; it is a migration archive
 not a current backup after new commands run. Older connectors cannot read the
 SQLite journal. Recovery after normal operation uses a compatible newer version,
 not an older binary with stale state.
+
+Agent display timelines survive model changes, compaction, and connector/runtime
+restarts. Existing displayed history is retained as-is, including any misplaced
+rows from older versions; upgrades do not automatically rebuild it.
+
+Use `/reload` in an idle Agent Connections conversation to deliberately replace
+the displayed history with the agent's current native branch, including changes
+made outside OvertChat. Finish or stop the turn and clear queued messages first.
+The import commits atomically and can omit older rows already compacted out of
+native history. If it fails, the prior displayed history remains intact.
+Normal page refreshes and connector restarts retain the display history instead.
 
 Every journal mutation commits before it can be acknowledged. Startup holds an
 exclusive journal lock and removes abandoned regular temporary files matching
