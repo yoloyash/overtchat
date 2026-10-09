@@ -6,7 +6,7 @@ import {
   type ModelMessage,
   type ToolSet,
 } from "ai";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getChat, getMessagesThroughRowId } from "@/lib/db/chats";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
@@ -162,7 +162,10 @@ export async function POST(request: Request) {
   if (!ticket) {
     return Response.json({ error: { message: "Voice ticket expired or invalid." } }, { status: 401 });
   }
-  const modelConfig = await getModelConfig(ticket.modelConfigId);
+  const storedModelConfig = await getModelConfig(ticket.modelConfigId);
+  // The ticket's user: a per-user model runs on their own credential.
+  const modelConfig =
+    storedModelConfig && modelConfigForUser(storedModelConfig, ticket.userId);
   if (!modelConfig?.enabled || modelConfig.modelType === "image") {
     return Response.json({ error: { message: "Model config not found." } }, { status: 404 });
   }

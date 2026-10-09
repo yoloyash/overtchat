@@ -80,6 +80,17 @@ describe("task model selection", () => {
     });
   });
 
+  it("rejects a model with per-user credentials", async () => {
+    mocks.setTaskModelConfig.mockReturnValue({ status: "per_user" });
+
+    const response = await PUT(request("per-user-model"));
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "A model with per-user credentials can't be the task model",
+    });
+  });
+
   it("requires an administrator", async () => {
     mocks.getSession.mockResolvedValue({
       user: { id: "user", role: "user" },

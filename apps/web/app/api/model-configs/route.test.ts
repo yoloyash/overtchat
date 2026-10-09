@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   createModelConfig: vi.fn(),
   listModelConfigs: vi.fn(),
   toAdminModelConfig: vi.fn((row) => row),
+  listCredentialedModelIds: vi.fn(() => new Set<string>()),
   resolveModelContextWindow: vi.fn(),
   resolveModelCapabilities: vi.fn(),
 }));
@@ -17,6 +18,11 @@ vi.mock("@/lib/db/modelConfigs", () => ({
   createModelConfig: mocks.createModelConfig,
   listModelConfigs: mocks.listModelConfigs,
   toAdminModelConfig: mocks.toAdminModelConfig,
+  listCredentialedModelIds: mocks.listCredentialedModelIds,
+  isModelAvailableToUser: (
+    row: { id: string; credentialScope?: string },
+    credentialed: Set<string>,
+  ) => row.credentialScope !== "user" || credentialed.has(row.id),
 }));
 vi.mock("@/lib/providers/server/model-catalog", () => ({
   resolveModelContextWindow: mocks.resolveModelContextWindow,
@@ -99,6 +105,65 @@ describe("model config save validation", () => {
     expect(mocks.createModelConfig).toHaveBeenCalledWith(
       expect.objectContaining({ pricing }),
     );
+  });
+});
+
+describe("per-user models", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.resolveModelContextWindow.mockReturnValue(128_000);
+    mocks.resolveModelCapabilities.mockReturnValue({ inputModalities: ["text"] });
+  });
+
+  it("saves a per-user model without a key of its own, and never stores the validation placeholder", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "admin", role: "admin" } });
+    mocks.createModelConfig.mockImplementation(async (input) => ({ id: "m", ...input }));
+
+    const response = await POST(
+      request({
+        providerId: "openai",
+        apiFormat: "auto",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: null,
+        model: "gpt-5.6",
+        credentialScope: "user",
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createModelConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ credentialScope: "user", apiKey: null }),
+    );
+  });
+
+  it("lists a per-user model only to users with their own credential", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "alice", role: "user" } });
+    const row = (id: string, credentialScope: string) => ({
+      id,
+      label: id,
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "http://localhost:8000/v1",
+      apiKey: null,
+      model: id,
+      enabled: true,
+      modelType: "chat",
+      credentialScope,
+      toolCallingEnabled: true,
+      providerOptions: null,
+    });
+    mocks.listModelConfigs.mockResolvedValue([
+      row("shared", "shared"),
+      row("mine", "user"),
+      row("someone-elses", "user"),
+    ]);
+    mocks.listCredentialedModelIds.mockReturnValue(new Set(["mine"]));
+
+    const response = await GET(new Request("http://server.test/api/model-configs"));
+    const json = (await response.json()) as { modelConfigs: { id: string }[] };
+
+    expect(mocks.listCredentialedModelIds).toHaveBeenCalledWith("alice");
+    expect(json.modelConfigs.map((m) => m.id)).toEqual(["shared", "mine"]);
   });
 });
 

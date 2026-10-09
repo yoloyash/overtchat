@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   createModel: vi.fn(),
   getChat: vi.fn(),
   getMessagesThroughRowId: vi.fn(),
+  modelConfigForUser: vi.fn((row: unknown) => row),
   getModelConfig: vi.fn(),
   getPersonalization: vi.fn(),
   streamText: vi.fn(),
@@ -24,6 +25,7 @@ vi.mock("@/lib/db/chats", () => ({
 }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
+  modelConfigForUser: mocks.modelConfigForUser,
 }));
 vi.mock("@/lib/db/personalization", () => ({
   getActivePersonalization: mocks.getPersonalization,
@@ -143,6 +145,34 @@ describe("voice Chat Completions bridge", () => {
         messages: [{ role: "user", content: "Hello" }],
       }),
     );
+  });
+
+  it("calls a per-user model with the ticket user's own credential", async () => {
+    mocks.modelConfigForUser.mockImplementation((row: unknown) => ({
+      ...(row as Record<string, unknown>),
+      apiKey: "user-key",
+      baseUrl: "https://user.test/v1",
+    }));
+    const request = () =>
+      new Request("http://app.test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "signed-ticket", messages: [{ role: "user", content: "Hi" }] }),
+      });
+
+    await (await POST(request())).text();
+    expect(mocks.modelConfigForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "model-1" }),
+      "user-1",
+    );
+    expect(mocks.createModel).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: "user-key", baseUrl: "https://user.test/v1" }),
+    );
+
+    mocks.createModel.mockClear();
+    mocks.modelConfigForUser.mockReturnValue(null);
+    expect((await POST(request())).status).toBe(404);
+    expect(mocks.createModel).not.toHaveBeenCalled();
   });
 
   it("prepends the server-owned voice chat snapshot when resuming", async () => {

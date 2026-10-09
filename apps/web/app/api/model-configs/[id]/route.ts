@@ -5,7 +5,10 @@ import {
   toAdminModelConfig,
   updateModelConfig,
 } from "@/lib/db/modelConfigs";
-import { ModelConfigSchema } from "@/lib/model-config/schema";
+import {
+  ModelConfigSchema,
+  connectionForValidation,
+} from "@/lib/model-config/schema";
 import { isProviderConfigurationError } from "@/lib/providers/server/errors";
 import { createConfiguredLanguageModel } from "@/lib/providers/server/registry";
 
@@ -36,7 +39,11 @@ export async function PATCH(
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const parsed = ModelConfigSchema.safeParse(body);
+  const parsed = ModelConfigSchema.safeParse(
+    body && typeof body === "object" && !("credentialScope" in body)
+      ? { ...body, credentialScope: existing.credentialScope }
+      : body,
+  );
   if (!parsed.success) {
     return Response.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input" },
@@ -44,7 +51,8 @@ export async function PATCH(
     );
   }
   try {
-    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image")
+      createConfiguredLanguageModel(connectionForValidation(parsed.data));
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

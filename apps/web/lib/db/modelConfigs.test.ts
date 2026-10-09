@@ -42,6 +42,7 @@ raw.exec(`
     tool_calling_enabled INTEGER DEFAULT true NOT NULL,
     enabled INTEGER DEFAULT true NOT NULL,
     task_model INTEGER DEFAULT false NOT NULL,
+    credential_scope TEXT DEFAULT 'shared' NOT NULL,
     sort_order INTEGER DEFAULT 0 NOT NULL,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer))
@@ -50,6 +51,16 @@ raw.exec(`
   CREATE UNIQUE INDEX model_configs_taskModel_idx
     ON model_configs (task_model)
     WHERE task_model = true;
+  CREATE TABLE user (id TEXT PRIMARY KEY NOT NULL);
+  CREATE TABLE model_config_user_credentials (
+    model_config_id TEXT NOT NULL REFERENCES model_configs(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE,
+    api_key TEXT,
+    base_url TEXT,
+    created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    PRIMARY KEY (model_config_id, user_id)
+  );
 `);
 
 let modelConfigDb: typeof import("./modelConfigs");
@@ -237,5 +248,144 @@ describe("image model selection", () => {
     await modelConfigDb.updateModelConfig("chat-model", input);
     expect(modelConfigDb.getTaskModelConfig()).toBeNull();
     expect(modelConfigDb.getImageModelConfig()?.id).toBe("chat-model");
+  });
+});
+
+describe("per-user credentials", () => {
+  beforeEach(() => {
+    raw.exec(`
+      DELETE FROM model_config_user_credentials;
+      DELETE FROM user;
+      INSERT INTO user (id) VALUES ('alice'), ('bob');
+      UPDATE model_configs
+        SET credential_scope = 'user', api_key = 'model-own-key'
+        WHERE id = 'chat-model';
+    `);
+  });
+
+  it("runs a per-user model only on that user's own credential", async () => {
+    const row = (await modelConfigDb.getModelConfig("chat-model"))!;
+    expect(modelConfigDb.modelConfigForUser(row, "alice")).toBeNull();
+
+    modelConfigDb.setModelUserCredential("chat-model", "alice", {
+      apiKey: "alice-key",
+      baseUrl: null,
+    });
+    modelConfigDb.setModelUserCredential("chat-model", "bob", {
+      apiKey: "bob-key",
+      baseUrl: "https://bob.test/v1",
+    });
+
+    expect(modelConfigDb.modelConfigForUser(row, "alice")).toMatchObject({
+      apiKey: "alice-key",
+      baseUrl: "https://example.test/v1",
+    });
+    expect(modelConfigDb.modelConfigForUser(row, "bob")).toMatchObject({
+      apiKey: "bob-key",
+      baseUrl: "https://bob.test/v1",
+    });
+    // A credential with no key never falls back to the model's own key.
+    modelConfigDb.setModelUserCredential("chat-model", "alice", {
+      apiKey: null,
+      baseUrl: null,
+    });
+    expect(modelConfigDb.modelConfigForUser(row, "alice")?.apiKey).toBeNull();
+  });
+
+  it("leaves shared models unchanged for everyone", async () => {
+    const row = (await modelConfigDb.getModelConfig("hidden-model"))!;
+    expect(row.credentialScope).toBe("shared");
+    expect(modelConfigDb.modelConfigForUser(row, "alice")).toBe(row);
+  });
+
+  it("keeps the stored key when a write omits it, and clears it on null", () => {
+    modelConfigDb.setModelUserCredential("chat-model", "alice", {
+      apiKey: "alice-key",
+      baseUrl: null,
+    });
+    modelConfigDb.setModelUserCredential("chat-model", "alice", {
+      apiKey: undefined, // omitted: keep the stored key
+      baseUrl: "https://alice.test/v1",
+    });
+    expect(modelConfigDb.getModelUserCredential("chat-model", "alice")).toMatchObject({
+      apiKey: "alice-key",
+      baseUrl: "https://alice.test/v1",
+    });
+    expect(modelConfigDb.listModelUserCredentials("chat-model")).toEqual([
+      expect.objectContaining({
+        userId: "alice",
+        hasApiKey: true,
+        baseUrl: "https://alice.test/v1",
+      }),
+    ]);
+    expect(
+      JSON.stringify(modelConfigDb.listModelUserCredentials("chat-model")),
+    ).not.toContain("alice-key");
+    modelConfigDb.setModelUserCredential("chat-model", "alice", {
+      apiKey: null,
+      baseUrl: null,
+    });
+    expect(modelConfigDb.getModelUserCredential("chat-model", "alice")?.apiKey).toBeNull();
+  });
+
+  it("lists, deletes, and cascades credentials with their user and model", () => {
+    modelConfigDb.setModelUserCredential("chat-model", "alice", { apiKey: "a", baseUrl: null });
+    modelConfigDb.setModelUserCredential("chat-model", "bob", { apiKey: "b", baseUrl: null });
+    expect([...modelConfigDb.listCredentialedModelIds("alice")]).toEqual(["chat-model"]);
+    expect(modelConfigDb.deleteModelUserCredential("chat-model", "alice")).toBe(true);
+    expect(modelConfigDb.deleteModelUserCredential("chat-model", "alice")).toBe(false);
+    expect(modelConfigDb.listCredentialedModelIds("alice").size).toBe(0);
+
+    raw.pragma("foreign_keys = ON");
+    raw.exec("DELETE FROM user WHERE id = 'bob'");
+    expect(modelConfigDb.getModelUserCredential("chat-model", "bob")).toBeNull();
+  });
+
+  it("never makes a per-user model the task model", async () => {
+    expect(modelConfigDb.setTaskModelConfig("chat-model")).toEqual({ status: "per_user" });
+    expect(modelConfigDb.getTaskModelConfig()).toBeNull();
+
+    raw.exec("UPDATE model_configs SET credential_scope = 'shared' WHERE id = 'chat-model'");
+    expect(modelConfigDb.setTaskModelConfig("chat-model").status).toBe("updated");
+    const input = ModelConfigSchema.parse({
+      label: "Chat model",
+      providerId: "custom",
+      apiFormat: "openai-chat",
+      baseUrl: "https://example.test/v1",
+      model: "chat",
+      credentialScope: "user",
+    });
+    expect((await modelConfigDb.updateModelConfig("chat-model", input))?.taskModel).toBe(false);
+    expect(modelConfigDb.getTaskModelConfig()).toBeNull();
+  });
+});
+
+describe("credential scope validation", () => {
+  const base = {
+    label: "Model",
+    providerId: "openai",
+    apiFormat: "auto",
+    baseUrl: "https://api.openai.com/v1",
+    model: "gpt",
+  };
+
+  it("lets a per-user model omit its own key, but not a shared one", () => {
+    expect(ModelConfigSchema.safeParse({ ...base, credentialScope: "user" }).success).toBe(true);
+    expect(ModelConfigSchema.safeParse({ ...base, credentialScope: "shared" }).success).toBe(false);
+  });
+
+  it("keeps image models shared", () => {
+    const result = ModelConfigSchema.safeParse({
+      ...base,
+      apiKey: "k",
+      modelType: "image",
+      credentialScope: "user",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("leaves an omitted scope undefined so updates keep the stored one", () => {
+    const parsed = ModelConfigSchema.parse({ ...base, apiKey: "k" });
+    expect(parsed.credentialScope).toBeUndefined();
   });
 });

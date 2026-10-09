@@ -33,6 +33,7 @@ import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
 import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
 import { ConnectionTester } from "./ConnectionTester";
+import { UserCredentials } from "./UserCredentials";
 import {
   SettingsActions,
   SettingsNotice,
@@ -77,6 +78,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
         providerOptions: existing.providerOptions,
         toolCallingEnabled: existing.toolCallingEnabled !== false,
         enabled: existing.enabled,
+        credentialScope: existing.credentialScope,
       };
     }
     return {
@@ -95,6 +97,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
       providerOptions: null,
       toolCallingEnabled: true,
       enabled: true,
+      credentialScope: "shared",
     };
   });
 
@@ -144,6 +147,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const saving = createMut.isPending || updateMut.isPending;
 
   const isImage = draft.modelType === "image";
+  const perUser = !isImage && draft.credentialScope === "user";
   const requiresKey = getProvider(draft.providerId).requiresApiKey;
   const parsedPricing =
     draft.pricing === null ? null : parsePricingDraft(draft.pricing);
@@ -167,7 +171,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     !!draft.model &&
     (isImage || pricingIsValid) &&
     (isImage || !providerOptionsError) &&
-    !(requiresKey && !draft.apiKey);
+    !(requiresKey && !draft.apiKey && !perUser);
   const stillEditingOriginalConnection =
     existing !== undefined &&
     draft.providerId === existing.providerId &&
@@ -264,6 +268,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           ? draft.discoveredCapabilities
           : detectedCapabilities,
       providerOptions,
+      credentialScope: isImage ? "shared" : draft.credentialScope,
       ...(isImage ? { contextWindow: null, discoveredContextWindow: null, discoveredCapabilities: null } : {}),
     });
     if (!parsed.success) {
@@ -354,6 +359,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           <ConnectionFields
             key={draft.modelType}
             imageModel={isImage}
+            apiKeyOptional={perUser}
             previouslyUsedApiKeys={previouslyUsedApiKeys}
             draft={{
               providerId: draft.providerId,
@@ -481,6 +487,36 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             />
           </SettingsRow>
 
+          {!isImage && (
+            <SettingsRow
+              title="Credentials"
+              htmlFor="p-credential-scope"
+              description={
+                perUser
+                  ? "Each person chats with their own key, set under People. The key above is only used to set up and test this model."
+                  : "Everyone chats with the connection above."
+              }
+            >
+              <Select
+                value={draft.credentialScope ?? "shared"}
+                onValueChange={(value) => {
+                  if (value !== "shared" && value !== "user") return;
+                  setDraft((d) => ({ ...d, credentialScope: value }));
+                }}
+              >
+                <SelectTrigger id="p-credential-scope">
+                  <SelectValue>
+                    {perUser ? "Each person's own" : "Shared"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shared">Shared</SelectItem>
+                  <SelectItem value="user">Each person&apos;s own</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingsRow>
+          )}
+
           <SettingsRow
             title={isImage ? "Enabled" : "Available in chat"}
             description={
@@ -548,6 +584,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           </Button>
         </SettingsActions>
       </form>
+
+      {/* Outside the model form: each person's credential saves on its own. */}
+      {perUser &&
+        (modelId && existing?.credentialScope === "user" ? (
+          <UserCredentials modelId={modelId} defaultBaseUrl={draft.baseUrl} />
+        ) : (
+          <SettingsNotice>
+            Save this model, then add each person&apos;s key under People.
+          </SettingsNotice>
+        ))}
     </SettingsPage>
   );
 }

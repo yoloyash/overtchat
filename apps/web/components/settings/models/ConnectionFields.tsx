@@ -58,6 +58,8 @@ export interface ConnectionFieldsProps {
   onCapabilitySuggestion?: (next: ModelCapabilities | undefined) => void;
   autoFetchModels?: boolean;
   imageModel?: boolean;
+  /** Each person brings their own key (per-user credentials), so this one is optional. */
+  apiKeyOptional?: boolean;
 }
 
 export function ConnectionFields({
@@ -72,6 +74,7 @@ export function ConnectionFields({
   onCapabilitySuggestion,
   autoFetchModels = false,
   imageModel = false,
+  apiKeyOptional = false,
 }: ConnectionFieldsProps) {
   const provider = getProvider(draft.providerId);
   const requiresKey = provider.requiresApiKey;
@@ -335,9 +338,11 @@ export function ConnectionFields({
       <SettingsRow
         title="API key"
         description={
-          requiresKey
-            ? `Required for ${provider.label}.`
-            : "Optional for local or custom endpoints."
+          apiKeyOptional
+            ? "Optional: only used to find models and test the connection. Each person's chats use their own key."
+            : requiresKey
+              ? `Required for ${provider.label}.`
+              : "Optional for local or custom endpoints."
         }
         htmlFor="p-api-key"
         align="center"
@@ -347,8 +352,8 @@ export function ConnectionFields({
           <PasswordInput
             id="p-api-key"
             autoComplete="new-password"
-            placeholder={requiresKey ? "Required" : "Optional"}
-            required={requiresKey}
+            placeholder={requiresKey && !apiKeyOptional ? "Required" : "Optional"}
+            required={requiresKey && !apiKeyOptional}
             value={draft.apiKey}
             onChange={(e) => {
               onChange({ apiKey: e.target.value });

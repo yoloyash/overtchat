@@ -1,5 +1,5 @@
 import { auth } from "@/lib/auth/server";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { pingModel } from "@/lib/modelHealth";
 
 export async function POST(
@@ -13,8 +13,20 @@ export async function POST(
   }
 
   const { id } = await params;
-  const row = await getModelConfig(id);
-  if (!row) return new Response("Not found", { status: 404 });
+  const stored = await getModelConfig(id);
+  if (!stored) return new Response("Not found", { status: 404 });
+  // A per-user model is tested with the administrator's own credential.
+  const row = modelConfigForUser(stored, session.user.id);
+  if (!row) {
+    return Response.json(
+      {
+        ok: false,
+        error: "Add your own credential for this model to test its connection.",
+        elapsedMs: 0,
+      },
+      { status: 200 },
+    );
+  }
 
   if (row.modelType === "image") return Response.json({ error: "Image models do not use chat connection tests." }, { status: 400 });
 

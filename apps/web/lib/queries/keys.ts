@@ -88,6 +88,8 @@ export const modelConfigKeys = {
   publicList: () => [...modelConfigKeys.all(), "list", "public"] as const,
   adminList: () => [...modelConfigKeys.all(), "list", "admin"] as const,
   health: (id: string) => [...modelConfigKeys.all(), "health", id] as const,
+  credentials: (id: string) =>
+    [...modelConfigKeys.all(), "credentials", id] as const,
 };
 
 export const modelPreferenceKeys = {

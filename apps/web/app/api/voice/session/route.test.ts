@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getChat: vi.fn(),
   getLatestMessageRowId: vi.fn(),
+  modelConfigForUser: vi.fn((row: unknown) => row),
   getModelConfig: vi.fn(),
   getProject: vi.fn(),
   getServerCapability: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("@/lib/db/chats", () => ({
 }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
+  modelConfigForUser: mocks.modelConfigForUser,
 }));
 vi.mock("@/lib/db/projects", () => ({ getProject: mocks.getProject }));
 vi.mock("@/lib/db/serverCapabilities", () => ({
@@ -70,6 +72,19 @@ describe("voice session", () => {
     mocks.getChat.mockResolvedValue(null);
     mocks.getLatestMessageRowId.mockResolvedValue(null);
     mocks.issueVoiceTicket.mockReturnValue({ token: "ticket" });
+  });
+
+  it("refuses a per-user model the caller has no credential for", async () => {
+    mocks.modelConfigForUser.mockReturnValue(null);
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(404);
+    expect(mocks.modelConfigForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "model-1" }),
+      "user-1",
+    );
+    expect(mocks.issueVoiceTicket).not.toHaveBeenCalled();
   });
 
   it("binds a new voice session to the requested empty chat", async () => {

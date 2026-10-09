@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
 import { getChat } from "@/lib/db/chats";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { syncVoiceHistory } from "@/lib/db/voiceChats";
 import { ensureChatTitle } from "@/lib/title";
 import { voiceHistoryToUiMessages } from "@/lib/voice/history";
@@ -65,7 +65,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const selectedModel = await getModelConfig(ticket.modelConfigId);
+  const storedModel = await getModelConfig(ticket.modelConfigId);
+  // Titles fall back to the chat's own model: on this user's credential if per-user.
+  const selectedModel = storedModel && modelConfigForUser(storedModel, ticket.userId);
   await ensureChatTitle({
     chatId: ticket.chatId,
     userId: ticket.userId,

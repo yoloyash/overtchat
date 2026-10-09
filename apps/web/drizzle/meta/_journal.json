@@ -141,6 +141,13 @@
       "when": 1791025431476,
       "tag": "0019_chat_pinning",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1791523314823,
+      "tag": "0020_model_user_credentials",
+      "breakpoints": true
     }
   ]
 }
