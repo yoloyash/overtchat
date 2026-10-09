@@ -145,7 +145,9 @@ export function ConnectionFields({
                 model.capabilities?.outputModalities ??
                 model.catalogCapabilities?.outputModalities;
               // Discovery supplies suggestions; admins can enter any model ID.
-              return outputs?.includes("image") ?? false;
+              return (
+                outputs?.includes("image") ?? connection.providerId === "custom"
+              );
             })
           : allModels;
         setModels(discovered);
@@ -244,7 +246,10 @@ export function ConnectionFields({
             const selected = getProvider(next as ProviderId);
             onChange({
               providerId: selected.id,
-              apiFormat: selected.defaultApiFormat,
+              apiFormat:
+                imageModel && selected.id === "custom"
+                  ? "openai-images"
+                  : selected.defaultApiFormat,
               baseUrl: selected.defaultBaseUrl,
               apiKey: "",
               model: "",
@@ -254,22 +259,32 @@ export function ConnectionFields({
         >
           <SelectTrigger id="p-provider" className="w-full">
             <ModelBrandIcon iconId={provider.iconId} />
-            <SelectValue>{provider.label}</SelectValue>
+            <SelectValue>
+              {imageModel && provider.id === "custom"
+                ? "Custom (OpenAI-compatible)"
+                : provider.label}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             {PROVIDER_IDS.filter(
-              (id) => !imageModel || id === "openai" || id === "google",
+              (id) =>
+                !imageModel ||
+                id === "openai" ||
+                id === "google" ||
+                id === "custom",
             ).map((id) => (
               <SelectItem key={id} value={id}>
                 <ModelBrandIcon iconId={PROVIDERS[id].iconId} />
-                {PROVIDERS[id].label}
+                {imageModel && id === "custom"
+                  ? "Custom (OpenAI-compatible)"
+                  : PROVIDERS[id].label}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </SettingsRow>
 
-      {draft.providerId === "custom" && (
+      {draft.providerId === "custom" && !imageModel && (
         <SettingsRow
           title="API format"
           description={
@@ -297,7 +312,9 @@ export function ConnectionFields({
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {EXPLICIT_API_FORMAT_IDS.map((id) => (
+              {EXPLICIT_API_FORMAT_IDS.filter(
+                (id) => id !== "openai-images",
+              ).map((id) => (
                 <SelectItem key={id} value={id}>
                   {API_FORMATS[id].label}
                 </SelectItem>
@@ -386,7 +403,7 @@ export function ConnectionFields({
         title="Model"
         description={
           imageModel
-            ? "Choose a model that generates and edits images. You can also enter its ID manually."
+            ? "Choose an image model or enter its ID manually."
             : "Choose a fetched model or enter an id."
         }
         htmlFor="p-model"
@@ -422,9 +439,11 @@ export function ConnectionFields({
                 className="min-w-0 flex-1 font-mono text-xs"
                 placeholder={
                   imageModel
-                    ? draft.providerId === "google"
-                      ? "gemini-3.1-flash-image"
-                      : "gpt-image-1"
+                    ? draft.providerId === "custom"
+                      ? "model-id"
+                      : draft.providerId === "google"
+                        ? "gemini-3.1-flash-image"
+                        : "gpt-image-1"
                     : provider.modelPlaceholder
                 }
                 required

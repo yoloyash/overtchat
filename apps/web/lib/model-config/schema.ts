@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
 import { REASONING_EFFORTS, type ModelCapabilities } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
@@ -158,12 +159,31 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
   .superRefine((value, context) => {
     validateProviderConnection(value, context);
     if (value.modelType === "image") {
-      if (value.providerId !== "openai" && value.providerId !== "google") {
+      if (!["openai", "google", "custom"].includes(value.providerId)) {
         context.addIssue({
           code: "custom",
           path: ["providerId"],
-          message: "Image models support OpenAI and Google Gemini.",
+          message:
+            "Image models support OpenAI, Google Gemini, and custom OpenAI-compatible providers.",
         });
+      }
+      if (value.providerId === "custom") {
+        if (value.apiFormat !== "openai-images")
+          context.addIssue({
+            code: "custom",
+            path: ["apiFormat"],
+            message:
+              "Custom image models require the OpenAI Images API format.",
+          });
+        const options = CustomImageOptionsSchema.safeParse(
+          value.providerOptions ?? {},
+        );
+        if (!options.success)
+          for (const issue of options.error.issues)
+            context.addIssue({
+              ...issue,
+              path: ["providerOptions", ...issue.path],
+            });
       }
       if (!isHttpEndpoint(value.baseUrl)) return;
       const endpoint = new URL(value.baseUrl);
@@ -180,6 +200,12 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
             "Use an endpoint without credentials, query parameters, or fragments.",
         });
       }
+    } else if (value.apiFormat === "openai-images") {
+      context.addIssue({
+        code: "custom",
+        path: ["apiFormat"],
+        message: "The Images API cannot be used for chat.",
+      });
     }
   })
   .transform((value) =>
@@ -188,7 +214,10 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
           ...value,
           toolCallingEnabled: false,
           systemPrompt: null,
-          providerOptions: null,
+          providerOptions:
+            value.providerId === "custom"
+              ? customImageOptions(value.providerOptions)
+              : null,
           contextWindow: null,
           discoveredContextWindow: null,
           discoveredCapabilities: null,

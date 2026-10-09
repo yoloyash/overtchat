@@ -22,7 +22,7 @@ export function Composer({
   streaming,
   searchAvailable,
   searchRequested,
-  imageOptions, imageModel, imageSupportsQuality, onImageOptions,
+  imageOptions, imageModel, imageSupportsQuality, imageConfiguredSize, onImageOptions,
   modelLabel,
   modelIconId,
   thinkingLevelLabel,
@@ -49,6 +49,7 @@ export function Composer({
   imageOptions?: ImageGenerationOptions;
   imageModel?: string | null;
   imageSupportsQuality?: boolean;
+  imageConfiguredSize?: string;
   onImageOptions?: (value: ImageGenerationOptions | undefined) => void;
   modelLabel?: string;
   modelIconId?: ModelBrandIconId;
@@ -133,7 +134,7 @@ export function Composer({
           }
         />
       )}
-      {imageOptions && onImageOptions ? <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} /> : null}
+      {imageOptions && onImageOptions ? <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} configuredSize={imageConfiguredSize} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} /> : null}
       {uploadError && <ErrorNotice message={uploadError} onDismiss={onDismissUploadError} />}
 
       <View

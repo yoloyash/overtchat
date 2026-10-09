@@ -337,3 +337,64 @@ describe("image model configuration", () => {
     },
   );
 });
+
+describe("custom image configuration", () => {
+  const custom = {
+    modelType: "image",
+    label: "Local images",
+    providerId: "custom",
+    apiFormat: "openai-images",
+    baseUrl: "http://192.168.0.30:8731/v1/",
+    model: "flux2-klein-4b",
+  };
+  it("accepts keyless endpoints and normalizes generation-only defaults", () => {
+    expect(ModelConfigSchema.parse(custom)).toMatchObject({
+      apiKey: null,
+      baseUrl: "http://192.168.0.30:8731/v1",
+      providerOptions: {
+        size: "auto",
+        responseFormat: "b64_json",
+        supportsEditing: false,
+        extraBody: {},
+      },
+    });
+  });
+  it("preserves backend settings through save and re-save", () => {
+    const parsed = ModelConfigSchema.parse({
+      ...custom,
+      providerOptions: {
+        size: "512x512",
+        responseFormat: "url",
+        supportsEditing: true,
+        extraBody: { seed: 7, quality: "standard", nested: { scales: [1, 2] } },
+      },
+    });
+    expect(ModelConfigSchema.parse(parsed)).toEqual(parsed);
+    expect(parsed.providerOptions).toMatchObject({
+      size: "512x512",
+      extraBody: { seed: 7 },
+    });
+  });
+  it.each([
+    { apiFormat: "openai-chat" },
+    { apiFormat: "anthropic-messages" },
+    { modelType: "chat" },
+    { providerOptions: { responseFormat: "base64" } },
+    { providerOptions: { extraBody: [] } },
+    { providerOptions: { extraBody: { seed: "x".repeat(17000) } } },
+    ...[
+      "model",
+      "prompt",
+      "n",
+      "size",
+      "response_format",
+      "image",
+      "mask",
+      "stream",
+    ].map((key) => ({ providerOptions: { extraBody: { [key]: "override" } } })),
+  ])("rejects ambiguous or conflicting configuration %j", (patch) => {
+    expect(ModelConfigSchema.safeParse({ ...custom, ...patch }).success).toBe(
+      false,
+    );
+  });
+});

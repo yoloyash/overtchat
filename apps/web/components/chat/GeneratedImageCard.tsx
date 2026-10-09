@@ -103,8 +103,15 @@ export function GeneratedImageCard({
           </summary>
           <p className="mt-2 whitespace-pre-wrap">{part.output.prompt}</p>
           <p className="mt-1">
-            Requested format: {IMAGE_SIZE_LABELS[part.output.size] ?? "Auto"} ·
-            Quality: {part.output.quality}
+            Requested format:{" "}
+            {part.output.providerSize === "auto"
+              ? "Backend default"
+              : (part.output.providerSize ??
+                IMAGE_SIZE_LABELS[part.output.size] ??
+                "Auto")}
+            {part.output.providerSize === undefined && (
+              <> · Quality: {part.output.quality}</>
+            )}
           </p>
         </details>
       )}

@@ -106,6 +106,7 @@ interface ComposerProps {
   imageAvailable?: boolean;
   imageModel?: string | null;
   imageSupportsQuality?: boolean;
+  imageConfiguredSize?: string;
   imageOptions?: ImageGenerationOptions;
   onImageOptions?: (options: ImageGenerationOptions | undefined) => void;
   dropActive: boolean;
@@ -142,7 +143,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   searchAvailable,
   searchUnavailableReason,
   searchRequested,
-  imageAvailable, imageModel, imageSupportsQuality, imageOptions, onImageOptions,
+  imageAvailable, imageModel, imageSupportsQuality, imageConfiguredSize, imageOptions, onImageOptions,
   dropActive,
   models,
   selectedModelId,
@@ -545,7 +546,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
           )}
         >
-          {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
+          {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} configuredSize={imageConfiguredSize} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-1 pt-1">
               {attachments.map((att) => (
