@@ -285,6 +285,24 @@ const TranscriptItem = memo(function TranscriptItem({
   const { colors, radii } = useTheme();
   let content;
   switch (item.type) {
+    case "compaction": {
+      content = (
+        <View accessibilityLabel={item.label} testID="agent-compaction"
+          style={{ flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 }}>
+          <View style={{ height: 1, flex: 1, backgroundColor: colors.border }} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 }}>
+            {item.active ? <ActivityIndicator size="small" color={colors.mutedForeground} />
+              : <Ionicons name="contract-outline" size={14} color={colors.mutedForeground} />}
+            <View style={{ flexShrink: 1, alignItems: "center" }}>
+              <AgentText muted={!item.failed} danger={item.failed}>{item.label}</AgentText>
+              {item.detail && <AgentText muted>{item.detail}</AgentText>}
+            </View>
+          </View>
+          <View style={{ height: 1, flex: 1, backgroundColor: colors.border }} />
+        </View>
+      );
+      break;
+    }
     case "work_summary": {
       content = (
         <AgentWorkSummary

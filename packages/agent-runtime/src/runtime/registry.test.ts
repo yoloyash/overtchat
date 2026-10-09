@@ -184,6 +184,26 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
+  it("retains an interrupted compaction marker when the provider restarts", async () => {
+    const displayed = [
+      { id: "old", role: "user", content: "Keep this history" },
+      { id: "compaction:old", role: "compactionSummary", status: "running", trigger: "auto", timestamp: 1 },
+    ];
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadTranscript: async () => displayed,
+    });
+    const runtime = await registry.getOrStart({
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "omp", target: { transport: "local" }, executable: "omp", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    expect(runtime.snapshot().messages).toEqual([displayed[0], { ...displayed[1], status: "interrupted" }]);
+    expect(mocks.getMessages).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
   it("refreshes the existing runtime after adopting an edited provider session", async () => {
     mocks.getState
       .mockResolvedValueOnce({

@@ -1535,6 +1535,25 @@ describe("agent conversation header", () => {
 });
 
 describe("agent working indicators", () => {
+  it("keeps a compaction divider after work finishes and shows imported markers", async () => {
+    const marker = { id: "compact", role: "compactionSummary", status: "running", trigger: "manual" };
+    mocks.snapshot!.messages = [marker];
+    mocks.snapshot!.state.isCompacting = true;
+    await render();
+    expect(container.textContent).toContain("Compacting context…");
+    mocks.snapshot!.messages = [{ ...marker, status: "completed", tokensBefore: 42000 }];
+    mocks.snapshot!.state.isCompacting = false;
+    await render();
+    expect(container.textContent).not.toContain("Compacting context…");
+    expect(container.textContent).toContain("Context manually compacted");
+    expect(container.textContent).toContain("From 42,000 tokens");
+    mocks.snapshot!.messages = [{ role: "compactionSummary", summary: "Native context", tokensBefore: 120000 }];
+    await render();
+    expect(container.textContent).toContain("Context compacted");
+    expect(container.textContent).toContain("From 120,000 tokens");
+    expect(container.textContent).not.toContain("Native context");
+  });
+
   it("shows activity in the chat header while working or compacting, and removes it when idle or disconnected", async () => {
     mocks.snapshot!.status = "running";
     await render();

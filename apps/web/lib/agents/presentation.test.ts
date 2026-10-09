@@ -1,6 +1,7 @@
 import { AGENT_PROVIDERS } from "@overtchat/agent-bridge";
 import { describe, expect, it } from "vitest";
 import {
+  foldAgentTranscript,
   agentRewindOptions,
   agentActiveTurnStart,
   restoreAgentComposer,
@@ -757,4 +758,23 @@ it("retains native message keys when older transcript pages are prepended", () =
   const older = { id: "older", role: "user", content: "Older" };
   const key = projectAgentTranscript([current])[0]!.key;
   expect(projectAgentTranscript([older, current])[1]!.key).toBe(key);
+});
+
+
+describe("compaction timeline", () => {
+  it("keeps imported and live markers visible when surrounding work folds", () => {
+    const projected = projectAgentTranscript([
+      { id: "user", role: "user", content: "Work" },
+      { id: "thinking", role: "assistant", content: [{ type: "thinking", thinking: "Checking" }] },
+      { id: "compact", role: "compactionSummary", status: "completed", trigger: "auto", tokensBefore: 120000, tokensAfter: 12000 },
+      { id: "answer", role: "assistant", content: [{ type: "text", text: "Done" }] },
+      { id: "imported", role: "compactionSummary", summary: "Private context", tokensBefore: 0 },
+    ]);
+    const folded = foldAgentTranscript(projected, { unsettled: false, expanded: new Set() });
+    expect(folded.filter((item) => item.type === "compaction")).toMatchObject([
+      { label: "Context automatically compacted", detail: "120,000 → 12,000 tokens", active: false },
+      { label: "Context compacted", detail: "From 0 tokens", active: false },
+    ]);
+    expect(folded.some((item) => item.type === "work_summary")).toBe(true);
+  });
 });

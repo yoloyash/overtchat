@@ -555,13 +555,11 @@ export function AgentSessionView({
     if (input.type === "show_usage") return showUsage();
 
     const toastTitle =
-      input.type === "compact"
-        ? "Compaction started"
-        : input.type === "set_session_name"
-          ? "Session renamed"
-          : input.type === "set_auto_compaction"
-            ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
-            : undefined;
+      input.type === "set_session_name"
+        ? "Session renamed"
+        : input.type === "set_auto_compaction"
+          ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
+          : undefined;
     return run(input, { toastTitle });
   }
 
@@ -892,7 +890,7 @@ export function AgentSessionView({
                   type: "compact",
                   ...(customInstructions ? { customInstructions } : {}),
                 },
-                { closeCompact: true, toastTitle: "Compaction started" },
+                { closeCompact: true },
               )
             }
           />

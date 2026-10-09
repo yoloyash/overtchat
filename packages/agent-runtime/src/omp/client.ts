@@ -14,6 +14,7 @@ import {
 import { type AgentProcess, type HostTarget, spawnOnHost } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 import { PiAssistantMessages } from "@overtchat/agent-runtime/pi/assistant-messages";
+import { PiCompaction } from "@overtchat/agent-runtime/pi/compaction";
 
 const READY_TIMEOUT_MS = 30_000;
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
@@ -43,6 +44,7 @@ export class OmpClient {
   private readonly subscribers = new Set<(event: OmpEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
   private readonly assistantMessages = new PiAssistantMessages();
+  private readonly compaction = new PiCompaction((event) => this.emit(event));
   private readonly ready: Promise<void>;
   private resolveReady: () => void = () => {};
   private rejectReady: (error: Error) => void = () => {};
@@ -242,7 +244,7 @@ export class OmpClient {
   }
 
   abort(): Promise<unknown> {
-    return this.request({ type: "abort" }).then((result) => {
+    return this.compaction.abort(() => this.request({ type: "abort" })).then((result) => {
       this.submissionEchoes.clear();
       this.assistantMessages.clear();
       return result;
@@ -263,7 +265,7 @@ export class OmpClient {
   }
 
   compact(customInstructions?: string): Promise<unknown> {
-    return this.request({ type: "compact", ...(customInstructions ? { customInstructions } : {}) }, 0x7fffffff);
+    return this.compaction.manual(() => this.request({ type: "compact", ...(customInstructions ? { customInstructions } : {}) }, 0x7fffffff));
   }
 
   setAutoCompaction(enabled: boolean): Promise<unknown> { return this.request({ type: "set_auto_compaction", enabled }); }
@@ -293,6 +295,7 @@ export class OmpClient {
       return;
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
+    if (this.compaction.handle(record as OmpEvent)) return;
     const event = mapOmpUiRequest(
       this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as OmpEvent,

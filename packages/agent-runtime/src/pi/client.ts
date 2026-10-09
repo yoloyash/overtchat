@@ -22,6 +22,7 @@ import {
 } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 import { PiAssistantMessages } from "./assistant-messages";
+import { PiCompaction } from "./compaction";
 
 export type PiLaunch = {
   executable: string;
@@ -59,6 +60,7 @@ export class PiClient {
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
   private readonly assistantMessages = new PiAssistantMessages();
+  private readonly compaction = new PiCompaction((event) => this.emit(event));
   private historyGeneration = 0;
 
   constructor(process: AgentProcess) {
@@ -68,6 +70,7 @@ export class PiClient {
         this.transport.fail("Pi RPC event is missing a type.");
         return;
       }
+      if (this.compaction.handle(record as PiRpcEvent)) return;
       const event = this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as PiRpcEvent,
       );
@@ -226,7 +229,7 @@ export class PiClient {
   }
 
   abort(): Promise<unknown> {
-    return this.request({ type: "abort" }).then((result) => {
+    return this.compaction.abort(() => this.request({ type: "abort" })).then((result) => {
       this.submissionEchoes.clear();
       this.assistantMessages.clear();
       return result;
@@ -250,13 +253,13 @@ export class PiClient {
   }
 
   compact(customInstructions?: string): Promise<unknown> {
-    return this.request(
+    return this.compaction.manual(() => this.request(
       {
         type: "compact",
         ...(customInstructions ? { customInstructions } : {}),
       },
       0x7fffffff,
-    );
+    ));
   }
 
   setAutoCompaction(enabled: boolean): Promise<unknown> {
