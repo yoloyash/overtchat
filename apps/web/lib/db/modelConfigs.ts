@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, max } from "drizzle-orm";
 import { db } from "@/lib/db/client";
-import { modelConfigs } from "@/lib/db/schema";
+import { modelConfigs, modelConfigUserCredentials } from "@/lib/db/schema";
 import {
   catalogPricingFor,
   resolveModelCapabilities,
@@ -9,7 +9,9 @@ import {
 } from "@/lib/providers/server/model-catalog";
 import type {
   AdminModelConfig,
+  AdminModelUserCredential,
   ModelConfigInput,
+  ModelUserCredentialInput,
 } from "@/lib/model-config/schema";
 
 export type { ModelConfigInput };
@@ -47,6 +49,7 @@ export function toAdminModelConfig(row: ModelConfigRow): AdminModelConfig {
     toolCallingEnabled: row.toolCallingEnabled,
     enabled: row.enabled,
     taskModel: row.taskModel,
+    credentialScope: row.credentialScope,
     sortOrder: row.sortOrder,
   };
 }
@@ -108,7 +111,8 @@ export function getTaskModelConfig(): ModelConfigRow | null {
 
 export type SetTaskModelResult =
   | { status: "updated"; modelConfig: ModelConfigRow | null }
-  | { status: "not_found" };
+  | { status: "not_found" }
+  | { status: "per_user" };
 
 export function setTaskModelConfig(id: string | null): SetTaskModelResult {
   return db.transaction((tx) => {
@@ -122,6 +126,8 @@ export function setTaskModelConfig(id: string | null): SetTaskModelResult {
       : null;
     if (id && (!target || target.modelType === "image"))
       return { status: "not_found" };
+    // Task work (titles) has no single user to bill, so it needs a shared connection.
+    if (target?.credentialScope === "user") return { status: "per_user" };
 
     tx.update(modelConfigs)
       .set({ taskModel: false, updatedAt: new Date() })
@@ -202,7 +208,9 @@ export async function updateModelConfig(
         .update(modelConfigs)
         .set({
           ...input,
-          ...(input.modelType === "image" ? { taskModel: false } : {}),
+          ...(input.modelType === "image" || input.credentialScope === "user"
+            ? { taskModel: false }
+            : {}),
           updatedAt: new Date(),
         })
         .where(eq(modelConfigs.id, id))
@@ -230,4 +238,121 @@ export function getImageModelConfig(): ModelConfigRow | null {
 
 export async function deleteModelConfig(id: string): Promise<void> {
   await db.delete(modelConfigs).where(eq(modelConfigs.id, id));
+}
+
+// --- per-user credentials --------------------------------------------------
+
+/**
+ * The connection `userId` must use for `row`: the row itself for a shared
+ * model, or the row with that user's key (and base URL, when set) for a
+ * per-user model. `null` when the model is per-user and the user has no
+ * credential, so callers treat it as unavailable rather than falling back to
+ * the model's own key.
+ */
+export function modelConfigForUser<T extends ModelConfigRow>(
+  row: T,
+  userId: string,
+): T | null {
+  if (row.credentialScope !== "user") return row;
+  const credential = getModelUserCredential(row.id, userId);
+  if (!credential) return null;
+  return {
+    ...row,
+    apiKey: credential.apiKey,
+    baseUrl: credential.baseUrl ?? row.baseUrl,
+  };
+}
+
+export function getModelUserCredential(modelConfigId: string, userId: string) {
+  return (
+    db
+      .select()
+      .from(modelConfigUserCredentials)
+      .where(
+        and(
+          eq(modelConfigUserCredentials.modelConfigId, modelConfigId),
+          eq(modelConfigUserCredentials.userId, userId),
+        ),
+      )
+      .get() ?? null
+  );
+}
+
+/** Ids of the per-user models `userId` has a credential for. */
+export function listCredentialedModelIds(userId: string): Set<string> {
+  return new Set(
+    db
+      .select({ id: modelConfigUserCredentials.modelConfigId })
+      .from(modelConfigUserCredentials)
+      .where(eq(modelConfigUserCredentials.userId, userId))
+      .all()
+      .map((row) => row.id),
+  );
+}
+
+/** Whether `userId` may chat with `row`. */
+export function isModelAvailableToUser(
+  row: Pick<ModelConfigRow, "id" | "credentialScope">,
+  credentialed: Set<string>,
+): boolean {
+  return row.credentialScope !== "user" || credentialed.has(row.id);
+}
+
+export function listModelUserCredentials(
+  modelConfigId: string,
+): AdminModelUserCredential[] {
+  return db
+    .select()
+    .from(modelConfigUserCredentials)
+    .where(eq(modelConfigUserCredentials.modelConfigId, modelConfigId))
+    .all()
+    .map((row) => ({
+      userId: row.userId,
+      hasApiKey: !!row.apiKey,
+      baseUrl: row.baseUrl,
+      updatedAt: row.updatedAt.getTime(),
+    }));
+}
+
+export function setModelUserCredential(
+  modelConfigId: string,
+  userId: string,
+  input: ModelUserCredentialInput,
+): AdminModelUserCredential {
+  const now = new Date();
+  const row = db
+    .insert(modelConfigUserCredentials)
+    .values({ modelConfigId, userId, ...input, apiKey: input.apiKey ?? null })
+    .onConflictDoUpdate({
+      target: [
+        modelConfigUserCredentials.modelConfigId,
+        modelConfigUserCredentials.userId,
+      ],
+      set: { ...input, updatedAt: now },
+    })
+    .returning()
+    .get();
+  return {
+    userId: row.userId,
+    hasApiKey: !!row.apiKey,
+    baseUrl: row.baseUrl,
+    updatedAt: row.updatedAt.getTime(),
+  };
+}
+
+export function deleteModelUserCredential(
+  modelConfigId: string,
+  userId: string,
+): boolean {
+  return (
+    db
+      .delete(modelConfigUserCredentials)
+      .where(
+        and(
+          eq(modelConfigUserCredentials.modelConfigId, modelConfigId),
+          eq(modelConfigUserCredentials.userId, userId),
+        ),
+      )
+      .run().changes > 0
+  );
 }

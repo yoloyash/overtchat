@@ -65,3 +65,7 @@ export function changeUserRole(
     return { status: "updated", user: updated };
   });
 }
+
+export function userExists(userId: string): boolean {
+  return !!db.select({ id: user.id }).from(user).where(eq(user.id, userId)).get();
+}

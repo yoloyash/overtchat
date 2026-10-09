@@ -1,12 +1,15 @@
 import { auth } from "@/lib/auth/server";
 import {
   createModelConfig,
+  isModelAvailableToUser,
+  listCredentialedModelIds,
   listModelConfigs,
   toAdminModelConfig,
   type ModelConfigRow,
 } from "@/lib/db/modelConfigs";
 import {
   ModelConfigSchema,
+  connectionForValidation,
   type PublicModelConfig,
 } from "@/lib/model-config/schema";
 import { getProvider, modelIconForModel } from "@/lib/providers/catalog";
@@ -58,8 +61,16 @@ export async function GET(req: Request) {
     }
     return Response.json({ modelConfigs: rows.map(toAdminModelConfig) });
   }
+  const credentialed = listCredentialedModelIds(session.user.id);
   return Response.json({
-    modelConfigs: rows.filter((r) => r.enabled && r.modelType !== "image").map(toPublic),
+    modelConfigs: rows
+      .filter(
+        (r) =>
+          r.enabled &&
+          r.modelType !== "image" &&
+          isModelAvailableToUser(r, credentialed),
+      )
+      .map(toPublic),
   });
 }
 
@@ -85,7 +96,8 @@ export async function POST(req: Request) {
     );
   }
   try {
-    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image")
+      createConfiguredLanguageModel(connectionForValidation(parsed.data));
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

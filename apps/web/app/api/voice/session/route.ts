@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { auth } from "@/lib/auth/server";
 import { getChat, getLatestMessageRowId } from "@/lib/db/chats";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getServerCapability } from "@/lib/db/serverCapabilities";
 import { normalizeTimeZone } from "@/lib/chat/current-date";
@@ -40,7 +40,9 @@ export async function POST(request: Request) {
   if (!parsed.success) {
     return Response.json({ error: "Invalid voice session request." }, { status: 400 });
   }
-  const modelConfig = await getModelConfig(parsed.data.modelConfigId);
+  const storedModelConfig = await getModelConfig(parsed.data.modelConfigId);
+  const modelConfig =
+    storedModelConfig && modelConfigForUser(storedModelConfig, session.user.id);
   if (!modelConfig?.enabled || modelConfig.modelType === "image") {
     return Response.json({ error: "Model config not found." }, { status: 404 });
   }

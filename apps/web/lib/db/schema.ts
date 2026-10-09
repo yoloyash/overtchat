@@ -19,7 +19,10 @@ import {
   API_FORMAT_IDS,
   PROVIDER_IDS,
 } from "@/lib/providers/catalog";
-import type { ModelPricing } from "@/lib/model-config/schema";
+import {
+  MODEL_CREDENTIAL_SCOPES,
+  type ModelPricing,
+} from "@/lib/model-config/schema";
 import type { McpServerConfig } from "@/lib/mcp/schema";
 
 export const user = sqliteTable("user", {
@@ -774,6 +777,14 @@ export const modelConfigs = sqliteTable(
     taskModel: integer("task_model", { mode: "boolean" })
       .default(false)
       .notNull(),
+    /**
+     * `shared`: every user calls this model with its own base URL and key.
+     * `user`: each user calls it with their own credential from
+     * `model_config_user_credentials`; users without one cannot see or use it.
+     */
+    credentialScope: text("credential_scope", { enum: MODEL_CREDENTIAL_SCOPES })
+      .default("shared")
+      .notNull(),
     sortOrder: integer("sort_order").default(0).notNull(),
     createdAt: integer("created_at", { mode: "timestamp_ms" })
       .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
@@ -790,6 +801,33 @@ export const modelConfigs = sqliteTable(
     uniqueIndex("model_configs_taskModel_idx")
       .on(table.taskModel)
       .where(sql`${table.taskModel} = true`),
+  ],
+);
+
+/** One user's credential for a model whose `credentialScope` is `user`. */
+export const modelConfigUserCredentials = sqliteTable(
+  "model_config_user_credentials",
+  {
+    modelConfigId: text("model_config_id")
+      .notNull()
+      .references(() => modelConfigs.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    apiKey: text("api_key"),
+    /** Overrides the model's base URL for this user when set. */
+    baseUrl: text("base_url"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.modelConfigId, table.userId] }),
+    index("model_config_user_credentials_userId_idx").on(table.userId),
   ],
 );
 

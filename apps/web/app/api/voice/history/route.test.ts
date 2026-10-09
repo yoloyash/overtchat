@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   verifyTicket: vi.fn(),
   syncVoiceHistory: vi.fn(),
   getChat: vi.fn(),
+  modelConfigForUser: vi.fn((row: unknown) => row),
   getModelConfig: vi.fn(),
   ensureChatTitle: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock("@/lib/db/voiceChats", () => ({
 vi.mock("@/lib/db/chats", () => ({ getChat: mocks.getChat }));
 vi.mock("@/lib/db/modelConfigs", () => ({
   getModelConfig: mocks.getModelConfig,
+  modelConfigForUser: mocks.modelConfigForUser,
 }));
 vi.mock("@/lib/title", () => ({ ensureChatTitle: mocks.ensureChatTitle }));
 
@@ -142,6 +144,33 @@ describe("voice history sync", () => {
     expect(mocks.verifyTicket).toHaveBeenCalledWith("ticket");
     const { headers } = mocks.getSession.mock.calls[0][0] as { headers: Headers };
     expect(headers.get("authorization")).toBe("Bearer session");
+  });
+
+  it("titles a per-user model's chat with the ticket user's credential", async () => {
+    const own = { id: "model-1", enabled: true, apiKey: "user-key" };
+    mocks.modelConfigForUser.mockReturnValue(own);
+
+    const response = await POST(
+      request([
+        {
+          type: "message",
+          id: "user-item",
+          previousId: null,
+          role: "user",
+          status: "completed",
+          text: "Hello",
+        },
+      ]),
+    );
+
+    expect(response.status).toBe(200);
+    expect(mocks.modelConfigForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "model-1" }),
+      "user-1",
+    );
+    expect(mocks.ensureChatTitle).toHaveBeenCalledWith(
+      expect.objectContaining({ fallbackModelConfig: own }),
+    );
   });
 
   it("requires a ticket", async () => {

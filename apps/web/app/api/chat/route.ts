@@ -91,7 +91,7 @@ import {
   type CompletedGenerationUsage,
 } from "@/lib/db/chatTurns";
 import { inlineUploads } from "@/lib/db/uploads";
-import { getModelConfig } from "@/lib/db/modelConfigs";
+import { getModelConfig, modelConfigForUser } from "@/lib/db/modelConfigs";
 import { getProject } from "@/lib/db/projects";
 import { getActivePersonalization } from "@/lib/db/personalization";
 import { listEffectiveMcpServers } from "@/lib/db/mcpServers";
@@ -171,7 +171,10 @@ async function handlePost(req: Request): Promise<Response> {
     }
   }
 
-  const modelConfig = await getModelConfig(modelConfigId);
+  const storedModelConfig = await getModelConfig(modelConfigId);
+  // A per-user model runs on this user's own credential; without one it is unavailable.
+  const modelConfig =
+    storedModelConfig && modelConfigForUser(storedModelConfig, userId);
   if (!modelConfig || modelConfig.modelType === "image" || !modelConfig.enabled) {
     return new Response("Model config not found", { status: 404 });
   }

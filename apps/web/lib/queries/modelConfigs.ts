@@ -9,7 +9,9 @@ import {
 import { modelConfigKeys } from "@/lib/queries/keys";
 import type {
   AdminModelConfig,
+  AdminModelUserCredential,
   ModelConfigInput,
+  ModelUserCredentialWrite,
   PublicModelConfig,
 } from "@/lib/model-config/schema";
 import { apiUrl } from "@/lib/api-url";
@@ -168,5 +170,50 @@ export function useModelHealth(id: string) {
       }
       return (await r.json()) as ModelHealth;
     },
+  });
+}
+
+export function useModelUserCredentials(id: string, enabled = true) {
+  return useQuery({
+    queryKey: modelConfigKeys.credentials(id),
+    enabled,
+    queryFn: async (): Promise<AdminModelUserCredential[]> => {
+      const r = await fetch(apiUrl(`/api/model-configs/${id}/credentials`));
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const json = (await r.json()) as {
+        credentials: AdminModelUserCredential[];
+      };
+      return json.credentials;
+    },
+  });
+}
+
+/** Set or remove (`input: null`) one user's credential for a per-user model. */
+export function useSetModelUserCredential(id: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      userId,
+      input,
+    }: {
+      userId: string;
+      input: ModelUserCredentialWrite | null;
+    }) => {
+      const r = await fetch(
+        apiUrl(`/api/model-configs/${id}/credentials/${encodeURIComponent(userId)}`),
+        input
+          ? {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(input),
+            }
+          : { method: "DELETE" },
+      );
+      if (!r.ok && !(input === null && r.status === 404)) {
+        const j = (await r.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+    },
+    onSuccess: () => invalidateAll(qc),
   });
 }

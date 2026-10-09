@@ -35,6 +35,12 @@ export async function PUT(req: Request) {
   if (result.status === "not_found") {
     return Response.json({ error: "Model config not found" }, { status: 404 });
   }
+  if (result.status === "per_user") {
+    return Response.json(
+      { error: "A model with per-user credentials can't be the task model" },
+      { status: 400 },
+    );
+  }
 
   return Response.json({
     taskModel: result.modelConfig
