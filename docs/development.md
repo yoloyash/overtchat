@@ -766,3 +766,27 @@ checks. The browser regression changes model and effort after compaction, reload
 the page, restarts the connector, and explicitly imports provider history. It
 asserts exact row order and provider history-fetch counts. No production session
 or model credentials are used.
+
+### Coding-agent compaction markers
+
+Pi and OMP manual compaction RPCs and automatic compaction events produce one
+inline divider per operation. The divider updates in place, retains its position
+in the saved display transcript, and shows the trigger and reported token counts.
+Failed, skipped, or stopped operations are not labeled as successful. A provider
+restart settles an unfinished marker as stopped. Imported native compaction
+summaries use the same divider; existing display history is not reimported just
+to obtain compaction metadata.
+
+The OMP lifecycle browser test above covers automatic and manual markers,
+model/effort changes, page reload, connector restart, and explicit native import.
+For installed OMP validation, run:
+
+```sh
+RUN_OMP_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/integration.test.ts
+RUN_OMP_COMPACTION_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/integration.test.ts
+```
+
+The second command uses the host's configured model credentials to summarize
+synthetic history in a disposable native session. It uses a temporary compaction
+configuration, disables tools/extensions, checks the RPC result and imported
+summary, and removes its own session files. It does not modify existing sessions.

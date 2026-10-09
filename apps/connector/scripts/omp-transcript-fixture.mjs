@@ -53,10 +53,15 @@ configureProcessSpawner((_target, launch) => {
           case "get_messages": reply({ messages: context }); break;
           case "get_branch_messages": reply({ messages: [] }); break;
           case "get_available_models": reply({ models }); break;
-          case "get_available_commands": reply({ commands: [] }); break;
+          case "get_available_commands": reply({ commands: [{ name: "compact", source: "builtin", description: "Compact context" }] }); break;
           case "get_session_stats": reply({ totalMessages: context.length }); break;
           case "set_model": model = models.find((item) => item.id === command.modelId); reply(model); break;
           case "set_thinking_level": level = command.level; reply(); break;
+          case "compact": {
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            reply({ tokensBefore: 42000, summary: "A provider-only context summary." });
+            break;
+          }
           case "prompt": {
             streaming = true;
             emit({ type: "agent_start" });
@@ -78,8 +83,9 @@ configureProcessSpawner((_target, launch) => {
                 content: `<system-notice>Background job bg_${i} completed</system-notice>` });
             }
             message({ role: "assistant", content: [{ type: "text", text: "Earlier work completed." }] });
-            emit({ type: "compaction_start" });
-            emit({ type: "compaction_end" });
+            emit({ type: "auto_compaction_start", reason: "threshold" });
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            emit({ type: "auto_compaction_end", result: { tokensBefore: 120000 }, aborted: false });
             const user = message({ role: "user", content: command.message });
             const answer = message({ role: "assistant", content: [
               { type: "text", text: "## Measured timings\n\nThe container is back up and healthy." },

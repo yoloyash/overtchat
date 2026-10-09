@@ -111,6 +111,14 @@ export type AgentTranscriptItem = {
       error: AgentErrorPresentation;
     }
   | {
+      type: "compaction";
+      key: string;
+      label: string;
+      detail: string | null;
+      active: boolean;
+      failed: boolean;
+    }
+  | {
       type: "notification";
       key: string;
       notification: AgentNotificationPresentation;
@@ -815,6 +823,29 @@ export function projectAgentTranscript(
     if (!record) return;
     const role = roleOf(message);
     const identity = messageIdentity(message, messageIndex);
+
+    if (role === "compactionSummary") {
+      const active = record.status === "running";
+      const failed = record.status === "failed";
+      const label = active ? "Compacting context…"
+        : failed ? "Context compaction failed"
+        : record.status === "interrupted" ? "Context compaction stopped"
+        : record.status === "skipped" ? "Context compaction skipped"
+        : record.trigger === "auto" ? "Context automatically compacted"
+        : record.trigger === "manual" ? "Context manually compacted"
+        : "Context compacted";
+      const tokens = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? value.toLocaleString("en-US") : null;
+      const before = tokens(record.tokensBefore);
+      const after = tokens(record.tokensAfter);
+      items.push({
+        type: "compaction", key: `compaction:${identity}`, active, failed, label,
+        detail: active || failed || record.status === "interrupted" || record.status === "skipped" ? null
+          : before !== null && after !== null ? `${before} → ${after} tokens`
+          : before !== null ? `From ${before} tokens` : null,
+      });
+      return;
+    }
 
     if (role === "assistant") {
       const content = Array.isArray(record.content) ? record.content : [];

@@ -330,7 +330,16 @@ export class AgentSessionRuntime {
   ) {
     this.eventClassifier = adapter.createEventClassifier();
     this.state = initial.state;
-    this.messages = initial.messages;
+    // A newly started provider cannot still be executing a compaction from
+    // the previous process. Retain its position without a permanent spinner.
+    this.messages = initial.messages.map((message) => {
+      if (message && typeof message === "object" &&
+        Reflect.get(message, "role") === "compactionSummary" &&
+        Reflect.get(message, "status") === "running" && initial.state.isCompacting !== true) {
+        return { ...message, status: "interrupted" };
+      }
+      return message;
+    });
     this.models = initial.models;
     this.commands = initial.commands;
     this.stats = initial.stats;
