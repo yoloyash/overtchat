@@ -16,19 +16,23 @@ import {
   runImageProvider,
   type ImageConnection,
 } from "@/lib/providers/server/image-generation";
+import { customImageOptions } from "@/lib/model-config/image-options";
 
 export const IMAGE_TOOL_PROMPT = `Image creation:
-Use generate_image only when the user asks to create an image, and edit_image when they ask to change or combine existing images. Never create extra images or automatically retry a failed generation. Each call produces one image.
+Use generate_image only when the user asks to create an image, and edit_image, when available, when they ask to change or combine existing images. If edit_image is unavailable, explain that the configured provider does not support editing. Never create extra images or automatically retry a failed generation. Each call produces one image.
 Images are displayed directly in chat with download and edit controls. Do not embed duplicate markdown images. Use the exact image IDs supplied in the conversation when editing. Never invent image IDs. If the reference is ambiguous, ask which image to use.
 The image model is separate from the conversational model. A text-only conversational model can still create and edit images using these tools.`;
 
 export { getImageCapability } from "./capability";
 
-function imageConnection(): ImageConnection {
-  const config = getImageModelConfig();
+function imageConnection(
+  config: ReturnType<typeof getImageModelConfig>,
+): ImageConnection {
   if (
     !config ||
-    (config.providerId !== "openai" && config.providerId !== "google")
+    (config.providerId !== "openai" &&
+      config.providerId !== "google" &&
+      config.providerId !== "custom")
   ) {
     throw new Error(
       "Image generation is not configured. Ask an administrator to enable an image model in Settings → Models.",
@@ -39,6 +43,9 @@ function imageConnection(): ImageConnection {
     baseUrl: config.baseUrl,
     apiKey: config.apiKey,
     model: config.model,
+    ...(config.providerId === "custom"
+      ? { providerOptions: config.providerOptions }
+      : {}),
   };
 }
 
@@ -104,6 +111,14 @@ export function createImageTools({
   options?: ImageGenerationOptions;
   onGenerate?: () => void;
 }) {
+  // Snapshot the provider for this turn so configuration changes cannot expose
+  // editing for one backend and execute against another.
+  const config = getImageModelConfig();
+  const connection = config ? imageConnection(config) : undefined;
+  const customOptions =
+    connection?.providerId === "custom"
+      ? customImageOptions(connection.providerOptions)
+      : undefined;
   const allowedIds = referencedImageIds(messages);
   const generatedThisTurn = new Set<string>();
   let calls = 0;
@@ -130,8 +145,17 @@ export function createImageTools({
       throw new Error(
         "At most four image operations can run in one message. Send another message to continue.",
       );
-    const connection = imageConnection();
+    if (!connection)
+      throw new Error(
+        "Image generation is not configured. Ask an administrator to enable an image model in Settings → Models.",
+      );
     const referenceImageIds = input.image_ids ?? [];
+    if (
+      referenceImageIds.length &&
+      customOptions &&
+      !customOptions.supportsEditing
+    )
+      throw new Error("This image provider does not support editing.");
     const references: Uint8Array[] = [];
     for (const id of referenceImageIds) {
       if (!allowedIds.has(id))
@@ -145,12 +169,13 @@ export function createImageTools({
         );
       references.push(image.data);
     }
-    const size =
-      options?.size !== undefined && options.size !== "auto"
+    const size = customOptions
+      ? "auto"
+      : options?.size !== undefined && options.size !== "auto"
         ? options.size
         : (input.size ?? DEFAULT_IMAGE_OPTIONS.size);
     const quality =
-      connection.providerId === "google"
+      customOptions || connection.providerId === "google"
         ? "auto"
         : options?.quality !== undefined && options.quality !== "auto"
           ? options.quality
@@ -180,6 +205,7 @@ export function createImageTools({
       size,
       quality,
       referenceImageIds,
+      ...(customOptions ? { providerSize: customOptions.size } : {}),
       usage: generated.usage,
     };
   }
@@ -236,31 +262,39 @@ export function createImageTools({
     >({
       description:
         "Create one new image from a text prompt. Use only when the user requests an image. Results appear in chat.",
-      inputSchema: z.object(fields),
+      inputSchema: customOptions
+        ? z.object(fields).omit({ size: true, quality: true })
+        : z.object(fields),
       execute: (input, { abortSignal }) => execute(input, abortSignal),
       toModelOutput,
     }),
-    edit_image: tool<
-      {
-        prompt: string;
-        image_ids: string[];
-        size?: ImageGenerationOptions["size"];
-        quality?: ImageGenerationOptions["quality"];
-      },
-      ImageGenerationOutput,
-      Record<string, never>
-    >({
-      description:
-        "Edit or combine attached or previously generated images. Use exact image IDs from the conversation. Produces one new image and preserves the originals.",
-      inputSchema: z.object({
-        ...fields,
-        image_ids: z
-          .array(z.string().regex(/^[a-zA-Z0-9_-]+$/))
-          .min(1)
-          .max(8),
-      }),
-      execute: (input, { abortSignal }) => execute(input, abortSignal),
-      toModelOutput,
-    }),
+    ...(!customOptions || customOptions.supportsEditing
+      ? {
+          edit_image: tool<
+            {
+              prompt: string;
+              image_ids: string[];
+              size?: ImageGenerationOptions["size"];
+              quality?: ImageGenerationOptions["quality"];
+            },
+            ImageGenerationOutput,
+            Record<string, never>
+          >({
+            description:
+              "Edit or combine attached or previously generated images. Use exact image IDs from the conversation. Produces one new image and preserves the originals.",
+            inputSchema: (customOptions
+              ? z.object(fields).omit({ size: true, quality: true })
+              : z.object(fields)
+            ).extend({
+              image_ids: z
+                .array(z.string().regex(/^[a-zA-Z0-9_-]+$/))
+                .min(1)
+                .max(8),
+            }),
+            execute: (input, { abortSignal }) => execute(input, abortSignal),
+            toModelOutput,
+          }),
+        }
+      : {}),
   };
 }

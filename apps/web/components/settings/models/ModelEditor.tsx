@@ -32,6 +32,7 @@ import {
 import { getProvider, PROVIDERS } from "@/lib/providers/catalog";
 import { AdvancedFields, type ModelPricingDraft } from "./AdvancedFields";
 import { ConnectionFields } from "./ConnectionFields";
+import { CustomImageFields } from "./CustomImageFields";
 import { ConnectionTester } from "./ConnectionTester";
 import {
   SettingsActions,
@@ -120,6 +121,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const [providerOptionsError, setProviderOptionsError] = useState<
     string | null
   >(null);
+  const [imageOptionsError, setImageOptionsError] = useState(false);
   const [saveError, setSaveError] = useState("");
   // undefined means discovery was not touched in this editor session; null
   // means the current connection did not report a limit.
@@ -144,6 +146,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
   const saving = createMut.isPending || updateMut.isPending;
 
   const isImage = draft.modelType === "image";
+  const isCustomImage = isImage && draft.providerId === "custom";
   const requiresKey = getProvider(draft.providerId).requiresApiKey;
   const parsedPricing =
     draft.pricing === null ? null : parsePricingDraft(draft.pricing);
@@ -163,6 +166,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
 
   const canSave =
     !saving &&
+    !(isCustomImage && imageOptionsError) &&
     !!draft.baseUrl &&
     !!draft.model &&
     (isImage || pricingIsValid) &&
@@ -229,7 +233,7 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     e.preventDefault();
     setSaveError("");
 
-    let providerOptions: unknown = null;
+    let providerOptions: unknown = isCustomImage ? draft.providerOptions : null;
     if (!isImage && providerOptionsText.trim()) {
       try {
         providerOptions = JSON.parse(providerOptionsText);
@@ -245,7 +249,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
     }
 
     const pricing =
-      isImage || draft.pricing === null ? null : parsePricingDraft(draft.pricing);
+      isImage || draft.pricing === null
+        ? null
+        : parsePricingDraft(draft.pricing);
     if (!isImage && draft.pricing !== null && pricing === null) {
       setSaveError("Enter all four pricing rates as nonnegative numbers.");
       return;
@@ -264,7 +270,13 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
           ? draft.discoveredCapabilities
           : detectedCapabilities,
       providerOptions,
-      ...(isImage ? { contextWindow: null, discoveredContextWindow: null, discoveredCapabilities: null } : {}),
+      ...(isImage
+        ? {
+            contextWindow: null,
+            discoveredContextWindow: null,
+            discoveredCapabilities: null,
+          }
+        : {}),
     });
     if (!parsed.success) {
       setSaveError(parsed.error.issues[0]?.message ?? "Invalid input");
@@ -320,12 +332,23 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               value={draft.modelType}
               onValueChange={(value) => {
                 if (value !== "chat" && value !== "image") return;
+                setImageOptionsError(false);
+                setProviderOptionsText("");
+                setProviderOptionsError(null);
                 setDraft((current) => ({
                   ...current,
                   modelType: value,
+                  providerOptions: null,
+                  ...(current.providerId === "custom"
+                    ? {
+                        apiFormat:
+                          value === "image" ? "openai-images" : "openai-chat",
+                      }
+                    : {}),
                   ...(value === "image" &&
                   current.providerId !== "openai" &&
-                  current.providerId !== "google"
+                  current.providerId !== "google" &&
+                  current.providerId !== "custom"
                     ? {
                         providerId: "openai",
                         apiFormat: "auto",
@@ -362,7 +385,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
               apiKey: draft.apiKey ?? "",
               model: draft.model,
             }}
-            onChange={(next) =>
+            onChange={(next) => {
+              if (next.providerId) setImageOptionsError(false);
               setDraft((current) => {
                 const connectionIdentityChanged =
                   (next.providerId !== undefined &&
@@ -375,6 +399,9 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                 return {
                   ...current,
                   ...next,
+                  ...(next.providerId && next.providerId !== current.providerId
+                    ? { providerOptions: null }
+                    : {}),
                   ...(connectionIdentityChanged
                     ? {
                         contextWindow: null,
@@ -384,8 +411,8 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
                       }
                     : {}),
                 };
-              })
-            }
+              });
+            }}
             onDiscoveredContextWindow={(next) =>
               setDetectedContextWindow(next ?? null)
             }
@@ -446,6 +473,16 @@ export function ModelEditor({ modelId }: ModelEditorProps) {
             </>
           )}
         </SettingsSection>
+
+        {isCustomImage && (
+          <CustomImageFields
+            value={draft.providerOptions}
+            onChange={(providerOptions) =>
+              setDraft((current) => ({ ...current, providerOptions }))
+            }
+            onError={setImageOptionsError}
+          />
+        )}
 
         <SettingsSection
           title={isImage ? "Image availability" : "Chat availability"}

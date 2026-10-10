@@ -663,7 +663,7 @@ function ChatSurface({
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
           onContinue={voiceReadOnly ? undefined : handleContinue}
-          onImageReference={imageAvailable ? (file) => {
+          onImageReference={imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
             addReference(file);
             setImageOptions({ size: "auto", quality: "auto" });
           } : undefined}
@@ -710,6 +710,7 @@ function ChatSurface({
             imageOptions={imageAvailable ? imageOptions : undefined}
             imageModel={imageCapability?.model}
       imageSupportsQuality={imageCapability?.supportsQuality}
+      imageConfiguredSize={imageCapability?.configuredSize}
             onImageOptions={setImageOptions}
             searchAvailable={searchAvailable}
             searchRequested={searchAvailable && searchRequested}

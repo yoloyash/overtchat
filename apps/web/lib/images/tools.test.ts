@@ -64,7 +64,7 @@ describe("image tools", () => {
       supportsImageInput: false,
       options: { size: "1024x1536", quality: "low" },
     });
-    const output = (await tools.edit_image.execute!(
+    const output = (await tools.edit_image!.execute!(
       { prompt: "Blue sky", image_ids: ["reference"], quality: "high" },
       execution,
     )) as ImageGenerationOutput;
@@ -92,14 +92,14 @@ describe("image tools", () => {
       supportsImageInput: false,
     });
     await expect(
-      tools.edit_image.execute!(
+      tools.edit_image!.execute!(
         { prompt: "Edit", image_ids: ["unrelated"] },
         execution,
       ),
     ).rejects.toThrow("not attached");
     mocks.read.mockResolvedValue(null);
     await expect(
-      tools.edit_image.execute!(
+      tools.edit_image!.execute!(
         { prompt: "Edit", image_ids: ["reference"] },
         execution,
       ),
@@ -150,7 +150,7 @@ describe("image tools", () => {
     });
     const replay = await next.generate_image.toModelOutput!(toModel);
     expect(JSON.stringify(replay)).not.toContain('"type":"file"');
-    await next.edit_image.execute!(
+    await next.edit_image!.execute!(
       { prompt: "Make it blue", image_ids: ["generated"] },
       execution,
     );
@@ -213,4 +213,57 @@ it("uses Gemini defaults for quality instead of claiming OpenAI quality was appl
     execution,
   );
   expect(result).toMatchObject({ quality: "auto", size: "1536x1024" });
+});
+
+it("keeps custom provider settings authoritative and omits unsupported editing", async () => {
+  mocks.config.mockReturnValue({
+    providerId: "custom",
+    baseUrl: "http://images/v1",
+    apiKey: null,
+    model: "flux2-klein-4b",
+    providerOptions: { size: "512x512", extraBody: { seed: 7 } },
+  });
+  const tools = createImageTools({
+    userId: "alice",
+    messages: [],
+    supportsImageInput: false,
+    options: { size: "1536x1024", quality: "low" },
+  });
+  expect(tools).not.toHaveProperty("edit_image");
+  const result = await tools.generate_image.execute!(
+    { prompt: "A kite", size: "1024x1024", quality: "high" },
+    execution,
+  );
+  expect(mocks.generate).toHaveBeenCalledWith(
+    expect.objectContaining({
+      providerOptions: { size: "512x512", extraBody: { seed: 7 } },
+    }),
+    expect.objectContaining({ size: "auto", quality: "auto" }),
+    undefined,
+  );
+  expect(result).toMatchObject({
+    providerSize: "512x512",
+    quality: "auto",
+    size: "auto",
+  });
+  expect(mocks.store).toHaveBeenCalledWith(
+    expect.objectContaining({ userId: "alice" }),
+  );
+});
+
+it("only exposes custom editing when explicitly enabled", () => {
+  mocks.config.mockReturnValue({
+    providerId: "custom",
+    baseUrl: "http://images/v1",
+    apiKey: null,
+    model: "local",
+    providerOptions: { supportsEditing: true },
+  });
+  expect(
+    createImageTools({
+      userId: "alice",
+      messages: [],
+      supportsImageInput: false,
+    }).edit_image,
+  ).toBeDefined();
 });

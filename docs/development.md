@@ -136,6 +136,35 @@ architectures. Development journal reset moves the entire connector directory,
 including WAL and migration archives.
 Operator backup and upgrade recovery are documented in [Deploy](deploy.md).
 
+## Custom image provider validation
+
+Image models can use **Custom (OpenAI-compatible)** with an optional API key,
+base URL ending at the API root (for example, `http://host:8731/v1`), and a model
+ID. The server appends `/images/generations`. A configured size such as
+`512x512` overrides chat and model suggestions; blank uses the backend default.
+Extra request parameters are a JSON object for settings such as `seed` or
+`quality`. They cannot replace the model, prompt, size, response format, image
+count, streaming mode, or reference images. Custom providers expose editing
+only when the administrator enables multipart `/images/edits` support.
+
+The synchronous response must contain one image in `data`: either `b64_json`
+or an inline base64 image `url`. Remote image URLs are not fetched. Generated
+PNG, JPEG, WebP, and GIF bytes use the existing authenticated upload store.
+Backend-specific parameters and credentials stay in admin settings.
+
+```sh
+npm run test -w apps/web -- lib/images lib/model-config/schema.test.ts lib/providers/server/registry.test.ts
+E2E_PORT=4859 npm run test:e2e -w apps/web -- image-generation.spec.ts
+```
+
+The tests use local HTTP fixtures, including a strict request contract based on
+[Halogen's documented image API](https://github.com/peonist-ai/halogen-flash-server/blob/main/docs/NPU.md#images).
+They cover keyless configuration, fixed-size precedence, extra parameters,
+base64/data-URL PNGs, generation-only tools, persistence, download, cancellation,
+invalid responses, and existing OpenAI/Gemini generation and editing. They do
+not run Halogen inference; a real deployment smoke test remains useful before
+claiming compatibility with a particular backend version.
+
 ## Model catalog refresh
 
 The weekday `Refresh model catalog` workflow fetches models.dev, validates the

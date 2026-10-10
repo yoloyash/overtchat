@@ -123,8 +123,13 @@ export function GeneratedImageCard({
       {part.output && (
         <Text style={{ color: colors.mutedForeground, fontSize: 12 }}>
           {part.output.model} · Requested format:{" "}
-          {IMAGE_SIZE_LABELS[part.output.size] ?? "Auto"} · Quality:{" "}
-          {part.output.quality}
+          {part.output.providerSize === "auto"
+            ? "Backend default"
+            : (part.output.providerSize ??
+              IMAGE_SIZE_LABELS[part.output.size] ??
+              "Auto")}
+          {part.output.providerSize === undefined &&
+            ` · Quality: ${part.output.quality}`}
         </Text>
       )}
     </View>

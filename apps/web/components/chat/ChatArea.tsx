@@ -715,6 +715,7 @@ export function ChatArea({
       imageAvailable={imageAvailable}
       imageModel={imageCapability?.model}
       imageSupportsQuality={imageCapability?.supportsQuality}
+      imageConfiguredSize={imageCapability?.configuredSize}
       imageOptions={imageAvailable ? imageOptions : undefined}
       onImageOptions={setImageOptions}
       dropActive={dropActive}
@@ -869,7 +870,7 @@ export function ChatArea({
             onLoadOlderMessages={handleLoadOlderMessages}
             onRegenerate={handleRegenerate}
             onContinue={resolvedChatKind === "voice" ? undefined : handleContinue}
-                onImageReference={imageAvailable ? (file) => {
+                onImageReference={imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
                   composerRef.current?.addReference(file);
                   setImageOptions({ size: "auto", quality: "auto" });
                 } : undefined}
