@@ -74,11 +74,14 @@ configureProcessSpawner((_target, launch) => {
               emit({ type: "message_end", message: stamped });
               return stamped;
             };
-            const progress = (status, id) => {
+            const progress = (status, id, emitToolResult = true) => {
               todoPhases = [{ name: "Startup", tasks: [
                 { content: "Inspect startup", status: "completed" },
                 { content: "Verify startup", status },
               ] }];
+              // Code-mode mutations can update native state without a named
+              // todo result; runtime settlement must still publish progress.
+              if (!emitToolResult) return;
               message({ role: "assistant", content: [{ type: "toolCall", id, name: "todo", arguments: {} }] });
               const result = { role: "toolResult", toolCallId: id, toolName: "todo",
                 content: [{ type: "text", text: "Native todo summary" }], details: { phases: todoPhases } };
@@ -101,7 +104,7 @@ configureProcessSpawner((_target, launch) => {
             await new Promise((resolve) => setTimeout(resolve, 800));
             emit({ type: "auto_compaction_end", result: { tokensBefore: 120000 }, aborted: false });
             const user = message({ role: "user", content: command.message });
-            progress("completed", "todo-finish");
+            progress("completed", "todo-finish", false);
             const answer = message({ role: "assistant", content: [
               { type: "text", text: "## Measured timings\n\nThe container is back up and healthy." },
             ] });

@@ -15,11 +15,13 @@ class RpcProcess implements AgentProcess {
   history: unknown[] = [];
   state: Record<string, unknown> = {};
   tree: Record<string, unknown> = {};
+  commands: string[] = [];
   holdState = false;
   pendingState: Record<string, unknown> | undefined;
   constructor() {
     this.stdin.on("data", (chunk) => {
       const command = JSON.parse(chunk.toString());
+      this.commands.push(command.type);
       if (command.type === "get_state" && this.holdState) { this.pendingState = command; return; }
       this.reply(command, command.type === "get_messages" || command.type === "get_branch_messages"
         ? { messages: command.type === "get_messages" ? this.history : [] }
@@ -119,6 +121,30 @@ it("preserves Pi native result identity before adding display-only task content"
 });
 
 describe("OMP current task state", () => {
+  it("logs a failed reminder refresh and recovers on the next runtime state refresh", async () => {
+    const { process, client, messages } = setup("omp");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      process.state = { todoPhases: phases() };
+      await client.getState();
+      process.send({ type: "message_end", message: result("current", { phases: phases() }) });
+      const before = [...messages()];
+      process.holdState = true;
+      process.send({ type: "todo_reminder" });
+      await vi.waitFor(() => expect(process.pendingState).toBeDefined());
+      process.send({ type: "response", id: process.pendingState!.id,
+        command: "get_state", success: false, error: "Temporary failure" });
+      await vi.waitFor(() => expect(warn).toHaveBeenCalledWith(
+        "Oh My Pi task progress refresh failed.", expect.any(Error),
+      ));
+      expect(messages()).toEqual(before);
+      process.holdState = false;
+      process.state = { todoPhases: phases("completed") };
+      await client.getState();
+      expect(latestAgentTaskList(messages())?.tasks.every((task) => task.status === "completed")).toBe(true);
+    } finally { await client.stop(); warn.mockRestore(); }
+  });
+
   it("observes a code-mode clear after restarting from an existing durable transcript", async () => {
     const { process, client, messages } = setup("omp");
     try {
@@ -127,7 +153,8 @@ describe("OMP current task state", () => {
       expect(messages()).toEqual([]);
       process.state = { todoPhases: [] };
       process.send({ type: "agent_end" });
-      await vi.waitFor(() => expect(latestAgentTaskList(messages())?.tasks).toEqual([]));
+      await client.getState(); // The runtime settlement path already fetches state.
+      expect(latestAgentTaskList(messages())?.tasks).toEqual([]);
     } finally { await client.stop(); }
   });
 
@@ -151,16 +178,22 @@ describe("OMP current task state", () => {
   it("uses full state for reminders and settles code-mode updates without duplicate snapshots", async () => {
     const { process, client, messages } = setup("omp");
     try {
+      process.state = { todoPhases: [] };
+      await client.getState();
       process.state = { todoPhases: phases() };
       process.send({ type: "todo_reminder", todos: [{ content: "Implement", status: "pending" }] });
       await vi.waitFor(() => expect(latestAgentTaskList(messages())?.tasks).toHaveLength(2));
       const count = messages().length;
+      const requests = process.commands.length;
       process.send({ type: "agent_end" });
       await new Promise((resolve) => setImmediate(resolve));
+      expect(process.commands).toHaveLength(requests);
+      await client.getState();
       expect(messages()).toHaveLength(count);
       process.state = { todoPhases: phases("completed") };
       process.send({ type: "agent_end" });
-      await vi.waitFor(() => expect(latestAgentTaskList(messages())?.tasks.every((task) => task.status === "completed")).toBe(true));
+      await client.getState();
+      expect(latestAgentTaskList(messages())?.tasks.every((task) => task.status === "completed")).toBe(true);
     } finally { await client.stop(); }
   });
 

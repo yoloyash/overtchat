@@ -84,12 +84,20 @@ export class OmpClient {
   }
 
   async getState(timeoutMs?: number): Promise<Record<string, unknown>> {
+    const generation = this.historyGeneration;
+    const revision = ++this.todoRevision;
     const state = await this.request<Record<string, unknown>>({ type: "get_state" }, timeoutMs);
-    // A durable transcript restart skips getMessages. Seed comparison state
-    // without replaying history so a subsequent code-mode clear is observable.
-    if (this.todoItems === undefined) {
-      const tasks = parseOmpTodoPhases(state.todoPhases, "omp:tasks:state");
-      if (tasks) this.todoItems = JSON.stringify(tasks.items);
+    // Reuse the runtime's state refresh (including turn settlement) for task
+    // reconciliation. The first read seeds comparison state without replaying
+    // a durable transcript; subsequent changes also capture code-mode clears.
+    if (generation === this.historyGeneration && revision === this.todoRevision) {
+      const tasks = parseOmpTodoPhases(state.todoPhases, `omp:tasks:${randomUUID()}`);
+      if (tasks) {
+        const items = JSON.stringify(tasks.items);
+        const changed = this.todoItems !== undefined && items !== this.todoItems;
+        this.todoItems = items;
+        if (changed) this.emit({ type: "message_end", message: this.todoMessage(tasks) });
+      }
     }
     const model = state.model;
     const nativeProvider = model && typeof model === "object" ? Reflect.get(model, "provider") : undefined;
@@ -174,19 +182,6 @@ export class OmpClient {
 
   private todoMessage(tasks: TaskList) {
     return { role: "assistant", id: tasks.id, content: [tasks] };
-  }
-
-  private async refreshTodos(): Promise<void> {
-    const generation = this.historyGeneration;
-    const revision = ++this.todoRevision;
-    const state = await this.request<Record<string, unknown>>({ type: "get_state" });
-    if (generation !== this.historyGeneration || revision !== this.todoRevision) return;
-    const tasks = parseOmpTodoPhases(recordOf(state)?.todoPhases, `omp:tasks:${randomUUID()}`);
-    if (!tasks) return;
-    const items = JSON.stringify(tasks.items);
-    if (items === this.todoItems || (this.todoItems === undefined && !tasks.items.length)) return;
-    this.todoItems = items;
-    this.emit({ type: "message_end", message: this.todoMessage(tasks) });
   }
 
   private async identifyMessages(
@@ -366,8 +361,12 @@ export class OmpClient {
     this.emit(event);
     // Reminders may contain only unfinished work. Fetch authoritative state
     // instead of replacing the full checklist with that subset.
-    if (event.type === "todo_reminder" || event.type === "agent_end") {
-      void this.refreshTodos().catch(() => {});
+    if (event.type === "todo_reminder") {
+      const generation = this.historyGeneration;
+      void this.getState().catch((error) => {
+        if (generation !== this.historyGeneration) return;
+        console.warn("Oh My Pi task progress refresh failed.", error);
+      });
     }
     const message = event.message;
     if (

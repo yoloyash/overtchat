@@ -833,7 +833,9 @@ Provider adapters normalize confirmed results before connector persistence.
 Native history imports rebuild those results; OMP also imports current todo state
 to recover tasks omitted by compaction or code-mode tools. Reminders and turn
 completion reconcile OMP's full state without treating an unfinished-task reminder
-as a complete list. Normal connector restarts retain the durable display history.
+as a complete list. Turn completion reuses the runtime's existing state refresh;
+failed reminder refreshes are logged and can recover on the next state refresh.
+Normal connector restarts retain the durable display history.
 This displays task progress; it does not add a plan-approval workflow.
 
 ```sh
