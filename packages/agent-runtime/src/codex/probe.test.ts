@@ -28,7 +28,7 @@ vi.mock("./app-server", () => ({
   startCodexAppServer: mocks.startCodexAppServer,
 }));
 
-import { probeCodexTarget } from "./probe";
+import { fetchCodexModels, probeCodexTarget } from "./probe";
 
 describe("Codex connection probing", () => {
   const server = {
@@ -87,6 +87,7 @@ describe("Codex connection probing", () => {
     expect(mocks.startCodexAppServer).toHaveBeenCalledWith(
       expect.objectContaining({ shellMode: "login" }),
       "/opt/bin/codex",
+      undefined,
     );
     expect(server.stop).toHaveBeenCalledOnce();
   });
@@ -108,6 +109,20 @@ describe("Codex connection probing", () => {
         "codex",
       ),
     ).rejects.toThrow("Codex is installed but not signed in");
+    expect(server.stop).toHaveBeenCalledOnce();
+  });
+
+  it("discovers a configured local model without OpenAI login in the workspace context", async () => {
+    server.request.mockImplementation(async (method: string) => {
+      if (method === "account/read") return { account: null, requiresOpenaiAuth: false };
+      if (method === "config/read") return { config: { model: "local/qwen", model_provider: "vllm" } };
+      if (method === "model/list") return { data: [{ model: "gpt-default", isDefault: true }] };
+      return {};
+    });
+    await expect(fetchCodexModels({ transport: "ssh", alias: "host" }, "codex", "/project"))
+      .resolves.toEqual([expect.objectContaining({ id: "local/qwen", isDefault: true })]);
+    expect(mocks.startCodexAppServer).toHaveBeenCalledWith({ transport: "ssh", alias: "host" }, "codex", "/project");
+    expect(server.request).toHaveBeenCalledWith("config/read", { cwd: "/project" });
     expect(server.stop).toHaveBeenCalledOnce();
   });
 });

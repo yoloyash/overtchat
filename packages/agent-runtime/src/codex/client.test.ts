@@ -192,6 +192,9 @@ class FakeCodexServer {
       };
     }
     if (method === "thread/start") {
+      const requested = params as { model?: string };
+      const model = requested.model ?? this.config?.model ?? this.savedConfig?.model ??
+        this.models?.find((candidate) => candidate.isDefault)?.id ?? this.models?.[0]?.id ?? "gpt-5.6";
       return {
         thread: {
           id: "thread-1",
@@ -203,8 +206,9 @@ class FakeCodexServer {
           updatedAt: 1,
           turns: [],
         },
-        model: "gpt-5.6",
-        reasoningEffort: "high",
+        model,
+        reasoningEffort: this.config?.model_reasoning_effort ??
+          (!this.config ? this.savedConfig?.modelReasoningEffort : undefined) ?? "high",
         ...this.threadAccess,
       };
     }
@@ -544,7 +548,7 @@ describe("CodexRuntimeClient", () => {
     });
   });
 
-  it("starts new threads with the model from Codex saved configuration", async () => {
+  it("starts new threads with effective config ahead of legacy saved defaults", async () => {
     server.savedConfig = { model: "gpt-5.6-saved" };
     server.config = { model: "gpt-5.6-config" };
 
@@ -552,13 +556,15 @@ describe("CodexRuntimeClient", () => {
       { transport: "local" },
       { executable: "codex", cwd: "/workspace" },
     );
-    await client.getState();
+    await expect(client.getState()).resolves.toMatchObject({
+      model: { id: "gpt-5.6-config" },
+    });
 
     expect(server.requests.find((request) => request.method === "thread/start"))
-      .toMatchObject({ params: { model: "gpt-5.6-saved" } });
+      .toMatchObject({ params: { model: null } });
   });
 
-  it("uses model/list isDefault when Codex has no configured model", async () => {
+  it("lets Codex resolve its default model when no model is configured", async () => {
     server.models = [
       { id: "first-model", displayName: "First" },
       { id: "default-model", displayName: "Default", isDefault: true },
@@ -571,14 +577,76 @@ describe("CodexRuntimeClient", () => {
     await client.getState();
 
     expect(server.requests.find((request) => request.method === "thread/start"))
-      .toMatchObject({ params: { model: "default-model" } });
+      .toMatchObject({ params: { model: null } });
+  });
+
+  it("uses the effective thread defaults for a local provider without GPT overrides", async () => {
+    server.config = { model: "local/qwen", model_provider: "vllm", sandbox_mode: "read-only" };
+    server.threadAccess = { model: "local/qwen", reasoningEffort: null };
+    const client = new CodexRuntimeClient(
+      { transport: "local" }, { executable: "codex", cwd: "/project" },
+    );
+    await expect(client.getAvailableModels()).resolves.toEqual([
+      expect.objectContaining({ id: "local/qwen", isDefault: true, input: ["text"] }),
+    ]);
+    expect(server.requests).toContainEqual({ method: "config/read", params: { cwd: "/project" } });
+    await client.prompt("Use local defaults");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start", params: { model: "local/qwen" },
+    });
+    expect(server.requests.at(-1)?.params).not.toHaveProperty("effort");
+    expect(server.requests.at(-1)?.params).not.toHaveProperty("approvalPolicy");
+    expect(server.requests.at(-1)?.params).not.toHaveProperty("sandboxPolicy");
+    await expect(client.setModel("local/qwen")).resolves.toEqual({ model: "local/qwen" });
+    await expect(client.setModel("gpt-5.6")).rejects.toThrow("not available");
+  });
+
+  it("honors an explicit model and effort while leaving permissions to Codex", async () => {
+    server.config = { model: "configured", model_reasoning_effort: "high" };
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/project", model: "gpt-5.6", thinkingOptionId: "low" },
+    );
+    await client.prompt("Use my selection");
+    expect(server.requests).toContainEqual({
+      method: "thread/start", params: { cwd: "/project", model: "gpt-5.6", ephemeral: false },
+    });
+    expect(server.requests.at(-1)).toMatchObject({ method: "turn/start", params: { model: "gpt-5.6", effort: "low" } });
+    expect(server.requests.at(-1)?.params).not.toHaveProperty("sandboxPolicy");
+  });
+
+  it("uses the model resolved by thread/start if defaults changed after discovery", async () => {
+    server.config = { model: "local/old", model_provider: "vllm", model_reasoning_effort: "high" };
+    server.threadAccess = { model: "local/new", reasoningEffort: "low" };
+    const client = new CodexRuntimeClient(
+      { transport: "local" }, { executable: "codex", cwd: "/workspace" },
+    );
+    await client.prompt("Use the current defaults");
+    expect(server.requests.at(-1)).toMatchObject({
+      method: "turn/start", params: { model: "local/new", effort: "low" },
+    });
+    await expect(client.getAvailableModels()).resolves.toContainEqual(
+      expect.objectContaining({ id: "local/new" }),
+    );
+  });
+
+  it("keeps a resumed model available even when the configured provider has changed", async () => {
+    server.config = { model: "local/new", model_provider: "vllm" };
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace", resume: { providerSessionId: "thread-1", providerSessionPath: "/tmp/thread-1.jsonl" } },
+    );
+    await expect(client.getState()).resolves.toMatchObject({ model: { id: "gpt-5.6" } });
+    await expect(client.getAvailableModels()).resolves.toContainEqual(expect.objectContaining({ id: "gpt-5.6" }));
+    expect(server.requests.find((request) => request.method === "thread/resume")?.params)
+      .toEqual({ threadId: "thread-1", cwd: "/workspace" });
   });
 
   it.each([
     {
       source: "saved configuration",
       savedConfig: { model: "gpt-5.6", modelReasoningEffort: "xhigh" },
-      config: { model_reasoning_effort: "high" },
+      config: null,
       expected: "xhigh",
     },
     {

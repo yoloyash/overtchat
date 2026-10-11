@@ -30,6 +30,7 @@ describe("codexProviderAdapter", () => {
     expect(mocks.fetchCodexModels).toHaveBeenCalledWith(
       expect.objectContaining({ shellMode: "login" }),
       "/usr/local/bin/codex",
+      "/workspace",
     );
   });
 

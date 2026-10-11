@@ -15,7 +15,8 @@ import {
   type HostTarget,
 } from "@overtchat/agent-runtime/runtime/process";
 import { startCodexAppServer } from "@overtchat/agent-runtime/codex/app-server";
-import { parseCodexModels, recordOf } from "@overtchat/agent-runtime/codex/protocol";
+import { recordOf } from "@overtchat/agent-runtime/codex/protocol";
+import { codexConfiguredModels } from "./config";
 
 const MODEL_PROBE_TIMEOUT_MS = 120_000;
 
@@ -77,17 +78,19 @@ export async function probeCodexTarget(
 export async function fetchCodexModels(
   target: HostTarget,
   executable: string,
+  cwd?: string,
 ): Promise<AgentModel[]> {
-  const server = await startCodexAppServer(target, executable);
+  const server = await startCodexAppServer(target, executable, cwd);
   try {
     await server.ready();
-    const [accountResponse, modelResponse] = await Promise.all([
+    const [accountResponse, modelResponse, configResponse] = await Promise.all([
       server.request("account/read", {}),
       server.request(
         "model/list",
         { limit: 200 },
         MODEL_PROBE_TIMEOUT_MS,
       ),
+      server.request("config/read", cwd ? { cwd } : {}).catch(() => null),
     ]);
     const account = recordOf(accountResponse);
     if (!account?.account && account?.requiresOpenaiAuth === true) {
@@ -95,7 +98,7 @@ export async function fetchCodexModels(
         "Codex is installed but not signed in. Run `codex login` on this machine.",
       );
     }
-    const models = parseCodexModels(modelResponse);
+    const models = codexConfiguredModels(modelResponse, configResponse);
     if (models.length === 0) {
       throw new Error(
         "Codex is installed, but it did not report any usable models.",

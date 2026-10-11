@@ -171,7 +171,7 @@ export const codexProviderAdapter: AgentProviderAdapter = {
   listWorkspaceSessions: listCodexWorkspaceSessions,
   fetchCatalog: async (target, launch) => ({
     provider: "codex",
-    models: await fetchCodexModels(target, launch.executable),
+    models: await fetchCodexModels(target, launch.executable, launch.cwd),
     modes: CODEX_MODES,
     defaultModeId: "auto",
   }),

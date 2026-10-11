@@ -2166,6 +2166,8 @@ export class AgentRuntimeRegistry {
         `${agentProviderMetadata(adapter.provider).label} mode "${modeId}" is not available.`,
       );
     }
+    // Omitted Codex settings inherit config at launch, not a potentially stale catalog.
+    if (adapter.provider === "codex") return { ...requested };
     return {
       ...(model ? { model: model.id } : {}),
       ...(thinkingOptionId ? { thinkingOptionId } : {}),

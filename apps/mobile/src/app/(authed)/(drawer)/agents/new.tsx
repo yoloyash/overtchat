@@ -159,13 +159,7 @@ function NewAgent({
         `/api/agent-workspaces/${encodeURIComponent(targetWorkspace)}/sessions`,
         {
           provider,
-          launchConfig: {
-            model: model.id,
-            ...(selection.thinkingOptionId
-              ? { thinkingOptionId: selection.thinkingOptionId }
-              : {}),
-            ...(selection.modeId ? { modeId: selection.modeId } : {}),
-          },
+          launchConfig: selection.launchConfig,
         },
         controller.signal,
       );
@@ -311,6 +305,19 @@ function NewAgent({
                 )
               }
             />
+          </View>
+        )}
+        {provider === "codex" && (
+          <View style={{ paddingHorizontal: 12 }}>
+            {Object.keys(selection.launchConfig).length ? (
+              <AgentButton
+                label="Use Codex defaults"
+                disabled={pending}
+                onPress={() => setConfig({})}
+              />
+            ) : (
+              <AgentText muted>Using Codex defaults</AgentText>
+            )}
           </View>
         )}
         <AgentComposer
