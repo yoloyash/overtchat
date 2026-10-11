@@ -23,6 +23,8 @@ import {
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 import { PiAssistantMessages } from "./assistant-messages";
 import { PiCompaction } from "./compaction";
+import { normalizeTodoEvent, normalizeTodoMessage } from "./todo-messages";
+import { parsePiTodos } from "./todos";
 
 export type PiLaunch = {
   executable: string;
@@ -71,9 +73,9 @@ export class PiClient {
         return;
       }
       if (this.compaction.handle(record as PiRpcEvent)) return;
-      const event = this.assistantMessages.annotate(
+      const event = normalizeTodoEvent(this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as PiRpcEvent,
-      );
+      ), parsePiTodos) as PiRpcEvent;
       this.emit(
         event.type === "extension_ui_request"
           ? ({ ...event, type: "interaction_request" } as PiRpcEvent)
@@ -139,7 +141,8 @@ export class PiClient {
     const history = await this.request<{ messages: unknown[] }>({
       type: "get_messages",
     });
-    return this.identifyMessages(history.messages);
+    const { messages } = await this.identifyMessages(history.messages);
+    return { messages: messages.map((message) => normalizeTodoMessage(message, parsePiTodos)) };
   }
 
   // Resolve native user identity from session entries without importing model

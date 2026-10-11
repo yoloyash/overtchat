@@ -505,6 +505,28 @@ describe("projectAgentTranscript", () => {
   });
 });
 
+describe("structured tool task lists", () => {
+  it("renders confirmed results at the result position, including orphaned history results", () => {
+    const tasks = { type: "taskList", id: "tasks:todo-1", items: [
+      { id: "one", step: "Inspect", status: "completed" },
+    ] };
+    const nativeResult = result("todo-1", "todo", "Native summary", {
+      content: [{ type: "text", text: "Native summary" }, tasks],
+    });
+    const messages = [assistant([call("todo-1", "todo", {})], 1),
+      assistant([{ type: "text", text: "Working" }], 2), nativeResult];
+    expect(projectAgentTranscript(messages).map((row) => row.type)).toEqual(["assistant_text", "task_list"]);
+    expect(projectAgentTranscript([nativeResult]).map((row) => row.type)).toEqual(["task_list"]);
+    expect(latestAgentTaskList(messages)?.tasks).toEqual(tasks.items);
+    // A failed result must remain inspectable and must not clear the badge.
+    const cleared = result("todo-2", "todo", "Cleared", { content: [{ ...tasks, id: "tasks:todo-2", items: [] }] });
+    expect(latestAgentTaskList([...messages, { ...cleared, isError: true }])?.tasks).toEqual(tasks.items);
+    expect(projectAgentTranscript([{ ...cleared, isError: true }])[0]?.type).toBe("activity");
+    expect(latestAgentTaskList([...messages, cleared])?.tasks).toEqual([]);
+    expect(projectAgentTranscript([cleared])).toEqual([]);
+  });
+});
+
 describe("agent activity sequences", () => {
   it("positions adjacent activity without crossing conversational boundaries", () => {
     const projected = projectAgentTranscript([

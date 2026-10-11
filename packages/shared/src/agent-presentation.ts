@@ -523,6 +523,16 @@ function taskListSnapshot(
   };
 }
 
+function taskListFromResult(value: unknown): AgentTaskListSnapshot | null {
+  const result = recordOf(value);
+  if (result?.isError === true || !Array.isArray(result?.content)) return null;
+  for (const part of result.content) {
+    const tasks = taskListSnapshot(part, `tasks:${String(result.toolCallId)}`);
+    if (tasks) return tasks;
+  }
+  return null;
+}
+
 export function latestAgentTaskList(
   messages: readonly unknown[],
 ): AgentTaskListSnapshot | null {
@@ -532,7 +542,11 @@ export function latestAgentTaskList(
     messageIndex -= 1
   ) {
     const message = recordOf(messages[messageIndex]);
-    if (message?.role !== "assistant" || !Array.isArray(message.content)) {
+    if (
+      (message?.role !== "assistant" && message?.role !== "toolResult") ||
+      message.isError === true ||
+      !Array.isArray(message.content)
+    ) {
       continue;
     }
     for (
@@ -1011,6 +1025,9 @@ export function projectAgentTranscript(
             typeof partRecord.id === "string"
               ? partRecord.id
               : `tool:${partIdentity}`;
+          // Structured tool results render at their own position, after the
+          // operation completes. Unknown and failed tools retain raw activity.
+          if (taskListFromResult(results.get(id))) return;
           pushActivity({
             type: "tool",
             id: `tool:${id}`,
@@ -1082,6 +1099,11 @@ export function projectAgentTranscript(
     }
 
     if (role === "toolResult") {
+      const tasks = taskListFromResult(record);
+      if (tasks) {
+        if (tasks.tasks.length) items.push({ type: "task_list", key: `task-list:${tasks.id}`, snapshot: tasks });
+        return;
+      }
       const id = resultId(message);
       if (!id || callIds.has(id)) return;
       pushActivity({

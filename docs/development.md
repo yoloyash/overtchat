@@ -819,3 +819,34 @@ The second command uses the host's configured model credentials to summarize
 synthetic history in a disposable native session. It uses a temporary compaction
 configuration, disables tools/extensions, checks the RPC result and imported
 summary, and removes its own session files. It does not modify existing sessions.
+
+### Pi and OMP task progress
+
+OMP native todos and Pi's example `todo` and `rpiv-todo` extension results feed
+the shared task checklist on web, desktop, and mobile. Pi extensions must already
+be installed by the operator; OvertChat does not inject a todo tool. Unknown or
+failed tools retain their ordinary activity display. Cleared lists remove the
+current task badge, while earlier progress remains in the transcript. OMP blocked
+tasks retain their blocker text and abandoned tasks leave the active checklist.
+
+Provider adapters normalize confirmed results before connector persistence.
+Native history imports rebuild those results; OMP also imports current todo state
+to recover tasks omitted by compaction or code-mode tools. Reminders and turn
+completion reconcile OMP's full state without treating an unfinished-task reminder
+as a complete list. Normal connector restarts retain the durable display history.
+This displays task progress; it does not add a plan-approval workflow.
+
+```sh
+npm run test -w packages/agent-runtime -- src/pi/todos.test.ts
+npm run test -w apps/web -- lib/agents/presentation.test.ts
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'keeps OMP history stable'
+RUN_OMP_TODO_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/todos.integration.test.ts
+```
+
+The browser test exercises live progress, compaction, model changes, page reload,
+connector restart and native history import through the real connector and relay,
+including a narrow viewport. The opt-in installed-OMP test uses local model
+credentials for one small turn, enables only the todo tool in a disposable
+workspace/session, and verifies progress and native restoration after restart.
+Set `OMP_COMMAND` or `OMP_MODEL` to override the executable or model. It removes
+its session files and does not modify existing sessions or settings.

@@ -11,6 +11,8 @@ process.env.OVERTCHAT_CONNECTOR_TIMELINES = path.join(config.directory, "timelin
 process.env.OVERTCHAT_CONNECTOR_LOCK = path.join(config.directory, "lock");
 const contextFile = path.join(config.directory, "provider-context.json");
 let context = JSON.parse(await readFile(contextFile, "utf8").catch(() => "[]"));
+const todosFile = path.join(config.directory, "provider-todos.json");
+let todoPhases = JSON.parse(await readFile(todosFile, "utf8").catch(() => "[]"));
 const models = ["A", "B"].map((name) => ({
   provider: "fixture", id: `model-${name.toLowerCase()}`, name: `Model ${name}`,
   reasoning: true, input: ["text"], contextWindow: 100000,
@@ -48,7 +50,7 @@ configureProcessSpawner((_target, launch) => {
         switch (command.type) {
           case "get_state":
             reply({ sessionId: "native-session", sessionFile: "/tmp/runtime-test.jsonl",
-              model, thinkingLevel: level, isStreaming: streaming });
+              model, thinkingLevel: level, isStreaming: streaming, todoPhases });
             break;
           case "get_messages": reply({ messages: context }); break;
           case "get_branch_messages": reply({ messages: [] }); break;
@@ -72,6 +74,17 @@ configureProcessSpawner((_target, launch) => {
               emit({ type: "message_end", message: stamped });
               return stamped;
             };
+            const progress = (status, id) => {
+              todoPhases = [{ name: "Startup", tasks: [
+                { content: "Inspect startup", status: "completed" },
+                { content: "Verify startup", status },
+              ] }];
+              message({ role: "assistant", content: [{ type: "toolCall", id, name: "todo", arguments: {} }] });
+              const result = { role: "toolResult", toolCallId: id, toolName: "todo",
+                content: [{ type: "text", text: "Native todo summary" }], details: { phases: todoPhases } };
+              emit({ type: "tool_execution_end", toolCallId: id, toolName: "todo", result });
+              message(result);
+            };
             message({ role: "user", content: "Earlier work" });
             for (let i = 1; i <= 4; i++) {
               message({ role: "assistant", content: [
@@ -83,16 +96,19 @@ configureProcessSpawner((_target, launch) => {
                 content: `<system-notice>Background job bg_${i} completed</system-notice>` });
             }
             message({ role: "assistant", content: [{ type: "text", text: "Earlier work completed." }] });
+            progress("in_progress", "todo-start");
             emit({ type: "auto_compaction_start", reason: "threshold" });
             await new Promise((resolve) => setTimeout(resolve, 800));
             emit({ type: "auto_compaction_end", result: { tokensBefore: 120000 }, aborted: false });
             const user = message({ role: "user", content: command.message });
+            progress("completed", "todo-finish");
             const answer = message({ role: "assistant", content: [
               { type: "text", text: "## Measured timings\n\nThe container is back up and healthy." },
             ] });
             // The provider now exposes compacted context, not the displayed timeline.
             context = [{ role: "compactionSummary", content: "Earlier work summarized." }, user, answer];
             await writeFile(contextFile, JSON.stringify(context));
+            await writeFile(todosFile, JSON.stringify(todoPhases));
             streaming = false;
             emit({ type: "agent_end", messages: [answer] });
             reply();

@@ -15,6 +15,9 @@ import { type AgentProcess, type HostTarget, spawnOnHost } from "@overtchat/agen
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
 import { PiAssistantMessages } from "@overtchat/agent-runtime/pi/assistant-messages";
 import { PiCompaction } from "@overtchat/agent-runtime/pi/compaction";
+import { randomUUID } from "node:crypto";
+import { normalizeTodoEvent, normalizeTodoMessage, recordOf, type TaskList } from "../pi/todo-messages";
+import { parseOmpTodoPhases, parseOmpTodos } from "./todos";
 
 const READY_TIMEOUT_MS = 30_000;
 const MAX_FRAME_BYTES = 64 * 1024 * 1024;
@@ -52,6 +55,8 @@ export class OmpClient {
   private readyTimer: NodeJS.Timeout | undefined;
   private protocolVersion = 1;
   private historyGeneration = 0;
+  private todoRevision = 0;
+  private todoItems: string | undefined;
   private chunk: { id: string; count: number; byteLength: number; parts: Buffer[] } | undefined;
 
   constructor(process: AgentProcess, private readonly modeId: string) {
@@ -80,6 +85,12 @@ export class OmpClient {
 
   async getState(timeoutMs?: number): Promise<Record<string, unknown>> {
     const state = await this.request<Record<string, unknown>>({ type: "get_state" }, timeoutMs);
+    // A durable transcript restart skips getMessages. Seed comparison state
+    // without replaying history so a subsequent code-mode clear is observable.
+    if (this.todoItems === undefined) {
+      const tasks = parseOmpTodoPhases(state.todoPhases, "omp:tasks:state");
+      if (tasks) this.todoItems = JSON.stringify(tasks.items);
+    }
     const model = state.model;
     const nativeProvider = model && typeof model === "object" ? Reflect.get(model, "provider") : undefined;
     const nativeModelId = model && typeof model === "object" ? Reflect.get(model, "id") : undefined;
@@ -129,13 +140,53 @@ export class OmpClient {
           if (cursor) seen.add(cursor);
         } while (cursor);
         if (messages.length !== total) throw new Error("Oh My Pi returned an incomplete message history.");
-        return this.identifyMessages(messages);
+        return this.importMessages(messages);
       } catch (error) {
         if (!(error instanceof JsonlRpcCommandError) || !["session_busy", "stale_cursor"].includes(error.code ?? "")) throw error;
       }
     }
     const history = await this.request<{ messages: unknown[] }>({ type: "get_messages" });
-    return this.identifyMessages(history.messages);
+    return this.importMessages(history.messages);
+  }
+
+  private async importMessages(messages: unknown[]): Promise<{ messages: unknown[] }> {
+    const history = await this.identifyMessages(messages.map((message) => normalizeTodoMessage(message, parseOmpTodos)));
+    const state = await this.request<Record<string, unknown>>({ type: "get_state" });
+    // Native current state also survives compaction and code-mode todo calls
+    // whose enclosing tool result is not named "todo".
+    const tasks = parseOmpTodoPhases(recordOf(state)?.todoPhases, "omp:tasks:state");
+    let previous: string | undefined;
+    for (const message of history.messages) {
+      const record = recordOf(message);
+      if (!Array.isArray(record?.content)) continue;
+      for (const part of record.content) {
+        if (recordOf(part)?.type === "taskList") previous = JSON.stringify(recordOf(part)?.items);
+      }
+    }
+    if (tasks) {
+      this.todoItems = JSON.stringify(tasks.items);
+      if (this.todoItems !== previous && (previous !== undefined || tasks.items.length)) {
+        history.messages.push(this.todoMessage(tasks));
+      }
+    }
+    return history;
+  }
+
+  private todoMessage(tasks: TaskList) {
+    return { role: "assistant", id: tasks.id, content: [tasks] };
+  }
+
+  private async refreshTodos(): Promise<void> {
+    const generation = this.historyGeneration;
+    const revision = ++this.todoRevision;
+    const state = await this.request<Record<string, unknown>>({ type: "get_state" });
+    if (generation !== this.historyGeneration || revision !== this.todoRevision) return;
+    const tasks = parseOmpTodoPhases(recordOf(state)?.todoPhases, `omp:tasks:${randomUUID()}`);
+    if (!tasks) return;
+    const items = JSON.stringify(tasks.items);
+    if (items === this.todoItems || (this.todoItems === undefined && !tasks.items.length)) return;
+    this.todoItems = items;
+    this.emit({ type: "message_end", message: this.todoMessage(tasks) });
   }
 
   private async identifyMessages(
@@ -193,6 +244,7 @@ export class OmpClient {
     if (result.cancelled) throw new Error("Oh My Pi rewind was cancelled.");
     this.submissionEchoes.clear();
     this.assistantMessages.clear();
+    this.todoItems = undefined;
   }
 
   prompt(
@@ -296,12 +348,27 @@ export class OmpClient {
     }
     if (typeof record.type !== "string") { this.transport.fail("Oh My Pi RPC event is missing a type."); return; }
     if (this.compaction.handle(record as OmpEvent)) return;
-    const event = mapOmpUiRequest(
+    const event = normalizeTodoEvent(mapOmpUiRequest(
       this.assistantMessages.annotate(
         this.submissionEchoes.annotate(record) as OmpEvent,
       ),
-    ) as OmpEvent;
+    ) as OmpEvent, parseOmpTodos) as OmpEvent;
+    if (event.type === "message_end") {
+      const message = recordOf(event.message);
+      if (Array.isArray(message?.content)) {
+        const tasks = message.content.find((part) => recordOf(part)?.type === "taskList");
+        if (tasks) {
+          this.todoRevision += 1;
+          this.todoItems = JSON.stringify(recordOf(tasks)?.items);
+        }
+      }
+    }
     this.emit(event);
+    // Reminders may contain only unfinished work. Fetch authoritative state
+    // instead of replacing the full checklist with that subset.
+    if (event.type === "todo_reminder" || event.type === "agent_end") {
+      void this.refreshTodos().catch(() => {});
+    }
     const message = event.message;
     if (
       event.type === "message_end" &&
