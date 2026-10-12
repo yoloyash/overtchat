@@ -362,7 +362,7 @@ jobs:
           (cd baseline && shasum -a 256 --check "desktop-checksums-$ARCH.txt")
           (cd candidate && shasum -a 256 --check "desktop-checksums-$ARCH.txt")
           ditto -x -k baseline/overtchat-*-mac-"$ARCH".zip baseline/app
-          baseline_version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {parse} from "yaml"; console.log(parse(readFileSync(`baseline/stable-${process.env.ARCH}-mac.yml`, "utf8")).version)')
+          baseline_version=$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import {parse} from "yaml"; console.log(parse(readFileSync("baseline/stable-" + process.env.ARCH + "-mac.yml", "utf8")).version)')
           node .github/scripts/verify-desktop-mac.mjs baseline/app/overtchat.app "$ARCH" notarized "$baseline_version"
       - name: Qualify real update and saved login
         shell: bash
