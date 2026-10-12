@@ -491,6 +491,11 @@ desktop instance. Verify AppImage replacement and native package
 authentication separately. After qualification, publish the exact reviewed
 candidate and verify the public R2 feed workflow.
 
+For later releases, build a private lower-version baseline with the current
+client API contract and a loopback update URL. The qualification harness reads
+the candidate's API level and the baseline's version from their verified
+metadata; it does not assume the original `0.1.0` / API level 1 release.
+
 ## Mobile release
 
 `apps/mobile/app.json` is authoritative: `expo.version` is the public version,
