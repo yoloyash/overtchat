@@ -12,10 +12,10 @@ import { publishDesktopUpdates } from "./publish-desktop-updates.mjs";
 async function fixture(t) {
   const directory = await mkdtemp(path.join(tmpdir(), "desktop-publish-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  for (const [platform, arch, extensions] of [["mac", "arm64", ["zip"]], ["mac", "x64", ["zip"]], ["linux", "x64", ["AppImage", "deb", "rpm"]]]) {
+  for (const [platform, arch, extensions] of [["mac", "arm64", ["zip"]], ["mac", "x64", ["zip"]], ["linux", "x64", ["AppImage", "deb", "rpm"]], ["windows", "x64", ["exe"]]]) {
     const files = extensions.map((ext) => ({ url: ext === "AppImage" ? "overtchat-linux-x64.AppImage" : `overtchat-0.1.1-${platform}-${arch}.${ext}` }));
     for (const file of files) await writeFile(path.join(directory, file.url), `signed ${file.url}`);
-    await writeFile(path.join(directory, `latest-${platform}.yml`), stringify({ version: "0.1.1", files }));
+    await writeFile(path.join(directory, platform === "windows" ? "latest.yml" : `latest-${platform}.yml`), stringify({ version: "0.1.1", files }));
     await writeDesktopUpdateMetadata({ directory, version: "0.1.1", apiLevel: 2, platform, arch });
   }
   const objects = new Map();
@@ -39,12 +39,12 @@ async function fixture(t) {
   return { args, objects, writes: () => writes };
 }
 
-test("publishes all three verified feeds and reruns without rewriting a release", async (t) => {
+test("publishes all four verified feeds and reruns without rewriting a release", async (t) => {
   const f = await fixture(t);
-  assert.equal((await publishDesktopUpdates(f.args)).length, 3);
-  assert.equal(f.writes(), 3);
+  assert.equal((await publishDesktopUpdates(f.args)).length, 4);
+  assert.equal(f.writes(), 4);
   await publishDesktopUpdates(f.args);
-  assert.equal(f.writes(), 3);
+  assert.equal(f.writes(), 4);
 });
 
 test("an old workflow cannot roll back a newer feed", async (t) => {
@@ -53,7 +53,7 @@ test("an old workflow cannot roll back a newer feed", async (t) => {
   for (const [key, body] of f.objects) f.objects.set(key, stringify({ ...parse(body), version: "0.2.0" }));
   const results = await publishDesktopUpdates(f.args);
   assert(results.every((result) => result.includes("skipped older")));
-  assert.equal(f.writes(), 3);
+  assert.equal(f.writes(), 4);
 });
 
 test("corrupt archives fail before any channel becomes public", async (t) => {
@@ -71,7 +71,7 @@ test("the same published version cannot be mutated", async (t) => {
   body.releaseDate = "2026-10-03T00:00:00Z";
   await writeFile(file, stringify(body));
   await assert.rejects(publishDesktopUpdates(f.args), /cannot be changed/);
-  assert.equal(f.writes(), 3);
+  assert.equal(f.writes(), 4);
 });
 
 test("permissions and concurrent-write failures are never treated as absent objects", async (t) => {
@@ -88,4 +88,20 @@ test("public host and served bytes must match the client and release", async (t)
   const f = await fixture(t);
   await assert.rejects(publishDesktopUpdates({ ...f.args, publicUrl: "https://wrong.example" }), /feed host/);
   await assert.rejects(publishDesktopUpdates({ ...f.args, fetchImpl: async () => ({ ok: true, text: async () => "stale" }) }), /does not match/);
+});
+
+for (const artifact of ["overtchat-0.1.1-windows-x64.exe", "stable.yml"]) {
+  test(`missing Windows ${artifact} prevents partial publication`, async (t) => {
+    const f = await fixture(t);
+    await rm(path.join(f.args.directory, artifact));
+    await assert.rejects(publishDesktopUpdates(f.args), /ENOENT/);
+    assert.equal(f.writes(), 0);
+  });
+}
+
+test("tampered Windows installer prevents all feed writes", async (t) => {
+  const f = await fixture(t);
+  await writeFile(path.join(f.args.directory, "overtchat-0.1.1-windows-x64.exe"), "tampered");
+  await assert.rejects(publishDesktopUpdates(f.args), /Incorrect (hash|size)/);
+  assert.equal(f.writes(), 0);
 });

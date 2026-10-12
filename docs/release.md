@@ -212,9 +212,9 @@ gh workflow run desktop-release.yml --ref <reviewed-ref>
 For a release, merge the versioned commit into `main`, then create the matching
 `desktop-vX.Y.Z` tag. The draft contains
 `overtchat-X.Y.Z-mac-arm64.{dmg,zip}` and
-`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, and
+`overtchat-X.Y.Z-mac-x64.{dmg,zip}`, the four Linux x64 downloads below, `overtchat-X.Y.Z-windows-x64.exe`, and
 checksums for each platform/architecture, plus `stable-arm64-mac.yml`,
-`stable-x64-mac.yml`, and `stable-linux.yml`.
+`stable-x64-mac.yml`, `stable-linux.yml`, and Windows `stable.yml`.
 Never move a tag or replace assets after publication. A failed build can resume
 its still-unpublished draft; manual builds only upload workflow artifacts.
 
@@ -251,8 +251,8 @@ remains the credential-free development packaging command.
 
 The desktop workflow builds Linux **x64** downloads using electron-builder's
 standard `AppImage`, `deb`, `rpm`, and `tar.gz` targets. It uses the same bundled
-UI, desktop version, and `desktop-vX.Y.Z` tag as macOS. Windows and Linux ARM64
-are not part of this release. No paid signing account is required for these
+UI, desktop version, and `desktop-vX.Y.Z` tag as macOS and Windows. Linux ARM64
+is not part of this release. No paid signing account is required for these
 direct GitHub downloads; this workflow does not provision an APT/YUM repository.
 In-app updates use the [desktop update feed](#desktop-update-feed).
 
@@ -334,16 +334,65 @@ desktop environment, package format, and app version. Before publishing:
    For the first release, use two candidate builds. Removing the package must
    leave the user's settings intact while removing installed launchers/profile.
 
-Publish the existing desktop draft only after its macOS and Linux gates pass,
+Publish the existing desktop draft only after its macOS, Linux, and Windows gates pass,
 using the publication command in the macOS section. Never replace public assets
 or move a published tag.
+
+## Desktop Windows release
+
+The desktop workflow builds an unsigned Windows **x64** NSIS installer on
+`windows-2025`, using the existing desktop version and tag. It installs per user
+without elevation, provides Start menu integration, and supports in-app updates.
+Windows ARM64 and Microsoft Store packaging are outside this target.
+
+PRs and manual dispatches upload workflow artifacts. Tags add these to the same
+verified draft as macOS/Linux:
+
+- `overtchat-X.Y.Z-windows-x64.exe`
+- `desktop-checksums-windows-x64.txt`
+- `stable.yml` (Windows channel naming has no platform suffix)
+
+The Windows job verifies the PE architecture, ASAR contents, release version,
+fuses, and update URL. It builds a private `0.0.0` baseline pointing at a loopback
+feed, installs it, and exercises the exact candidate through `electron-updater`:
+API compatibility guards, interrupted download/retry, normal quit without
+installation, explicit install/relaunch, encrypted login retention, sign-out
+persistence, and uninstall. The private baseline is a workflow artifact only;
+never publish it or replace the candidate with it.
+
+To repeat on `gaming-pc` or another Windows 11 x64 device, use a test account
+without an OvertChat installation/profile. Install Node 22/npm 10.9.8, check out
+the same source commit, run `npm ci`, and download the workflow's
+`desktop-windows-x64` and `desktop-windows-baseline` artifacts. From the repo root:
+
+```powershell
+node --import tsx .github/scripts/smoke-desktop-windows.mjs <baseline.exe> <candidate-directory> <X.Y.Z>
+```
+
+The smoke refuses existing profiles/installations, installs into a temporary
+folder, and removes its app and profile afterward. Screenshots and redacted logs
+are retained in the printed diagnostics directory. It does not test a full chat
+server or microphone hardware.
+
+Before publishing, also download the exact candidate through a browser on
+Windows 11 x64. Check SmartScreen/Smart App Control behavior, normal installer
+launch, Start menu and taskbar icons, server selection, real login/chat streaming,
+agent UI, attachments/downloads, microphone, menus, and Change Server. Confirm
+saved sign-in across restart and uninstall/reinstall behavior. SSH-transferred
+files do not establish browser-download reputation behavior.
+
+Initial releases are unsigned: warnings or policy blocks are expected on some
+systems. Do not describe the download as signed or universally warning-free.
+Signing can be added later, with publisher verification and unsigned-to-signed
+upgrade qualification. Do not disable OS protections as a release workaround.
+Publish only after the Windows and existing macOS/Linux gates pass.
 
 ## Desktop update feed
 
 `.github/workflows/desktop-update-feed.yml` runs when a stable `desktop-vX.Y.Z`
 release is published. Drafts and prereleases do not change the public feed.
 It downloads the immutable GitHub assets, verifies checksums and metadata,
-and publishes the three channel YAML files under `desktop/` in Cloudflare R2
+and publishes the four channel YAML files under `desktop/` in Cloudflare R2
 bucket `overtchat-updates`, served at `https://updates.overtchat.com`.
 Installer URLs remain version-pinned GitHub release URLs; desktop publication
 does not depend on server/CLI/mobile promotion or the marketing site's build.
@@ -372,14 +421,15 @@ publication step, explicitly dispatch this feed workflow too.
 
 The updater uses `electron-updater`'s generic provider. Mac channels separate
 arm64/x64; Linux's channel contains AppImage, `.deb`, and `.rpm`, selected by
-the installed format. Tar installs remain manual. Channel metadata includes
+the installed format. Windows x64 uses `stable.yml` with the NSIS EXE.
+Tar installs remain manual. Channel metadata includes
 `clientApiLevel`: main checks an exact match with the selected server before
 downloading and again before installation. Offline checks accept only the
 installed client's API level. A single stable feed does not retain an older
 API-compatible release once a newer release has replaced it.
 
 Before publishing, qualify an actual higher-version update on both signed Mac
-architectures and Linux formats: discovery without downloading, clicking to
+architectures, Linux formats, and Windows x64: discovery without downloading, clicking to
 download, progress, retry after a network interruption, postponing restart,
 explicit restart, saved login, and normal quit
 without installation. Check both newer/older server API mismatches, switching

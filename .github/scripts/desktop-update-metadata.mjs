@@ -6,15 +6,15 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 import { parse, stringify } from "yaml";
 
-/** Adapt Builder's metadata after notarization; downloads remain immutable. */
+/** Adapt Builder's metadata after packaging; downloads remain immutable. */
 export async function writeDesktopUpdateMetadata({ directory, version, apiLevel, platform, arch }) {
   assert(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version));
   assert(Number.isSafeInteger(apiLevel) && apiLevel > 0);
-  assert(platform === "mac" ? ["arm64", "x64"].includes(arch) : platform === "linux" && arch === "x64");
-  const metadata = parse(await readFile(path.join(directory, `latest-${platform}.yml`), "utf8"));
+  assert(platform === "mac" ? ["arm64", "x64"].includes(arch) : ["linux", "windows"].includes(platform) && arch === "x64");
+  const metadata = parse(await readFile(path.join(directory, platform === "windows" ? "latest.yml" : `latest-${platform}.yml`), "utf8"));
   assert.equal(metadata.version, version);
   const files = [];
-  for (const extension of platform === "mac" ? ["zip"] : ["AppImage", "deb", "rpm"]) {
+  for (const extension of platform === "mac" ? ["zip"] : platform === "windows" ? ["exe"] : ["AppImage", "deb", "rpm"]) {
     const filename = extension === "AppImage" ? "overtchat-linux-x64.AppImage" : `overtchat-${version}-${platform}-${arch}.${extension}`;
     assert(metadata.files.some((file) => file.url === filename), `Builder metadata is missing ${filename}`);
     const artifact = path.join(directory, filename);
@@ -33,7 +33,8 @@ export async function writeDesktopUpdateMetadata({ directory, version, apiLevel,
     releaseDate: metadata.releaseDate,
     ...(metadata.minimumSystemVersion ? { minimumSystemVersion: metadata.minimumSystemVersion } : {}),
   };
-  const channelFile = `stable${platform === "mac" ? `-${arch}` : ""}-${platform}.yml`;
+  // electron-updater does not append a platform suffix for Windows channels.
+  const channelFile = platform === "windows" ? "stable.yml" : `stable${platform === "mac" ? `-${arch}` : ""}-${platform}.yml`;
   await writeFile(path.join(directory, channelFile), stringify(result));
   return channelFile;
 }

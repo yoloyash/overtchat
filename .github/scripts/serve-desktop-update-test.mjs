@@ -16,7 +16,7 @@ assert(Number.isSafeInteger(port) && port > 0 && port < 65536);
 assert(!interruptArgument || interruptArgument === "--interrupt-once");
 const origin = `http://127.0.0.1:${port}`;
 const responses = new Map();
-const channels = (await readdir(directory)).filter((name) => ["stable-arm64-mac.yml", "stable-x64-mac.yml", "stable-linux.yml"].includes(name));
+const channels = (await readdir(directory)).filter((name) => ["stable-arm64-mac.yml", "stable-x64-mac.yml", "stable-linux.yml", "stable.yml"].includes(name));
 assert(channels.length > 0, "No candidate update metadata found");
 for (const name of channels) {
   const metadata = parse(await readFile(path.join(directory, name), "utf8"));

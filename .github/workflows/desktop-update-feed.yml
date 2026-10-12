@@ -52,7 +52,7 @@ jobs:
           assert.equal(release.isPrerelease, false);
           JS
           gh release download "$TAG" --dir release
-          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt)
+          (cd release && sha256sum --check desktop-checksums-arm64.txt && sha256sum --check desktop-checksums-x64.txt && sha256sum --check desktop-checksums-linux-x64.txt && sha256sum --check desktop-checksums-windows-x64.txt)
       - name: Publish and verify the public update feeds
         shell: bash
         env:

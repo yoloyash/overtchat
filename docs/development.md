@@ -528,6 +528,23 @@ Set `DESKTOP_SMOKE_UPGRADE_DEB` to a higher-version candidate to install it
 between the first two launches and verify encrypted sign-in survives; this
 test requires noninteractive `sudo apt-get` access in an isolated test system.
 
+### Windows packaging and qualification
+
+On Windows x64, use Node 22 and npm 10.9.8 from the repository root:
+
+```powershell
+npm ci
+npm run typecheck -w apps/desktop --
+npm run test -w apps/desktop --
+npm run package:windows -w apps/desktop --
+node --import tsx .github/scripts/package-desktop-windows.mjs
+```
+
+The EXE, checksums, and `stable.yml` are written to `apps/desktop/release/`.
+No signing credentials are required. See [Windows release validation](release.md#desktop-windows-release)
+for the disposable-account installer/update smoke and interactive Windows checks.
+The desktop workflow runs that smoke on a Windows runner for every relevant PR.
+
 ## Speech
 
 Speech failures distinguish disabled or missing configuration from an unreachable

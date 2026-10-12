@@ -17,6 +17,7 @@
     "package:mac": "npm run build && electron-builder --mac dir --publish never --config.mac.identity=- --config.mac.hardenedRuntime=false --config.mac.notarize=false",
     "package:mac:release": "npm run build && electron-builder --config electron-builder.release.yml --mac --publish never",
     "package:linux": "npm run build && electron-builder --config electron-builder.linux.yml --linux --x64 --publish never",
+    "package:windows": "npm run build && electron-builder --config electron-builder.windows.yml --win --x64 --publish never",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
     "test": "node --import tsx --test src/main/*.test.ts"
   },

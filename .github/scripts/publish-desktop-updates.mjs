@@ -11,6 +11,7 @@ const feeds = [
   ["stable-arm64-mac.yml", "mac", "arm64", ["zip"]],
   ["stable-x64-mac.yml", "mac", "x64", ["zip"]],
   ["stable-linux.yml", "linux", "x64", ["AppImage", "deb", "rpm"]],
+  ["stable.yml", "windows", "x64", ["exe"]],
 ];
 
 function versionParts(version) {

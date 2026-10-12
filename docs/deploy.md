@@ -406,9 +406,31 @@ Saved sign-in requires GNOME Secret Service or KDE Wallet. Without a usable
 credential store, sign in again after quitting; the app keeps your session only
 until you quit.
 
+### Windows desktop
+
+Windows **x64** uses `overtchat-X.Y.Z-windows-x64.exe`, a per-user installer.
+Windows 11 is the validated target; Windows ARM64 is not shipped. Download the
+EXE from [Downloads](https://overtchat.com/downloads/) or the matching desktop
+GitHub release, run it, then open **overtchat** from the Start menu. No Node.js,
+Docker, or administrator privileges are needed for the desktop client.
+Enter your existing server address and sign in. It does not install a server,
+Host Connector, or local models.
+
+Initial Windows builds are unsigned. SmartScreen can display **Windows protected
+your PC**. Verify the download source before using **More info → Run anyway**,
+if offered. Smart App Control and organization policies may block unsigned apps
+entirely; use the web client when installation is blocked. Do not disable Windows
+security protections to install the app.
+
+Saved sign-in uses Windows DPAPI for the current account. Enable microphone
+access for desktop apps in Windows privacy settings when using voice. Uninstall
+through **Settings → Apps → Installed apps**; uninstall preserves the settings in
+`%APPDATA%\overtchat` so reinstalling can restore your server and sign-in.
+Sign out first if you do not want the saved session retained.
+
 ### Desktop updates
 
-Installed macOS, Linux AppImage, `.deb`, and `.rpm` builds check for desktop
+Installed macOS, Windows EXE, Linux AppImage, `.deb`, and `.rpm` builds check for desktop
 updates at startup and every ten minutes. Returning to the app or waking the
 computer also checks, at most once per minute across those activity events.
 An available or downloaded update stays visible during background checks.
@@ -429,7 +451,8 @@ update failure, verify downloads against the release's SHA-256 checksum file,
 quit the app, and replace it or install the newer package. Settings and securely
 saved sign-in are retained. Builds installed before the in-app updater was added
 need one manual upgrade. Linux package removal preserves your user settings.
-Windows and Linux ARM64 downloads are not yet available.
+Windows ARM64 and Linux ARM64 downloads are not yet available. Windows x64
+appears on the downloads page after the first Windows desktop release is published.
 
 ## Mobile
 
