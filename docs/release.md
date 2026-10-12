@@ -394,6 +394,12 @@ release is published. Drafts and prereleases do not change the public feed.
 It downloads the immutable GitHub assets, verifies checksums and metadata,
 and publishes the four channel YAML files under `desktop/` in Cloudflare R2
 bucket `overtchat-updates`, served at `https://updates.overtchat.com`.
+Existing releases through `desktop-v0.3.0` may contain only the three macOS/Linux
+feeds. Publishing or retrying those releases leaves the Windows feed untouched.
+If any Windows artifact is present, its checksum, installer, and feed must all
+validate. Releases newer than `0.3.0` always require Windows assets, even when
+all Windows files are missing. This preserves the already-built `0.3.0` draft;
+the first public Windows release must use a new desktop version/tag.
 Installer URLs remain version-pinned GitHub release URLs; desktop publication
 does not depend on server/CLI/mobile promotion or the marketing site's build.
 
