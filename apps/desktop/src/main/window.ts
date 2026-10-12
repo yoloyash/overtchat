@@ -1,7 +1,7 @@
 import { app, autoUpdater, BrowserWindow, nativeTheme, screen, shell, type WebContents } from "electron";
 import path from "node:path";
 import type { DesktopCommand } from "@overtchat/shared/desktop";
-import { IPC } from "../shared/ipc";
+import { IPC, type ShellWindowState } from "../shared/ipc";
 import { attachContextMenu } from "./context-menu";
 import { APP_ORIGIN, APP_URL, originOf } from "./protocol";
 import {
@@ -47,6 +47,11 @@ export function isAppSender(sender: WebContents, frameUrl: string | undefined): 
 
 export function getMainWindow(): BrowserWindow | null {
   return mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+}
+
+export function getShellWindowState(): ShellWindowState {
+  const win = getMainWindow();
+  return { maximized: win?.isMaximized() ?? false, fullscreen: win?.isFullScreen() ?? false };
 }
 
 function backgroundColor(): string {
@@ -172,7 +177,7 @@ function createWindow(): BrowserWindow {
             y: Math.round((TITLEBAR_HEIGHT - TRAFFIC_LIGHTS_HEIGHT) / 2),
           },
         }
-      : {}),
+      : process.platform === "win32" ? { frame: false, autoHideMenuBar: true } : {}),
     webPreferences: secureWebPreferences(true),
   });
   if (bounds.maximized) win.maximize();
@@ -196,8 +201,12 @@ function createWindow(): BrowserWindow {
   win.on("move", () => saveBounds(win));
   win.on("maximize", () => saveBounds(win));
   win.on("unmaximize", () => saveBounds(win));
-  win.on("enter-full-screen", () => win.webContents.send(IPC.fullscreen, true));
-  win.on("leave-full-screen", () => win.webContents.send(IPC.fullscreen, false));
+  const notifyWindowState = () => win.webContents.send(IPC.windowStateChanged, getShellWindowState());
+  win.on("maximize", notifyWindowState);
+  win.on("unmaximize", notifyWindowState);
+  // On Windows the event can precede isFullScreen() reflecting the new state.
+  win.on("enter-full-screen", () => win.webContents.send(IPC.windowStateChanged, { ...getShellWindowState(), fullscreen: true }));
+  win.on("leave-full-screen", () => win.webContents.send(IPC.windowStateChanged, { ...getShellWindowState(), fullscreen: false }));
   win.on("swipe", (_event, direction) => {
     if (direction === "right") navigateHistory("back");
     if (direction === "left") navigateHistory("forward");

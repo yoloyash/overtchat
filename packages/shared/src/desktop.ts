@@ -27,7 +27,22 @@ export interface DesktopUpdateState {
   message: string | null;
 }
 
+export interface DesktopWindowState {
+  maximized: boolean;
+  fullscreen: boolean;
+}
+
+/** Available only on shells with app-drawn window controls. */
+export interface DesktopWindowControls {
+  getState(): Promise<DesktopWindowState>;
+  onState(listener: (state: DesktopWindowState) => void): () => void;
+  minimize(): Promise<void>;
+  toggleMaximize(): Promise<void>;
+  close(): Promise<void>;
+}
+
 export interface DesktopBridge {
+  windowControls?: DesktopWindowControls;
   /** Subscribes to menu commands and returns an unsubscribe function. */
   onCommand(listener: (command: DesktopCommand) => void): () => void;
   /** Forgets the active server and its sign-in, then shows the connect screen. */

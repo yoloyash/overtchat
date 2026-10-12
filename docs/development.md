@@ -398,6 +398,23 @@ npm run test -w apps/desktop --
 npm run build -w apps/desktop --
 ```
 
+Windows uses a frameless main window with minimize, maximize/restore, and close
+buttons in the existing app header. The native menu is hidden; menu keyboard
+shortcuts still work. Header whitespace drags the window, and double-clicking
+it maximizes/restores. macOS and Linux keep their existing window presentation.
+After building, validate native Windows controls with an isolated source profile
+(no installed app or saved sign-in is touched):
+
+```sh
+node --import tsx .github/scripts/smoke-desktop-windows-chrome.mjs
+```
+
+Check dragging and edge resizing on a Windows desktop, plus header actions with
+the sidebar collapsed, the workspace files pane open, light/dark themes, and
+zoom. The automated smoke covers native minimize/maximize/restore/close,
+fullscreen and zoom, connection/sign-in screens, and chat header controls down
+to a 420px window with a collapsed sidebar.
+
 The connect screen discovers local servers in the background at ports 4718
 and 4717, plus the app port in the manager's public installation state. Custom
 manager locations follow `OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_HOME`; discovery

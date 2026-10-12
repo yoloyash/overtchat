@@ -230,6 +230,10 @@ jobs:
       - run: npm run test -w apps/desktop --
       - run: node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
       - run: npm run package:windows -w apps/desktop --
+      - name: Verify Windows window controls with an isolated source profile
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-windows
+        run: node --import tsx .github/scripts/smoke-desktop-windows-chrome.mjs
       - name: Verify Windows bundle and prepare immutable update metadata
         env:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
