@@ -1,5 +1,6 @@
 import type {
   AgentRewindMode,
+  AgentResponsePhase,
   AgentCollaborationMode,
   AgentConnectionDraft,
   AgentGoal,
@@ -117,6 +118,7 @@ export interface AgentRuntimeClient {
 export type AgentRuntimeEventClassification = {
   started: boolean;
   terminal: boolean;
+  waiting?: boolean;
 };
 
 export interface AgentRuntimeEventClassifier {
@@ -130,6 +132,8 @@ export interface AgentProviderAdapter {
   readonly steering?: "restart";
   /** Providers without usage notifications need stats polling while active. */
   readonly pollUsage?: boolean;
+  /** Null means settled; waiting remains operationally busy. */
+  responsePhaseFromState?(state: Record<string, unknown>): AgentResponsePhase | null;
   startSession(
     target: HostTarget,
     launch: AgentSessionLaunch,

@@ -59,7 +59,10 @@ export default function AgentsScreen() {
             closed,
             matchedCount: matches.length,
             runningCount: group.sessions.filter(
-              ({ session }) => session.runtimeStatus === "running",
+              ({ session }) => session.runtimeStatus === "running" && session.responsePhase !== "waiting",
+            ).length,
+            waitingCount: group.sessions.filter(
+              ({ session }) => session.runtimeStatus === "running" && session.responsePhase === "waiting",
             ).length,
             data: closed ? [] : matches.slice(0, WORKSPACE_CHAT_PREVIEW),
           },
@@ -251,6 +254,13 @@ export default function AgentsScreen() {
                   <AgentWorkingIndicator
                     label={`${section.runningCount} ${section.runningCount === 1 ? "agent working" : "agents working"} in ${section.name}`}
                   />
+                ) : section.closed && section.waitingCount > 0 ? (
+                  <Ionicons
+                    name="time-outline"
+                    size={20}
+                    color={colors.mutedForeground}
+                    accessibilityLabel={`${section.waitingCount} waiting for background work in ${section.name}`}
+                  />
                 ) : (
                   <Ionicons
                     name="folder-outline"
@@ -281,6 +291,9 @@ export default function AgentsScreen() {
                     {section.matchedCount === 1 ? "chat" : "chats"}
                     {section.runningCount > 0
                       ? ` · ${section.runningCount} working`
+                      : ""}
+                    {section.waitingCount > 0
+                      ? ` · ${section.waitingCount} waiting`
                       : ""}
                   </Text>
                 </View>

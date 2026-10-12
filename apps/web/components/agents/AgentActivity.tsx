@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleAlert,
   CircleX,
+  Clock,
   FilePenLine,
   FileText,
   Globe,
@@ -33,6 +34,7 @@ type UnknownRecord = Record<string, unknown>;
 
 export type AgentRunActivity =
   | "working"
+  | "waiting"
   | "stopping"
   | "compacting"
   | "reconnecting";
@@ -83,7 +85,9 @@ export function AgentRunIndicator({
         ? "Compacting"
         : activity === "reconnecting"
           ? "Reconnecting"
-          : "Working";
+          : activity === "waiting"
+            ? "Waiting for background work"
+            : "Working";
 
   return (
     <div
@@ -92,7 +96,11 @@ export function AgentRunIndicator({
       aria-label={`${providerLabel}: ${label.toLowerCase()}${elapsed ? ` for ${elapsed}` : ""}`}
       data-testid="agent-run-activity"
     >
-      <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+      {activity === "waiting" ? (
+        <Clock className="size-3.5" />
+      ) : (
+        <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+      )}
       <span
         className={cn(
           "font-medium text-foreground",

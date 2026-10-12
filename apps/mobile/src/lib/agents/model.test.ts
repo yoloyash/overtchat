@@ -15,6 +15,12 @@ import {
 } from "@overtchat/shared/agent-interaction";
 
 describe("mobile agent submissions", () => {
+  it("labels background waits while preserving queued submissions", () => {
+    const waiting = { ...snapshot("running"), activeTurn: { startedAt: 123, phase: "waiting" as const }, state: { isStreaming: false } };
+    expect(sessionStatus(waiting)).toBe("Waiting for background work");
+    expect(submitCommand(waiting, "Next", []).type).toBe("queue");
+  });
+
   it("queues busy followups but executes slash commands immediately", () => {
     expect(submitCommand(snapshot("running"), "hello", []).type).toBe("queue");
     expect(

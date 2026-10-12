@@ -4,7 +4,6 @@ import {
   type BootState,
   type ColorScheme,
   type ConnectResult,
-  type ShellWindowState,
 } from "../shared/ipc";
 import { displayHost, pingServer, serverOrigin } from "./server";
 import { discoverLocalServers } from "./local-discovery";
@@ -15,7 +14,7 @@ import {
   setColorScheme,
   setServer,
 } from "./settings";
-import { applyColorScheme, getMainWindow, isAppSender, restartUi } from "./window";
+import { applyColorScheme, getMainWindow, getShellWindowState, isAppSender, restartUi } from "./window";
 import { checkDesktopUpdates, desktopUpdates, downloadDesktopUpdate, installDesktopUpdate, setUpdateOrigin } from "./updates";
 
 function fromApp(event: IpcMainInvokeEvent | IpcMainEvent): boolean {
@@ -92,9 +91,14 @@ export function registerIpc(): void {
     setUpdateOrigin(null);
     restartUi();
   });
-  handle(IPC.windowState, (): ShellWindowState => ({
-    fullscreen: getMainWindow()?.isFullScreen() ?? false,
-  }));
+  handle(IPC.windowState, getShellWindowState);
+  handle(IPC.minimize, () => getMainWindow()?.minimize());
+  handle(IPC.toggleMaximize, () => {
+    const win = getMainWindow();
+    if (win?.isMaximized()) win.unmaximize();
+    else win?.maximize();
+  });
+  handle(IPC.close, () => getMainWindow()?.close());
   ipcMain.on(IPC.theme, (event, scheme: ColorScheme) => {
     if (!fromApp(event) || (scheme !== "light" && scheme !== "dark")) return;
     setColorScheme(scheme);

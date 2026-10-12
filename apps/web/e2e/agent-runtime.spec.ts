@@ -2848,3 +2848,115 @@ test("keeps OMP history stable after compaction, model changes and connector res
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("separates OMP background waiting from responding and settles without another turn", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto("/signup");
+  await page.locator("#name").fill("Background Lifecycle Admin");
+  await page.locator("#email").fill("background-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-omp-lifecycle-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'").run();
+  } finally { db.close(); }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-lifecycle-"));
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({
+    backgroundLifecycle: true, directory, connectorId: "connector", token: `oct_connector.${secret}`,
+    serverUrl: String(testInfo.project.use.baseURL),
+  }));
+  let fixture: ChildProcess | undefined;
+  let output = "";
+  const start = async () => {
+    output = "";
+    fixture = spawn(process.execPath, ["--import", "tsx",
+      path.resolve(__dirname, "../../connector/scripts/omp-transcript-fixture.mjs"), configFile,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    fixture.stdout!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    fixture.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => {
+      if (fixture!.exitCode !== null) throw new Error(output);
+      return output.includes("omp-transcript-fixture-ready");
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  const stop = async () => {
+    if (!fixture || fixture.exitCode !== null) return;
+    const child = fixture;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+      child.kill("SIGTERM");
+    });
+  };
+  try {
+    await start();
+    await page.goto(`/agents/${SESSION_ID}`);
+    const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
+    await composer.fill("Start background work");
+    await composer.press("Enter");
+    const indicator = page.getByTestId("agent-run-activity");
+    const sidebarWaiting = page.getByRole("status", { name: /is waiting for background work$/ });
+    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
+    const workspaceWaiting = page.getByRole("status", { name: /1 chat waiting for background work in/ });
+    await expect(indicator).toHaveText("Waiting for background work");
+    await expect(indicator.locator(".animate-spin")).toHaveCount(0);
+    await expect(sidebarWaiting.first()).toBeVisible();
+    await expect(sidebarWaiting.locator(".animate-spin")).toHaveCount(0);
+    await expect(workspaceWaiting).toBeVisible();
+    await expect(sidebarWorking).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toBeVisible();
+    await page.reload();
+    await expect(indicator).toHaveText("Waiting for background work");
+    await expect(sidebarWaiting.first()).toBeVisible();
+    await expect(workspaceWaiting).toBeVisible();
+    // Directory activity must remain correct without an open transcript stream.
+    await page.goto("/");
+    await expect(sidebarWaiting.first()).toBeVisible();
+    await writeFile(path.join(directory, "background-control"), "wake");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await expect(sidebarWaiting).toHaveCount(0);
+    await page.goto(`/agents/${SESSION_ID}`);
+    await writeFile(path.join(directory, "background-control"), "wait");
+    await expect(indicator).toHaveText("Waiting for background work");
+    await composer.fill("Next");
+    await composer.press("Enter");
+    const prompts = async () => (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8"))
+      .split("\n").filter((line) => line === "prompt").length;
+    expect(await prompts()).toBe(1);
+    await writeFile(path.join(directory, "background-control"), "wake");
+    await expect(indicator).toContainText("Working");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await expect(sidebarWaiting).toHaveCount(0);
+    await writeFile(path.join(directory, "background-control"), "wait");
+    await expect(indicator).toHaveText("Waiting for background work");
+    await expect(sidebarWaiting.first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("omp-background-waiting.png"), fullPage: true });
+    await writeFile(path.join(directory, "background-control"), "settle");
+    await expect(page.getByText("Queued message answered.", { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    expect(await prompts()).toBe(2);
+    await expect(sidebarWaiting).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
+    await expect(workspaceWaiting).toHaveCount(0);
+    await composer.fill("Start another job");
+    await composer.press("Enter");
+    await expect(indicator).toHaveText("Waiting for background work");
+    await page.getByRole("button", { name: "Stop Oh My Pi", exact: true }).click();
+    await expect(indicator).toHaveText("Waiting for background work");
+    // The native abort is foreground-only; background work remains visible.
+    await expect.poll(async () => readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).toContain("abort");
+    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toBeEnabled();
+    await writeFile(path.join(directory, "background-control"), "settle-again");
+    await expect(indicator).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toHaveCount(0);
+  } finally {
+    await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

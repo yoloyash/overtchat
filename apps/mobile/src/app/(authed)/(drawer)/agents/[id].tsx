@@ -266,7 +266,7 @@ function AgentSession({
           headerTitle: () => (
             <AgentSessionHeaderTitle
               title={text(snapshot?.state.sessionName).trim() || name}
-              working={busy && session.status === "connected"}
+              working={busy && snapshot?.activeTurn?.phase !== "waiting" && session.status === "connected"}
               provider={snapshot?.provider}
               workspace={workspace}
               workspaceName={name}

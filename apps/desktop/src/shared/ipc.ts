@@ -1,4 +1,4 @@
-import type { DesktopBridge } from "@overtchat/shared/desktop";
+import type { DesktopBridge, DesktopWindowState } from "@overtchat/shared/desktop";
 
 /** IPC channel names shared by main and preload. */
 export const IPC = {
@@ -7,7 +7,10 @@ export const IPC = {
   discoverLocalServers: "desktop:discover-local-servers",
   changeServer: "desktop:change-server",
   windowState: "desktop:window-state",
-  fullscreen: "desktop:fullscreen",
+  windowStateChanged: "desktop:window-state-changed",
+  minimize: "desktop:minimize",
+  toggleMaximize: "desktop:toggle-maximize",
+  close: "desktop:close",
   theme: "desktop:theme",
   command: "desktop:command",
   updateState: "desktop:update-state",
@@ -42,9 +45,7 @@ export interface LocalServer {
 
 export type ConnectResult = { ok: true } | { ok: false; message: string };
 
-export interface ShellWindowState {
-  fullscreen: boolean;
-}
+export type ShellWindowState = DesktopWindowState;
 
 /** `window.overtchatDesktop` in the desktop app: the UI bridge plus the launcher API. */
 export interface DesktopShellBridge extends DesktopBridge {

@@ -110,6 +110,25 @@ describe("host connector daemon broker", () => {
       type: "update",
       session: { sessionId: "session", runtimeStatus: "running" },
     });
+    await broker.acceptBatch("connector", "daemon-epoch", [{
+      sequence: 2,
+      payload: {
+        type: "session_update",
+        session: { sessionId: "session", runtimeStatus: "running", responsePhase: "waiting" },
+      },
+    }]);
+    expect(broker.responsePhaseForSession("session")).toBe("waiting");
+    expect(listener).toHaveBeenLastCalledWith({
+      type: "update",
+      session: { sessionId: "session", runtimeStatus: "running", responsePhase: "waiting" },
+    });
+    const reconnectListener = vi.fn();
+    const unsubscribeReconnect = broker.subscribeSessionDirectory(["session"], reconnectListener);
+    expect(reconnectListener).toHaveBeenCalledWith({
+      type: "snapshot",
+      sessions: [{ sessionId: "session", runtimeStatus: "running", responsePhase: "waiting" }],
+    });
+    unsubscribeReconnect();
     disconnect();
     await vi.waitFor(() => {
       expect(broker.runtimeStatusForSession("session")).toBe("exited");
@@ -118,6 +137,7 @@ describe("host connector daemon broker", () => {
       type: "update",
       session: { sessionId: "session", runtimeStatus: "exited" },
     });
+    expect(broker.responsePhaseForSession("session")).toBeUndefined();
     unsubscribe();
     await broker.acceptBatch("connector", "daemon-epoch", [
       {
@@ -128,7 +148,7 @@ describe("host connector daemon broker", () => {
         },
       },
     ]);
-    expect(listener).toHaveBeenCalledTimes(3);
+    expect(listener).toHaveBeenCalledTimes(4);
   });
 
   it("starts an exact connection epoch and resolves agent-level requests", async () => {

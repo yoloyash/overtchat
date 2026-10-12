@@ -16,7 +16,7 @@ const unsupported = preview ? null : !app.isPackaged
   ? "Automatic updates are available in installed release builds."
   : process.platform === "linux" && !process.env.APPIMAGE && !(autoUpdater instanceof DebUpdater) && !(autoUpdater instanceof RpmUpdater)
     ? "Tar archive installations update manually. Download and replace the desktop app, or install an AppImage, .deb, or .rpm for in-app updates."
-    : process.platform !== "darwin" && process.platform !== "linux"
+    : process.platform !== "darwin" && process.platform !== "linux" && process.platform !== "win32"
       ? "Automatic updates are not available on this platform."
       : null;
 

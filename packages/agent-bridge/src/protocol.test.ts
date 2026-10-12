@@ -4,12 +4,23 @@ import {
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isHostConnectorCommand,
   isAgentRuntimeEnvelope,
+  isAgentSessionSync,
+  isAgentSessionDirectoryEntry,
   isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
 import { agentProviderCatalogSchema } from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
+  it.each([undefined, "responding", "waiting", "invalid", 1])("validates optional response phase %s on snapshots and events", (phase) => {
+    const valid = phase === undefined || phase === "responding" || phase === "waiting";
+    const snapshot = { sessionId: "session", status: "running", activeTurn: { startedAt: 123, phase } };
+    expect(isAgentRuntimeEnvelope({ epoch: "epoch", sequence: 1, type: "snapshot", data: snapshot })).toBe(valid);
+    expect(isAgentSessionSync({ reset: true, cursor: { epoch: "epoch", sequence: 1 }, snapshot })).toBe(valid);
+    expect(isAgentSessionDirectoryEntry({ sessionId: "session", runtimeStatus: "running", responsePhase: phase })).toBe(valid);
+    expect(isAgentRuntimeEnvelope({ epoch: "epoch", sequence: 1, type: "runtime_event", data: { type: "overtchat_status", status: "running", phase } })).toBe(valid);
+  });
+
   it("identifies the current wire protocol", () => {
     expect(HOST_CONNECTOR_PROTOCOL_VERSION).toBe(6);
   });

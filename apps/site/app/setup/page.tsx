@@ -102,7 +102,7 @@ export default function SetupPage() {
             <div>
               <h2>Take your chats with you</h2>
               <p>
-                Keep using your browser, or get the macOS, Linux, Android, or iOS
+                Keep using your browser, or choose an available desktop or mobile
                 app. Enter the same server address and sign in.
                 On another device, use an address it can reach, not localhost.
               </p>

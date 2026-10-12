@@ -6,6 +6,25 @@ vi.mock("@overtchat/agent-runtime/omp/client", () => ({ startOmp: mocks.startOmp
 import { ompProviderAdapter } from "./omp";
 
 describe("OMP provider adapter", () => {
+  it("distinguishes background waits from retries and accepts settlement without another answer", () => {
+    const classifier = ompProviderAdapter.createEventClassifier();
+    expect(classifier.classify({ type: "agent_end", isTerminal: false, yielded: true, awaitingAsyncWork: true })).toMatchObject({ waiting: true, terminal: false });
+    expect(classifier.classify({ type: "agent_end", isTerminal: false, yielded: false })).toMatchObject({ waiting: false, terminal: false });
+    expect(classifier.classify({ type: "session_settled" })).toMatchObject({ terminal: true });
+    expect(classifier.classify({ type: "prompt_result", agentInvoked: true, sessionSettled: true })).toMatchObject({ terminal: true });
+  });
+
+  it.each([
+    [{ isStreaming: false, hasPendingAsyncWork: true, isSettled: false }, "waiting"],
+    [{ isStreaming: true, hasPendingAsyncWork: true }, "responding"],
+    [{ isCompacting: true, hasPendingAsyncWork: true }, "responding"],
+    [{ isStreaming: false, isSettled: false }, "responding"],
+    [{ isStreaming: false, isSettled: true }, null],
+    [{ isStreaming: false }, null],
+  ])("normalizes provider activity %j", (state, expected) => {
+    expect(ompProviderAdapter.responsePhaseFromState!(state)).toBe(expected);
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   it("launches rpc-ui with an explicit approval mode", () => {

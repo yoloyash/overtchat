@@ -398,6 +398,27 @@ npm run test -w apps/desktop --
 npm run build -w apps/desktop --
 ```
 
+Windows uses a frameless main window with minimize, maximize/restore, and close
+buttons in the existing app header. The native menu is hidden; menu keyboard
+shortcuts still work. Header whitespace drags the window, and double-clicking
+it maximizes/restores. macOS and Linux keep their existing window presentation.
+After building, validate native Windows controls with an isolated source profile
+(no installed app or saved sign-in is touched):
+
+```sh
+node --import tsx .github/scripts/smoke-desktop-windows-chrome.mjs
+```
+
+Check dragging and edge resizing on a Windows desktop, plus header actions with
+the sidebar collapsed, the workspace files pane open, light/dark themes, and
+zoom. The automated smoke covers native minimize/maximize/restore/close,
+fullscreen and zoom, connection/sign-in screens, and chat header controls down
+to a 420px window with a collapsed sidebar.
+It also checks Windows `WM_NCHITTEST` at each button: Chromium-injected clicks
+alone bypass native drag regions and can pass even when physical clicks fail.
+Keep the window controls after the page content in DOM order so their `no-drag`
+region excludes the underlying headers from Electron's native drag region.
+
 The connect screen discovers local servers in the background at ports 4718
 and 4717, plus the app port in the manager's public installation state. Custom
 manager locations follow `OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_HOME`; discovery
@@ -527,6 +548,23 @@ microphone, desktop integration, and upgrade checks in the release runbook.
 Set `DESKTOP_SMOKE_UPGRADE_DEB` to a higher-version candidate to install it
 between the first two launches and verify encrypted sign-in survives; this
 test requires noninteractive `sudo apt-get` access in an isolated test system.
+
+### Windows packaging and qualification
+
+On Windows x64, use Node 22 and npm 10.9.8 from the repository root:
+
+```powershell
+npm ci
+npm run typecheck -w apps/desktop --
+npm run test -w apps/desktop --
+npm run package:windows -w apps/desktop --
+node --import tsx .github/scripts/package-desktop-windows.mjs
+```
+
+The EXE, checksums, and `stable.yml` are written to `apps/desktop/release/`.
+No signing credentials are required. See [Windows release validation](release.md#desktop-windows-release)
+for the disposable-account installer/update smoke and interactive Windows checks.
+The desktop workflow runs that smoke on a Windows runner for every relevant PR.
 
 ## Speech
 
@@ -852,3 +890,36 @@ credentials for one small turn, enables only the todo tool in a disposable
 workspace/session, and verifies progress and native restoration after restart.
 Set `OMP_COMMAND` or `OMP_MODEL` to override the executable or model. It removes
 its session files and does not modify existing sessions or settings.
+
+### OMP background work lifecycle
+
+A running session can be responding or waiting for background work. Waiting
+keeps Stop available, preserves queued-message ordering, and prevents idle
+runtime cleanup. The OMP adapter normalizes native yield/async-work signals;
+`session_settled` completes the session even when no further assistant turn
+occurs. Snapshots and replay carry the optional `activeTurn.phase`; existing
+checkpoints without a phase continue to display as responding.
+The session directory carries the optional `responsePhase` for web and mobile
+navigation. Waiting sessions use a static clock, including workspace counts;
+phase changes must propagate even when the operational status remains running.
+
+OMP's native Stop interrupts the foreground but can leave async jobs running.
+After its acknowledgement, reconcile provider state before releasing the queue
+or advertising idle. Remaining work continues to show the waiting label.
+
+Validate the provider/runtime lifecycle and the real connector/relay/browser
+flow (including reload, background wake, queue draining and Stop):
+
+```sh
+npm run test -w packages/agent-runtime -- src/providers/omp.test.ts src/runtime/omp-lifecycle.test.ts
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'separates OMP background'
+RUN_OMP_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/background.integration.test.ts
+```
+
+The installed-OMP test uses an isolated native profile, a loopback model fixture,
+and a real async bash job in a temporary workspace. It exercises background
+completion, automatic model resumption and Stop without model credentials or
+existing sessions. It has been validated with OMP 18.7.0. Set `OMP_COMMAND` to
+override the local executable. Also run bridge/runtime/connector tests and
+typechecks, connector build, web typecheck/lint/build and mobile tests/typecheck.
+Check the waiting label and Stop on native Android/iOS before releasing clients.

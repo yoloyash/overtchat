@@ -12,6 +12,7 @@ export function withConnectorSessionDirectory(
       sessions: workspace.sessions.map((session) => ({
         ...session,
         runtimeStatus: hostConnectorBroker.runtimeStatusForSession(session.id),
+        responsePhase: hostConnectorBroker.responsePhaseForSession(session.id),
       })),
     })),
   }));

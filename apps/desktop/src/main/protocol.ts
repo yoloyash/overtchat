@@ -1,6 +1,7 @@
 import { net, protocol } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { rendererFile } from "./protocol-path";
 
 export const APP_SCHEME = "overtchat";
 export const APP_ORIGIN = `${APP_SCHEME}://app`;
@@ -66,9 +67,8 @@ function withPolicy(response: Response): Response {
 
 /** Serves a file from the built renderer. Routes live in the URL hash. */
 async function serveBuilt(pathname: string): Promise<Response> {
-  const relative = decodeURIComponent(pathname).replace(/^\/+/, "") || "index.html";
-  const file = path.resolve(rendererDirectory, relative);
-  if (path.relative(rendererDirectory, file).startsWith("..")) {
+  const file = rendererFile(rendererDirectory, pathname);
+  if (!file) {
     return new Response(null, { status: 404 });
   }
   const response = await net.fetch(pathToFileURL(file).href).catch(() => null);

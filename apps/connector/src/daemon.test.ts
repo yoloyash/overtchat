@@ -728,6 +728,10 @@ describe("connector daemon command identity", () => {
             }),
           }),
         }),
+        {
+          type: "session_update",
+          session: { sessionId: "session", runtimeStatus: "running", responsePhase: "responding" },
+        },
       ]);
     });
     await daemon.stop();
@@ -776,6 +780,28 @@ describe("connector daemon command identity", () => {
     observer?.({
       epoch: "runtime-ephemeral",
       sequence: 1,
+      type: "runtime_event",
+      data: { type: "overtchat_status", status: "running", phase: "waiting" },
+    });
+    await timelines.flush("session");
+    await vi.waitFor(() => expect(emitted).toContainEqual({
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running", responsePhase: "waiting" },
+    }));
+    observer?.({
+      epoch: "runtime-ephemeral",
+      sequence: 2,
+      type: "runtime_event",
+      data: { type: "agent_start" },
+    });
+    await timelines.flush("session");
+    await vi.waitFor(() => expect(emitted).toContainEqual({
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running", responsePhase: "responding" },
+    }));
+    observer?.({
+      epoch: "runtime-ephemeral",
+      sequence: 3,
       type: "runtime_event",
       data: { type: "overtchat_status", status: "idle" },
     });

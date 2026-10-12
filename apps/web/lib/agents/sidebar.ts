@@ -35,8 +35,8 @@ export function withAgentSessionDirectory(
   connections: AgentConnectionListItem[],
   sessions: readonly AgentSessionDirectoryEntry[],
 ): AgentConnectionListItem[] {
-  const runtimeStatuses = new Map(
-    sessions.map((session) => [session.sessionId, session.runtimeStatus]),
+  const directory = new Map(
+    sessions.map((session) => [session.sessionId, session]),
   );
   let changed = false;
   const next = connections.map((connection) => {
@@ -44,17 +44,20 @@ export function withAgentSessionDirectory(
     const workspaces = connection.workspaces.map((workspace) => {
       let workspaceChanged = false;
       const workspaceSessions = workspace.sessions.map((session) => {
-        const runtimeStatus = runtimeStatuses.get(session.id);
+        const entry = directory.get(session.id);
+        if (!entry) return session;
+        const { runtimeStatus } = entry;
+        const responsePhase = runtimeStatus === "running" ? entry.responsePhase : undefined;
         if (
-          runtimeStatus === undefined ||
-          runtimeStatus === session.runtimeStatus
+          runtimeStatus === session.runtimeStatus &&
+          responsePhase === session.responsePhase
         ) {
           return session;
         }
         changed = true;
         connectionChanged = true;
         workspaceChanged = true;
-        return { ...session, runtimeStatus };
+        return { ...session, runtimeStatus, responsePhase };
       });
       return workspaceChanged
         ? { ...workspace, sessions: workspaceSessions }

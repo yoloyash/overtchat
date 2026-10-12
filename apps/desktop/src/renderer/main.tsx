@@ -2,6 +2,7 @@ import "./desktop.css";
 import { StrictMode, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { createHashHistory } from "@tanstack/react-router";
+import { DesktopWindowControls } from "@/components/DesktopWindowControls";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ACCENT_STORAGE_KEY, applyAccent } from "@/lib/accent";
@@ -41,16 +42,24 @@ function applyStoredPreferences(): void {
   }
 }
 
+const root = createRoot(document.getElementById("root")!);
+
 function render(children: ReactNode): void {
-  createRoot(document.getElementById("root")!).render(
+  root.render(
     <StrictMode>
-      <ThemeProvider>{children}</ThemeProvider>
+      <ThemeProvider>
+        {children}
+        {/* Electron applies native drag exclusions in DOM order, not z-index order. */}
+        <DesktopWindowControls />
+      </ThemeProvider>
     </StrictMode>,
   );
 }
 
 async function start(): Promise<void> {
   applyStoredPreferences();
+  // Keep window controls available while the saved server is being checked.
+  render(<AuthFrame><p role="status" className="text-sm text-muted-foreground">Connecting…</p></AuthFrame>);
   const { server, lastAddress } = await shell.boot();
   if (!server) {
     render(

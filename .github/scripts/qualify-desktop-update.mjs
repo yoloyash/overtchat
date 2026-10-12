@@ -12,6 +12,7 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { URL } from "node:url";
+import { parse } from "yaml";
 
 const require = createRequire(new URL("../../apps/web/package.json", import.meta.url));
 const { chromium } = require("@playwright/test");
@@ -21,6 +22,11 @@ assert(executableArgument && candidates && /^\d+\.\d+\.\d+$/.test(version),
 const executable = path.resolve(executableArgument);
 const isMac = process.platform === "darwin";
 assert(isMac || process.platform === "linux");
+const channel = `stable${isMac ? `-${process.arch}-mac` : "-linux"}.yml`;
+const metadata = parse(await readFile(path.join(candidates, channel), "utf8"));
+assert.equal(metadata.version, version);
+const compatibleApiLevel = metadata.clientApiLevel;
+assert(Number.isSafeInteger(compatibleApiLevel) && compatibleApiLevel > 0);
 if (!isMac) assert.notEqual(process.getuid(), 0, "Qualify desktop updates as a regular user");
 if (isMac) {
   const running = spawnSync("ps", ["-axo", "command="], { encoding: "utf8" }).stdout;
@@ -43,7 +49,7 @@ if (isMac) {
 const env = isMac ? process.env : { ...process.env, XDG_CONFIG_HOME: config,
   XDG_DATA_HOME: path.join(directory, "data"), XDG_CACHE_HOME: path.join(directory, "cache"), XDG_CURRENT_DESKTOP: "GNOME" };
 const token = randomBytes(32).toString("hex");
-let signIns = 0, apiLevel = 1;
+let signIns = 0, apiLevel = compatibleApiLevel;
 const api = createServer(async (request, response) => {
   response.setHeader("Access-Control-Allow-Origin", "overtchat://app");
   response.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -150,22 +156,22 @@ try {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await waitFor("saved login", async () => (await probe()).authorized && !!JSON.parse(await readFile(settingsFile, "utf8")).sessionToken);
   assert(!(await readFile(settingsFile, "utf8")).includes(token));
-  for (const incompatible of [0, 2]) {
+  for (const incompatible of [compatibleApiLevel - 1, compatibleApiLevel + 1]) {
     apiLevel = incompatible;
     const checked = await page.evaluate(() => window.overtchatDesktop.checkForUpdates());
     assert.equal(checked.status, "blocked");
     assert.equal((await page.evaluate(() => window.overtchatDesktop.downloadUpdate())).status, "blocked");
   }
-  apiLevel = 1;
+  apiLevel = compatibleApiLevel;
   const interrupted = await page.evaluate(() => window.overtchatDesktop.downloadUpdate());
   assert.equal(interrupted.status, "error", "Interrupted download must be retryable");
   assert(output.includes("Interrupted"));
   assert((await fetch("http://127.0.0.1:4931/__resume", { method: "POST" })).ok);
   assert.equal((await page.evaluate(() => window.overtchatDesktop.downloadUpdate())).status, "ready");
-  apiLevel = 2;
+  apiLevel = compatibleApiLevel + 1;
   await assert.rejects(page.evaluate(() => window.overtchatDesktop.installUpdate()), /support/);
   assert.equal((await state()).status, "blocked");
-  apiLevel = 1;
+  apiLevel = compatibleApiLevel;
   assert.equal((await page.evaluate(() => window.overtchatDesktop.downloadUpdate())).status, "ready");
   await quit();
   await launch();

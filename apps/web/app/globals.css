@@ -204,6 +204,19 @@
     -webkit-app-region: no-drag;
   }
 
+  /* Windows controls share the existing header; they never add a second row. */
+  html[data-desktop-shell="win32"] main [data-titlebar] {
+    padding-right: calc(var(--desktop-window-controls-width, 0px) + 0.75rem);
+  }
+
+  html[data-desktop-shell="win32"] [data-titlebar-interior] {
+    --desktop-window-controls-width: 0px;
+  }
+
+  .desktop-window-controls {
+    -webkit-app-region: no-drag;
+  }
+
   html[data-desktop-shell] [data-titlebar-inset] {
     padding-left: max(0.75rem, var(--desktop-titlebar-inset, 0px));
   }

@@ -61,16 +61,21 @@ class OmpEventClassifier implements AgentRuntimeEventClassifier {
       this.sawAssistant = true;
     }
     const terminal =
+      event.type === "session_settled" ||
       (event.type === "agent_end" &&
         event.isTerminal !== false &&
         (this.sawAssistant ||
           (Array.isArray(event.messages) &&
             event.messages.some((message) => messageRole(message) === "assistant")))) ||
-      (event.type === "prompt_result" && event.agentInvoked === false);
+      (event.type === "prompt_result" &&
+        (event.agentInvoked === false || event.sessionSettled === true));
     if (terminal) this.reset();
     return {
       started: event.type === "agent_start" || event.type === "turn_start",
       terminal,
+      waiting:
+        event.type === "agent_end" && event.isTerminal === false &&
+        event.awaitingAsyncWork === true && event.yielded !== false,
     };
   }
 }
@@ -161,6 +166,12 @@ async function fetchCatalog(
 export const ompProviderAdapter: AgentProviderAdapter = {
   provider: "omp",
   pollUsage: true,
+  responsePhaseFromState(state) {
+    if (state.isStreaming === true || state.isCompacting === true) return "responding";
+    if (state.hasPendingAsyncWork === true) return "waiting";
+    // An admitted continuation may not have started streaming yet.
+    return state.isSettled === false ? "responding" : null;
+  },
   startSession(target, launch) {
     return startOmp(target, {
       executable: launch.executable,

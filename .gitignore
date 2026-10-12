@@ -99,3 +99,6 @@ apps/mobile/credentials/
 # tools
 .gemini
 .claude
+
+# Private Windows updater qualification package (never a public release).
+apps/desktop/release-baseline/
