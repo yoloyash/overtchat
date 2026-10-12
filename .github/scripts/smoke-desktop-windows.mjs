@@ -26,7 +26,7 @@ assert(process.env.APPDATA, "Windows APPDATA is required");
 const profile = path.join(process.env.APPDATA, "overtchat");
 await assert.rejects(access(profile), { code: "ENOENT" }, "Use a disposable Windows account without an OvertChat profile");
 const existing = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
-  "$apps = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'overtchat' }; if ($apps) { exit 1 }; if (Get-Process overtchat -ErrorAction SilentlyContinue) { exit 1 }; exit 0"], { encoding: "utf8", timeout: 15_000 });
+  "$apps = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'overtchat*' }; if ($apps) { exit 1 }; if (Get-Process overtchat -ErrorAction SilentlyContinue) { exit 1 }; exit 0"], { encoding: "utf8", timeout: 15_000 });
 assert.equal(existing.status, 0, "Use a test account without an installed or running OvertChat");
 const directory = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? tmpdir(), "overtchat-windows-smoke-"));
 const installDirectory = path.join(directory, "app");
