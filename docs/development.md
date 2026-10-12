@@ -819,3 +819,33 @@ The second command uses the host's configured model credentials to summarize
 synthetic history in a disposable native session. It uses a temporary compaction
 configuration, disables tools/extensions, checks the RPC result and imported
 summary, and removes its own session files. It does not modify existing sessions.
+
+### OMP background work lifecycle
+
+A running session can be responding or waiting for background work. Waiting
+keeps Stop available, preserves queued-message ordering, and prevents idle
+runtime cleanup. The OMP adapter normalizes native yield/async-work signals;
+`session_settled` completes the session even when no further assistant turn
+occurs. Snapshots and replay carry the optional `activeTurn.phase`; existing
+checkpoints without a phase continue to display as responding.
+
+OMP's native Stop interrupts the foreground but can leave async jobs running.
+After its acknowledgement, reconcile provider state before releasing the queue
+or advertising idle. Remaining work continues to show the waiting label.
+
+Validate the provider/runtime lifecycle and the real connector/relay/browser
+flow (including reload, background wake, queue draining and Stop):
+
+```sh
+npm run test -w packages/agent-runtime -- src/providers/omp.test.ts src/runtime/omp-lifecycle.test.ts
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'separates OMP background'
+RUN_OMP_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/background.integration.test.ts
+```
+
+The installed-OMP test uses an isolated native profile, a loopback model fixture,
+and a real async bash job in a temporary workspace. It exercises background
+completion, automatic model resumption and Stop without model credentials or
+existing sessions. It has been validated with OMP 18.7.0. Set `OMP_COMMAND` to
+override the local executable. Also run bridge/runtime/connector tests and
+typechecks, connector build, web typecheck/lint/build and mobile tests/typecheck.
+Check the waiting label and Stop on native Android/iOS before releasing clients.

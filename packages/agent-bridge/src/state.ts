@@ -407,8 +407,9 @@ export function applyAgentRuntimeEnvelope(
     return {
       ...current,
       status: "running",
-      activeTurn: current.activeTurn ?? {
-        startedAt: runtimeEventTimestamp(event),
+      activeTurn: {
+        startedAt: current.activeTurn?.startedAt ?? runtimeEventTimestamp(event),
+        phase: "responding",
       },
       state: { ...current.state, isStreaming: true },
       error: undefined,
@@ -423,16 +424,18 @@ export function applyAgentRuntimeEnvelope(
       status: event.status,
       activeTurn:
         event.status === "running"
-          ? (current.activeTurn ?? {
+          ? {
               startedAt:
-                typeof event.startedAt === "number"
+                current.activeTurn?.startedAt ??
+                (typeof event.startedAt === "number"
                   ? event.startedAt
-                  : runtimeEventTimestamp(event),
-            })
+                  : runtimeEventTimestamp(event)),
+              phase: event.phase === "waiting" ? "waiting" : "responding",
+            }
           : null,
       state: {
         ...current.state,
-        isStreaming: event.status === "running",
+        isStreaming: event.status === "running" && event.phase !== "waiting",
         ...(event.status === "idle" ? { isCompacting: false } : {}),
       },
       error: undefined,

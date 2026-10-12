@@ -146,7 +146,9 @@ export function AgentTranscript({
     },
     [],
   );
-  const active = snapshot.status === "running";
+  const waiting =
+    snapshot.status === "running" && snapshot.activeTurn?.phase === "waiting";
+  const active = snapshot.status === "running" && !waiting;
   const activeTurnStart = agentActiveTurnStart(items, active);
   return (
     <View style={{ flex: 1 }}>
@@ -226,7 +228,11 @@ export function AgentTranscript({
           </Animated.View>
         )}
         ListFooterComponent={
-          question ?? (active ? <AgentText muted>Working…</AgentText> : null)
+          question ?? (waiting ? (
+            <AgentText muted>Waiting for background work</AgentText>
+          ) : active ? (
+            <AgentText muted>Working…</AgentText>
+          ) : null)
         }
       />
       {away && (

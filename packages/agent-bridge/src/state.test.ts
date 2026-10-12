@@ -47,6 +47,16 @@ function event(
 }
 
 describe("agent runtime event reducer", () => {
+  it("replays waiting, wake and settlement while preserving the busy turn", () => {
+    const running = applyAgentRuntimeEnvelope(snapshot(), event({ type: "agent_start", overtchatRecordedAt: 123 }))!;
+    const waiting = applyAgentRuntimeEnvelope(running, event({ type: "overtchat_status", status: "running", phase: "waiting" }))!;
+    expect(waiting).toMatchObject({ status: "running", activeTurn: { startedAt: 123, phase: "waiting" }, state: { isStreaming: false } });
+    const wake = applyAgentRuntimeEnvelope(waiting, event({ type: "agent_start" }))!;
+    expect(wake).toMatchObject({ status: "running", activeTurn: { startedAt: 123, phase: "responding" }, state: { isStreaming: true } });
+    const idle = applyAgentRuntimeEnvelope(waiting, event({ type: "overtchat_status", status: "idle" }))!;
+    expect(idle).toMatchObject({ status: "idle", activeTurn: null });
+  });
+
   it("uses a connector-recorded timestamp for replay-derived state", () => {
     const started = applyAgentRuntimeEnvelope(
       snapshot(),
@@ -74,7 +84,7 @@ describe("agent runtime event reducer", () => {
       }),
     )!;
 
-    expect(tool.activeTurn).toEqual({ startedAt: 1_234 });
+    expect(tool.activeTurn).toEqual({ startedAt: 1_234, phase: "responding" });
     expect(tool.messages.at(-2)).toMatchObject({ timestamp: 2_345 });
     expect(tool.messages.at(-1)).toMatchObject({ timestamp: 3_456 });
   });

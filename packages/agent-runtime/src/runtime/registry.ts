@@ -10,6 +10,7 @@ import type {
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
   AgentRuntimeStatus,
+  AgentResponsePhase,
   AgentSlashCommand,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
@@ -277,6 +278,8 @@ export class AgentSessionRuntime {
   private sequence = 0;
   private status: AgentRuntimeSnapshot["status"] = "idle";
   private activeTurnStartedAt: number | null = null;
+  private responsePhase: AgentResponsePhase = "responding";
+  private activityRevision = 0;
   private state: Record<string, unknown>;
   private messages: unknown[];
   private models: AgentModel[];
@@ -296,6 +299,7 @@ export class AgentSessionRuntime {
   private steerPromise: Promise<unknown> | null = null;
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
+  private terminalDuringAbort = false;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
   private pendingInteraction:
     | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
@@ -343,13 +347,15 @@ export class AgentSessionRuntime {
     this.models = initial.models;
     this.commands = initial.commands;
     this.stats = initial.stats;
-    this.status = initial.state.isStreaming === true ? "running" : "idle";
+    const initialPhase = this.providerResponsePhase(initial.state);
+    this.status = initialPhase === null ? "idle" : "running";
+    this.responsePhase = initialPhase ?? "responding";
     if (adapter.pollUsage) {
       this.usagePoller = new AgentUsagePoller(
         () => client.getSessionStats(),
         (usage) => this.publishUsage(usage),
       );
-      if (this.status === "running") this.usagePoller.start();
+      if (initialPhase === "responding") this.usagePoller.start();
     }
     const restoredQueue = reconcileRestoredQueuedMessages(
       initialQueuedMessages,
@@ -407,11 +413,17 @@ export class AgentSessionRuntime {
         });
       }
       if (event.type === "compaction_end") {
-        if (this.status === "running") this.usagePoller?.start();
+        if (this.status === "running" && this.responsePhase === "responding") this.usagePoller?.start();
         this.usagePoller?.refresh();
       }
       let settleRejectedPrompt = false;
       const classification = this.eventClassifier.classify(event);
+      if (
+        classification.started || classification.waiting || classification.terminal ||
+        event.type === "process_exit" || event.type === "compaction_start" || event.type === "compaction_end"
+      ) {
+        this.activityRevision += 1;
+      }
       this.messages = applyAgentRuntimeMessageEvent(this.messages, event);
       this.state = applyAgentRuntimeStateEvent(this.state, event);
       const userMessages = eventUserMessages(event);
@@ -447,12 +459,29 @@ export class AgentSessionRuntime {
         return;
       }
       if (classification.started) {
+        this.terminalDuringAbort = false;
+        // A wake supersedes any state read settling the previous provider run.
+        this.turnGeneration += 1;
+        this.settlePromise = null;
+        this.responsePhase = "responding";
         this.usagePoller?.start();
         this.promptAwaitingStart = false;
         this.status = "running";
         this.activeTurnStartedAt ??= Date.now();
         this.state = { ...this.state, isStreaming: true };
         this.error = undefined;
+      }
+      if (classification.waiting) {
+        this.terminalDuringAbort = false;
+        this.turnGeneration += 1;
+        this.settlePromise = null;
+        this.promptAwaitingStart = false;
+        this.status = "running";
+        this.responsePhase = "waiting";
+        this.activeTurnStartedAt ??= Date.now();
+        this.state = { ...this.state, isStreaming: false };
+        this.usagePoller?.stop();
+        this.usagePoller?.refresh();
       }
       if (
         event.type === "interaction_request" &&
@@ -514,6 +543,7 @@ export class AgentSessionRuntime {
         }
       }
       this.publish({ type: "runtime_event", data: event });
+      if (classification.waiting) this.publishStatus();
       if (settleRejectedPrompt) {
         void this.settleAfterProviderTerminal();
       }
@@ -573,6 +603,7 @@ export class AgentSessionRuntime {
         this.publishSnapshot();
       }
       if (classification.terminal) {
+        if (this.abortPromise) this.terminalDuringAbort = true;
         this.promptAwaitingStart = false;
         this.pendingSubmissions.clear();
         this.promptSubmissionId = undefined;
@@ -596,7 +627,7 @@ export class AgentSessionRuntime {
       activeTurn:
         this.activeTurnStartedAt === null
           ? null
-          : { startedAt: this.activeTurnStartedAt },
+          : { startedAt: this.activeTurnStartedAt, phase: this.responsePhase },
       state: this.state,
       messages: this.messages,
       models: this.models,
@@ -1059,13 +1090,23 @@ export class AgentSessionRuntime {
     if (this.refreshPromise) return this.refreshPromise;
     this.refreshPromise = (async () => {
       const usageRevisions = { ...this.usageRevisions };
+      const activityRevision = this.activityRevision;
       const [state, stats, commands] =
         await Promise.all([
           this.client.getState(),
           this.client.getSessionStats().catch(() => this.stats),
           this.client.getCommands().catch(() => this.commands),
         ]);
-      this.state = state;
+      const activityIsCurrent = activityRevision === this.activityRevision;
+      // Metadata can refresh while a background result wakes the model. Keep
+      // the newer lifecycle projection when that read began before the event.
+      this.state = activityIsCurrent
+        ? state
+        : {
+            ...state,
+            isStreaming: this.state.isStreaming,
+            isCompacting: this.state.isCompacting,
+          };
       // A state/command fetch can finish after a newer live usage event.
       this.stats = {
         ...stats,
@@ -1078,9 +1119,16 @@ export class AgentSessionRuntime {
             ? stats.contextUsage : this.stats.contextUsage,
       };
       this.commands = runtimeCommands(this.adapter, commands);
-      this.status = state.isStreaming === true ? "running" : "idle";
-      if (this.status === "running") this.usagePoller?.start();
-      else this.usagePoller?.stop();
+      if (activityIsCurrent && !this.stopped) {
+        const phase = this.providerResponsePhase(state);
+        this.status = phase === null ? "idle" : "running";
+        this.responsePhase = phase ?? "responding";
+      }
+      if (this.status === "running" && this.responsePhase === "responding") {
+        this.usagePoller?.start();
+      } else {
+        this.usagePoller?.stop();
+      }
       this.activeTurnStartedAt =
         this.status === "running"
           ? (this.activeTurnStartedAt ?? Date.now())
@@ -1126,6 +1174,7 @@ export class AgentSessionRuntime {
   async stop(): Promise<void> {
     if (this.stopped) return;
     this.stopped = true;
+    this.activityRevision += 1;
     this.usagePoller?.stop();
     this.turnGeneration += 1;
     this.clearIdleStop();
@@ -1238,6 +1287,8 @@ export class AgentSessionRuntime {
         ? await this.resolveImages(imageRefs)
         : [];
     this.turnGeneration += 1;
+    this.activityRevision += 1;
+    this.responsePhase = "responding";
     this.eventClassifier.reset();
     this.status = "running";
     this.activeTurnStartedAt = Date.now();
@@ -1411,8 +1462,22 @@ export class AgentSessionRuntime {
     if (this.status !== "running") {
       return Promise.resolve();
     }
-    const operation = this.client.abort().then((result) => {
-      this.completeAcknowledgedAbort();
+    const operation = this.client.abort().then(async (result) => {
+      // Some providers interrupt the foreground without cancelling async jobs.
+      // Their acknowledgement alone cannot release the queue or idle lifetime.
+      let phase: AgentResponsePhase | null = null;
+      if (this.adapter.responsePhaseFromState) {
+        const revision = this.activityRevision;
+        const state = await this.client.getState();
+        if (revision === this.activityRevision) {
+          this.state = state;
+          phase = this.providerResponsePhase(state);
+        } else {
+          phase = this.status === "running" ? this.responsePhase : null;
+        }
+      }
+      if (this.stopped || this.status === "exited") return result;
+      this.completeAcknowledgedAbort(phase);
       return result;
     });
     const settled = operation
@@ -1431,6 +1496,11 @@ export class AgentSessionRuntime {
       .finally(() => {
         if (this.abortPromise !== settled) return;
         this.abortPromise = null;
+        const terminalDuringAbort = this.terminalDuringAbort;
+        this.terminalDuringAbort = false;
+        if (terminalDuringAbort && this.status === "running") {
+          void this.settleAfterProviderTerminal();
+        }
         if (this.status === "idle") {
           void this.drainQueuedMessage();
         }
@@ -1439,7 +1509,8 @@ export class AgentSessionRuntime {
     return settled;
   }
 
-  private completeAcknowledgedAbort(): void {
+  private completeAcknowledgedAbort(phase: AgentResponsePhase | null = null): void {
+    this.activityRevision += 1;
     this.usagePoller?.stop();
     // An acknowledged abort supersedes settlement work for the canceled turn.
     this.turnGeneration += 1;
@@ -1447,15 +1518,17 @@ export class AgentSessionRuntime {
     this.promptAwaitingStart = false;
     this.promptSubmissionId = undefined;
     this.pendingSubmissions.clear();
-    this.clearPendingInteraction();
-    this.eventClassifier.reset();
-    this.status = "idle";
-    this.activeTurnStartedAt = null;
+    if (phase !== "responding") this.clearPendingInteraction();
+    if (phase === null) this.eventClassifier.reset();
+    this.status = phase === null ? "idle" : "running";
+    this.responsePhase = phase ?? "responding";
+    this.activeTurnStartedAt = phase === null ? null : (this.activeTurnStartedAt ?? Date.now());
     this.state = {
       ...this.state,
-      isStreaming: false,
-      isCompacting: false,
+      isStreaming: phase === "responding",
+      isCompacting: phase !== null && this.state.isCompacting === true,
     };
+    if (phase === "responding") this.usagePoller?.start();
     this.error = undefined;
     this.publishStatus();
   }
@@ -1537,7 +1610,7 @@ export class AgentSessionRuntime {
           return false;
         }
         this.state = state;
-        if (state.isStreaming !== true && state.isCompacting !== true) {
+        if (this.providerResponsePhase(state) === null && state.isCompacting !== true) {
           return true;
         }
       } catch (error) {
@@ -1570,8 +1643,15 @@ export class AgentSessionRuntime {
         type: "overtchat_status",
         status: this.status,
         startedAt: this.activeTurnStartedAt,
+        phase: this.responsePhase,
       },
     });
+  }
+
+  private providerResponsePhase(state: Record<string, unknown>): AgentResponsePhase | null {
+    return this.adapter.responsePhaseFromState
+      ? this.adapter.responsePhaseFromState(state)
+      : state.isStreaming === true ? "responding" : null;
   }
 
   private imageInputError(images: AgentPromptImage[]): Error | null {

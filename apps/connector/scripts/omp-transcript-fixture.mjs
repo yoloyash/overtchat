@@ -31,6 +31,35 @@ configureProcessSpawner((_target, launch) => {
   let model = models.find((item) => argument("--model")?.endsWith(item.id)) ?? models[0];
   let level = argument("--thinking") ?? "high";
   let streaming = false;
+  let pendingAsync = false;
+  let lastControl = "";
+  const backgroundAnswer = (text) => {
+    const message = { role: "assistant", timestamp: Date.now(), content: [{ type: "text", text }] };
+    emit({ type: "message_start", message });
+    emit({ type: "message_end", message });
+    return message;
+  };
+  const backgroundWait = () => {
+    streaming = false;
+    pendingAsync = true;
+    emit({ type: "agent_end", isTerminal: false, yielded: true, awaitingAsyncWork: true });
+  };
+  const backgroundSettle = () => {
+    streaming = false;
+    pendingAsync = false;
+    emit({ type: "session_settled" });
+  };
+  const controlTimer = config.backgroundLifecycle ? setInterval(async () => {
+    const control = await readFile(path.join(config.directory, "background-control"), "utf8").catch(() => "");
+    if (!control || control === lastControl) return;
+    lastControl = control;
+    if (control === "wake") {
+      streaming = true;
+      emit({ type: "agent_start" });
+      backgroundAnswer("Background result received; continuing.");
+    } else if (control === "wait") backgroundWait();
+    else if (control.startsWith("settle")) backgroundSettle();
+  }, 50) : undefined;
   let input = "";
   let requests = Promise.resolve();
   stdin.on("data", (chunk) => {
@@ -48,7 +77,8 @@ configureProcessSpawner((_target, launch) => {
         switch (command.type) {
           case "get_state":
             reply({ sessionId: "native-session", sessionFile: "/tmp/runtime-test.jsonl",
-              model, thinkingLevel: level, isStreaming: streaming });
+              model, thinkingLevel: level, isStreaming: streaming,
+              ...(config.backgroundLifecycle ? { hasPendingAsyncWork: pendingAsync, isSettled: !streaming && !pendingAsync } : {}) });
             break;
           case "get_messages": reply({ messages: context }); break;
           case "get_branch_messages": reply({ messages: [] }); break;
@@ -62,7 +92,24 @@ configureProcessSpawner((_target, launch) => {
             reply({ tokensBefore: 42000, summary: "A provider-only context summary." });
             break;
           }
+          case "abort":
+            // Like OMP, foreground abort leaves the async job pending.
+            streaming = false;
+            reply();
+            break;
           case "prompt": {
+            if (config.backgroundLifecycle) {
+              streaming = true;
+              emit({ type: "agent_start" });
+              const user = { role: "user", content: command.message, timestamp: Date.now() };
+              emit({ type: "message_end", message: user });
+              const answer = backgroundAnswer(command.message === "Next" ? "Queued message answered." : "Answer finished; job continues.");
+              context.push(user, answer);
+              if (command.message === "Next") backgroundSettle();
+              else backgroundWait();
+              reply();
+              break;
+            }
             streaming = true;
             emit({ type: "agent_start" });
             let timestamp = 1;
@@ -109,6 +156,7 @@ configureProcessSpawner((_target, launch) => {
     else { stderr.end("Not available in the transcript fixture"); end({ code: 1, signal: null }); }
   });
   return { stdin, stdout, stderr, exit, kill: (signal = "SIGTERM") => {
+    clearInterval(controlTimer);
     end({ code: null, signal });
     return true;
   } };

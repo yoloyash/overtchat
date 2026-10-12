@@ -581,6 +581,7 @@ export function AgentSessionView({
   }
 
   const running = snapshot.status === "running";
+  const waiting = running && snapshot.activeTurn?.phase === "waiting";
   const exited = snapshot.status === "exited";
   const readOnly = snapshot.readOnly;
   const model = currentModel(snapshot);
@@ -613,7 +614,7 @@ export function AgentSessionView({
         : session.streamStatus === "reconnecting"
           ? "reconnecting"
           : running
-            ? "working"
+            ? (waiting ? "waiting" : "working")
             : null;
   const activityStartedAt =
     activity === "working"
@@ -711,7 +712,7 @@ export function AgentSessionView({
             ) : undefined}
             providerLabel={providerLabel}
             messages={snapshot.messages}
-            streaming={running}
+            streaming={running && !waiting}
             activity={activity}
             activityStartedAt={activityStartedAt}
             error={runtimeError}
