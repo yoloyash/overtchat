@@ -3,12 +3,14 @@ import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
 
 const mocks = vi.hoisted(() => ({
   runtimeStatusForSession: vi.fn(),
+  responsePhaseForSession: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/agents/connector/broker", () => ({
   hostConnectorBroker: {
     runtimeStatusForSession: mocks.runtimeStatusForSession,
+    responsePhaseForSession: mocks.responsePhaseForSession,
   },
 }));
 
@@ -54,10 +56,12 @@ describe("connector session directory", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.runtimeStatusForSession.mockReturnValue("running");
+    mocks.responsePhaseForSession.mockReturnValue("waiting");
   });
 
   it("overlays connector-projected status without mutating database data", () => {
     const result = withConnectorSessionDirectory(connections);
+    expect(result[0]!.workspaces[0]!.sessions[0]!.responsePhase).toBe("waiting");
 
     expect(result[0]!.workspaces[0]!.sessions[0]!.runtimeStatus).toBe(
       "running",

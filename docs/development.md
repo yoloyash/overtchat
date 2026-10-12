@@ -828,6 +828,9 @@ runtime cleanup. The OMP adapter normalizes native yield/async-work signals;
 `session_settled` completes the session even when no further assistant turn
 occurs. Snapshots and replay carry the optional `activeTurn.phase`; existing
 checkpoints without a phase continue to display as responding.
+The session directory carries the optional `responsePhase` for web and mobile
+navigation. Waiting sessions use a static clock, including workspace counts;
+phase changes must propagate even when the operational status remains running.
 
 OMP's native Stop interrupts the foreground but can leave async jobs running.
 After its acknowledgement, reconcile provider state before releasing the queue

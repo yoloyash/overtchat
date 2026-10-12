@@ -147,6 +147,7 @@ export type AgentSessionListItem = {
   createdAt: number | null;
   modifiedAt: number | null;
   runtimeStatus: AgentRuntimeStatus;
+  responsePhase?: AgentResponsePhase;
 };
 
 export type AgentProviderSessionMetadata = {

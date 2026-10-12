@@ -5,6 +5,7 @@ import {
   isHostConnectorCommand,
   isAgentRuntimeEnvelope,
   isAgentSessionSync,
+  isAgentSessionDirectoryEntry,
   isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
@@ -16,6 +17,7 @@ describe("Host Connector protocol compatibility", () => {
     const snapshot = { sessionId: "session", status: "running", activeTurn: { startedAt: 123, phase } };
     expect(isAgentRuntimeEnvelope({ epoch: "epoch", sequence: 1, type: "snapshot", data: snapshot })).toBe(valid);
     expect(isAgentSessionSync({ reset: true, cursor: { epoch: "epoch", sequence: 1 }, snapshot })).toBe(valid);
+    expect(isAgentSessionDirectoryEntry({ sessionId: "session", runtimeStatus: "running", responsePhase: phase })).toBe(valid);
     expect(isAgentRuntimeEnvelope({ epoch: "epoch", sequence: 1, type: "runtime_event", data: { type: "overtchat_status", status: "running", phase } })).toBe(valid);
   });
 

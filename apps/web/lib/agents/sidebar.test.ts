@@ -144,7 +144,12 @@ describe("agent sessions in the sidebar", () => {
       ]),
     ).toBe(running);
 
-    const snapshot = withAgentSessionDirectory(running, [
+    const waiting = withAgentSessionDirectory(running, [
+      { sessionId: "session-1", runtimeStatus: "running", responsePhase: "waiting" },
+    ]);
+    expect(waiting).not.toBe(running);
+    expect(waiting[0]!.workspaces[0]!.sessions[1]!.responsePhase).toBe("waiting");
+    const snapshot = withAgentSessionDirectory(waiting, [
       { sessionId: "session-0", runtimeStatus: "exited" },
       { sessionId: "session-1", runtimeStatus: "idle" },
     ]);
@@ -153,5 +158,6 @@ describe("agent sessions in the sidebar", () => {
         (session) => session.runtimeStatus,
       ),
     ).toEqual(["exited", "idle"]);
+    expect(snapshot[0]!.workspaces[0]!.sessions[1]!.responsePhase).toBeUndefined();
   });
 });

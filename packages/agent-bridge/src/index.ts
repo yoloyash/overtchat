@@ -6,6 +6,7 @@ import type {
   AgentRuntimeCursor,
   AgentRuntimeEnvelope,
   AgentRuntimeStatus,
+  AgentResponsePhase,
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
@@ -88,6 +89,7 @@ export type AgentDaemonSessionDescriptor = AgentDaemonWorkspaceDescriptor & {
 export type AgentSessionDirectoryEntry = {
   sessionId: string;
   runtimeStatus: AgentRuntimeStatus;
+  responsePhase?: AgentResponsePhase;
 };
 
 export type AgentDaemonRequest =
@@ -491,6 +493,7 @@ export function isAgentSessionDirectoryEntry(
   return (
     isRecord(value) &&
     isNonEmptyString(value.sessionId) &&
+    hasValidResponsePhase({ phase: value.responsePhase }) &&
     ["idle", "running", "exited"].includes(String(value.runtimeStatus))
   );
 }

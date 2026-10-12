@@ -7,6 +7,8 @@ import type {
   AgentPromptImage,
   AgentRuntimeEnvelope,
   AgentRuntimeStatus,
+  AgentResponsePhase,
+  AgentSessionDirectoryEntry,
   HostConnectorCommand,
   HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
@@ -133,7 +135,7 @@ export class ConnectorDaemon {
   private readonly captures = new Map<string, TimelineCapture>();
   private readonly publishedSessions = new Map<
     string,
-    AgentRuntimeStatus
+    AgentSessionDirectoryEntry
   >();
   private readonly sessionTails = new Map<string, Promise<void>>();
   private readonly activeRequests = new Set<Promise<void>>();
@@ -798,7 +800,10 @@ export class ConnectorDaemon {
       await capture.ready;
       this.assertAccepting();
       capture.initialized = true;
-      this.publishSessionStatus(sessionId, runtime.snapshot().status);
+      const snapshot = runtime.snapshot();
+      this.publishSessionStatus(
+        sessionId, snapshot.status, snapshot.activeTurn?.phase,
+      );
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -858,7 +863,13 @@ export class ConnectorDaemon {
     envelope: AgentRuntimeEnvelope,
   ): void {
     if (envelope.type === "snapshot") {
-      this.publishSessionStatus(sessionId, envelope.data.status);
+      this.publishSessionStatus(
+        sessionId, envelope.data.status, envelope.data.activeTurn?.phase,
+      );
+      return;
+    }
+    if (envelope.data.type === "agent_start" || envelope.data.type === "turn_start") {
+      this.publishSessionStatus(sessionId, "running", "responding");
       return;
     }
     if (
@@ -868,6 +879,7 @@ export class ConnectorDaemon {
       this.publishSessionStatus(
         sessionId,
         envelope.data.status as AgentRuntimeStatus,
+        envelope.data.phase === "waiting" ? "waiting" : "responding",
       );
     }
   }
@@ -875,24 +887,40 @@ export class ConnectorDaemon {
   private publishSessionStatus(
     sessionId: string,
     status: AgentRuntimeStatus,
+    phase?: AgentResponsePhase,
   ): void {
-    if (this.publishedSessions.get(sessionId) === status) return;
-    this.publishedSessions.set(sessionId, status);
+    const responsePhase = status === "running" ? phase : undefined;
+    const previous = this.publishedSessions.get(sessionId);
+    if (
+      previous?.runtimeStatus === status &&
+      previous.responsePhase === responsePhase
+    ) return;
+    const session = {
+      sessionId,
+      runtimeStatus: status,
+      ...(responsePhase ? { responsePhase } : {}),
+    };
+    this.publishedSessions.set(sessionId, session);
     this.emit({
       type: "session_update",
-      session: { sessionId, runtimeStatus: status },
+      session,
     });
   }
 
   private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
-    const sessions = [...sessionIds].map((sessionId) => ({
-      sessionId,
-      runtimeStatus:
-        this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
-    }));
+    const sessions = [...sessionIds].map((sessionId) => {
+      const snapshot = this.captures.get(sessionId)?.runtime.snapshot();
+      const responsePhase = snapshot?.status === "running"
+        ? snapshot.activeTurn?.phase : undefined;
+      return {
+        sessionId,
+        runtimeStatus: snapshot?.status ?? "idle",
+        ...(responsePhase ? { responsePhase } : {}),
+      };
+    });
     this.publishedSessions.clear();
     for (const session of sessions) {
-      this.publishedSessions.set(session.sessionId, session.runtimeStatus);
+      this.publishedSessions.set(session.sessionId, session);
     }
     this.emit({ type: "session_directory", sessions });
   }
