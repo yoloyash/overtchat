@@ -47,7 +47,11 @@ const root = createRoot(document.getElementById("root")!);
 function render(children: ReactNode): void {
   root.render(
     <StrictMode>
-      <ThemeProvider><DesktopWindowControls />{children}</ThemeProvider>
+      <ThemeProvider>
+        {children}
+        {/* Electron applies native drag exclusions in DOM order, not z-index order. */}
+        <DesktopWindowControls />
+      </ThemeProvider>
     </StrictMode>,
   );
 }

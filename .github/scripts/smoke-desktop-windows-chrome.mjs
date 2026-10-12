@@ -1,6 +1,8 @@
 // Exercise native window operations through the real renderer/preload/main.
 /* global getComputedStyle, localStorage */
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
+import { spawnSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
@@ -43,6 +45,55 @@ const api = createServer((request, response) => {
 });
 await new Promise(resolve => api.listen(0, "127.0.0.1", resolve));
 let app, page;
+
+// CDP clicks bypass Windows non-client hit testing. Check the actual HWND too:
+// HTCLIENT (1) accepts clicks; HTCAPTION (2) turns these buttons into drag areas.
+async function assertNativeControlTargets() {
+  const buttons = page.getByRole("group", { name: "Window controls" }).getByRole("button");
+  const points = [];
+  for (const button of await buttons.all()) {
+    const box = await button.boundingBox();
+    assert(box, "Window control must be visible");
+    points.push([box.x + box.width / 2, box.y + box.height / 2]);
+  }
+  assert.equal(points.length, 3);
+  const { handle, zoom } = await app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    return { handle: Number(win.getNativeWindowHandle().readBigUInt64LE()), zoom: win.webContents.getZoomFactor() };
+  });
+  const script = `
+$ErrorActionPreference = 'Stop'
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public class WindowHitTest {
+  [StructLayout(LayoutKind.Sequential)] public struct POINT { public int X; public int Y; }
+  [DllImport("user32.dll")] public static extern bool ClientToScreen(IntPtr h, ref POINT p);
+  [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
+  [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint message, IntPtr w, IntPtr l);
+}
+'@
+[void][WindowHitTest]::SetThreadDpiAwarenessContext([IntPtr](-4))
+$handle = [IntPtr]${handle}
+$scale = [WindowHitTest]::GetDpiForWindow($handle) / 96
+$points = @(${points.map(([x, y]) => `@(${x}, ${y})`).join(", ")})
+foreach ($point in $points) {
+  $p = New-Object WindowHitTest+POINT
+  $p.X = [int]($point[0] * ${zoom} * $scale)
+  $p.Y = [int]($point[1] * ${zoom} * $scale)
+  if (![WindowHitTest]::ClientToScreen($handle, [ref]$p)) { throw 'ClientToScreen failed' }
+  $position = ($p.Y -shl 16) -bor ($p.X -band 65535)
+  [WindowHitTest]::SendMessage($handle, 0x84, [IntPtr]::Zero, [IntPtr]$position).ToInt64()
+}
+`;
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-EncodedCommand",
+    Buffer.from(script, "utf16le").toString("base64")], { encoding: "utf8", timeout: 15_000 });
+  assert.equal(result.status, 0, result.stderr || String(result.error));
+  assert.deepEqual(result.stdout.trim().split(/\s+/).map(Number), [1, 1, 1],
+    "Native Windows hit testing must route all three controls to the renderer, not the draggable header");
+}
+
 try {
   const env = { ...process.env };
   delete env.ELECTRON_RUN_AS_NODE;
@@ -54,10 +105,12 @@ try {
   assert.equal(await page.locator("html").getAttribute("data-desktop-shell"), "win32");
   assert.equal(await page.locator("[data-titlebar]").evaluate(el => getComputedStyle(el).getPropertyValue("-webkit-app-region")), "drag");
   assert.equal(await page.locator(".desktop-window-controls").evaluate(el => getComputedStyle(el).getPropertyValue("-webkit-app-region")), "no-drag");
+  await assertNativeControlTargets();
 
   // Observe actual BrowserWindow state, not just the labels returned by IPC.
   await page.getByRole("button", { name: "Maximize window", exact: true }).click();
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())).toBe(true);
+  await assertNativeControlTargets();
   await page.getByRole("button", { name: "Restore window", exact: true }).click();
   await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized())).toBe(false);
   await page.getByRole("button", { name: "Minimize window", exact: true }).click();
@@ -81,6 +134,7 @@ try {
   });
   const controls = await page.getByRole("group", { name: "Window controls" }).boundingBox();
   assert(controls && controls.x >= 0 && controls.y === 0);
+  await assertNativeControlTargets();
   await page.getByRole("button", { name: "Maximize window", exact: true }).click();
   await page.getByRole("button", { name: "Restore window", exact: true }).click();
   await app.evaluate(({ BrowserWindow }) => {
@@ -92,6 +146,7 @@ try {
   await page.getByRole("button", { name: "Continue", exact: true }).click();
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
   await expect(page.getByRole("group", { name: "Window controls" })).toBeVisible();
+  await assertNativeControlTargets();
   await page.screenshot({ path: path.join(diagnostics, "windows-chrome.png") });
   signedIn = true;
   await page.reload();
@@ -107,6 +162,7 @@ try {
       const buttons = await page.getByRole("group", { name: "Window controls" }).boundingBox();
       return action && buttons && action.x + action.width <= buttons.x;
     }).toBe(true);
+    await assertNativeControlTargets();
   }
   await temp.click();
   await expect(page.getByRole("button", { name: "Disable temporary chat", exact: true })).toBeVisible();
@@ -116,11 +172,12 @@ try {
   await page.evaluate(() => localStorage.setItem("theme", "dark"));
   await page.reload();
   await page.getByRole("button", { name: "Open sidebar", exact: true }).waitFor();
+  await assertNativeControlTargets();
   await page.screenshot({ path: path.join(diagnostics, "windows-chrome-chat.png"), animations: "disabled" });
   const closed = app.waitForEvent("close");
   await page.getByRole("button", { name: "Close window", exact: true }).click();
   await closed;
-  process.stdout.write("PASS Windows chrome: hidden native menu, drag regions, maximize/restore, minimize, external state changes, fullscreen, zoom, sign-in, narrow chat headers, collapsed sidebar, close\n");
+  process.stdout.write("PASS Windows chrome: native hit targets, hidden native menu, drag regions, maximize/restore, minimize, external state changes, fullscreen, zoom, sign-in, narrow chat headers, collapsed sidebar, close\n");
 } catch (error) {
   if (page) await page.screenshot({ path: path.join(diagnostics, "windows-chrome-failure.png") }).catch(() => {});
   throw error;

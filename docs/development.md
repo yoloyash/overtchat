@@ -414,6 +414,10 @@ the sidebar collapsed, the workspace files pane open, light/dark themes, and
 zoom. The automated smoke covers native minimize/maximize/restore/close,
 fullscreen and zoom, connection/sign-in screens, and chat header controls down
 to a 420px window with a collapsed sidebar.
+It also checks Windows `WM_NCHITTEST` at each button: Chromium-injected clicks
+alone bypass native drag regions and can pass even when physical clicks fail.
+Keep the window controls after the page content in DOM order so their `no-drag`
+region excludes the underlying headers from Electron's native drag region.
 
 The connect screen discovers local servers in the background at ports 4718
 and 4717, plus the app port in the manager's public installation state. Custom
