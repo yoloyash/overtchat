@@ -169,7 +169,10 @@ and stapled separately. Verification checks the app recovered from both
 downloads, bundle/version/architecture, Developer ID team, secure timestamp,
 runtime entitlements, packaged files, Electron fuses, staple, and Gatekeeper.
 The packaging scripts also generate updater metadata from the final downloadable
-bytes, after notarization. Publishing the qualified draft triggers the
+bytes, after notarization. Explicit CloudKit transport errors during stapling
+are retried up to three times with short backoff; rejected notarization, invalid
+signatures, missing tickets, and Gatekeeper failures still stop the build.
+Publishing the qualified draft triggers the
 [desktop update feed](#desktop-update-feed) workflow.
 
 ### Apple credentials
