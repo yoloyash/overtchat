@@ -640,6 +640,15 @@ docker compose -f voice/compose.test.yml build voice
 docker run --rm --entrypoint python -v "$PWD/voice:/tests:ro" -w /tests overtchat-voice:test -B -m unittest discover -s /tests -p 'test_*.py'
 ```
 
+Sending text during voice interrupts the current response immediately: playback
+is cleared, late audio is filtered by response ID, and the replacement waits
+for realtime cancellation and any targeted canonical generation to settle.
+Typing alone does not interrupt. A completed written answer remains intact if
+only its playback is interrupted; unfinished generation retains its partial
+answer. Pending submissions remain visible until canonical acceptance, and
+rapid sends are serialized. The interruption route can wait for completion of
+its specific target; it never cancels a later turn.
+
 Voice startup also has a component regression test under React Strict Mode,
 which replays effect setup and cleanup in development. Run
 `npm run test -w apps/web -- components/chat/RealtimeVoiceSession.test.ts`
@@ -673,6 +682,14 @@ usage and browser audio timing. Cache hits are observed, not required: they
 depend on the server configuration and cache state. The test discovers the
 first served model unless `VOICE_LIVE_MODEL` selects one explicitly. It creates
 only an isolated E2E model configuration and never changes the user's models.
+
+Set `VOICE_LIVE_EXTERNAL=1` to reuse a separately started voice worker at
+`VOICE_URL` without recreating the Compose voice service. That worker must use
+the same `VOICE_SHARED_SECRET` and an `OVERTCHAT_VOICE_APP_URL` pointing to the
+E2E app. This allows speech testing alongside an active development voice
+worker. The CPU integration test covers text interruption during unfinished
+generation and completed-answer playback; the live-model test also interrupts
+a long spoken answer and verifies subsequent recall.
 
 Only these test containers expose speech ports, bound to loopback. The model
 cache stays in a test-only volume. `OVERTCHAT_VOICE_APP_URL` directs engine

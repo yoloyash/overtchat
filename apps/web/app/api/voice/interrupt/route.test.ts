@@ -30,3 +30,22 @@ it("rejects a revoked session before inspecting generations", async () => {
   expect((await POST(request())).status).toBe(401);
   expect(mocks.generation).not.toHaveBeenCalled();
 });
+
+it("acknowledges a replacement only after the targeted generation settles", async () => {
+  mocks.generation.mockResolvedValueOnce({ id: "stream", chatId: "chat", status: "running" })
+    .mockResolvedValueOnce({ id: "stream", chatId: "chat", status: "running" })
+    .mockResolvedValue({ id: "stream", chatId: "chat", status: "aborted" });
+  const response = await POST(new Request("http://test/api/voice/interrupt", { method: "POST",
+    body: JSON.stringify({ clientRequestId: "voice:session:turn", waitForCompletion: true }) }));
+  expect(response.status).toBe(204);
+  expect(mocks.generation).toHaveBeenCalledTimes(3);
+  expect(mocks.cancel).toHaveBeenCalledExactlyOnceWith("stream");
+});
+it("does not acknowledge a still-running target when the wait is aborted", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const response = await POST(new Request("http://test/api/voice/interrupt", { method: "POST", signal: controller.signal,
+    body: JSON.stringify({ clientRequestId: "voice:session:turn", waitForCompletion: true }) }));
+  expect(response.status).toBe(409);
+  expect(mocks.cancel).toHaveBeenCalledExactlyOnceWith("stream");
+});

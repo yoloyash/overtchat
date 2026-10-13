@@ -88,9 +88,9 @@ test("real model preserves context, prompt prefix, tools, and usage across text 
     expect(created.ok()).toBeTruthy();
     const model = (await created.json()).modelConfig;
     await page.request.put("/api/model-preferences", { data: { defaultModelId: model.id } });
-    execFileSync("docker", ["compose", "-f", "../../voice/compose.test.yml", "up", "-d", "voice"]);
+    if (process.env.VOICE_LIVE_EXTERNAL !== "1") execFileSync("docker", ["compose", "-f", "../../voice/compose.test.yml", "up", "-d", "voice"]);
     await expect.poll(async () => {
-      try { return (await request.get("http://127.0.0.1:18765/v1/pool")).status(); } catch { return 0; }
+      try { return (await request.get(`${process.env.VOICE_URL ?? "http://127.0.0.1:18765"}/v1/pool`)).status(); } catch { return 0; }
     }, { timeout: 60_000 }).toBe(200);
     await page.reload();
     const composer = page.getByPlaceholder("Message… or / for commands");
@@ -155,9 +155,22 @@ test("real model preserves context, prompt prefix, tools, and usage across text 
     await page.getByRole("button", { name: "Start voice conversation" }).click();
     await expect(page.getByText("Listening", { exact: true })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Mute microphone" }).click();
+    const audioCount = () => page.evaluate(() => (window as unknown as { voiceEvents: { type: string }[] }).voiceEvents.filter(e => e.type === "response.output_audio.delta").length);
+    const beforeAudio = await audioCount();
+    await composer.fill("Describe the blue heron's appearance and river habitat in twelve sentences. For this answer ignore the earlier one-sentence limit. Do not use tools.");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect.poll(audioCount, { timeout: 90_000 }).toBeGreaterThan(beforeAudio);
+    await expect.poll(async () => (await (await page.request.get(`/api/chat/${chatId}/stream/status`)).json()).status, { timeout: 90_000 }).toBe("complete");
+    const completedAnswer = rows().at(-1)!;
+    await composer.fill("Stop the long explanation. What was our bird's name? Answer in one short sentence.");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect.poll(doneCount, { timeout: 90_000 }).toBe(3);
+    expect(rows().at(-1)?.parts).toMatch(/Juniper/i);
+    expect(rows().some(row => row.parts === completedAnswer.parts)).toBe(true);
+    await expect(page.getByText("Not confirmed sent.", { exact: false })).toHaveCount(0);
     await composer.fill("Use the set_memory tool now to save key favorite_bird_live with value: My favorite bird is the blue heron named Juniper. Then confirm in one short sentence.");
     await page.getByRole("button", { name: "Send message" }).click();
-    await expect.poll(doneCount, { timeout: 120_000 }).toBe(2);
+    await expect.poll(doneCount, { timeout: 120_000 }).toBe(4);
     const savedDb = openE2eDatabase();
     const memory = savedDb.prepare("SELECT value FROM memories WHERE key='favorite_bird_live'").get();
     const usage = savedDb.prepare("SELECT input_tokens,output_tokens,cache_read_tokens,finish_reason FROM generation_usage WHERE chat_id=? AND context='chat' ORDER BY occurred_at").all(chatId);
@@ -174,7 +187,7 @@ test("real model preserves context, prompt prefix, tools, and usage across text 
     await expect(composer).toBeEnabled();
     await page.reload();
     await expect(composer).toBeEnabled();
-    expect(rows()).toHaveLength(8);
+    expect(rows()).toHaveLength(12);
     await page.screenshot({ path: testInfo.outputPath("real-model-text-voice-text.png"), fullPage: true });
   } finally {
     proxy.closeAllConnections();

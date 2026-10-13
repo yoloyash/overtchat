@@ -4,10 +4,11 @@ import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { RealtimeVoiceSession, type RealtimeVoiceSessionHandle } from "./RealtimeVoiceSession";
 
-const clients = vi.hoisted(() => [] as { connect: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }[]);
+const clients = vi.hoisted(() => [] as { connect: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn>; sendMessage: ReturnType<typeof vi.fn> }[]);
 vi.mock("@/lib/voice/client", () => ({ OvertChatVoiceClient: class {
   connect = vi.fn(async () => this.callbacks.onStatus("listening"));
   close = vi.fn(async () => {});
+  sendMessage = vi.fn<(text: string) => Promise<void>>(async () => {});
   constructor(_grant: unknown, private callbacks: { onStatus: (status: string) => void }) { clients.push(this); }
 } }));
 vi.mock("@/lib/queries/chats", () => ({ fetchChatMessagesPage: vi.fn(async () => ({ messages: [] })) }));
@@ -111,4 +112,17 @@ it("shows the actionable session conflict instead of a generic startup error", a
   expect(document.body.textContent).toContain("This chat already has an active voice session or response.");
   expect(clients).toHaveLength(0);
   expect(releases).toBe(0);
+});
+
+it("shows submitted text during interruption and preserves it if acceptance fails", async () => {
+  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  let fail!: (error: Error) => void;
+  clients[0].sendMessage.mockImplementationOnce(() => new Promise((_resolve, reject) => { fail = reject; }));
+  await act(async () => ref.current!.sendMessage("Change the topic"));
+  expect(document.body.textContent).toContain("Change the topic");
+  expect(document.body.textContent).toContain("Sending…");
+  await act(async () => fail(new Error("Private transport failure")));
+  expect(document.body.textContent).toContain("Change the topic");
+  expect(document.body.textContent).toContain("Not confirmed sent.");
+  expect(document.body.textContent).not.toContain("Private transport failure");
 });

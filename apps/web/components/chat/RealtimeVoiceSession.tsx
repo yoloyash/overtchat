@@ -98,11 +98,20 @@ export const RealtimeVoiceSession = forwardRef<
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [turnWarning, setTurnWarning] = useState<string | null>(null);
+  const [submissions, setSubmissions] = useState<{ id: string; text: string; failed: boolean }[]>([]);
 
   useImperativeHandle(ref, () => ({
     end: () => endRef.current(),
     sendMessage(text) {
-      clientRef.current?.sendMessage(text);
+      const client = clientRef.current;
+      if (!client || !text.trim()) return;
+      const id = crypto.randomUUID();
+      setSubmissions(current => [...current, { id, text: text.trim(), failed: false }]);
+      void client.sendMessage(text).then(() => {
+        setSubmissions(current => current.filter(item => item.id !== id));
+      }).catch(() => {
+        setSubmissions(current => current.map(item => item.id === id ? { ...item, failed: true } : item));
+      });
     },
   }));
 
@@ -264,6 +273,14 @@ export const RealtimeVoiceSession = forwardRef<
 
   return (
     <div className="mb-3 overflow-hidden rounded-3xl border bg-background/95 shadow-sm">
+      {submissions.map(item => (
+        <div key={item.id} className="border-b px-4 py-2 text-sm" role="status">
+          <p className="whitespace-pre-wrap">{item.text}</p>
+          <p className="text-xs text-muted-foreground">
+            {item.failed ? "Not confirmed sent. Check the conversation before sending again." : "Sending…"}
+          </p>
+        </div>
+      ))}
       <div className="flex min-h-28 items-center gap-3 px-3 py-2.5 sm:px-4">
         <VoiceOrb
           status={status}

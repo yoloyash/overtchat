@@ -13,6 +13,9 @@ let prompts: unknown[] = [];
 let modelFailure = false;
 let toolMode = false;
 let delayedResponse = false;
+let longResponse = false;
+const longAnswer = "The blue heron moves slowly beside the river. It watches the water carefully and waits for a fish. ".repeat(12).trim();
+const voiceUrl = process.env.VOICE_URL ?? "http://127.0.0.1:18765";
 let providerTools: unknown[] = [];
 const answer = "The blue heron lives near the quiet river.";
 
@@ -49,7 +52,7 @@ test.beforeAll(async () => {
       const timer = setTimeout(() => { send({ content: "This should be cancelled." }, null); send({}, "stop"); res.end("data: [DONE]\n\n"); }, 20_000);
       res.on("close", () => clearTimeout(timer));
     } else {
-      send({ role: "assistant", content: answer }, null);
+      send({ role: "assistant", content: longResponse ? longAnswer : answer }, null);
       send({}, "stop");
       res.end("data: [DONE]\n\n");
     }
@@ -69,7 +72,22 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   modelFailure = false;
   toolMode = false;
   delayedResponse = false;
+  longResponse = false;
   await page.addInitScript(() => {
+    Object.assign(window, { playbackEvents: [] });
+    const NativeWorklet = window.AudioWorkletNode;
+    window.AudioWorkletNode = class extends NativeWorklet {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        if (name === "overtchat-audio-playback") {
+          const post = this.port.postMessage.bind(this.port);
+          Object.defineProperty(this.port, "postMessage", { value: (data: { kind: string }, transfer: Transferable[] = []) => {
+            (window as unknown as { playbackEvents: { kind: string; at: number }[] }).playbackEvents.push({ kind: data.kind, at: Date.now() });
+            post(data, transfer);
+          } });
+        }
+      }
+    };
     const NativeSocket = window.WebSocket;
     Object.assign(window, { voiceEvents: [], voiceSent: [] });
     class ObservedSocket extends NativeSocket {
@@ -112,9 +130,9 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   expect(modelResponse.ok()).toBeTruthy();
   const model = (await modelResponse.json()).modelConfig;
   await page.request.put("/api/model-preferences", { data: { defaultModelId: model.id } });
-  execFileSync("docker", ["compose", "-f", "../../voice/compose.test.yml", "up", "-d", "voice"]);
+  if (process.env.VOICE_LIVE_EXTERNAL !== "1") execFileSync("docker", ["compose", "-f", "../../voice/compose.test.yml", "up", "-d", "voice"]);
   await expect.poll(async () => {
-    try { return (await request.get("http://127.0.0.1:18765/v1/pool")).status(); } catch { return 0; }
+    try { return (await request.get(`${voiceUrl}/v1/pool`)).status(); } catch { return 0; }
   }, { timeout: 60_000 }).toBe(200);
   await page.reload();
   const microphone = await page.evaluate(async () => {
@@ -238,9 +256,53 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   await expect.poll(async () => (await (await page.request.get(`/api/chat/${originalChatId}/stream/status`)).json()).status).toBe("aborted");
   delayedResponse = false;
   await expect.poll(doneCount, { timeout: 30_000 }).toBe(4);
+
+  // Sending text cancels a still-generating answer and retains its partial text.
+  delayedResponse = true;
+  await composer.fill("Begin another long answer for interruption.");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect.poll(async () => (await (await page.request.get(`/api/chat/${originalChatId}/stream/status`)).json()).active).toBe(true);
+  const oldStream = (await (await page.request.get(`/api/chat/${originalChatId}/stream/status`)).json()).streamId;
+  await expect(page.getByText("I will begin a longer answer.", { exact: true })).toHaveCount(2);
+  delayedResponse = false;
+  await composer.fill("Stop that answer and tell me where the bird lives.");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect.poll(doneCount, { timeout: 30_000 }).toBe(6);
+  const interruptedDb = openE2eDatabase();
+  expect(interruptedDb.prepare("SELECT status FROM chat_generations WHERE id=?").get(oldStream)).toEqual({ status: "aborted" });
+  interruptedDb.close();
+  await expect(page.getByText("I will begin a longer answer.", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("This should be cancelled.", { exact: false })).toHaveCount(0);
+
+  // A completed model answer can still have many seconds of speech buffered.
+  longResponse = true;
+  const audioCount = () => page.evaluate(() => (window as unknown as { playbackEvents: { kind: string }[] }).playbackEvents.filter(event => event.kind === "audio").length);
+  const beforeAudio = await audioCount();
+  await composer.fill("Give me a long answer to listen to.");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect.poll(audioCount, { timeout: 60_000 }).toBeGreaterThan(beforeAudio);
+  await expect.poll(async () => (await (await page.request.get(`/api/chat/${originalChatId}/stream/status`)).json()).status).toBe("complete");
+  const completedStream = (await (await page.request.get(`/api/chat/${originalChatId}/stream/status`)).json()).streamId;
+  const clears = () => page.evaluate(() => (window as unknown as { playbackEvents: { kind: string }[] }).playbackEvents.filter(event => event.kind === "clear").length);
+  const beforeClear = await clears();
+  longResponse = false;
+  // Typing alone does not interrupt playback.
+  await composer.fill("Enough detail. Give me the short answer.");
+  expect(await clears()).toBe(beforeClear);
+  await page.getByRole("button", { name: "Send message" }).click();
+  expect(await clears()).toBeGreaterThan(beforeClear);
+  await expect.poll(doneCount, { timeout: 60_000 }).toBe(8);
+  const completedDb = openE2eDatabase();
+  expect(completedDb.prepare("SELECT status FROM chat_generations WHERE id=?").get(completedStream)).toEqual({ status: "complete" });
+  const savedLongAnswer = completedDb.prepare("SELECT parts FROM messages WHERE id=(SELECT response_message_id FROM chat_generations WHERE id=?)").get(completedStream) as { parts: string };
+  expect(savedLongAnswer.parts).toContain(longAnswer);
+  completedDb.close();
+  await expect(page.getByRole("button", { name: "End voice session" })).toBeVisible();
+  await expect(page.getByText("Not confirmed sent.", { exact: false })).toHaveCount(0);
+
   await page.getByRole("button", { name: "End voice session" }).click();
   await expect.poll(async () => {
-    const pool = await (await request.get("http://127.0.0.1:18765/v1/pool")).json();
+    const pool = await (await request.get(`${voiceUrl}/v1/pool`)).json();
     return pool.size - pool.in_use;
   }).toBe(1);
   const invalid = await page.evaluate(() => new Promise<number>(resolve => {

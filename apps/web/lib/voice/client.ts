@@ -49,6 +49,12 @@ export class OvertChatVoiceClient {
   private muted = false;
   private closing = false;
   private activeTurnId: string | null = null;
+  private responseId: string | null = null;
+  private playableResponseId: string | null = null;
+  private suppressPlayback = false;
+  private switchingTurns = false;
+  private submissions: Promise<void> = Promise.resolve();
+  private readonly changes = new Set<() => void>();
 
   constructor(grant: VoiceSessionGrant, callbacks: VoiceClientCallbacks) {
     this.grant = grant;
@@ -109,7 +115,7 @@ export class OvertChatVoiceClient {
         void this.close();
       }
     });
-    this.session.on("audio", (event) => this.onAudio(event.data));
+    this.session.on("audio", (event) => this.onAudio(event.data, event.responseId));
     this.session.on("audio_interrupted", () => this.clearPlayback());
     this.session.on("error", () => {
       // Provider error payloads can contain request bodies or credentials.
@@ -137,21 +143,74 @@ export class OvertChatVoiceClient {
   }
 
   interrupt(): void {
+    this.suppressPlayback = true;
     this.clearPlayback();
-    this.session?.interrupt();
+    // The SDK's interrupt() is a no-op until it has received audio. Explicit
+    // cancellation also stops thinking/TTS, without truncating canonical text.
+    this.transport?.sendEvent({ type: "response.cancel" });
     void this.cancelGeneration();
     this.callbacks.onStatus("listening");
   }
 
-  sendMessage(text: string): void {
+  sendMessage(text: string): Promise<void> {
     const value = text.trim();
-    if (!value || !this.session) return;
+    if (!value || !this.session || this.closing) return Promise.reject(new Error("Voice is not connected."));
+    this.switchingTurns = true;
+    this.suppressPlayback = true;
+    this.clearPlayback();
     this.callbacks.onWarning?.(null);
-    this.session.sendMessage(value);
+    // Serialize rapid sends: each new turn must be accepted before another
+    // submission can interrupt it. Never enqueue a response behind old speech.
+    const submission = this.submissions.then(async () => {
+      if (this.closing || !this.session) throw new Error("Voice has ended.");
+      const responseId = this.responseId;
+      const previousTurnId = this.activeTurnId;
+      this.switchingTurns = true;
+      this.suppressPlayback = true;
+      this.clearPlayback();
+      this.transport?.sendEvent({ type: "response.cancel" });
+      await Promise.all([
+        this.cancelGeneration(true),
+        this.waitFor(() => !responseId || this.responseId !== responseId),
+      ]);
+      if (this.closing || !this.session) throw new Error("Voice has ended.");
+      this.playableResponseId = null;
+      this.switchingTurns = false;
+      this.suppressPlayback = false;
+      this.callbacks.onStatus("thinking");
+      this.session.sendMessage(value);
+      // Keep the submitted text visible until the canonical user event arrives.
+      await this.waitFor(() => this.activeTurnId !== null && this.activeTurnId !== previousTurnId);
+    });
+    this.submissions = submission.catch(() => { this.switchingTurns = false; });
+    return submission;
+  }
+
+  private waitFor(ready: () => boolean): Promise<void> {
+    if (this.closing) return Promise.reject(new Error("Voice has ended."));
+    if (ready()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timer);
+        this.changes.delete(check);
+        if (error) reject(error); else resolve();
+      };
+      const check = () => {
+        if (this.closing) finish(new Error("Voice has ended."));
+        else if (ready()) finish();
+      };
+      const timer = setTimeout(() => finish(new Error("Voice did not finish switching turns.")), 15_000);
+      this.changes.add(check);
+    });
+  }
+
+  private notifyChange(): void {
+    for (const changed of this.changes) changed();
   }
 
   async close(): Promise<void> {
     this.closing = true;
+    this.notifyChange();
     this.session?.close();
     this.session = null;
     this.transport = null;
@@ -185,15 +244,17 @@ export class OvertChatVoiceClient {
 
   setActiveTurn(id: string | null): void {
     this.activeTurnId = id;
+    this.notifyChange();
   }
 
-  private async cancelGeneration(): Promise<void> {
+  private async cancelGeneration(waitForCompletion = false): Promise<void> {
     if (!this.activeTurnId) return;
     const clientRequestId = this.activeTurnId;
-    await fetch(apiUrl(`/api/voice/interrupt`), {
+    const response = await fetch(apiUrl(`/api/voice/interrupt`), {
       method: "POST", headers: { "X-OvertChat-Voice-Ticket": this.grant.token, "Content-Type": "application/json" },
-      body: JSON.stringify({ clientRequestId }),
+      body: JSON.stringify({ clientRequestId, waitForCompletion }),
     }).catch(() => undefined);
+    if (waitForCompletion && !response?.ok) throw new Error("Could not stop the previous response.");
   }
 
   private async setupAudio(): Promise<void> {
@@ -264,8 +325,8 @@ export class OvertChatVoiceClient {
     this.outputMeterFrame = requestAnimationFrame(update);
   }
 
-  private onAudio(buffer: ArrayBuffer): void {
-    if (!this.playback) return;
+  private onAudio(buffer: ArrayBuffer, responseId: string): void {
+    if (!this.playback || this.suppressPlayback || responseId !== this.playableResponseId) return;
     const view = new DataView(buffer);
     const samples = new Float32Array(buffer.byteLength / 2);
     for (let index = 0; index < samples.length; index += 1) {
@@ -284,6 +345,7 @@ export class OvertChatVoiceClient {
     switch (event.type) {
       case "input_audio_buffer.speech_started": {
         this.callbacks.onWarning?.(null);
+        this.suppressPlayback = true;
         this.clearPlayback();
         void this.cancelGeneration();
         this.callbacks.onStatus("user-speaking");
@@ -297,9 +359,16 @@ export class OvertChatVoiceClient {
         this.callbacks.onStatus("listening");
         break;
       case "response.created":
+        this.responseId = event.response.id;
+        this.playableResponseId = event.response.id;
+        this.suppressPlayback = this.switchingTurns;
+        this.notifyChange();
         this.callbacks.onStatus("thinking");
         break;
       case "response.done":
+        if (event.response.id !== this.responseId) break;
+        this.responseId = null;
+        this.notifyChange();
         if (event.response?.status === "failed") {
           this.callbacks.onWarning?.("The voice response failed. Please try speaking again.");
         }

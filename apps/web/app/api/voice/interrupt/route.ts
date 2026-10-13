@@ -21,6 +21,15 @@ export async function POST(request: Request) {
   // A delayed interruption must never cancel the next response.
   if (generation?.chatId === ticket.chatId && generation.status === "running" && chat?.activeStreamId === generation.id) {
     cancel(generation.id);
+    if (body.waitForCompletion === true) {
+      const deadline = Date.now() + 10_000;
+      while ((await getChatGenerationByRequestId(ticket.userId, body.clientRequestId))?.status === "running") {
+        if (request.signal.aborted || Date.now() >= deadline) {
+          return Response.json({ error: "The previous response is still stopping. Please try again." }, { status: 409 });
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
   }
   return new Response(null, { status: 204 });
 }
