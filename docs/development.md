@@ -656,9 +656,16 @@ VOICE_LIVE_TEST=1 VOICE_URL=http://127.0.0.1:18765 \
 docker compose -f voice/compose.test.yml down
 ```
 
-Set `VOICE_LIVE_MODEL_URL=http://127.0.0.1:8001/v1` on that test command to also
-exercise a complete spoken turn through an existing local vLLM server. The test
-discovers its model and creates only an isolated E2E model configuration.
+For a real-model run, add `VOICE_LIVE_MODEL_URL=http://<vllm-host>:8000/v1`
+to the environment above and run `voice-model-live.spec.ts`. This separate test
+uses the live model for every answer and tool decision, verifies text → spoken
+question → text context recall, unchanged request prefixes and tools, and a
+memory-tool call during voice. A transparent proxy records provider-reported
+usage and model response timing; the test attaches these alongside persisted
+usage and browser audio timing. Cache hits are observed, not required: they
+depend on the server configuration and cache state. The test discovers the
+first served model unless `VOICE_LIVE_MODEL` selects one explicitly. It creates
+only an isolated E2E model configuration and never changes the user's models.
 
 Only these test containers expose speech ports, bound to loopback. The model
 cache stays in a test-only volume. `OVERTCHAT_VOICE_APP_URL` directs engine

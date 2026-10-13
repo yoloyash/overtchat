@@ -238,22 +238,6 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   await expect.poll(async () => (await (await page.request.get(`/api/chat/${originalChatId}/stream/status`)).json()).status).toBe("aborted");
   delayedResponse = false;
   await expect.poll(doneCount, { timeout: 30_000 }).toBe(4);
-  if (process.env.VOICE_LIVE_MODEL_URL) {
-    const baseUrl = process.env.VOICE_LIVE_MODEL_URL.replace(/\/$/, "");
-    const models = await (await request.get(`${baseUrl}/models`)).json();
-    const db = openE2eDatabase();
-    db.prepare("UPDATE model_configs SET base_url=?, model=?, provider_id='vllm', api_format='auto' WHERE id=?")
-      .run(baseUrl, models.data[0].id, model.id);
-    db.close();
-    await speak();
-    await expect.poll(doneCount, { timeout: 90_000 }).toBe(5);
-    const last = await page.evaluate(() => {
-      const events = (window as unknown as { voiceEvents: { type: string; response?: { status: string; output: unknown[] } }[] }).voiceEvents;
-      return events.filter(e => e.type === "response.done").at(-1)?.response;
-    });
-    expect(last?.status).toBe("completed");
-    expect(JSON.stringify(last?.output)).toMatch(/heron/i);
-  }
   await page.getByRole("button", { name: "End voice session" }).click();
   await expect.poll(async () => {
     const pool = await (await request.get("http://127.0.0.1:18765/v1/pool")).json();
