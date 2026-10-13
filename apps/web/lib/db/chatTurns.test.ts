@@ -30,6 +30,7 @@ raw.exec(`
   CREATE TABLE user (
     id TEXT PRIMARY KEY NOT NULL
   );
+  CREATE TABLE voice_sessions (chat_id TEXT PRIMARY KEY, id TEXT NOT NULL, user_id TEXT NOT NULL, auth_session_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
   CREATE TABLE chats (
     model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
@@ -115,6 +116,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   raw.exec(`
+    DELETE FROM voice_sessions;
     DELETE FROM generation_usage;
     DELETE FROM chat_generations;
     DELETE FROM messages;
@@ -169,6 +171,25 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("fences old voice sessions and competing text writes inside the transaction", () => {
+    seedChat();
+    raw.prepare("INSERT INTO voice_sessions VALUES ('chat', 'voice-session', 'user', 'login', ?)").run(Date.now() + 60000);
+    const input = { chatId: "chat", userId: "user", projectId: null, streamId: "stream",
+      clientRequestId: "request", requestFingerprint: "fingerprint", staleStreamId: null,
+      userMessage: { id: "spoken", parts: [{ type: "text" as const, text: "Hello" }], metadata: { responseStyle: "voice-v1" } },
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("stream-active");
+    expect(chatTurns.commitChatTurn({ ...input, voiceSessionId: "old-session" })).toBe("stream-active");
+    expect(messageIds()).not.toContain("spoken");
+    expect(chatTurns.commitChatTurn({ ...input, voiceSessionId: "voice-session" })).toBe("committed");
+    expect(JSON.parse((raw.prepare("SELECT metadata FROM messages WHERE id='spoken'").get() as { metadata: string }).metadata)).toEqual({ responseStyle: "voice-v1" });
+    chatTurns.completeChatStream({ chatId: "chat", streamId: "stream", status: "aborted" });
+    raw.prepare("DELETE FROM voice_sessions").run();
+    const next = { ...input, clientRequestId: "next", streamId: "next", userMessage: { id: "typed", parts: [{ type: "text" as const, text: "Again" }] } };
+    expect(chatTurns.commitChatTurn({ ...next, voiceSessionId: "voice-session" })).toBe("stream-active");
+    expect(chatTurns.commitChatTurn(next)).toBe("committed");
+  });
+
   it("claims continuation without deleting output and updates its row, search index, and usage", async () => {
     seedChat();
     const original = (await chatDb.getMessages("chat")).at(-1)!;

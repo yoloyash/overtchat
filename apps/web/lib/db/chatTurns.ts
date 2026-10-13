@@ -4,7 +4,7 @@ import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
 import type { ChatGenerationStatus } from "@overtchat/shared";
 import { db } from "@/lib/db/client";
 import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
-import { chatGenerations, chats, messages } from "@/lib/db/schema";
+import { chatGenerations, chats, messages, voiceSessions } from "@/lib/db/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import type { EstimatedGenerationCost } from "@/lib/providers/server/model-cost";
 import { extractSearchText } from "@/lib/search/extract";
@@ -118,6 +118,7 @@ export function commitChatTurn({
   clientRequestId,
   requestFingerprint,
   staleStreamId,
+  voiceSessionId,
   truncateFromMessageId,
   continueMessage,
   userMessage,
@@ -130,9 +131,10 @@ export function commitChatTurn({
   clientRequestId: string;
   requestFingerprint: string;
   staleStreamId: string | null;
+  voiceSessionId?: string;
   truncateFromMessageId?: string;
   continueMessage?: UIMessage;
-  userMessage?: { id: string; parts: AnyPart[] };
+  userMessage?: { id: string; parts: AnyPart[]; metadata?: Record<string, unknown> };
 }): CommitChatTurnResult {
   return db.transaction((tx) => {
     const duplicate = tx
@@ -164,6 +166,12 @@ export function commitChatTurn({
       .get();
 
     if (existing && existing.userId !== userId) return "not-found";
+    const lease = tx.select().from(voiceSessions).where(eq(voiceSessions.chatId, chatId)).get();
+    const liveLease = lease && lease.expiresAt.getTime() > Date.now() ? lease : null;
+    if (voiceSessionId ? liveLease?.id !== voiceSessionId || liveLease.userId !== userId : Boolean(liveLease)) {
+      return "stream-active";
+    }
+
     if (existing?.activeStreamId && existing.activeStreamId !== staleStreamId) {
       return "stream-active";
     }
@@ -249,6 +257,7 @@ export function commitChatTurn({
           chatId,
           role: "user",
           parts: userMessage.parts,
+          metadata: userMessage.metadata,
         })
         .run();
       const content = extractSearchText(userMessage.parts);

@@ -609,24 +609,41 @@ Build STT with `docker compose --profile stt build stt-cpu` or
 
 ### Realtime voice
 
-Voice authorization is bound to the authenticated socket, independently of the
-browser's model field and pooled handler state.
-Failed transcript saves stay pending and retry with bounded exponential delay,
-including after End while the page remains open; successful saves still update
-the parent chat view. Reloading the page discards unsaved in-memory retries.
-Non-retryable failures require Retry saving.
+Voice can be started and ended in saved text chats. Both input modes call
+`apps/web/lib/chat/run.ts`: model settings, system instructions, tools,
+compaction, message IDs, search indexing, and generation usage share the normal
+chat path. A versioned response-style hint is persisted on each voice user turn;
+conversion replays that hint on its original turn without modifying the system
+prompt or prior turns. Existing `kind=voice` records need no content migration
+and can be continued with text on web, desktop, and mobile.
+
+The pinned Hugging Face engine still handles PCM transport, STT, turn detection,
+and TTS. Its authenticated bridge supplies only the latest committed user input;
+server-owned history and tool execution replace browser transcript uploads. The
+browser receives canonical message snapshots over `/api/voice/events`. End
+revokes the connection, aborts generation, and waits for it to settle before
+returning to text. A 90-second session lease expires abandoned connections;
+heartbeats renew it while the authenticated event reader stays connected.
+Delivery and cancellation remain process-local, matching the single-replica
+chat deployment. SQLite remains the durable source of truth.
+
+Migration 0020 adds leases only. API level 3 and voice ticket version 2 require
+updating bundled clients and the voice image together; obsolete browser history
+uploads return 410 with a reload instruction. Temporary chats and native mobile
+microphone transport retain their existing availability limits.
 
 Run the focused regressions and build the pinned engine image:
 
 ```sh
-npm run test -w apps/web -- lib/voice lib/speech/proxy.test.ts app/api/voice app/api/internal/voice lib/db/voiceChats.test.ts
+npm run test -w apps/web -- lib/voice lib/speech/proxy.test.ts app/api/voice app/api/internal/voice lib/db/voiceSessions.test.ts lib/db/chatTurns.test.ts lib/chat/response-style.test.ts app/api/chat/route.test.ts
 docker compose -f voice/compose.test.yml build voice
 docker run --rm --entrypoint python -v "$PWD/voice:/tests:ro" -w /tests overtchat-voice:test -B -m unittest discover -s /tests -p 'test_*.py'
 ```
 
 The opt-in browser integration test uses real CPU Parakeet and Kokoro, a
 controlled text provider, the app's real authorization/persistence routes, and
-Chromium audio playback. It uses the normal isolated E2E database and does not
+Chromium audio playback. It checks text → voice → text in the same conversation,
+system-prompt equality, durable style replay, and speech/model recovery. It uses the normal isolated E2E database and does not
 touch a managed installation. Start speech services first; the test starts the
 voice engine after the app is ready for engine warmup:
 

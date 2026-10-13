@@ -61,6 +61,7 @@ const ChatRequestEnvelopeSchema = z.object({
     .default("submit-message"),
   messageId: z.string().optional(),
   temporary: z.boolean().optional().default(false),
+  responseStyle: z.enum(["text", "voice"]).optional().default("text"),
 });
 
 export interface ParsedChatRequest {
@@ -76,6 +77,7 @@ export interface ParsedChatRequest {
   action: ChatRequestAction;
   reasoningLevel: ChatReasoningLevel;
   temporary: boolean;
+  responseStyle?: "text" | "voice";
 }
 
 export class ChatRequestError extends Error {
@@ -100,6 +102,7 @@ export function chatRequestFingerprint({
   action,
   reasoningLevel,
   temporary,
+  responseStyle = "text",
 }: ParsedChatRequest): string {
   return createHash("sha256")
     .update(
@@ -115,6 +118,7 @@ export function chatRequestFingerprint({
         action,
         reasoningLevel,
         temporary,
+        responseStyle,
       }),
     )
     .digest("hex");
@@ -191,6 +195,7 @@ export async function parseChatRequest(
     action,
     reasoningLevel: envelope.data.reasoningLevel,
     temporary: envelope.data.temporary,
+    responseStyle: envelope.data.responseStyle,
   };
 }
 

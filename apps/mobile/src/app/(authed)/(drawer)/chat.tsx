@@ -168,7 +168,6 @@ function ChatSurface({
   isNew,
   initialMessages,
   projectId,
-  chatKind,
 }: {
   chatId: string;
   isNew: boolean;
@@ -190,7 +189,6 @@ function ChatSurface({
     (session.data?.user as { role?: string | null } | undefined)?.role ===
     "admin";
   const speech = useSpeech();
-  const voiceReadOnly = !isNew && chatKind === "voice";
 
   const {
     data: models,
@@ -549,7 +547,7 @@ function ChatSurface({
   }
 
   function handleContinue(messageId: string) {
-    if (streaming || !configured || voiceReadOnly || messages.at(-1)?.id !== messageId) return;
+    if (streaming || !configured || messages.at(-1)?.id !== messageId) return;
     setContextStatus(null);
     setLocalAnchorRequestKey((key) => key + 1);
     void sendMessage(undefined, {
@@ -662,13 +660,12 @@ function ChatSurface({
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
-          onContinue={voiceReadOnly ? undefined : handleContinue}
+          onContinue={handleContinue}
           onImageReference={imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
             addReference(file);
             setImageOptions({ size: "auto", quality: "auto" });
           } : undefined}
           localAnchorRequestKey={localAnchorRequestKey}
-          readOnly={voiceReadOnly}
         />
       )}
 
@@ -678,31 +675,6 @@ function ChatSurface({
           { paddingBottom: keyboardVisible ? 8 : 12 + insets.bottom },
         ]}
       >
-        {voiceReadOnly ? (
-          <View
-            style={[
-              styles.voiceNotice,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <Ionicons
-              name="pulse-outline"
-              size={18}
-              color={colors.mutedForeground}
-            />
-            <Text
-              style={[
-                styles.voiceNoticeText,
-                {
-                  color: colors.mutedForeground,
-                  fontFamily: fonts.sansRegular,
-                },
-              ]}
-            >
-              Resume this voice chat on the web.
-            </Text>
-          </View>
-        ) : (
           <Composer
             configured={configured}
             modelLoading={modelLoading}
@@ -742,7 +714,6 @@ function ChatSurface({
             onSubmit={handleSubmit}
             onStop={handleStop}
           />
-        )}
       </View>
 
       <ModelPickerSheet
@@ -808,17 +779,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingTop: 8,
   },
-  voiceNotice: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-  },
-  voiceNoticeText: { fontSize: 14 },
+
 });
 
 function assetToPickedFile(asset: ImagePicker.ImagePickerAsset): PickedFile {

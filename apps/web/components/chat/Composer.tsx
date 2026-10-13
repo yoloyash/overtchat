@@ -720,18 +720,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   <Square className="size-3 fill-current" />
                 </Button>
               )}
-              {voiceActive && !input.trim() && readyParts.length === 0 ? (
+              {voiceActive && (
                 <Button
                   type="button"
                   variant="secondary"
                   size="icon-sm"
                   className="shrink-0 rounded-full"
                   onClick={onEndVoice}
+                  disabled={textInputDisabled}
                   aria-label="End voice session"
                 >
                   <X />
                 </Button>
-              ) : !streaming && voiceInstalled &&
+              )}
+              {!voiceActive && !streaming && voiceInstalled &&
                 voiceEligible &&
                 !input.trim() &&
                 readyParts.length === 0 ? (
@@ -754,7 +756,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   size="icon-sm"
                   className="shrink-0 rounded-full"
                   disabled={
-                    uploading ||
+                    textInputDisabled || uploading ||
                     (!input.trim() &&
                       readyParts.length === 0)
                   }

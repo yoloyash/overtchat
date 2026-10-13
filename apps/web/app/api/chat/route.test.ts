@@ -1029,14 +1029,12 @@ describe("chat route setup boundary", () => {
     expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
-  it("does not continue a voice chat through the text generation route", async () => {
+  it("continues an existing voice chat through ordinary text generation", async () => {
     mocks.getChat.mockResolvedValue({ ...existingChat(), kind: "voice" });
-
     const response = await POST(request());
-
-    expect(response.status).toBe(409);
-    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
-    expect(mocks.agentStream).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalled();
+    expect(mocks.agentStream).toHaveBeenCalled();
   });
 
   it("uses automatic tools normally and forces only the first requested step", async () => {
@@ -1540,13 +1538,32 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("uses identical system instructions and tools for voice and text turns", async () => {
+    mocks.inlineUploads.mockImplementation(async (value) => value);
+    await POST(request());
+    const text = mocks.agentSettings[0];
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, responseStyle: "voice" });
+    await POST(request());
+    const voice = mocks.agentSettings[1];
+    expect(voice.instructions).toEqual(text.instructions);
+    expect(voice.tools).toEqual(text.tools);
+    expect(voice.toolOrder).toEqual(text.toolOrder);
+    expect(voice.providerOptions).toEqual(text.providerOptions);
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(expect.objectContaining({
+      userMessage: { id: "user-message", parts: messages[0].parts, metadata: { responseStyle: "voice-v1" } },
+    }));
+    const voiceInput = mocks.convertToModelMessages.mock.calls.at(-1)?.[0];
+    expect(JSON.stringify(voiceInput)).toContain("For this response only");
+    expect(JSON.stringify(mocks.convertToModelMessages.mock.calls[0][0])).not.toContain("For this response only");
+  });
+
   it("keeps prompt content and persisted UI messages unchanged", async () => {
     const originalMessages = structuredClone(messages);
 
     await POST(request());
 
     expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
-    expect(mocks.uiStreamOptions?.originalMessages).toBe(messages);
+    expect(mocks.uiStreamOptions?.originalMessages).toEqual(messages);
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         userMessage: { id: "user-message", parts: messages[0].parts },

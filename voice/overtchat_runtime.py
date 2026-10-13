@@ -61,7 +61,7 @@ def valid_ticket(token: str, secret: str, now: float | None = None) -> bool:
     current = int(time.time() if now is None else now)
     return bool(
         isinstance(payload, dict)
-        and payload.get("version") == 1
+        and payload.get("version") == 2
         and isinstance(payload.get("connectBy"), int)
         and payload["connectBy"] >= current
         and isinstance(payload.get("expiresAt"), int)
@@ -115,6 +115,7 @@ def install_runtime_hooks(secret: str) -> None:
     from speech_to_speech.LLM.base_openai_compatible_language_model import (
         BaseOpenAICompatibleHandler,
     )
+    from speech_to_speech.pipeline.messages import EndOfResponse
     from speech_to_speech.api.openai_realtime import server as server_module
     from speech_to_speech.api.openai_realtime.service import RealtimeService
 
@@ -135,6 +136,22 @@ def install_runtime_hooks(secret: str) -> None:
         # pooled handler or derive authorization from browser session config.
         handler = copy(self)
         handler.model_name = _voice_connection(request.runtime_config).ticket
+        # Let the upstream reopen gate settle before a provider call can run
+        # tools. Speculative work must never mutate durable chat state.
+        generation = handler.cancel_scope.generation if handler.cancel_scope else None
+        tracker = handler.speculative_turns
+        if tracker is not None and not tracker.commit_if_latest_after_reopen_grace(
+            request.turn_id, request.turn_revision
+        ):
+            yield EndOfResponse(turn_id=request.turn_id, turn_revision=request.turn_revision,
+                                response_key=request.response_key, cancel_generation=generation)
+            return
+        if handler.cancel_scope and handler.cancel_scope.is_stale(generation):
+            yield EndOfResponse(turn_id=request.turn_id, turn_revision=request.turn_revision,
+                                response_key=request.response_key, cancel_generation=generation)
+            return
+        handler._extra_body = {**(handler._extra_body or {}),
+                               "overtchat_turn_id": request.response_key}
         yield from original_process(handler, request)
 
     def register_authenticated_session(self: Any) -> str:

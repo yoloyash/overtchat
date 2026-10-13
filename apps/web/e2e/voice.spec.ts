@@ -41,19 +41,9 @@ function seedVoiceFixtures() {
 
 test.beforeEach(resetE2eDatabase);
 
-test("voice is a distinct resumable chat mode in the regular composer", async ({
+test("voice toggles within ordinary and legacy voice chats", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "mediaDevices", {
-      configurable: true,
-      value: {
-        getUserMedia: async () => {
-          throw new DOMException("Permission denied", "NotAllowedError");
-        },
-      },
-    });
-  });
   await page.route("**/api/capabilities", async (route) => {
     await route.fulfill({
       contentType: "application/json",
@@ -68,10 +58,15 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
     });
   });
   await page.route("**/api/voice/session", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({ status: 204 });
+      return;
+    }
     await route.fulfill({
       contentType: "application/json",
       body: JSON.stringify({
         token: "test-ticket",
+        sessionId: "test-session",
         chatId: "new-voice-chat",
         endpoint: "/api/voice/realtime",
         voice: "af_heart",
@@ -79,6 +74,10 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
       }),
     });
   });
+
+  await page.route("**/api/voice/events", route => route.fulfill({
+    status: 503, body: "Unavailable",
+  }));
 
   await page.goto("/signup");
   await page.locator("#name").fill("Voice Admin");
@@ -100,7 +99,7 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await composer.fill("");
   await page.getByRole("button", { name: "Start voice conversation" }).click();
-  await expect(page.getByText(/Microphone access was denied/)).toBeVisible();
+  await expect(page.getByText(/The voice session could not start/)).toBeVisible();
   await expect(composer).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop assistant" })).toHaveCount(0);
@@ -129,15 +128,21 @@ test("voice is a distinct resumable chat mode in the regular composer", async ({
   await page.goto("/chat/text-chat");
   await expect(
     page.getByRole("button", { name: "Start voice conversation" }),
-  ).toHaveCount(0);
+  ).toBeVisible();
 
   await page.goto("/chat/voice-chat");
-  await expect(page.getByPlaceholder("Resume voice to continue")).toBeDisabled();
+  await expect(composer).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Start voice conversation" }),
   ).toBeVisible();
   await expect(page.getByText("Hello by voice")).toBeVisible();
 
+  await page.route("**/api/server-capabilities", async route => {
+    const response = await route.fetch();
+    await route.fulfill({ response, json: { ...await response.json(), voice: {
+      available: false, installed: false, unavailableReason: "not-installed",
+    } } });
+  });
   await page.goto("/settings/services");
   await expect(
     page.getByRole("heading", { name: "Realtime voice" }),

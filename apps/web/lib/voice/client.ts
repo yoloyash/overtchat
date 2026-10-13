@@ -4,18 +4,9 @@ import {
   OpenAIRealtimeWebSocket,
   RealtimeAgent,
   RealtimeSession,
-  tool,
   type TransportEvent,
 } from "@openai/agents/realtime";
-import {
-  webSearchResults,
-  type PersistedWebSearchOutput,
-  type VoiceHistoryItem,
-  type VoiceSessionGrant,
-  type VoiceToolDefinition,
-  type WebSearchResult,
-} from "@overtchat/shared";
-import { completedVoiceHistory } from "@/lib/voice/history";
+import type { VoiceSessionGrant } from "@overtchat/shared";
 import { apiUrl } from "@/lib/api-url";
 
 export type VoiceClientStatus =
@@ -26,30 +17,12 @@ export type VoiceClientStatus =
   | "assistant-speaking"
   | "closed";
 
-export interface VoiceTranscriptUpdate {
-  id: string;
-  role: "user" | "assistant";
-  text: string;
-  partial: boolean;
-}
-
-export interface VoiceToolActivityUpdate {
-  id: string;
-  label: string;
-  detail: string | null;
-  status: "running" | "completed" | "failed";
-  sources: WebSearchResult[];
-}
-
 export interface VoiceClientCallbacks {
   onStatus: (status: VoiceClientStatus) => void;
-  onTranscript: (update: VoiceTranscriptUpdate) => void;
   onInputLevel: (level: number) => void;
   onOutputLevel: (level: number) => void;
   onError: (error: Error) => void;
   onWarning?: (message: string | null) => void;
-  onToolActivity: (activity: VoiceToolActivityUpdate) => void;
-  onHistoryItems?: (items: VoiceHistoryItem[]) => void;
 }
 
 const AUDIO_SAMPLE_RATE = 24_000;
@@ -59,128 +32,6 @@ function websocketUrl(path: string): string {
   const url = new URL(apiUrl(path), window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   return url.href;
-}
-
-interface VoiceToolResult {
-  output: string;
-  sources: WebSearchResult[];
-  failed: boolean;
-}
-
-function historyFingerprint(item: VoiceHistoryItem): string {
-  return item.type === "message"
-    ? JSON.stringify({
-        type: item.type,
-        id: item.id,
-        role: item.role,
-        status: item.status,
-        text: item.text,
-      })
-    : JSON.stringify({
-        type: item.type,
-        id: item.id,
-        name: item.name,
-        status: item.status,
-        input: item.input,
-        output: item.output,
-      });
-}
-
-async function executeVoiceTool(
-  name: string,
-  input: unknown,
-): Promise<VoiceToolResult> {
-  try {
-    const response = await fetch(apiUrl("/api/voice/tools"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, input }),
-    });
-    const body = (await response.json().catch(() => null)) as
-      | { output?: unknown; error?: string }
-      | null;
-    if (!response.ok) {
-      return {
-        output: JSON.stringify({
-          error: body?.error || `Tool failed (${response.status})`,
-        }),
-        sources: [],
-        failed: true,
-      };
-    }
-    const output = body?.output ?? null;
-    return {
-      output: JSON.stringify(output),
-      sources:
-        name === "web_search"
-          ? webSearchResults(output as PersistedWebSearchOutput)
-          : [],
-      failed: false,
-    };
-  } catch {
-    return {
-      output: JSON.stringify({ error: "The tool could not be reached." }),
-      sources: [],
-      failed: true,
-    };
-  }
-}
-
-function toolDetail(name: string, input: unknown): string | null {
-  if (!input || typeof input !== "object") return null;
-  const values = input as { query?: unknown; url?: unknown };
-  if (name === "web_search" && typeof values.query === "string") {
-    return values.query;
-  }
-  if (name === "fetch_url" && typeof values.url === "string") {
-    try {
-      return new URL(values.url).hostname.replace(/^www\./u, "");
-    } catch {
-      return values.url;
-    }
-  }
-  return null;
-}
-
-function realtimeTools(
-  definitions: VoiceToolDefinition[],
-  callbacks: VoiceClientCallbacks,
-) {
-  return definitions.map((definition) =>
-    tool({
-      name: definition.name,
-      description: definition.description,
-      parameters: definition.parameters as never,
-      strict: false,
-      execute: async (input) => {
-        const id = crypto.randomUUID();
-        const search = definition.name === "web_search";
-        const detail = toolDetail(definition.name, input);
-        callbacks.onToolActivity({
-          id,
-          label: search ? "Searching the web" : "Reading a source",
-          detail,
-          status: "running",
-          sources: [],
-        });
-        const result = await executeVoiceTool(definition.name, input);
-        callbacks.onToolActivity({
-          id,
-          label: result.failed
-            ? search
-              ? "Search unavailable"
-              : "Source unavailable"
-            : search
-              ? "Searched the web"
-              : "Read a source",
-          detail,
-          status: result.failed ? "failed" : "completed",
-          sources: result.sources,
-        });
-        return result.output;
-      },
-    }),
-  );
 }
 
 export class OvertChatVoiceClient {
@@ -197,11 +48,7 @@ export class OvertChatVoiceClient {
   private outputMeterFrame: number | null = null;
   private muted = false;
   private closing = false;
-  private currentUserItem = "";
-  private userText = new Map<string, string>();
-  private assistantText = new Map<string, string>();
-  // Notification deduplication only. HistorySync separately tracks server ACKs.
-  private emittedHistory = new Map<string, string>();
+  private activeTurnId: string | null = null;
 
   constructor(grant: VoiceSessionGrant, callbacks: VoiceClientCallbacks) {
     this.grant = grant;
@@ -232,7 +79,8 @@ export class OvertChatVoiceClient {
     const agent = new RealtimeAgent({
       name: "OvertChat",
       voice: this.grant.voice,
-      tools: realtimeTools(this.grant.tools, this.callbacks),
+      // Tools execute once in the shared server generation, never in the browser.
+      tools: [],
     });
     this.session = new RealtimeSession(agent, {
       transport: this.transport,
@@ -263,9 +111,6 @@ export class OvertChatVoiceClient {
     });
     this.session.on("audio", (event) => this.onAudio(event.data));
     this.session.on("audio_interrupted", () => this.clearPlayback());
-    this.session.on("history_updated", (history) => {
-      this.emitHistoryItems(completedVoiceHistory(history));
-    });
     this.session.on("error", () => {
       // Provider error payloads can contain request bodies or credentials.
       this.callbacks.onWarning?.("The voice response failed. Please try speaking again.");
@@ -294,6 +139,7 @@ export class OvertChatVoiceClient {
   interrupt(): void {
     this.clearPlayback();
     this.session?.interrupt();
+    void this.cancelGeneration();
     this.callbacks.onStatus("listening");
   }
 
@@ -335,6 +181,19 @@ export class OvertChatVoiceClient {
     this.callbacks.onInputLevel(0);
     this.callbacks.onOutputLevel(0);
     this.callbacks.onStatus("closed");
+  }
+
+  setActiveTurn(id: string | null): void {
+    this.activeTurnId = id;
+  }
+
+  private async cancelGeneration(): Promise<void> {
+    if (!this.activeTurnId) return;
+    const clientRequestId = this.activeTurnId;
+    await fetch(apiUrl(`/api/voice/interrupt`), {
+      method: "POST", headers: { "X-OvertChat-Voice-Ticket": this.grant.token, "Content-Type": "application/json" },
+      body: JSON.stringify({ clientRequestId }),
+    }).catch(() => undefined);
   }
 
   private async setupAudio(): Promise<void> {
@@ -426,7 +285,7 @@ export class OvertChatVoiceClient {
       case "input_audio_buffer.speech_started": {
         this.callbacks.onWarning?.(null);
         this.clearPlayback();
-        this.currentUserItem = typeof event.item_id === "string" ? event.item_id : "";
+        void this.cancelGeneration();
         this.callbacks.onStatus("user-speaking");
         break;
       }
@@ -434,84 +293,12 @@ export class OvertChatVoiceClient {
         this.callbacks.onStatus("thinking");
         break;
       case "conversation.item.input_audio_transcription.failed":
-        if (typeof event.item_id === "string") this.userText.delete(event.item_id);
         this.callbacks.onWarning?.("Your speech could not be transcribed. Please try speaking again.");
         this.callbacks.onStatus("listening");
         break;
-      case "conversation.item.input_audio_transcription.delta": {
-        const id = typeof event.item_id === "string" ? event.item_id : this.currentUserItem;
-        const delta = typeof event.delta === "string" ? event.delta : "";
-        if (!id || !delta) break;
-        const text = `${this.userText.get(id) ?? ""}${delta}`;
-        this.userText.set(id, text);
-        this.callbacks.onTranscript({ id, role: "user", text, partial: true });
-        break;
-      }
-      case "conversation.item.input_audio_transcription.completed": {
-        const id = typeof event.item_id === "string" ? event.item_id : this.currentUserItem;
-        const text = typeof event.transcript === "string" ? event.transcript : this.userText.get(id) ?? "";
-        if (id && text) {
-          this.userText.delete(id);
-          this.callbacks.onTranscript({ id, role: "user", text, partial: false });
-          this.emitHistoryItems([
-            {
-              type: "message",
-              id,
-              previousId: null,
-              role: "user",
-              status: "completed",
-              text,
-            },
-          ]);
-        }
-        break;
-      }
       case "response.created":
         this.callbacks.onStatus("thinking");
         break;
-      case "response.output_audio_transcript.delta":
-      case "response.audio_transcript.delta": {
-        const id =
-          "item_id" in event && typeof event.item_id === "string"
-            ? event.item_id
-            : typeof event.response_id === "string"
-              ? event.response_id
-              : "assistant";
-        const delta = typeof event.delta === "string" ? event.delta : "";
-        if (!delta) break;
-        const text = `${this.assistantText.get(id) ?? ""}${delta}`;
-        this.assistantText.set(id, text);
-        this.callbacks.onTranscript({ id, role: "assistant", text, partial: true });
-        break;
-      }
-      case "response.output_audio_transcript.done":
-      case "response.audio_transcript.done": {
-        const id =
-          "item_id" in event && typeof event.item_id === "string"
-            ? event.item_id
-            : typeof event.response_id === "string"
-              ? event.response_id
-              : "assistant";
-        const text =
-          typeof event.transcript === "string"
-            ? event.transcript
-            : this.assistantText.get(id) ?? "";
-        if (text) {
-          this.assistantText.delete(id);
-          this.callbacks.onTranscript({ id, role: "assistant", text, partial: false });
-          this.emitHistoryItems([
-            {
-              type: "message",
-              id,
-              previousId: null,
-              role: "assistant",
-              status: "completed",
-              text,
-            },
-          ]);
-        }
-        break;
-      }
       case "response.done":
         if (event.response?.status === "failed") {
           this.callbacks.onWarning?.("The voice response failed. Please try speaking again.");
@@ -521,13 +308,4 @@ export class OvertChatVoiceClient {
     }
   }
 
-  private emitHistoryItems(items: VoiceHistoryItem[]): void {
-    const changed = items.filter((item) => {
-      const serialized = historyFingerprint(item);
-      if (this.emittedHistory.get(item.id) === serialized) return false;
-      this.emittedHistory.set(item.id, serialized);
-      return true;
-    });
-    if (changed.length) this.callbacks.onHistoryItems?.(changed);
-  }
 }

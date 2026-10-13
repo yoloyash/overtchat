@@ -855,3 +855,13 @@ export const serverCapabilities = sqliteTable("server_capabilities", {
     .$onUpdate(() => new Date())
     .notNull(),
 });
+
+// A voice connection leases a chat; messages and generations use the ordinary
+// chat tables. No chat FK: starting the microphone must not create an empty chat.
+export const voiceSessions = sqliteTable("voice_sessions", {
+  chatId: text("chat_id").primaryKey(),
+  id: text("id").notNull().unique(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  authSessionId: text("auth_session_id").notNull().references(() => session.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+});

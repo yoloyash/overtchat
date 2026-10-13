@@ -1,4 +1,5 @@
 import "server-only";
+import { voiceSessions } from "./schema";
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { UIMessage } from "ai";
 import { db } from "@/lib/db/client";
@@ -169,7 +170,10 @@ export async function listChatsByProject(
 }
 
 export async function deleteChat(id: string, userId: string): Promise<void> {
-  await db.delete(chats).where(and(eq(chats.id, id), eq(chats.userId, userId)));
+  db.transaction((tx) => {
+    tx.delete(voiceSessions).where(and(eq(voiceSessions.chatId, id), eq(voiceSessions.userId, userId))).run();
+    tx.delete(chats).where(and(eq(chats.id, id), eq(chats.userId, userId))).run();
+  });
 }
 
 export async function renameChat(
