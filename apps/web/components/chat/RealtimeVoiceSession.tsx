@@ -2,6 +2,7 @@
 
 import { ErrorNotice } from "@/components/ui/error-notice";
 import { getErrorMessage } from "@/lib/errors";
+import { apiError, ApiError } from "@overtchat/shared";
 import {
   forwardRef,
   useEffect,
@@ -87,6 +88,7 @@ export const RealtimeVoiceSession = forwardRef<
   ref,
 ) {
   const clientRef = useRef<OvertChatVoiceClient | null>(null);
+  const cleanupRef = useRef<Promise<void>>(Promise.resolve());
   const callbacksRef = useRef({ onMessages, onPersisted });
   useEffect(() => { callbacksRef.current = { onMessages, onPersisted }; }, [onMessages, onPersisted]);
   const endRef = useRef<() => Promise<void>>(async () => {});
@@ -108,15 +110,28 @@ export const RealtimeVoiceSession = forwardRef<
   // before changing them, so the UI and signed ticket cannot silently diverge.
   useEffect(() => {
     let mounted = true;
+    let stopping = false;
+    let client: OvertChatVoiceClient | null = null;
+    const previousCleanup = cleanupRef.current;
+    const active = () => mounted && !stopping;
+    let releasePromise: Promise<void> | null = null;
     let grant: VoiceSessionGrant | null = null;
     const events = new AbortController();
-    const release = async () => {
-      if (!grant) return;
-      const response = await fetch(apiUrl("/api/voice/session"), {
+    const release = (): Promise<void> => {
+      if (!grant) return Promise.resolve();
+      // End, startup failure, and effect cleanup may all release this lease.
+      // Coalesce them without preventing a retry after a failed request.
+      return releasePromise ??= fetch(apiUrl("/api/voice/session"), {
         method: "DELETE", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId: grant.sessionId }), keepalive: true,
-      });
-      if (!response.ok) throw new Error("Could not end the voice session.");
+      }).then(response => {
+        if (!response.ok) throw new ApiError("Could not end the voice session.", response.status);
+      }).catch(error => { releasePromise = null; throw error; });
+    };
+    const close = async () => {
+      // An obsolete effect must never close a newer effect's client.
+      await client?.close();
+      if (clientRef.current === client) clientRef.current = null;
     };
     const refresh = async () => {
       const page = await fetchChatMessagesPage(chatId);
@@ -126,7 +141,10 @@ export const RealtimeVoiceSession = forwardRef<
       }
     };
     endRef.current = async () => {
-      await clientRef.current?.close();
+      stopping = true;
+      events.abort();
+      await close();
+      await starting;
       await release();
       // Ending voice must settle the shared generation before text can submit.
       const deadline = Date.now() + 15_000;
@@ -143,29 +161,37 @@ export const RealtimeVoiceSession = forwardRef<
     };
     async function start() {
       try {
+        // Strict Mode replays effects; config changes can also replace an
+        // in-flight grant. Finish the old cleanup before acquiring a new lease.
+        await previousCleanup;
+        if (!active()) return;
+        setStatus("connecting");
+        setError(null);
+        setTurnWarning(null);
         const response = await fetch(apiUrl("/api/voice/session"), {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chatId, projectId, modelConfigId, webSearchEnabled, reasoningLevel,
             timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
         });
         const body = await response.json();
-        if (!response.ok || !body.token) throw new Error(body.error || "Could not start voice.");
+        if (!response.ok || !body.token) throw apiError(response.status, body, "Could not start voice.");
         grant = body as VoiceSessionGrant;
-        if (!mounted) { await release(); return; }
+        if (!active()) return;
         // Subscribe before opening the microphone: no initial turn can race the
         // canonical message stream. The realtime transcript is audio-only.
         const eventResponse = await fetch(apiUrl("/api/voice/events"), {
           headers: { "X-OvertChat-Voice-Ticket": grant.token }, signal: events.signal,
         });
-        if (!eventResponse.ok || !eventResponse.body) throw new Error("Could not connect voice history.");
+        if (!active()) return;
+        if (!eventResponse.ok || !eventResponse.body) throw new ApiError("Could not connect voice history.", eventResponse.status);
         const reader = eventResponse.body.pipeThrough(new TextDecoderStream()).getReader();
         void (async () => {
           let pending = "";
           try {
-            while (mounted) {
+            while (active()) {
               const { value, done } = await reader.read();
-              if (!mounted) break;
-              if (done) throw new Error("The voice connection ended. End voice and reconnect.");
+              if (!active()) break;
+              if (done) throw new ApiError("The voice connection ended. End voice and reconnect.", 503);
               pending += value;
               let boundary: number;
               while ((boundary = pending.indexOf("\n\n")) !== -1) {
@@ -176,51 +202,60 @@ export const RealtimeVoiceSession = forwardRef<
                 if (event.type === "message") {
                   callbacksRef.current.onMessages([event.message]);
                   if (event.message.role === "user") {
-                    clientRef.current?.setActiveTurn(event.message.id);
+                    client?.setActiveTurn(event.message.id);
                     callbacksRef.current.onPersisted();
                   }
                 } else if (event.type === "settled") {
-                  clientRef.current?.setActiveTurn(null);
+                  client?.setActiveTurn(null);
                   await refresh();
                 }
                 else if (event.type === "error") setTurnWarning(event.message);
               }
             }
           } catch (reason) {
-            if (!events.signal.aborted && mounted) {
+            if (!events.signal.aborted && active()) {
               setError(friendlyError(reason));
-              await clientRef.current?.close();
+              await close();
               await release().catch(() => {});
               await refresh().catch(() => {});
             }
           } finally { reader.releaseLock(); }
         })();
-        const client = new OvertChatVoiceClient(grant, {
-          onStatus: (next) => mounted && setStatus(next),
-          onInputLevel: (level) => mounted && setInputLevel(level),
-          onOutputLevel: (level) => mounted && setOutputLevel(level),
+        client = new OvertChatVoiceClient(grant, {
+          onStatus: (next) => active() && setStatus(next),
+          onInputLevel: (level) => active() && setInputLevel(level),
+          onOutputLevel: (level) => active() && setOutputLevel(level),
           onError: (nextError) => {
-            if (mounted) setError(friendlyError(nextError));
+            if (active()) setError(friendlyError(nextError));
             void release().catch(() => {});
           },
-          onWarning: (message) => mounted && setTurnWarning(message),
+          onWarning: (message) => active() && setTurnWarning(message),
         });
         clientRef.current = client;
         await client.connect();
       } catch (reason) {
-        await clientRef.current?.close();
+        await close();
         await release().catch(() => {});
         events.abort();
-        if (mounted) setError(friendlyError(reason));
+        if (active()) setError(friendlyError(reason));
+      } finally {
+        if (!active()) {
+          await close();
+          await release().catch(() => {});
+        }
       }
     }
-    void start();
+    const starting = start();
     return () => {
       mounted = false;
       events.abort();
-      void clientRef.current?.close();
-      clientRef.current = null;
-      void release().catch(() => {});
+      void close();
+      // The POST cannot just be aborted: the server may already have granted
+      // the lease. Await its response and release it before the next setup.
+      cleanupRef.current = starting.then(async () => {
+        await close();
+        await release();
+      }).catch(() => {});
     };
   }, [chatId, modelConfigId, projectId, webSearchEnabled, reasoningLevel]);
 

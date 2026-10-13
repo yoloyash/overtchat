@@ -99,7 +99,7 @@ test("voice toggles within ordinary and legacy voice chats", async ({
   await expect(page.getByRole("button", { name: "Send message" })).toBeVisible();
   await composer.fill("");
   await page.getByRole("button", { name: "Start voice conversation" }).click();
-  await expect(page.getByText(/The voice session could not start/)).toBeVisible();
+  await expect(page.getByText("Could not connect voice history.", { exact: true })).toBeVisible();
   await expect(composer).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Stop assistant" })).toHaveCount(0);

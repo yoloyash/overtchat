@@ -640,6 +640,13 @@ docker compose -f voice/compose.test.yml build voice
 docker run --rm --entrypoint python -v "$PWD/voice:/tests:ro" -w /tests overtchat-voice:test -B -m unittest discover -s /tests -p 'test_*.py'
 ```
 
+Voice startup also has a component regression test under React Strict Mode,
+which replays effect setup and cleanup in development. Run
+`npm run test -w apps/web -- components/chat/RealtimeVoiceSession.test.ts`
+when changing session startup or cleanup. It covers duplicate setup, delayed
+grants during configuration changes, End during startup, and actionable
+session conflicts. Production-build browser tests do not exercise this replay.
+
 The opt-in browser integration test uses real CPU Parakeet and Kokoro, a
 controlled text provider, the app's real authorization/persistence routes, and
 Chromium audio playback. It checks text → voice → text in the same conversation,
