@@ -79,4 +79,25 @@ describe("unified voice bridge", () => {
     }
   });
 
+  it("strips split citations only from speech while retaining canonical citation text", async () => {
+    const text = "A fact.\\ue200\\ue202turn0search12\\ue201 More cited wordsturn1ref0.\\ue202turn2sea";
+    mocks.run.mockImplementation(async (_req, _user, _parsed, options) => options.respond(new ReadableStream({
+      start(controller) {
+        controller.enqueue({ type: "start", messageId: "answer" });
+        controller.enqueue({ type: "text-start", id: "text" });
+        for (const delta of text) controller.enqueue({ type: "text-delta", id: "text", delta });
+        controller.enqueue({ type: "text-end", id: "text" });
+        controller.enqueue({ type: "finish" });
+        controller.close();
+      },
+    })));
+    const response = await POST(request());
+    const speech = (await response.text()).split("\n").filter(line => line.startsWith("data: {")).map(line =>
+      JSON.parse(line.slice(6)).choices?.[0]?.delta?.content ?? "").join("");
+    expect(speech).toBe("A fact. More cited words.");
+    expect(mocks.publish).toHaveBeenCalledWith("voice", { type: "message", message: expect.objectContaining({
+      parts: expect.arrayContaining([expect.objectContaining({ text })]),
+    }) });
+  });
+
 });

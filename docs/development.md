@@ -659,7 +659,12 @@ session conflicts. Production-build browser tests do not exercise this replay.
 The opt-in browser integration test uses real CPU Parakeet and Kokoro, a
 controlled text provider, the app's real authorization/persistence routes, and
 Chromium audio playback. It checks text → voice → text in the same conversation,
-system-prompt equality, durable style replay, and speech/model recovery. It uses the normal isolated E2E database and does not
+system-prompt equality, durable style replay, and speech/model recovery. It also
+records input sent to real Kokoro to verify streaming citation markers are
+removed from speech while remaining in canonical history. The speech projection
+handles literal and Unicode markers split across provider chunks; run
+`npm run test -w apps/web -- lib/voice/speech-text.test.ts`
+for the chunk-boundary cases. The browser test uses the normal isolated E2E database and does not
 touch a managed installation. Start speech services first; the test starts the
 voice engine after the app is ready for engine warmup:
 

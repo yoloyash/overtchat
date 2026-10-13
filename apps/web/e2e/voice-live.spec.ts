@@ -14,6 +14,10 @@ let modelFailure = false;
 let toolMode = false;
 let delayedResponse = false;
 let longResponse = false;
+let citationResponse = false;
+let speechInputs: string[] = [];
+const citedAnswer = "The blue heron lives near water.\\ue200\\ue202turn0search12\\ue201 It hunts fishturn1search0.";
+const spokenCitedAnswer = "The blue heron lives near water. It hunts fish.";
 const longAnswer = "The blue heron moves slowly beside the river. It watches the water carefully and waits for a fish. ".repeat(12).trim();
 const voiceUrl = process.env.VOICE_URL ?? "http://127.0.0.1:18765";
 let providerTools: unknown[] = [];
@@ -24,6 +28,19 @@ test.beforeAll(async () => {
     const chunks = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString());
+    if (req.url?.startsWith("/tts/")) {
+      speechInputs.push(body.input);
+      try {
+        const response = await fetch(`http://127.0.0.1:18880/${req.url.slice(5)}`, {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+        });
+        res.writeHead(response.status, { "Content-Type": response.headers.get("content-type") ?? "application/octet-stream" });
+        res.end(Buffer.from(await response.arrayBuffer()));
+      } catch {
+        res.writeHead(502).end();
+      }
+      return;
+    }
     if (!body.stream) {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify({ id: "title", object: "chat.completion", created: 1, model: "fixture",
@@ -51,6 +68,10 @@ test.beforeAll(async () => {
       send({ role: "assistant", content: "I will begin a longer answer. " }, null);
       const timer = setTimeout(() => { send({ content: "This should be cancelled." }, null); send({}, "stop"); res.end("data: [DONE]\n\n"); }, 20_000);
       res.on("close", () => clearTimeout(timer));
+    } else if (citationResponse) {
+      for (const content of citedAnswer) send({ content }, null);
+      send({}, "stop");
+      res.end("data: [DONE]\n\n");
     } else {
       send({ role: "assistant", content: longResponse ? longAnswer : answer }, null);
       send({}, "stop");
@@ -73,6 +94,8 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   toolMode = false;
   delayedResponse = false;
   longResponse = false;
+  citationResponse = false;
+  speechInputs = [];
   await page.addInitScript(() => {
     Object.assign(window, { playbackEvents: [] });
     const NativeWorklet = window.AudioWorkletNode;
@@ -118,7 +141,7 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   await page.locator("#password").fill("test-password-123");
   await page.getByRole("button", { name: "Create account" }).click();
   await page.waitForURL("**/");
-  for (const [id, url, model] of [["tts", "http://127.0.0.1:18880", "kokoro"], ["stt", "http://127.0.0.1:15092", "parakeet-tdt-0.6b-v3"]]) {
+  for (const [id, url, model] of [["tts", providerUrl.replace(/\/v1$/, "/tts"), "kokoro"], ["stt", "http://127.0.0.1:15092", "parakeet-tdt-0.6b-v3"]]) {
     const db = openE2eDatabase();
     db.prepare("UPDATE server_capabilities SET provider='openai-compatible', base_url=?, model=?, api_key=NULL WHERE id=?").run(url, model, id);
     db.close();
@@ -299,6 +322,24 @@ test("CPU speech through app origin: text to voice to text, canonical history, a
   completedDb.close();
   await expect(page.getByRole("button", { name: "End voice session" })).toBeVisible();
   await expect(page.getByText("Not confirmed sent.", { exact: false })).toHaveCount(0);
+
+  // Inspect the actual input reaching real Kokoro, including citations split
+  // across provider deltas, while canonical history retains the rich answer.
+  citationResponse = true;
+  speechInputs = [];
+  const beforeCitedAudio = await audioCount();
+  await composer.fill("Describe the bird with citations.");
+  await page.getByRole("button", { name: "Send message" }).click();
+  await expect.poll(doneCount, { timeout: 60_000 }).toBe(9);
+  expect(await audioCount()).toBeGreaterThan(beforeCitedAudio);
+  expect(speechInputs.join(" ").replace(/\s+/g, " ").trim()).toBe(spokenCitedAnswer);
+  const citedDb = openE2eDatabase();
+  const savedCitedAnswer = citedDb.prepare("SELECT parts FROM messages WHERE chat_id=? AND role='assistant' ORDER BY rowid DESC LIMIT 1").get(originalChatId) as { parts: string };
+  citedDb.close();
+  expect(JSON.parse(savedCitedAnswer.parts)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: "text", text: citedAnswer }),
+  ]));
+  citationResponse = false;
 
   await page.getByRole("button", { name: "End voice session" }).click();
   await expect.poll(async () => {

@@ -5,6 +5,7 @@ import { verifyVoiceTicket } from "@/lib/voice/ticket";
 import { authorizeVoiceService } from "@/lib/voice/internal-auth";
 import { getVoicePrincipal } from "@/lib/db/voiceSessions";
 import { publishVoiceEvent } from "@/lib/voice/events";
+import { SpeechTextFilter } from "@/lib/voice/speech-text";
 
 export const maxDuration = 300;
 const input = z.object({
@@ -62,7 +63,8 @@ export async function POST(request: Request) {
               id: turnId, object: "chat.completion.chunk", created: Math.floor(Date.now() / 1000), model: "overtchat",
               choices: [{ index: 0, delta, finish_reason: finish }],
             })}\n\n`);
-            let spoken = "";
+            let forwardedText = "";
+            const speechText = new SpeechTextFilter();
             let lastPublished = 0;
             let latest: import("ai").UIMessage | undefined;
             let publishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -79,10 +81,15 @@ export async function POST(request: Request) {
                 if (Date.now() - lastPublished >= 40) flushMessage();
                 else publishTimer ??= setTimeout(flushMessage, 40 - (Date.now() - lastPublished));
                 const text = message.parts.filter((part) => part.type === "text").map((part) => part.text).join("\n");
-                if (text.startsWith(spoken) && text.length > spoken.length) chunk({ content: text.slice(spoken.length) });
-                spoken = text;
+                if (text.startsWith(forwardedText) && text.length > forwardedText.length) {
+                  const content = speechText.push(text.slice(forwardedText.length));
+                  if (content) chunk({ content });
+                }
+                forwardedText = text;
               }
               flushMessage();
+              const tail = speechText.finish();
+              if (tail) chunk({ content: tail });
               chunk({}, "stop");
               enqueue("data: [DONE]\n\n");
             } catch {
