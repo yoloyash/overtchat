@@ -13,6 +13,7 @@ import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
 import { URL } from "node:url";
+import { inspect } from "node:util";
 import { CLIENT_API_LEVEL } from "../../packages/shared/src/ping.ts";
 
 const require = createRequire(new URL("../../apps/web/package.json", import.meta.url));
@@ -25,9 +26,16 @@ assert.equal(process.arch, "x64");
 assert(process.env.APPDATA, "Windows APPDATA is required");
 const profile = path.join(process.env.APPDATA, "overtchat");
 await assert.rejects(access(profile), { code: "ENOENT" }, "Use a disposable Windows account without an OvertChat profile");
+const preflightStartedAt = Date.now();
 const existing = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command",
   "$apps = Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'overtchat*' }; if ($apps) { exit 1 }; if (Get-Process overtchat -ErrorAction SilentlyContinue) { exit 1 }; exit 0"], { encoding: "utf8", timeout: 15_000 });
-assert.equal(existing.status, 0, "Use a test account without an installed or running OvertChat");
+if (existing.error || existing.status !== 0) {
+  process.stderr.write(`Windows installation preflight failed after ${Date.now() - preflightStartedAt}ms:\n${inspect(existing, { depth: null })}\n`);
+}
+assert.ifError(existing.error);
+assert.equal(existing.status, 0, existing.status === 1
+  ? "Use a test account without an installed or running OvertChat"
+  : "Windows installation preflight did not complete successfully");
 const directory = await mkdtemp(path.join(process.env.RUNNER_TEMP ?? tmpdir(), "overtchat-windows-smoke-"));
 const installDirectory = path.join(directory, "app");
 const executable = path.join(installDirectory, "overtchat.exe");

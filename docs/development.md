@@ -85,6 +85,17 @@ When a check fails, inspect the failed step first. A dependency-installation
 failure means the tests did not run. Diagnose the package source or runner
 network before changing test assertions or increasing job timeouts.
 
+The stable-release promotion workflow retries its pinned npm bootstrap once,
+after three seconds, only when npm reports `ECONNRESET`. npm's built-in fetch
+retries do not cover a connection reset while reading the registry JSON body.
+Both attempts' output remains in the job log; a failed second attempt or any
+other npm error still fails the step.
+
+The Windows installer smoke logs the elapsed time and full PowerShell subprocess
+result when its installation preflight fails, including the exit status, signal,
+spawn error, stdout, and stderr. Inspect these job-log details before interpreting
+the failure as an existing installation. The preflight timeout remains 15 seconds.
+
 Web E2E uses both line and HTML reporters in CI. The `playwright-report` artifact
 contains `playwright-report/` and `test-results/`, including retained failure
 traces. Upload is attempted after success, failure, or cancellation when files

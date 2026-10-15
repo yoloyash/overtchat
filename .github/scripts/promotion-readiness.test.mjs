@@ -10,7 +10,7 @@ import { test } from "node:test";
 
 const workflow = readFileSync(new URL("../workflows/promote-release.yml", import.meta.url), "utf8");
 function step(name) {
-  const block = workflow.split(`      - name: ${name}\n`)[1]?.split("\n      - name:")[0];
+  const block = workflow.split(`      - name: ${name}\n`)[1]?.split(/\n {6}- /)[0];
   assert.ok(block, name);
   assert.ok(!block.includes("continue-on-error:"));
   assert.ok(!block.includes("if: always()"));
@@ -31,6 +31,60 @@ function run(name, setup = "", env = {}, cwd = process.cwd()) {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+}
+
+function bootstrapNpm(firstError = "", secondError = "") {
+  return run("Use pinned npm", `
+    npm() {
+      [ "$*" = 'install --global npm@10.9.8' ] || return 99
+      echo attempt >> "$GITHUB_OUTPUT"
+      if [ "$(wc -l < "$GITHUB_OUTPUT")" -eq 1 ]; then
+        if [ -n "$FIRST_ERROR" ]; then
+          echo "$FIRST_ERROR" >&2
+          return 17
+        fi
+      elif [ -n "$SECOND_ERROR" ]; then
+        echo "$SECOND_ERROR" >&2
+        return 23
+      fi
+      echo 'npm installation succeeded'
+    }
+    sleep() { [ "$1" = 3 ]; }
+  `, { FIRST_ERROR: firstError, SECOND_ERROR: secondError });
+}
+
+test("npm bootstrap succeeds without retrying a successful install", () => {
+  const result = bootstrapNpm();
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.output, "attempt\n");
+  assert.doesNotMatch(result.stdout, /retrying/);
+});
+
+test("npm bootstrap retries a connection reset once and preserves both attempts' output", () => {
+  const result = bootstrapNpm("npm error code ECONNRESET");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.output, "attempt\nattempt\n");
+  assert.match(result.stdout, /npm error code ECONNRESET/);
+  assert.match(result.stdout, /retrying once/);
+  assert.match(result.stdout, /npm installation succeeded/);
+});
+
+test("npm bootstrap stops after a failed retry and preserves its exit status", () => {
+  const result = bootstrapNpm("npm error code ECONNRESET", "npm error code ECONNRESET");
+  assert.equal(result.status, 23);
+  assert.equal(result.output, "attempt\nattempt\n");
+  assert.match(result.stdout, /npm error code ECONNRESET/);
+  assert.match(result.stderr, /npm error code ECONNRESET/);
+});
+
+for (const error of ["npm error code EACCES", "npm error code ETARGET", "unrelated message mentioning ECONNRESET"]) {
+  test(`npm bootstrap does not retry ${error}`, () => {
+    const result = bootstrapNpm(error);
+    assert.equal(result.status, 17);
+    assert.equal(result.output, "attempt\n");
+    assert.ok(result.stdout.includes(error));
+    assert.doesNotMatch(result.stdout, /retrying/);
+  });
 }
 
 function verifyConnector({ artifactMismatch = false, tagUnavailable = false, redirectMismatch = false } = {}) {

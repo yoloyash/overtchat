@@ -47,7 +47,22 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Use pinned npm
-        run: npm install --global npm@10.9.8
+        run: |
+          log=$(mktemp)
+          trap 'rm -f "$log"' EXIT
+          status=0
+          npm install --global npm@10.9.8 > "$log" 2>&1 || status=$?
+          cat "$log"
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          # npm's fetch retries do not cover a reset while reading JSON.
+          if ! grep -qx 'npm error code ECONNRESET' "$log"; then
+            exit "$status"
+          fi
+          echo "::warning::npm bootstrap connection reset; retrying once in 3 seconds."
+          sleep 3
+          npm install --global npm@10.9.8
 
       - run: npm ci
 
