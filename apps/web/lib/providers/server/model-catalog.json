@@ -3018,6 +3018,40 @@
         ]
       }
     },
+    "gemini-4-argon": {
+      "context": 1048576,
+      "output": 32768,
+      "cost": {
+        "cache_read": 0.1,
+        "input": 2,
+        "input_audio": 2,
+        "output": 10
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    },
     "gemini-embedding-001": {
       "context": 2048,
       "output": 1,
