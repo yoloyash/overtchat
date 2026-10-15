@@ -11,7 +11,6 @@ import {
   modelSupportsToolCalling,
   imageOptionsFromMetadata,
   type ImageGenerationOptions,
-  type ChatKind,
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
@@ -97,7 +96,6 @@ function shouldAutofocusComposer() {
 
 interface Props {
   chatId: string;
-  chatKind?: ChatKind;
   initialMessages?: UIMessage[];
   initialMessageCursor?: string | null;
   initialModelId?: string | null;
@@ -497,8 +495,7 @@ export function ChatArea({
       return;
     }
     if (voiceActive) {
-      voiceSessionRef.current?.sendMessage(text);
-      return;
+      return voiceSessionRef.current?.sendMessage(text) ?? false;
     }
     setInferenceActivity(null);
     setContextStatus(null);
@@ -666,7 +663,7 @@ export function ChatArea({
 
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
-  const canToggleTemporary = Boolean(isNew) && messages.length === 0;
+  const canToggleTemporary = Boolean(isNew) && messages.length === 0 && !voiceActive;
   let contextUsage: { usedTokens: number; contextWindow?: number } | undefined;
   if (contextMeterEnabled) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -691,9 +688,11 @@ export function ChatArea({
       ref={composerRef}
       configured={configured}
       streaming={streaming}
-      searchAvailable={searchAvailable}
-      searchUnavailableReason={searchUnavailableReason}
-      searchRequested={searchAvailable && searchRequested}
+      searchAvailable={searchAvailable && !voiceActive}
+      searchUnavailableReason={voiceActive
+        ? "End voice to require a web search. Voice can still search automatically."
+        : searchUnavailableReason}
+      searchRequested={searchAvailable && !voiceActive && searchRequested}
       imageAvailable={imageAvailable}
       imageModel={imageCapability?.model}
       imageSupportsQuality={imageCapability?.supportsQuality}
@@ -755,7 +754,7 @@ export function ChatArea({
         else setReasoningLevels({ ...reasoningLevels, [selectedId]: level });
       }}
       onToggleSearch={() => {
-        if (searchAvailable) setSearchRequested((selected) => !selected);
+        if (searchAvailable && !voiceActive) setSearchRequested((selected) => !selected);
       }}
       chatQueue={chatQueue}
       onSubmit={handleSubmit}

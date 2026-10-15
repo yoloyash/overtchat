@@ -124,7 +124,8 @@ interface ComposerProps {
   commandActions: ComposerCommandActions;
   onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
   onToggleSearch: () => void;
-  onSubmit: (input: string, attachments: FileUIPart[]) => void;
+  /** Return false when the submission was not accepted; retain the draft. */
+  onSubmit: (input: string, attachments: FileUIPart[]) => void | boolean;
   onStop: () => void;
   onStartVoice: () => void;
   onEndVoice: () => void;
@@ -484,7 +485,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     if (streaming && text.toLowerCase() === "/compact" && !readyParts.length) return;
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
-    onSubmit(text, readyParts);
+    if (onSubmit(text, readyParts) === false) return;
     clearDraft();
     setDismissedQuery(null);
     setActiveIndex(0);

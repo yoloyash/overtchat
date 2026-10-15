@@ -6,7 +6,6 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
   Download,
-  AudioWaveform,
   FolderInput,
   MoreHorizontal,
   LoaderCircle,
@@ -259,8 +258,8 @@ export function SidebarItem({
             "block min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm",
             // Hidden actions overlay the title instead of reserving empty space.
             "group-hover:pr-(--chat-title-padding) group-focus-within:pr-(--chat-title-padding) group-data-[menu-open=true]:pr-(--chat-title-padding) [@media(hover:none)]:pr-(--chat-title-padding)",
-            (chat.pinned || generating || chat.kind === "voice") && "pr-8 max-md:pr-10",
-            chat.pinned && (generating || chat.kind === "voice") && "pr-14 max-md:pr-18",
+            (chat.pinned || generating) && "pr-8 max-md:pr-10",
+            chat.pinned && generating && "pr-14 max-md:pr-18",
           )}
         >
           {chat.title ? (
@@ -274,26 +273,20 @@ export function SidebarItem({
             "Untitled"
           )}
         </Link>
-        {(generating || chat.kind === "voice") && (
+        {generating && (
           <span
-            role={generating ? "status" : undefined}
-            aria-label={generating ? `Generating response for ${chat.title?.trim() || "Untitled"}` : "Voice chat"}
+            role="status"
+            aria-label={`Generating response for ${chat.title?.trim() || "Untitled"}`}
             className={cn(
               "pointer-events-none absolute right-1 flex size-5.5 items-center justify-center text-muted-foreground motion-opacity max-md:size-7.5",
-              generating
-                ? "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0 [@media(hover:hover)]:group-data-[menu-open=true]:opacity-0 [@media(hover:none)]:right-(--chat-actions-padding)"
-                : "group-hover:hidden group-focus-within:hidden group-data-[menu-open=true]:hidden max-md:hidden [@media(hover:none)]:hidden",
+              "[@media(hover:hover)]:group-hover:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-0 [@media(hover:hover)]:group-data-[menu-open=true]:opacity-0 [@media(hover:none)]:right-(--chat-actions-padding)",
               chat.pinned && "right-7 max-md:right-9",
             )}
           >
-            {generating ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className={cn("size-3.5", motionClasses.spinner)}
-              />
-            ) : (
-              <AudioWaveform aria-hidden="true" className="size-3.5" />
-            )}
+            <LoaderCircle
+              aria-hidden="true"
+              className={cn("size-3.5", motionClasses.spinner)}
+            />
           </span>
         )}
         <div className="pointer-events-none absolute inset-y-0 right-1 flex items-center gap-0.5">

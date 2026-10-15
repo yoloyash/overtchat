@@ -97,7 +97,6 @@ function chatAreaProps(
   if (!page) return { chatId };
   return {
     chatId,
-    chatKind: page.kind,
     projectId: page.projectId,
     initialMessages: page.messages,
     initialModelId: page.modelConfigId,

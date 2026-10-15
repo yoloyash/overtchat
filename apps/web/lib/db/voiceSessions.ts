@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "./client";
-import { chats, session, user, voiceSessions } from "./schema";
+import { chatGenerations, chats, session, user, voiceSessions } from "./schema";
 import * as cancellation from "@/lib/streams/cancel-registry";
 
 const LEASE_MS = 90_000;
@@ -40,6 +40,14 @@ export function endVoiceSession(id: string, userId: string): void {
     if (!lease) return;
     tx.delete(voiceSessions).where(eq(voiceSessions.id, id)).run();
     const chat = tx.select().from(chats).where(eq(chats.id, lease.chatId)).get();
-    if (chat?.activeStreamId) cancellation.cancel(chat.activeStreamId);
+    if (!chat?.activeStreamId) return;
+    const generation = tx.select().from(chatGenerations)
+      .where(and(eq(chatGenerations.id, chat.activeStreamId), eq(chatGenerations.chatId, lease.chatId),
+        eq(chatGenerations.userId, userId))).get();
+    // An expired lease allows a new text turn. Late cleanup may only stop a
+    // generation submitted by this voice connection, never its replacement.
+    if (generation?.status === "running" && generation.clientRequestId.startsWith(`voice:${id}:`)) {
+      cancellation.cancel(generation.id);
+    }
   });
 }

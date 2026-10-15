@@ -27,7 +27,8 @@ import type { UIMessage } from "ai";
 import { fetchChatMessagesPage } from "@/lib/queries/chats";
 
 export interface RealtimeVoiceSessionHandle {
-  sendMessage: (text: string) => void;
+  /** False keeps the text in the composer until voice can accept it. */
+  sendMessage: (text: string) => boolean;
   end: () => Promise<void>;
 }
 
@@ -104,7 +105,7 @@ export const RealtimeVoiceSession = forwardRef<
     end: () => endRef.current(),
     sendMessage(text) {
       const client = clientRef.current;
-      if (!client || !text.trim()) return;
+      if (!client || status === "connecting" || status === "closed" || error || !text.trim()) return false;
       const id = crypto.randomUUID();
       setSubmissions(current => [...current, { id, text: text.trim(), failed: false }]);
       void client.sendMessage(text).then(() => {
@@ -112,6 +113,7 @@ export const RealtimeVoiceSession = forwardRef<
       }).catch(() => {
         setSubmissions(current => current.map(item => item.id === id ? { ...item, failed: true } : item));
       });
+      return true;
     },
   }));
 

@@ -748,13 +748,6 @@ function ChatRow({
         >
           {item.title?.trim() || "Untitled"}
         </Text>
-        {item.kind === "voice" ? (
-          <Ionicons
-            name="pulse-outline"
-            size={16}
-            color={colors.mutedForeground}
-          />
-        ) : null}
         {item.pinned && (
           <Ionicons
             name="pin"

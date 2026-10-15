@@ -106,12 +106,23 @@ it("ending while a grant is pending does not open a microphone or leak the lease
   expect(held).toBe(false);
 });
 
+it("rejects text during startup so the composer can retain its draft", async () => {
+  delayClaim = new Promise(resolve => { finishClaim = resolve; });
+  await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
+  expect(ref.current!.sendMessage("Keep this draft")).toBe(false);
+  expect(clients).toHaveLength(0);
+  await act(async () => finishClaim());
+  await act(async () => expect(ref.current!.sendMessage("Keep this draft")).toBe(true));
+  expect(clients[0].sendMessage).toHaveBeenCalledExactlyOnceWith("Keep this draft");
+});
+
 it("shows the actionable session conflict instead of a generic startup error", async () => {
   held = true;
   await act(async () => root.render(createElement(RealtimeVoiceSession, props)));
   expect(document.body.textContent).toContain("This chat already has an active voice session or response.");
   expect(clients).toHaveLength(0);
   expect(releases).toBe(0);
+  expect(ref.current!.sendMessage("Keep this after failure")).toBe(false);
 });
 
 it("shows submitted text during interruption and preserves it if acceptance fails", async () => {

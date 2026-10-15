@@ -4,7 +4,6 @@ import {
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
-  type ChatKind,
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
@@ -157,7 +156,6 @@ function ChatGate({
       initialMessages={hydration?.messages}
       initialModelId={hydration?.modelConfigId}
       projectId={isNew ? newChatProjectId : (hydration?.projectId ?? null)}
-      chatKind={isNew ? "text" : (hydration?.kind ?? "text")}
     />
   );
 }
@@ -174,7 +172,6 @@ function ChatSurface({
   initialMessages: UIMessage[] | undefined;
   initialModelId?: string | null;
   projectId: string | null;
-  chatKind: ChatKind;
 }) {
   const { colors, fonts } = useTheme();
   const navigation = useNavigation();

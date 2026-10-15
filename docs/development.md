@@ -648,6 +648,12 @@ only its playback is interrupted; unfinished generation retains its partial
 answer. Pending submissions remain visible until canonical acceptance, and
 rapid sends are serialized. The interruption route can wait for completion of
 its specific target; it never cancels a later turn.
+Session cleanup also checks generation ownership, so a late End after lease
+expiry cannot cancel a newer text response. Text submitted before voice connects
+or after startup fails stays in the composer. Temporary mode cannot be toggled
+during voice, and the per-message force-search control is disabled; automatic
+search remains available through the shared tool loop. Historical chat kinds
+remain in storage for compatibility but no longer produce separate voice badges.
 
 Voice startup also has a component regression test under React Strict Mode,
 which replays effect setup and cleanup in development. Run
