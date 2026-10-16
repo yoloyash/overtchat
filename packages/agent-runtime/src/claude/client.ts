@@ -261,6 +261,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private thinkingOptionId?: string;
   private modeId: PermissionMode;
   private active = false;
+  private backgroundTasks = new Set<string>();
   private activeTurnHasAssistantText = false;
   private compacting = false;
   private stopped = false;
@@ -301,6 +302,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       modeId: this.modeId,
       modes: this.modes,
       isStreaming: this.active,
+      hasPendingAsyncWork: this.backgroundTasks.size > 0,
       isCompacting: this.compacting,
     };
   }
@@ -589,6 +591,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.input.close();
     this.sdkQuery.close();
     await this.consumePromise.catch(() => {});
+    this.resetActivity();
   }
 
   private async initialize(): Promise<void> {
@@ -620,7 +623,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
 
   private startQuery(resume?: string, resumeAt?: string): void {
     const generation = ++this.consumeGeneration;
-    this.activeTurnHasAssistantText = false;
+    this.resetActivity();
     this.input = new ClaudeInputQueue();
     this.sdkQuery = createSdkQuery({
       prompt: this.input,
@@ -755,11 +758,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     };
     this.messages.push(user);
     this.emit({ type: "message_end", message: user });
-    if (!this.active) {
-      this.contextInputTokens = undefined;
-      this.active = true;
-      this.emit({ type: "turn_start" });
-    }
+    this.startTurn();
     this.input.push({
       type: "user",
       message: { role: "user", content } as SDKUserMessage["message"],
@@ -779,8 +778,6 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     oldQuery.close();
     await this.consumePromise.catch(() => {});
     this.restarting = false;
-    this.active = false;
-    this.compacting = false;
     if (this.stopped) return;
     if (rewind) this.sessionId = randomUUID();
     this.startQuery(rewind ? rewind.resume : this.sessionId, rewind?.resumeAt);
@@ -808,6 +805,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       if (this.stopped || this.restarting || generation !== this.consumeGeneration) return;
       const detail = this.recentStderr.trim();
       const message = `${errorText(error)}${detail ? `\n${detail}` : ""}`;
+      this.resetActivity();
       this.emit({ type: "rpc_error", error: message });
       this.emit({ type: "process_exit", error: message });
     }
@@ -838,6 +836,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleSystem(message: SDKMessage & Record<string, unknown>): void {
     const subtype = message.subtype;
     if (subtype === "init") {
+      // Claude brackets every main turn with init/result, including autonomous
+      // continuations after a background task finishes. A user prompt is not
+      // the only way a turn can start. Sidechain output is not a parent turn.
+      if (!message.parent_tool_use_id) this.startTurn();
       this.sessionId = String(message.session_id);
       if (typeof message.model === "string") this.selectedModel = message.model;
       if (isClaudePermissionMode(String(message.permissionMode ?? ""))) {
@@ -860,11 +862,21 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (subtype === "session_state_changed") {
-      if (message.state === "running" && !this.active) {
-        this.active = true;
-        this.emit({ type: "turn_start" });
-      } else if (message.state === "idle") {
-        this.finishTurn();
+      // This describes the whole CLI, including children. It cannot identify
+      // parent turn boundaries, and an idle from the prior turn can arrive
+      // after a new submission. Use init/result and the task roster instead.
+      return;
+    }
+    if (subtype === "background_tasks_changed" && Array.isArray(message.tasks)) {
+      // The SDK defines REPLACE semantics. Do not pair task_started and
+      // task_notification edges: the empty roster may precede the notification.
+      const wasPending = this.backgroundTasks.size > 0;
+      this.backgroundTasks = new Set(message.tasks.flatMap((task) => {
+        const id = record(task)?.task_id;
+        return typeof id === "string" ? [id] : [];
+      }));
+      if (!this.active && wasPending !== (this.backgroundTasks.size > 0)) {
+        this.emitIdleActivity();
       }
       return;
     }
@@ -1205,7 +1217,26 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     this.activeTurnHasAssistantText = false;
     if (!this.active) return;
     this.active = false;
-    this.emit({ type: "turn_end" });
+    this.emitIdleActivity();
+  }
+
+  private startTurn(): void {
+    if (this.active) return;
+    this.contextInputTokens = undefined;
+    this.active = true;
+    this.emit({ type: "turn_start" });
+  }
+
+  private emitIdleActivity(): void {
+    this.emit({ type: this.backgroundTasks.size > 0 ? "turn_waiting" : "turn_end" });
+  }
+
+  private resetActivity(): void {
+    this.active = false;
+    this.backgroundTasks.clear();
+    this.compacting = false;
+    this.activeTurnHasAssistantText = false;
+    this.currentStreamMessageId = undefined;
   }
 
   private emitConfig(): void {

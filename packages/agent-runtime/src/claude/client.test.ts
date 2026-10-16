@@ -6,6 +6,7 @@ vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query: queryMock }));
 import { ClaudeRuntimeClient } from "./client";
 import { claudeProviderAdapter } from "../providers/claude";
 import { AgentSessionRuntime } from "../runtime/registry";
+import { applyAgentRuntimeEnvelope, type AgentRuntimeEnvelope } from "@overtchat/agent-bridge";
 
 class FakeQuery implements AsyncIterator<unknown> {
   readonly inputs: AsyncIterable<unknown>;
@@ -89,6 +90,184 @@ async function createClientForTest() {
   client.onEvent((event) => events.push(event));
   return { client, query, events };
 }
+
+async function createRuntimeForTest() {
+  const harness = await createClientForTest();
+  const { client } = harness;
+  const runtime = new AgentSessionRuntime(
+    "session", "connection", "workspace", claudeProviderAdapter, client,
+    {
+      state: await client.getState(), messages: [],
+      models: await client.getAvailableModels(), commands: await client.getCommands(),
+      stats: await client.getSessionStats(),
+    },
+    {}, async () => [], vi.fn(), vi.fn(), [], vi.fn(),
+  );
+  const envelopes: AgentRuntimeEnvelope[] = [];
+  let replica = runtime.snapshot();
+  runtime.observe((event) => {
+    envelopes.push(event);
+    replica = applyAgentRuntimeEnvelope(replica, event)!;
+  });
+  return { ...harness, runtime, envelopes, replica: () => replica };
+}
+
+function backgroundTasks(...ids: string[]) {
+  return {
+    type: "system", subtype: "background_tasks_changed",
+    tasks: ids.map((task_id) => ({ task_id, task_type: "local_agent", description: "Research" })),
+  };
+}
+
+const successfulResult = { type: "result", subtype: "success", is_error: false, usage: {} };
+
+describe("Claude parent turns and background work", () => {
+  it("keeps the runtime and replica busy after the parent yields, then resumes on native init", async () => {
+    const { client, query, runtime, replica, envelopes, events } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Research" });
+      query.push(backgroundTasks("first", "second"));
+      query.push(successfulResult);
+      await nextTask();
+      expect(await client.getState()).toMatchObject({ isStreaming: false, hasPendingAsyncWork: true });
+      const waiting = { status: "running", activeTurn: { phase: "waiting" } };
+      expect(runtime.snapshot()).toMatchObject(waiting);
+      expect(replica()).toMatchObject(waiting);
+      expect(envelopes).toContainEqual(expect.objectContaining({
+        type: "runtime_event", data: expect.objectContaining({ type: "overtchat_status", status: "running", phase: "waiting" }),
+      }));
+      await runtime.refreshState();
+      expect(runtime.snapshot()).toMatchObject(waiting);
+
+      // Child output and CLI-wide running do not mean the parent is responding.
+      query.push({ type: "assistant", parent_tool_use_id: "child", message: { id: "child-message", content: [{ type: "text", text: "Researching" }] } });
+      query.push({ type: "system", subtype: "session_state_changed", state: "running" });
+      query.push(backgroundTasks("second"));
+      await nextTask();
+      expect(runtime.snapshot()).toMatchObject(waiting);
+
+      query.push({ type: "system", subtype: "init", session_id: "native-session" });
+      await nextTask();
+      expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "responding" } });
+      expect(replica()).toMatchObject({ status: "running", activeTurn: { phase: "responding" } });
+      expect(events.filter((event) => event.type === "turn_start")).toHaveLength(2);
+
+      // Completing the last child cannot terminate a parent that is still answering.
+      query.push(backgroundTasks());
+      await nextTask();
+      expect(runtime.snapshot().status).toBe("running");
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      expect(replica()).toMatchObject({ status: "idle", activeTurn: null });
+    } finally { await runtime.stop(); }
+  });
+
+  it("recognizes an autonomous wake after the last task disappears before its notification", async () => {
+    const { query, runtime, events, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Start background work" });
+      query.push(backgroundTasks("child"));
+      query.push(successfulResult);
+      await nextTask();
+      query.push(backgroundTasks());
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      query.push({ type: "system", subtype: "task_notification", task_id: "child", status: "completed" });
+      query.push({ type: "system", subtype: "init", session_id: "native-session" });
+      query.push({ type: "assistant", parent_tool_use_id: null, message: { id: "wake", content: [{ type: "text", text: "The background task finished" }] } });
+      await nextTask();
+      expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "responding" } });
+      expect(replica().status).toBe("running");
+      expect(events.filter((event) => event.type === "turn_start")).toHaveLength(2);
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+    } finally { await runtime.stop(); }
+  });
+
+  it("does not let stale global idle end a new user turn or duplicate its start", async () => {
+    const { query, runtime, events } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "First" });
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      await runtime.command({ type: "prompt", message: "Second" });
+      query.push({ type: "system", subtype: "session_state_changed", state: "idle" });
+      query.push({ type: "system", subtype: "init", session_id: "native-session" });
+      await nextTask();
+      expect(runtime.snapshot().status).toBe("running");
+      expect(events.filter((event) => event.type === "turn_start")).toHaveLength(2);
+      query.push(successfulResult);
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+    } finally { await runtime.stop(); }
+  });
+
+  it("holds queued prompts while children work and releases them when the roster settles", async () => {
+    const { query, runtime } = await createRuntimeForTest();
+    vi.useFakeTimers();
+    try {
+      await runtime.command({ type: "prompt", message: "Research" });
+      await runtime.command({ type: "queue", message: "Next request" }, "queued");
+      query.push(backgroundTasks("child"));
+      query.push(successfulResult);
+      await vi.advanceTimersByTimeAsync(31_000);
+      expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "waiting" }, queuedMessages: [{ id: "queued" }] });
+      expect(runtime.snapshot().error).toBeUndefined();
+      query.push(backgroundTasks());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(runtime.snapshot().queuedMessages).toEqual([]);
+      const inputs = query.inputs[Symbol.asyncIterator]();
+      expect((await inputs.next()).value).toMatchObject({ message: { content: "Research" } });
+      expect((await inputs.next()).value).toMatchObject({ message: { content: "Next request" } });
+    } finally { await runtime.stop(); vi.useRealTimers(); }
+  });
+
+  it("uses roster replacement, ignores late completion edges, and clears tasks on abort/restart", async () => {
+    const { client, query, runtime } = await createRuntimeForTest();
+    try {
+      query.push(backgroundTasks("first", "second"));
+      await nextTask();
+      expect(runtime.snapshot().activeTurn?.phase).toBe("waiting");
+      query.push(backgroundTasks());
+      query.push({ type: "system", subtype: "task_started", task_id: "first", is_backgrounded: true });
+      query.push({ type: "system", subtype: "task_notification", task_id: "first", status: "completed" });
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+      query.push(backgroundTasks("new-child"));
+      await nextTask();
+      await runtime.command({ type: "abort" });
+      expect(await client.getState()).toMatchObject({ isStreaming: false, hasPendingAsyncWork: false });
+      expect(runtime.snapshot().status).toBe("idle");
+      query.push(backgroundTasks("stale-child"));
+      await nextTask();
+      expect((await client.getState()).hasPendingAsyncWork).toBe(false);
+    } finally { await runtime.stop(); }
+  });
+
+  it("does not let settlement overwrite a wake in the same event burst", async () => {
+    const { query, runtime, replica } = await createRuntimeForTest();
+    try {
+      await runtime.command({ type: "prompt", message: "Research" });
+      query.push(backgroundTasks("child"));
+      query.push(successfulResult);
+      await nextTask();
+      query.push(backgroundTasks());
+      query.push({ type: "system", subtype: "init", session_id: "native-session" });
+      await nextTask();
+      expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "responding" } });
+      expect(replica().status).toBe("running");
+    } finally { await runtime.stop(); }
+  });
+
+  it("clears background activity when the query exits", async () => {
+    const { client, query, runtime, replica } = await createRuntimeForTest();
+    try {
+      query.push(backgroundTasks("child"));
+      await nextTask();
+      query.close();
+      await vi.waitFor(() => expect(runtime.snapshot().status).toBe("exited"));
+      expect(replica().status).toBe("exited");
+      expect(await client.getState()).toMatchObject({ isStreaming: false, hasPendingAsyncWork: false });
+    } finally { await runtime.stop(); }
+  });
+});
 
 describe("Claude runtime client", () => {
   it.each(["automatic", "manual"])(

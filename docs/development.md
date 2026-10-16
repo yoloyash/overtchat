@@ -1033,3 +1033,32 @@ existing sessions. It has been validated with OMP 18.7.0. Set `OMP_COMMAND` to
 override the local executable. Also run bridge/runtime/connector tests and
 typechecks, connector build, web typecheck/lint/build and mobile tests/typecheck.
 Check the waiting label and Stop on native Android/iOS before releasing clients.
+
+### Claude background work lifecycle
+
+Claude uses the same responding/waiting states as OMP. The adapter tracks main
+turns using native `system/init` and `result` messages, including autonomous
+turns started after a task notification. The `background_tasks_changed` roster
+keeps the session waiting while children or background commands remain active.
+Each roster replaces the previous set; task completion notifications do not
+re-add tasks after an empty roster. CLI-wide `session_state_changed` messages
+do not identify parent turn boundaries and must not end a newly submitted turn.
+
+Waiting keeps the session visible as busy in the sidebar and holds queued
+prompts. When the parent resumes, the indicator returns to working. Claude's
+Stop interrupts and replaces the query; the new process starts with an empty
+task roster. This uses the existing activity indicators, without adding a
+subagent panel or changing transcript presentation.
+
+```sh
+npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/providers/claude.test.ts
+RUN_CLAUDE_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/claude/background.integration.test.ts
+```
+
+The opt-in integration test uses the installed Claude CLI and its configured
+credentials/model for real model requests. It creates separate native sessions
+and temporary workspaces for background Bash and subagent cases. The harness
+releases each job only after observing waiting, then verifies autonomous parent
+resumption and final idle. Cleanup releases the test job and closes its query.
+Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
+model; existing sessions and settings are not changed.
