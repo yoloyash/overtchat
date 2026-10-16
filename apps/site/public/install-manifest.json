@@ -9,5 +9,7 @@
   "searxngImage": "docker.io/searxng/searxng@sha256:11a9b34cdc0b1ec2b991470a2762ecb5a1a531898289fb51dcd015260450729e",
   "kokoroImage": "ghcr.io/remsky/kokoro-fastapi-cpu@sha256:28d6f0b6e4df369559012578299d201b855a08fac466f616653edd1f08c5370a",
   "kokoroGpuImage": "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:9e5336d8ebc4984a78ae9181ce3280b285c96d9cbea9b20957e3526868ceb01d",
-  "kokoroGpuBlackwellImage": "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:b75ec27022d6187cf6e6aa4f9053cc64f4c3904fa80dc997c87d3b7a4abffed1"
+  "kokoroGpuBlackwellImage": "ghcr.io/remsky/kokoro-fastapi-gpu@sha256:b75ec27022d6187cf6e6aa4f9053cc64f4c3904fa80dc997c87d3b7a4abffed1",
+  "cloudTunnelImage": "ghcr.io/fatedier/frpc@sha256:7a0a18bc9c83dc106a7e5213a890f521affdf90d595829c56b0ed8481377d50e",
+  "cloudProxyImage": "docker.io/library/caddy@sha256:685ae3d7c34d9b5f8caeddc5d14051db7bbd88ff1f5a2fa0c16bd8ca328fb7af"
 }

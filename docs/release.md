@@ -22,7 +22,7 @@ stable channel used by both `overtchat setup` and `overtchat update`.
 | CLI | `apps/cli/package.json`; lockfile; `CLI_VERSION`; site installer; manifest `cliVersion` | `cli-vX.Y.Z` |
 | Connector | Package and lockfile; bridge release version; connector installer; site redirects; manifest `connectorVersion` | `connector-vX.Y.Z` |
 | STT | Manifest `sttVersion`; `compose.yml` default | `stt-vX.Y.Z` |
-| Bundled images | Manifest Redis, SearXNG, or Kokoro image digest | None |
+| Bundled images | Manifest Redis, SearXNG, Kokoro, or OvertChat Cloud tunnel and proxy image digest | None |
 | Mobile | See [Mobile release](#mobile-release) | `mobile-vX.Y.Z` |
 | Desktop | `apps/desktop/package.json`; workspace lockfile entry | `desktop-vX.Y.Z` |
 

@@ -187,6 +187,7 @@ migrations. The previous Tailscale route is retained until startup succeeds.
 | Only on this computer | Opens at `http://localhost:4718`; the published port listens only on loopback. |
 | On my home network | Detects a LAN address and configures login for that address and localhost. The published port listens on all interfaces, subject to the host firewall. |
 | From anywhere with Tailscale | Uses Tailscale Serve to provide private HTTPS access to an app listening on loopback. |
+| From anywhere with OvertChat Cloud | Links this server to an OvertChat Cloud account and publishes it at `https://<name>.overtchat.app` through the OvertChat relay. |
 | Advanced setup | Uses your HTTPS address through an existing Cloudflare Tunnel or another reverse proxy. |
 
 Fresh installations suggest the home network option when a LAN address is
@@ -226,6 +227,41 @@ to Tailscale and sign in to OvertChat normally. Access follows your Tailscale
 network permissions. Serve resumes after a host restart. Changing access mode
 or ports removes the previous OvertChat Serve route; externally changed routes
 must be resolved before setup can remove them.
+
+### OvertChat Cloud
+
+OvertChat Cloud gives this server an address such as
+`https://smiths.overtchat.app` that works on any device, including for people
+who don't use Tailscale. Nothing is installed on the devices that open it, and
+no ports are opened on your network.
+
+Choose **From anywhere with OvertChat Cloud**. Setup shows a code and a link to
+`account.overtchat.com/device`; open the link on any device, sign in with Google,
+and confirm that the code matches. If the account has no address yet, setup
+asks for a name. Names use 3–30 lowercase letters, numbers, and hyphens, and
+cannot be changed later. Setup then links the server, starts the tunnel, and
+waits for the first HTTPS certificate, which can take a minute or two.
+
+How it works:
+
+- The `cloud-tunnel` container holds an outbound connection to the relay. The
+  `cloud-proxy` container (Caddy) holds this server's HTTPS certificate from
+  Let's Encrypt and forwards to the app. The app's port stays on loopback.
+- Visitor connections are encrypted all the way to this server. The relay routes
+  them by name without decrypting them, so it cannot read chats or passwords.
+- The relay passes on each visitor's address, so sign-in rate limits apply per
+  visitor rather than to the tunnel.
+- The server's credential is stored with the other installation secrets. Linking
+  another server to the same account replaces it, and the previous server's
+  address stops working.
+
+The address is public: anyone can reach the sign-in page, and every account on
+the server can sign in from anywhere. Use strong passwords. Choosing another
+access option removes the tunnel and proxy containers, which takes the address
+offline; the name stays reserved for your account.
+
+Use `overtchat logs cloud` for the tunnel and `overtchat logs cloud-proxy` for
+certificate status. Manage or delete the account at `account.overtchat.com`.
 
 ### Cloudflare Tunnel or another reverse proxy
 
@@ -414,7 +450,8 @@ OpenCode server remain available.
 ## Share with your family
 
 Add accounts under **Settings → Users → Add user**, then share their login
-details and your server's LAN or HTTPS URL. Everyone uses the enabled models
+details and your server's LAN or HTTPS URL. With OvertChat Cloud, the
+`overtchat.app` address works for them anywhere. Everyone uses the enabled models
 with their own chats and projects. Only the first account uses public signup;
 administrators create subsequent accounts.
 

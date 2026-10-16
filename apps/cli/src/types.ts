@@ -51,8 +51,19 @@ export type VoiceConfig = {
   installed: boolean;
 };
 
-export type AccessMode = "local" | "lan" | "tailscale" | "advanced";
+export type AccessMode = "local" | "lan" | "tailscale" | "advanced" | "cloud";
 export type TailscaleRoute = { hostname: string; port: number; target: string };
+// The relay connection returned when this server was linked to OvertChat Cloud.
+// The credential itself lives only in the secrets file; `credential` carries a
+// freshly issued one from the prompt to setup and is never persisted.
+export type CloudAccess = {
+  hostname: string;
+  relayHost: string;
+  relayPort: number;
+  relayServerName: string;
+  relayCaPem: string;
+  credential?: string;
+};
 export type AccessConfig = {
   mode: AccessMode;
   proxy?: "cloudflare" | "other";
@@ -60,6 +71,7 @@ export type AccessConfig = {
   lanAddress?: string;
   connectionStatus?: "pending" | "verified";
   tailscaleRoute?: TailscaleRoute;
+  cloud?: CloudAccess;
 };
 
 export type InstallationConfig = {
@@ -76,6 +88,8 @@ export type InstallationConfig = {
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  cloudTunnelImage: string;
+  cloudProxyImage: string;
   appleSpeechPort?: number;
   appPort: number;
   bindAddress: string;
@@ -132,4 +146,5 @@ export type RuntimePaths = {
   composeFile: string;
   searxngDirectory: string;
   searxngSettingsFile: string;
+  cloudDirectory: string;
 };

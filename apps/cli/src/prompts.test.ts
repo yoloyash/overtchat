@@ -101,6 +101,8 @@ function setupConfig(): InstallationConfig {
     kokoroImage: "kokoro-cpu",
     kokoroGpuImage: "kokoro-gpu",
     kokoroGpuBlackwellImage: "kokoro-gpu-blackwell",
+    cloudTunnelImage: "cloud-tunnel",
+    cloudProxyImage: "cloud-proxy",
     appPort: 4717,
     bindAddress: "0.0.0.0",
     publicUrl: "http://localhost:4717",

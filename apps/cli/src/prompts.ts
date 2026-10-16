@@ -9,7 +9,7 @@ import {
   text,
 } from "@clack/prompts";
 import { commandExists } from "./process.js";
-import { promptAccess } from "./access-prompts.js";
+import { promptAccess, type AccessPromptOptions } from "./access-prompts.js";
 import type {
   ExistingInstallation,
   Gpu,
@@ -409,6 +409,7 @@ export async function promptInstallationConfig(
   gpus: Gpu[],
   existing?: ExistingInstallation,
   appleChip?: string | null,
+  options: AccessPromptOptions = {},
 ): Promise<InstallationConfig> {
   intro("OvertChat setup");
   if (existing) {
@@ -426,7 +427,7 @@ export async function promptInstallationConfig(
       process.exit(0);
     }
   }
-  const configured = await promptAccess(initial);
+  const configured = await promptAccess(initial, options);
   const search = await promptSearch(initial.search);
   const tts = await promptTts(initial.tts, gpus, appleChip);
   const stt = await promptStt(initial.stt, gpus, appleChip);

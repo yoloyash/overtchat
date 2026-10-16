@@ -32,6 +32,8 @@ export type ReleaseManifest = {
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  cloudTunnelImage: string;
+  cloudProxyImage: string;
 };
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
@@ -89,6 +91,8 @@ export function applyReleaseManifest(
     kokoroImage: manifest.kokoroImage,
     kokoroGpuImage: manifest.kokoroGpuImage,
     kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+    cloudTunnelImage: manifest.cloudTunnelImage,
+    cloudProxyImage: manifest.cloudProxyImage,
   };
 }
 
@@ -130,6 +134,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     value,
     "kokoroGpuBlackwellImage",
   );
+  const cloudTunnelImage = Reflect.get(value, "cloudTunnelImage");
+  const cloudProxyImage = Reflect.get(value, "cloudProxyImage");
   assertVersion(cliVersion, "CLI version");
   assertVersion(appVersion, "app version");
   assertVersion(voiceVersion, "voice version");
@@ -152,6 +158,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     "Kokoro Blackwell image",
     "ghcr.io/remsky/kokoro-fastapi-gpu",
   );
+  assertDigestImage(cloudTunnelImage, "OvertChat Cloud tunnel image", "ghcr.io/fatedier/frpc");
+  assertDigestImage(cloudProxyImage, "OvertChat Cloud proxy image", "docker.io/library/caddy");
   return {
     format: 1,
     cliVersion,
@@ -164,6 +172,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     kokoroImage,
     kokoroGpuImage,
     kokoroGpuBlackwellImage,
+    cloudTunnelImage,
+    cloudProxyImage,
   };
 }
 

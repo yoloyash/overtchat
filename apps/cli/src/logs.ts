@@ -58,7 +58,7 @@ export async function logs(
     : undefined;
   if (service && !selected?.service)
     throw new Error(
-      `Unknown or uninstalled service: ${service}. Use app, redis, search, tts, stt, voice, connector, or speech.`,
+      `Unknown or uninstalled service: ${service}. Use app, redis, search, tts, stt, voice, connector, speech, cloud, or cloud-proxy.`,
     );
   await requireDocker(
     await managedDocker(),

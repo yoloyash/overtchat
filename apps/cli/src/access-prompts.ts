@@ -7,9 +7,10 @@ import {
   lanHostValidation,
   portValidation,
 } from "./access.js";
+import { promptCloudLink } from "./cloud-prompts.js";
 import { primaryLanAddress } from "./network.js";
 import { checkServeRoute, detectTailscale } from "./tailscale.js";
-import type { AccessConfig, AccessMode, InstallationConfig } from "./types.js";
+import type { AccessConfig, AccessMode, CloudAccess, InstallationConfig } from "./types.js";
 
 function chosen<T>(value: T | symbol): T {
   if (isCancel(value)) {
@@ -32,8 +33,23 @@ async function retry(message: string): Promise<boolean> {
   );
 }
 
+export type AccessPromptOptions = {
+  /** A dry run must not link the server, which would replace its credential. */
+  dryRun?: boolean;
+};
+
+// Shown in a dry-run preview instead of linking this server.
+const PREVIEW_CLOUD: CloudAccess = {
+  hostname: "your-name.overtchat.app",
+  relayHost: "relay.overtchat.app",
+  relayPort: 443,
+  relayServerName: "relay.overtchat.app",
+  relayCaPem: "",
+};
+
 export async function promptAccess(
   initial: InstallationConfig,
+  options: AccessPromptOptions = {},
 ): Promise<InstallationConfig> {
   const currentMode = accessMode(initial);
   for (;;) {
@@ -56,6 +72,11 @@ export async function promptAccess(
             value: "tailscale",
             label: "From anywhere with Tailscale",
             hint: "private access from devices on your Tailscale network",
+          },
+          {
+            value: "cloud",
+            label: "From anywhere with OvertChat Cloud",
+            hint: "an address like name.overtchat.app, nothing to install elsewhere",
           },
           {
             value: "advanced",
@@ -81,7 +102,18 @@ export async function promptAccess(
       }
       if (!hostname) continue;
     }
-    const access: AccessConfig = { mode };
+    let cloud: CloudAccess | undefined;
+    if (mode === "cloud") {
+      const current = currentMode === "cloud" ? initial.access?.cloud : undefined;
+      if (options.dryRun) {
+        cloud = current ?? PREVIEW_CLOUD;
+        note("A dry run does not link this server to OvertChat Cloud.", "OvertChat Cloud");
+      } else {
+        cloud = (await promptCloudLink(current)) ?? undefined;
+        if (!cloud) continue;
+      }
+    }
+    const access: AccessConfig = { mode, ...(cloud ? { cloud } : {}) };
     let appPort = initial.appPort;
     let publicUrl = `http://localhost:${appPort}`;
     let bindAddress = mode === "lan" ? "0.0.0.0" : "127.0.0.1";
@@ -243,6 +275,14 @@ export async function promptAccess(
       note(
         `OvertChat will configure private HTTPS access at ${publicUrl}.\n${process.platform === "darwin" ? "Keep Tailscale connected on this Mac." : "Tailscale must allow this user to manage Serve. If needed, run sudo tailscale set --operator=<your-linux-username>."}`,
         "Tailscale access",
+      );
+    }
+    if (mode === "cloud" && cloud) {
+      publicUrl = `https://${cloud.hostname}`;
+      access.connectionStatus = "pending";
+      note(
+        `OvertChat will be available at ${publicUrl} from any device.\nAnyone you add as a user can sign in there. Keep this computer on and connected for the address to work.`,
+        "OvertChat Cloud",
       );
     }
     if (

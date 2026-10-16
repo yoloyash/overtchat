@@ -85,6 +85,8 @@ jobs:
             kokoroImage: "ghcr.io/remsky/kokoro-fastapi-cpu",
             kokoroGpuImage: "ghcr.io/remsky/kokoro-fastapi-gpu",
             kokoroGpuBlackwellImage: "ghcr.io/remsky/kokoro-fastapi-gpu",
+            cloudTunnelImage: "ghcr.io/fatedier/frpc",
+            cloudProxyImage: "docker.io/library/caddy",
           };
           for (const [field, repository] of Object.entries(images)) {
             const prefix = `${repository}@sha256:`;
@@ -122,6 +124,8 @@ jobs:
             `kokoro_image=${manifest.kokoroImage}`,
             `kokoro_gpu_image=${manifest.kokoroGpuImage}`,
             `kokoro_gpu_blackwell_image=${manifest.kokoroGpuBlackwellImage}`,
+            `cloud_tunnel_image=${manifest.cloudTunnelImage}`,
+            `cloud_proxy_image=${manifest.cloudProxyImage}`,
             "",
           ].join("\n"));
           NODE
@@ -231,6 +235,8 @@ jobs:
           KOKORO_IMAGE: ${{ steps.manifest.outputs.kokoro_image }}
           KOKORO_GPU_IMAGE: ${{ steps.manifest.outputs.kokoro_gpu_image }}
           KOKORO_GPU_BLACKWELL_IMAGE: ${{ steps.manifest.outputs.kokoro_gpu_blackwell_image }}
+          CLOUD_TUNNEL_IMAGE: ${{ steps.manifest.outputs.cloud_tunnel_image }}
+          CLOUD_PROXY_IMAGE: ${{ steps.manifest.outputs.cloud_proxy_image }}
         run: |
           verification_directory=$(mktemp -d)
           trap 'rm -rf "$verification_directory"' EXIT HUP INT TERM
@@ -290,6 +296,14 @@ jobs:
             "$verification_directory/kokoro-gpu-blackwell.json"
           node .github/scripts/assert-image-platforms.mjs \
             "$verification_directory/kokoro-gpu-blackwell.json" linux/amd64
+
+          inspect_image "$CLOUD_TUNNEL_IMAGE" "$verification_directory/cloud-tunnel.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/cloud-tunnel.json" linux/amd64 linux/arm64
+
+          inspect_image "$CLOUD_PROXY_IMAGE" "$verification_directory/cloud-proxy.json"
+          node .github/scripts/assert-image-platforms.mjs \
+            "$verification_directory/cloud-proxy.json" linux/amd64 linux/arm64
           echo "ready=true" >> "$GITHUB_OUTPUT"
 
       - name: Require a complete candidate release
