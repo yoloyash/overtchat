@@ -85,6 +85,7 @@ const paths: RuntimePaths = {
   searxngDirectory: "/home/test/.local/share/overtchat/searxng",
   searxngSettingsFile:
     "/home/test/.local/share/overtchat/searxng/settings.yml",
+  cloudDirectory: "/home/test/.local/share/overtchat/cloud",
 };
 
 vi.mock("./paths.js", () => ({ runtimePaths: () => paths }));
@@ -116,6 +117,8 @@ const releaseImages = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 function config(
@@ -156,6 +159,7 @@ const secrets: InstallationSecrets = {
   managementSecret: "management-secret",
   searxngSecret: "searxng-secret",
   voiceSharedSecret: "voice-secret",
+  cloudCredential: "",
 };
 
 beforeEach(() => {

@@ -16,6 +16,8 @@ import { completeAgentConnections, prepareAgentConnections, reportPendingAgentCo
 import { installationSpinner as spinner } from "./install-progress.js";
 import { protectInstallationSecrets } from "./install-log.js";
 import {
+  CLOUD_PROXY_CONFIG,
+  CLOUD_TUNNEL_CONFIG,
   renderComposeFile,
   renderStackEnvironment,
   SEARXNG_SETTINGS,
@@ -166,6 +168,21 @@ export async function prepareFiles(
       encoding: "utf8",
       mode: 0o600,
     });
+  }
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  if (cloud) {
+    await mkdir(paths.cloudDirectory, { recursive: true, mode: 0o700 });
+    const files: Array<[string, string]> = [
+      ["frpc.toml", CLOUD_TUNNEL_CONFIG],
+      ["Caddyfile", CLOUD_PROXY_CONFIG],
+      ["relay-ca.pem", `${cloud.relayCaPem.trim()}\n`],
+    ];
+    for (const [file, contents] of files) {
+      await writeFile(path.join(paths.cloudDirectory, file), contents, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    }
   }
   await writeFile(paths.composeFile, renderComposeFile(config), {
     encoding: "utf8",
@@ -406,6 +423,7 @@ export async function setup(
       gpus,
       adopting ? existing ?? undefined : undefined,
       appleChip,
+      { dryRun: options.dryRun },
     );
   } else if (gpus.length > 0 && config.stt.provider === "bundled") {
     const gpu = [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
@@ -484,6 +502,14 @@ export async function setup(
     existing,
     previousSecrets,
   );
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  // A fresh link replaces the stored credential; leaving cloud mode drops it.
+  secrets.cloudCredential = cloud ? (cloud.credential ?? secrets.cloudCredential) : "";
+  if (cloud && !secrets.cloudCredential && !options.dryRun) {
+    throw new Error(
+      "This server has no OvertChat Cloud credential. Run overtchat setup, choose OvertChat Cloud, and link this server again.",
+    );
+  }
   protectInstallationSecrets(...Object.values(secrets), config.search.apiKey, config.tts.apiKey, config.stt.apiKey);
   note([
     accessSummary(config),
