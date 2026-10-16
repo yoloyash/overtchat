@@ -117,7 +117,10 @@ the installed provider and exercises its RPC lifecycle without model requests.
 Coverage includes native and batch-wrapper argv, binary streams, scripts above
 Windows command-line limits, Windows paths and filesystem confinement, provider
 discovery, PowerShell command entry, detached descendants, SSH transport loss,
-and connector ledger recovery. Run against an ordinary `cmd.exe` SSH host and
+connector ledger recovery, and a busy agent that delays reading stdin beyond
+the heartbeat timeout. Batch tests include the extensionless Unix shim next to
+the Windows wrapper, as produced by npm installations.
+Run against an ordinary `cmd.exe` SSH host and
 also a host configured with PowerShell as its default shell before expanding
 the supported Windows matrix. The nested PowerShell entry test exercises its
 parser without changing the target's SSH server configuration.
@@ -128,7 +131,9 @@ the connector remains the only product process executing host commands. The
 Windows helper has an internal versioned stdin bootstrap and adds no public
 connector protocol messages or remotely listening service.
 The Validate workflow also runs the helper's binary-stream, startup-gate, and
-batch-wrapper tests on Windows, using real PowerShell and Job Objects.
+batch-wrapper tests on Windows, using real PowerShell and Job Objects. Focused
+tests cover signal escalation, cancellation during startup, heartbeat handling
+under backpressure, and the pending-input bound.
 
 ## Connector journal validation
 

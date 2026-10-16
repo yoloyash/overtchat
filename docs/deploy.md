@@ -283,6 +283,9 @@ limits require configuring the provider's native executable instead.
 The helper keeps a heartbeat after the agent's stdin closes. SSH disconnects or
 30 seconds without a heartbeat stop the owned process tree. A reconnect resumes
 from provider session history; it does not keep executing an unattended turn.
+Heartbeats continue while an agent is busy and not reading stdin. Pending agent
+input is capped at 64 MiB; exceeding that limit stops the process with an explicit
+error rather than allowing unbounded buffering.
 
 Workspace paths may use drive-qualified paths such as `C:\Users\me\project`
 or UNC paths such as `\\server\share\project`. Network shares still require

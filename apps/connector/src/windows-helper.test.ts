@@ -124,6 +124,13 @@ describe("Windows helper channel", () => {
           command,
           '@echo off\r\n"' + process.execPath + '" "%~dp0argv.cjs" %*\r\n',
         );
+        // Real npm installs include all three siblings, not just an explicit
+        // .cmd path. Discovery must skip the extensionless POSIX script.
+        await writeFile(
+          path.join(directory, "echo args"),
+          "#!/bin/sh\nexit 99\n",
+        );
+        await writeFile(path.join(directory, "echo args.ps1"), "exit 99\n");
         const args = [
           "",
           'a & b | "quotes"',
@@ -133,10 +140,18 @@ describe("Windows helper channel", () => {
           "C:\\end\\",
           "^()<>;&",
         ];
-        const f = fixture("", undefined, { command, args, shellMode: "login" });
-        windowsInputChannel(f.child).end();
-        expect(await f.exit).toBe(0);
-        expect(JSON.parse(f.output().toString())).toEqual(args);
+        for (const executable of [command, "echo args", ".\\echo args.cmd"]) {
+          const f = fixture("", undefined, {
+            command: executable,
+            cwd: directory,
+            args,
+            shellMode: "login",
+            env: { PATH: directory + ";" + process.env.PATH },
+          });
+          windowsInputChannel(f.child).end();
+          expect(await f.exit).toBe(0);
+          expect(JSON.parse(f.output().toString())).toEqual(args);
+        }
       } finally {
         await rm(directory, { recursive: true, force: true });
       }

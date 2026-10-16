@@ -74,6 +74,8 @@ const external=path.join(root,'external');fs.mkdirSync(external);fs.writeFileSyn
 fs.symlinkSync(external,path.join(directory,'escape'),'junction');
 fs.writeFileSync(path.join(directory,'argv.cjs'),'process.stdout.write(JSON.stringify(process.argv.slice(2)))');
 fs.writeFileSync(path.join(directory,'echo args.cmd'),'@echo off\\r\\n"'+process.execPath+'" "%~dp0argv.cjs" %*\\r\\n');
+fs.writeFileSync(path.join(directory,'echo args'),'#!/bin/sh\\nexit 99\\n');
+fs.writeFileSync(path.join(directory,'echo args.ps1'),'exit 99\\n');
 process.stdout.write(directory);
 `)
     ).stdout;
@@ -144,6 +146,18 @@ process.stdout.write(directory);
       args,
     });
     expect(JSON.parse(result.stdout)).toEqual(args);
+    const byName = await executeOnHost(target, {
+      command: "echo args",
+      args,
+      env: { PATH: directory },
+    });
+    expect(JSON.parse(byName.stdout)).toEqual(args);
+    const relative = await executeOnHost(target, {
+      command: ".\\echo args.cmd",
+      args,
+      cwd: directory,
+    });
+    expect(JSON.parse(relative.stdout)).toEqual(args);
   }, 60_000);
 
   it("preserves binary stdin/stdout, stderr, exit status, and scripts above command-line limits", async () => {
@@ -178,6 +192,27 @@ process.stdout.write(directory);
     expect(
       installations.every((item) => /^[A-Z]:\\/i.test(item.executable)),
     ).toBe(true);
+  }, 60_000);
+
+  it("keeps a busy agent alive through stdin backpressure and delivers queued EOF", async () => {
+    const child = host.spawn(target, {
+      command: "node",
+      args: [
+        "-e",
+        "setTimeout(()=>{process.stdin.pipe(process.stdout)},35000)",
+      ],
+      shellMode: "login",
+    });
+    const input = randomBytes(1024 * 1024);
+    const output: Buffer[] = [];
+    let stderr = "";
+    child.stdout.on("data", (chunk) => output.push(Buffer.from(chunk)));
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.stdin.end(input);
+    expect((await child.exit).code, stderr).toBe(0);
+    expect(Buffer.concat(output)).toEqual(input);
   }, 60_000);
 
   it.runIf(Boolean(process.env.WINDOWS_SSH_GIT_DIR))(

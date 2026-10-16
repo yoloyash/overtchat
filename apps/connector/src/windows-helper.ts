@@ -3,6 +3,7 @@ import { Writable } from "node:stream";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { WINDOWS_COMMAND_SCRIPT } from "@overtchat/agent-runtime/runtime/windows-command";
 import { powershellCommand, powershellLiteral } from "./host-environment.js";
+import { WINDOWS_INPUT_SCRIPT } from "./windows-input.js";
 
 // Read exactly one bootstrap line, leaving subsequent agent input untouched.
 // The code and launch data travel over stdin, below neither cmd's command-line
@@ -54,6 +55,9 @@ for (const [key, value] of Object.entries(launch.env || {})) {
   for (const existing of Object.keys(env)) if (existing.toLowerCase() === key.toLowerCase()) delete env[existing];
   env[key] = value;
 }
+// Relative executables and PATH entries are relative to the requested cwd,
+// just as they are for a direct spawn.
+if (launch.cwd) process.chdir(launch.cwd);
 const resolved = commandLaunch(launch.command, launch.args || [], env);
 let prefix;
 // Node -e scripts are our filesystem/session helpers. Windows CreateProcess
@@ -71,26 +75,7 @@ const child = cp.spawn(resolved.command, resolved.args, {
 child.on('error', error => { process.stderr.write(error.message + '\\n'); process.exitCode = 1; process.stdin.destroy(); });
 child.stdin.on('error', () => {});
 if (prefix) child.stdin.write(prefix);
-// Logical stdin EOF is a frame, distinct from transport EOF. Keep a heartbeat
-// after EOF so long-running servers are killed if their SSH owner disappears.
-let lastFrame = Date.now(); let inputEnded = false; let finished = false;
-const watchdog = setInterval(() => { if (Date.now() - lastFrame > 30000) process.exit(1); }, 1000);
-watchdog.unref();
-async function pump() {
-  const lines = require('node:readline').createInterface({input:process.stdin, crlfDelay:Infinity});
-  for await (const line of lines) {
-    if (line.length > 100000) throw Error('Input frame too large');
-    lastFrame = Date.now();
-    const frame = JSON.parse(line);
-    if (frame.type === 'ping') continue;
-    if (frame.type === 'end') { if (!inputEnded) child.stdin.end(); inputEnded = true; continue; }
-    if (frame.type !== 'data' || inputEnded || typeof frame.data !== 'string') throw Error('Invalid input frame');
-    await new Promise(resolve => child.stdin.write(Buffer.from(frame.data,'base64'), () => resolve()));
-  }
-  if (!finished) process.exit(1);
-}
-pump().catch(error => { if (!finished) { process.stderr.write(error.message + '\\n'); process.exit(1); } });
-child.on('close', code => { finished = true; clearInterval(watchdog); process.stdin.destroy(); process.exitCode = code === null ? 1 : code; });
+${WINDOWS_INPUT_SCRIPT}
 `;
 
 export function windowsInputChannel(

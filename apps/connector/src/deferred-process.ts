@@ -9,30 +9,45 @@ export function deferredProcess(
   const stdout = new PassThrough();
   const stderr = new PassThrough();
   let child: AgentProcess | undefined;
-  let cancelled = false;
+  let pendingSignal: NodeJS.Signals | undefined;
+  let terminating = false;
   let stopping: Promise<void> | undefined;
   const abort = new AbortController();
+  const stopChild = async (process: AgentProcess): Promise<void> => {
+    if (process.terminate) await process.terminate();
+    else {
+      process.kill("SIGTERM");
+      const timer = setTimeout(() => process.kill("SIGKILL"), 1_000);
+      try {
+        await process.exit;
+      } finally {
+        clearTimeout(timer);
+      }
+    }
+    await process.exit;
+  };
   const terminate = (): Promise<void> => {
-    cancelled = true;
+    terminating = true;
     abort.abort();
-    if (!child) return ready.then(() => terminate());
-    stopping ??= child.terminate
-      ? child.terminate()
-      : Promise.resolve().then(() => {
-          child!.kill("SIGTERM");
-        });
+    stopping ??= ready.then(
+      () => stopChild(child!),
+      () => {},
+    );
     return stopping;
   };
   const ready = Promise.resolve()
     .then(() => start(abort.signal))
-    .then(async (process) => {
+    .then((process) => {
       child = process;
       process.stdout.pipe(stdout);
       process.stderr.pipe(stderr);
       // stdin errors are reflected in the process exit, never unhandled events.
       process.stdin.on("error", () => {});
-      stdin.pipe(process.stdin);
-      if (cancelled) await terminate();
+      // A cancelled launch must not receive buffered requests before cleanup.
+      if (terminating || pendingSignal) {
+        stdin.destroy();
+        if (pendingSignal) process.kill(pendingSignal);
+      } else stdin.pipe(process.stdin);
     });
   const exit: Promise<AgentProcessExit> = ready
     .then(() => child!.exit)
@@ -52,10 +67,10 @@ export function deferredProcess(
     stderr,
     exit,
     terminate,
-    kill: () => {
-      void terminate().catch(() => {
-        /* startup failure is reported by exit */
-      });
+    kill: (signal = "SIGTERM") => {
+      if (child) return child.kill(signal);
+      if (pendingSignal !== "SIGKILL") pendingSignal = signal;
+      abort.abort();
       return true;
     },
   };

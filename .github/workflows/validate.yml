@@ -95,7 +95,9 @@ jobs:
       - run: npm ci
       - name: Test native Windows launch and host path contracts
         run: |
-          npm run test -w apps/connector -- src/windows-helper.test.ts src/host-environment.test.ts
+          npm run test -w apps/connector -- src/windows-helper.test.ts src/windows-input.test.ts src/deferred-process.test.ts src/host-environment.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test -w packages/agent-runtime -- src/runtime/windows-command.test.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test -w packages/agent-bridge -- src/paths.test.ts
 

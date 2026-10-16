@@ -9,8 +9,12 @@ function environmentValue(env, name) {
 }
 function resolveCommand(command, env = process.env) {
   if (command === "node" || command === "node.exe") return process.execPath;
-  const extensions = (environmentValue(env, "PATHEXT") || ".COM;.EXE;.BAT;.CMD").split(";");
-  const names = path.extname(command) ? [command] : [command, ...extensions.map(ext => command + ext)];
+  const extensions = (environmentValue(env, "PATHEXT") || ".COM;.EXE;.BAT;.CMD")
+    .split(";").map(ext => ext.trim()).filter(Boolean)
+    .map(ext => ext.startsWith('.') ? ext : '.' + ext);
+  // npm installs an extensionless POSIX shim alongside its .cmd wrapper.
+  // Resolve extensionless names through PATHEXT, never as native executables.
+  const names = path.extname(command) ? [command] : extensions.map(ext => command + ext);
   const explicit = /[\\/]/.test(command);
   const directories = explicit ? [""] : (environmentValue(env, "PATH") || "").split(";").filter(Boolean);
   for (const directory of directories) {
