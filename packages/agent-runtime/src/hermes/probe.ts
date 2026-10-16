@@ -30,7 +30,7 @@ export async function probeHermesTarget(
         args: ["acp", "--check"],
       });
       const cwd = (
-        await executeOnHost(resolved, { command: "/bin/pwd" })
+        await executeOnHost(resolved, { command: "node", args: ["-e", "process.stdout.write(process.cwd())"] })
       ).stdout.trim();
       const client = startHermesRuntime(resolved, {
         executable,

@@ -46,6 +46,7 @@ export type HostConnectorServerInfo = {
 };
 
 export * from "./agents";
+export * from "./paths";
 export * from "./catalog";
 export * from "./history";
 export * from "./commands";

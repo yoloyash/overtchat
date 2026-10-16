@@ -9,6 +9,14 @@ import type {
 } from "@overtchat/agent-runtime";
 import { buildSshRemoteCommand, sshSpawnArgs, sshTunnelArgs } from "./ssh.js";
 import { ManagedProcesses } from "./managed-processes.js";
+import { HostEnvironments } from "./host-environment.js";
+import { deferredProcess } from "./deferred-process.js";
+import {
+  windowsHelperCommand,
+  windowsHelperInput,
+  windowsInputChannel,
+} from "./windows-helper.js";
+import { sshCommandArgs } from "./ssh.js";
 
 const TUNNEL_START_TIMEOUT_MS = 10_000;
 
@@ -107,11 +115,37 @@ export class ConnectorProcessHost {
   >();
   private readonly starts = new Set<Promise<AgentProcess>>();
   private readonly managed: ManagedProcesses;
+  private readonly environments = new HostEnvironments();
+  inspectEnvironment = this.environments.inspect;
+  refreshEnvironment = (target: HostTarget): void =>
+    this.environments.invalidate(target);
   private stopped = false;
   private stopPromise?: Promise<void>;
 
   constructor(processDirectory?: string) {
-    this.managed = new ManagedProcesses(processDirectory);
+    this.managed = new ManagedProcesses(processDirectory, {
+      isWindows: async (target, signal) =>
+        (await this.inspectEnvironment(target, signal)).platform === "win32",
+      spawnGate: async (target, launch, id) => {
+        const environment = await this.inspectEnvironment(target);
+        if (!environment.node)
+          throw new Error(
+            "Node.js is not available in the Windows SSH environment. Install Node.js 22 or set OVERTCHAT_SSH_NODE_PATHS on the connector to map this SSH alias to node.exe.",
+          );
+        if (Number(environment.nodeVersion?.match(/^v(\d+)\./u)?.[1] ?? 0) < 22)
+          throw new Error(
+            "Windows SSH execution requires Node.js 22 or newer.",
+          );
+        return this.spawnChild(target, launch, {
+          command: windowsHelperCommand(
+            environment.node,
+            `overtchat-managed-${id}`,
+          ),
+          input: windowsHelperInput(launch, id),
+          gate: id,
+        });
+      },
+    });
   }
 
   startRecovery(): void {
@@ -171,18 +205,61 @@ export class ConnectorProcessHost {
     launch: AgentProcessHostLaunch,
   ): AgentProcess => {
     if (this.stopped) throw new Error("The process host is stopped.");
+    if (target.transport === "local" && process.platform !== "win32")
+      return this.spawnChild(target, launch);
+    return deferredProcess((signal) => {
+      const start = this.inspectEnvironment(target, signal).then(
+        (environment) => {
+          signal.throwIfAborted();
+          if (this.stopped) throw new Error("The process host is stopped.");
+          return environment.platform === "win32"
+            ? this.managed.spawn(target, launch, this.spawn)
+            : this.spawnChild(target, launch);
+        },
+      );
+      this.starts.add(start);
+      void start.then(
+        () => this.starts.delete(start),
+        () => this.starts.delete(start),
+      );
+      return start;
+    });
+  };
+
+  private spawnChild(
+    target: HostTarget,
+    launch: AgentProcessHostLaunch,
+    windows?: { command: string; input: string; gate: string },
+  ): AgentProcess {
+    if (this.stopped) throw new Error("The process host is stopped.");
     const connectorTarget = targetForSpawn(target);
     const child =
       connectorTarget.transport === "local"
-        ? spawn("/bin/sh", ["-c", buildSshRemoteCommand(launch)], {
-            env: process.env,
-            detached: process.platform !== "win32",
-            stdio: ["pipe", "pipe", "pipe"],
-          })
-        : spawn("ssh", sshSpawnArgs(connectorTarget.alias, launch), {
-            detached: process.platform !== "win32",
-            stdio: ["pipe", "pipe", "pipe"],
-          });
+        ? spawn(
+            windows ? "cmd.exe" : "/bin/sh",
+            windows
+              ? ["/d", "/s", "/c", windows.command]
+              : ["-c", buildSshRemoteCommand(launch)],
+            {
+              env: process.env,
+              detached: process.platform !== "win32",
+              stdio: ["pipe", "pipe", "pipe"],
+            },
+          )
+        : spawn(
+            "ssh",
+            windows
+              ? sshCommandArgs(connectorTarget.alias, windows.command)
+              : sshSpawnArgs(connectorTarget.alias, launch),
+            {
+              detached: process.platform !== "win32",
+              stdio: ["pipe", "pipe", "pipe"],
+            },
+          );
+    if (windows) {
+      child.stdin.on("error", () => {});
+      child.stdin.write(windows.input);
+    }
     this.processes.add(child);
     child.once("exit", () => {
       void this.cleanup(child);
@@ -204,16 +281,16 @@ export class ConnectorProcessHost {
       settle({ code, signal, ...(error ? { error } : {}) });
     };
     child.once("error", (error) => finish(null, null, error));
-    child.once("exit", (code, signal) => finish(code, signal));
+    child.once("close", (code, signal) => finish(code, signal));
 
     return {
-      stdin: child.stdin,
+      stdin: windows ? windowsInputChannel(child, windows.gate) : child.stdin,
       stdout: child.stdout,
       stderr: child.stderr,
       exit,
       kill: (signal = "SIGTERM") => killProcessTree(child, signal),
     };
-  };
+  }
 
   openTcpTunnel = async (
     target: Extract<HostTarget, { transport: "ssh" }>,

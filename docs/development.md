@@ -95,6 +95,41 @@ After extracting the artifact, open the report with:
 npx playwright show-report <artifact-directory>/playwright-report
 ```
 
+## Windows SSH validation
+
+The Windows suite runs through a real SSH alias and creates isolated temporary
+directories on both machines. Install Node.js 22, Git for Windows, and an
+authenticated Oh My Pi CLI on the target. Set the optional Node override when
+Node is not on the SSH PATH:
+
+```sh
+WINDOWS_SSH_ALIAS=gaming-pc \
+OVERTCHAT_SSH_NODE_PATHS='{"gaming-pc":"C:\\Program Files\\nodejs\\node.exe"}' \
+npm run test -w apps/connector -- src/windows-ssh.integration.test.ts
+```
+
+Set `WINDOWS_SSH_GIT_DIR` to the remote directory containing `git.exe` to enable
+the native Git status test; that directory is added only to test process
+environments. Set `WINDOWS_SSH_PROMPT=1` to include a small real model turn
+(uses the target's configured provider credentials). The default suite probes
+the installed provider and exercises its RPC lifecycle without model requests.
+
+Coverage includes native and batch-wrapper argv, binary streams, scripts above
+Windows command-line limits, Windows paths and filesystem confinement, provider
+discovery, PowerShell command entry, detached descendants, SSH transport loss,
+and connector ledger recovery. Run against an ordinary `cmd.exe` SSH host and
+also a host configured with PowerShell as its default shell before expanding
+the supported Windows matrix. The nested PowerShell entry test exercises its
+parser without changing the target's SSH server configuration.
+
+Run the connector, agent-runtime, and agent-bridge suites and typechecks alongside
+the web workspace checks. Windows path acceptance is shared by the form and API;
+the connector remains the only product process executing host commands. The
+Windows helper has an internal versioned stdin bootstrap and adds no public
+connector protocol messages or remotely listening service.
+The Validate workflow also runs the helper's binary-stream, startup-gate, and
+batch-wrapper tests on Windows, using real PowerShell and Job Objects.
+
 ## Connector journal validation
 
 Persistence changes must preserve journal-before-ack ordering, command receipts,

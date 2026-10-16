@@ -22,6 +22,7 @@ import {
   AgentProviderSnapshotManager,
   agentProviderAdapter,
   configureProcessSpawner,
+  configureHostEnvironmentResolver,
   configureManagedProcessSpawner,
   configureTcpTunnelOpener,
   inspectAgentWorkspaceGitStatus,
@@ -155,6 +156,7 @@ export class ConnectorDaemon {
     private readonly processHost = new ConnectorProcessHost(),
   ) {
     configureProcessSpawner(this.processHost.spawn);
+    configureHostEnvironmentResolver(this.processHost.inspectEnvironment);
     configureManagedProcessSpawner(this.processHost.spawnManaged);
     configureTcpTunnelOpener(this.processHost.openTcpTunnel);
     this.registry = new AgentRuntimeRegistry({
@@ -356,6 +358,9 @@ export class ConnectorDaemon {
       case "list_ssh_hosts":
         return listSshHosts();
       case "provider_snapshot":
+        if (request.refresh) this.processHost.refreshEnvironment(request.target.transport === "local"
+          ? { transport: "local" }
+          : { transport: "ssh", alias: request.target.sshAlias });
         return this.providerSnapshots.getSnapshot(request.target, {
           refresh: request.refresh,
         });

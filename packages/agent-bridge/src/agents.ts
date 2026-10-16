@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isAbsoluteAgentPath } from "./paths";
 
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
@@ -87,7 +88,7 @@ export const addAgentWorkspaceSchema = z.object({
     .trim()
     .min(1)
     .max(4_096)
-    .refine((value) => value.startsWith("/"), {
+    .refine(isAbsoluteAgentPath, {
       message: "Enter an absolute directory path.",
     }),
   name: z.string().trim().min(1).max(120).optional(),

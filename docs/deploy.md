@@ -252,6 +252,47 @@ Coding-agent executables and credentials belong on the Host Connector machine
 or selected SSH host. Configure connections on the web before using them on
 Android or iOS.
 
+### Windows SSH workspaces
+
+Native Windows OpenSSH targets can use either the default Command Prompt shell
+or PowerShell. Keep the existing SSH alias and key configuration. The connector
+detects the host before executing commands; selecting a Windows host does not
+require changing its default SSH shell or installing a remote OvertChat service.
+
+Install Node.js 22 and the desired Windows-compatible coding-agent CLI on the
+target. Git for Windows is needed for repository features. These executables
+must be available to the SSH user, which can have a different environment from
+an interactive desktop terminal. The Windows bootstrap uses Windows PowerShell
+5.1, including `Add-Type`, and Windows Job Objects to own the launched process
+tree; restricted PowerShell environments that disallow `Add-Type` are unsupported.
+
+If Node is installed outside the SSH PATH, set `OVERTCHAT_SSH_NODE_PATHS` in the
+**connector's** environment to a JSON map of aliases to absolute executable paths:
+
+```sh
+OVERTCHAT_SSH_NODE_PATHS='{"gaming-pc":"C:\\Program Files\\nodejs\\node.exe"}'
+```
+
+Restart the connector after changing its environment. Refresh agent discovery
+after installing a provider or changing the remote PATH. Successful host probes
+are cached for one minute; refreshing provider discovery also invalidates that
+cache. Windows discovery resolves native executables and `.cmd`/`.bat` wrappers.
+Batch-wrapper arguments containing newlines or exceeding Windows command-line
+limits require configuring the provider's native executable instead.
+
+The helper keeps a heartbeat after the agent's stdin closes. SSH disconnects or
+30 seconds without a heartbeat stop the owned process tree. A reconnect resumes
+from provider session history; it does not keep executing an unattended turn.
+
+Workspace paths may use drive-qualified paths such as `C:\Users\me\project`
+or UNC paths such as `\\server\share\project`. Network shares still require
+access from the SSH account. WSL reached through its own Linux SSH endpoint
+remains a separate POSIX environment with Linux paths and provider installations.
+Windows SSH support does not add a Windows connector service installer; managed
+connector installation remains Linux/macOS.
+
+### Coding-agent providers and connector operation
+
 Hermes uses its native ACP interface. Install and configure Hermes on the
 connector machine or SSH target, then verify `hermes acp --version` and
 `hermes acp --check`. If ACP dependencies or credentials are missing, follow

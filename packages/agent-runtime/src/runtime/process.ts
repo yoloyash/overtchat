@@ -39,6 +39,25 @@ export type ProcessSpawner = (
   launch: AgentProcessHostLaunch,
 ) => AgentProcess;
 
+export type HostEnvironment = { platform: "posix" | "win32" };
+type HostEnvironmentResolver = (target: HostTarget) => Promise<HostEnvironment>;
+let configuredEnvironmentResolver: HostEnvironmentResolver | undefined;
+
+export function configureHostEnvironmentResolver(
+  resolver: HostEnvironmentResolver,
+): void {
+  configuredEnvironmentResolver = resolver;
+}
+
+export function inspectHostEnvironment(
+  target: HostTarget,
+): Promise<HostEnvironment> {
+  return (
+    configuredEnvironmentResolver?.(target) ??
+    Promise.resolve({ platform: "posix" })
+  );
+}
+
 let configuredSpawner: ProcessSpawner | undefined;
 
 type ManagedProcessSpawner = (
@@ -101,6 +120,7 @@ let configuredTcpTunnelOpener: TcpTunnelOpener | undefined;
 export function configureProcessSpawner(spawner: ProcessSpawner): void {
   configuredSpawner = spawner;
   configuredManagedSpawner = undefined;
+  configuredEnvironmentResolver = undefined;
 }
 
 export function configureTcpTunnelOpener(opener: TcpTunnelOpener): void {
