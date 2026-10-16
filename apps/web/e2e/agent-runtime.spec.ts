@@ -11,6 +11,7 @@ import type {
 import {
   openE2eDatabase,
   resetE2eDatabase,
+  setupUrl,
 } from "./helpers/database";
 
 const SESSION_ID = "runtime-session";
@@ -376,7 +377,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
 test("new chats, follow-up prompts, and fork drafts work without crypto.randomUUID", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("HTTP Agent Tester");
   await page.locator("#email").fill("http-agent@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -566,7 +567,7 @@ test("new chats, follow-up prompts, and fork drafts work without crypto.randomUU
 test("requires inspection before retrying an uncertain queued message", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Uncertain Queue E2E Admin");
   await page
     .locator("#email")
@@ -654,7 +655,7 @@ test("shows durable turn activity without changing completed tool status", async
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Runtime E2E Admin");
   await page.locator("#email").fill("runtime-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2301,7 +2302,7 @@ test("shows durable turn activity without changing completed tool status", async
 });
 
 test("folds long completed work smoothly, anchors disclosures, and respects reduced motion", async ({ page }, testInfo) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Motion Tester");
   await page.locator("#email").fill("motion@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2380,7 +2381,7 @@ test("preserves an OMP markdown answer through continuation, abort and reload", 
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Transcript E2E Admin");
   await page.locator("#email").fill("transcript-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2577,7 +2578,7 @@ test("drains an oversized connector backlog, pages history, and streams steer wi
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Transport E2E Admin");
   await page.locator("#email").fill("transport-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2720,7 +2721,7 @@ test("drains an oversized connector backlog, pages history, and streams steer wi
 
 test("keeps OMP history stable after compaction, model changes and connector restart", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Transcript Lifecycle Admin");
   await page.locator("#email").fill("lifecycle-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -2851,7 +2852,7 @@ test("keeps OMP history stable after compaction, model changes and connector res
 
 test("separates OMP background waiting from responding and settles without another turn", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Background Lifecycle Admin");
   await page.locator("#email").fill("background-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

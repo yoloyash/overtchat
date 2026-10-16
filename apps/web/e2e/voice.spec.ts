@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 function seedVoiceFixtures() {
   const db = openE2eDatabase();
@@ -81,7 +81,7 @@ test("voice toggles within ordinary and legacy voice chats", async ({
     status: 503, body: "Unavailable",
   }));
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Voice Admin");
   await page.locator("#email").fill("voice-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

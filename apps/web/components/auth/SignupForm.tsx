@@ -1,7 +1,7 @@
 "use client";
 
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +12,19 @@ import { useResetAuthState } from "@/lib/queries/auth";
 export function SignupForm() {
   const navigate = useNavigate();
   const resetAuthState = useResetAuthState();
+  const [code, setCode] = useState(() => {
+    const params = new URLSearchParams(window.location.hash.slice(1));
+    return params.get("setup") ?? "";
+  });
+  useEffect(() => {
+    if (new URLSearchParams(window.location.hash.slice(1)).has("setup")) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    }
+  }, []);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,19 +35,20 @@ export function SignupForm() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
-    // The server only accepts public signup while it has no users.
-    const { error } = await authClient.signUp.email({
-      name: name.trim(),
-      email,
-      password,
-    });
+    const { data, error } = await authClient.$fetch<{ token: string | null }>(
+      "/setup-admin",
+      {
+        method: "POST",
+        body: { code, name: name.trim(), email, password },
+      },
+    );
     if (error) {
       setError(error.message ?? "Signup failed");
       setSubmitting(false);
       return;
     }
     resetAuthState();
-    await navigate({ to: "/", replace: true });
+    await navigate({ to: data?.token ? "/" : "/login", replace: true });
   }
 
   return (
@@ -49,6 +63,21 @@ export function SignupForm() {
       </header>
 
       <div className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="setup-code">Setup code</Label>
+          <Input
+            id="setup-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            required
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+          />
+          <p className="text-xs text-muted-foreground">
+            Use the code from your installer, or run overtchat status on the server.
+          </p>
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="name">Name</Label>
           <Input

@@ -24,9 +24,21 @@ export function resetE2eDatabase() {
       db.prepare("DELETE FROM session").run();
       db.prepare("DELETE FROM verification").run();
       db.prepare("DELETE FROM user").run();
+      db.prepare("DELETE FROM initial_setup").run();
       db.prepare("DELETE FROM model_configs").run();
     })();
   } finally {
     db.close();
   }
+}
+
+/** Exercise the same authenticated operator retrieval used by the installer. */
+export async function setupUrl() {
+  const response = await fetch(`http://localhost:${process.env.E2E_PORT ?? "4717"}/api/internal/management/setup`, {
+    headers: { Authorization: "Bearer e2e-management-secret-1234567890123456" },
+  });
+  if (!response.ok) throw new Error(`Setup code retrieval failed: ${response.status}`);
+  const { code } = await response.json() as { code: string | null };
+  if (!code) throw new Error("Test database is already initialized.");
+  return `/signup#setup=${code}`;
 }

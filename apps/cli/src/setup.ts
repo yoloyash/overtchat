@@ -48,6 +48,7 @@ import {
 import { createPreMigrationSnapshot } from "./snapshot.js";
 import type { ExistingInstallation, InstallationConfig } from "./types.js";
 import { accessSummary, connectionInstructions } from "./access.js";
+import { initialSetupLink } from "./initial-setup.js";
 import { finishAccess } from "./connection-check.js";
 import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
 import { startStack, recoverSpeech } from "./stack.js";
@@ -632,7 +633,13 @@ export async function setup(
     await writeInstallationConfig(paths, config);
     reportPendingAgentConnections(config);
     outro(accessSummary(config));
-    if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
+    try {
+      const setupLink = await initialSetupLink(config, secrets.managementSecret);
+      if (setupLink) note(`Create your administrator account:\n${setupLink}\n\nThis private link works once. Run overtchat status to show it again.`, "Next steps");
+      else if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
+    } catch {
+      note("Could not retrieve the setup link. Run overtchat status to retry, or find the setup code with overtchat logs.", "Account setup");
+    }
     note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");
   } catch (error) {
     if (speechChange) {

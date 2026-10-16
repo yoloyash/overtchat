@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test("styles inline and block math, fractions, and superscripts after reload", async ({
   page,
 }, testInfo) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Math Tester");
   await page.locator("#email").fill("math@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

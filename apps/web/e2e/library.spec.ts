@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 let modelServer: Server;
 let modelBaseUrl: string;
@@ -40,7 +40,7 @@ test.afterAll(async () => {
 });
 
 test("library pagination survives chat deletion and search matches Unicode filenames", async ({ page }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Library Pagination Admin");
   await page.locator("#email").fill("library-pages@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -82,7 +82,7 @@ test("library pagination survives chat deletion and search matches Unicode filen
 
 test("browse, select, reuse and delete library attachments across chats", async ({ page, playwright }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Library Admin");
   await page.locator("#email").fill("library@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

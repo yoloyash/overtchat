@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 type Message = { role: string; content?: string; tool_call_id?: string; tool_calls?: { id: string }[] };
 let server: Server;
@@ -74,7 +74,7 @@ test.afterAll(async () => {
 test("compacts large MCP results between real tool-loop steps without limiting replies", async ({ page }) => {
   resetE2eDatabase();
   prompts = []; summaryCalls = 0; toolCalls = 0; outputLimits = [];
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Compaction Tester");
   await page.locator("#email").fill("compaction@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name", { exact: true }).fill("Mobile Tester");
   await page.getByLabel("Email").fill("mobile@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

@@ -104,10 +104,11 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  db.$client.exec("DELETE FROM user; DELETE FROM verification;");
+  db.$client.exec("DELETE FROM user; DELETE FROM verification; DELETE FROM initial_setup;");
   expect(
     (
-      await request("/sign-up/email", {
+      await request("/setup-admin", {
+        code: (await import("@/lib/db/initialSetup")).getSetupCode(),
         email: "admin@example.com",
         name: "Admin",
         password: initialPassword,

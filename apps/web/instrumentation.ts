@@ -4,6 +4,12 @@ export async function register() {
   const { runMigrations } = await import("@/lib/db/migrate");
   runMigrations();
 
+  const { getSetupCode } = await import("@/lib/db/initialSetup");
+  const code = getSetupCode();
+  if (code) {
+    console.log(`[setup] Create your administrator account with setup code ${code}.`);
+  }
+
   const { ensureServerCapabilityConfigs } = await import(
     "@/lib/db/serverCapabilities"
   );

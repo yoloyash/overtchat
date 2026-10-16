@@ -148,6 +148,13 @@
       "when": 1791865711968,
       "tag": "0020_dusty_shotgun",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1792137964716,
+      "tag": "0021_stiff_mongu",
+      "breakpoints": true
     }
   ]
 }

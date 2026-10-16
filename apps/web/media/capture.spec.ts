@@ -1,7 +1,7 @@
 import { expect, test, type Page, type BrowserContext } from "@playwright/test";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { NOW, USER, seedDemo, agentSnapshot } from "./fixtures";
+import { demoSetupCode, NOW, USER, seedDemo, agentSnapshot } from "./fixtures";
 
 const output = process.env.MEDIA_OUTPUT!;
 const baseURL = process.env.MEDIA_BASE_URL!;
@@ -102,7 +102,7 @@ async function saveFrame(page: Page, name: string) {
 
 test("capture the real app with reproducible editorial fixtures", async ({ browser }) => {
   const bootstrap = await browser.newContext({ baseURL });
-  const signup = await bootstrap.request.post("/api/auth/sign-up/email", { data: USER, headers: { Origin: baseURL } });
+  const signup = await bootstrap.request.post("/api/auth/setup-admin", { data: { ...USER, code: await demoSetupCode(baseURL) }, headers: { Origin: baseURL } });
   expect(signup.ok(), await signup.text()).toBe(true);
   seedDemo(process.env.MEDIA_DATABASE!);
   const storageState = await bootstrap.storageState();

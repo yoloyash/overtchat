@@ -14,8 +14,16 @@ curl -fsSL https://overtchat.com/install | sh
 Choose where to access OvertChat, local search, speech, and voice services,
 and whether to check for updates. The wizard generates the configuration and
 secrets; no `.env` file editing is needed. On Linux, it installs Docker if needed.
-Open the printed URL, create the administrator account,
-and add your model endpoint in the web app.
+Open the printed private setup link, create the administrator account,
+and add your model endpoint in the web app. The link prefills a one-time setup
+code that proves you operate this server. If you open the regular server address,
+enter the code manually. Run `overtchat status` on the server to show the link
+again; the code is also available in `overtchat logs` before setup completes.
+
+The code survives restarts and stops working after the administrator account is
+created. Treat the link and code as private until then. Existing installations
+with accounts do not require a code. This is only for initial setup; use
+[password recovery](#password-recovery) if you cannot sign in afterward.
 
 ```sh
 overtchat setup     # change access, services, or update notifications

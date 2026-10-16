@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const SIDEBAR_STORAGE_KEY = "overtchat_sidebar_collapsed";
 
@@ -35,7 +35,7 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
       }),
     });
   });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Sidebar Admin");
   await page.locator("#email").fill("sidebar-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

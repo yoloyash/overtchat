@@ -37,6 +37,7 @@ export default defineConfig({
       BETTER_AUTH_SECRET: "testsecret1234567890123456789012",
       BETTER_AUTH_URL: baseURL,
       OVERTCHAT_E2E_DISABLE_AUTH_RATE_LIMIT: "1",
+      OVERTCHAT_MANAGEMENT_SECRET: "e2e-management-secret-1234567890123456",
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

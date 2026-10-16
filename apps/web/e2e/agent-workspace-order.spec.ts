@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const workspaceNames = ["Alpha", "Beta", "Gamma"];
 
@@ -71,7 +71,7 @@ async function setup(
     .route("**/api/agent-workspaces/*/git-status", (route) =>
       route.fulfill({ json: { status: { isGit: false } } }),
     );
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Workspace Admin");
   await page.locator("#email").fill("workspace-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

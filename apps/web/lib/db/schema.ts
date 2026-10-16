@@ -22,6 +22,12 @@ import {
 import type { ModelPricing } from "@/lib/model-config/schema";
 import type { McpServerConfig } from "@/lib/mcp/schema";
 
+// One durable bootstrap record. A null nonce means setup is permanently closed.
+export const initialSetup = sqliteTable("initial_setup", {
+  id: integer("id").primaryKey(),
+  nonce: text("nonce"),
+});
+
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

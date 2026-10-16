@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -37,7 +37,7 @@ function seedModels() {
 }
 
 test("assign and clear a task model hidden from chat", async ({ page }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Task Model Admin");
   await page.locator("#email").fill("task-model@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

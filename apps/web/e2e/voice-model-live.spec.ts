@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 // Explicitly opt in: every model response comes from the supplied real endpoint.
 test.skip(process.env.VOICE_LIVE_TEST !== "1" || !process.env.VOICE_LIVE_MODEL_URL,
@@ -69,7 +69,7 @@ test("real model preserves context, prompt prefix, tools, and usage across text 
         }
       };
     });
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await page.locator("#name").fill("Live model integration");
     await page.locator("#email").fill("voice-model@overtchat-test.local");
     await page.locator("#password").fill("test-password-123");

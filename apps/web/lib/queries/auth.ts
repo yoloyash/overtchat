@@ -18,7 +18,7 @@ export const sessionQuery = queryOptions({
   },
 });
 
-/** Whether the server has no users yet, so the first signup creates the admin. */
+/** Whether initial administrator setup is still available. */
 export async function fetchSetupRequired(): Promise<boolean> {
   const response = await fetch(apiUrl("/api/setup"), { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);

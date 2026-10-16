@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=";
@@ -231,7 +231,7 @@ test.beforeEach(async ({ page }) => {
   hold = false;
   chatFailure = false;
   customImages = false;
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Image Admin");
   await page.locator("#email").fill("image@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 import { accentBackgrounds } from "@overtchat/shared/theme-backgrounds";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.getByLabel("Name", { exact: true }).fill("Settings Tester");
   await page.getByLabel("Email").fill("settings@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");

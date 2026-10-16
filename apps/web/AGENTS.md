@@ -58,8 +58,10 @@ chat-bound tickets. Internal voice routes independently authenticate
 `VOICE_SHARED_SECRET` and verify the ticket; the sidecar must not become a
 trusted substitute for user authorization.
 
-The first created user becomes the administrator. Public signup closes after
-that; administrators create subsequent users through Better Auth's admin path.
+Initial administrator creation requires the operator's one-time setup code and
+atomically consumes setup authorization. Public signup cannot bypass this;
+administrators create subsequent users through Better Auth's admin path.
+See [initial setup](../../docs/deploy.md#install).
 
 ## Chat and persistence
 

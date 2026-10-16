@@ -1,5 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -15,7 +15,7 @@ for (const pinWriteDelay of [0, 350]) {
         await route.continue();
       });
     }
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await page.locator("#name").fill("Pin Test Admin");
     await page.locator("#email").fill("pin-admin@overtchat-test.local");
     await page.locator("#password").fill("test-password-123");
@@ -152,7 +152,7 @@ for (const pinWriteDelay of [0, 350]) {
 }
 
 test("hides pin controls when an older server does not advertise support", async ({ page }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Legacy Server Admin");
   await page.locator("#email").fill("legacy-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -215,7 +215,7 @@ test.describe("touch generation indicators", () => {
           await route.fulfill({ response, json: body });
         });
       }
-      await page.goto("/signup");
+      await page.goto(await setupUrl());
       await page.locator("#name").fill("Touch Generation Admin");
       await page.locator("#email").fill("touch-generation@overtchat-test.local");
       await page.locator("#password").fill("test-password-123");

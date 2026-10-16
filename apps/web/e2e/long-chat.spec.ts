@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -132,7 +132,7 @@ test("long chats page history while keeping the mounted DOM bounded", async ({
   page,
 }) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Long Chat Admin");
   await page
     .locator("#email")
@@ -175,7 +175,7 @@ test("sending returns to latest while manual scrolling stops stream following", 
   page,
 }) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Long Chat Admin");
   await page
     .locator("#email")
