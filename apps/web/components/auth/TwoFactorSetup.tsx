@@ -124,7 +124,7 @@ export function TwoFactorSetup({
             </div>
             <p className="text-muted-foreground">
               Can&apos;t scan it? Enter this key instead:{" "}
-              <code className="select-all break-all font-mono text-foreground">
+              <code className="select-all break-words font-mono text-foreground">
                 {manualKey(enrollment.totpURI)}
               </code>
             </p>
