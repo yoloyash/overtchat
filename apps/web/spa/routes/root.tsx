@@ -7,6 +7,7 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AppError } from "@/components/AppError";
 import { AuthFrame } from "@/components/auth/AuthFrame";
 import { DesktopServer } from "@/components/auth/DesktopServer";
 import { Sidebar } from "@/components/Sidebar";
@@ -19,6 +20,7 @@ export type RouterContext = { queryClient: QueryClient };
 
 export const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: Outlet,
+  errorComponent: AppError,
   notFoundComponent: NotFound,
 });
 

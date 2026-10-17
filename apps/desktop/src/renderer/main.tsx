@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { createHashHistory } from "@tanstack/react-router";
 import { DesktopWindowControls } from "@/components/DesktopWindowControls";
 import { AuthFrame } from "@/components/auth/AuthFrame";
+import { AppError } from "@/components/AppError";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ACCENT_STORAGE_KEY, applyAccent } from "@/lib/accent";
 import { setApiOrigin } from "@/lib/api-url";
@@ -83,4 +84,4 @@ async function start(): Promise<void> {
   render(<App history={createHashHistory()} />);
 }
 
-void start();
+void start().catch((error: unknown) => render(<AppError error={error} />));

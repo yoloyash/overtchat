@@ -509,6 +509,9 @@ the sidebar collapsed, the workspace files pane open, light/dark themes, and
 zoom. The automated smoke covers native minimize/maximize/restore/close,
 fullscreen and zoom, connection/sign-in screens, and chat header controls down
 to a 420px window with a collapsed sidebar.
+It also keeps `/api/ping` healthy while session/setup requests fail, relaunches
+with the saved server, and checks **Try again**, **Change server**, and native
+window controls on the error screen.
 It also checks Windows `WM_NCHITTEST` at each button: Chromium-injected clicks
 alone bypass native drag regions and can pass even when physical clicks fail.
 Keep the window controls after the page content in DOM order so their `no-drag`
@@ -536,8 +539,19 @@ set `DESKTOP_DISCOVERY_LIVE_ORIGIN=http://localhost:4717` while a compatible
 source server is running to also select it and verify its login/setup screen;
 this does not create an account or sign in.
 
-On macOS, the same regression can run the compiled desktop from source with
-Playwright's Electron launcher. It sets an isolated application-data directory
+The regression also covers session/setup failures after a successful ping,
+relaunch with the failing server, and recovery through the visible buttons.
+Source mode additionally injects rejected startup/retry IPC calls. Desktop
+unit tests cover address defaults, retained HTTPS upgrades, and rejection of
+redirects to another host or an unsupported API path. The shared browser
+router's session/setup failure recovery is covered by:
+
+```sh
+E2E_PORT=4829 npm run test:e2e -w apps/web -- connection-recovery.spec.ts
+```
+
+On macOS and Windows, the same regression can run the compiled desktop from
+source with Playwright's Electron launcher. It sets an isolated application-data directory
 before loading main, so it can run alongside an installed app without changing
 its profile. This also checks recovery from a rejected connection IPC call:
 
@@ -546,8 +560,8 @@ npm run build -w apps/desktop --
 node .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop --source
 ```
 
-This exercises the compiled main, preload and renderer on macOS; signed bundle,
-Keychain persistence and updater qualification remain release checks.
+This exercises the compiled main, preload and renderer; signed bundle,
+credential persistence and updater qualification remain release checks.
 
 `npm run start -w apps/desktop --` runs the production build. Check connecting
 (including an outdated server and a wrong address), signing in and out, chat

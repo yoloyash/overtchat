@@ -234,6 +234,10 @@ jobs:
         env:
           DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-windows
         run: node --import tsx .github/scripts/smoke-desktop-windows-chrome.mjs
+      - name: Verify Windows connection recovery with an isolated source profile
+        env:
+          DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke-windows
+        run: node --import tsx .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop --source
       - name: Verify Windows bundle and prepare immutable update metadata
         env:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}

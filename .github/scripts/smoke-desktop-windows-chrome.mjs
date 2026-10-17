@@ -26,7 +26,9 @@ app.setPath("appData", ${JSON.stringify(directory)});
 await import(${JSON.stringify(main)});
 `);
 let signedIn = false;
+let failingRoute = null;
 const api = createServer((request, response) => {
+  if (request.url === failingRoute) return response.destroy();
   response.setHeader("Access-Control-Allow-Origin", "overtchat://app");
   response.setHeader("Access-Control-Allow-Credentials", "true");
   response.setHeader("Content-Type", "application/json");
@@ -134,7 +136,8 @@ try {
   });
   const controls = await page.getByRole("group", { name: "Window controls" }).boundingBox();
   assert(controls && controls.x >= 0 && controls.y === 0);
-  await assertNativeControlTargets();
+  // Native bounds and Chromium's layout settle separately after resize/zoom.
+  await expect(async () => { await assertNativeControlTargets(); }).toPass({ timeout: 10_000 });
   await page.getByRole("button", { name: "Maximize window", exact: true }).click();
   await page.getByRole("button", { name: "Restore window", exact: true }).click();
   await app.evaluate(({ BrowserWindow }) => {
@@ -148,6 +151,29 @@ try {
   await expect(page.getByRole("group", { name: "Window controls" })).toBeVisible();
   await assertNativeControlTargets();
   await page.screenshot({ path: path.join(diagnostics, "windows-chrome.png") });
+  // A healthy native ping must not hide recovery when renderer requests fail.
+  failingRoute = "/api/auth/get-session";
+  await page.reload();
+  await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+  await expect(page.getByRole("group", { name: "Window controls" })).toBeVisible();
+  await assertNativeControlTargets();
+  await page.screenshot({ path: path.join(diagnostics, "windows-connection-recovery.png") });
+  await app.close();
+  app = await electron.launch({ args: [wrapper], env });
+  page = await app.firstWindow();
+  await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+  failingRoute = null;
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  failingRoute = "/api/setup";
+  await page.reload();
+  await page.getByRole("heading", { name: "Couldn't load OvertChat" }).waitFor();
+  await page.getByRole("button", { name: "Change server", exact: true }).click();
+  await page.getByLabel("Server address").waitFor();
+  failingRoute = null;
+  await page.getByLabel("Server address").fill(`http://127.0.0.1:${api.address().port}`);
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await page.getByRole("heading", { name: "Welcome back" }).waitFor();
   signedIn = true;
   await page.reload();
   const header = page.locator("main header[data-titlebar]").first();
@@ -177,7 +203,7 @@ try {
   const closed = app.waitForEvent("close");
   await page.getByRole("button", { name: "Close window", exact: true }).click();
   await closed;
-  process.stdout.write("PASS Windows chrome: native hit targets, hidden native menu, drag regions, maximize/restore, minimize, external state changes, fullscreen, zoom, sign-in, narrow chat headers, collapsed sidebar, close\n");
+  process.stdout.write("PASS Windows chrome: native hit targets, hidden native menu, drag regions, maximize/restore, minimize, external state changes, fullscreen, zoom, sign-in, connection errors across relaunch, Retry, Change server, narrow chat headers, collapsed sidebar, close\n");
 } catch (error) {
   if (page) await page.screenshot({ path: path.join(diagnostics, "windows-chrome-failure.png") }).catch(() => {});
   throw error;

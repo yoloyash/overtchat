@@ -411,6 +411,20 @@ or enter your server URL, then sign in with your existing account. Use
 until you click Connect, and later launches use your saved server. Servers on
 other computers still require their address.
 
+Public hostnames entered without a scheme use HTTPS. Local names such as
+`localhost`, `gaming-pc`, and `server.local`, and IP addresses use HTTP unless
+you specify a scheme. Enter the full `https://` or `http://` URL to override
+this choice. A verified redirect from HTTP to HTTPS on the same hostname is
+saved as HTTPS; changing origins signs you out.
+
+If loading fails after connecting, use **Try again** to check the connection
+again, or **Change server** to correct the saved URL. Both actions remain
+available on Windows without opening the native menu. Older desktop versions
+may show only “Something went wrong!”: fully quit the app, back up and rename
+its `settings.json`, then reopen it and enter the correct full URL. On Windows
+the file is in `%APPDATA%\overtchat`. This resets the desktop connection,
+sign-in and window preferences; server-side chats are unaffected.
+
 ### macOS desktop
 
 Choose `mac-arm64.dmg` for Apple Silicon or `mac-x64.dmg` for Intel. Open the

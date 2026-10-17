@@ -33,7 +33,7 @@ export type ServerProblem =
 export interface BootState {
   /** The saved server, or null before the first connection. */
   server: { origin: string; problem: ServerProblem | null } | null;
-  /** The last address entered, to prefill the connect form. */
+  /** The last selected address, to prefill the connect form. */
   lastAddress: string;
 }
 
