@@ -1,7 +1,11 @@
 import { createRouter, type RouterHistory } from "@tanstack/react-router";
 import { queryClient } from "@/lib/queryClient";
 import { appRoute, authRoute, rootRoute } from "@/spa/routes/root";
-import { loginRoute, signupRoute } from "@/spa/routes/auth";
+import {
+  loginRoute,
+  signupRoute,
+  twoFactorSetupRoute,
+} from "@/spa/routes/auth";
 import { chatRoute, homeRoute } from "@/spa/routes/chat";
 import {
   activityIndexRoute,
@@ -32,7 +36,7 @@ import {
 } from "@/spa/routes/settings";
 
 const routeTree = rootRoute.addChildren([
-  authRoute.addChildren([loginRoute, signupRoute]),
+  authRoute.addChildren([loginRoute, signupRoute, twoFactorSetupRoute]),
   appRoute.addChildren([
     homeRoute,
     chatRoute,

@@ -158,6 +158,9 @@ describe("managed Compose configuration", () => {
     expect(compose).toContain(
       "DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}",
     );
+    expect(compose).toContain(
+      "OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR: ${OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR:-false}",
+    );
     expect(compose).toContain("- overtchat-npm-cache:/app/npm-cache");
     expect(compose).toContain("\n  overtchat-npm-cache:\n");
     expect(compose).toContain("external: true");

@@ -6,6 +6,7 @@ import { latestReleaseManifest, updateCliIfNeeded } from "./release.js";
 import { setup } from "./setup.js";
 import { status } from "./status.js";
 import { resetPassword } from "./reset-password.js";
+import { resetTwoFactor } from "./reset-two-factor.js";
 vi.mock("./install-log.js", async (original) => ({
   ...(await original<typeof import("./install-log.js")>()),
   withInstallationLog: async (_operation: string, run: () => Promise<unknown>) => run(),
@@ -22,6 +23,7 @@ vi.mock("./release.js", async (original) => ({
 vi.mock("./setup.js", () => ({ setup: vi.fn(), waitForApp: vi.fn() }));
 vi.mock("./status.js", () => ({ status: vi.fn() }));
 vi.mock("./reset-password.js", () => ({ resetPassword: vi.fn() }));
+vi.mock("./reset-two-factor.js", () => ({ resetTwoFactor: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
   vi.spyOn(console, "log").mockImplementation(() => {});
@@ -35,6 +37,7 @@ describe("CLI contract", () => {
     "version",
     "logs",
     "reset-password",
+    "reset-two-factor",
   ])(
     "supports %s --help without loading installation state",
     async (command) => {
@@ -61,6 +64,7 @@ describe("CLI contract", () => {
     ["update", "--json"],
     ["help", "setup", "extra"],
     ["reset-password", "--password", "secret"],
+    ["reset-two-factor", "--email", "admin@example.com"],
   ])("rejects invalid arguments %j", (...args) => {
     expect(() => parseArgs(args)).toThrow();
   });
@@ -72,6 +76,12 @@ describe("CLI contract", () => {
   it("runs password recovery without setup or updates", async () => {
     await main(["reset-password"]);
     expect(resetPassword).toHaveBeenCalledOnce();
+    expect(setup).not.toHaveBeenCalled();
+    expect(latestReleaseManifest).not.toHaveBeenCalled();
+  });
+  it("runs two-factor recovery without setup or updates", async () => {
+    await main(["reset-two-factor"]);
+    expect(resetTwoFactor).toHaveBeenCalledOnce();
     expect(setup).not.toHaveBeenCalled();
     expect(latestReleaseManifest).not.toHaveBeenCalled();
   });

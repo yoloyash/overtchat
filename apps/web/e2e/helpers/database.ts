@@ -22,6 +22,7 @@ export function resetE2eDatabase() {
       db.prepare("DELETE FROM uploads").run();
       db.prepare("DELETE FROM account").run();
       db.prepare("DELETE FROM session").run();
+      db.prepare("DELETE FROM two_factor").run();
       db.prepare("DELETE FROM verification").run();
       db.prepare("DELETE FROM user").run();
       db.prepare("DELETE FROM initial_setup").run();

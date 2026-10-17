@@ -18,6 +18,7 @@ export type UserRow = {
   role?: string | null;
   createdAt: string | Date;
   banned?: boolean | null;
+  twoFactorEnabled?: boolean | null;
 };
 
 export const usersQuery = queryOptions({

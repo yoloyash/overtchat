@@ -144,6 +144,34 @@ print("Password reset. All sessions for this account have been signed out.")
 '
 ```
 
+## Two-factor authentication
+
+Anyone can turn on two-factor in **Settings → Security**: confirm the password,
+scan the QR code with an authenticator app such as 1Password, Google
+Authenticator, or Authy (or type the key), enter a code, and save the ten
+backup codes. Sign-in then asks for a code from the app after the password.
+Each backup code works once; **New backup codes** replaces them.
+
+An administrator can remove another user's authenticator, for example after a
+lost phone, in **Settings → Users → Reset two-factor**. The acting administrator
+enters their own current password. If every administrator is locked out, run
+this on the server the same way as [password recovery](#password-recovery):
+
+```sh
+overtchat reset-two-factor
+```
+
+Both remove the authenticator and backup codes and sign out all of that account's
+sessions; the user signs in with their password and can set two-factor up again.
+Manual installations can send `{"email": "..."}` to
+`POST /api/internal/management/two-factor-reset` with the management secret,
+like the password-recovery request above.
+
+Setting `OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR=true` in the app's environment makes
+administrators set up two-factor before they can use the app, and keeps them
+from turning it off. Other users can still choose. Two-factor sign-in needs the
+current web, desktop, and mobile apps; older apps can't complete the code step.
+
 ## Choose how to access OvertChat
 
 First-time installation and `overtchat setup` use the same access question.

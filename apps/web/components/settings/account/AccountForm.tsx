@@ -12,6 +12,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "../SettingsRows";
+import { TwoFactorSection } from "./TwoFactorSection";
 
 export function AccountForm({ email }: { email: string }) {
   const [currentPassword, setCurrentPassword] = useState("");
@@ -124,6 +125,8 @@ export function AccountForm({ email }: { email: string }) {
           </Button>
         </SettingsActions>
       </form>
+
+      <TwoFactorSection email={email} />
     </SettingsPage>
   );
 }

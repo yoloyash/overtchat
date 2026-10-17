@@ -11,6 +11,11 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  TOTP_CODE_LENGTH,
+  twoFactorErrorMessage,
+  twoFactorSignInExpired,
+} from "@overtchat/shared";
 import { getAuthClient } from "@/lib/auth/client";
 import { useServerUrl } from "@/lib/server-url";
 import { useTheme } from "@/lib/theme";
@@ -25,20 +30,53 @@ export default function LoginScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // Set after the password when the account uses two-factor.
+  const [codeStep, setCodeStep] = useState<"totp" | "backup" | null>(null);
+  const [code, setCode] = useState("");
 
   async function onSubmit() {
     if (submitting) return;
     setSubmitting(true);
     setError("");
     try {
-      const { error } = await authClient.signIn.email({ email, password });
+      const { data, error } = await authClient.signIn.email({ email, password });
       if (error) {
         setError(error.message ?? "Login failed");
+        return;
+      }
+      if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+        setCode("");
+        setCodeStep("totp");
         return;
       }
       await session.refetch();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function onVerify() {
+    if (submitting || !codeStep) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      const { error } =
+        codeStep === "backup"
+          ? await authClient.twoFactor.verifyBackupCode({ code: code.trim() })
+          : await authClient.twoFactor.verifyTotp({ code: code.replace(/\s/g, "") });
+      if (error) {
+        if (twoFactorSignInExpired(error)) {
+          setCodeStep(null);
+          setPassword("");
+        }
+        setError(twoFactorErrorMessage(error));
+        return;
+      }
+      await session.refetch();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify the code.");
     } finally {
       setSubmitting(false);
     }
@@ -73,7 +111,7 @@ export default function LoginScreen() {
               <Text
                 style={[styles.title, { color: colors.foreground, fontFamily: fonts.serifSemiBold }]}
               >
-                Welcome back
+                {codeStep ? "Two-factor authentication" : "Welcome back"}
               </Text>
               <Text
                 style={[
@@ -81,65 +119,106 @@ export default function LoginScreen() {
                   { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
                 ]}
               >
-                Sign in to continue.
+                {codeStep === "backup"
+                  ? "Enter one of the backup codes you saved when you set up two-factor."
+                  : codeStep
+                    ? "Enter the 6-digit code from your authenticator app."
+                    : "Sign in to continue."}
               </Text>
             </View>
 
-            <View style={styles.fields}>
+            {codeStep ? (
               <View style={styles.field}>
                 <Text
                   style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
                 >
-                  Email
+                  {codeStep === "backup" ? "Backup code" : "Authentication code"}
                 </Text>
                 <TextInput
-                  value={email}
-                  onChangeText={setEmail}
+                  key={codeStep}
+                  value={code}
+                  onChangeText={setCode}
+                  onSubmitEditing={onVerify}
+                  autoFocus
                   autoCapitalize="none"
                   autoCorrect={false}
-                  keyboardType="email-address"
-                  autoComplete="username"
-                  importantForAutofill="yes"
+                  keyboardType={codeStep === "backup" ? "default" : "number-pad"}
+                  textContentType="oneTimeCode"
+                  autoComplete="one-time-code"
+                  maxLength={codeStep === "backup" ? 11 : TOTP_CODE_LENGTH + 1}
+                  placeholder={codeStep === "backup" ? "xxxxx-xxxxx" : "123456"}
+                  placeholderTextColor={colors.mutedForeground}
                   editable={!submitting}
                   style={[
                     styles.input,
+                    styles.codeInput,
                     {
                       color: colors.foreground,
                       borderColor: colors.input,
                       borderRadius: radii.md,
-                      fontFamily: fonts.sansRegular,
+                      fontFamily: fonts.mono,
                     },
                   ]}
                 />
+              </View>
+            ) : (
+              <View style={styles.fields}>
+                <View style={styles.field}>
+                  <Text
+                    style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
+                  >
+                    Email
+                  </Text>
+                  <TextInput
+                    value={email}
+                    onChangeText={setEmail}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    autoComplete="username"
+                    importantForAutofill="yes"
+                    editable={!submitting}
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.input,
+                        borderRadius: radii.md,
+                        fontFamily: fonts.sansRegular,
+                      },
+                    ]}
+                  />
+                </View>
+
+                <View style={styles.field}>
+                  <Text
+                    style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
+                  >
+                    Password
+                  </Text>
+                  <TextInput
+                    value={password}
+                    onChangeText={setPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry
+                    autoComplete="current-password"
+                    importantForAutofill="yes"
+                    editable={!submitting}
+                    style={[
+                      styles.input,
+                      {
+                        color: colors.foreground,
+                        borderColor: colors.input,
+                        borderRadius: radii.md,
+                        fontFamily: fonts.sansRegular,
+                      },
+                    ]}
+                  />
+                </View>
               </View>
 
-              <View style={styles.field}>
-                <Text
-                  style={[styles.label, { color: colors.foreground, fontFamily: fonts.sansMedium }]}
-                >
-                  Password
-                </Text>
-                <TextInput
-                  value={password}
-                  onChangeText={setPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  secureTextEntry
-                  autoComplete="current-password"
-                  importantForAutofill="yes"
-                  editable={!submitting}
-                  style={[
-                    styles.input,
-                    {
-                      color: colors.foreground,
-                      borderColor: colors.input,
-                      borderRadius: radii.md,
-                      fontFamily: fonts.sansRegular,
-                    },
-                  ]}
-                />
-              </View>
-            </View>
+            )}
 
             {error !== "" && (
               <Text
@@ -152,7 +231,7 @@ export default function LoginScreen() {
             <Pressable
               accessibilityRole="button"
               disabled={submitting}
-              onPress={onSubmit}
+              onPress={codeStep ? onVerify : onSubmit}
               style={({ pressed }) => [
                 styles.cta,
                 {
@@ -168,25 +247,51 @@ export default function LoginScreen() {
                   { color: colors.primaryForeground, fontFamily: fonts.sansSemiBold },
                 ]}
               >
-                {submitting ? "Signing in…" : "Sign in"}
+                {codeStep
+                  ? submitting
+                    ? "Verifying…"
+                    : "Verify"
+                  : submitting
+                    ? "Signing in…"
+                    : "Sign in"}
               </Text>
             </Pressable>
 
-            <Pressable
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={() => Alert.alert(
-                "Forgot password?",
-                "Contact your server administrator to reset your password. Another administrator can also help if you are an admin.\n\nIf all administrators are locked out, the server owner can run overtchat reset-password on the server.",
-              )}
-            >
-              <Text style={[
-                styles.recoveryLink,
-                { color: colors.primary, fontFamily: fonts.sansMedium },
-              ]}>
-                Forgot password?
-              </Text>
-            </Pressable>
+            {codeStep ? (
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => {
+                  setCodeStep(codeStep === "backup" ? "totp" : "backup");
+                  setCode("");
+                  setError("");
+                }}
+              >
+                <Text style={[
+                  styles.recoveryLink,
+                  { color: colors.primary, fontFamily: fonts.sansMedium },
+                ]}>
+                  {codeStep === "backup" ? "Use your authenticator app" : "Use a backup code"}
+                </Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                hitSlop={8}
+                onPress={() => Alert.alert(
+                  "Forgot password?",
+                  "Contact your server administrator to reset your password. Another administrator can also help if you are an admin.\n\nIf all administrators are locked out, the server owner can run overtchat reset-password on the server, or overtchat reset-two-factor for a lost authenticator.",
+                )}
+              >
+                <Text style={[
+                  styles.recoveryLink,
+                  { color: colors.primary, fontFamily: fonts.sansMedium },
+                ]}>
+                  Forgot password?
+                </Text>
+              </Pressable>
+
+            )}
 
             {serverHost ? (
               <View style={styles.serverRow}>
@@ -238,6 +343,7 @@ const styles = StyleSheet.create({
   field: { gap: 6 },
   label: { fontSize: 14 },
   input: { borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 16 },
+  codeInput: { letterSpacing: 4 },
   error: { fontSize: 14 },
   cta: { paddingVertical: 12, alignItems: "center", justifyContent: "center" },
   ctaText: { fontSize: 15 },
