@@ -143,11 +143,13 @@ export async function fetchAccount(token: string, options: CloudClientOptions = 
   };
 }
 
+/** Signed in, so a name held for this account after it was deleted shows as available. */
 export async function checkNameAvailability(
+  token: string,
   name: string,
   options: CloudClientOptions = {},
 ): Promise<{ available: true; name: string } | { available: false; reason: string }> {
-  const { body } = await client(options)(`/api/names/${encodeURIComponent(name)}`);
+  const { body } = await client(options)(`/api/names/${encodeURIComponent(name)}`, { token });
   if (body.available === true && typeof body.name === "string") return { available: true, name: body.name };
   return { available: false, reason: message({ error: body.reason }, "That name is not available.") };
 }

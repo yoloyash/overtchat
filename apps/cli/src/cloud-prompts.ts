@@ -57,7 +57,7 @@ async function chooseName(token: string, options: CloudClientOptions): Promise<s
     )
       .trim()
       .toLowerCase();
-    const availability = await checkNameAvailability(name, options);
+    const availability = await checkNameAvailability(token, name, options);
     if (!availability.available) {
       note(availability.reason, `${name} is not available`);
       continue;
