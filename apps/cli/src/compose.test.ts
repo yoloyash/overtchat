@@ -88,6 +88,7 @@ describe("managed Compose configuration", () => {
     expect(environment).toContain('OVERTCHAT_CLOUD_RELAY_PORT="443"');
     expect(environment).toContain('OVERTCHAT_CLOUD_CREDENTIAL="oc_credential"');
     expect(environment).toContain('OVERTCHAT_CLOUD_DIR="/home/test/.local/share/overtchat/cloud"');
+    expect(environment).toContain('OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR="true"');
 
     // A stored credential is not handed to Compose once cloud access is off.
     const lan = { ...config(), access: { mode: "lan" as const, cloud: cloudAccess } };
@@ -95,6 +96,7 @@ describe("managed Compose configuration", () => {
     expect(lanEnvironment).toContain('COMPOSE_PROFILES="tts-cpu,stt-gpu,voice"');
     expect(lanEnvironment).toContain('OVERTCHAT_CLOUD_CREDENTIAL=""');
     expect(lanEnvironment).toContain('OVERTCHAT_CLOUD_HOSTNAME=""');
+    expect(lanEnvironment).toContain('OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR="false"');
   });
 
   it("defines the cloud services behind their profile", () => {

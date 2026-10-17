@@ -256,7 +256,9 @@ How it works:
   address stops working.
 
 The address is public: anyone can reach the sign-in page, and every account on
-the server can sign in from anywhere. Use strong passwords. Choosing another
+the server can sign in from anywhere. Use strong passwords. Administrators must
+set up [two-factor authentication](#two-factor-authentication) before they can
+use the app, and other users are encouraged to. Choosing another
 access option removes the tunnel and proxy containers, which takes the address
 offline; the name stays reserved for your account.
 

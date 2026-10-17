@@ -57,6 +57,8 @@ function cloudEnvironment(
     ["OVERTCHAT_CLOUD_RELAY_PORT", cloud?.relayPort ?? ""],
     ["OVERTCHAT_CLOUD_RELAY_SERVER_NAME", cloud?.relayServerName ?? ""],
     ["OVERTCHAT_CLOUD_CREDENTIAL", cloud ? secrets.cloudCredential : ""],
+    // A public address makes administrator accounts reachable from anywhere.
+    ["OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR", cloud ? "true" : "false"],
   ];
 }
 
