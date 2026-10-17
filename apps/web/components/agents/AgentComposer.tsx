@@ -145,13 +145,10 @@ export function AgentComposer({
     setActiveIndex(0);
     setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
   });
-  const composerContextUsage =
-    contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
-      ? {
-          usedTokens: contextUsage.tokens,
-          contextWindow: contextUsage.contextWindow,
-        }
-      : undefined;
+  const composerContextUsage = {
+    usedTokens: contextUsage?.tokens ?? null,
+    contextWindow: contextUsage?.contextWindow,
+  };
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -663,21 +660,17 @@ export function AgentComposer({
             <AgentComposerControls {...controls} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {composerContextUsage && (
-              <>
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  compact
-                  side="top"
-                  className="@2xl:hidden"
-                />
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  side="top"
-                  className="hidden @2xl:inline-flex"
-                />
-              </>
-            )}
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              compact
+              side="top"
+              className="@2xl:hidden"
+            />
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              side="top"
+              className="hidden @2xl:inline-flex"
+            />
             <DictateButton
               dictation={dictation}
               disabled={disabled || pending || submitting}

@@ -76,6 +76,9 @@ process.stdout.write(JSON.stringify({ root, cwd, config, sessionId, sessionPath,
       } });
       observe(client);
       expect((await client.getState()).sessionId).toBe(state.sessionId);
+      const context = (await client.getSessionStats()).contextUsage;
+      expect(context?.tokens).toBeGreaterThan(0);
+      expect(context?.contextWindow).toBeGreaterThan(0);
       return state;
     };
     try {

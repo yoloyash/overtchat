@@ -13,7 +13,7 @@ import type { UsageTotals } from "@/lib/usage/types";
 import { cn } from "@/lib/utils";
 
 interface ContextUsage {
-  usedTokens: number;
+  usedTokens: number | null;
   contextWindow?: number;
 }
 
@@ -53,7 +53,7 @@ function ContextRing({ values }: { values: ContextMeterValues }) {
         className="fill-none stroke-current"
         strokeWidth="2.5"
         strokeLinecap="round"
-        strokeDasharray="100"
+        strokeDasharray={values.percentage === undefined ? "10 10" : "100"}
         strokeDashoffset={100 - values.ringPercentage}
         transform="rotate(-90 10 10)"
       />
@@ -77,10 +77,11 @@ export function UsageIndicator({
   side = "bottom",
   className,
 }: UsageIndicatorProps) {
+  const contextUnavailable = contextUsage?.usedTokens === null;
   const context = contextUsage
     ? getContextMeterValues(
-        contextUsage.usedTokens,
-        contextUsage.contextWindow,
+        contextUsage.usedTokens ?? 0,
+        contextUnavailable ? undefined : contextUsage.contextWindow,
       )
     : undefined;
   const session =
@@ -104,7 +105,9 @@ export function UsageIndicator({
   const triggerDetails = [
     context
       ? context.percentage === undefined
-        ? "context limit unknown"
+        ? contextUnavailable
+          ? "context usage unavailable"
+          : "context limit unknown"
         : `${context.percentage}% context used`
       : undefined,
     session && cost
@@ -206,8 +209,14 @@ export function UsageIndicator({
                   </>
                 ) : (
                   <div className="mt-2 flex items-center justify-between gap-4 text-muted-foreground">
-                    <span>{formatInteger(context.usedTokens)} tokens</span>
-                    <span>Limit unknown</span>
+                    {contextUnavailable ? (
+                      <span>Context usage unavailable. Waiting for a reading from the agent.</span>
+                    ) : (
+                      <>
+                        <span>{formatInteger(context.usedTokens)} tokens</span>
+                        <span>Limit unknown</span>
+                      </>
+                    )}
                   </div>
                 )}
               </section>

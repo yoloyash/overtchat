@@ -255,9 +255,13 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private commands: AgentSlashCommand[] = [];
   private messages: unknown[] = [];
   private stats: AgentSessionStats = EMPTY_STATS;
-  private contextInputTokens?: number;
+  private contextInputUsage?: { input: number; cacheRead: number; cacheWrite: number; output: number };
+  private contextRevision = 0;
+  private contextBoundarySeen = false;
+  private contextQuerySupported = true;
   private contextTokens: number | null = null;
   private reportedContextWindow?: number;
+  private reportedContextModel?: string;
   private selectedModel?: string;
   private thinkingOptionId?: string;
   private modeId: PermissionMode;
@@ -396,8 +400,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       await this.sdkQuery.setModel(modelId);
       this.selectedModel = modelId;
       this.reportedContextWindow = undefined;
+      this.reportedContextModel = undefined;
       this.updateContextUsage(null);
       this.emitConfig();
+      await this.refreshContextUsage();
       return undefined;
     });
   }
@@ -436,7 +442,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     return this.withLifecycle(async () => {
       await this.readyPromise;
       this.compacting = true;
-      this.contextInputTokens = undefined;
+      this.contextBoundarySeen = true;
+      this.contextInputUsage = undefined;
       this.updateContextUsage(null);
       this.emit({ type: "compaction_start" });
       return this.submit("/compact", [], {}, false);
@@ -500,8 +507,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.assistantMessages.clear();
       this.toolNames.clear();
       this.currentStreamMessageId = undefined;
-      this.contextInputTokens = undefined;
+      this.contextInputUsage = undefined;
       this.updateContextUsage(null);
+      await this.refreshContextUsage();
     });
   }
 
@@ -624,10 +632,13 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     }
     this.selectedModel ??= this.models.find((model) => model.isDefault)?.id ?? this.models[0]?.id;
     this.thinkingOptionId ??= this.models.find((model) => model.id === this.selectedModel)?.defaultThinkingOptionId;
+    await this.refreshContextUsage();
   }
 
   private startQuery(resume?: string): void {
     const generation = ++this.consumeGeneration;
+    this.contextRevision += 1;
+    this.contextQuerySupported = true;
     this.resetActivity();
     this.input = new ClaudeInputQueue();
     this.sdkQuery = createSdkQuery({
@@ -798,6 +809,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.modes = claudeModesForModels(initialized.models);
       this.commands = commandRows(initialized.commands);
       if (this.stopped) throw new Error("Claude session stopped.");
+      if (!fork) await this.refreshContextUsage();
     } catch (error) {
       if (fork) {
         // A failed reopen must not leave the live identity ahead of the journal.
@@ -866,7 +878,16 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       // the only way a turn can start. Sidechain output is not a parent turn.
       if (!message.parent_tool_use_id) this.startTurn();
       this.sessionId = String(message.session_id);
-      if (typeof message.model === "string") this.selectedModel = message.model;
+      if (typeof message.model === "string") {
+        // Native commands can change the model without going through setModel.
+        // Never carry a previous model's capacity into the new model's turn.
+        if (this.reportedContextModel && this.reportedContextModel !== message.model) {
+          this.reportedContextWindow = undefined;
+          this.reportedContextModel = undefined;
+          this.updateContextUsage(null);
+        }
+        this.selectedModel = message.model;
+      }
       if (isClaudePermissionMode(String(message.permissionMode ?? ""))) {
         this.modeId = message.permissionMode as PermissionMode;
       }
@@ -908,7 +929,8 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (subtype === "status") {
       if (message.status === "compacting" && !this.compacting) {
         this.compacting = true;
-        this.contextInputTokens = undefined;
+        this.contextBoundarySeen = true;
+        this.contextInputUsage = undefined;
         this.updateContextUsage(null);
         this.emit({ type: "compaction_start" });
       } else if (message.status === null && this.compacting) {
@@ -923,9 +945,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       return;
     }
     if (subtype === "compact_boundary") {
+      this.contextBoundarySeen = true;
       const metadata = record(message.compact_metadata);
       const postTokens = metadata?.post_tokens ?? metadata?.postTokens;
-      this.contextInputTokens = undefined;
+      this.contextInputUsage = undefined;
       this.updateContextUsage(this.usageNumber(postTokens));
       if (this.compacting) {
         this.compacting = false;
@@ -939,11 +962,10 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
     if (!event) return;
     if (!message.parent_tool_use_id) {
       if (event.type === "message_start") {
-        this.contextInputTokens = undefined;
+        this.contextInputUsage = undefined;
         this.readRequestUsage(record(record(event.message)?.usage));
-      } else if (event.type === "message_delta" && this.contextInputTokens !== undefined) {
-        const output = this.usageNumber(record(event.usage)?.output_tokens);
-        if (output !== null) this.updateRequestContextUsage(this.contextInputTokens + output);
+      } else if (event.type === "message_delta") {
+        this.readRequestUsage(record(event.usage), true);
       }
     }
     if (event.type === "message_start") {
@@ -990,7 +1012,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
   private handleAssistant(message: SDKMessage & Record<string, unknown>): void {
     const native = record(message.message);
     if (!native || typeof native.id !== "string") return;
-    if (!message.parent_tool_use_id) this.readRequestUsage(record(native.usage));
+    if (!message.parent_tool_use_id && native.model !== "<synthetic>") {
+      this.readRequestUsage(record(native.usage));
+    }
     const projection = this.ensureAssistant(native.id);
     if (typeof message.uuid === "string") projection.overtchatProviderMessageId = message.uuid;
     if (typeof message.error === "string") projection.errorMessage = message.error;
@@ -1088,56 +1112,118 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       : null;
   }
 
-  private readRequestUsage(usage: Record<string, unknown> | null): void {
-    const input = this.usageNumber(usage?.input_tokens);
-    if (input === null) return;
-    this.contextInputTokens =
-      input +
-      (this.usageNumber(usage?.cache_read_input_tokens) ?? 0) +
-      (this.usageNumber(usage?.cache_creation_input_tokens) ?? 0);
-    this.updateRequestContextUsage(
-      this.contextInputTokens + (this.usageNumber(usage?.output_tokens) ?? 0),
-    );
-  }
-
-  private updateRequestContextUsage(tokens: number): void {
-    // Empty request events after compaction must preserve the boundary's count.
-    // Explicit zero or unknown counts from compact boundaries remain valid.
-    if (tokens > 0) this.updateContextUsage(tokens);
+  private readRequestUsage(usage: Record<string, unknown> | null, delta = false): void {
+    const previous = delta ? this.contextInputUsage : undefined;
+    const input = this.usageNumber(usage?.input_tokens) ?? previous?.input;
+    if (input === undefined) return;
+    this.contextInputUsage = {
+      input,
+      cacheRead: this.usageNumber(usage?.cache_read_input_tokens) ?? previous?.cacheRead ?? 0,
+      cacheWrite: this.usageNumber(usage?.cache_creation_input_tokens) ?? previous?.cacheWrite ?? 0,
+      output: this.usageNumber(usage?.output_tokens) ?? previous?.output ?? 0,
+    };
+    const tokens = input + this.contextInputUsage.cacheRead + this.contextInputUsage.cacheWrite +
+      this.contextInputUsage.output;
+    // Synthetic/empty request events must not erase the compact boundary or
+    // last valid reading. Explicit zero from a boundary/native query is valid.
+    if (tokens > 0) {
+      this.contextBoundarySeen = false;
+      this.updateContextUsage(tokens);
+    }
   }
 
   private updateContextUsage(tokens: number | null): void {
+    this.contextRevision += 1;
     this.contextTokens = tokens;
-    const contextWindow =
-      this.reportedContextWindow ??
-      this.models.find(
-        (model) =>
-          model.id === this.selectedModel ||
-          model.metadata?.modelId === this.selectedModel,
-      )?.contextWindow;
-    if (!contextWindow) return;
+    const contextWindow = this.reportedContextWindow;
     this.stats = {
       ...this.stats,
-      contextUsage: {
+      contextUsage: contextWindow ? {
         tokens,
         contextWindow,
         percent: tokens === null ? null : (tokens / contextWindow) * 100,
-      },
+      } : undefined,
     };
     this.emit({
       type: "usage_update",
-      usage: { contextUsage: this.stats.contextUsage },
+      usage: { contextUsage: this.stats.contextUsage ?? null },
     });
+  }
+
+  private async refreshContextUsage(): Promise<void> {
+    if (this.stopped || this.active || this.compacting || !this.contextQuerySupported) return;
+    const query = this.sdkQuery;
+    const revision = this.contextRevision;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      // Older CLIs may reject or never answer this control request. Keep open,
+      // resume and model changes bounded; live request usage remains available.
+      const usage = await Promise.race([
+        query.getContextUsage(),
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), 5_000);
+          timer.unref?.();
+        }),
+      ]);
+      if (!usage && query === this.sdkQuery) this.contextQuerySupported = false;
+      if (!usage || this.stopped || query !== this.sdkQuery ||
+          revision !== this.contextRevision || this.active || this.compacting) return;
+      const tokens = this.usageNumber(usage.totalTokens);
+      const contextWindow = this.usageNumber(usage.maxTokens);
+      if (tokens === null || !contextWindow) return;
+      this.reportedContextWindow = contextWindow;
+      this.reportedContextModel = typeof usage.model === "string" ? usage.model : undefined;
+      this.updateContextUsage(tokens);
+    } catch {
+      // Retry on the next query lifecycle, not on every turn of an older CLI.
+      if (query === this.sdkQuery) this.contextQuerySupported = false;
+      // Preserve the last reading on unsupported control requests/transient errors.
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private normalizeModelId(id: string): string {
+    return id.toLowerCase().replace(/\[1m\]/gu, "");
+  }
+
+  private modelIds(selected: string | undefined): Set<string> {
+    const model = this.models.find((candidate) => candidate.id === selected ||
+      candidate.metadata?.modelId === selected);
+    return new Set([selected, model?.id, model?.metadata?.modelId]
+      .filter((id): id is string => typeof id === "string")
+      .map((id) => this.normalizeModelId(id)));
+  }
+
+  private resultModelUsage(modelUsage: Record<string, unknown> | null): Record<string, unknown> | null {
+    if (!modelUsage) return null;
+    const exact = record(modelUsage[this.selectedModel ?? ""]);
+    if (exact) return exact;
+    const ids = this.modelIds(this.selectedModel);
+    const matches = Object.entries(modelUsage).filter(([id, value]) => {
+      const canonical = record(value)?.canonicalModel;
+      return ids.has(this.normalizeModelId(id)) ||
+        (typeof canonical === "string" && ids.has(this.normalizeModelId(canonical)));
+    });
+    return matches.length === 1 ? record(matches[0]![1]) : null;
   }
 
   private handleResult(message: SDKMessage & Record<string, unknown>): void {
     const usage = record(message.usage);
     const modelUsage = record(message.modelUsage);
-    const selectedUsage = record(modelUsage?.[this.selectedModel ?? ""]) ??
-      (modelUsage && Object.keys(modelUsage).length === 1 ? record(Object.values(modelUsage)[0]) : null);
+    // Result totals are cumulative. Only a final API iteration is a context
+    // reading, and only use it when live parent usage/boundary data is absent.
+    const hasRequestUsage = this.contextInputUsage &&
+      Object.values(this.contextInputUsage).some((count) => count > 0);
+    if (!hasRequestUsage && !this.contextBoundarySeen && Array.isArray(usage?.iterations)) {
+      const last = usage.iterations.findLast((value) => record(value) !== null);
+      this.readRequestUsage(record(last));
+    }
+    const selectedUsage = this.resultModelUsage(modelUsage);
     const contextWindow = this.usageNumber(selectedUsage?.contextWindow);
     if (contextWindow && contextWindow !== this.reportedContextWindow) {
       this.reportedContextWindow = contextWindow;
+      this.reportedContextModel = this.selectedModel;
       this.updateContextUsage(this.contextTokens);
     }
     const totals = modelUsage
@@ -1199,6 +1285,7 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
       this.publishAssistant(projection, "message_end");
     }
     this.finishTurn();
+    void this.refreshContextUsage();
   }
 
   private ensureAssistant(id: string): AssistantProjection {
@@ -1247,7 +1334,9 @@ export class ClaudeRuntimeClient implements AgentRuntimeClient {
 
   private startTurn(): void {
     if (this.active) return;
-    this.contextInputTokens = undefined;
+    this.contextInputUsage = undefined;
+    this.contextRevision += 1;
+    this.contextBoundarySeen = false;
     this.active = true;
     this.emit({ type: "turn_start" });
   }

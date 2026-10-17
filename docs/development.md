@@ -1127,6 +1127,30 @@ resumption and final idle. Cleanup releases the test job and closes its query.
 Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
 model; existing sessions and settings are not changed.
 
+### Claude context meter
+
+The adapter reads capacity and idle context usage from the SDK's
+`getContextUsage()` control request on open/resume, model changes, and turn
+completion. During turns, parent request usage includes input, cache reads,
+cache writes, and output; streaming deltas replace counters they contain.
+Cumulative result totals are never a context reading. Older CLIs can fall back
+to the active model's result capacity and request/last-iteration usage. Unknown
+capacity stays unknown; it is not inferred from a model alias or `[1m]` suffix.
+
+```sh
+npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/claude/models.test.ts
+E2E_PORT=4883 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'agent context meter stays visible'
+RUN_CLAUDE_CONTEXT_INTEGRATION=1 npm run test -w apps/connector -- src/claude-context.integration.test.ts
+```
+
+The last command uses the installed/authenticated CLI, creates a disposable
+workspace and a new native session, sends one small prompt, then stops and
+resumes it without another prompt to check restored usage. It requires working
+model credentials and leaves that test session in Claude's native history.
+`CLAUDE_COMMAND` and `CLAUDE_CONTEXT_MODEL` override the executable/model.
+The rewind integration below also checks native context restoration using
+synthetic history, without model requests or credentials.
+
 ## Claude rewind durability
 
 Claude conversation rewinds materialize a native transcript with the SDK's

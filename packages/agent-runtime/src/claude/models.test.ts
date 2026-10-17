@@ -53,13 +53,19 @@ describe("Claude model catalog", () => {
     expect(models).toHaveLength(2);
     expect(models[0]).toMatchObject({
       id: "opus[1m]",
-      contextWindow: 1_000_000,
+      contextWindow: null,
       metadata: { modelId: "claude-opus-5[1m]" },
     });
     expect(models[1]).toMatchObject({
       id: "openrouter/anthropic/custom",
       description: "From Claude settings.json env.ANTHROPIC_MODEL",
     });
+  });
+
+  it("does not guess session capacity from aliases or model suffixes", () => {
+    const ids = ["opus", "claude-opus-5-5", "claude-opus-4-7", "sonnet[1m]", "gateway-custom"];
+    expect(parseClaudeModels(ids.map((value) => ({ value, displayName: value, description: "" })))
+      .map((model) => model.contextWindow)).toEqual(ids.map(() => null));
   });
 
   it("falls back to approval modes when Auto is unavailable", () => {

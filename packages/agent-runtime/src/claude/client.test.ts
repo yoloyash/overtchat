@@ -18,6 +18,9 @@ class FakeQuery implements AsyncIterator<unknown> {
   readonly options: Record<string, unknown>;
   readonly setModel = vi.fn(async () => {});
   readonly setPermissionMode = vi.fn(async () => {});
+  readonly getContextUsage = vi.fn()
+    .mockResolvedValueOnce({ totalTokens: 0, maxTokens: 200_000 })
+    .mockRejectedValue(new Error("Context control unavailable"));
   readonly interrupt = vi.fn(async () => ({ still_queued: [] }));
   readonly rewindFiles = vi.fn(async () => ({ canRewind: true }));
   private readonly values: unknown[] = [];
@@ -922,4 +925,170 @@ it.each(["files", "both"] as const)("restores files on the source session before
     expect(queries).toHaveLength(mode === "files" ? 1 : 2);
     expect((await client.getMessages()).messages).toHaveLength(mode === "files" ? 6 : 4);
   } finally { await client.stop(); await rm(f.root, { recursive: true, force: true }); }
+});
+
+
+describe("Claude context reporting", () => {
+  it("reads native capacity on open and streams usage for an unmatched runtime model", async () => {
+    let q!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      q = new FakeQuery(params);
+      q.getContextUsage.mockReset().mockResolvedValue({ totalTokens: 18_000, maxTokens: 1_000_000 });
+      return q;
+    });
+    const client = new ClaudeRuntimeClient({ transport: "local" }, { executable: "claude", cwd: "/workspace" });
+    try {
+      expect((await client.getSessionStats()).contextUsage).toMatchObject({ tokens: 18_000, contextWindow: 1_000_000 });
+      q.push({ type: "system", subtype: "init", model: "gateway/native-opus", session_id: "session" });
+      q.push({ type: "stream_event", event: { type: "message_start", message: { usage: {
+        input_tokens: 16_000, cache_read_input_tokens: 500_000,
+      } } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage).toEqual({ tokens: 516_000, contextWindow: 1_000_000, percent: 51.6 });
+    } finally { await client.stop(); }
+  });
+
+  it("invalidates a capacity when a native command changes the runtime model", async () => {
+    let q!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      q = new FakeQuery(params);
+      q.getContextUsage.mockReset()
+        .mockResolvedValueOnce({ model: "claude-haiku-4-5", totalTokens: 10_000, maxTokens: 200_000 })
+        .mockRejectedValue(new Error("Unsupported"));
+      return q;
+    });
+    const client = new ClaudeRuntimeClient({ transport: "local" }, { executable: "claude", cwd: "/workspace" });
+    try {
+      await client.getState();
+      q.push({ type: "system", subtype: "init", model: "claude-opus-4-7", session_id: "session" });
+      q.push({ type: "assistant", message: { id: "a", content: [], usage: { input_tokens: 516_000 } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage).toBeUndefined();
+      q.push({ type: "result", modelUsage: { "claude-opus-4-7": { contextWindow: 1_000_000 } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.percent).toBe(51.6);
+    } finally { await client.stop(); }
+  });
+
+  it("merges corrected delta counters without summing cumulative updates or losing omitted fields", async () => {
+    const { client, query } = await createClientForTest();
+    try {
+      query.push({ type: "stream_event", event: { type: "message_start", message: { usage: {
+        input_tokens: 0, cache_read_input_tokens: 0,
+      } } } });
+      query.push({ type: "stream_event", event: { type: "message_delta", usage: {
+        input_tokens: 16_000, cache_read_input_tokens: 500_000, output_tokens: 100,
+      } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(516_100);
+      query.push({ type: "stream_event", event: { type: "message_delta", usage: { cache_creation_input_tokens: 50 } } });
+      query.push({ type: "stream_event", event: { type: "message_delta", usage: { output_tokens: 200 } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(516_250);
+    } finally { await client.stop(); }
+  });
+
+  it("keeps unknown capacity honest and recovers retained tokens from the active result model", async () => {
+    let q!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      q = new FakeQuery(params);
+      q.getContextUsage.mockReset().mockRejectedValue(new Error("Unsupported"));
+      return q;
+    });
+    const client = new ClaudeRuntimeClient({ transport: "local" }, { executable: "claude", cwd: "/workspace" });
+    try {
+      await client.getState();
+      q.push({ type: "system", subtype: "init", model: "claude-opus-4-7[1m]", session_id: "session" });
+      q.push({ type: "assistant", message: { id: "a", content: [], usage: { input_tokens: 516_000 } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage).toBeUndefined();
+      q.push({ type: "result", modelUsage: { haiku: { contextWindow: 200_000 } } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage).toBeUndefined();
+      q.push({ type: "result", modelUsage: {
+        "claude-opus-4-7": { contextWindow: 1_000_000 }, haiku: { contextWindow: 200_000 },
+      } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage).toEqual({ tokens: 516_000, contextWindow: 1_000_000, percent: 51.6 });
+    } finally { await client.stop(); }
+  });
+
+  it.each([false, true])("uses the last iteration when parent usage is absent or empty (%s)", async (emptyStart) => {
+    const { client, query } = await createClientForTest();
+    try {
+      if (emptyStart) query.push({ type: "stream_event", event: { type: "message_start", message: { usage: { input_tokens: 0 } } } });
+      query.push({ type: "result", usage: { input_tokens: 9_000_000, iterations: [
+        { input_tokens: 100_000 }, { input_tokens: 50, cache_read_input_tokens: 30_000, output_tokens: 10 },
+      ] } });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(30_060);
+    } finally { await client.stop(); }
+  });
+
+  it("does not let an idle native refresh overwrite a newer turn or compaction", async () => {
+    const { client, query } = await createClientForTest();
+    let resolve!: (value: unknown) => void;
+    query.getContextUsage.mockImplementation(() => new Promise((done) => { resolve = done; }));
+    try {
+      query.push({ type: "result", usage: {} });
+      await nextTask();
+      await client.prompt("next");
+      query.push({ type: "system", subtype: "compact_boundary", compact_metadata: { post_tokens: 30 } });
+      await nextTask();
+      resolve({ totalTokens: 150_000, maxTokens: 200_000 });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(30);
+    } finally { await client.stop(); }
+  });
+
+  it("refreshes a model switch and ignores a pending response for the old model", async () => {
+    const { client, query } = await createClientForTest();
+    let resolve!: (value: unknown) => void;
+    query.getContextUsage.mockImplementationOnce(() => new Promise((done) => { resolve = done; }));
+    try {
+      query.push({ type: "result", usage: {} });
+      await nextTask();
+      query.getContextUsage.mockResolvedValue({ totalTokens: 25_000, maxTokens: 1_000_000 });
+      await client.setModel("haiku");
+      resolve({ totalTokens: 150_000, maxTokens: 200_000 });
+      await nextTask();
+      expect((await client.getSessionStats()).contextUsage).toEqual({ tokens: 25_000, contextWindow: 1_000_000, percent: 2.5 });
+    } finally { await client.stop(); }
+  });
+
+  it("bounds unsupported context controls without blocking session initialization", async () => {
+    vi.useFakeTimers();
+    let q!: FakeQuery;
+    queryMock.mockImplementation((params) => {
+      q = new FakeQuery(params);
+      q.getContextUsage.mockReset().mockImplementation(() => new Promise(() => {}));
+      return q;
+    });
+    const client = new ClaudeRuntimeClient({ transport: "local" }, { executable: "claude", cwd: "/workspace" });
+    try {
+      await vi.waitFor(() => expect(q?.getContextUsage).toHaveBeenCalled());
+      await vi.advanceTimersByTimeAsync(5_001);
+      await expect(client.getState()).resolves.toHaveProperty("sessionId");
+      expect((await client.getSessionStats()).contextUsage).toBeUndefined();
+    } finally { await client.stop(); vi.useRealTimers(); }
+  });
+
+  it("restores a resumed session's reading without sending a prompt", async () => {
+    configureLocalTestProcessSpawner();
+    const fixture = await claudeRewindFixture();
+    queryMock.mockImplementation((params) => {
+      const q = new FakeQuery(params);
+      q.getContextUsage.mockReset().mockResolvedValue({ totalTokens: 42_000, maxTokens: 1_000_000 });
+      return q;
+    });
+    const client = new ClaudeRuntimeClient({ transport: "local" }, {
+      executable: "claude", cwd: fixture.cwd, resume: {
+        providerSessionId: fixture.sessionId, providerSessionPath: fixture.sessionPath,
+      },
+    });
+    try {
+      expect((await client.getMessages()).messages.length).toBeGreaterThan(0);
+      expect((await client.getSessionStats()).contextUsage).toEqual({ tokens: 42_000, contextWindow: 1_000_000, percent: 4.2 });
+    } finally { await client.stop(); await rm(fixture.root, { recursive: true, force: true }); }
+  });
 });

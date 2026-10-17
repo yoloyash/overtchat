@@ -2961,3 +2961,52 @@ test("separates OMP background waiting from responding and settles without anoth
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("agent context meter stays visible while unknown and renders a 1M reading after reload", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Context Tester");
+  await page.locator("#email").fill("context@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.stats.contextUsage = undefined;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  const composer = page.getByTestId("agent-composer");
+  const unknown = composer.getByRole("button", { name: "Usage: context usage unavailable. Show details" });
+  await expect(unknown).toBeVisible();
+  await unknown.click();
+  await expect(page.getByText("Context usage unavailable. Waiting for a reading from the agent.")).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Context used" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  snapshot.stats.contextUsage = { tokens: 516_000, contextWindow: 1_000_000, percent: 51.6 };
+  await page.reload();
+  const known = composer.getByRole("button", { name: "Usage: 52% context used. Show details" });
+  await expect(known).toBeVisible();
+  await known.click();
+  await expect(page.getByText("516,000 used", { exact: true })).toBeVisible();
+  await expect(page.getByText("484,000 remaining", { exact: true })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Context used" })).toHaveAttribute("aria-valuenow", "52");
+  await page.keyboard.press("Escape");
+
+  // Compaction can temporarily clear the count while retaining known capacity.
+  snapshot.stats.contextUsage = { tokens: null, contextWindow: 1_000_000, percent: null };
+  await page.reload();
+  await expect(unknown).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(unknown).toBeVisible();
+});
