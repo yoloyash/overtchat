@@ -2,7 +2,9 @@ import { useNotifications } from "@/lib/notifications/useNotifications";
 import * as Crypto from "expo-crypto";
 import { Stack } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
+import { RequiredTwoFactorNotice } from "@/components/RequiredTwoFactorNotice";
 import { ChatSessionContext, type ChatSession } from "@/lib/chat/session";
+import { useTwoFactorStatus } from "@/lib/queries/twoFactor";
 import { useTheme } from "@/lib/theme";
 
 type State = { id: string; isNew: boolean; projectId: string | null };
@@ -35,6 +37,11 @@ export default function AuthedLayout() {
   );
 
   useNotifications(session);
+  const twoFactor = useTwoFactorStatus();
+
+  if (twoFactor.data?.required && !twoFactor.data.enabled) {
+    return <RequiredTwoFactorNotice onCheckAgain={() => void twoFactor.refetch()} />;
+  }
 
   return (
     <ChatSessionContext.Provider value={session}>

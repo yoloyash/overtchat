@@ -14,6 +14,7 @@ import { setup } from "./setup.js";
 import { status } from "./status.js";
 import { update } from "./update.js";
 import { resetPassword } from "./reset-password.js";
+import { resetTwoFactor } from "./reset-two-factor.js";
 
 const commands: Record<
   string,
@@ -53,6 +54,12 @@ const commands: Record<
     usage: "reset-password",
     description:
       "Recover a user's or administrator's password on this managed installation. Prompts securely and signs out all of the account's sessions. Requires an interactive terminal and a running app.",
+    flags: [],
+  },
+  "reset-two-factor": {
+    usage: "reset-two-factor",
+    description:
+      "Remove two-factor authentication from an account whose authenticator and backup codes are lost. Signs out all of the account's sessions. Requires an interactive terminal and a running app.",
     flags: [],
   },
 };
@@ -140,6 +147,9 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
   switch (command) {
     case "reset-password":
       await resetPassword();
+      return;
+    case "reset-two-factor":
+      await resetTwoFactor();
       return;
     case "setup": return withInstallationLog("setup", async () => {
       const options = {
