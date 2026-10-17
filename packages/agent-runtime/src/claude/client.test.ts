@@ -819,6 +819,7 @@ describe("Claude runtime client", () => {
 
 
 describe("Claude rewind persistence", () => {
+  // Repeated forks and reopens spawn real host processes; allow for shared CI runner load.
   it("reopens without another prompt, remaps checkpoints, and can rewind again", async () => {
     configureLocalTestProcessSpawner();
     const f = await claudeRewindFixture();
@@ -854,7 +855,7 @@ describe("Claude rewind persistence", () => {
       expect(queries.at(-1)!.options).toMatchObject({ sessionId: empty.sessionId });
       expect(queries.at(-1)!.options.resume).toBeUndefined();
     } finally { await client.stop(); await rm(f.root, { recursive: true, force: true }); }
-  });
+  }, 30_000);
 
   it("retains the original session identity and messages when persistence fails", async () => {
     configureLocalTestProcessSpawner();
