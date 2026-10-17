@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
+import { promptedOrigins } from "./helpers/storage";
 
 function seedModels() {
   const db = openE2eDatabase();
@@ -129,7 +130,7 @@ test("search and a single synced default stay independent of existing chats and 
   await page.goto("/chat/saved-chat");
   await expect(reasoning).toBeVisible();
   const otherDevice = await browser.newContext({
-    storageState: { cookies: await page.context().cookies(), origins: [] },
+    storageState: { cookies: await page.context().cookies(), origins: promptedOrigins() },
   });
   try {
     const otherPage = await otherDevice.newPage();

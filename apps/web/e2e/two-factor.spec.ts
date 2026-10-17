@@ -79,3 +79,33 @@ test("set up an authenticator, then sign in with a code or a backup code", async
     await backupContext.close();
   }
 });
+
+test("suggests two-factor once after sign-in and opens setup", async ({
+  browser,
+}, testInfo) => {
+  // A browser that hasn't seen the prompt yet.
+  const context = await browser.newContext({
+    baseURL: testInfo.project.use.baseURL,
+    storageState: { cookies: [], origins: [] },
+  });
+  try {
+    const page = await context.newPage();
+    await page.goto(await setupUrl());
+    await page.getByLabel("Name").fill("Prompted Admin");
+    await page.getByLabel("Email").fill(email);
+    await page.locator("#password").fill(password);
+    await page.getByRole("button", { name: "Create account" }).click();
+    const prompt = page.getByRole("dialog", { name: "Protect your account" });
+    await expect(prompt).toBeVisible();
+    await prompt.getByRole("button", { name: "Set up two-factor" }).click();
+    await page.waitForURL("**/settings/account?setup=two-factor");
+    await expect(page.getByLabel("Confirm your password")).toBeVisible();
+
+    // Shown once: it stays away after the next load.
+    await page.goto("/");
+    await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+    await expect(prompt).toBeHidden();
+  } finally {
+    await context.close();
+  }
+});
