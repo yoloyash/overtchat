@@ -106,6 +106,9 @@ workflows. The independent desktop update feed does not refresh the marketing si
 
 ## Coordinated server and desktop launch
 
+This documents the initial one-time coordinated launch of server 0.23.0 and
+desktop 0.1.0.
+
 Merge the desktop stack before publishing server 0.23.0 and desktop 0.1.0.
 Use a release-preparation PR to select `appVersion: 0.23.0` in the candidate
 manifest and Compose default, verify the desktop package/lockfile version, and
