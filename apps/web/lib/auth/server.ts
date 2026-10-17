@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { admin, bearer } from "better-auth/plugins";
+import { admin, bearer, twoFactor } from "better-auth/plugins";
 import { expo } from "@better-auth/expo";
 import { APIError } from "better-auth/api";
 import { db } from "@/lib/db/client";
@@ -8,12 +8,15 @@ import * as schema from "@/lib/db/schema";
 import { claimManagedHostConnector } from "@/lib/db/hostConnectors";
 import { passwordRecovery } from "./password-recovery";
 import { initialSetup } from "./initial-setup";
+import { twoFactorRecovery } from "./two-factor";
 
 const extraTrustedOrigins =
   process.env.EXTRA_TRUSTED_ORIGINS?.split(",").map((s) => s.trim()).filter(Boolean) ?? [];
 
+const baseURL = process.env.BETTER_AUTH_URL ?? "http://localhost:4717";
+
 export const auth = betterAuth({
-  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:4717",
+  baseURL,
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   trustedOrigins: ["overtchat://", ...extraTrustedOrigins],
   // The stock endpoint skips password confirmation and leaves sessions active.
@@ -39,6 +42,9 @@ export const auth = betterAuth({
     // as `Authorization: Bearer` and receive it in `set-auth-token`.
     bearer(),
     expo(),
+    // Authenticator apps list the server, so several servers stay apart.
+    twoFactor({ issuer: `OvertChat (${new URL(baseURL).host})` }),
+    twoFactorRecovery(),
     passwordRecovery(),
     initialSetup(),
   ],

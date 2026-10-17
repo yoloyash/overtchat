@@ -9,12 +9,13 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { AppError } from "@/components/AppError";
 import { AuthFrame } from "@/components/auth/AuthFrame";
+import { TwoFactorPrompt } from "@/components/auth/TwoFactorPrompt";
 import { DesktopServer } from "@/components/auth/DesktopServer";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
 import { projectListQuery } from "@/lib/queries/projects";
 import { agentConnectionListQuery } from "@/lib/queries/agentConnections";
-import { sessionQuery } from "@/lib/queries/auth";
+import { sessionQuery, twoFactorQuery } from "@/lib/queries/auth";
 
 export type RouterContext = { queryClient: QueryClient };
 
@@ -24,7 +25,7 @@ export const rootRoute = createRootRouteWithContext<RouterContext>()({
   notFoundComponent: NotFound,
 });
 
-/** Signed-out pages: login and first-run signup. */
+/** Pages outside the app shell: login, first-run signup, and required two-factor setup. */
 export const authRoute = createRoute({
   getParentRoute: () => rootRoute,
   id: "auth",
@@ -38,7 +39,15 @@ export const appRoute = createRoute({
   beforeLoad: async ({ context }) => {
     const session = await context.queryClient.fetchQuery(sessionQuery);
     if (!session) throw redirect({ to: "/login" });
-    return { session, isAdmin: session.user.role === "admin" };
+    const isAdmin = session.user.role === "admin";
+    // Only administrators can be required to use two-factor.
+    if (isAdmin) {
+      const twoFactor = await context.queryClient.ensureQueryData(twoFactorQuery);
+      if (twoFactor.required && !twoFactor.enabled) {
+        throw redirect({ to: "/two-factor-setup" });
+      }
+    }
+    return { session, isAdmin };
   },
   loader: ({ context }) =>
     Promise.all([
@@ -61,10 +70,11 @@ function AuthLayout() {
 }
 
 function AppLayout() {
-  const { isAdmin } = appRoute.useRouteContext();
+  const { isAdmin, session } = appRoute.useRouteContext();
   return (
     <AppShell sidebar={<Sidebar isAdmin={isAdmin} />}>
       <Outlet />
+      <TwoFactorPrompt key={session.user.id} />
     </AppShell>
   );
 }

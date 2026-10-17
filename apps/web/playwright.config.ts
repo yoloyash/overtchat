@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "node:path";
+import { promptedOrigins } from "./e2e/helpers/storage";
 
 dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
@@ -18,6 +19,8 @@ export default defineConfig({
   reporter: isCI ? [["line"], ["html", { open: "never" }]] : "line",
   use: {
     baseURL,
+    // The one-time two-factor prompt would cover pages in unrelated tests.
+    storageState: { cookies: [], origins: promptedOrigins() },
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

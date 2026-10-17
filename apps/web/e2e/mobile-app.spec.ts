@@ -78,6 +78,12 @@ for (const mobile of [false, true]) {
       });
       await route.fulfill({ response });
     });
+    // The one-time two-factor prompt is already marked as shown on localhost only.
+    await page
+      .context()
+      .addInitScript(() =>
+        localStorage.setItem("overtchat_two_factor_prompted", "e2e"),
+      );
     await page.goto(networkOrigin);
     if (mobile)
       await page.getByRole("button", { name: "Open sidebar" }).click();

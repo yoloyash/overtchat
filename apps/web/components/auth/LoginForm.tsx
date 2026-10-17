@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { authClient } from "@/lib/auth/client";
 import { useResetAuthState } from "@/lib/queries/auth";
+import { TwoFactorCodeForm } from "./TwoFactorCodeForm";
 
 export function LoginForm() {
   const navigate = useNavigate();
@@ -17,19 +18,42 @@ export function LoginForm() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
+  const [needsCode, setNeedsCode] = useState(false);
+
+  async function finish() {
+    resetAuthState();
+    await navigate({ to: "/", replace: true });
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
     setError("");
-    const { error } = await authClient.signIn.email({ email, password });
+    const { data, error } = await authClient.signIn.email({ email, password });
     if (error) {
       setError(error.message ?? "Login failed");
       setSubmitting(false);
       return;
     }
-    resetAuthState();
-    await navigate({ to: "/", replace: true });
+    if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+      setSubmitting(false);
+      setNeedsCode(true);
+      return;
+    }
+    await finish();
+  }
+
+  if (needsCode) {
+    return (
+      <TwoFactorCodeForm
+        onVerified={finish}
+        onRestart={(message) => {
+          setNeedsCode(false);
+          setPassword("");
+          setError(message);
+        }}
+      />
+    );
   }
 
   return (
@@ -90,7 +114,8 @@ export function LoginForm() {
           </p>
           <p>
             If all administrators are locked out, the server owner can run{" "}
-            <code>overtchat reset-password</code> on the server.
+            <code>overtchat reset-password</code> on the server, or{" "}
+            <code>overtchat reset-two-factor</code> for a lost authenticator.
           </p>
         </div>
       )}
