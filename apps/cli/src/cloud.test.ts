@@ -115,7 +115,10 @@ describe("OvertChat Cloud client", () => {
       [409, { error: "All founder spots are taken.", code: "full" }],
       [200, { credential: "oc_credential" }],
     ]);
-    expect(await checkNameAvailability("www", options)).toEqual({ available: false, reason: "That name is reserved." });
+    expect(await checkNameAvailability("token", "www", options)).toEqual({
+      available: false,
+      reason: "That name is reserved.",
+    });
     await expect(claimName("token", "smiths", options)).rejects.toMatchObject({ code: "full" });
     await expect(linkServer("token", options)).rejects.toBeInstanceOf(CloudError);
   });
