@@ -1,5 +1,8 @@
 import "server-only";
-import { customImageOptions } from "@/lib/model-config/image-options";
+import {
+  customImageOptions,
+  customImageSize,
+} from "@/lib/model-config/image-options";
 import { assertFetchedImageContent } from "@/lib/image-content";
 import { MAX_BYTES_IMAGE } from "@/lib/extract";
 import type { ImageConnection } from "./image-generation";
@@ -14,12 +17,13 @@ export async function runCustomImageProvider(
   const options = customImageOptions(connection.providerOptions);
   if (input.references.length && !options.supportsEditing)
     throw new Error("This image provider does not support editing.");
+  const size = customImageSize(options, input.references.length > 0);
   const body = {
     ...options.extraBody,
     model: connection.model,
     prompt: input.prompt,
     n: 1,
-    ...(options.size === "auto" ? {} : { size: options.size }),
+    ...(size === "auto" ? {} : { size }),
     response_format: options.responseFormat,
   };
   const headers: Record<string, string> = {};

@@ -20,6 +20,7 @@ const reserved = new Set([
 export const CustomImageOptionsSchema = z
   .object({
     size: z.string().trim().min(1).max(64).default("auto"),
+    editSize: z.string().trim().min(1).max(64).optional(),
     responseFormat: z.enum(["b64_json", "url"]).default("b64_json"),
     supportsEditing: z.boolean().default(false),
     extraBody: z
@@ -44,6 +45,13 @@ export const CustomImageOptionsSchema = z
   .strict();
 
 export type CustomImageOptions = z.infer<typeof CustomImageOptionsSchema>;
+
+export function customImageSize(
+  options: CustomImageOptions,
+  editing: boolean,
+): string {
+  return editing ? (options.editSize ?? options.size) : options.size;
+}
 
 export function customImageOptions(value: unknown): CustomImageOptions {
   return CustomImageOptionsSchema.parse(value ?? {});

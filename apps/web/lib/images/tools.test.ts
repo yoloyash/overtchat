@@ -267,3 +267,38 @@ it("only exposes custom editing when explicitly enabled", () => {
     }).edit_image,
   ).toBeDefined();
 });
+
+it.each([
+  { editSize: undefined, expectedSize: "1024x1024" },
+  { editSize: "512x512", expectedSize: "512x512" },
+  { editSize: "auto", expectedSize: "auto" },
+])(
+  "records the effective custom edit size $editSize in image details",
+  async ({ editSize, expectedSize }) => {
+    mocks.config.mockReturnValue({
+      providerId: "custom",
+      baseUrl: "http://images/v1",
+      apiKey: null,
+      model: "local",
+      providerOptions: { size: "1024x1024", supportsEditing: true, editSize },
+    });
+    const tools = createImageTools({
+      userId: "alice",
+      messages: attached,
+      supportsImageInput: false,
+    });
+    const generated = await tools.generate_image.execute!(
+      { prompt: "A kite" },
+      execution,
+    );
+    expect(generated).toMatchObject({ providerSize: "1024x1024" });
+    const edited = await tools.edit_image!.execute!(
+      { prompt: "Make it blue", image_ids: ["reference"] },
+      execution,
+    );
+    expect(edited).toMatchObject({
+      providerSize: expectedSize,
+      referenceImageIds: ["reference"],
+    });
+  },
+);

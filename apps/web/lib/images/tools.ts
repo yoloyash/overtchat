@@ -16,7 +16,10 @@ import {
   runImageProvider,
   type ImageConnection,
 } from "@/lib/providers/server/image-generation";
-import { customImageOptions } from "@/lib/model-config/image-options";
+import {
+  customImageOptions,
+  customImageSize,
+} from "@/lib/model-config/image-options";
 
 export const IMAGE_TOOL_PROMPT = `Image creation:
 Use generate_image only when the user asks to create an image, and edit_image, when available, when they ask to change or combine existing images. If edit_image is unavailable, explain that the configured provider does not support editing. Never create extra images or automatically retry a failed generation. Each call produces one image.
@@ -205,7 +208,11 @@ export function createImageTools({
       size,
       quality,
       referenceImageIds,
-      ...(customOptions ? { providerSize: customOptions.size } : {}),
+      ...(customOptions
+        ? {
+            providerSize: customImageSize(customOptions, references.length > 0),
+          }
+        : {}),
       usage: generated.usage,
     };
   }

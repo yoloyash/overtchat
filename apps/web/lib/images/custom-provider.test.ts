@@ -138,6 +138,33 @@ describe("custom OpenAI Images HTTP contract", () => {
     expect(requests[0].body).toContain("Content-Type: image/png");
   });
   it.each([
+    { editSize: undefined, expectedSize: "1024x1024" },
+    { editSize: "512x512", expectedSize: "512x512" },
+    { editSize: "auto", expectedSize: undefined },
+  ])(
+    "uses the editing size $editSize without changing generation",
+    async ({ editSize, expectedSize }) => {
+      const configured = connection({
+        size: "1024x1024",
+        supportsEditing: true,
+        editSize,
+      });
+      await runImageProvider(configured, input);
+      await runImageProvider(configured, {
+        ...input,
+        references: [Buffer.from(png, "base64")],
+      });
+      expect(JSON.parse(requests[0].body).size).toBe("1024x1024");
+      expect(requests[1].path).toBe("/v1/images/edits");
+      const form = await new Response(requests[1].body, {
+        headers: { "Content-Type": requests[1].contentType! },
+      }).formData();
+      expect(form.get("size")).toBe(expectedSize ?? null);
+      expect(form.get("image[]")).toBeInstanceOf(File);
+      expect(requests).toHaveLength(2);
+    },
+  );
+  it.each([
     { data: [] },
     { data: [{ b64_json: png }, { b64_json: png }] },
     { data: [{ b64_json: "not-base64" }] },

@@ -29,10 +29,10 @@ export function CustomImageFields({
   return (
     <SettingsSection
       title="Image API settings"
-      description="Connect an OpenAI-compatible Images API. These settings apply to every image request."
+      description="Connect an OpenAI-compatible Images API and configure generation and editing."
     >
       <SettingsRow
-        title="Image size"
+        title="Generation size"
         htmlFor="p-image-size"
         description="Use a size supported by your backend, such as 512x512. Leave blank to use its default. Chat suggestions cannot override this size."
       >
@@ -64,18 +64,38 @@ export function CustomImageFields({
         </select>
       </SettingsRow>
       <SettingsRow
-        title="Image editing"
-        description="Enable only if the backend supports multipart requests to /images/edits."
+        title="Supports image editing"
+        description="Enable to edit uploaded or generated images. Requires a backend and model that support /images/edits."
         layout="toggle"
       >
         <Switch
-          aria-label="Image editing"
+          aria-label="Supports image editing"
           checked={options.supportsEditing}
           onCheckedChange={(supportsEditing) =>
             onChange({ ...options, supportsEditing })
           }
         />
       </SettingsRow>
+      {options.supportsEditing && (
+        <SettingsRow
+          title="Editing size"
+          htmlFor="p-image-edit-size"
+          description="Override the generation size for edits, such as 512x512. Leave blank to use the generation size, or enter auto to use the backend default."
+        >
+          <Input
+            id="p-image-edit-size"
+            placeholder="Same as generation"
+            value={options.editSize ?? ""}
+            maxLength={64}
+            onChange={(e) =>
+              onChange({
+                ...options,
+                editSize: e.target.value.trim() || undefined,
+              })
+            }
+          />
+        </SettingsRow>
+      )}
       <SettingsRow
         title="Extra request parameters"
         htmlFor="p-image-extra"

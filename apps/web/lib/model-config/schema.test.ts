@@ -364,6 +364,7 @@ describe("custom image configuration", () => {
       ...custom,
       providerOptions: {
         size: "512x512",
+        editSize: "256x256",
         responseFormat: "url",
         supportsEditing: true,
         extraBody: { seed: 7, quality: "standard", nested: { scales: [1, 2] } },
@@ -372,6 +373,7 @@ describe("custom image configuration", () => {
     expect(ModelConfigSchema.parse(parsed)).toEqual(parsed);
     expect(parsed.providerOptions).toMatchObject({
       size: "512x512",
+      editSize: "256x256",
       extraBody: { seed: 7 },
     });
   });
@@ -380,6 +382,10 @@ describe("custom image configuration", () => {
     { apiFormat: "anthropic-messages" },
     { modelType: "chat" },
     { providerOptions: { responseFormat: "base64" } },
+    { providerOptions: { editSize: "" } },
+    { providerOptions: { editSize: "   " } },
+    { providerOptions: { editSize: "x".repeat(65) } },
+    { providerOptions: { editSize: 512 } },
     { providerOptions: { extraBody: [] } },
     { providerOptions: { extraBody: { seed: "x".repeat(17000) } } },
     ...[
