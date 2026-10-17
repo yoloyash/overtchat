@@ -38,8 +38,8 @@ export function RequiredTwoFactorNotice({ onCheckAgain }: { onCheckAgain: () => 
           Set up two-factor authentication
         </Text>
         <Text style={[styles.body, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
-          This server is reachable from the internet, so administrator accounts also need a code
-          from an authenticator app to sign in. Set it up on the web, then come back.
+          This server requires administrators to sign in with a code from an authenticator app,
+          as well as their password. Set it up on the web, then come back.
         </Text>
         <Pressable
           accessibilityRole="button"

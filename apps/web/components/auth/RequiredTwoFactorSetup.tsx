@@ -31,8 +31,8 @@ export function RequiredTwoFactorSetup({ email }: { email: string }) {
           Set up two-factor authentication
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          This server is reachable from the internet, so administrator accounts
-          also need a code from an authenticator app to sign in.
+          This server requires administrators to sign in with a code from an
+          authenticator app, as well as their password.
         </p>
       </header>
       <TwoFactorSetup
