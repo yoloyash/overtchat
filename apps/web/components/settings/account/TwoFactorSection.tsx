@@ -21,9 +21,15 @@ import {
 
 type Action = "backup-codes" | "disable";
 
-export function TwoFactorSection({ email }: { email: string }) {
+export function TwoFactorSection({
+  email,
+  startSetup = false,
+}: {
+  email: string;
+  startSetup?: boolean;
+}) {
   const { data: status, isPending, isError } = useQuery(twoFactorQuery);
-  const [settingUp, setSettingUp] = useState(false);
+  const [settingUp, setSettingUp] = useState(startSetup);
   const [action, setAction] = useState<Action | null>(null);
   const [newCodes, setNewCodes] = useState<string[] | null>(null);
 

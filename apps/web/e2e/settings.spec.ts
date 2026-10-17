@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { resetE2eDatabase, setupUrl } from "./helpers/database";
 import { accentBackgrounds } from "@overtchat/shared/theme-backgrounds";
+import { promptedOrigins } from "./helpers/storage";
 
 test.beforeEach(async ({ page }) => {
   resetE2eDatabase();
@@ -193,7 +194,7 @@ test("accent palettes update live, persist, and stay local to a browser", async 
   // Its system appearance is light; the accent preference still syncs.
   await expect(secondTab.locator('meta[name="theme-color"]')).toHaveAttribute("content", accentBackgrounds.blue.light);
 
-  const freshContext = await browser.newContext({ storageState: { cookies: await context.cookies(), origins: [] } });
+  const freshContext = await browser.newContext({ storageState: { cookies: await context.cookies(), origins: promptedOrigins() } });
   const freshPage = await freshContext.newPage();
   await freshPage.goto(new URL("/settings/general", page.url()).href);
   await expect(freshPage.getByRole("radio", { name: "Olive", exact: true })).toBeChecked();

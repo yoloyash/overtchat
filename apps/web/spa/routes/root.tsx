@@ -9,6 +9,7 @@ import {
 import { AppShell } from "@/components/AppShell";
 import { AppError } from "@/components/AppError";
 import { AuthFrame } from "@/components/auth/AuthFrame";
+import { TwoFactorPrompt } from "@/components/auth/TwoFactorPrompt";
 import { DesktopServer } from "@/components/auth/DesktopServer";
 import { Sidebar } from "@/components/Sidebar";
 import { activeChatIdsQuery, chatListQuery } from "@/lib/queries/chats";
@@ -69,10 +70,11 @@ function AuthLayout() {
 }
 
 function AppLayout() {
-  const { isAdmin } = appRoute.useRouteContext();
+  const { isAdmin, session } = appRoute.useRouteContext();
   return (
     <AppShell sidebar={<Sidebar isAdmin={isAdmin} />}>
       <Outlet />
+      <TwoFactorPrompt key={session.user.id} />
     </AppShell>
   );
 }
