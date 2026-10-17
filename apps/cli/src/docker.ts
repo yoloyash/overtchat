@@ -306,6 +306,7 @@ export async function reconcileManagedSidecars(
   docker: DockerCommand,
   config: InstallationConfig,
 ): Promise<SidecarReconciliation> {
+  const cloudSelected = config.access?.mode === "cloud" && config.access.cloud !== undefined;
   const sidecars: ManagedSidecar[] = [
     {
       containerName: "overtchat-searxng",
@@ -356,6 +357,19 @@ export async function reconcileManagedSidecars(
         (config.stt.accelerator === "auto" ||
           config.stt.accelerator === "gpu"),
       service: "stt-gpu",
+    },
+    // Removing the tunnel is what takes the cloud address offline.
+    {
+      containerName: "overtchat-cloud-tunnel",
+      label: "OvertChat Cloud tunnel",
+      selected: cloudSelected,
+      service: "cloud-tunnel",
+    },
+    {
+      containerName: "overtchat-cloud-proxy",
+      label: "OvertChat Cloud proxy",
+      selected: cloudSelected,
+      service: "cloud-proxy",
     },
   ];
   const result: SidecarReconciliation = { removed: [], warnings: [] };

@@ -92,6 +92,24 @@ export function components(config: InstallationConfig): Component[] {
     });
   if (appleSpeechCapabilities(config).length)
     result.push({ id: "speech", configured: "Apple speech", state: "unknown" });
+  if (config.access?.mode === "cloud" && config.access.cloud) {
+    result.push(
+      {
+        id: "cloud",
+        service: "cloud-tunnel",
+        configured: config.access.cloud.hostname,
+        image: config.cloudTunnelImage,
+        state: "unknown",
+      },
+      {
+        id: "cloud-proxy",
+        service: "cloud-proxy",
+        configured: config.cloudProxyImage,
+        image: config.cloudProxyImage,
+        state: "unknown",
+      },
+    );
+  }
   return result;
 }
 
@@ -104,6 +122,8 @@ export const composeServices = [
   "stt-cpu",
   "stt-gpu",
   "voice",
+  "cloud-tunnel",
+  "cloud-proxy",
 ];
 export function composeArgs(paths: RuntimePaths): string[] {
   return ["compose", "--env-file", paths.secretsFile, "-f", paths.composeFile];

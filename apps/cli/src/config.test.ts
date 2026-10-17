@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,7 @@ import {
   defaultInstallationConfig,
   initialSecrets,
   readInstallationConfig,
+  readInstallationSecrets,
   writeInstallationConfig,
 } from "./config.js";
 import type { ReleaseManifest } from "./release.js";
@@ -27,6 +28,8 @@ const manifest: ReleaseManifest = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 afterEach(() => {
@@ -65,6 +68,7 @@ function pathsFor(directory: string): RuntimePaths {
     stackDirectory: path.join(directory, "stack"),
     composeFile: path.join(directory, "stack", "compose.yml"),
     searxngDirectory: path.join(directory, "stack", "searxng"),
+    cloudDirectory: path.join(directory, "stack", "cloud"),
     searxngSettingsFile: path.join(
       directory,
       "stack",
@@ -88,6 +92,8 @@ describe("existing installation adoption", () => {
       kokoroImage: manifest.kokoroImage,
       kokoroGpuImage: manifest.kokoroGpuImage,
       kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+      cloudTunnelImage: manifest.cloudTunnelImage,
+      cloudProxyImage: manifest.cloudProxyImage,
     });
   });
 
@@ -277,6 +283,47 @@ describe("managed installation state", () => {
       expect(loaded?.tts.apiKey).toBeUndefined();
       expect(loaded?.stt.apiKey).toBeUndefined();
       expect(loaded?.disableUpdateCheck).toBe(true);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("never persists a newly issued OvertChat Cloud credential", async () => {
+    const directory = await mkdtemp(
+      path.join(os.tmpdir(), "overtchat-installation-state-"),
+    );
+    const paths = pathsFor(directory);
+    try {
+      const config = defaultInstallationConfig(null, manifest);
+      config.access = {
+        mode: "cloud",
+        cloud: {
+          hostname: "smiths.overtchat.app",
+          relayHost: "relay.overtchat.app",
+          relayPort: 443,
+          relayServerName: "relay.overtchat.app",
+          relayCaPem: "ca",
+          credential: "oc_issued-credential",
+        },
+      };
+      await writeInstallationConfig(paths, config);
+      const contents = await readFile(paths.stateFile, "utf8");
+      expect(contents).not.toContain("oc_issued-credential");
+      expect(config.access.cloud?.credential).toBe("oc_issued-credential");
+      const loaded = await readInstallationConfig(paths);
+      expect(loaded?.access?.cloud).toEqual({
+        hostname: "smiths.overtchat.app",
+        relayHost: "relay.overtchat.app",
+        relayPort: 443,
+        relayServerName: "relay.overtchat.app",
+        relayCaPem: "ca",
+      });
+
+      await mkdir(path.dirname(paths.secretsFile), { recursive: true });
+      await writeFile(paths.secretsFile, 'OVERTCHAT_CLOUD_CREDENTIAL="oc_stored"\n');
+      expect((await readInstallationSecrets(paths)).cloudCredential).toBe("oc_stored");
+      expect(initialSecrets(null, { cloudCredential: "oc_stored" }).cloudCredential).toBe("oc_stored");
+      expect(initialSecrets(null, {}).cloudCredential).toBe("");
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
