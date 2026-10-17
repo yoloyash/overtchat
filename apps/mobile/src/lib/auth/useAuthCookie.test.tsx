@@ -1,6 +1,11 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  defaultScheduler,
+  notifyManager,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -46,6 +51,9 @@ async function settle(done: () => void) {
   });
 }
 beforeEach(() => {
+  // Deliver query updates as microtasks, ahead of settle()'s timer even when
+  // a busy machine stalls the process.
+  notifyManager.setScheduler(queueMicrotask);
   mocks.server = "https://first.example";
   mocks.session = { id: "first", updatedAt: "one" };
   mocks.cookie.mockReset();
@@ -64,6 +72,7 @@ afterEach(async () => {
   await act(async () => root.unmount());
   client.clear();
   vi.unstubAllGlobals();
+  notifyManager.setScheduler(defaultScheduler);
 });
 
 it("withholds image/notification credentials until storage resolves and clears them on logout", async () => {
