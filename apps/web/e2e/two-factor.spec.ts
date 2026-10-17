@@ -103,7 +103,7 @@ test("suggests two-factor once after sign-in and opens setup", async ({
 
     // Shown once: it stays away after the next load.
     await page.goto("/");
-    await expect(page.getByRole("button", { name: "New chat" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /New chat/ })).toBeVisible();
     await expect(prompt).toBeHidden();
   } finally {
     await context.close();
