@@ -390,6 +390,10 @@ auth.token = "overtchat"
 user = "{{ .Envs.OVERTCHAT_CLOUD_NAME }}"
 metadatas.credential = "{{ .Envs.OVERTCHAT_CLOUD_CREDENTIAL }}"
 
+# frp turns heartbeats off when multiplexing; the relay rejects them to
+# disconnect a server that was unlinked, which frees its name.
+transport.heartbeatInterval = 30
+
 # The tunnel shares the relay's HTTPS port and pins the relay's own CA.
 transport.tls.disableCustomTLSFirstByte = false
 transport.tls.trustedCaFile = "/etc/overtchat-cloud/relay-ca.pem"
