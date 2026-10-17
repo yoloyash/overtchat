@@ -144,7 +144,9 @@ function SessionRoutes({ backgroundColor }: { backgroundColor: string }) {
   return (
     <QueryClientScope key={userId}>
       <RootStack
-        authReady={!session.isPending}
+        // A signed-out refetch also reports pending; keep the screens mounted
+        // so the login form keeps its two-factor step.
+        authReady={!session.isPending || session.isRefetching}
         hasServer
         hasSession={Boolean(session.data?.user)}
         backgroundColor={backgroundColor}
