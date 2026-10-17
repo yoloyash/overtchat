@@ -111,6 +111,7 @@ describe("managed Compose configuration", () => {
     expect(CLOUD_TUNNEL_CONFIG).toContain('user = "{{ .Envs.OVERTCHAT_CLOUD_NAME }}"');
     expect(CLOUD_TUNNEL_CONFIG).toContain('localIP = "cloud-proxy"');
     expect(CLOUD_TUNNEL_CONFIG).toContain('transport.proxyProtocolVersion = "v2"');
+    expect(CLOUD_TUNNEL_CONFIG).toContain("transport.heartbeatInterval = 30");
     expect(CLOUD_TUNNEL_CONFIG).toContain('transport.tls.trustedCaFile = "/etc/overtchat-cloud/relay-ca.pem"');
     expect(CLOUD_PROXY_CONFIG).toContain("https://{$OVERTCHAT_CLOUD_HOSTNAME} {");
     expect(CLOUD_PROXY_CONFIG).toContain("disable_http_challenge");
