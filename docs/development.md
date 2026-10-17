@@ -240,7 +240,12 @@ ID. The server appends `/images/generations`. A configured size such as
 Extra request parameters are a JSON object for settings such as `seed` or
 `quality`. They cannot replace the model, prompt, size, response format, image
 count, streaming mode, or reference images. Custom providers expose editing
-only when the administrator enables multipart `/images/edits` support.
+only when the administrator enables **Supports image editing** for a backend
+and model that support multipart `/images/edits` requests. **Editing size**
+overrides the generation size for edits; blank inherits the generation size,
+and `auto` uses the backend default. Existing configurations keep their shared
+size until an override is saved. Bundled desktop clients need API level 5 to
+read the new option; coordinate releases as described in [Releases](release.md).
 
 The synchronous response must contain one image in `data`: either `b64_json`
 or an inline base64 image `url`. Remote image URLs are not fetched. Generated
@@ -254,7 +259,8 @@ E2E_PORT=4859 npm run test:e2e -w apps/web -- image-generation.spec.ts
 
 The tests use local HTTP fixtures, including a strict request contract based on
 [Halogen's documented image API](https://github.com/peonist-ai/halogen-flash-server/blob/main/docs/NPU.md#images).
-They cover keyless configuration, fixed-size precedence, extra parameters,
+They cover keyless configuration, fixed-size precedence, separate generation
+and editing sizes, override reset and inheritance, extra parameters,
 base64/data-URL PNGs, generation-only tools, persistence, download, cancellation,
 invalid responses, and existing OpenAI/Gemini generation and editing. They do
 not run Halogen inference; a real deployment smoke test remains useful before

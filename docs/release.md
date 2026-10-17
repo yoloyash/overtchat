@@ -61,6 +61,11 @@ Do not change unrelated manifest fields.
   tag. Follow [Desktop macOS release](#desktop-macos-release) and
   [Desktop Linux release](#desktop-linux-release) to validate and publish it;
   desktop downloads do not use manifest promotion.
+  API level 5 adds the optional custom image `editSize` setting. Earlier desktop
+  clients strictly validate image provider options and reject this new key.
+  Release a matching desktop build alongside the server update; verify that
+  older clients show the update-required screen before entering the app and
+  that the matching client can save and reopen an editing-size override.
 - **STT:** The STT workflow builds `speech/stt/Dockerfile.cpu` and
   `speech/stt/Dockerfile.gpu` with `speech/stt/` as their context, publishes both
   images, and dispatches promotion.
