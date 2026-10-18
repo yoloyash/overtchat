@@ -250,6 +250,10 @@ How it works:
   Let's Encrypt and forwards to the app. The app's port stays on loopback.
 - Visitor connections are encrypted all the way to this server. The relay routes
   them by name without decrypting them, so it cannot read chats or passwords.
+  The relay is open source at
+  [yoloyash/overtchat-relay](https://github.com/yoloyash/overtchat-relay),
+  whose README lists what it can see and how to check that visitors get this
+  server's own certificate.
 - The relay passes on each visitor's address, so sign-in rate limits apply per
   visitor rather than to the tunnel.
 - The server's credential is stored with the other installation secrets. Linking
