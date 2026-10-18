@@ -75,8 +75,8 @@ export async function promptAccess(
           },
           {
             value: "cloud",
-            label: "From anywhere with OvertChat Cloud",
-            hint: "an address like name.overtchat.app, nothing to install elsewhere",
+            label: "From anywhere with OvertChat Cloud (beta)",
+            hint: "an address like name.overtchat.app; limited spots",
           },
           {
             value: "advanced",

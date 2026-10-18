@@ -187,7 +187,7 @@ migrations. The previous Tailscale route is retained until startup succeeds.
 | Only on this computer | Opens at `http://localhost:4718`; the published port listens only on loopback. |
 | On my home network | Detects a LAN address and configures login for that address and localhost. The published port listens on all interfaces, subject to the host firewall. |
 | From anywhere with Tailscale | Uses Tailscale Serve to provide private HTTPS access to an app listening on loopback. |
-| From anywhere with OvertChat Cloud | Links this server to an OvertChat Cloud account and publishes it at `https://<name>.overtchat.app` through the OvertChat relay. |
+| From anywhere with OvertChat Cloud (beta) | Links this server to an OvertChat Cloud account and publishes it at `https://<name>.overtchat.app` through the OvertChat relay. |
 | Advanced setup | Uses your HTTPS address through an existing Cloudflare Tunnel or another reverse proxy. |
 
 Fresh installations suggest the home network option when a LAN address is
@@ -233,10 +233,11 @@ must be resolved before setup can remove them.
 OvertChat Cloud gives this server an address such as
 `https://smiths.overtchat.app` that works on any device, including for people
 who don't use Tailscale. Nothing is installed on the devices that open it, and
-no ports are opened on your network.
+no ports are opened on your network. It is in beta, with a limited number of
+spots.
 
-Choose **From anywhere with OvertChat Cloud**. Setup shows a code and a link to
-`account.overtchat.com/device`; open the link on any device, sign in with Google,
+Choose **From anywhere with OvertChat Cloud (beta)**. Setup shows a code and a
+link to `account.overtchat.com/device`; open the link on any device, sign in with Google,
 and confirm that the code matches. If the account has no address yet, setup
 asks for a name. Names use 3–30 lowercase letters, numbers, and hyphens, and
 cannot be changed later. Setup then links the server, starts the tunnel, and

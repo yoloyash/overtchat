@@ -106,7 +106,7 @@ export async function promptCloudLink(
       const authorization = await requestDeviceCode(options);
       note(
         `Open ${authorization.verificationUriComplete}\non any device, sign in with Google, and confirm this code:\n\n    ${authorization.userCode.replace(/^(.{4})(.{4})$/u, "$1-$2")}`,
-        "Link this server to OvertChat Cloud",
+        "Link this server to OvertChat Cloud (beta, limited spots)",
       );
       await openBrowser(authorization.verificationUriComplete);
       const progress = spinner();
