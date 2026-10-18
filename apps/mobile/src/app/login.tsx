@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   TOTP_CODE_LENGTH,
+  TWO_FACTOR_CLIENT_HEADER,
   twoFactorErrorMessage,
   twoFactorSignInExpired,
 } from "@overtchat/shared";
@@ -39,7 +40,10 @@ export default function LoginScreen() {
     setSubmitting(true);
     setError("");
     try {
-      const { data, error } = await authClient.signIn.email({ email, password });
+      const { data, error } = await authClient.signIn.email(
+        { email, password },
+        { headers: { [TWO_FACTOR_CLIENT_HEADER]: "1" } },
+      );
       if (error) {
         setError(error.message ?? "Login failed");
         return;

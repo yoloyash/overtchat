@@ -1,5 +1,12 @@
 /** Two-factor sign-in contract shared by the web, desktop, and mobile clients. */
 
+/**
+ * Sent with password sign-in by clients that can show the code step. The
+ * server refuses a two-factor sign-in without it, so older apps that would
+ * otherwise do nothing tell the user to update instead.
+ */
+export const TWO_FACTOR_CLIENT_HEADER = "X-OvertChat-Two-Factor";
+
 /** Authenticator apps show six-digit codes; backup codes look like `aB3dE-fG4hI`. */
 export const TOTP_CODE_LENGTH = 6;
 

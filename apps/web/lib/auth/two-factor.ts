@@ -6,6 +6,7 @@ import {
   getSessionFromCtx,
   sensitiveSessionMiddleware,
 } from "better-auth/api";
+import { TWO_FACTOR_CLIENT_HEADER } from "@overtchat/shared";
 import { z } from "zod";
 import { findPasswordAccount } from "@/lib/db/passwords";
 import { resetUserTwoFactor } from "@/lib/db/twoFactor";
@@ -30,6 +31,29 @@ export function twoFactorRecovery() {
   return {
     id: "overtchat-two-factor-recovery",
     hooks: {
+      after: [
+        {
+          // Runs after the two-factor plugin has replaced the sign-in
+          // response with its code-step redirect.
+          matcher: (context: { path?: string }) =>
+            context.path === "/sign-in/email",
+          handler: createAuthMiddleware(async (ctx) => {
+            const returned = ctx.context.returned as
+              | { twoFactorRedirect?: unknown }
+              | undefined;
+            if (
+              returned?.twoFactorRedirect === true &&
+              !ctx.headers?.get(TWO_FACTOR_CLIENT_HEADER)
+            ) {
+              throw new APIError("BAD_REQUEST", {
+                code: "TWO_FACTOR_CLIENT_UPDATE_REQUIRED",
+                message:
+                  "This account uses two-factor authentication. Update OvertChat to sign in.",
+              });
+            }
+          }),
+        },
+      ],
       before: [
         {
           matcher: (context: { path?: string }) =>

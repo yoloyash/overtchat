@@ -170,7 +170,7 @@ like the password-recovery request above.
 Setting `OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR=true` in the app's environment makes
 administrators set up two-factor before they can use the app, and keeps them
 from turning it off. Other users can still choose. Two-factor sign-in needs the
-current web, desktop, and mobile apps; older apps can't complete the code step.
+current web, desktop, and mobile apps; older apps ask the user to update.
 
 ## Choose how to access OvertChat
 

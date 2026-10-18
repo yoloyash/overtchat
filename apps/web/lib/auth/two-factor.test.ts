@@ -12,6 +12,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { TWO_FACTOR_CLIENT_HEADER } from "@overtchat/shared";
 import type { db as database } from "@/lib/db/client";
 
 vi.mock("server-only", () => ({}));
@@ -46,13 +47,14 @@ function cookies(response: Response): string {
 async function request(
   endpoint: string,
   body?: unknown,
-  options: { cookie?: string; bearer?: string } = {},
+  options: { cookie?: string; bearer?: string; oldClient?: boolean } = {},
 ) {
   return auth.handler(
     new Request(`${baseURL}/api/auth${endpoint}`, {
       method: body === undefined ? "GET" : "POST",
       headers: {
         Origin: baseURL,
+        ...(options.oldClient ? {} : { [TWO_FACTOR_CLIENT_HEADER]: "1" }),
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         ...(options.cookie ? { Cookie: options.cookie } : {}),
         ...(options.bearer
@@ -268,6 +270,28 @@ describe("two-factor sign-in", () => {
     };
     expect((await use()).status).toBe(200);
     expect((await use()).status).toBe(401);
+  });
+
+  it("tells apps without the code step to update", async () => {
+    await enroll(member);
+    const response = await request(
+      "/sign-in/email",
+      { email: "member@example.com", password },
+      { oldClient: true },
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      code: "TWO_FACTOR_CLIENT_UPDATE_REQUIRED",
+      message: expect.stringContaining("Update OvertChat"),
+    });
+
+    // Accounts without two-factor still sign in from those apps.
+    const admin = await request(
+      "/sign-in/email",
+      { email: "admin@example.com", password },
+      { oldClient: true },
+    );
+    expect(admin.status).toBe(200);
   });
 });
 

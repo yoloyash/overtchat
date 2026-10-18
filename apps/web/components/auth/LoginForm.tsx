@@ -1,5 +1,6 @@
 "use client";
 
+import { TWO_FACTOR_CLIENT_HEADER } from "@overtchat/shared";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,7 +30,10 @@ export function LoginForm() {
     e.preventDefault();
     setSubmitting(true);
     setError("");
-    const { data, error } = await authClient.signIn.email({ email, password });
+    const { data, error } = await authClient.signIn.email(
+      { email, password },
+      { headers: { [TWO_FACTOR_CLIENT_HEADER]: "1" } },
+    );
     if (error) {
       setError(error.message ?? "Login failed");
       setSubmitting(false);
