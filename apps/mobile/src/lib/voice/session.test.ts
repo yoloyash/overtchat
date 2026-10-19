@@ -9,10 +9,9 @@ function harness() {
   let stream!: ReadableStreamDefaultController<Uint8Array>;
   let callbacks!: Parameters<import("./session").VoiceDependencies["createClient"]>[1];
   const client = { connect: vi.fn(async () => {}), close: vi.fn(async () => {}), setMuted: vi.fn(), sendMessage: vi.fn(async () => {}), setActiveTurn: vi.fn(), interrupt: vi.fn() };
-  const events = new ReadableStream<Uint8Array>({ start(c) { stream = c; } });
   const request = vi.fn(async (path: string, init?: RequestInit): Promise<Response> => {
     if (path === "/api/voice/session") return init?.method === "DELETE" ? new Response(null, { status: 204 }) : Response.json(grant);
-    if (path === "/api/voice/events") return new Response(events);
+    if (path === "/api/voice/events") return new Response(new ReadableStream<Uint8Array>({ start(c) { stream = c; } }));
     if (path.endsWith("/stream/status")) return Response.json({ active: false });
     return Response.json({ messages: [] });
   });
@@ -27,6 +26,19 @@ function harness() {
 afterEach(() => vi.useRealTimers());
 
 describe("foreground voice lifecycle", () => {
+  it("ignores delayed audio callbacks from a previous call", async () => {
+    const h = harness();
+    await h.session.start(options);
+    const stale = h.callbacks();
+    await h.session.end();
+    await h.session.start(options);
+    h.callbacks().onStatus("listening");
+    stale.onStatus("assistant-speaking");
+    stale.onError(new Error("Old socket closed"));
+    expect(h.session.getSnapshot().status).toBe("listening");
+    expect(h.session.getSnapshot().error).toBeNull();
+    await h.session.end();
+  });
   it("releases a lease when the realtime socket never connects", async () => {
     vi.useFakeTimers();
     const h = harness();

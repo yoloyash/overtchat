@@ -87,12 +87,13 @@ export class MobileVoiceSession {
     });
     if (!this.active()) { await stream.body?.cancel(); return; }
     if (!stream.ok || !stream.body) throw new Error("Voice history unavailable");
+    const currentCall = () => this.active() && this.grant === grant;
     const callbacks: VoiceClientCallbacks = {
-      onStatus: status => { if (this.active() && status !== "closed") this.patch({ status }); },
-      onInputLevel: inputLevel => { if (this.active()) this.patch({ inputLevel }); },
-      onOutputLevel: outputLevel => { if (this.active()) this.patch({ outputLevel }); },
-      onWarning: warning => { if (this.active()) this.patch({ warning }); },
-      onError: () => this.fail("Voice disconnected or audio was interrupted. Start voice again when ready."),
+      onStatus: status => { if (currentCall() && status !== "closed") this.patch({ status }); },
+      onInputLevel: inputLevel => { if (currentCall()) this.patch({ inputLevel }); },
+      onOutputLevel: outputLevel => { if (currentCall()) this.patch({ outputLevel }); },
+      onWarning: warning => { if (currentCall()) this.patch({ warning }); },
+      onError: () => { if (currentCall()) this.fail("Voice disconnected or audio was interrupted. Start voice again when ready."); },
     };
     this.client = this.deps.createClient(grant, callbacks);
     void this.readEvents(stream.body, this.events.signal);
@@ -119,10 +120,14 @@ export class MobileVoiceSession {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let pending = "";
+    let heartbeat: ReturnType<typeof setTimeout> | undefined;
     try {
       while (this.active() && !signal.aborted) {
-        clearTimeout(this.heartbeat);
-        this.heartbeat = setTimeout(() => this.fail("Voice lost its connection. Start voice again when you are connected."), 45_000);
+        clearTimeout(heartbeat);
+        heartbeat = setTimeout(() => {
+          if (!signal.aborted) this.fail("Voice lost its connection. Start voice again when you are connected.");
+        }, 45_000);
+        this.heartbeat = heartbeat;
         const { value, done } = await reader.read();
         if (!this.active() || signal.aborted) break;
         if (done) throw new Error("Voice stream ended");
@@ -152,7 +157,8 @@ export class MobileVoiceSession {
     } catch {
       if (!signal.aborted) this.fail("Voice lost its connection. Start voice again when you are connected.");
     } finally {
-      clearTimeout(this.heartbeat);
+      clearTimeout(heartbeat);
+      if (this.heartbeat === heartbeat) this.heartbeat = undefined;
       await reader.cancel().catch(() => {});
       reader.releaseLock();
     }
