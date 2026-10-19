@@ -342,7 +342,9 @@ export default function PrivacyPage() {
           <section>
             <h2>Contact</h2>
             <p>
-              Questions or concerns? Open an issue at{" "}
+              Questions or concerns? Email{" "}
+              <a href="mailto:support@overtchat.com">support@overtchat.com</a>{" "}
+              or open an issue at{" "}
               <a href="https://github.com/yoloyash/overtchat/issues">
                 github.com/yoloyash/overtchat/issues
               </a>.

@@ -139,11 +139,8 @@ export default function TermsPage() {
           <section>
             <h2>Contact</h2>
             <p>
-              Questions about these terms? Open an issue at{" "}
-              <a href="https://github.com/yoloyash/overtchat/issues">
-                github.com/yoloyash/overtchat/issues
-              </a>
-              .
+              Questions about these terms? Email{" "}
+              <a href="mailto:support@overtchat.com">support@overtchat.com</a>.
             </p>
           </section>
         </div>
