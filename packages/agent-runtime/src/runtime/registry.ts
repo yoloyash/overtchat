@@ -301,6 +301,9 @@ export class AgentSessionRuntime {
   private settlePromise: Promise<void> | null = null;
   private abortPromise: Promise<unknown> | null = null;
   private terminalDuringAbort = false;
+  // Background work a Stop left running. Only the agent yielding to wait for
+  // background work again reopens a waiting turn; a wake starts a new turn.
+  private stoppedBackgroundWork = false;
   private readonly eventClassifier: AgentRuntimeEventClassifier;
   private pendingInteraction:
     | NonNullable<AgentRuntimeSnapshot["pendingInteraction"]>
@@ -474,6 +477,7 @@ export class AgentSessionRuntime {
       }
       if (classification.waiting) {
         this.terminalDuringAbort = false;
+        this.stoppedBackgroundWork = false;
         this.turnGeneration += 1;
         this.settlePromise = null;
         this.promptAwaitingStart = false;
@@ -1207,6 +1211,13 @@ export class AgentSessionRuntime {
         this.scheduleIdleStop();
         return;
       }
+      // Stopping the process would cancel background work a Stop left running.
+      if (this.rawProviderResponsePhase(this.state) === "waiting") {
+        void this.refreshState().catch(() => {}).finally(() => {
+          if (!this.stopped) this.scheduleIdleStop();
+        });
+        return;
+      }
       void this.stop();
     }, IDLE_RUNTIME_TTL_MS);
     this.idleStopTimer.unref();
@@ -1465,7 +1476,8 @@ export class AgentSessionRuntime {
     }
     const operation = this.client.abort().then(async (result) => {
       // Some providers interrupt the foreground without cancelling async jobs.
-      // Their acknowledgement alone cannot release the queue or idle lifetime.
+      // Stop still ends the turn; that work keeps running and a later wake
+      // starts a new turn.
       let phase: AgentResponsePhase | null = null;
       if (this.adapter.responsePhaseFromState) {
         const revision = this.activityRevision;
@@ -1478,6 +1490,10 @@ export class AgentSessionRuntime {
         }
       }
       if (this.stopped || this.status === "exited") return result;
+      if (phase === "waiting") {
+        this.stoppedBackgroundWork = true;
+        phase = null;
+      }
       this.completeAcknowledgedAbort(phase);
       return result;
     });
@@ -1674,6 +1690,11 @@ export class AgentSessionRuntime {
   }
 
   private providerResponsePhase(state: Record<string, unknown>): AgentResponsePhase | null {
+    const phase = this.rawProviderResponsePhase(state);
+    return phase === "waiting" && this.stoppedBackgroundWork ? null : phase;
+  }
+
+  private rawProviderResponsePhase(state: Record<string, unknown>): AgentResponsePhase | null {
     return this.adapter.responsePhaseFromState
       ? this.adapter.responsePhaseFromState(state)
       : state.isStreaming === true ? "responding" : null;

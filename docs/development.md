@@ -1160,11 +1160,13 @@ The session directory carries the optional `responsePhase` for web and mobile
 navigation. Waiting sessions use a static clock, including workspace counts;
 phase changes must propagate even when the operational status remains running.
 
-OMP's native Stop interrupts the foreground but can leave async jobs running.
-After its acknowledgement, reconcile provider state before releasing the queue
-or advertising idle. Remaining work continues to show the waiting label. Stop
-while only background work remains, or an abort the provider cannot complete
-for a running turn, restarts the provider process on the same native session.
+Stop ends the current turn. OMP's native abort interrupts the foreground but
+leaves async jobs running; after its acknowledgement the session is idle and the
+queue drains while those jobs continue. A job result can wake the agent into a
+new turn, and only the agent yielding to background work again shows the
+waiting label. Idle runtime cleanup does not stop a provider that still reports
+background work. An abort the provider cannot complete for a running turn
+restarts the provider process on the same native session.
 
 Turns end from provider state, not from elapsed time. After a terminal event the
 runtime polls state until the provider reports idle; reported work keeps the

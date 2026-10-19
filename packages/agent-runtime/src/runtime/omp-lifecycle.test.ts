@@ -74,23 +74,49 @@ describe("OMP background lifecycle through the real provider adapter", () => {
     reconnect();
   });
 
-  it("settles without a second assistant turn and preserves background work after a foreground-only abort", async () => {
+  it("settles without a second assistant turn", async () => {
     const runtime = await registry.getOrStart(descriptor);
     await runtime.command({ type: "prompt", message: "Start" });
     waiting();
     settled();
     await vi.advanceTimersByTimeAsync(0);
     expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
-    await runtime.command({ type: "prompt", message: "Again" });
+  });
+
+  it("ends the turn on Stop while background work keeps running", async () => {
+    const runtime = await registry.getOrStart(descriptor);
+    await runtime.command({ type: "prompt", message: "Start" });
     waiting();
-    await runtime.command({ type: "queue", message: "After background work" });
+    await runtime.command({ type: "queue", message: "After Stop" });
+    // Native abort is foreground-only: the async job stays pending.
     await runtime.command({ type: "abort" });
     expect(fake.abort).toHaveBeenCalledOnce();
-    expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "waiting" } });
-    expect(fake.prompt).toHaveBeenCalledTimes(2);
+    expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.prompt).toHaveBeenLastCalledWith("After Stop", undefined, expect.anything());
     settled();
     await vi.advanceTimersByTimeAsync(0);
-    expect(fake.prompt).toHaveBeenCalledTimes(3);
+    fake.state = { ...fake.state, hasPendingAsyncWork: true, isSettled: false };
+    await runtime.refreshState();
+    expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+    // Idle cleanup must not cancel the job by stopping the provider.
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    expect(fake.stop).not.toHaveBeenCalled();
+    // The job's result wakes the agent into a new turn.
+    fake.state = { ...fake.state, isStreaming: true };
+    fake.emit({ type: "agent_start" });
+    expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "responding" } });
+    fake.state = { ...fake.state, isStreaming: false, hasPendingAsyncWork: false, isSettled: true };
+    fake.emit({ type: "message_end", message: { role: "assistant", content: "Background result received." } });
+    fake.emit({ type: "agent_end", isTerminal: true, yielded: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+    // A later turn that yields to its own background work waits again.
+    await runtime.command({ type: "prompt", message: "Start another job" });
+    waiting();
+    await runtime.refreshState();
+    expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "waiting" } });
+    expect(fake.stop).not.toHaveBeenCalled();
   });
 
   it("returns to responding on a background wake and ignores stale metadata reads", async () => {

@@ -83,14 +83,17 @@ describe.runIf(process.env.RUN_OMP_BACKGROUND_INTEGRATION === "1")("installed OM
       expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "waiting" } });
       if (action === "abort") {
         await runtime.command({ type: "abort" });
-        // OMP's native abort interrupts the foreground, not async bash jobs.
+        // Stop ends the turn, but OMP's native abort leaves async jobs running.
         await expect(client.getState()).resolves.toMatchObject({
           isStreaming: false, hasPendingAsyncWork: true, isSettled: false,
         });
-        expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "waiting" } });
+        expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
       }
       await writeFile(path.join(root, "release-job"), "release");
-      await vi.waitFor(() => expect(runtime!.snapshot()).toMatchObject({ status: "idle", activeTurn: null }), { timeout: 15_000 });
+      await vi.waitFor(async () => {
+        await expect(client.getState()).resolves.toMatchObject({ hasPendingAsyncWork: false });
+        expect(runtime!.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+      }, { timeout: 15_000 });
       if (action === "finish") {
         expect(events.filter((event) => event.type === "agent_start").length).toBeGreaterThanOrEqual(2);
         expect(events).toContainEqual(expect.objectContaining({ type: "session_settled" }));

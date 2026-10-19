@@ -623,21 +623,14 @@ export class ConnectorDaemon {
         }
         attemptedProviderAction = true;
         if (normalized.type === "abort") {
-          const snapshot = runtime.snapshot();
-          // Provider aborts interrupt only foreground work, so Stop while
-          // background work remains, or an abort the provider cannot complete,
-          // restarts the provider process instead of leaving the session busy.
-          let restart =
-            snapshot.status === "running" && snapshot.activeTurn?.phase === "waiting";
-          if (!restart) {
-            try {
-              await this.awaitProviderAction(runtime.command(normalized));
-            } catch (error) {
-              if (runtime.snapshot().status !== "running") throw error;
-              restart = true;
-            }
+          try {
+            await this.awaitProviderAction(runtime.command(normalized));
+          } catch (error) {
+            // A provider that cannot complete an abort would otherwise leave
+            // the turn running, so restart it on the same native session.
+            if (runtime.snapshot().status !== "running") throw error;
+            runtime = await this.restartRuntime(request.session, false);
           }
-          if (restart) runtime = await this.restartRuntime(request.session, false);
         }
         const data =
           normalized.type === "rewind" || normalized.type === "edit_message"
