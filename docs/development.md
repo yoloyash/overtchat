@@ -539,11 +539,12 @@ qualify latency on cellular and lossy networks, not only local Wi-Fi.
 The local native module is an upstream adaptation that we maintain. iOS uses
 AVAudioEngine voice processing; Android echo cancellation depends on device
 support. Speaker, Bluetooth, phone interruptions, and returning to dictation or
-read-aloud require device checks. The inherited iOS first-playback workaround
-discards microphone samples for two seconds when the first reply begins. This
-can lose early spoken interruptions; test that behavior explicitly before
-claiming unrestricted barge-in. Removing the workaround also requires checking
-that the assistant's first reply does not transcribe itself.
+read-aloud require device checks. iOS keeps microphone capture active during the
+first reply rather than discarding the first two seconds of input. On the tested
+iPhone 13 Pro Max, three silent speaker trials (two at 50% volume, one at 90%)
+produced no self-transcribed turns, and speech within the first two seconds
+reached transcription. This is single-device evidence; check first-reply echo
+and early spoken interruption when qualifying another device or audio route.
 
 Metro selects the realtime SDK's browser exports, and startup installs missing
 DOM event globals from React Native's private implementations. Recheck both

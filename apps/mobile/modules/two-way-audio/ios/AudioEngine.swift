@@ -25,10 +25,6 @@ class AudioEngine {
     private var inputBufferIndex = 0
     private var outputBufferIndex = 0
 
-    private var hasFirstInputBeenDiscarded = false
-    private var discardRecording = false
-    private var discardFirstInputMillis = 2000
-
     /// Buffers scheduled on `speechPlayer` that have not finished rendering yet.
     ///
     /// `AVAudioPlayerNode.isPlaying` cannot answer "is audio still in flight": it stays true from
@@ -178,9 +174,7 @@ class AudioEngine {
         avAudioEngine.connect(mainMixer, to: output, format: voiceIOFormat)
 
         input.installTap(onBus: 0, bufferSize: 2048, format: voiceIOFormat) { [weak self] buffer, when in
-            // We don't do any input processing (no volume calculation or passing mic data to the callback) if discardRecording == true
-            // See comment in the playPCMData function
-            if self?.isRecording == true && self?.discardRecording == false {
+            if self?.isRecording == true {
                 self?.processMicrophoneBuffer(buffer)
                 self?.updateInputVolume()
             }
@@ -245,19 +239,6 @@ class AudioEngine {
 
     func playPCMData(_ pcmData: Data) {
         activateAudioSessionIfNeeded()
-
-        // Looks like we don't get a proper AEC for the very first chunks of audio that we play.
-        // To work around this, we will discard microphone input for the first few milliseconds.
-        // This will give the AEC time to adapt to the playback audio.
-        // We achieve this by setting discardRecording to true for a short time (this doesn't actually mute the input). It's just not processed in the tap.
-        // Audio that is not processed by the input tap is not sent to the callback and therefore not sent to the server.
-        if !hasFirstInputBeenDiscarded {
-            self.hasFirstInputBeenDiscarded = true
-            self.discardRecording = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(discardFirstInputMillis)) {
-                self.discardRecording = false
-            }
-        }
 
         guard let buffer = createBuffer(from: pcmData) else {
             print("Failed to create audio buffer")
