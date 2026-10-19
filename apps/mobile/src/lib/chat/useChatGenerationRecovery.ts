@@ -108,15 +108,45 @@ export function useChatGenerationRecovery({
 
   useEffect(() => {
     if (!enabled || suspended) return;
-    const recover = () => void generation.reconcile().catch(() => undefined);
+    const recover = () => {
+      if (AppState.currentState === "active")
+        void generation.reconcile().catch(() => undefined);
+    };
+    let foreground = AppState.currentState === "active";
     const appState = AppState.addEventListener("change", (state) => {
-      if (state === "active") recover();
+      const nextForeground = state === "active";
+      if (nextForeground && !foreground) recover();
+      foreground = nextForeground;
     });
+    // Android also emits capability changes while connectivity stays online.
+    // Only an offline -> online transition should trigger network recovery.
+    // Mount and foreground recovery handle the initial/unknown state.
+    let online: boolean | undefined;
+    let observedNetworkEvent = false;
+    let disposed = false;
+    const isOnline = (state: Network.NetworkState) => {
+      if (state.isConnected === false || state.isInternetReachable === false)
+        return false;
+      return state.isConnected === true ? true : undefined;
+    };
     const network = Network.addNetworkStateListener((state) => {
-      if (state.isConnected && state.isInternetReachable !== false) recover();
+      observedNetworkEvent = true;
+      const nextOnline = isOnline(state);
+      if (nextOnline === undefined) return;
+      const reconnected = online === false && nextOnline;
+      online = nextOnline;
+      if (reconnected) recover();
     });
+    // Seed offline state even if the platform does not emit an initial event.
+    // A late snapshot must never overwrite a newer listener notification.
+    void Network.getNetworkStateAsync()
+      .then((state) => {
+        if (!disposed && !observedNetworkEvent) online = isOnline(state);
+      })
+      .catch(() => undefined);
     if (recoverOnMount) recover();
     return () => {
+      disposed = true;
       appState.remove();
       network.remove();
     };

@@ -196,9 +196,8 @@ function ChatSurface({
     error: modelsError,
   } = useModelConfigs();
   const {
-    isFetching: hydrationFetching,
-    error: hydrationError,
-    refetch: refetchHydration,
+    refreshing: refreshingMessages,
+    refresh: refreshMessages,
   } = useChatMessages(isNew ? null : chatId);
 
   const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
@@ -523,27 +522,12 @@ function ChatSurface({
     lastErrorRef.current = error;
   }, [error, generation]);
 
-  const userRefreshingMessages = useRef(false);
-  const wasFetchingMessages = useRef(false);
-  useEffect(() => {
-    if (
-      wasFetchingMessages.current &&
-      !hydrationFetching &&
-      userRefreshingMessages.current
-    ) {
-      if (hydrationError)
-        toastError("Couldn't refresh messages", hydrationError);
-      userRefreshingMessages.current = false;
-    }
-    wasFetchingMessages.current = hydrationFetching;
-  }, [hydrationFetching, hydrationError]);
-
-  function onRefreshMessages() {
+  async function onRefreshMessages() {
     if (isNew || voice.busy) return;
-    userRefreshingMessages.current = true;
-    refetchHydration().then((res) => {
-      if (res.data?.messages && !voiceBusyRef.current) setMessages(res.data.messages);
-    });
+    const res = await refreshMessages();
+    if (res?.error) toastError("Couldn't refresh messages", res.error);
+    else if (res?.data?.messages && !voiceBusyRef.current)
+      setMessages(res.data.messages);
   }
 
   function handleSubmit(text: string, files: FileUIPart[]) {
@@ -701,7 +685,7 @@ function ChatSurface({
             if (voice.busy) { toastError("End live voice before playing a message."); return; }
             await speech.play(id, text);
           } }}
-          refreshing={!isNew && hydrationFetching && !streaming}
+          refreshing={refreshingMessages}
           onRefresh={isNew || voice.busy ? undefined : onRefreshMessages}
           onStartEdit={(id) => !voice.busy && !streaming && setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
