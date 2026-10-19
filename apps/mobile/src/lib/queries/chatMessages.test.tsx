@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { parseHTML } from "linkedom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { useChatMessages } from "./chatMessages";
+import { useChatMessages, type ChatMessagesResponse } from "./chatMessages";
 import { queryKeys } from "./keys";
 
 const request = vi.hoisted(() => vi.fn<typeof fetch>());
@@ -15,7 +15,7 @@ let root: Root;
 let client: QueryClient;
 let query: ReturnType<typeof useChatMessages>;
 const key = queryKeys.chatMessages("chat");
-const data = { messages: [], kind: "chat", projectId: null };
+const data: ChatMessagesResponse = { messages: [], kind: "text", projectId: null };
 function Probe({ id = "chat" }: { id?: string | null }) {
   query = useChatMessages(id);
   return null;
