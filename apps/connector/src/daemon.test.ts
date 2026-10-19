@@ -273,6 +273,73 @@ describe("connector daemon command identity", () => {
     },
   );
 
+  it.each([
+    ["only background work remains", "waiting", null, false],
+    ["the provider cannot abort a running turn", "responding", "running", true],
+  ] as const)(
+    "restarts the provider for Stop when %s",
+    async (_case, phase, statusAfterAbort, aborts) => {
+      const { journal, timelines } = await openJournal();
+      const events: HostConnectorEventPayload[] = [];
+      const busy = { ...mocks.snapshot(), status: "running", activeTurn: { startedAt: 42, phase } };
+      mocks.snapshot.mockReturnValue(busy);
+      mocks.command.mockImplementation(async () => {
+        mocks.snapshot.mockReturnValue({ ...busy, status: statusAfterAbort });
+        throw new Error("Timed out waiting for Oh My Pi abort.");
+      });
+      const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
+      await daemon.handle({
+        type: "request", requestId: "stop", request: {
+          type: "session_command", commandId: "stop-command", session,
+          command: { type: "abort" },
+        },
+      });
+      expect(events).toContainEqual(expect.objectContaining({ type: "response", success: true }));
+      expect(mocks.command).toHaveBeenCalledTimes(aborts ? 1 : 0);
+      expect(mocks.stopSession).toHaveBeenCalledWith("session");
+      expect(mocks.getOrStart).toHaveBeenCalledTimes(2);
+      expect(mocks.getOrStart).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sessionId: "session" }),
+        { hydrateHistory: false },
+      );
+      await daemon.stop();
+      await timelines.close();
+      await journal.close();
+    },
+  );
+
+  it.each([
+    ["aborts the foreground turn without restarting", undefined],
+    ["reports a failed abort once the turn already ended", new Error("Abort failed.")],
+  ])("%s", async (_case, failure) => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const busy = { ...mocks.snapshot(), status: "running", activeTurn: { startedAt: 42, phase: "responding" } };
+    mocks.snapshot.mockReturnValue(busy);
+    mocks.command.mockImplementation(async () => {
+      mocks.snapshot.mockReturnValue({ ...busy, status: "idle", activeTurn: null });
+      if (failure) throw failure;
+      return {};
+    });
+    const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
+    await daemon.handle({
+      type: "request", requestId: "stop", request: {
+        type: "session_command", commandId: "stop-command", session,
+        command: { type: "abort" },
+      },
+    });
+    expect(events).toContainEqual(expect.objectContaining(
+      failure
+        ? { type: "response", success: false, error: expect.stringContaining(failure.message) }
+        : { type: "response", success: true },
+    ));
+    expect(mocks.command).toHaveBeenCalledOnce();
+    expect(mocks.stopSession).not.toHaveBeenCalled();
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
+
   it("dispatches provider-neutral workspace file operations", async () => {
     const { journal, timelines } = await openJournal();
     const events: HostConnectorEventPayload[] = [];

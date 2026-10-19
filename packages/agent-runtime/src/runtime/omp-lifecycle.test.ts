@@ -158,6 +158,51 @@ describe("OMP background lifecycle through the real provider adapter", () => {
     expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
   });
 
+  it("settles an idle session whose hidden next-turn context keeps isSettled false", async () => {
+    const runtime = await registry.getOrStart(descriptor);
+    await runtime.command({ type: "prompt", message: "Start" });
+    await runtime.command({ type: "queue", message: "Next" });
+    fake.emit({ type: "agent_start" });
+    fake.state = {
+      ...fake.state, isStreaming: false, hasPendingAsyncWork: false, isSettled: false,
+      queuedMessageCount: 1, queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
+    };
+    fake.emit({ type: "message_end", message: { role: "assistant", content: "Done" } });
+    fake.emit({ type: "agent_end", isTerminal: true, yielded: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake.prompt).toHaveBeenCalledTimes(2);
+    expect(fake.prompt).toHaveBeenLastCalledWith("Next", undefined, expect.anything());
+  });
+
+  it("ends the turn when provider state stays unreadable", async () => {
+    const runtime = await registry.getOrStart(descriptor);
+    await runtime.command({ type: "prompt", message: "Start" });
+    fake.emit({ type: "agent_start" });
+    fake.getState.mockRejectedValue(new Error("Timed out waiting for Oh My Pi get_state."));
+    fake.emit({ type: "message_end", message: { role: "assistant", content: "Done" } });
+    fake.emit({ type: "agent_end", isTerminal: true, yielded: true });
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(runtime.snapshot()).toMatchObject({
+      status: "idle", activeTurn: null,
+      error: expect.any(String),
+    });
+  });
+
+  it("follows reported work past the settle window until the provider is idle", async () => {
+    const runtime = await registry.getOrStart(descriptor);
+    await runtime.command({ type: "prompt", message: "Start" });
+    fake.emit({ type: "agent_start" });
+    fake.state = { ...fake.state, isStreaming: false, isCompacting: true };
+    fake.emit({ type: "message_end", message: { role: "assistant", content: "Done" } });
+    fake.emit({ type: "agent_end", isTerminal: true, yielded: true });
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "responding" } });
+    fake.state = { ...fake.state, isCompacting: false };
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+    expect(runtime.snapshot().error).toBeUndefined();
+  });
+
   it("derives waiting from provider state on initial attachment", async () => {
     fake.state.hasPendingAsyncWork = true;
     fake.state.isSettled = false;

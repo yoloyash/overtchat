@@ -2949,13 +2949,11 @@ test("separates OMP background waiting from responding and settles without anoth
     await composer.press("Enter");
     await expect(indicator).toHaveText("Waiting for background work");
     await page.getByRole("button", { name: "Stop Oh My Pi", exact: true }).click();
-    await expect(indicator).toHaveText("Waiting for background work");
-    // The native abort is foreground-only; background work remains visible.
-    await expect.poll(async () => readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).toContain("abort");
-    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toBeEnabled();
-    await writeFile(path.join(directory, "background-control"), "settle-again");
+    // The native abort cannot cancel async jobs, so Stop restarts the provider.
     await expect(indicator).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toHaveCount(0);
+    await expect(sidebarWaiting).toHaveCount(0);
+    expect(await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).not.toContain("abort");
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

@@ -80,6 +80,15 @@ class OmpEventClassifier implements AgentRuntimeEventClassifier {
   }
 }
 
+function hasVisibleQueuedInput(state: Record<string, unknown>): boolean {
+  const queued = state.queuedMessages;
+  if (!queued || typeof queued !== "object") return false;
+  return ["steering", "followUp"].some((key) => {
+    const messages = Reflect.get(queued, key);
+    return Array.isArray(messages) && messages.length > 0;
+  });
+}
+
 function sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity {
   if (typeof state.sessionFile !== "string" || !state.sessionFile) {
     throw new Error("Oh My Pi did not create a persistent session file.");
@@ -169,8 +178,10 @@ export const ompProviderAdapter: AgentProviderAdapter = {
   responsePhaseFromState(state) {
     if (state.isStreaming === true || state.isCompacting === true) return "responding";
     if (state.hasPendingAsyncWork === true) return "waiting";
-    // An admitted continuation may not have started streaming yet.
-    return state.isSettled === false ? "responding" : null;
+    // `isSettled` also counts hidden next-turn context that only the next
+    // explicit prompt delivers, so an idle session can report false forever
+    // (can1357/oh-my-pi#14948). Queued steering and follow-ups still resume.
+    return hasVisibleQueuedInput(state) ? "responding" : null;
   },
   startSession(target, launch) {
     return startOmp(target, {

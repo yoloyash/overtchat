@@ -18,7 +18,13 @@ describe("OMP provider adapter", () => {
     [{ isStreaming: false, hasPendingAsyncWork: true, isSettled: false }, "waiting"],
     [{ isStreaming: true, hasPendingAsyncWork: true }, "responding"],
     [{ isCompacting: true, hasPendingAsyncWork: true }, "responding"],
-    [{ isStreaming: false, isSettled: false }, "responding"],
+    // Hidden next-turn context keeps isSettled false for an idle session.
+    [{
+      isStreaming: false, hasPendingAsyncWork: false, isSettled: false, queuedMessageCount: 1,
+      queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
+    }, null],
+    [{ isStreaming: false, isSettled: false, queuedMessages: { steering: ["Next"], followUp: [] } }, "responding"],
+    [{ isStreaming: false, isSettled: false, queuedMessages: { steering: [], followUp: ["Later"] } }, "responding"],
     [{ isStreaming: false, isSettled: true }, null],
     [{ isStreaming: false }, null],
   ])("normalizes provider activity %j", (state, expected) => {

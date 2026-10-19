@@ -1162,7 +1162,17 @@ phase changes must propagate even when the operational status remains running.
 
 OMP's native Stop interrupts the foreground but can leave async jobs running.
 After its acknowledgement, reconcile provider state before releasing the queue
-or advertising idle. Remaining work continues to show the waiting label.
+or advertising idle. Remaining work continues to show the waiting label. Stop
+while only background work remains, or an abort the provider cannot complete
+for a running turn, restarts the provider process on the same native session.
+
+Turns end from provider state, not from elapsed time. After a terminal event the
+runtime polls state until the provider reports idle; reported work keeps the
+turn open, while state that stays unreadable past the settle window ends it
+with an error. The OMP adapter does not use native `isSettled`: it also counts
+hidden next-turn context that only the next explicit prompt delivers, so an
+idle session can report false indefinitely
+([can1357/oh-my-pi#14948](https://github.com/can1357/oh-my-pi/issues/14948)).
 
 Validate the provider/runtime lifecycle and the real connector/relay/browser
 flow (including reload, background wake, queue draining and Stop):
@@ -1175,8 +1185,9 @@ RUN_OMP_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/o
 
 The installed-OMP test uses an isolated native profile, a loopback model fixture,
 and a real async bash job in a temporary workspace. It exercises background
-completion, automatic model resumption and Stop without model credentials or
-existing sessions. It has been validated with OMP 18.7.0. Set `OMP_COMMAND` to
+completion, automatic model resumption, Stop and settlement after a failed todo
+call without model credentials or existing sessions. The background cases have
+been validated with OMP 18.7.0 and every case with 18.11.1. Set `OMP_COMMAND` to
 override the local executable. Also run bridge/runtime/connector tests and
 typechecks, connector build, web typecheck/lint/build and mobile tests/typecheck.
 Check the waiting label and Stop on native Android/iOS before releasing clients.

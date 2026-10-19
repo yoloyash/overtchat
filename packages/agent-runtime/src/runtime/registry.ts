@@ -46,6 +46,7 @@ const MODEL_DISCOVERY_TIMEOUT_MS = 120_000;
 const IDLE_RUNTIME_TTL_MS = 5 * 60_000;
 const PROVIDER_IDLE_POLL_MS = 100;
 const PROVIDER_IDLE_TIMEOUT_MS = 30_000;
+const PROVIDER_BUSY_POLL_MS = 5_000;
 
 type Subscriber = (envelope: AgentRuntimeEnvelope) => void;
 
@@ -1565,11 +1566,18 @@ export class AgentSessionRuntime {
     timeoutMs: number,
     turnGeneration: number,
   ): Promise<void> {
-    const providerIdle = await this.waitForProviderIdle(
+    const settled = await this.waitForProviderIdle(
       timeoutMs,
       turnGeneration,
     );
-    if (!providerIdle) return;
+    if (!settled) return;
+    if (settled.error) {
+      this.error = errorMessage(settled.error);
+      this.publish({
+        type: "runtime_event",
+        data: { type: "rpc_error", command: "get_state", error: this.error },
+      });
+    }
     this.usagePoller?.stop();
     this.status = "idle";
     this.activeTurnStartedAt = null;
@@ -1595,37 +1603,54 @@ export class AgentSessionRuntime {
     }
   }
 
+  /** Resolves when the provider reports idle, or with an error once its state
+   * is unreadable past the timeout. Reported work keeps the turn open, so the
+   * provider's state rather than elapsed time decides when a turn ends. */
   private async waitForProviderIdle(
     timeoutMs: number,
     turnGeneration: number,
-  ): Promise<boolean> {
+  ): Promise<{ error?: Error } | null> {
     const deadline = Date.now() + timeoutMs;
     let lastError: unknown;
     while (this.isProviderIdleWaitCurrent(turnGeneration)) {
       const remainingMs = deadline - Date.now();
-      if (remainingMs <= 0) break;
       try {
-        const state = await this.client.getState(remainingMs);
-        if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-          return false;
-        }
+        const state = await this.client.getState(
+          remainingMs > 0 ? remainingMs : undefined,
+        );
+        if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
         this.state = state;
-        if (this.providerResponsePhase(state) === null && state.isCompacting !== true) {
-          return true;
+        const phase = state.isCompacting === true
+          ? "responding"
+          : this.providerResponsePhase(state);
+        if (phase === null) return {};
+        if (
+          remainingMs <= 0 &&
+          (this.status !== "running" || this.responsePhase !== phase)
+        ) {
+          this.status = "running";
+          this.responsePhase = phase;
+          this.activeTurnStartedAt ??= Date.now();
+          this.state = { ...this.state, isStreaming: phase === "responding" };
+          if (phase === "responding") this.usagePoller?.start();
+          else this.usagePoller?.stop();
+          this.publishStatus();
         }
       } catch (error) {
         lastError = error;
+        if (Date.now() >= deadline) break;
       }
-      if (Date.now() >= deadline) break;
-      await wait(PROVIDER_IDLE_POLL_MS);
+      await wait(
+        Date.now() < deadline ? PROVIDER_IDLE_POLL_MS : PROVIDER_BUSY_POLL_MS,
+      );
     }
-    if (!this.isProviderIdleWaitCurrent(turnGeneration)) {
-      return false;
-    }
-    const detail = lastError ? ` ${errorMessage(lastError)}` : "";
-    throw new Error(
-      `${agentProviderMetadata(this.provider).label} still reports that it is working after ${Math.round(timeoutMs / 1_000)} seconds.${detail}`,
-    );
+    if (!this.isProviderIdleWaitCurrent(turnGeneration)) return null;
+    const label = agentProviderMetadata(this.provider).label;
+    return {
+      error: new Error(
+        `${label} stopped reporting its state, so the turn was ended.${lastError ? ` ${errorMessage(lastError)}` : ""}`,
+      ),
+    };
   }
 
   private isProviderIdleWaitCurrent(turnGeneration: number): boolean {
