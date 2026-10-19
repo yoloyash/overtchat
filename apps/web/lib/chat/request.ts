@@ -39,6 +39,8 @@ const ChatRequestEnvelopeSchema = z.object({
   clientRequestId: z.string().trim().min(1).max(200).optional(),
   webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
+  openuiEnabled: z.boolean().optional().default(true),
+  forceOpenUI: z.boolean().optional(),
   imageGeneration: z.object({
     size: z.enum(IMAGE_SIZES).default("auto"),
     quality: z.enum(IMAGE_QUALITIES).default("auto"),
@@ -71,6 +73,8 @@ export interface ParsedChatRequest {
   clientRequestId: string;
   webSearchEnabled: boolean;
   forceSearch: boolean;
+  openuiEnabled?: boolean;
+  forceOpenUI?: boolean;
   imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
@@ -96,6 +100,8 @@ export function chatRequestFingerprint({
   chatId,
   webSearchEnabled,
   forceSearch,
+  openuiEnabled = true,
+  forceOpenUI = false,
   imageGeneration,
   timeZone,
   projectId,
@@ -112,6 +118,8 @@ export function chatRequestFingerprint({
         chatId,
         webSearchEnabled,
         forceSearch,
+        openuiEnabled,
+        forceOpenUI,
         imageGeneration,
         timeZone: timeZone ?? null,
         projectId: projectId ?? null,
@@ -189,6 +197,8 @@ export async function parseChatRequest(
     clientRequestId: envelope.data.clientRequestId ?? crypto.randomUUID(),
     webSearchEnabled: envelope.data.webSearchEnabled,
     forceSearch: envelope.data.webSearchEnabled && forceSearch,
+    openuiEnabled: envelope.data.openuiEnabled,
+    forceOpenUI: Boolean(envelope.data.forceOpenUI),
     imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,

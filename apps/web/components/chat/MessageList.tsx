@@ -46,6 +46,7 @@ export function MessageList({
   onRegenerate,
   onContinue,
   onImageReference,
+  onSendPrompt,
   onEdit,
   onReconnect,
 }: {
@@ -65,6 +66,7 @@ export function MessageList({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onSendPrompt?: (text: string) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onReconnect: () => void;
 }) {
@@ -203,6 +205,7 @@ export function MessageList({
                       onRegenerate={onRegenerate}
                       onContinue={isLast && canContinueMessage(message) ? onContinue : undefined}
                       onImageReference={onImageReference}
+                      onSendPrompt={onSendPrompt}
                       onEdit={onEdit}
                       speech={speech}
                       showStats={showStats}

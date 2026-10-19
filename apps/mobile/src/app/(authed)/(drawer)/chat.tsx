@@ -64,7 +64,7 @@ import {
   setReasoningLevel,
   useReasoningLevels,
 } from "@/lib/reasoningPreferences";
-import { useWebSearchEnabled } from "@/lib/toolPreferences";
+import { useOpenUIEnabled, useWebSearchEnabled } from "@/lib/toolPreferences";
 import { useSpeech } from "@/lib/useSpeech";
 import { useTheme } from "@/lib/theme";
 import { toastError } from "@/lib/toast";
@@ -200,11 +200,13 @@ function ChatSurface({
 
   const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
   const [searchRequested, setSearchRequested] = useState(false);
+  const [openuiRequested, setOpenuiRequested] = useState(false);
   const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const { data: capabilitiesData } = useCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
   const [chatPersisted, setChatPersisted] = useState(!isNew);
   const webSearchEnabled = useWebSearchEnabled();
+  const openuiEnabled = useOpenUIEnabled();
   const reasoningLevels = useReasoningLevels();
   const pickerRef = useRef<ModelPickerSheetRef>(null);
   const addSheetRef = useRef<BottomSheetModal>(null);
@@ -350,6 +352,8 @@ function ChatSurface({
   const searchUnavailableReason = !webSearchEnabled
     ? "Web search is disabled in Settings → Tools"
     : "Unavailable for this model";
+  const openuiAvailable = modelSupportsToolCalling(selectedModel);
+  const openuiUnavailableReason = "Unavailable for this model";
 
   const {
     attachments,
@@ -445,12 +449,20 @@ function ChatSurface({
     });
   }, [navigation, colors, onNewChat]);
 
-  function requestBody(action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) {
+  function requestBody(
+    action: ChatRequestAction,
+    forceSearch = false,
+    imageRequest?: ImageGenerationOptions,
+    forceOpenUI = false,
+  ) {
     const requested = searchAvailable && forceSearch;
+    const requestedOpenUI = openuiAvailable && forceOpenUI;
     return {
       modelConfigId: selectedId,
       webSearchEnabled,
       forceSearch: requested,
+      openuiEnabled,
+      forceOpenUI: requestedOpenUI,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
       // Older self-hosted servers only understand the persisted-toggle name.
       // New servers give `forceSearch` precedence and discard this alias.
@@ -536,9 +548,15 @@ function ChatSurface({
       id: Crypto.randomUUID(),
       text,
       files,
-      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+      body: requestBody(
+        { type: "submit" },
+        searchRequested,
+        imageOptions,
+        openuiRequested,
+      ),
     });
     setSearchRequested(false);
+    setOpenuiRequested(false);
     setImageOptions(undefined);
     clearAttachments();
   }
@@ -683,6 +701,7 @@ function ChatSurface({
             onImageOptions={setImageOptions}
             searchAvailable={searchAvailable}
             searchRequested={searchAvailable && searchRequested}
+            openuiRequested={openuiAvailable && openuiRequested}
             modelLabel={selectedModel?.label}
             modelIconId={
               selectedModel?.modelIconId ?? selectedModel?.providerIconId
@@ -694,6 +713,7 @@ function ChatSurface({
             uploadError={uploadError}
             isAdmin={isAdmin}
             onClearSearch={() => setSearchRequested(false)}
+            onClearOpenUI={() => setOpenuiRequested(false)}
             onOpenModelPicker={() => {
               Keyboard.dismiss();
               pickerRef.current?.present();
@@ -723,6 +743,7 @@ function ChatSurface({
         reasoningLevel={reasoningLevel}
         onSelect={(modelId) => {
           setSearchRequested(false);
+          setOpenuiRequested(false);
           setImageOptions(undefined);
           setSelectedId(modelId);
         }}
@@ -739,6 +760,10 @@ function ChatSurface({
         searchUnavailableReason={searchUnavailableReason}
         searchRequested={searchAvailable && searchRequested}
         onToggleSearchRequested={setSearchRequested}
+        openuiAvailable={openuiAvailable}
+        openuiUnavailableReason={openuiUnavailableReason}
+        openuiRequested={openuiAvailable && openuiRequested}
+        onToggleOpenUIRequested={setOpenuiRequested}
         onPickTool={onPickTool}
       />
     </KeyboardAvoidingView>

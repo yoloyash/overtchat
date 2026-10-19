@@ -22,6 +22,7 @@ export function Composer({
   streaming,
   searchAvailable,
   searchRequested,
+  openuiRequested = false,
   imageOptions, imageModel, imageSupportsQuality, imageConfiguredSize, onImageOptions,
   modelLabel,
   modelIconId,
@@ -32,6 +33,7 @@ export function Composer({
   uploadError,
   isAdmin,
   onClearSearch,
+  onClearOpenUI,
   onOpenModelPicker,
   onOpenAddSheet,
   onRemoveAttachment,
@@ -46,6 +48,7 @@ export function Composer({
   streaming: boolean;
   searchAvailable: boolean;
   searchRequested: boolean;
+  openuiRequested?: boolean;
   imageOptions?: ImageGenerationOptions;
   imageModel?: string | null;
   imageSupportsQuality?: boolean;
@@ -60,6 +63,7 @@ export function Composer({
   uploadError: string | null;
   isAdmin: boolean;
   onClearSearch: () => void;
+  onClearOpenUI?: () => void;
   onOpenModelPicker: () => void;
   onOpenAddSheet: () => void;
   onRemoveAttachment: (index: number) => void;
@@ -265,6 +269,38 @@ export function Composer({
               >
                 <Ionicons
                   name="globe-outline"
+                  size={18}
+                  color={colors.foreground}
+                />
+              </View>
+            </Pressable>
+          ) : null}
+          {openuiRequested ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Turn off Interactive UI for this message"
+              accessibilityState={{ selected: true }}
+              onPress={() => {
+                Haptics.selectionAsync().catch(() => {});
+                onClearOpenUI?.();
+              }}
+              style={({ pressed }) => [
+                styles.iconHitTarget,
+                { opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <View
+                style={[
+                  styles.secondaryButtonSurface,
+                  {
+                    backgroundColor: colors.accent,
+                    borderColor: "transparent",
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="grid-outline"
                   size={18}
                   color={colors.foreground}
                 />

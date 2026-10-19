@@ -41,6 +41,7 @@ import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
+import { OpenUICard } from "./OpenUICard";
 import { StatsPopover } from "./StatsPopover";
 import {
   MessageActions,
@@ -65,6 +66,7 @@ export function MessageBubble({
   onRegenerate,
   onContinue,
   onImageReference,
+  onSendPrompt,
   onEdit,
   speech,
   showStats,
@@ -76,6 +78,7 @@ export function MessageBubble({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onSendPrompt?: (text: string) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -139,6 +142,7 @@ export function MessageBubble({
       onRegenerate={onRegenerate}
       onContinue={onContinue}
       onImageReference={onImageReference}
+      onSendPrompt={onSendPrompt}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -153,6 +157,7 @@ function AssistantBubble({
   onRegenerate,
   onContinue,
   onImageReference,
+  onSendPrompt,
   speech,
   showStats,
   stats,
@@ -163,6 +168,7 @@ function AssistantBubble({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onSendPrompt?: (text: string) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -223,6 +229,16 @@ function AssistantBubble({
                   part={seg.part}
                   streaming={streaming}
                   onReference={canAct ? onImageReference : undefined}
+                />
+              );
+            }
+            if (seg.kind === "openui") {
+              return (
+                <OpenUICard
+                  key={seg.index}
+                  part={seg.part}
+                  streaming={streaming}
+                  onSendPrompt={canAct ? onSendPrompt : undefined}
                 />
               );
             }

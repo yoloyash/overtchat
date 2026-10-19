@@ -37,6 +37,8 @@ import { motionClasses } from "@/lib/motion";
 import {
   DEFAULT_WEB_SEARCH_ENABLED,
   WEB_SEARCH_ENABLED_STORAGE_KEY,
+  DEFAULT_OPENUI_ENABLED,
+  OPENUI_ENABLED_STORAGE_KEY,
 } from "@/lib/tool-preferences";
 import { authClient } from "@/lib/auth/client";
 import {
@@ -152,6 +154,13 @@ export function ChatArea({
     : "Web search is unavailable for this model";
 
   const [searchRequested, setSearchRequested] = useState(false);
+  const [openuiEnabled] = useLocalStorage<boolean>(
+    OPENUI_ENABLED_STORAGE_KEY,
+    DEFAULT_OPENUI_ENABLED,
+  );
+  const openuiAvailable = modelSupportsSearch;
+  const openuiUnavailableReason = "Interactive UI is unavailable for this model";
+  const [openuiRequested, setOpenuiRequested] = useState(false);
   const { data: capabilitiesData } = usePublicCapabilities();
   const imageCapability = capabilitiesData?.capabilities.images;
   const imageAvailable = Boolean(imageCapability?.available && modelSupportsSearch);
@@ -399,11 +408,18 @@ export function ChatArea({
     !onboardingDismissed &&
     models?.length === 0;
 
-  const requestBody = (action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) => ({
+  const requestBody = (
+    action: ChatRequestAction,
+    forceSearch = false,
+    imageRequest?: ImageGenerationOptions,
+    forceOpenUI = false,
+  ) => ({
     ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
     modelConfigId: selectedId,
     webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
+    openuiEnabled,
+    forceOpenUI: openuiAvailable && forceOpenUI,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
     clientRequestId: generateId(),
@@ -519,9 +535,15 @@ export function ChatArea({
       id: generateId(),
       text,
       files: attachments,
-      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+      body: requestBody(
+        { type: "submit" },
+        searchRequested,
+        imageOptions,
+        openuiRequested,
+      ),
     });
     setSearchRequested(false);
+    setOpenuiRequested(false);
     setImageOptions(undefined);
   }
 
@@ -610,6 +632,7 @@ export function ChatArea({
 
   function handleSelectModelAfterVoice(modelId: string) {
     setSearchRequested(false);
+    setOpenuiRequested(false);
     setImageOptions(undefined);
     setSelectedId(modelId);
   }
@@ -693,6 +716,13 @@ export function ChatArea({
         ? "End voice to require a web search. Voice can still search automatically."
         : searchUnavailableReason}
       searchRequested={searchAvailable && !voiceActive && searchRequested}
+      openuiAvailable={openuiAvailable && !voiceActive}
+      openuiUnavailableReason={
+        voiceActive
+          ? "End voice to request an interactive UI."
+          : openuiUnavailableReason
+      }
+      openuiRequested={openuiAvailable && !voiceActive && openuiRequested}
       imageAvailable={imageAvailable}
       imageModel={imageCapability?.model}
       imageSupportsQuality={imageCapability?.supportsQuality}
@@ -755,6 +785,11 @@ export function ChatArea({
       }}
       onToggleSearch={() => {
         if (searchAvailable && !voiceActive) setSearchRequested((selected) => !selected);
+      }}
+      onToggleOpenUI={() => {
+        if (openuiAvailable && !voiceActive) {
+          setOpenuiRequested((selected) => !selected);
+        }
       }}
       chatQueue={chatQueue}
       onSubmit={handleSubmit}
@@ -855,6 +890,11 @@ export function ChatArea({
                   composerRef.current?.addReference(file);
                   setImageOptions({ size: "auto", quality: "auto" });
                 } : undefined}
+            onSendPrompt={
+              !voiceActive && configured && !streaming
+                ? (promptText) => handleSubmit(promptText, [])
+                : undefined
+            }
             onEdit={handleEdit}
             onReconnect={handleReconnect}
           />

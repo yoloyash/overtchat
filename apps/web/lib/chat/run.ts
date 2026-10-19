@@ -7,6 +7,7 @@ import {
   createUIMessageStreamResponse,
   generateText,
   isStepCount,
+  hasToolCall,
   ToolLoopAgent,
   toUIMessageStream,
   type LanguageModelUsage,
@@ -37,6 +38,8 @@ import {
 } from "@/lib/providers/server/output-budget";
 import {
   isImageToolPart,
+  isOpenUIToolPart,
+  OPENUI_PRESENT_TOOL_NAME,
   isGeneratedImage,
   modelSupportsChatReasoningLevel,
 } from "@overtchat/shared";
@@ -51,6 +54,11 @@ import {
   IMAGE_TOOL_PROMPT,
   withImageReferences,
 } from "@/lib/images/tools";
+import {
+  createOpenUITools,
+  OPENUI_TOOL_ORDER,
+  OPENUI_TOOL_PROMPT,
+} from "@/lib/openui/tools";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   assertChatAttachments,
@@ -146,6 +154,8 @@ export async function runChat(
     modelConfigId,
     webSearchEnabled,
     forceSearch,
+    openuiEnabled = false,
+    forceOpenUI = false,
     imageGeneration,
     timeZone,
     chatId,
@@ -343,6 +353,14 @@ export async function runChat(
     );
   }
   let contextCheckpoint = restoredContext.checkpoint;
+  const hasPriorOpenUI = restoredContext.messages.some((message) =>
+    message.parts.some(isOpenUIToolPart),
+  );
+  const openuiToolsEnabled =
+    modelConfig.toolCallingEnabled !== false &&
+    (openuiEnabled || forceOpenUI || hasPriorOpenUI) &&
+    parsedRequest.responseStyle !== "voice";
+  const openuiTools = openuiToolsEnabled ? createOpenUITools() : {};
   const inlined = await inlineUploads(
     imageToolsEnabled
       ? withImageReferences(restoredContext.messages, supportsImageInput)
@@ -354,7 +372,7 @@ export async function runChat(
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
       : message,
   ), {
-    tools: { ...chatTools, ...imageTools },
+    tools: { ...chatTools, ...imageTools, ...openuiTools },
     // An intentional stop can persist a tool call before its result arrives.
     // Keep partial text/reasoning, but do not replay an unmatched call.
     ignoreIncompleteToolCalls: true,
@@ -399,6 +417,10 @@ export async function runChat(
     imageToolsEnabled ? IMAGE_TOOL_PROMPT : null,
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
+      : null,
+    openuiToolsEnabled ? OPENUI_TOOL_PROMPT : null,
+    forceOpenUI && openuiToolsEnabled
+      ? `The user selected Interactive UI for this turn. Present your answer as an interactive OpenUI interface by calling ${OPENUI_PRESENT_TOOL_NAME}. You may use other available tools first when needed, then call ${OPENUI_PRESENT_TOOL_NAME} for your final response.`
       : null,
     currentDateSystemPrompt(timeZone),
   ].filter((value): value is string => Boolean(value && value.trim()));
@@ -514,6 +536,7 @@ export async function runChat(
     const toolSources: ToolSet[] = [
       ...(webToolsEnabled ? [chatTools] : []),
       ...(imageToolsEnabled ? [imageTools] : []),
+      ...(openuiToolsEnabled ? [openuiTools] : []),
       ...(memoryToolsEnabled ? [memoryTools] : []),
       ...(hasMcpTools ? [mcpTools] : []),
     ];
@@ -526,10 +549,12 @@ export async function runChat(
     const toolOrder = [
       ...(webToolsEnabled ? CHAT_TOOL_ORDER : []),
       ...(memoryToolsEnabled ? MEMORY_TOOL_ORDER : []),
+      ...(openuiToolsEnabled ? OPENUI_TOOL_ORDER : []),
       ...agentToolNames.filter(
         (name) =>
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
-          !(MEMORY_TOOL_ORDER as readonly string[]).includes(name),
+        !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
+        !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
     const includeProviderActivity = modelConfig.providerId === "llamacpp";
@@ -663,7 +688,9 @@ export async function runChat(
             instructions,
             tools: agentTools,
             toolOrder,
-            stopWhen: isStepCount(50),
+            stopWhen: openuiToolsEnabled
+              ? [isStepCount(50), hasToolCall(OPENUI_PRESENT_TOOL_NAME)]
+              : isStepCount(50),
             toolChoice: "auto",
             prepareStep,
             providerOptions: requestProviderOptions,

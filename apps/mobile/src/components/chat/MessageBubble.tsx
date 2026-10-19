@@ -15,6 +15,7 @@ import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
 import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
+import { OpenUICard } from "./OpenUICard";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
 import { Sources } from "./Sources";
@@ -195,6 +196,15 @@ export function MessageBubble({
                 part={seg.part}
                 streaming={streaming}
                 onReference={readOnly ? undefined : onImageReference}
+              />
+            );
+          }
+          if (seg.kind === "openui") {
+            return (
+              <OpenUICard
+                key={`o-${seg.index}`}
+                part={seg.part}
+                streaming={streaming}
               />
             );
           }

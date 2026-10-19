@@ -30,6 +30,8 @@ import { AccentPicker } from "@/components/ui/AccentPicker";
 import {
   setWebSearchEnabled,
   useWebSearchEnabled,
+  setOpenUIEnabled,
+  useOpenUIEnabled,
 } from "@/lib/toolPreferences";
 
 export default function SettingsScreen() {
@@ -43,6 +45,7 @@ export default function SettingsScreen() {
   const themePref = useThemePref();
   const fontPref = useFontPref();
   const webSearchEnabled = useWebSearchEnabled();
+  const openuiEnabled = useOpenUIEnabled();
   const [signingOut, setSigningOut] = useState(false);
   const serverUrl = getServerUrl();
   const cookie = useAuthCookie();
@@ -231,6 +234,13 @@ export default function SettingsScreen() {
               value={webSearchEnabled}
               onValueChange={setWebSearchEnabled}
               accessibilityLabel="Enable web search"
+            />
+            <SwitchRow
+              label="Interactive UI (OpenUI)"
+              sub="Allow supported models to automatically render interactive charts, tables, forms, and cards using OpenUI. You can also request it per message from the + menu."
+              value={openuiEnabled}
+              onValueChange={setOpenUIEnabled}
+              accessibilityLabel="Enable interactive UI"
             />
           </Section>
 
