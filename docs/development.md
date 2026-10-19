@@ -1150,7 +1150,7 @@ its session files and does not modify existing sessions or settings.
 
 ### OMP background work lifecycle
 
-Background work runs between turns, as in OMP's own TUI and Paseo. When the
+Background work runs between turns. When the
 agent yields to an async job (`agent_end` with `awaitingAsyncWork`), the turn
 ends and the session is idle: messages send right away, and the job's result
 wakes the agent into a new turn. Prompts carry `streamingBehavior: "steer"`, so
