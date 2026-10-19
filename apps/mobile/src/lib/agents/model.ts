@@ -95,10 +95,7 @@ export function sessionStatus(snapshot: AgentRuntimeSnapshot): string {
   if (snapshot.readOnly) return "Read only";
   if (snapshot.pendingInteraction) return "Waiting for you";
   if (snapshot.state.isCompacting) return "Compacting";
-  if (snapshot.status === "running") {
-    return snapshot.activeTurn?.phase === "waiting"
-      ? "Waiting for background work" : "Working";
-  }
+  if (snapshot.status === "running") return "Working";
   if (snapshot.status === "exited") return "Stopped";
   return "Ready";
 }

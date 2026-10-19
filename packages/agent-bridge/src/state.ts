@@ -409,7 +409,6 @@ export function applyAgentRuntimeEnvelope(
       status: "running",
       activeTurn: {
         startedAt: current.activeTurn?.startedAt ?? runtimeEventTimestamp(event),
-        phase: "responding",
       },
       state: { ...current.state, isStreaming: true },
       error: undefined,
@@ -430,12 +429,11 @@ export function applyAgentRuntimeEnvelope(
                 (typeof event.startedAt === "number"
                   ? event.startedAt
                   : runtimeEventTimestamp(event)),
-              phase: event.phase === "waiting" ? "waiting" : "responding",
             }
           : null,
       state: {
         ...current.state,
-        isStreaming: event.status === "running" && event.phase !== "waiting",
+        isStreaming: event.status === "running",
         ...(event.status === "idle" ? { isCompacting: false } : {}),
       },
       error: undefined,

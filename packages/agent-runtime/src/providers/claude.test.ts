@@ -56,7 +56,7 @@ describe("Claude provider adapter", () => {
     });
     expect(
       claudeProviderAdapter.createEventClassifier().classify({ type: "turn_end" }),
-    ).toEqual({ started: false, terminal: true, waiting: false });
+    ).toEqual({ started: false, terminal: true });
     expect(
       claudeProviderAdapter.normalizeCommand(
         { type: "prompt", message: "/compact" },

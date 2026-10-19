@@ -1150,21 +1150,19 @@ its session files and does not modify existing sessions or settings.
 
 ### OMP background work lifecycle
 
-A running session can be responding or waiting for background work. Waiting
-keeps Stop available, preserves queued-message ordering, and prevents idle
-runtime cleanup. The OMP adapter normalizes native yield/async-work signals;
-`session_settled` completes the session even when no further assistant turn
-occurs. Snapshots and replay carry the optional `activeTurn.phase`; existing
-checkpoints without a phase continue to display as responding.
-The session directory carries the optional `responsePhase` for web and mobile
-navigation. Waiting sessions use a static clock, including workspace counts;
-phase changes must propagate even when the operational status remains running.
+Background work runs between turns, as in OMP's own TUI and Paseo. When the
+agent yields to an async job (`agent_end` with `awaitingAsyncWork`), the turn
+ends and the session is idle: messages send right away, and the job's result
+wakes the agent into a new turn. Prompts carry `streamingBehavior: "steer"`, so
+a prompt that races a wake steers into that turn instead of failing. The
+transcript shows job completion notices; there is no separate waiting state.
+Older connectors and journals may still carry the retired `activeTurn.phase`
+and `responsePhase` fields; clients accept and ignore them.
 
 Stop ends the current turn. OMP's native abort interrupts the foreground but
 leaves async jobs running; after its acknowledgement the session is idle and the
-queue drains while those jobs continue. A job result can wake the agent into a
-new turn, and only the agent yielding to background work again shows the
-waiting label. Idle runtime cleanup does not stop a provider that still reports
+queue drains while those jobs continue. `/reload` restarts the provider, which
+ends every job. Idle runtime cleanup does not stop a provider that still reports
 background work. An abort the provider cannot complete for a running turn
 restarts the provider process on the same native session.
 
@@ -1172,43 +1170,44 @@ Turns end from provider state, not from elapsed time. After a terminal event the
 runtime polls state until the provider reports idle; reported work keeps the
 turn open, while state that stays unreadable past the settle window ends it
 with an error. The OMP adapter does not use native `isSettled`: it also counts
-hidden next-turn context that only the next explicit prompt delivers, so an
-idle session can report false indefinitely
+pending background work and hidden next-turn context that only the next
+explicit prompt delivers, so an idle session can report false indefinitely
 ([can1357/oh-my-pi#14948](https://github.com/can1357/oh-my-pi/issues/14948)).
 
 Validate the provider/runtime lifecycle and the real connector/relay/browser
-flow (including reload, background wake, queue draining and Stop):
+flow (including reload, background wake, sending during a job and Stop):
 
 ```sh
 npm run test -w packages/agent-runtime -- src/providers/omp.test.ts src/runtime/omp-lifecycle.test.ts
-E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'separates OMP background'
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'ends OMP turns'
 RUN_OMP_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/background.integration.test.ts
 ```
 
 The installed-OMP test uses an isolated native profile, a loopback model fixture,
-and a real async bash job in a temporary workspace. It exercises background
-completion, automatic model resumption, Stop and settlement after a failed todo
-call without model credentials or existing sessions. The background cases have
-been validated with OMP 18.7.0 and every case with 18.11.1. Set `OMP_COMMAND` to
-override the local executable. Also run bridge/runtime/connector tests and
-typechecks, connector build, web typecheck/lint/build and mobile tests/typecheck.
-Check the waiting label and Stop on native Android/iOS before releasing clients.
+and a real async bash job in a temporary workspace. It exercises the yield,
+a prompt while the job runs, the automatic wake, Stop mid-turn with the job
+surviving, and settlement after a failed todo call, without model credentials or
+existing sessions. Every case has been validated with OMP 18.11.1. Set
+`OMP_COMMAND` to override the local executable. Also run bridge/runtime/connector
+tests and typechecks, connector build, web typecheck/lint/build and mobile
+tests/typecheck.
 
 ### Claude background work lifecycle
 
-Claude uses the same responding/waiting states as OMP. The adapter tracks main
-turns using native `system/init` and `result` messages, including autonomous
-turns started after a task notification. The `background_tasks_changed` roster
-keeps the session waiting while children or background commands remain active.
-Each roster replaces the previous set; task completion notifications do not
-re-add tasks after an empty roster. CLI-wide `session_state_changed` messages
-do not identify parent turn boundaries and must not end a newly submitted turn.
+Claude follows the same model. The adapter tracks main turns using native
+`system/init` and `result` messages, including autonomous turns started after a
+task notification; a parent `result` ends the turn even while children or
+background commands run. The `background_tasks_changed` roster only feeds
+`hasPendingAsyncWork`, which keeps idle cleanup from stopping the process. Each
+roster replaces the previous set; task completion notifications do not re-add
+tasks after an empty roster. CLI-wide `session_state_changed` messages do not
+identify parent turn boundaries and must not end a newly submitted turn.
 
-Waiting keeps the session visible as busy in the sidebar and holds queued
-prompts. When the parent resumes, the indicator returns to working. Claude's
-Stop interrupts and replaces the query; the new process starts with an empty
-task roster. This uses the existing activity indicators, without adding a
-subagent panel or changing transcript presentation.
+Stop interrupts only the main turn, as Esc does in Claude Code: the query
+declares `perTaskStopAffordance`, so the CLI spares background tasks. Claude
+stops its own tasks with TaskStop, and `/reload` ends them all. If Claude does
+not end the turn within five seconds of the interrupt, the client restarts the
+query, which ends its tasks.
 
 ```sh
 npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/providers/claude.test.ts
@@ -1217,11 +1216,13 @@ RUN_CLAUDE_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- sr
 
 The opt-in integration test uses the installed Claude CLI and its configured
 credentials/model for real model requests. It creates separate native sessions
-and temporary workspaces for background Bash and subagent cases. The harness
-releases each job only after observing waiting, then verifies autonomous parent
-resumption and final idle. Cleanup releases the test job and closes its query.
+and temporary workspaces for background Bash, subagent and Stop cases. The
+harness releases each job only after observing the idle parent, then verifies
+autonomous parent resumption and final idle; the Stop case verifies the job
+survives the interrupt. Cleanup releases the test job and closes its query.
 Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
-model; existing sessions and settings are not changed.
+model; existing sessions and settings are not changed. Validated with Claude
+Code 2.1.304.
 
 ### Claude context meter
 

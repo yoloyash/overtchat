@@ -2850,7 +2850,7 @@ test("keeps OMP history stable after compaction, model changes and connector res
   }
 });
 
-test("separates OMP background waiting from responding and settles without another turn", async ({ page }, testInfo) => {
+test("ends OMP turns when the agent yields to background work and starts a new turn on wake", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
   await page.goto(await setupUrl());
   await page.locator("#name").fill("Background Lifecycle Admin");
@@ -2899,67 +2899,51 @@ test("separates OMP background waiting from responding and settles without anoth
     await start();
     await page.goto(`/agents/${SESSION_ID}`);
     const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
-    await composer.fill("Start background work");
-    await composer.press("Enter");
-    const indicator = page.getByTestId("agent-run-activity");
-    const sidebarWaiting = page.getByRole("status", { name: /is waiting for background work$/ });
-    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
-    const workspaceWaiting = page.getByRole("status", { name: /1 chat waiting for background work in/ });
-    await expect(indicator).toHaveText("Waiting for background work");
-    await expect(indicator.locator(".animate-spin")).toHaveCount(0);
-    await expect(sidebarWaiting.first()).toBeVisible();
-    await expect(sidebarWaiting.locator(".animate-spin")).toHaveCount(0);
-    await expect(workspaceWaiting).toBeVisible();
-    await expect(sidebarWorking).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toBeVisible();
-    await page.reload();
-    await expect(indicator).toHaveText("Waiting for background work");
-    await expect(sidebarWaiting.first()).toBeVisible();
-    await expect(workspaceWaiting).toBeVisible();
-    // Directory activity must remain correct without an open transcript stream.
-    await page.goto("/");
-    await expect(sidebarWaiting.first()).toBeVisible();
-    await writeFile(path.join(directory, "background-control"), "wake");
-    await expect(sidebarWorking.first()).toBeVisible();
-    await expect(sidebarWaiting).toHaveCount(0);
-    await page.goto(`/agents/${SESSION_ID}`);
-    await writeFile(path.join(directory, "background-control"), "wait");
-    await expect(indicator).toHaveText("Waiting for background work");
-    await composer.fill("Next");
-    await composer.press("Enter");
+    const control = path.join(directory, "background-control");
     const prompts = async () => (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8"))
       .split("\n").filter((line) => line === "prompt").length;
-    expect(await prompts()).toBe(1);
-    await writeFile(path.join(directory, "background-control"), "wake");
-    await expect(indicator).toContainText("Working");
+    const indicator = page.getByTestId("agent-run-activity");
+    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
+    const stopButton = page.getByRole("button", { name: "Stop Oh My Pi", exact: true });
+    await composer.fill("Start background work");
+    await composer.press("Enter");
+    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    // The agent handed control back, so its background job does not hold the turn.
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    // Directory activity follows a wake without an open transcript stream.
+    await page.goto("/");
+    await writeFile(control, "wake");
     await expect(sidebarWorking.first()).toBeVisible();
-    await expect(sidebarWaiting).toHaveCount(0);
-    await writeFile(path.join(directory, "background-control"), "wait");
-    await expect(indicator).toHaveText("Waiting for background work");
-    await expect(sidebarWaiting.first()).toBeVisible();
-    await page.screenshot({ path: testInfo.outputPath("omp-background-waiting.png"), fullPage: true });
-    await writeFile(path.join(directory, "background-control"), "settle");
+    await writeFile(control, "wait");
+    await expect(sidebarWorking).toHaveCount(0);
+    await page.goto(`/agents/${SESSION_ID}`);
+    // A message sends right away while the job keeps running.
+    await composer.fill("Next");
+    await composer.press("Enter");
     await expect(page.getByText("Queued message answered.", { exact: true })).toBeVisible();
     await expect(indicator).toHaveCount(0);
     expect(await prompts()).toBe(2);
-    await expect(sidebarWaiting).toHaveCount(0);
-    await expect(sidebarWorking).toHaveCount(0);
-    await expect(workspaceWaiting).toHaveCount(0);
-    await composer.fill("Start another job");
-    await composer.press("Enter");
-    await expect(indicator).toHaveText("Waiting for background work");
-    await page.getByRole("button", { name: "Stop Oh My Pi", exact: true }).click();
-    // Stop ends the turn; the native abort leaves the async job running.
+    // Stop ends a woken turn; the native abort leaves the job running.
+    await writeFile(control, "wake-2");
+    await expect(indicator).toContainText("Working");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("omp-background-wake.png"), fullPage: true });
+    await stopButton.click();
     await expect.poll(async () => readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).toContain("abort");
     await expect(indicator).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toHaveCount(0);
-    await expect(sidebarWaiting).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
     // The surviving job's result wakes the agent into a new turn.
-    await writeFile(path.join(directory, "background-control"), "wake");
+    await writeFile(control, "wake-3");
     await expect(indicator).toContainText("Working");
-    await writeFile(path.join(directory, "background-control"), "settle-again");
+    await writeFile(control, "settle");
     await expect(indicator).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Stop Oh My Pi", exact: true })).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
   } finally {
     await stop();
     await rm(directory, { recursive: true, force: true });

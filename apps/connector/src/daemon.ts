@@ -7,7 +7,6 @@ import type {
   AgentPromptImage,
   AgentRuntimeEnvelope,
   AgentRuntimeStatus,
-  AgentResponsePhase,
   AgentSessionDirectoryEntry,
   HostConnectorCommand,
   HostConnectorEventPayload,
@@ -830,9 +829,7 @@ export class ConnectorDaemon {
       this.assertAccepting();
       capture.initialized = true;
       const snapshot = runtime.snapshot();
-      this.publishSessionStatus(
-        sessionId, snapshot.status, snapshot.activeTurn?.phase,
-      );
+      this.publishSessionStatus(sessionId, snapshot.status);
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -892,13 +889,11 @@ export class ConnectorDaemon {
     envelope: AgentRuntimeEnvelope,
   ): void {
     if (envelope.type === "snapshot") {
-      this.publishSessionStatus(
-        sessionId, envelope.data.status, envelope.data.activeTurn?.phase,
-      );
+      this.publishSessionStatus(sessionId, envelope.data.status);
       return;
     }
     if (envelope.data.type === "agent_start" || envelope.data.type === "turn_start") {
-      this.publishSessionStatus(sessionId, "running", "responding");
+      this.publishSessionStatus(sessionId, "running");
       return;
     }
     if (
@@ -908,7 +903,6 @@ export class ConnectorDaemon {
       this.publishSessionStatus(
         sessionId,
         envelope.data.status as AgentRuntimeStatus,
-        envelope.data.phase === "waiting" ? "waiting" : "responding",
       );
     }
   }
@@ -916,19 +910,9 @@ export class ConnectorDaemon {
   private publishSessionStatus(
     sessionId: string,
     status: AgentRuntimeStatus,
-    phase?: AgentResponsePhase,
   ): void {
-    const responsePhase = status === "running" ? phase : undefined;
-    const previous = this.publishedSessions.get(sessionId);
-    if (
-      previous?.runtimeStatus === status &&
-      previous.responsePhase === responsePhase
-    ) return;
-    const session = {
-      sessionId,
-      runtimeStatus: status,
-      ...(responsePhase ? { responsePhase } : {}),
-    };
+    if (this.publishedSessions.get(sessionId)?.runtimeStatus === status) return;
+    const session = { sessionId, runtimeStatus: status };
     this.publishedSessions.set(sessionId, session);
     this.emit({
       type: "session_update",
@@ -937,16 +921,10 @@ export class ConnectorDaemon {
   }
 
   private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
-    const sessions = [...sessionIds].map((sessionId) => {
-      const snapshot = this.captures.get(sessionId)?.runtime.snapshot();
-      const responsePhase = snapshot?.status === "running"
-        ? snapshot.activeTurn?.phase : undefined;
-      return {
-        sessionId,
-        runtimeStatus: snapshot?.status ?? "idle",
-        ...(responsePhase ? { responsePhase } : {}),
-      };
-    });
+    const sessions = [...sessionIds].map((sessionId) => ({
+      sessionId,
+      runtimeStatus: this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
+    }));
     this.publishedSessions.clear();
     for (const session of sessions) {
       this.publishedSessions.set(session.sessionId, session);

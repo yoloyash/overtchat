@@ -251,6 +251,9 @@ export class OmpClient {
     return this.request({
       type: "prompt",
       message,
+      // A background job can wake the agent as a prompt is sent; steer into
+      // that turn instead of failing.
+      streamingBehavior: "steer",
       ...(images.length
         ? {
             images: images.map((image) => ({

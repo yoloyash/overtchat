@@ -13,13 +13,15 @@ beforeAll(configureLocalTestProcessSpawner);
 type FixtureReply = { delta: Record<string, unknown>; finish: "stop" | "tool_calls" };
 
 /** Serve scripted OpenAI-compatible replies to an isolated OMP profile. */
-async function startModelFixture(reply: (request: number) => FixtureReply) {
+async function startModelFixture(reply: (request: number) => FixtureReply | Promise<FixtureReply>) {
   const root = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-background-"));
   const agentDirectory = path.join(root, "agent");
   await mkdir(agentDirectory);
   const fixture = { root, agentDirectory, requests: 0, server: createServer(async (request, response) => {
     for await (const _ of request) { /* Drain the model request. */ }
-    const { delta, finish } = reply(++fixture.requests);
+    const { delta, finish } = await reply(++fixture.requests);
+    // A held reply can outlive the aborted request that asked for it.
+    if (response.destroyed) return;
     response.writeHead(200, { "Content-Type": "text/event-stream" });
     const chunk = (delta: unknown, finish_reason: string | null = null) =>
       response.write(`data: ${JSON.stringify({ id: `reply-${fixture.requests}`, object: "chat.completion.chunk", created: 1, model: "fixture", choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
@@ -58,9 +60,16 @@ function toolCall(id: string, name: string, args: unknown): FixtureReply {
 // No configured model credentials or existing native sessions are used.
 describe.runIf(process.env.RUN_OMP_BACKGROUND_INTEGRATION === "1")("installed OMP background work", () => {
   it.each(["finish", "abort"] as const)("handles a real async bash job: %s", async (action) => {
-    const fixture = await startModelFixture((request) => request === 1
-      ? toolCall("background-bash", "bash", { command: "while [ ! -f release-job ]; do sleep 0.1; done; echo BACKGROUND_DONE", timeout: 20, async: true })
-      : { delta: { content: request === 2 ? "Answer finished; background work continues." : "Background result received." }, finish: "stop" });
+    let releaseReply!: () => void;
+    const replyHeld = new Promise<void>((resolve) => { releaseReply = resolve; });
+    const fixture = await startModelFixture(async (request) => {
+      if (request === 1) {
+        return toolCall("background-bash", "bash", { command: "while [ ! -f release-job ]; do sleep 0.1; done; echo BACKGROUND_DONE", timeout: 20, async: true });
+      }
+      // Hold the answer so Stop lands mid-turn while the job runs.
+      if (request === 2 && action === "abort") await replyHeld;
+      return { delta: { content: request === 2 ? "Answer finished; background work continues." : "Background result received." }, finish: "stop" };
+    });
     const { root, agentDirectory } = fixture;
     const client = startOmp({ transport: "local" }, {
       executable: process.env.OMP_COMMAND ?? "omp", cwd: root,
@@ -69,6 +78,7 @@ describe.runIf(process.env.RUN_OMP_BACKGROUND_INTEGRATION === "1")("installed OM
     });
     const events: Array<Record<string, unknown>> = [];
     client.onEvent((event) => events.push(event));
+    const starts = () => events.filter((event) => event.type === "agent_start").length;
     let runtime: AgentSessionRuntime | undefined;
     try {
       const state = await client.getState();
@@ -76,31 +86,39 @@ describe.runIf(process.env.RUN_OMP_BACKGROUND_INTEGRATION === "1")("installed OM
         state, messages: [], models: [], commands: [], stats: await client.getSessionStats(),
       }, {}, async () => [], async () => {}, async () => {}, [], () => {});
       await runtime.command({ type: "prompt", message: "Start the background fixture." });
-      await vi.waitFor(() => expect(runtime!.snapshot().activeTurn?.phase).toBe("waiting"), { timeout: 15_000 });
-      expect(events).toContainEqual(expect.objectContaining({ type: "agent_end", yielded: true, isTerminal: false, awaitingAsyncWork: true }));
-      await expect(client.getState()).resolves.toMatchObject({ isStreaming: false, hasPendingAsyncWork: true, isSettled: false });
-      await runtime.refreshState();
-      expect(runtime.snapshot()).toMatchObject({ status: "running", activeTurn: { phase: "waiting" } });
       if (action === "abort") {
+        await vi.waitFor(() => expect(fixture.requests).toBe(2), { timeout: 15_000 });
+        await expect(client.getState()).resolves.toMatchObject({ isStreaming: true, hasPendingAsyncWork: true });
         await runtime.command({ type: "abort" });
         // Stop ends the turn, but OMP's native abort leaves async jobs running.
-        await expect(client.getState()).resolves.toMatchObject({
-          isStreaming: false, hasPendingAsyncWork: true, isSettled: false,
-        });
         expect(runtime.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+        await expect(client.getState()).resolves.toMatchObject({ isStreaming: false, hasPendingAsyncWork: true });
+      } else {
+        // Yielding to the job hands control back.
+        await vi.waitFor(() => expect(events).toContainEqual(expect.objectContaining({
+          type: "agent_end", yielded: true, isTerminal: false, awaitingAsyncWork: true,
+        })), { timeout: 15_000 });
+        await vi.waitFor(() => expect(runtime!.snapshot()).toMatchObject({ status: "idle", activeTurn: null }), { timeout: 5_000 });
+        await expect(client.getState()).resolves.toMatchObject({ isStreaming: false, hasPendingAsyncWork: true, isSettled: false });
+        // A message sends right away while the job keeps running.
+        await runtime.command({ type: "prompt", message: "Are you still there?" });
+        await vi.waitFor(() => {
+          expect(fixture.requests).toBe(3);
+          expect(runtime!.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
+        }, { timeout: 15_000 });
+        await expect(client.getState()).resolves.toMatchObject({ hasPendingAsyncWork: true });
       }
+      const startsBeforeRelease = starts();
       await writeFile(path.join(root, "release-job"), "release");
       await vi.waitFor(async () => {
         await expect(client.getState()).resolves.toMatchObject({ hasPendingAsyncWork: false });
+        if (action === "finish") expect(starts()).toBeGreaterThan(startsBeforeRelease);
         expect(runtime!.snapshot()).toMatchObject({ status: "idle", activeTurn: null });
       }, { timeout: 15_000 });
-      if (action === "finish") {
-        expect(events.filter((event) => event.type === "agent_start").length).toBeGreaterThanOrEqual(2);
-        expect(events).toContainEqual(expect.objectContaining({ type: "session_settled" }));
-        expect(fixture.requests).toBeGreaterThanOrEqual(3);
-      }
+      expect(runtime.snapshot().error).toBeUndefined();
     } finally {
       // Release even on failure so no test-owned shell can outlive cleanup.
+      releaseReply();
       await writeFile(path.join(root, "release-job"), "release");
       if (runtime) await runtime.stop();
       else await client.stop();

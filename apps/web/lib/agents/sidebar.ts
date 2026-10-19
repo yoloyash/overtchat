@@ -47,17 +47,11 @@ export function withAgentSessionDirectory(
         const entry = directory.get(session.id);
         if (!entry) return session;
         const { runtimeStatus } = entry;
-        const responsePhase = runtimeStatus === "running" ? entry.responsePhase : undefined;
-        if (
-          runtimeStatus === session.runtimeStatus &&
-          responsePhase === session.responsePhase
-        ) {
-          return session;
-        }
+        if (runtimeStatus === session.runtimeStatus) return session;
         changed = true;
         connectionChanged = true;
         workspaceChanged = true;
-        return { ...session, runtimeStatus, responsePhase };
+        return { ...session, runtimeStatus };
       });
       return workspaceChanged
         ? { ...workspace, sessions: workspaceSessions }

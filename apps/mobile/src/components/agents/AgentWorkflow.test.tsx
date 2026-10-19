@@ -1619,12 +1619,6 @@ describe("agent working indicators", () => {
     expect(
       container.querySelector('[aria-label="1 agent working in Project"]'),
     ).not.toBeNull();
-    mocks.connections[0].workspaces[0].sessions[0].responsePhase = "waiting";
-    mocks.connections = [...mocks.connections];
-    await render(<AgentsScreen />);
-    expect(container.querySelector('[aria-label="Agent working"]')).toBeNull();
-    expect(container.textContent).toContain("1 waiting");
-    expect(container.querySelector('[aria-label*="waiting for background work"]')).not.toBeNull();
     mocks.connections[0].workspaces[0].sessions[0].runtimeStatus = "idle";
     mocks.connections = [...mocks.connections];
     await render(<AgentsScreen />);

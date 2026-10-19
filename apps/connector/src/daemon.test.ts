@@ -787,10 +787,6 @@ describe("connector daemon command identity", () => {
             }),
           }),
         }),
-        {
-          type: "session_update",
-          session: { sessionId: "session", runtimeStatus: "running", responsePhase: "responding" },
-        },
       ]);
     });
     await daemon.stop();
@@ -840,12 +836,12 @@ describe("connector daemon command identity", () => {
       epoch: "runtime-ephemeral",
       sequence: 1,
       type: "runtime_event",
-      data: { type: "overtchat_status", status: "running", phase: "waiting" },
+      data: { type: "overtchat_status", status: "idle" },
     });
     await timelines.flush("session");
     await vi.waitFor(() => expect(emitted).toContainEqual({
       type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "running", responsePhase: "waiting" },
+      session: { sessionId: "session", runtimeStatus: "idle" },
     }));
     observer?.({
       epoch: "runtime-ephemeral",
@@ -853,25 +849,19 @@ describe("connector daemon command identity", () => {
       type: "runtime_event",
       data: { type: "agent_start" },
     });
-    await timelines.flush("session");
-    await vi.waitFor(() => expect(emitted).toContainEqual({
-      type: "session_update",
-      session: { sessionId: "session", runtimeStatus: "running", responsePhase: "responding" },
-    }));
+    // A repeated status does not republish the directory entry.
     observer?.({
       epoch: "runtime-ephemeral",
       sequence: 3,
       type: "runtime_event",
-      data: { type: "overtchat_status", status: "idle" },
+      data: { type: "overtchat_status", status: "running" },
     });
     await timelines.flush("session");
-
-    await vi.waitFor(() => {
-      expect(emitted).toContainEqual({
-        type: "session_update",
-        session: { sessionId: "session", runtimeStatus: "idle" },
-      });
-    });
+    await vi.waitFor(() => expect(emitted).toContainEqual({
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running" },
+    }));
+    expect(emitted.filter((event) => event.type === "session_update")).toHaveLength(2);
     expect(emitted).not.toContainEqual(
       expect.objectContaining({ type: "session_event" }),
     );
