@@ -56,6 +56,7 @@ import {
 } from "@/lib/images/tools";
 import {
   createOpenUITools,
+  OPENUI_COMPACT_TOOL_PROMPT,
   OPENUI_TOOL_ORDER,
   OPENUI_TOOL_PROMPT,
 } from "@/lib/openui/tools";
@@ -353,12 +354,14 @@ export async function runChat(
     );
   }
   let contextCheckpoint = restoredContext.checkpoint;
+  const openuiFitsContext =
+    !contextBudget || contextBudget.inputTokens >= 24_000;
   const hasPriorOpenUI = restoredContext.messages.some((message) =>
     message.parts.some(isOpenUIToolPart),
   );
   const openuiToolsEnabled =
     modelConfig.toolCallingEnabled !== false &&
-    (openuiEnabled || forceOpenUI || hasPriorOpenUI) &&
+    ((openuiEnabled && openuiFitsContext) || forceOpenUI || hasPriorOpenUI) &&
     parsedRequest.responseStyle !== "voice";
   const openuiTools = openuiToolsEnabled ? createOpenUITools() : {};
   const inlined = await inlineUploads(
@@ -418,7 +421,11 @@ export async function runChat(
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
       : null,
-    openuiToolsEnabled ? OPENUI_TOOL_PROMPT : null,
+    openuiToolsEnabled
+      ? openuiFitsContext
+        ? OPENUI_TOOL_PROMPT
+        : OPENUI_COMPACT_TOOL_PROMPT
+      : null,
     forceOpenUI && openuiToolsEnabled
       ? `The user selected Interactive UI for this turn. Present your answer as an interactive OpenUI interface by calling ${OPENUI_PRESENT_TOOL_NAME}. You may use other available tools first when needed, then call ${OPENUI_PRESENT_TOOL_NAME} for your final response.`
       : null,

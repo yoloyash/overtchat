@@ -501,7 +501,11 @@ export function ChatArea({
     }
   }, [chatId, qc]);
 
-  function handleSubmit(text: string, attachments: FileUIPart[]) {
+  function handleSubmit(
+    text: string,
+    attachments: FileUIPart[],
+    forceOpenUIOverride = false,
+  ) {
     if (
       !voiceActive &&
       text.trim().toLowerCase() === "/compact" &&
@@ -539,7 +543,7 @@ export function ChatArea({
         { type: "submit" },
         searchRequested,
         imageOptions,
-        openuiRequested,
+        openuiRequested || forceOpenUIOverride,
       ),
     });
     setSearchRequested(false);
@@ -892,7 +896,7 @@ export function ChatArea({
                 } : undefined}
             onSendPrompt={
               !voiceActive && configured && !streaming
-                ? (promptText) => handleSubmit(promptText, [])
+                ? (promptText) => handleSubmit(promptText, [], true)
                 : undefined
             }
             onEdit={handleEdit}

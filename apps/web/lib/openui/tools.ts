@@ -30,6 +30,12 @@ export const OPENUI_TOOL_PROMPT = generateSystemPrompt({
   },
 });
 
+export const OPENUI_COMPACT_TOOL_PROMPT = [
+  `Interactive UI (OpenUI): Render interactive interfaces by calling ${OPENUI_PRESENT_TOOL_NAME} with valid OpenUI Lang in the ui argument (no markdown fences).`,
+  "Always start with root = Card([...]) and define child statements below it using positional arguments.",
+  'Core components: CardHeader(title, subtitle?), TextContent(text, size?), BarChart(labels, [Series(name, values)]), LineChart(labels, [Series(name, values)]), Table([Col(label, values, type?)]), OverviewCardBlock([OverviewCardItem(title, value, subtitle?, icon?, trend?)]), ListBlock([ListItem(title, subtitle?, icon?, image?, action?)], variant?), Form(name, Buttons([Button(label, action?, variant?)]), [FormControl(label, Input(name, placeholder?, type?), hint?)]), FollowUpBlock([FollowUpItem(text)]).',
+].join("\n");
+
 export function createOpenUITools() {
   return Object.freeze({
     [OPENUI_PRESENT_TOOL_NAME]: tool<
