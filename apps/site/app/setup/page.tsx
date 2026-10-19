@@ -72,9 +72,11 @@ export default function SetupPage() {
                 choose your home network.
               </p>
               <p>
-                For private remote access, install and connect Tailscale on your
-                server first, then choose the Tailscale option. Advanced setup
-                supports your own HTTPS address and reverse proxy.
+                To use it from anywhere, choose OvertChat Cloud (beta) for an
+                address like <code>name.overtchat.app</code>. For private remote
+                access, install and connect Tailscale on your server first, then
+                choose the Tailscale option. Advanced setup supports your own
+                HTTPS address and reverse proxy.
               </p>
               <p>
                 Search, speech, and coding-agent connections are optional.
