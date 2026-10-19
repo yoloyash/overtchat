@@ -9,6 +9,8 @@ export type VoiceState = {
   warning: string | null;
   inputLevel: number;
   outputLevel: number;
+  pendingText: string | null;
+  cleanupPending: boolean;
 };
 export type VoiceOptions = {
   chatId: string;
@@ -26,7 +28,7 @@ export type VoiceDependencies = {
   onRefresh: (messages: UIMessage[]) => void;
   onPersisted: () => void;
 };
-const initial: VoiceState = { status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0 };
+const initial: VoiceState = { status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0, pendingText: null, cleanupPending: false };
 const endingError = "Could not finish ending voice. Check your connection and tap End again.";
 
 /** One explicit foreground call. Closing also fences late grants, audio, and history reads. */
@@ -194,7 +196,7 @@ export class MobileVoiceSession {
     this.events?.abort();
     // Close native devices immediately, before awaiting network or pending startup.
     const closing = this.client?.close();
-    this.patch({ status: "ending", muted: false, inputLevel: 0, outputLevel: 0 });
+    this.patch({ status: "ending", muted: false, inputLevel: 0, outputLevel: 0, pendingText: null, cleanupPending: true });
     this.ending = (async () => {
       await closing;
       await this.starting;
@@ -214,11 +216,14 @@ export class MobileVoiceSession {
       }
       this.client = null;
       this.grant = null;
-      this.patch({ status: "idle", error: this.state.error === endingError ? null : this.state.error });
+      this.patch({ status: "idle", error: this.state.error === endingError ? null : this.state.error, warning: null, pendingText: null });
     })().catch(error => {
       this.patch({ error: endingError });
       throw error;
-    }).finally(() => { this.ending = null; });
+    }).finally(() => {
+      this.ending = null;
+      this.patch({ cleanupPending: false });
+    });
     return this.ending;
   };
   toggleMute = () => {
@@ -229,17 +234,21 @@ export class MobileVoiceSession {
   };
   interrupt = () => { if (this.active()) this.client?.interrupt(); };
   async sendMessage(text: string): Promise<boolean> {
-    if (!this.active() || !this.client || this.state.status === "connecting" || this.pendingSend) return false;
+    const trimmed = text.trim();
+    if (!this.active() || !this.client || this.state.status === "connecting" || this.pendingSend || !trimmed) return false;
     this.pendingSend = true;
+    this.patch({ pendingText: trimmed, warning: null });
     try {
       await this.client.sendMessage(text);
+      if (this.active()) this.patch({ pendingText: null });
       return true;
     } catch {
-      if (this.active()) this.patch({ warning: "Your message was not confirmed. Check the conversation before trying again." });
+      if (this.active()) this.patch({ pendingText: null, warning: "Your message was not confirmed. Check the conversation before trying again." });
       return false;
     } finally { this.pendingSend = false; }
   }
-  dismissError = () => this.patch({ error: null, warning: null });
+  dismissError = () => this.patch({ error: null });
+  dismissWarning = () => this.patch({ warning: null });
   dispose() {
     this.disposed = true;
     void this.end().catch(() => {});

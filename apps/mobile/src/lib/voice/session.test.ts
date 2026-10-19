@@ -154,6 +154,43 @@ describe("foreground voice lifecycle", () => {
     expect(await h.session.sendMessage("hello")).toBe(true);
     await h.session.end();
   });
+  it("keeps cleanup retry available after dismissing an unrelated warning", async () => {
+    const h = harness();
+    await h.session.start(options);
+    h.callbacks().onStatus("listening");
+    h.client.sendMessage.mockRejectedValueOnce(new Error("unconfirmed"));
+    await h.session.sendMessage("keep draft");
+    const release = deferred<Response>();
+    h.request.mockImplementationOnce(() => release.promise);
+    const ending = h.session.end();
+    expect(h.session.getSnapshot().cleanupPending).toBe(true);
+    release.resolve(new Response(null, { status: 503 }));
+    await expect(ending).rejects.toThrow();
+    expect(h.session.getSnapshot().cleanupPending).toBe(false);
+    h.session.dismissWarning();
+    expect(h.session.getSnapshot().warning).toBeNull();
+    expect(h.session.getSnapshot().error).toContain("End again");
+    // Even dismissing the error cannot masquerade as an in-flight cleanup.
+    h.session.dismissError();
+    expect(h.session.getSnapshot().cleanupPending).toBe(false);
+    expect(h.session.getSnapshot().status).toBe("ending");
+    await h.session.end();
+    expect(h.session.getSnapshot().status).toBe("idle");
+    expect(h.session.getSnapshot().cleanupPending).toBe(false);
+  });
+  it("keeps an unconfirmed-send warning across unrelated assistant updates", async () => {
+    const h = harness();
+    await h.session.start(options);
+    h.callbacks().onStatus("listening");
+    h.client.sendMessage.mockRejectedValueOnce(new Error("unconfirmed"));
+    await h.session.sendMessage("keep draft");
+    h.event({ type: "message", message: { id: "previous-answer", role: "assistant", parts: [{ type: "text", text: "Still responding" }] } });
+    await flush();
+    expect(h.session.getSnapshot().warning).toContain("not confirmed");
+    h.session.dismissWarning();
+    expect(h.session.getSnapshot().warning).toBeNull();
+    await h.session.end();
+  });
   it("reports a session conflict and leaves text available", async () => {
     const h = harness();
     h.request.mockImplementationOnce(async () => new Response(null, { status: 409 }));

@@ -5,21 +5,46 @@ import type { FileUIPart } from "ai";
 import * as Haptics from "expo-haptics";
 import { TextInputWrapper } from "expo-paste-input";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import Svg, { Path } from "react-native-svg";
 import { ImageOptions } from "./ImageOptions";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import type { AttachmentMeta } from "@/lib/chat/attachments";
 import { dictationErrorMessage } from "@/lib/chat/message";
 import { useTheme } from "@/lib/theme";
+import { toastError } from "@/lib/toast";
 import { useDictation } from "@/lib/useDictation";
 import { MessageQueue, type MessageQueueProps } from "./MessageQueue";
 import { AttachmentChip } from "./AttachmentChip";
 
+const AUDIO_LINES_PATHS = [
+  "M2 10v3",
+  "M6 6v11",
+  "M10 3v18",
+  "M14 8v7",
+  "M18 5v13",
+  "M22 10v3",
+] as const;
+
 export function Composer({
   chatQueue,
-  voiceActive = false,
+  voiceInstalled = false,
+  voiceEligible = false,
   voiceAvailable = false,
+  voiceActive = false,
+  voiceUnavailableReason = "Realtime voice is unavailable",
+  textInputDisabled = false,
+  endVoiceDisabled = false,
   onStartVoice,
+  onEndVoice,
+  onBeforeDictate,
   configured,
   modelLoading = false,
   streaming,
@@ -44,9 +69,16 @@ export function Composer({
   onStop,
 }: {
   chatQueue: MessageQueueProps;
-  voiceActive?: boolean;
+  voiceInstalled?: boolean;
+  voiceEligible?: boolean;
   voiceAvailable?: boolean;
+  voiceActive?: boolean;
+  voiceUnavailableReason?: string;
+  textInputDisabled?: boolean;
+  endVoiceDisabled?: boolean;
   onStartVoice?: () => void;
+  onEndVoice?: () => void;
+  onBeforeDictate?: () => void;
   configured: boolean;
   modelLoading?: boolean;
   streaming: boolean;
@@ -88,7 +120,7 @@ export function Composer({
 
   async function submit() {
     const text = input.trim();
-    if (uploading || !configured || submitting) return;
+    if (uploading || !configured || submitting || textInputDisabled) return;
     if (streaming && text.toLowerCase() === "/compact" && !attachments.length) return;
     if (!text && attachments.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
@@ -103,6 +135,7 @@ export function Composer({
     if (dictation.status === "recording") {
       void dictation.stop();
     } else if (dictation.status === "idle") {
+      onBeforeDictate?.();
       void dictation.start();
     }
   }
@@ -126,7 +159,17 @@ export function Composer({
     (input.trim().length > 0 || attachments.length > 0) &&
     !uploading &&
     !submitting &&
+    !textInputDisabled &&
     configured;
+  const showVoiceButton =
+    !voiceActive &&
+    !streaming &&
+    voiceInstalled &&
+    voiceEligible &&
+    !input.trim() &&
+    attachments.length === 0 &&
+    !uploading &&
+    dictation.status === "idle";
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
   return (
@@ -209,14 +252,21 @@ export function Composer({
           <TextInput
             value={input}
             onChangeText={setInput}
-            editable={configured && dictation.status !== "transcribing"}
+            editable={
+              configured &&
+              !textInputDisabled &&
+              !submitting &&
+              dictation.status !== "transcribing"
+            }
             multiline
             placeholder={
-              configured
-                ? "Message…"
-                : modelLoading
-                  ? "Loading model…"
-                  : "No models configured"
+              textInputDisabled
+                ? "Resume voice to continue"
+                : configured
+                  ? "Message…"
+                  : modelLoading
+                    ? "Loading model…"
+                    : "No models configured"
             }
             placeholderTextColor={colors.mutedForeground}
             style={[
@@ -234,11 +284,15 @@ export function Composer({
                 ? "Add to chat"
                 : "Add to chat; web search unavailable for this model"
             }
-            disabled={voiceActive}
+            accessibilityState={{ disabled: voiceActive || textInputDisabled }}
+            disabled={voiceActive || textInputDisabled}
             onPress={openAdd}
             style={({ pressed }) => [
               styles.iconHitTarget,
-              { opacity: pressed ? 0.7 : 1 },
+              {
+                opacity:
+                  voiceActive || textInputDisabled ? 0.4 : pressed ? 0.7 : 1,
+              },
             ]}
           >
             <View
@@ -254,7 +308,7 @@ export function Composer({
             </View>
           </Pressable>
 
-          {searchRequested ? (
+          {searchRequested && !voiceActive ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Turn off Search for this message"
@@ -292,11 +346,12 @@ export function Composer({
                   ? `Model and thinking: ${modelLabel}, ${thinkingLevelLabel}`
                   : `Model: ${modelLabel}`
               }
-              disabled={voiceActive}
+              accessibilityState={{ disabled: textInputDisabled }}
+              disabled={textInputDisabled}
               onPress={openModelPicker}
               style={({ pressed }) => [
                 styles.modelHitTarget,
-                { opacity: pressed ? 0.8 : 1 },
+                { opacity: textInputDisabled ? 0.5 : pressed ? 0.8 : 1 },
               ]}
             >
               <View
@@ -347,13 +402,6 @@ export function Composer({
 
           <View style={styles.controlsSpacer} />
 
-          {voiceAvailable && !voiceActive && !streaming && !canSend && dictation.status === "idle" && !uploading && attachments.length === 0 ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Start live voice" onPress={onStartVoice} style={styles.iconHitTarget}>
-              <View style={[styles.secondaryButtonSurface, { borderColor: colors.border, borderRadius: radii.pill }]}>
-                <Ionicons name="headset-outline" size={20} color={colors.mutedForeground} />
-              </View>
-            </Pressable>
-          ) : null}
           {!voiceActive && !streaming && !canSend ? (
             <Pressable
               accessibilityRole="button"
@@ -434,16 +482,65 @@ export function Composer({
               </View>
             </Pressable>
           )}
-          {(canSend || !streaming) && (
+          {voiceActive && (
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={streaming ? "Queue message" : "Send message"}
-              disabled={!canSend}
-              onPress={submit}
+              accessibilityLabel="End voice session"
+              accessibilityState={{ disabled: endVoiceDisabled }}
+              disabled={endVoiceDisabled}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+                  () => {},
+                );
+                onEndVoice?.();
+              }}
               style={({ pressed }) => [
                 styles.iconHitTarget,
                 {
-                  opacity: !canSend ? 0.4 : pressed ? 0.85 : 1,
+                  opacity: endVoiceDisabled ? 0.4 : pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.secondaryButtonSurface,
+                  {
+                    backgroundColor: colors.secondary,
+                    borderColor: "transparent",
+                    borderRadius: radii.pill,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="close"
+                  size={19}
+                  color={colors.secondaryForeground}
+                />
+              </View>
+            </Pressable>
+          )}
+          {showVoiceButton ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start voice conversation"
+              accessibilityHint={
+                !voiceAvailable ? voiceUnavailableReason : undefined
+              }
+              accessibilityState={{ disabled: !voiceAvailable }}
+              onPress={() => {
+                if (!voiceAvailable) {
+                  toastError(voiceUnavailableReason);
+                  return;
+                }
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
+                  () => {},
+                );
+                onStartVoice?.();
+              }}
+              style={({ pressed }) => [
+                styles.iconHitTarget,
+                {
+                  opacity: !voiceAvailable ? 0.4 : pressed ? 0.85 : 1,
                 },
               ]}
             >
@@ -456,13 +553,70 @@ export function Composer({
                   },
                 ]}
               >
-                <Ionicons
-                  name="arrow-up"
-                  size={19}
-                  color={colors.primaryForeground}
-                />
+                <Svg
+                  accessible={false}
+                  width={18}
+                  height={18}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                >
+                  {AUDIO_LINES_PATHS.map((d) => (
+                    <Path
+                      key={d}
+                      d={d}
+                      stroke={colors.primaryForeground}
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  ))}
+                </Svg>
               </View>
             </Pressable>
+          ) : (
+            (canSend || !streaming) && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  streaming ? "Queue message" : "Send message"
+                }
+                accessibilityState={{
+                  disabled: !canSend,
+                  busy: submitting || uploading,
+                }}
+                disabled={!canSend}
+                onPress={submit}
+                style={({ pressed }) => [
+                  styles.iconHitTarget,
+                  {
+                    opacity: !canSend ? 0.4 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.primaryButtonSurface,
+                    {
+                      backgroundColor: colors.primary,
+                      borderRadius: radii.pill,
+                    },
+                  ]}
+                >
+                  {submitting || uploading ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={colors.primaryForeground}
+                    />
+                  ) : (
+                    <Ionicons
+                      name="arrow-up"
+                      size={19}
+                      color={colors.primaryForeground}
+                    />
+                  )}
+                </View>
+              </Pressable>
+            )
           )}
         </View>
       </View>

@@ -364,6 +364,34 @@ function ChatSurface({
   const searchUnavailableReason = !webSearchEnabled
     ? "Web search is disabled in Settings → Tools"
     : "Unavailable for this model";
+  const voiceCapability = capabilitiesData?.capabilities.voice;
+  const voiceInstalled = Boolean(voiceCapability?.installed);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const voiceEligible = Boolean(
+    !editingId &&
+      !imageOptions &&
+      !searchRequested &&
+      chatQueue.messages.length === 0,
+  );
+  const voiceAvailable = Boolean(
+    voice.available &&
+      voiceCapability?.available &&
+      configured &&
+      voiceEligible,
+  );
+  const voiceUnavailableReason = !voice.available
+    ? "Live voice requires an updated mobile app"
+    : !configured
+      ? modelLoading
+        ? "Loading model…"
+        : "Configure a model before starting voice"
+      : voiceCapability?.unavailableReason === "stt-unavailable"
+        ? "Speech-to-text is disabled"
+        : voiceCapability?.unavailableReason === "tts-unavailable"
+          ? "Text-to-speech is disabled"
+          : voiceCapability?.unavailableReason === "not-configured"
+            ? "Voice authentication is not configured"
+            : "Realtime voice is unavailable";
 
   const {
     attachments,
@@ -481,7 +509,6 @@ function ChatSurface({
 
   const isNewRef = useRef(isNew);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [localAnchorRequestKey, setLocalAnchorRequestKey] = useState(0);
 
   const lastErrorRef = useRef<Error | undefined>(undefined);
@@ -615,7 +642,12 @@ function ChatSurface({
     >
       <MiniSpeechPlayer speech={speech} />
       {messages.length === 0 ? (
-        <View style={styles.empty}>
+        <View
+          style={[
+            styles.empty,
+            (voice.busy || keyboardVisible) && styles.emptyCompact,
+          ]}
+        >
           <Text
             style={[
               styles.emptyTitle,
@@ -690,29 +722,68 @@ function ChatSurface({
           { paddingBottom: keyboardVisible ? 8 : 12 + insets.bottom },
         ]}
       >
-          {voice.error && <ErrorNotice message={voice.error} onDismiss={voice.dismissError} />}
-          {voice.warning && <ErrorNotice message={voice.warning} onDismiss={voice.dismissError} />}
-          {voice.busy && <VoiceControls voice={voice} />}
+          {!voice.busy && voice.error && (
+            <ErrorNotice
+              message={voice.error}
+              onDismiss={voice.dismissError}
+            />
+          )}
+          {!voice.busy && voice.warning && (
+            <ErrorNotice
+              message={voice.warning}
+              onDismiss={voice.dismissWarning}
+            />
+          )}
+          {voice.busy && (
+            <VoiceControls
+              voice={voice}
+              modelLabel={selectedModel?.label}
+            />
+          )}
           <Composer
+            voiceInstalled={voiceInstalled}
+            voiceEligible={voiceEligible}
+            voiceAvailable={voiceAvailable}
             voiceActive={voice.busy}
-            voiceAvailable={Boolean(voice.available && capabilitiesData?.capabilities.voice?.available && configured && !editingId && !imageOptions && !searchRequested && chatQueue.messages.length === 0)}
+            voiceUnavailableReason={voiceUnavailableReason}
+            textInputDisabled={voice.status === "ending"}
+            endVoiceDisabled={voice.cleanupPending}
             onStartVoice={() => {
-              if (!selectedId || streaming || voice.busy || attachments.length || uploading || chatQueue.messages.length) return;
+              if (
+                !selectedId ||
+                streaming ||
+                voice.busy ||
+                attachments.length ||
+                uploading ||
+                chatQueue.messages.length
+              ) {
+                return;
+              }
               speech.stop();
               Keyboard.dismiss();
-              void voice.start({ chatId, projectId, modelConfigId: selectedId, webSearchEnabled, reasoningLevel,
-                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+              void voice.start({
+                chatId,
+                projectId,
+                modelConfigId: selectedId,
+                webSearchEnabled: searchAvailable,
+                reasoningLevel,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              });
             }}
+            onEndVoice={() => {
+              void voice.end();
+            }}
+            onBeforeDictate={() => speech.stop()}
             configured={configured}
             modelLoading={modelLoading}
             streaming={streaming}
             imageOptions={imageAvailable ? imageOptions : undefined}
             imageModel={imageCapability?.model}
-      imageSupportsQuality={imageCapability?.supportsQuality}
-      imageConfiguredSize={imageCapability?.configuredSize}
+            imageSupportsQuality={imageCapability?.supportsQuality}
+            imageConfiguredSize={imageCapability?.configuredSize}
             onImageOptions={setImageOptions}
-            searchAvailable={searchAvailable}
-            searchRequested={searchAvailable && searchRequested}
+            searchAvailable={searchAvailable && !voice.busy}
+            searchRequested={searchAvailable && !voice.busy && searchRequested}
             modelLabel={selectedModel?.label}
             modelIconId={
               selectedModel?.modelIconId ?? selectedModel?.providerIconId
@@ -739,7 +810,7 @@ function ChatSurface({
             }}
             chatQueue={chatQueue}
             onSubmit={handleSubmit}
-            onStop={voice.busy ? voice.interrupt : handleStop}
+            onStop={handleStop}
           />
       </View>
 
@@ -752,26 +823,50 @@ function ChatSurface({
         reasoningControls={reasoningControls}
         reasoningLevel={reasoningLevel}
         onSelect={(modelId) => {
-          if (voice.busy) return;
+          if (voice.busy) {
+            void voice.end().then((ended) => {
+              if (!ended) return;
+              setSearchRequested(false);
+              setImageOptions(undefined);
+              setSelectedId(modelId);
+            });
+            return;
+          }
           setSearchRequested(false);
           setImageOptions(undefined);
           setSelectedId(modelId);
         }}
         onSelectReasoningLevel={(level) => {
-          if (voice.busy) return;
-          if (selectedId) setReasoningLevel(selectedId, level);
+          if (!selectedId) return;
+          if (voice.busy) {
+            void voice.end().then((ended) => {
+              if (ended) setReasoningLevel(selectedId, level);
+            });
+            return;
+          }
+          setReasoningLevel(selectedId, level);
         }}
       />
 
       <AddToChatSheet
         ref={addSheetRef}
-        imageAvailable={imageAvailable}
-        onCreateImage={() => { setImageOptions({ size: "auto", quality: "auto" }); addSheetRef.current?.dismiss(); }}
-        searchAvailable={searchAvailable}
-        searchUnavailableReason={searchUnavailableReason}
-        searchRequested={searchAvailable && searchRequested}
-        onToggleSearchRequested={setSearchRequested}
-        onPickTool={onPickTool}
+        imageAvailable={imageAvailable && !voice.busy}
+        onCreateImage={() => {
+          if (voice.busy) return;
+          setImageOptions({ size: "auto", quality: "auto" });
+          addSheetRef.current?.dismiss();
+        }}
+        searchAvailable={searchAvailable && !voice.busy}
+        searchUnavailableReason={
+          voice.busy
+            ? "End voice to require a web search. Voice can still search automatically."
+            : searchUnavailableReason
+        }
+        searchRequested={searchAvailable && !voice.busy && searchRequested}
+        onToggleSearchRequested={(next) => {
+          if (!voice.busy) setSearchRequested(next);
+        }}
+        onPickTool={voice.busy ? undefined : onPickTool}
       />
     </KeyboardAvoidingView>
   );
@@ -802,11 +897,15 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 60,
   },
+  emptyCompact: {
+    paddingBottom: 12,
+  },
   emptyTitle: { fontSize: 24, textAlign: "center" },
   emptySub: { fontSize: 14, textAlign: "center" },
   composerWrap: {
     paddingHorizontal: 12,
     paddingTop: 8,
+    gap: 8,
   },
 
 });

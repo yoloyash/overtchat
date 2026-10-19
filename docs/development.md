@@ -521,6 +521,34 @@ and the microphone indicator for cleanup. Test speaker and headset routes on
 both iOS and Android; JavaScript fixtures and bundle exports do not validate
 echo cancellation, Bluetooth routing, or native audio focus behavior.
 
+#### Mobile voice tradeoffs and qualification
+
+The mobile client reuses the existing PCM16-over-WebSocket voice protocol and
+canonical history stream. It does not add a WebRTC media stack. At 24 kHz mono,
+16-bit audio uses 48 KB/s per active direction before encoding; base64 adds
+roughly one third. Expect higher bandwidth than compressed voice codecs and
+qualify latency on cellular and lossy networks, not only local Wi-Fi.
+
+The local native module is an upstream adaptation that we maintain. iOS uses
+AVAudioEngine voice processing; Android echo cancellation depends on device
+support. Speaker, Bluetooth, phone interruptions, and returning to dictation or
+read-aloud require device checks. The inherited iOS first-playback workaround
+discards microphone samples for two seconds when the first reply begins. This
+can lose early spoken interruptions; test that behavior explicitly before
+claiming unrestricted barge-in. Removing the workaround also requires checking
+that the assistant's first reply does not transcribe itself.
+
+Metro selects the realtime SDK's browser exports, and startup installs missing
+DOM event globals from React Native's private implementations. Recheck both
+native bundle exports after SDK or React Native upgrades: these compatibility
+paths are not a public React Native API contract.
+
+For the voice UI, verify the empty-draft voice/send swap, pending text preview,
+permission/connecting status, mute, interrupt versus End, model changes, and
+cleanup retry. Dismissing a turn warning must not dismiss a cleanup error or
+disable End after cleanup has failed. Include long pasted text, larger text
+sizes, reduced motion, and keyboard-open layouts in device review.
+
 ## Desktop validation
 
 The desktop app needs a server at its API level, so run one from the same

@@ -10,12 +10,24 @@ import { MobileVoiceSession, type VoiceOptions, type VoiceState } from "./sessio
 
 let previousCleanup: Promise<void> = Promise.resolve();
 
+export interface MobileVoiceController extends VoiceState {
+  available: boolean;
+  busy: boolean;
+  start: (config: VoiceOptions) => Promise<void>;
+  end: () => Promise<boolean>;
+  toggleMute: () => void;
+  interrupt: () => void;
+  sendMessage: (text: string) => Promise<boolean>;
+  dismissError: () => void;
+  dismissWarning: () => void;
+}
+
 export function useMobileVoice(options: {
   chatId: string;
   onMessage: (message: UIMessage) => void;
   onRefresh: (messages: UIMessage[]) => void;
   onPersisted: () => void;
-}) {
+}): MobileVoiceController {
   const latest = useRef(options);
   latest.current = options;
   const controller = useRef<MobileVoiceSession | null>(null);
@@ -23,7 +35,7 @@ export function useMobileVoice(options: {
   const permissionAttempt = useRef(0);
   const [preparing, setPreparing] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
-  const [state, setState] = useState<VoiceState>({ status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0 });
+  const [state, setState] = useState<VoiceState>({ status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0, pendingText: null, cleanupPending: false });
 
   useEffect(() => {
     const base = getApiBase();
@@ -104,20 +116,29 @@ export function useMobileVoice(options: {
       if (attempt === permissionAttempt.current) setPermissionError((error as Error).message);
     } finally { if (attempt === permissionAttempt.current) setPreparing(false); }
   };
+  const status = preparing && state.status === "idle" ? ("connecting" as const) : state.status;
   return {
     ...state,
+    status,
     error: permissionError ?? state.error,
     available: nativeVoiceAvailable,
     busy: preparing || state.status !== "idle",
     start,
-    end: () => {
+    end: async (): Promise<boolean> => {
       permissionAttempt.current++;
       setPreparing(false);
-      return controller.current?.end().catch(() => {});
+      if (!controller.current) return true;
+      try {
+        await controller.current.end();
+        return controller.current.getSnapshot().status === "idle";
+      } catch {
+        return false;
+      }
     },
     toggleMute: () => controller.current?.toggleMute(),
     interrupt: () => controller.current?.interrupt(),
     sendMessage: (text: string) => controller.current?.sendMessage(text) ?? Promise.resolve(false),
+    dismissWarning: () => controller.current?.dismissWarning(),
     dismissError: () => { setPermissionError(null); controller.current?.dismissError(); },
   };
 }
