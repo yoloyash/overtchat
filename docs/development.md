@@ -503,6 +503,13 @@ gated until the server lease and generation settle, then reloads saved messages.
 Typed messages during a call use the same interruption and persistence path as
 spoken turns. Dictation and read-aloud remain separate features.
 
+Check microphone permission before requesting it: Android can launch its
+permission activity even when access is already granted. While an initial
+permission request is pending, its temporary background transition must not
+cancel that request. Capture still waits for the app to be active, and End or
+navigation away invalidates the pending start. Test both denial followed by
+grant and subsequent starts with permission already granted.
+
 ```sh
 npm run test -w packages/voice-client
 npm run typecheck -w packages/voice-client

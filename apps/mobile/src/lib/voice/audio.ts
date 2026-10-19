@@ -1,10 +1,11 @@
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { requireOptionalNativeModule } from "expo";
 import type { VoiceAudio, VoiceClientCallbacks } from "@overtchat/voice-client";
 
 type Subscription = { remove(): void };
 type NativeAudio = {
   initialize(): Promise<boolean>;
+  getMicrophonePermissionsAsync(): Promise<{ granted: boolean }>;
   requestMicrophonePermissionsAsync(): Promise<{ granted: boolean }>;
   toggleRecording(enabled: boolean): boolean;
   playPCMData(data: Uint8Array): void;
@@ -15,10 +16,11 @@ type NativeAudio = {
 const native = requireOptionalNativeModule<NativeAudio>("ExpoTwoWayAudio");
 export const nativeVoiceAvailable = native !== null;
 
-/** iOS resolves permission before its inactive -> active notification arrives. */
-export async function waitForVoiceForeground(): Promise<void> {
+/** Permission results may arrive before the activity becomes active again. */
+export async function waitForVoiceForeground(permissionRequested = false): Promise<void> {
+  const permissionActivity = permissionRequested && Platform.OS === "android";
   if (AppState.currentState === "active") return;
-  if (AppState.currentState === "background") throw new Error("Keep OvertChat open to use live voice.");
+  if (AppState.currentState === "background" && !permissionActivity) throw new Error("Keep OvertChat open to use live voice.");
   await new Promise<void>((resolve, reject) => {
     const finish = (active: boolean) => {
       clearTimeout(timeout);
@@ -27,17 +29,20 @@ export async function waitForVoiceForeground(): Promise<void> {
       else reject(new Error("Keep OvertChat open to use live voice."));
     };
     const subscription = AppState.addEventListener("change", state => {
-      if (state === "active" || state === "background") finish(state === "active");
+      if (state === "active" || (state === "background" && !permissionActivity)) finish(state === "active");
     });
     const timeout = setTimeout(() => finish(false), 5_000);
   });
 }
 
-export async function requestVoicePermission(): Promise<void> {
+export async function requestVoicePermission(): Promise<boolean> {
   if (!native) throw new Error("Live voice requires an updated mobile app.");
+  // Android launches its permission activity even when every permission is granted.
+  if ((await native.getMicrophonePermissionsAsync()).granted) return false;
   if (!(await native.requestMicrophonePermissionsAsync()).granted) {
     throw new Error("Allow microphone access in Settings to start live voice.");
   }
+  return true;
 }
 
 /** The module owns both halves of the audio session so speaker output is echo-cancelled. */

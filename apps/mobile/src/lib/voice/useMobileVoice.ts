@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 import { useFocusEffect } from "expo-router";
 import type { UIMessage } from "ai";
 import { OvertChatVoiceClient } from "@overtchat/voice-client";
@@ -33,6 +33,7 @@ export function useMobileVoice(options: {
   const controller = useRef<MobileVoiceSession | null>(null);
   const focused = useRef(false);
   const permissionAttempt = useRef(0);
+  const preparingPermission = useRef<number | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [state, setState] = useState<VoiceState>({ status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0, pendingText: null, cleanupPending: false });
@@ -72,7 +73,9 @@ export function useMobileVoice(options: {
     const unsubscribe = current.subscribe(() => setState(current.getSnapshot()));
     setState(current.getSnapshot());
     const appState = AppState.addEventListener("change", next => {
-      if (next === "background") {
+      // Android's permission activity pauses this activity. No call exists yet;
+      // let the permission result settle before enforcing foreground startup.
+      if (next === "background" && (Platform.OS !== "android" || preparingPermission.current === null)) {
         permissionAttempt.current++;
         setPreparing(false);
       }
@@ -107,14 +110,19 @@ export function useMobileVoice(options: {
     try {
       await previousCleanup;
       if (attempt !== permissionAttempt.current) return;
-      await requestVoicePermission();
-      await waitForVoiceForeground();
+      preparingPermission.current = attempt;
+      const requested = await requestVoicePermission();
+      await waitForVoiceForeground(requested);
+      if (preparingPermission.current === attempt) preparingPermission.current = null;
       if (attempt === permissionAttempt.current && current === controller.current && focused.current && AppState.currentState === "active") {
         await current?.start(config);
       }
     } catch (error) {
       if (attempt === permissionAttempt.current) setPermissionError((error as Error).message);
-    } finally { if (attempt === permissionAttempt.current) setPreparing(false); }
+    } finally {
+      if (preparingPermission.current === attempt) preparingPermission.current = null;
+      if (attempt === permissionAttempt.current) setPreparing(false);
+    }
   };
   const status = preparing && state.status === "idle" ? ("connecting" as const) : state.status;
   return {

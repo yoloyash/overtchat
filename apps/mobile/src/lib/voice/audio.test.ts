@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     appState: { currentState: "active", addEventListener: vi.fn() }, listeners,
     native: {
       initialize: vi.fn(async () => true),
+      getMicrophonePermissionsAsync: vi.fn(async () => ({ granted: true })),
       requestMicrophonePermissionsAsync: vi.fn(async () => ({ granted: true })),
       toggleRecording: vi.fn((enabled: boolean) => enabled),
       playPCMData: vi.fn(), stopPlayback: vi.fn(), tearDown: vi.fn(),
@@ -16,7 +17,7 @@ const mocks = vi.hoisted(() => {
     },
   };
 });
-vi.mock("react-native", () => ({ AppState: mocks.appState }));
+vi.mock("react-native", () => ({ AppState: mocks.appState, Platform: { OS: "android" } }));
 vi.mock("expo", () => ({ requireOptionalNativeModule: () => mocks.native }));
 import { NativeVoiceAudio, requestVoicePermission, waitForVoiceForeground } from "./audio";
 
@@ -31,6 +32,37 @@ function harness() {
 }
 
 describe("native foreground audio", () => {
+  it("does not launch Android's permission activity when already granted", async () => {
+    await expect(requestVoicePermission()).resolves.toBe(false);
+    expect(mocks.native.requestMicrophonePermissionsAsync).not.toHaveBeenCalled();
+  });
+  it("requests missing permission and waits for the Android permission activity to close", async () => {
+    mocks.native.getMicrophonePermissionsAsync.mockResolvedValueOnce({ granted: false });
+    await expect(requestVoicePermission()).resolves.toBe(true);
+    mocks.appState.currentState = "background";
+    let change!: (state: string) => void;
+    const remove = vi.fn();
+    mocks.appState.addEventListener.mockImplementation((_event, listener) => {
+      change = listener;
+      return { remove };
+    });
+    const ready = waitForVoiceForeground(true);
+    change("active");
+    await ready;
+    expect(remove).toHaveBeenCalledOnce();
+  });
+  it("does not start if the app stays backgrounded after granting permission", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.appState.currentState = "background";
+      const remove = vi.fn();
+      mocks.appState.addEventListener.mockReturnValue({ remove });
+      const ready = expect(waitForVoiceForeground(true)).rejects.toThrow("Keep OvertChat open");
+      await vi.advanceTimersByTimeAsync(5_000);
+      await ready;
+      expect(remove).toHaveBeenCalledOnce();
+    } finally { vi.useRealTimers(); }
+  });
   it("waits for permission dismissal but refuses a real background transition", async () => {
     mocks.appState.currentState = "inactive";
     let change!: (state: string) => void;
@@ -79,6 +111,7 @@ describe("native foreground audio", () => {
     mocks.appState.currentState = "background";
     await expect(harness().audio.start(vi.fn())).rejects.toThrow("Keep OvertChat open");
     expect(mocks.native.initialize).not.toHaveBeenCalled();
+    mocks.native.getMicrophonePermissionsAsync.mockResolvedValueOnce({ granted: false });
     mocks.native.requestMicrophonePermissionsAsync.mockResolvedValueOnce({ granted: false });
     await expect(requestVoicePermission()).rejects.toThrow("Allow microphone access");
   });
