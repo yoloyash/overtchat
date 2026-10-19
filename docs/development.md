@@ -486,6 +486,41 @@ chat creation, and opening both chat types from push notifications. Check native
 Back alongside the conversation menu, edge-only drawer swipes on chat and agent
 list screens, and horizontal tool/code scrolling on agent detail screens.
 
+### Mobile realtime voice
+
+Mobile voice uses the existing voice session lease, realtime WebSocket, and
+canonical message event stream. `packages/voice-client` owns the shared realtime
+protocol; each app supplies audio and transport adapters. The local Expo module
+in `apps/mobile/modules/two-way-audio` captures and plays mono 24 kHz PCM16 with
+native voice processing. Its README records the upstream source and license.
+Rebuild the native app after changing this module; Expo Go and older native
+binaries cannot start live voice.
+
+Calls are foreground-only. Leaving the chat, locking the phone, switching apps,
+or losing audio focus ends the call and releases the microphone and playback.
+Returning never automatically opens the microphone. Ending keeps text submission
+gated until the server lease and generation settle, then reloads saved messages.
+Typed messages during a call use the same interruption and persistence path as
+spoken turns. Dictation and read-aloud remain separate features.
+
+```sh
+npm run test -w packages/voice-client
+npm run typecheck -w packages/voice-client
+npm run test -w apps/mobile
+npm run typecheck -w apps/mobile
+npm run test -w apps/web -- lib/voice components/chat/VoiceSession.test.tsx
+```
+
+Export both native bundles using the command above, then build and install a
+native client. On a physical device, connect to a server with configured voice,
+STT, TTS, and a reachable chat model. Validate a spoken turn and audible reply,
+barge-in, mute/unmute, typed interruption, End followed by normal text, repeated
+start/end, permission denial, network loss, navigation away, and background or
+lock followed by return. Check the persisted conversation for duplicate turns
+and the microphone indicator for cleanup. Test speaker and headset routes on
+both iOS and Android; JavaScript fixtures and bundle exports do not validate
+echo cancellation, Bluetooth routing, or native audio focus behavior.
+
 ## Desktop validation
 
 The desktop app needs a server at its API level, so run one from the same

@@ -62,7 +62,7 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "Allow overtchat to use your microphone for voice dictation."
+          "microphonePermission": "Allow overtchat to use your microphone for dictation and live voice conversations."
         }
       ],
       [

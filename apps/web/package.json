@@ -36,6 +36,7 @@
     "@openai/agents": "0.14.3",
     "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
+    "@overtchat/voice-client": "*",
     "@streamdown/cjk": "^1.0.3",
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",

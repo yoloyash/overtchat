@@ -17,6 +17,9 @@ import { AttachmentChip } from "./AttachmentChip";
 
 export function Composer({
   chatQueue,
+  voiceActive = false,
+  voiceAvailable = false,
+  onStartVoice,
   configured,
   modelLoading = false,
   streaming,
@@ -41,6 +44,9 @@ export function Composer({
   onStop,
 }: {
   chatQueue: MessageQueueProps;
+  voiceActive?: boolean;
+  voiceAvailable?: boolean;
+  onStartVoice?: () => void;
   configured: boolean;
   modelLoading?: boolean;
   streaming: boolean;
@@ -65,7 +71,7 @@ export function Composer({
   onRemoveAttachment: (index: number) => void;
   onDismissUploadError: () => void;
   onPasteImages: (uris: string[]) => void;
-  onSubmit: (text: string, attachments: FileUIPart[]) => void;
+  onSubmit: (text: string, attachments: FileUIPart[]) => void | boolean | Promise<boolean>;
   onStop: () => void;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -78,14 +84,18 @@ export function Composer({
     });
   });
 
-  function submit() {
+  const [submitting, setSubmitting] = useState(false);
+
+  async function submit() {
     const text = input.trim();
-    if (uploading || !configured) return;
+    if (uploading || !configured || submitting) return;
     if (streaming && text.toLowerCase() === "/compact" && !attachments.length) return;
     if (!text && attachments.length === 0) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => { });
-    onSubmit(text, attachments);
-    setInput("");
+    setSubmitting(true);
+    try {
+      if (await onSubmit(text, attachments) !== false) setInput(current => current.trim() === text ? "" : current);
+    } finally { setSubmitting(false); }
   }
 
   function toggleMic() {
@@ -115,6 +125,7 @@ export function Composer({
   const canSend =
     (input.trim().length > 0 || attachments.length > 0) &&
     !uploading &&
+    !submitting &&
     configured;
   const showAttachmentsRow = attachments.length > 0 || uploading;
 
@@ -192,7 +203,7 @@ export function Composer({
         <TextInputWrapper
           style={styles.inputWrapper}
           onPaste={(payload) => {
-            if (payload.type === "images") onPasteImages(payload.uris);
+            if (!voiceActive && payload.type === "images") onPasteImages(payload.uris);
           }}
         >
           <TextInput
@@ -223,6 +234,7 @@ export function Composer({
                 ? "Add to chat"
                 : "Add to chat; web search unavailable for this model"
             }
+            disabled={voiceActive}
             onPress={openAdd}
             style={({ pressed }) => [
               styles.iconHitTarget,
@@ -280,6 +292,7 @@ export function Composer({
                   ? `Model and thinking: ${modelLabel}, ${thinkingLevelLabel}`
                   : `Model: ${modelLabel}`
               }
+              disabled={voiceActive}
               onPress={openModelPicker}
               style={({ pressed }) => [
                 styles.modelHitTarget,
@@ -334,7 +347,14 @@ export function Composer({
 
           <View style={styles.controlsSpacer} />
 
-          {!streaming && !canSend ? (
+          {voiceAvailable && !voiceActive && !streaming && !canSend && dictation.status === "idle" && !uploading && attachments.length === 0 ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Start live voice" onPress={onStartVoice} style={styles.iconHitTarget}>
+              <View style={[styles.secondaryButtonSurface, { borderColor: colors.border, borderRadius: radii.pill }]}>
+                <Ionicons name="headset-outline" size={20} color={colors.mutedForeground} />
+              </View>
+            </Pressable>
+          ) : null}
+          {!voiceActive && !streaming && !canSend ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={

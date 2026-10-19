@@ -14,6 +14,7 @@ export function useChatGenerationRecovery({
   status,
   temporary = false,
   enabled,
+  suspended = false,
   recoverOnMount,
   stopLocalStream,
   resumeStream,
@@ -26,6 +27,7 @@ export function useChatGenerationRecovery({
   status: string;
   temporary?: boolean;
   enabled: boolean;
+  suspended?: boolean;
   recoverOnMount: boolean;
   stopLocalStream: () => void | Promise<void>;
   resumeStream: () => Promise<void>;
@@ -60,8 +62,9 @@ export function useChatGenerationRecovery({
     generation.observeStatus(status);
   });
   useEffect(
-    () =>
-      generation.attach({
+    () => {
+      if (suspended) return;
+      return generation.attach({
         temporary: () => latest.current.temporary,
         read: async (signal) => {
           const response = await authFetch(
@@ -98,12 +101,13 @@ export function useChatGenerationRecovery({
           latest.current.onSettled();
         },
         foreground: () => AppState.currentState === "active",
-      }),
-    [generation, baseURL, chatId],
+      });
+    },
+    [generation, baseURL, chatId, suspended],
   );
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || suspended) return;
     const recover = () => void generation.reconcile().catch(() => undefined);
     const appState = AppState.addEventListener("change", (state) => {
       if (state === "active") recover();
@@ -116,6 +120,6 @@ export function useChatGenerationRecovery({
       appState.remove();
       network.remove();
     };
-  }, [enabled, generation, recoverOnMount]);
+  }, [enabled, suspended, generation, recoverOnMount]);
   return generation;
 }

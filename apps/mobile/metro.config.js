@@ -5,4 +5,16 @@
 
 const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 
-module.exports = getSentryExpoConfig(__dirname);
+const config = getSentryExpoConfig(__dirname);
+const resolveRequest = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // The realtime SDK exposes browser and Node shims. Native supplies its own
+  // WebSocket/audio; select the web-safe shims instead of Node's ws/crypto.
+  const scoped = moduleName.startsWith("@openai/agents")
+    ? { ...context, unstable_conditionNames: ["browser", "import"] }
+    : context;
+  return resolveRequest
+    ? resolveRequest(scoped, moduleName, platform)
+    : scoped.resolveRequest(scoped, moduleName, platform);
+};
+module.exports = config;

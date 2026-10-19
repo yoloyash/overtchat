@@ -38,6 +38,9 @@ import {
 } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AddToChatSheet } from "@/components/chat/AddToChatSheet";
+import { ErrorNotice } from "@/components/ErrorNotice";
+import { VoiceControls } from "@/components/chat/VoiceControls";
+import { useMobileVoice } from "@/lib/voice/useMobileVoice";
 import { Composer } from "@/components/chat/Composer";
 import { MessageList } from "@/components/chat/MessageList";
 import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
@@ -292,10 +295,21 @@ function ChatSurface({
     void qc.invalidateQueries({ queryKey: queryKeys.chats() });
     void qc.invalidateQueries({ queryKey: queryKeys.chatMessages(chatId) });
   }, [chatId, qc]);
+  const voice = useMobileVoice({
+    chatId,
+    onMessage: message => setMessages(current => current.some(item => item.id === message.id)
+      ? current.map(item => item.id === message.id ? message : item)
+      : [...current, message]),
+    onRefresh: setMessages,
+    onPersisted: handleGenerationSettled,
+  });
+  const voiceBusyRef = useRef(voice.busy);
+  voiceBusyRef.current = voice.busy;
   const generation = useChatGenerationRecovery({
     baseURL,
     chatId,
-    enabled: chatPersisted,
+    enabled: chatPersisted && !voice.busy,
+    suspended: voice.busy,
     status,
     recoverOnMount: !isNew,
     stopLocalStream: stop,
@@ -308,7 +322,7 @@ function ChatSurface({
   const chatQueue = useChatQueue({
     chatId,
     userId: session.data?.user.id,
-    status,
+    status: voice.busy ? "submitted" : status,
     sendMessage: (message, options) => {
       setLocalAnchorRequestKey((key) => key + 1);
       return sendMessage(message, options);
@@ -498,17 +512,18 @@ function ChatSurface({
   }, [hydrationFetching, hydrationError]);
 
   function onRefreshMessages() {
-    if (isNew) return;
+    if (isNew || voice.busy) return;
     userRefreshingMessages.current = true;
     refetchHydration().then((res) => {
-      if (res.data?.messages) setMessages(res.data.messages);
+      if (res.data?.messages && !voiceBusyRef.current) setMessages(res.data.messages);
     });
   }
 
   function handleSubmit(text: string, files: FileUIPart[]) {
+    if (voice.busy) return files.length ? false : voice.sendMessage(text);
     Keyboard.dismiss();
     if (text.trim().toLowerCase() === "/compact" && files.length === 0) {
-      if (streaming || !configured || messages.length === 0) return;
+      if (voice.busy || streaming || !configured || messages.length === 0) return;
       setContextStatus(null);
       setLocalAnchorRequestKey((key) => key + 1);
       void sendMessage(undefined, { body: requestBody({ type: "compact" }) });
@@ -544,7 +559,7 @@ function ChatSurface({
   }
 
   function handleContinue(messageId: string) {
-    if (streaming || !configured || messages.at(-1)?.id !== messageId) return;
+    if (voice.busy || streaming || !configured || messages.at(-1)?.id !== messageId) return;
     setContextStatus(null);
     setLocalAnchorRequestKey((key) => key + 1);
     void sendMessage(undefined, {
@@ -553,7 +568,7 @@ function ChatSurface({
   }
 
   function handleRegenerate(messageId: string) {
-    if (streaming || !configured) return;
+    if (voice.busy || streaming || !configured) return;
     setLocalAnchorRequestKey((key) => key + 1);
     regenerate({
       messageId,
@@ -576,7 +591,7 @@ function ChatSurface({
     files: FileUIPart[],
   ) {
     setEditingId(null);
-    if (streaming || !configured) return;
+    if (voice.busy || streaming || !configured) return;
     const trimmed = text.trim();
     if (!trimmed && files.length === 0) return;
     Keyboard.dismiss();
@@ -647,18 +662,21 @@ function ChatSurface({
           status={status}
           error={error}
           onReconnect={() => {
-            if (!streaming) void generation.reconcile().catch(() => undefined);
+            if (!voice.busy && !streaming) void generation.reconcile().catch(() => undefined);
           }}
           editingId={editingId}
-          speech={speech}
+          speech={{ ...speech, play: async (id, text) => {
+            if (voice.busy) { toastError("End live voice before playing a message."); return; }
+            await speech.play(id, text);
+          } }}
           refreshing={!isNew && hydrationFetching && !streaming}
-          onRefresh={isNew ? undefined : onRefreshMessages}
-          onStartEdit={(id) => !streaming && setEditingId(id)}
+          onRefresh={isNew || voice.busy ? undefined : onRefreshMessages}
+          onStartEdit={(id) => !voice.busy && !streaming && setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
           onRegenerate={handleRegenerate}
           onContinue={handleContinue}
-          onImageReference={imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
+          onImageReference={!voice.busy && imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
             addReference(file);
             setImageOptions({ size: "auto", quality: "auto" });
           } : undefined}
@@ -672,7 +690,19 @@ function ChatSurface({
           { paddingBottom: keyboardVisible ? 8 : 12 + insets.bottom },
         ]}
       >
+          {voice.error && <ErrorNotice message={voice.error} onDismiss={voice.dismissError} />}
+          {voice.warning && <ErrorNotice message={voice.warning} onDismiss={voice.dismissError} />}
+          {voice.busy && <VoiceControls voice={voice} />}
           <Composer
+            voiceActive={voice.busy}
+            voiceAvailable={Boolean(voice.available && capabilitiesData?.capabilities.voice?.available && configured && !editingId && !imageOptions && !searchRequested && chatQueue.messages.length === 0)}
+            onStartVoice={() => {
+              if (!selectedId || streaming || voice.busy || attachments.length || uploading || chatQueue.messages.length) return;
+              speech.stop();
+              Keyboard.dismiss();
+              void voice.start({ chatId, projectId, modelConfigId: selectedId, webSearchEnabled, reasoningLevel,
+                timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+            }}
             configured={configured}
             modelLoading={modelLoading}
             streaming={streaming}
@@ -709,7 +739,7 @@ function ChatSurface({
             }}
             chatQueue={chatQueue}
             onSubmit={handleSubmit}
-            onStop={handleStop}
+            onStop={voice.busy ? voice.interrupt : handleStop}
           />
       </View>
 
@@ -722,11 +752,13 @@ function ChatSurface({
         reasoningControls={reasoningControls}
         reasoningLevel={reasoningLevel}
         onSelect={(modelId) => {
+          if (voice.busy) return;
           setSearchRequested(false);
           setImageOptions(undefined);
           setSelectedId(modelId);
         }}
         onSelectReasoningLevel={(level) => {
+          if (voice.busy) return;
           if (selectedId) setReasoningLevel(selectedId, level);
         }}
       />

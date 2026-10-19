@@ -32,6 +32,7 @@
     "@gorhom/bottom-sheet": "^5.2.14",
     "@overtchat/agent-bridge": "*",
     "@overtchat/shared": "*",
+    "@overtchat/voice-client": "*",
     "@react-native-community/slider": "5.2.0",
     "@sentry/react-native": "~7.11.0",
     "@shopify/flash-list": "2.0.2",
