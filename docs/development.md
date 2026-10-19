@@ -476,6 +476,16 @@ To validate both native bundles without publishing, run from `apps/mobile`:
 npx expo export --platform android --platform ios --output-dir /tmp/overtchat-mobile-export
 ```
 
+Native Android builds require a locally installed JDK 17 and the Android SDK.
+Set `JAVA_HOME` to JDK 17 before prebuilding/building (on macOS, use
+`export JAVA_HOME=$(/usr/libexec/java_home -v 17)`). Keep Expo's generated Gradle
+wrapper version. With the current React Native 0.85.3 toolchain, a missing JDK
+17 triggers a Foojay downloader that is incompatible with Gradle 9; downgrading
+an ignored wrapper file hides the missing prerequisite and is not a reproducible
+fix. The [mobile release workflow](../.github/workflows/mobile-eas.yml) installs
+JDK 17 explicitly; [release.md](release.md#mobile-release) owns production
+build validation.
+
 On Android and iOS, check session creation/resume, web/mobile switching,
 background and network recovery, model/permission controls, commands,
 approvals/questions, image input, tool output, keyboard clearance, and back
@@ -546,10 +556,12 @@ produced no self-transcribed turns, and speech within the first two seconds
 reached transcription. This is single-device evidence; check first-reply echo
 and early spoken interruption when qualifying another device or audio route.
 
-Metro selects the realtime SDK's browser exports, and startup installs missing
-DOM event globals from React Native's private implementations. Recheck both
-native bundle exports after SDK or React Native upgrades: these compatibility
-paths are not a public React Native API contract.
+Metro selects the realtime SDK's browser exports. Startup synchronously installs
+missing DOM events using `event-target-shim` and `@whatwg-node/events`, and text
+encoding streams using `@stardazed/streams-text-encoding`. Runtime-provided
+globals are preserved; no React Native private imports are required. Recheck
+the polyfill integration tests, both native bundle exports, and on-device text
+streaming and voice after SDK or React Native upgrades.
 
 For the voice UI, verify the empty-draft voice/send swap, pending text preview,
 permission/connecting status, mute, interrupt versus End, model changes, and
