@@ -15,6 +15,24 @@ type NativeAudio = {
 const native = requireOptionalNativeModule<NativeAudio>("ExpoTwoWayAudio");
 export const nativeVoiceAvailable = native !== null;
 
+/** iOS resolves permission before its inactive -> active notification arrives. */
+export async function waitForVoiceForeground(): Promise<void> {
+  if (AppState.currentState === "active") return;
+  if (AppState.currentState === "background") throw new Error("Keep OvertChat open to use live voice.");
+  await new Promise<void>((resolve, reject) => {
+    const finish = (active: boolean) => {
+      clearTimeout(timeout);
+      subscription.remove();
+      if (active) resolve();
+      else reject(new Error("Keep OvertChat open to use live voice."));
+    };
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active" || state === "background") finish(state === "active");
+    });
+    const timeout = setTimeout(() => finish(false), 5_000);
+  });
+}
+
 export async function requestVoicePermission(): Promise<void> {
   if (!native) throw new Error("Live voice requires an updated mobile app.");
   if (!(await native.requestMicrophonePermissionsAsync()).granted) {

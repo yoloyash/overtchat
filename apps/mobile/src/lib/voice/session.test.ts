@@ -109,6 +109,7 @@ describe("foreground voice lifecycle", () => {
     expect(h.createClient).toHaveBeenCalledOnce();
     await h.session.end();
     expect(h.session.getSnapshot().status).toBe("idle");
+    expect(h.session.getSnapshot().error).toBeNull();
   });
   it("upserts canonical messages and targets the active voice turn", async () => {
     const h = harness();

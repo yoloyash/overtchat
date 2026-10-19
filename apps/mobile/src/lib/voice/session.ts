@@ -27,6 +27,7 @@ export type VoiceDependencies = {
   onPersisted: () => void;
 };
 const initial: VoiceState = { status: "idle", muted: false, error: null, warning: null, inputLevel: 0, outputLevel: 0 };
+const endingError = "Could not finish ending voice. Check your connection and tap End again.";
 
 /** One explicit foreground call. Closing also fences late grants, audio, and history reads. */
 export class MobileVoiceSession {
@@ -213,9 +214,9 @@ export class MobileVoiceSession {
       }
       this.client = null;
       this.grant = null;
-      this.patch({ status: "idle" });
+      this.patch({ status: "idle", error: this.state.error === endingError ? null : this.state.error });
     })().catch(error => {
-      this.patch({ error: "Could not finish ending voice. Check your connection and tap End again." });
+      this.patch({ error: endingError });
       throw error;
     }).finally(() => { this.ending = null; });
     return this.ending;

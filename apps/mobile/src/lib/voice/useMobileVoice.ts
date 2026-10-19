@@ -5,7 +5,7 @@ import type { UIMessage } from "ai";
 import { OvertChatVoiceClient } from "@overtchat/voice-client";
 import { authFetch, getApiBase } from "@/lib/api";
 import { getAuthClient } from "@/lib/auth/client";
-import { NativeVoiceAudio, nativeVoiceAvailable, requestVoicePermission } from "./audio";
+import { NativeVoiceAudio, nativeVoiceAvailable, requestVoicePermission, waitForVoiceForeground } from "./audio";
 import { MobileVoiceSession, type VoiceOptions, type VoiceState } from "./session";
 
 let previousCleanup: Promise<void> = Promise.resolve();
@@ -60,6 +60,10 @@ export function useMobileVoice(options: {
     const unsubscribe = current.subscribe(() => setState(current.getSnapshot()));
     setState(current.getSnapshot());
     const appState = AppState.addEventListener("change", next => {
+      if (next === "background") {
+        permissionAttempt.current++;
+        setPreparing(false);
+      }
       if (next !== "active") void current.end().catch(() => {});
     });
     return () => {
@@ -92,6 +96,7 @@ export function useMobileVoice(options: {
       await previousCleanup;
       if (attempt !== permissionAttempt.current) return;
       await requestVoicePermission();
+      await waitForVoiceForeground();
       if (attempt === permissionAttempt.current && current === controller.current && focused.current && AppState.currentState === "active") {
         await current?.start(config);
       }
@@ -105,7 +110,11 @@ export function useMobileVoice(options: {
     available: nativeVoiceAvailable,
     busy: preparing || state.status !== "idle",
     start,
-    end: () => controller.current?.end().catch(() => {}),
+    end: () => {
+      permissionAttempt.current++;
+      setPreparing(false);
+      return controller.current?.end().catch(() => {});
+    },
     toggleMute: () => controller.current?.toggleMute(),
     interrupt: () => controller.current?.interrupt(),
     sendMessage: (text: string) => controller.current?.sendMessage(text) ?? Promise.resolve(false),

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const listeners = new Map<string, (event: { data: unknown }) => void>();
   return {
-    appState: { currentState: "active" }, listeners,
+    appState: { currentState: "active", addEventListener: vi.fn() }, listeners,
     native: {
       initialize: vi.fn(async () => true),
       requestMicrophonePermissionsAsync: vi.fn(async () => ({ granted: true })),
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => {
 });
 vi.mock("react-native", () => ({ AppState: mocks.appState }));
 vi.mock("expo", () => ({ requireOptionalNativeModule: () => mocks.native }));
-import { NativeVoiceAudio, requestVoicePermission } from "./audio";
+import { NativeVoiceAudio, requestVoicePermission, waitForVoiceForeground } from "./audio";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -31,6 +31,22 @@ function harness() {
 }
 
 describe("native foreground audio", () => {
+  it("waits for permission dismissal but refuses a real background transition", async () => {
+    mocks.appState.currentState = "inactive";
+    let change!: (state: string) => void;
+    const remove = vi.fn();
+    mocks.appState.addEventListener.mockImplementation((_event, listener) => {
+      change = listener;
+      return { remove };
+    });
+    const ready = waitForVoiceForeground();
+    change("active");
+    await ready;
+    expect(remove).toHaveBeenCalledOnce();
+    const backgrounded = waitForVoiceForeground();
+    change("background");
+    await expect(backgrounded).rejects.toThrow("Keep OvertChat open");
+  });
   it("forwards a bounded copy of mic bytes, with mute and close fences", async () => {
     const h = harness();
     await h.audio.start(h.onAudio);
