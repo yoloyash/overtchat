@@ -45,7 +45,8 @@ try {
   if (process.argv[3]) {
     const crashWorker = path.resolve(process.argv[3]);
     const killAt = async (stateFile, action, boundary) => {
-      const child = spawn(crashWorker, [stateFile, action, boundary], { stdio: ["ignore", "pipe", "pipe"] });
+      const runtime = process.argv[4];
+      const child = spawn(runtime ?? crashWorker, [...(runtime ? [crashWorker] : []), stateFile, action, boundary], { stdio: ["ignore", "pipe", "pipe"] });
       const exited = once(child, "exit");
       let errors = "";
       child.stderr.on("data", (chunk) => { errors += String(chunk); });

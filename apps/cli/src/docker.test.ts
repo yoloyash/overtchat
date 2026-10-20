@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { InstallationConfig } from "./types.js";
 
 const mocks = vi.hoisted(() => ({
@@ -78,8 +78,10 @@ function inspectedContainer(
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.resetAllMocks();
+  vi.spyOn(process, "platform", "get").mockReturnValue("linux");
 });
+afterEach(() => vi.restoreAllMocks());
 
 describe("NVIDIA GPU discovery", () => {
   it("keeps stable UUIDs alongside the friendly index and memory", () => {

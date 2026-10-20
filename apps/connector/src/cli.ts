@@ -208,10 +208,10 @@ async function main(): Promise<void> {
       console.log(CONNECTOR_VERSION);
       return;
     case "terminal-smoke":
-      if (parsed.values.size > 0) {
-        throw new Error("The terminal-smoke command does not accept arguments.");
+      if ([...parsed.values.keys()].some((key) => key !== "output-bytes")) {
+        throw new Error("The terminal-smoke command only accepts --output-bytes.");
       }
-      await runConnectorTerminalSmoke();
+      await runConnectorTerminalSmoke(Number(parsed.values.get("output-bytes") ?? 0));
       console.log("Terminal PTY smoke test passed.");
       return;
     default:

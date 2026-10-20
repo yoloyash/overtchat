@@ -15,8 +15,12 @@ export async function register() {
   );
   ensureServerCapabilityConfigs();
 
-  const { terminalRelay } = await import("@/lib/agents/terminal/server");
-  await terminalRelay.start(Number(process.env.OVERTCHAT_TERMINAL_RELAY_PORT ?? 14717));
+  try {
+    const { terminalRelay } = await import("@/lib/agents/terminal/server");
+    await terminalRelay.start(Number(process.env.OVERTCHAT_TERMINAL_RELAY_PORT ?? 14717));
+  } catch (error) {
+    console.error("[terminal-relay] Workspace terminals unavailable:", error);
+  }
 
   const { sweepOrphanedUploads } = await import("@/lib/db/uploads");
   sweepOrphanedUploads().catch((err) =>

@@ -3026,8 +3026,9 @@ test("workspace terminal streams a real shell, retains state, and reconnects und
   canonical.state = { ...canonical.state, isStreaming: false };
   const configFile = path.join(directory, "fixture.json");
   await writeFile(configFile, JSON.stringify({ snapshot: canonical, directory, connectorId: "connector", token: `oct_connector.${secret}`, serverUrl: String(testInfo.project.use.baseURL), eventBatches: {}, terminalTraffic: true }));
-  const fixtureExecutable = process.env.OVERTCHAT_TERMINAL_CONNECTOR_EXECUTABLE;
-  const child = spawn(fixtureExecutable ?? process.execPath, fixtureExecutable ? [configFile] : ["--import", "tsx", path.resolve(__dirname, "../../connector/scripts/transport-fixture.mjs"), configFile], {
+  const connectorPackage = process.env.OVERTCHAT_TERMINAL_CONNECTOR_PACKAGE;
+  const child = spawn(connectorPackage ? path.join(connectorPackage, "bin/node") : process.execPath,
+    connectorPackage ? [path.join(connectorPackage, "test/transport-fixture.mjs"), configFile] : ["--import", "tsx", path.resolve(__dirname, "../../connector/scripts/transport-fixture.mjs"), configFile], {
     stdio: ["ignore", "pipe", "pipe", "ipc"], env: { ...process.env, SHELL: "/bin/sh" },
   });
   let logs = "";

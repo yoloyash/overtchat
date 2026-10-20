@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentDaemonWorkspaceDescriptor } from "@overtchat/agent-bridge";
 import { AGENT_TERMINAL_MAX_OUTPUT_CHARS } from "@overtchat/agent-bridge";
+import type { Terminal } from "@xterm/headless";
+import type { TerminalProcess } from "./terminal-process.js";
 import {
   connectorTerminalSupport,
   ConnectorTerminalManager,
@@ -143,6 +145,53 @@ describe("connector terminal manager", () => {
       manager.stopAll();
     }
   });
+
+  it("throttles a real producer when parsing falls behind without losing output or killing the shell", async () => {
+    const manager = new ConnectorTerminalManager();
+    let tail = "";
+    let received = 0;
+    let maxQueuedBytes = 0;
+    let monitor: ReturnType<typeof setInterval> | undefined;
+    try {
+      await manager.subscribe("flow", descriptor, { cols: 80, rows: 24 }, (event) => {
+        if (event.type !== "output") return;
+        received += event.data.split("Q").length - 1;
+        tail = (tail + event.data).slice(-1024);
+      });
+      manager.write(descriptor.workspaceId, "stty -echo; printf '\\nFLOW_READY\\n'\r");
+      await expect.poll(() => tail, { timeout: 5_000 }).toContain("\r\nFLOW_READY\r\n");
+      received = 0;
+      const terminal = (Reflect.get(manager, "terminals") as Map<string, {
+        emulator: Terminal; pty: TerminalProcess; parseBytes: number; exited: boolean;
+      }>).get(descriptor.workspaceId)!;
+      const originalWrite = terminal.emulator.write.bind(terminal.emulator);
+      // A slow parser must apply pressure to the actual OS PTY, not buffer the
+      // producer in JS or terminate the command when it exceeds a byte budget.
+      vi.spyOn(terminal.emulator, "write").mockImplementation((data, callback) => {
+        originalWrite(data, () => setTimeout(() => callback?.(), 2));
+      });
+      const pause = vi.spyOn(terminal.pty, "pause");
+      const resume = vi.spyOn(terminal.pty, "resume");
+      monitor = setInterval(() => {
+        maxQueuedBytes = Math.max(maxQueuedBytes, terminal.parseBytes);
+      }, 5);
+      const bytes = 12 * 1024 * 1024;
+      manager.write(descriptor.workspaceId, `head -c ${bytes} /dev/zero | tr '\\0' Q; printf '\\nFLOW_DONE\\n'\r`);
+      await expect.poll(() => tail, { timeout: 45_000 }).toContain("\r\nFLOW_DONE\r\n");
+      await expect.poll(() => terminal.parseBytes, { timeout: 10_000 }).toBe(0);
+      expect(received).toBe(bytes);
+      expect(pause).toHaveBeenCalled();
+      expect(resume).toHaveBeenCalled();
+      expect(maxQueuedBytes).toBeLessThan(2 * 1024 * 1024);
+      expect(terminal.exited).toBe(false);
+      manager.write(descriptor.workspaceId, "printf '\\nSTILL_ALIVE\\n'\r");
+      await expect.poll(() => tail, { timeout: 5_000 }).toContain("\r\nSTILL_ALIVE\r\n");
+    } finally {
+      if (monitor) clearInterval(monitor);
+      manager.stopAll();
+      vi.restoreAllMocks();
+    }
+  }, 60_000);
 
   it("rejects terminals without affecting connector startup when disabled", async () => {
     process.env.OVERTCHAT_DISABLE_AGENT_TERMINAL = "true";

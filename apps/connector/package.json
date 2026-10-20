@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "tsx src/cli.ts",
     "build": "esbuild src/cli.ts --bundle --platform=node --target=node22 --format=esm --external:node-pty --external:node-pty/* --banner:js=\"import { createRequire as __overtchatCreateRequire } from 'node:module'; const require = __overtchatCreateRequire(import.meta.url);\" --outfile=dist/overtchat-connector.mjs",
-    "build:binary": "bun build src/cli.ts --compile --outfile dist/overtchat-connector",
-    "lint": "eslint src",
+    "build:package": "node scripts/package.mjs",
+    "lint": "eslint src scripts/package.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:journal-scale": "node --expose-gc --max-old-space-size=256 --import tsx scripts/journal-scale.mjs"

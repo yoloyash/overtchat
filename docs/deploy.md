@@ -480,13 +480,23 @@ web server process for these connections.
 Reconnect restores up to 2,000 scrollback lines, bounded to 4 MiB of text.
 Multiple views share the shell; the most recently focused view controls its
 dimensions. A slow viewer reconnects from the current screen if it falls behind.
-There are at most 32 shells per connector. Excessive output that overruns the
-connector's 8 MiB processing buffer stops that shell with an explanation instead
-of allowing it to exhaust connector memory. Terminal I/O is ephemeral and is not
+There are at most 32 shells per connector. When terminal parsing falls behind,
+the connector pauses PTY reads and resumes them after the queue drains. A noisy
+command can slow down under this pressure; it is not terminated for producing
+too much output. Terminal I/O is ephemeral and is not
 stored in agent history or the connector journal.
 
 Set `OVERTCHAT_DISABLE_AGENT_TERMINAL=1` in the connector service environment and
 restart it to disable terminal support.
+
+Host Connector release archives include Node.js and the native PTY module.
+No separate Node installation is needed on the connector host. The installer
+stores each runtime under `~/.local/lib/overtchat/connector/` and keeps the
+service command at `~/.local/bin/overtchat-connector`. Upgrades replace that
+launcher atomically. The standalone upgrade installer restores the previous
+launcher or legacy executable and the journal backup on failure. Previous runtime directories are retained
+so an older launcher remains usable. Do not remove a directory referenced by
+the current launcher or an upgrade rollback file.
 
 ## Share with your family
 

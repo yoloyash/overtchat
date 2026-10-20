@@ -72,7 +72,7 @@ type ManagedTerminal = {
   parseTail: Promise<void>;
   parseBytes: number;
   disposed: boolean;
-  overloaded: boolean;
+  readsPaused: boolean;
   pendingOutput: string;
   outputTimer: NodeJS.Timeout | null;
   idleTimer: NodeJS.Timeout | null;
@@ -126,14 +126,20 @@ function writeToEmulator(
   data: string,
 ): Promise<void> {
   terminal.parseBytes += Buffer.byteLength(data);
-  if (terminal.parseBytes > 1024 * 1024) terminal.pty.pause?.();
+  if (!terminal.readsPaused && terminal.parseBytes >= 1024 * 1024) {
+    terminal.pty.pause();
+    terminal.readsPaused = true;
+  }
   terminal.parseTail = terminal.parseTail.then(
     () =>
       new Promise<void>((resolve) => {
         if (terminal.disposed) { resolve(); return; }
         terminal.emulator.write(data, () => {
           terminal.parseBytes -= Buffer.byteLength(data);
-          if (terminal.parseBytes < 256 * 1024) terminal.pty.resume?.();
+          if (terminal.readsPaused && !terminal.disposed && terminal.parseBytes < 256 * 1024) {
+            terminal.readsPaused = false;
+            terminal.pty.resume();
+          }
           resolve();
         });
       }),
@@ -318,7 +324,7 @@ export class ConnectorTerminalManager {
       parseTail: Promise.resolve(),
       parseBytes: 0,
       disposed: false,
-      overloaded: false,
+      readsPaused: false,
       pendingOutput: "",
       outputTimer: null,
       idleTimer: null,
@@ -335,21 +341,7 @@ export class ConnectorTerminalManager {
   }
 
   private queueOutput(terminal: ManagedTerminal, data: string): void {
-    if (this.terminals.get(terminal.descriptor.workspaceId) !== terminal || terminal.overloaded) return;
-    // Some PTY runtimes cannot pause reads. Keep an unbounded producer from
-    // exhausting the connector while the headless emulator catches up.
-    if (terminal.parseBytes + Buffer.byteLength(data) > 8 * 1024 * 1024) {
-      terminal.overloaded = true;
-      const message = "\r\n[Terminal stopped: output exceeded the processing buffer. Restart to continue.]\r\n";
-      if (terminal.pendingOutput) {
-        this.publishOutput(terminal, terminal.pendingOutput);
-        terminal.pendingOutput = "";
-      }
-      void writeToEmulator(terminal, message);
-      this.publishOutput(terminal, message);
-      terminal.pty.kill();
-      return;
-    }
+    if (this.terminals.get(terminal.descriptor.workspaceId) !== terminal) return;
     void writeToEmulator(terminal, data);
     if (!terminal.outputTimer && terminal.pendingOutput.length === 0) {
       this.publishOutput(terminal, data);
@@ -508,17 +500,22 @@ export class ConnectorTerminalManager {
   }
 }
 
-export async function runConnectorTerminalSmoke(): Promise<void> {
+export async function runConnectorTerminalSmoke(outputBytes = 0): Promise<void> {
+  if (!Number.isSafeInteger(outputBytes) || outputBytes < 0 || outputBytes > 64 * 1024 * 1024) {
+    throw new Error("Terminal smoke output must be between 0 and 64 MiB.");
+  }
   const manager = new ConnectorTerminalManager();
   const workspaceId = `terminal-smoke-${process.pid}`;
   const marker = `overtchat-terminal-smoke-${process.pid}`;
   let output = "";
+  let received = 0;
+  let sent = false;
   let timeout: NodeJS.Timeout | undefined;
   try {
     const exited = new Promise<void>((resolve, reject) => {
       timeout = setTimeout(
         () => reject(new Error("Timed out waiting for terminal smoke test.")),
-        10_000,
+        outputBytes ? 60_000 : 10_000,
       );
       manager
         .subscribe(
@@ -533,18 +530,30 @@ export async function runConnectorTerminalSmoke(): Promise<void> {
           },
           { cols: 80, rows: 24 },
           (event) => {
-            if (event.type === "output") output += event.data;
+            if (event.type === "output") {
+              received += event.data.split("Q").length - 1;
+              output = (output + event.data).slice(-4096);
+              if (!sent && output.includes("\r\nREADY\r\n")) {
+                sent = true;
+                output = "";
+                received = 0;
+                manager.write(workspaceId,
+                  `${outputBytes ? `head -c ${outputBytes} /dev/zero | tr '\\0' '\\121'; ` : ""}printf '\\novertchat-%s-%s\\n' terminal-smoke ${process.pid}; exit\r`);
+              }
+            }
             else resolve();
           },
         )
         .then(() => {
-          manager.write(workspaceId, `printf '${marker}\\n'; exit\r`);
+          // Disable echo so only executed output can satisfy the smoke check.
+          manager.write(workspaceId, "stty -echo; printf '\\nREADY\\n'\r");
         }, reject);
     });
     await exited;
     if (!output.includes(marker)) {
       throw new Error("Terminal smoke test did not receive shell output.");
     }
+    if (received !== outputBytes) throw new Error(`Terminal smoke output mismatch: ${received}/${outputBytes} bytes.`);
   } finally {
     if (timeout) clearTimeout(timeout);
     manager.stopAll();

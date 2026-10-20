@@ -187,10 +187,10 @@ jobs:
                 --clobber \
                 --pattern connector-checksums.txt \
                 --pattern install-connector.sh \
-                --pattern overtchat-connector-darwin-amd64 \
-                --pattern overtchat-connector-darwin-arm64 \
-                --pattern overtchat-connector-linux-amd64 \
-                --pattern overtchat-connector-linux-arm64; then
+                --pattern 'overtchat-connector-darwin-amd64*' \
+                --pattern 'overtchat-connector-darwin-arm64*' \
+                --pattern 'overtchat-connector-linux-amd64*' \
+                --pattern 'overtchat-connector-linux-arm64*'; then
               downloaded=true
               break
             fi
@@ -201,13 +201,13 @@ jobs:
             echo "Release artifacts are not available yet; deferring verification."
             exit 0
           fi
-          grep -Eq '[[:space:]]\*?overtchat-connector-darwin-amd64$' \
+          grep -Eq '[[:space:]]\*?overtchat-connector-darwin-amd64(\.tar\.gz)?$' \
             "$verification_directory/connector-checksums.txt"
-          grep -Eq '[[:space:]]\*?overtchat-connector-darwin-arm64$' \
+          grep -Eq '[[:space:]]\*?overtchat-connector-darwin-arm64(\.tar\.gz)?$' \
             "$verification_directory/connector-checksums.txt"
-          grep -Eq '[[:space:]]\*?overtchat-connector-linux-amd64$' \
+          grep -Eq '[[:space:]]\*?overtchat-connector-linux-amd64(\.tar\.gz)?$' \
             "$verification_directory/connector-checksums.txt"
-          grep -Eq '[[:space:]]\*?overtchat-connector-linux-arm64$' \
+          grep -Eq '[[:space:]]\*?overtchat-connector-linux-arm64(\.tar\.gz)?$' \
             "$verification_directory/connector-checksums.txt"
           (cd "$verification_directory" && sha256sum --check connector-checksums.txt)
           # main may contain unreleased installer changes. Verify the artifact

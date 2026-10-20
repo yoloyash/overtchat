@@ -216,16 +216,24 @@ rollback; filesystem publication failures must leave the original JSON intact.
 Build the packaged connector and check it without contacting production:
 
 ```sh
-npm run build:binary -w apps/connector
-node .github/scripts/smoke-connector-journal.mjs apps/connector/dist/overtchat-connector
-bun build apps/connector/src/test-support/journal-runtime-smoke.ts --compile --outfile /tmp/overtchat-journal-smoke
-/tmp/overtchat-journal-smoke
+npm run build:package -w apps/connector
+# Substitute the host's platform/architecture (darwin/linux, amd64/arm64).
+mkdir -p /tmp/overtchat-package-check
+tar -xzf apps/connector/dist/release/overtchat-connector-darwin-arm64.tar.gz -C /tmp/overtchat-package-check
+connector_package=/tmp/overtchat-package-check/overtchat-connector
+npx esbuild apps/connector/src/test-support/journal-runtime-smoke.ts apps/connector/src/test-support/journal-crash-worker.ts \
+  --bundle --platform=node --target=node22 --format=esm \
+  --banner:js="import { createRequire as __overtchatCreateRequire } from 'node:module'; const require = __overtchatCreateRequire(import.meta.url);" \
+  --out-extension:.js=.mjs --outdir="$connector_package/test"
+"$connector_package/bin/node" .github/scripts/smoke-connector-journal.mjs \
+  "$connector_package/overtchat-connector" "$connector_package/test/journal-crash-worker.mjs" "$connector_package/bin/node"
+"$connector_package/bin/node" --max-old-space-size=256 "$connector_package/test/journal-runtime-smoke.mjs" --scale
 E2E_PORT=4747 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
 ```
 
-Run `/tmp/overtchat-journal-smoke --scale` to qualify the same incident workload
-under the compiled Bun runtime. Both qualifications require peak RSS below 1 GiB.
-The connector workflow runs packaged migration/backup, native `SIGKILL`, compiled
+The packaged qualification uses the same Node runtime shipped to users and
+requires peak RSS below 1 GiB.
+The connector workflow runs packaged migration/backup, native `SIGKILL`, bundled
 journal operations, and incident-scale checks on Linux/macOS for both CPU
 architectures. Development journal reset moves the entire connector directory,
 including WAL and migration archives.
@@ -1057,8 +1065,11 @@ Android and iOS before releasing bundled clients.
 ### Workspace terminal validation
 
 Terminals use xterm.js in the shared web/desktop UI, an authenticated WebSocket
-relay in the server, and connector-owned PTYs. Node development uses `node-pty`;
-compiled connector binaries use Bun's native terminal API. Test both runtimes.
+relay in the server, and connector-owned PTYs. Development and packaged releases
+both use Node and `node-pty`. Test the packaged runtime and its native module as
+well as source development. Parsing uses PTY pause/resume with hysteresis;
+the slow-parser regression verifies exact delivery of 12 MiB with bounded queues
+and a shell that remains usable afterward.
 Terminal input must not enter the agent RPC queue or durable event journal.
 
 Run the connector and bridge tests/typechecks, web tests/typecheck/lint/build,
@@ -1074,10 +1085,13 @@ E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
 npm run build -w apps/desktop
 OVERTCHAT_TERMINAL_DESKTOP_E2E=1 E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
   npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
-npm run build:binary -w apps/connector
-apps/connector/dist/overtchat-connector terminal-smoke
-bun build apps/connector/scripts/transport-fixture.mjs --compile --outfile /tmp/overtchat-terminal-fixture
-OVERTCHAT_TERMINAL_CONNECTOR_EXECUTABLE=/tmp/overtchat-terminal-fixture \
+# Build/extract connector_package as in the packaged journal checks above.
+env PATH=/usr/bin:/bin SHELL=/bin/sh "$connector_package/overtchat-connector" terminal-smoke --output-bytes 16777216
+npx esbuild apps/connector/scripts/transport-fixture.mjs \
+  --bundle --platform=node --target=node22 --format=esm --external:node-pty --external:node-pty/* \
+  --banner:js="import { createRequire as __overtchatCreateRequire } from 'node:module'; const require = __overtchatCreateRequire(import.meta.url);" \
+  --outfile="$connector_package/test/transport-fixture.mjs"
+OVERTCHAT_TERMINAL_CONNECTOR_PACKAGE="$connector_package" \
   E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
   npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
 ```
