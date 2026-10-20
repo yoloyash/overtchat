@@ -3,6 +3,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { SearchHit } from "@overtchat/shared";
 import { searchKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 export type { SearchHit };
 
@@ -12,7 +13,7 @@ export function useChatsSearch(query: string) {
     queryKey: searchKeys.byQuery(query.trim()),
     queryFn: async ({ signal }): Promise<SearchHit[]> => {
       const r = await fetch(
-        `/api/search?q=${encodeURIComponent(query.trim())}`,
+        apiUrl(`/api/search?q=${encodeURIComponent(query.trim())}`),
         { signal },
       );
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

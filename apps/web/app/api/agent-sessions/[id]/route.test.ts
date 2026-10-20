@@ -154,12 +154,27 @@ describe("agent session route", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ snapshot, sync });
+    await expect(response.json()).resolves.toEqual({ sync });
     expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", {
       type: "open_session",
       session: sessionDescriptor,
       after: { epoch: "old-runtime", sequence: 7 },
     });
+  });
+
+  it("pages only the owned session and rejects a mismatched connector page", async () => {
+    const page = { sessionId: "session", cursor: { epoch: "epoch", sequence: 7 }, anchor: "older", messages: [], beforeCursor: null };
+    mocks.daemonRequest.mockResolvedValueOnce(page);
+    const response = await GET(new Request("http://server.test/api/agent-sessions/session?before=older"), context);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(page);
+    expect(mocks.daemonRequest).toHaveBeenCalledWith("connector", { type: "session_history", session: sessionDescriptor, before: "older" });
+    mocks.daemonRequest.mockResolvedValueOnce({ ...page, sessionId: "other" });
+    expect((await GET(new Request("http://server.test/api/agent-sessions/session?before=older"), context)).status).toBe(400);
+    mocks.getOwnedAgentSession.mockResolvedValueOnce(null);
+    const calls = mocks.daemonRequest.mock.calls.length;
+    expect((await GET(new Request("http://server.test/api/agent-sessions/session?before=older"), context)).status).toBe(404);
+    expect(mocks.daemonRequest).toHaveBeenCalledTimes(calls);
   });
 
   it("forwards submissions with the browser message identity intact", async () => {
@@ -320,7 +335,7 @@ describe("agent session route", () => {
       modifiedAt: null,
     };
     mocks.daemonRequest.mockResolvedValue({
-      fork: {
+      sessionChange: {
         session: providerSession,
         draft: "Rewrite this prompt",
         replacesCurrentSession: true,
@@ -353,21 +368,12 @@ describe("agent session route", () => {
     expect(mocks.upsertAgentSession).not.toHaveBeenCalled();
   });
 
-  it("creates a separate OvertChat session for an explicit conversation fork", async () => {
-    const providerSession = {
-      providerSessionId: "forked-provider-session",
-      providerSessionPath: "/sessions/forked-provider-session.jsonl",
-      name: null,
-      firstMessage: "Original prompt",
-      messageCount: 2,
-      createdAt: null,
-      modifiedAt: null,
+  it("returns history for a fork draft without creating or replacing a provider session", async () => {
+    const forkContext = {
+      text: "# Conversation context\n\nHistory",
+      launchConfig: { model: "test-model" },
     };
-    mocks.daemonRequest.mockResolvedValue({
-      fork: { session: providerSession },
-    });
-    mocks.upsertAgentSession.mockResolvedValueOnce({ id: "forked-session" });
-
+    mocks.daemonRequest.mockResolvedValue({ commandResult: { forkContext } });
     const response = await POST(
       request("POST", {
         type: "fork_message",
@@ -375,16 +381,9 @@ describe("agent session route", () => {
       }),
       context,
     );
-
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({
-      accepted: true,
-      sessionId: "forked-session",
-    });
-    expect(mocks.upsertAgentSession).toHaveBeenCalledWith(
-      "workspace",
-      providerSession,
-    );
+    await expect(response.json()).resolves.toEqual({ forkContext });
+    expect(mocks.upsertAgentSession).not.toHaveBeenCalled();
     expect(mocks.replaceAgentSessionProviderSession).not.toHaveBeenCalled();
   });
 

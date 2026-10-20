@@ -21,11 +21,13 @@ export function ProfileAvatar({
   name,
   image,
   size = "md",
+  tone = "color",
 }: {
   id: string;
   name: string;
   image: string | null;
   size?: "sm" | "md" | "lg";
+  tone?: "color" | "muted";
 }) {
   return (
     <span
@@ -33,7 +35,9 @@ export function ProfileAvatar({
       aria-label={`${name} avatar`}
       className={cn(
         "relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-semibold",
-        avatarStyle(id),
+        tone === "muted"
+          ? "bg-secondary text-secondary-foreground ring-1 ring-inset ring-border/70"
+          : avatarStyle(id),
         size === "sm" && "size-7 text-[10px]",
         size === "md" && "size-9 text-xs",
         size === "lg" && "size-16 text-lg md:size-20 md:text-xl",

@@ -1,8 +1,12 @@
 import os from "node:os";
 
 export function primaryLanAddress(): string | null {
-  const candidates = Object.values(os.networkInterfaces())
-    .flatMap((addresses) => addresses ?? [])
+  const candidates = Object.entries(os.networkInterfaces())
+    .filter(([name]) =>
+      !/^(?:lo\d*$|docker|br-|veth|tailscale|tun\d|tap\d|virbr)/u.test(name) &&
+      !(process.platform === "darwin" && /^(?:bridge|utun\d|awdl|llw)/u.test(name)),
+    )
+    .flatMap(([, addresses]) => addresses ?? [])
     .filter(
       (address) =>
         address.family === "IPv4" &&
@@ -17,5 +21,5 @@ export function primaryLanAddress(): string | null {
       /^172\.(?:1[6-9]|2\d|3[01])\./u.test(value)
     );
   });
-  return privateAddress?.address ?? candidates[0]?.address ?? null;
+  return privateAddress?.address ?? null;
 }

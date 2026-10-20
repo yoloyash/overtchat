@@ -1,9 +1,10 @@
 import "server-only";
 import { and, eq, sql } from "drizzle-orm";
 import type { UIMessage, UIMessagePart, UIDataTypes, UITools } from "ai";
+import type { ChatGenerationStatus } from "@overtchat/shared";
 import { db } from "@/lib/db/client";
 import { tryRecordGenerationUsage } from "@/lib/db/generationUsage";
-import { chats, messages } from "@/lib/db/schema";
+import { chatGenerations, chats, messages, voiceSessions } from "@/lib/db/schema";
 import type { ProviderId } from "@/lib/providers/catalog";
 import type { EstimatedGenerationCost } from "@/lib/providers/server/model-cost";
 import { extractSearchText } from "@/lib/search/extract";
@@ -25,9 +26,65 @@ export type CompletedGenerationUsage = {
 
 export type CommitChatTurnResult =
   | "committed"
+  | "duplicate"
+  | "idempotency-conflict"
   | "not-found"
   | "stream-active"
   | "history-conflict";
+
+export type ChatGenerationRow = typeof chatGenerations.$inferSelect;
+
+export async function getChatGeneration(
+  streamId: string,
+  userId: string,
+): Promise<ChatGenerationRow | null> {
+  const [row] = await db
+    .select()
+    .from(chatGenerations)
+    .where(
+      and(
+        eq(chatGenerations.id, streamId),
+        eq(chatGenerations.userId, userId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getChatGenerationByRequestId(
+  userId: string,
+  clientRequestId: string,
+): Promise<ChatGenerationRow | null> {
+  const [row] = await db
+    .select()
+    .from(chatGenerations)
+    .where(
+      and(
+        eq(chatGenerations.userId, userId),
+        eq(chatGenerations.clientRequestId, clientRequestId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getLatestChatGeneration(
+  chatId: string,
+  userId: string,
+): Promise<ChatGenerationRow | null> {
+  const [row] = await db
+    .select()
+    .from(chatGenerations)
+    .where(
+      and(
+        eq(chatGenerations.chatId, chatId),
+        eq(chatGenerations.userId, userId),
+      ),
+    )
+    .orderBy(sql`${chatGenerations.startedAt} DESC`)
+    .limit(1);
+  return row ?? null;
+}
 
 export async function getChatMessage(
   chatId: string,
@@ -54,22 +111,53 @@ export async function getChatMessage(
 
 export function commitChatTurn({
   chatId,
+  modelConfigId,
   userId,
   projectId,
   streamId,
+  clientRequestId,
+  requestFingerprint,
   staleStreamId,
+  voiceSessionId,
   truncateFromMessageId,
+  continueMessage,
   userMessage,
 }: {
   chatId: string;
+  modelConfigId?: string;
   userId: string;
   projectId: string | null;
   streamId: string;
+  clientRequestId: string;
+  requestFingerprint: string;
   staleStreamId: string | null;
+  voiceSessionId?: string;
   truncateFromMessageId?: string;
-  userMessage?: { id: string; parts: AnyPart[] };
+  continueMessage?: UIMessage;
+  userMessage?: { id: string; parts: AnyPart[]; metadata?: Record<string, unknown> };
 }): CommitChatTurnResult {
   return db.transaction((tx) => {
+    const duplicate = tx
+      .select({
+        chatId: chatGenerations.chatId,
+        requestFingerprint: chatGenerations.requestFingerprint,
+      })
+      .from(chatGenerations)
+      .where(
+        and(
+          eq(chatGenerations.userId, userId),
+          eq(chatGenerations.clientRequestId, clientRequestId),
+        ),
+      )
+      .limit(1)
+      .get();
+    if (duplicate) {
+      return duplicate.chatId === chatId &&
+        duplicate.requestFingerprint === requestFingerprint
+        ? "duplicate"
+        : "idempotency-conflict";
+    }
+
     const existing = tx
       .select()
       .from(chats)
@@ -78,8 +166,34 @@ export function commitChatTurn({
       .get();
 
     if (existing && existing.userId !== userId) return "not-found";
+    const lease = tx.select().from(voiceSessions).where(eq(voiceSessions.chatId, chatId)).get();
+    const liveLease = lease && lease.expiresAt.getTime() > Date.now() ? lease : null;
+    if (voiceSessionId ? liveLease?.id !== voiceSessionId || liveLease.userId !== userId : Boolean(liveLease)) {
+      return "stream-active";
+    }
+
     if (existing?.activeStreamId && existing.activeStreamId !== staleStreamId) {
       return "stream-active";
+    }
+
+    if (continueMessage) {
+      const latest = tx
+        .select()
+        .from(messages)
+        .where(eq(messages.chatId, chatId))
+        .orderBy(sql`${messages}.rowid DESC`)
+        .limit(1)
+        .get();
+      // Validate again inside the claim transaction: a generation may have
+      // completed or an edit may have changed the answer during request setup.
+      if (
+        !existing || userMessage || truncateFromMessageId ||
+        !latest || latest.role !== "assistant" || latest.id !== continueMessage.id ||
+        JSON.stringify(latest.parts) !== JSON.stringify(continueMessage.parts) ||
+        JSON.stringify(latest.metadata ?? null) !== JSON.stringify(continueMessage.metadata ?? null)
+      ) {
+        return "history-conflict";
+      }
     }
 
     let truncateFromRowId: number | null = null;
@@ -100,6 +214,34 @@ export function commitChatTurn({
         .run();
     }
 
+    if (staleStreamId) {
+      tx.update(chatGenerations)
+        .set({
+          status: "error",
+          error: "Generation stream was no longer available.",
+          completedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(chatGenerations.id, staleStreamId),
+            eq(chatGenerations.status, "running"),
+          ),
+        )
+        .run();
+    }
+
+    tx.insert(chatGenerations)
+      .values({
+        id: streamId,
+        chatId,
+        userId,
+        clientRequestId,
+        requestFingerprint,
+        status: "running",
+        responseMessageId: continueMessage?.id ?? null,
+      })
+      .run();
+
     if (truncateFromRowId !== null) {
       tx.run(sql`
         DELETE FROM ${messages}
@@ -115,6 +257,7 @@ export function commitChatTurn({
           chatId,
           role: "user",
           parts: userMessage.parts,
+          metadata: userMessage.metadata,
         })
         .run();
       const content = extractSearchText(userMessage.parts);
@@ -127,7 +270,7 @@ export function commitChatTurn({
     }
 
     tx.update(chats)
-      .set({ activeStreamId: streamId, updatedAt: new Date() })
+      .set({ activeStreamId: streamId, modelConfigId, updatedAt: new Date() })
       .where(eq(chats.id, chatId))
       .run();
     return "committed";
@@ -139,6 +282,8 @@ export function completeChatStream({
   streamId,
   assistantMessage,
   usage,
+  status = assistantMessage ? "complete" : "error",
+  error,
 }: {
   chatId: string;
   streamId: string;
@@ -148,6 +293,8 @@ export function completeChatStream({
     metadata?: Record<string, unknown>;
   };
   usage?: CompletedGenerationUsage;
+  status?: Exclude<ChatGenerationStatus, "running">;
+  error?: string;
 }): boolean {
   const completed = db.transaction((tx) => {
     const chat = tx
@@ -161,16 +308,37 @@ export function completeChatStream({
       .get();
     if (!chat || chat.activeStreamId !== streamId) return null;
 
+    const generation = tx
+      .select({ responseMessageId: chatGenerations.responseMessageId })
+      .from(chatGenerations)
+      .where(eq(chatGenerations.id, streamId))
+      .get();
+    const continueMessageId = generation?.responseMessageId;
+
     if (assistantMessage) {
-      tx.insert(messages)
-        .values({
-          id: assistantMessage.id,
-          chatId,
-          role: "assistant",
-          parts: assistantMessage.parts,
-          metadata: assistantMessage.metadata,
-        })
-        .run();
+      if (continueMessageId) {
+        if (assistantMessage.id !== continueMessageId) return null;
+        const updated = tx
+          .update(messages)
+          .set({
+            parts: assistantMessage.parts,
+            metadata: assistantMessage.metadata,
+          })
+          .where(and(eq(messages.chatId, chatId), eq(messages.id, continueMessageId)))
+          .run();
+        if (updated.changes !== 1) return null;
+        tx.run(sql`DELETE FROM messages_fts WHERE message_id = ${continueMessageId}`);
+      } else {
+        tx.insert(messages)
+          .values({
+            id: assistantMessage.id,
+            chatId,
+            role: "assistant",
+            parts: assistantMessage.parts,
+            metadata: assistantMessage.metadata,
+          })
+          .run();
+      }
       const content = extractSearchText(assistantMessage.parts);
       if (content) {
         tx.run(sql`
@@ -186,6 +354,20 @@ export function completeChatStream({
         ...(assistantMessage ? { updatedAt: new Date() } : {}),
       })
       .where(and(eq(chats.id, chatId), eq(chats.activeStreamId, streamId)))
+      .run();
+    tx.update(chatGenerations)
+      .set({
+        status,
+        error: error ?? null,
+        responseMessageId: assistantMessage?.id ?? continueMessageId ?? null,
+        completedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(chatGenerations.id, streamId),
+          eq(chatGenerations.status, "running"),
+        ),
+      )
       .run();
     return { userId: chat.userId };
   });
@@ -204,6 +386,23 @@ export function completeChatStream({
   }
 
   return true;
+}
+
+export function failChatStream({
+  chatId,
+  streamId,
+  error,
+}: {
+  chatId: string;
+  streamId: string;
+  error: string;
+}): boolean {
+  return completeChatStream({
+    chatId,
+    streamId,
+    status: "error",
+    error,
+  });
 }
 
 export async function clearActiveStreamId(

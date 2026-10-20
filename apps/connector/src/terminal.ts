@@ -1,87 +1,31 @@
-import type { IPty } from "node-pty";
-import { createRequire as createNodeRequire } from "node:module";
+import { spawnTerminal, terminalProcessSupport, type TerminalProcess } from "./terminal-process.js";
 import headlessRuntime from "@xterm/headless/lib-headless/xterm-headless.js";
 import type { Terminal as HeadlessTerminal } from "@xterm/headless";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import {
   AGENT_TERMINAL_MAX_OUTPUT_CHARS,
   AGENT_TERMINAL_MAX_SNAPSHOT_CHARS,
-  type AgentDaemonSessionDescriptor,
+  type AgentDaemonWorkspaceDescriptor,
   type AgentTerminalEvent,
   type AgentTerminalSize,
   type AgentTerminalSnapshot,
 } from "@overtchat/agent-bridge";
 import { sshTerminalArgs } from "./ssh.js";
 
-/* eslint-disable @typescript-eslint/no-require-imports -- Bun only embeds the
- * architecture-specific N-API addon when these paths remain static requires. */
-
 const { Terminal } = headlessRuntime as unknown as {
   Terminal: typeof HeadlessTerminal;
-};
-
-type NodePtyModule = typeof import("node-pty");
-type NodePtyNativeModule = {
-  fork: (...args: unknown[]) => unknown;
 };
 
 export type ConnectorTerminalSupport =
   | { available: true }
   | { available: false; reason: string };
 
-const nodeRequire = createNodeRequire(import.meta.url);
-const isBunRuntime = "bun" in process.versions;
-
-function loadNodePtyNative(): NodePtyNativeModule {
-  if (process.arch !== "x64" && process.arch !== "arm64") {
-    throw new Error(
-      `Workspace terminals do not support Linux ${process.arch}.`,
-    );
-  }
-  if (process.arch === "arm64") {
-    return isBunRuntime
-      ? require("node-pty/prebuilds/linux-arm64/pty.node")
-      : (nodeRequire(
-          "node-pty/prebuilds/linux-arm64/pty.node",
-        ) as NodePtyNativeModule);
-  }
-  return isBunRuntime
-    ? require("node-pty/prebuilds/linux-x64/pty.node")
-    : (nodeRequire(
-        "node-pty/prebuilds/linux-x64/pty.node",
-      ) as NodePtyNativeModule);
-}
-
-function loadNodePty(): NodePtyModule {
-  if (process.platform === "linux") {
-    const native = loadNodePtyNative();
-    const utils = (isBunRuntime
-      ? require("node-pty/lib/utils.js")
-      : nodeRequire("node-pty/lib/utils.js")) as {
-      loadNativeModule(name: string): {
-        dir: string;
-        module: NodePtyNativeModule;
-      };
-    };
-    utils.loadNativeModule = (name) => {
-      if (name !== "pty") throw new Error(`Unsupported PTY module ${name}.`);
-      return {
-        dir: `../prebuilds/linux-${process.arch}`,
-        module: native,
-      };
-    };
-  }
-  return (isBunRuntime
-    ? require("node-pty")
-    : nodeRequire("node-pty")) as NodePtyModule;
-}
-
 const OUTPUT_COALESCE_MS = 5;
 const MAX_PENDING_OUTPUT_CHARS = AGENT_TERMINAL_MAX_OUTPUT_CHARS * 2;
 const TERMINAL_SCROLLBACK_LINES = 2_000;
 const DEFAULT_TERMINAL_IDLE_TIMEOUT_MS = 15 * 60 * 1_000;
 
-let loadedNodePty: NodePtyModule | Error | undefined;
+let terminalSupport: true | Error | undefined;
 
 function terminalDisabled(): boolean {
   return /^(?:1|true)$/iu.test(
@@ -96,36 +40,29 @@ export function connectorTerminalSupport(): ConnectorTerminalSupport {
       reason: "Workspace terminals are disabled on this Host Connector.",
     };
   }
-  if (loadedNodePty instanceof Error) {
-    return { available: false, reason: loadedNodePty.message };
+  if (terminalSupport instanceof Error) {
+    return { available: false, reason: terminalSupport.message };
   }
-  if (loadedNodePty) return { available: true };
+  if (terminalSupport) return { available: true };
   try {
-    loadedNodePty = loadNodePty();
+    terminalProcessSupport();
+    terminalSupport = true;
     return { available: true };
   } catch (error) {
-    loadedNodePty =
+    terminalSupport =
       error instanceof Error ? error : new Error(String(error));
-    return { available: false, reason: loadedNodePty.message };
+    return { available: false, reason: terminalSupport.message };
   }
-}
-
-function requireNodePty(): NodePtyModule {
-  const support = connectorTerminalSupport();
-  if (!support.available) {
-    throw new Error(`Workspace terminal unavailable: ${support.reason}`);
-  }
-  return loadedNodePty as NodePtyModule;
 }
 
 type TerminalSubscriber = {
-  sessionId: string;
+  workspaceId: string;
   listener: (event: AgentTerminalEvent) => void;
 };
 
 type ManagedTerminal = {
-  descriptor: AgentDaemonSessionDescriptor;
-  pty: IPty;
+  descriptor: AgentDaemonWorkspaceDescriptor;
+  pty: TerminalProcess;
   emulator: HeadlessTerminal;
   serializer: SerializeAddon;
   revision: number;
@@ -133,8 +70,10 @@ type ManagedTerminal = {
   exitCode: number | null;
   signal: number | null;
   parseTail: Promise<void>;
+  parseBytes: number;
+  disposed: boolean;
+  overloaded: boolean;
   pendingOutput: string;
-  outputTruncated: boolean;
   outputTimer: NodeJS.Timeout | null;
   idleTimer: NodeJS.Timeout | null;
   disposables: Array<{ dispose(): void }>;
@@ -149,11 +88,10 @@ function processEnvironment(): Record<string, string> {
 }
 
 function sameTerminalOwner(
-  left: AgentDaemonSessionDescriptor,
-  right: AgentDaemonSessionDescriptor,
+  left: AgentDaemonWorkspaceDescriptor,
+  right: AgentDaemonWorkspaceDescriptor,
 ): boolean {
   return (
-    left.sessionId === right.sessionId &&
     left.workspaceId === right.workspaceId &&
     left.connectionId === right.connectionId &&
     left.cwd === right.cwd &&
@@ -164,7 +102,7 @@ function sameTerminalOwner(
   );
 }
 
-function terminalLaunch(descriptor: AgentDaemonSessionDescriptor): {
+function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor): {
   command: string;
   args: string[];
   cwd: string;
@@ -187,10 +125,17 @@ function writeToEmulator(
   terminal: ManagedTerminal,
   data: string,
 ): Promise<void> {
+  terminal.parseBytes += Buffer.byteLength(data);
+  if (terminal.parseBytes > 1024 * 1024) terminal.pty.pause?.();
   terminal.parseTail = terminal.parseTail.then(
     () =>
       new Promise<void>((resolve) => {
-        terminal.emulator.write(data, resolve);
+        if (terminal.disposed) { resolve(); return; }
+        terminal.emulator.write(data, () => {
+          terminal.parseBytes -= Buffer.byteLength(data);
+          if (terminal.parseBytes < 256 * 1024) terminal.pty.resume?.();
+          resolve();
+        });
       }),
   );
   return terminal.parseTail;
@@ -206,22 +151,22 @@ export class ConnectorTerminalManager {
 
   async subscribe(
     subscriptionId: string,
-    descriptor: AgentDaemonSessionDescriptor,
+    descriptor: AgentDaemonWorkspaceDescriptor,
     size: AgentTerminalSize,
     listener: (event: AgentTerminalEvent) => void,
   ): Promise<AgentTerminalSnapshot> {
     this.subscribers.set(subscriptionId, {
-      sessionId: descriptor.sessionId,
+      workspaceId: descriptor.workspaceId,
       listener,
     });
     try {
       const terminal = this.getOrCreate(descriptor, size);
       this.cancelIdleCleanup(terminal);
-      this.resize(descriptor.sessionId, size);
+      this.resize(descriptor.workspaceId, size);
       return await this.snapshot(terminal);
     } catch (error) {
       this.subscribers.delete(subscriptionId);
-      this.scheduleIdleCleanup(descriptor.sessionId);
+      this.scheduleIdleCleanup(descriptor.workspaceId);
       throw error;
     }
   }
@@ -230,18 +175,18 @@ export class ConnectorTerminalManager {
     const subscriber = this.subscribers.get(subscriptionId);
     if (!subscriber) return;
     this.subscribers.delete(subscriptionId);
-    this.scheduleIdleCleanup(subscriber.sessionId);
+    this.scheduleIdleCleanup(subscriber.workspaceId);
   }
 
-  write(sessionId: string, data: string): boolean {
-    const terminal = this.terminals.get(sessionId);
+  write(workspaceId: string, data: string): boolean {
+    const terminal = this.terminals.get(workspaceId);
     if (!terminal || terminal.exited) return false;
     terminal.pty.write(data);
     return true;
   }
 
-  resize(sessionId: string, size: AgentTerminalSize): boolean {
-    const terminal = this.terminals.get(sessionId);
+  resize(workspaceId: string, size: AgentTerminalSize): boolean {
+    const terminal = this.terminals.get(workspaceId);
     if (!terminal || terminal.exited) return false;
     if (
       terminal.emulator.cols === size.cols &&
@@ -259,66 +204,66 @@ export class ConnectorTerminalManager {
   }
 
   async restart(
-    descriptor: AgentDaemonSessionDescriptor,
+    descriptor: AgentDaemonWorkspaceDescriptor,
     size: AgentTerminalSize,
   ): Promise<AgentTerminalSnapshot> {
-    this.disposeTerminal(descriptor.sessionId, true);
+    this.disposeTerminal(descriptor.workspaceId, true);
     const terminal = this.create(descriptor, size);
-    this.scheduleIdleCleanup(descriptor.sessionId);
+    this.scheduleIdleCleanup(descriptor.workspaceId);
     return this.snapshot(terminal);
   }
 
-  kill(sessionId: string): boolean {
-    const terminal = this.terminals.get(sessionId);
+  kill(workspaceId: string): boolean {
+    const terminal = this.terminals.get(workspaceId);
     if (!terminal || terminal.exited) return false;
     terminal.pty.kill();
     return true;
   }
 
-  stopSession(sessionId: string): void {
-    this.disposeTerminal(sessionId, true);
+  disposeWorkspace(workspaceId: string): void {
+    const terminal = this.terminals.get(workspaceId);
+    if (terminal && !terminal.exited) {
+      this.emit(workspaceId, { type: "exit", revision: ++terminal.revision, exitCode: null, signal: 15 });
+    }
+    this.disposeTerminal(workspaceId, true);
     for (const [subscriptionId, subscriber] of this.subscribers) {
-      if (subscriber.sessionId === sessionId) {
+      if (subscriber.workspaceId === workspaceId) {
         this.subscribers.delete(subscriptionId);
       }
     }
   }
 
   stopWorkspace(workspaceId: string): void {
-    for (const terminal of [...this.terminals.values()]) {
-      if (terminal.descriptor.workspaceId === workspaceId) {
-        this.stopSession(terminal.descriptor.sessionId);
-      }
-    }
+    this.disposeWorkspace(workspaceId);
   }
 
   stopConnection(connectionId: string): void {
     for (const terminal of [...this.terminals.values()]) {
       if (terminal.descriptor.connectionId === connectionId) {
-        this.stopSession(terminal.descriptor.sessionId);
+        this.disposeWorkspace(terminal.descriptor.workspaceId);
       }
     }
   }
 
   stopAll(): void {
-    for (const sessionId of [...this.terminals.keys()]) {
-      this.stopSession(sessionId);
+    for (const workspaceId of [...this.terminals.keys()]) {
+      this.disposeWorkspace(workspaceId);
     }
     this.subscribers.clear();
   }
 
   disconnectSubscribers(): void {
     this.subscribers.clear();
-    for (const sessionId of this.terminals.keys()) {
-      this.scheduleIdleCleanup(sessionId);
+    for (const workspaceId of this.terminals.keys()) {
+      this.scheduleIdleCleanup(workspaceId);
     }
   }
 
   private getOrCreate(
-    descriptor: AgentDaemonSessionDescriptor,
+    descriptor: AgentDaemonWorkspaceDescriptor,
     size: AgentTerminalSize,
   ): ManagedTerminal {
-    const existing = this.terminals.get(descriptor.sessionId);
+    const existing = this.terminals.get(descriptor.workspaceId);
     if (!existing) return this.create(descriptor, size);
     if (!sameTerminalOwner(existing.descriptor, descriptor)) {
       throw new Error("The terminal session belongs to a different workspace.");
@@ -327,11 +272,13 @@ export class ConnectorTerminalManager {
   }
 
   private create(
-    descriptor: AgentDaemonSessionDescriptor,
+    descriptor: AgentDaemonWorkspaceDescriptor,
     size: AgentTerminalSize,
   ): ManagedTerminal {
+    if (this.terminals.size >= 32) throw new Error("Close an existing workspace terminal before opening another.");
     const launch = terminalLaunch(descriptor);
-    const pty = requireNodePty();
+    const support = connectorTerminalSupport();
+    if (!support.available) throw new Error(`Workspace terminal unavailable: ${support.reason}`);
     const emulator = new Terminal({
       cols: size.cols,
       rows: size.rows,
@@ -340,7 +287,9 @@ export class ConnectorTerminalManager {
     });
     const serializer = new SerializeAddon();
     emulator.loadAddon(serializer);
-    const processHandle = pty.spawn(launch.command, launch.args, {
+    let processHandle: TerminalProcess;
+    try {
+      processHandle = spawnTerminal(launch.command, launch.args, {
       name: "xterm-256color",
       cols: size.cols,
       rows: size.rows,
@@ -349,10 +298,14 @@ export class ConnectorTerminalManager {
         ...processEnvironment(),
         TERM: "xterm-256color",
         COLORTERM: "truecolor",
-        OVERTCHAT_AGENT_SESSION_ID: descriptor.sessionId,
         OVERTCHAT_AGENT_WORKSPACE_ID: descriptor.workspaceId,
       },
-    });
+      });
+    } catch (error) {
+      serializer.dispose();
+      emulator.dispose();
+      throw error;
+    }
     const terminal: ManagedTerminal = {
       descriptor,
       pty: processHandle,
@@ -363,8 +316,10 @@ export class ConnectorTerminalManager {
       exitCode: null,
       signal: null,
       parseTail: Promise.resolve(),
+      parseBytes: 0,
+      disposed: false,
+      overloaded: false,
       pendingOutput: "",
-      outputTruncated: false,
       outputTimer: null,
       idleTimer: null,
       disposables: [],
@@ -375,12 +330,26 @@ export class ConnectorTerminalManager {
         void this.finishExit(terminal, exitCode, signal);
       }),
     );
-    this.terminals.set(descriptor.sessionId, terminal);
+    this.terminals.set(descriptor.workspaceId, terminal);
     return terminal;
   }
 
   private queueOutput(terminal: ManagedTerminal, data: string): void {
-    if (this.terminals.get(terminal.descriptor.sessionId) !== terminal) return;
+    if (this.terminals.get(terminal.descriptor.workspaceId) !== terminal || terminal.overloaded) return;
+    // Some PTY runtimes cannot pause reads. Keep an unbounded producer from
+    // exhausting the connector while the headless emulator catches up.
+    if (terminal.parseBytes + Buffer.byteLength(data) > 8 * 1024 * 1024) {
+      terminal.overloaded = true;
+      const message = "\r\n[Terminal stopped: output exceeded the processing buffer. Restart to continue.]\r\n";
+      if (terminal.pendingOutput) {
+        this.publishOutput(terminal, terminal.pendingOutput);
+        terminal.pendingOutput = "";
+      }
+      void writeToEmulator(terminal, message);
+      this.publishOutput(terminal, message);
+      terminal.pty.kill();
+      return;
+    }
     void writeToEmulator(terminal, data);
     if (!terminal.outputTimer && terminal.pendingOutput.length === 0) {
       this.publishOutput(terminal, data);
@@ -392,25 +361,17 @@ export class ConnectorTerminalManager {
       return;
     }
     terminal.pendingOutput += data;
-    if (terminal.pendingOutput.length > MAX_PENDING_OUTPUT_CHARS) {
-      terminal.pendingOutput = terminal.pendingOutput.slice(
-        -MAX_PENDING_OUTPUT_CHARS,
-      );
-      if (!terminal.outputTruncated) {
-        // Deliberately leave a revision gap. The web broker will close the
-        // stream and the browser will recover from the headless snapshot.
-        terminal.revision += 1;
-        terminal.outputTruncated = true;
-      }
+    if (terminal.pendingOutput.length >= MAX_PENDING_OUTPUT_CHARS) {
+      if (terminal.outputTimer) clearTimeout(terminal.outputTimer);
+      this.flushOutputWindow(terminal);
     }
   }
 
   private flushOutputWindow(terminal: ManagedTerminal): void {
     terminal.outputTimer = null;
-    if (this.terminals.get(terminal.descriptor.sessionId) !== terminal) return;
+    if (this.terminals.get(terminal.descriptor.workspaceId) !== terminal) return;
     const output = terminal.pendingOutput;
     terminal.pendingOutput = "";
-    terminal.outputTruncated = false;
     if (!output) return;
     this.publishOutput(terminal, output);
     terminal.outputTimer = setTimeout(
@@ -421,21 +382,17 @@ export class ConnectorTerminalManager {
   }
 
   private publishOutput(terminal: ManagedTerminal, output: string): void {
-    for (
-      let offset = 0;
-      offset < output.length;
-      offset += AGENT_TERMINAL_MAX_OUTPUT_CHARS
-    ) {
-      const data = output.slice(
-        offset,
-        offset + AGENT_TERMINAL_MAX_OUTPUT_CHARS,
-      );
+    for (let offset = 0; offset < output.length;) {
+      let end = Math.min(offset + AGENT_TERMINAL_MAX_OUTPUT_CHARS, output.length);
+      if (end < output.length && /[\uD800-\uDBFF]/u.test(output[end - 1])) end -= 1;
+      const data = output.slice(offset, end);
+      offset = end;
       const event: AgentTerminalEvent = {
         type: "output",
         revision: ++terminal.revision,
         data,
       };
-      this.emit(terminal.descriptor.sessionId, event);
+      this.emit(terminal.descriptor.workspaceId, event);
     }
   }
 
@@ -444,7 +401,7 @@ export class ConnectorTerminalManager {
     exitCode: number,
     signal: number | undefined,
   ): Promise<void> {
-    if (this.terminals.get(terminal.descriptor.sessionId) !== terminal) return;
+    if (this.terminals.get(terminal.descriptor.workspaceId) !== terminal) return;
     if (terminal.outputTimer) clearTimeout(terminal.outputTimer);
     terminal.outputTimer = null;
     if (terminal.pendingOutput) {
@@ -452,39 +409,44 @@ export class ConnectorTerminalManager {
       terminal.pendingOutput = "";
     }
     await terminal.parseTail;
+    if (this.terminals.get(terminal.descriptor.workspaceId) !== terminal) return;
     terminal.exited = true;
     terminal.exitCode = exitCode;
     terminal.signal = signal ?? null;
-    this.emit(terminal.descriptor.sessionId, {
+    this.emit(terminal.descriptor.workspaceId, {
       type: "exit",
       revision: ++terminal.revision,
       exitCode,
       signal: signal ?? null,
     });
-    this.scheduleIdleCleanup(terminal.descriptor.sessionId);
+    this.scheduleIdleCleanup(terminal.descriptor.workspaceId);
   }
 
-  private emit(sessionId: string, event: AgentTerminalEvent): void {
+  private emit(workspaceId: string, event: AgentTerminalEvent): void {
     for (const subscriber of this.subscribers.values()) {
-      if (subscriber.sessionId === sessionId) subscriber.listener(event);
+      if (subscriber.workspaceId === workspaceId) subscriber.listener(event);
     }
   }
 
   private async snapshot(
     terminal: ManagedTerminal,
   ): Promise<AgentTerminalSnapshot> {
+    if (terminal.outputTimer) clearTimeout(terminal.outputTimer);
+    this.flushOutputWindow(terminal);
+    const revision = terminal.revision;
     await terminal.parseTail;
+    if (terminal.disposed) throw new Error("The workspace terminal was stopped.");
     let data = "";
     for (const scrollback of [2_000, 1_000, 500, 200, 0]) {
       data = terminal.serializer.serialize({ scrollback });
-      if (data.length <= AGENT_TERMINAL_MAX_SNAPSHOT_CHARS) break;
+      if (Buffer.byteLength(JSON.stringify(data)) <= AGENT_TERMINAL_MAX_SNAPSHOT_CHARS) break;
     }
-    if (data.length > AGENT_TERMINAL_MAX_SNAPSHOT_CHARS) {
+    if (Buffer.byteLength(JSON.stringify(data)) > AGENT_TERMINAL_MAX_SNAPSHOT_CHARS) {
       throw new Error("The terminal snapshot is too large to reconnect.");
     }
     return {
-      sessionId: terminal.descriptor.sessionId,
-      revision: terminal.revision,
+      workspaceId: terminal.descriptor.workspaceId,
+      revision,
       data,
       cols: terminal.emulator.cols,
       rows: terminal.emulator.rows,
@@ -494,10 +456,11 @@ export class ConnectorTerminalManager {
     };
   }
 
-  private disposeTerminal(sessionId: string, kill: boolean): void {
-    const terminal = this.terminals.get(sessionId);
+  private disposeTerminal(workspaceId: string, kill: boolean): void {
+    const terminal = this.terminals.get(workspaceId);
     if (!terminal) return;
-    this.terminals.delete(sessionId);
+    this.terminals.delete(workspaceId);
+    terminal.disposed = true;
     if (terminal.outputTimer) clearTimeout(terminal.outputTimer);
     terminal.outputTimer = null;
     if (terminal.idleTimer) clearTimeout(terminal.idleTimer);
@@ -514,9 +477,9 @@ export class ConnectorTerminalManager {
     }
   }
 
-  private hasSubscribers(sessionId: string): boolean {
+  private hasSubscribers(workspaceId: string): boolean {
     for (const subscriber of this.subscribers.values()) {
-      if (subscriber.sessionId === sessionId) return true;
+      if (subscriber.workspaceId === workspaceId) return true;
     }
     return false;
   }
@@ -527,18 +490,18 @@ export class ConnectorTerminalManager {
     terminal.idleTimer = null;
   }
 
-  private scheduleIdleCleanup(sessionId: string): void {
-    const terminal = this.terminals.get(sessionId);
-    if (!terminal || terminal.idleTimer || this.hasSubscribers(sessionId)) {
+  private scheduleIdleCleanup(workspaceId: string): void {
+    const terminal = this.terminals.get(workspaceId);
+    if (!terminal || !terminal.exited || terminal.idleTimer || this.hasSubscribers(workspaceId)) {
       return;
     }
     terminal.idleTimer = setTimeout(() => {
       terminal.idleTimer = null;
       if (
-        this.terminals.get(sessionId) === terminal &&
-        !this.hasSubscribers(sessionId)
+        this.terminals.get(workspaceId) === terminal &&
+        !this.hasSubscribers(workspaceId)
       ) {
-        this.disposeTerminal(sessionId, true);
+        this.disposeTerminal(workspaceId, true);
       }
     }, this.idleTimeoutMs);
     terminal.idleTimer.unref();
@@ -547,7 +510,7 @@ export class ConnectorTerminalManager {
 
 export async function runConnectorTerminalSmoke(): Promise<void> {
   const manager = new ConnectorTerminalManager();
-  const sessionId = `terminal-smoke-${process.pid}`;
+  const workspaceId = `terminal-smoke-${process.pid}`;
   const marker = `overtchat-terminal-smoke-${process.pid}`;
   let output = "";
   let timeout: NodeJS.Timeout | undefined;
@@ -562,15 +525,11 @@ export async function runConnectorTerminalSmoke(): Promise<void> {
           "terminal-smoke",
           {
             connectionId: "terminal-smoke",
-            workspaceId: "terminal-smoke",
+            workspaceId,
             provider: "codex",
             target: { transport: "local", shellMode: "login" },
             executable: "codex",
             cwd: process.cwd(),
-            sessionId,
-            providerSessionId: "terminal-smoke",
-            providerSessionPath: "/terminal-smoke",
-            launchConfig: {},
           },
           { cols: 80, rows: 24 },
           (event) => {
@@ -579,7 +538,7 @@ export async function runConnectorTerminalSmoke(): Promise<void> {
           },
         )
         .then(() => {
-          manager.write(sessionId, `printf '${marker}\\n'; exit\r`);
+          manager.write(workspaceId, `printf '${marker}\\n'; exit\r`);
         }, reject);
     });
     await exited;

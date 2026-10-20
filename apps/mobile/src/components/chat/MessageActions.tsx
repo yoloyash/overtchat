@@ -6,12 +6,14 @@ import { useTheme } from "@/lib/theme";
 export function MessageActions({
   onCopy,
   onRegenerate,
+  onContinue,
   onSpeak,
   copied,
   speechStatus = "idle",
 }: {
   onCopy: () => void;
   onRegenerate?: () => void;
+  onContinue?: () => void;
   onSpeak?: () => void;
   copied: boolean;
   speechStatus?: SpeechStatus;
@@ -52,6 +54,14 @@ export function MessageActions({
                 ? "Loading speech"
                 : "Read aloud"
           }
+        />
+      ) : null}
+      {onContinue ? (
+        <IconButton
+          icon="play"
+          onPress={onContinue}
+          color={colors.mutedForeground}
+          accessibilityLabel="Continue response"
         />
       ) : null}
     </View>

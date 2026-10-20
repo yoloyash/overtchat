@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { ChatKind } from "@overtchat/shared";
+import { getChatQueueStore, type ChatKind } from "@overtchat/shared";
 import { authFetch, getApiBase } from "@/lib/api";
 import { queryKeys } from "@/lib/queries/keys";
 
 export type ChatListItem = {
   id: string;
   title: string | null;
+  pinned?: boolean;
   kind: ChatKind;
   projectId: string | null;
   updatedAt: number;
@@ -39,6 +40,21 @@ export function useRenameChat() {
   });
 }
 
+export function useSetChatPinned() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, pinned }: { id: string; pinned: boolean }) => {
+      const res = await authFetch(`${getApiBase()}/api/chats/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      });
+      if (!res.ok) throw new Error(`Failed to update pin (${res.status})`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
+  });
+}
+
 export function useDeleteChat() {
   const qc = useQueryClient();
   return useMutation({
@@ -48,7 +64,10 @@ export function useDeleteChat() {
       });
       if (!res.ok) throw new Error(`Failed to delete (${res.status})`);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.chats() }),
+    onSuccess: (_, id) => {
+      getChatQueueStore(qc).deleteChat(id);
+      return qc.invalidateQueries({ queryKey: queryKeys.chats() });
+    },
   });
 }
 

@@ -34,6 +34,13 @@ jobs:
       - name: Use pinned npm
         run: npm install --global npm@10.9.8
 
+      # npm ci accepts dependency-flag drift in a lockfile. Require the pinned
+      # npm to reproduce it before installing or testing the dependency tree.
+      - name: Check lockfile reproducibility
+        run: |
+          npm run deps:lockfile
+          git diff --exit-code -- package-lock.json
+
       - run: npm ci
 
       - name: Validate GitHub Actions workflows
@@ -46,18 +53,53 @@ jobs:
       - name: Check dependency resolution
         run: npm run deps:check
 
+      - name: Check mobile native dependency versions
+        run: npm run check:native-deps -w apps/mobile --
+
       - name: Lint
         run: npm run lint
 
-      # apps/mobile ships no build and no tests, so type-checking is the only
-      # signal it produces. Running tsc across every workspace also keeps a
-      # dependency update that breaks types legible here rather than surfacing
-      # it later as a failed Playwright run.
+      # Running tsc across every workspace catches native and shared-package
+      # type errors before they surface in application or release builds.
       - name: Typecheck
         run: npm run typecheck
 
       - name: Test
         run: npm run test
+
+      - name: Qualify incident-scale connector journal recovery
+        run: npm run test:journal-scale -w apps/connector
+
+      - name: Speech transport and codec tests (no Apple models)
+        run: |
+          python3 -m venv /tmp/overtchat-speech-tests
+          /tmp/overtchat-speech-tests/bin/pip install -r speech/apple/requirements-test.txt
+          /tmp/overtchat-speech-tests/bin/python -m unittest discover -s speech/apple -p 'test_*.py'
+
+  windows-agent-launcher:
+    permissions:
+      contents: read
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.x
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Use pinned npm
+        run: npm install --global npm@10.9.8
+      - run: npm ci
+      - name: Test native Windows launch and host path contracts
+        run: |
+          npm run test -w apps/connector -- src/windows-helper.test.ts src/windows-input.test.ts src/deferred-process.test.ts src/host-environment.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test -w packages/agent-runtime -- src/runtime/windows-command.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test -w packages/agent-bridge -- src/paths.test.ts
 
   container:
     permissions:
@@ -80,3 +122,20 @@ jobs:
             test ! -e /app/apps/web/data
             test ! -e /app/apps/web/scripts
           '
+
+  voice:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+      - name: Build pinned voice engine
+        run: docker build --tag overtchat-voice-test voice
+      - name: Test connection isolation against the engine
+        run: >-
+          docker run --rm --entrypoint python
+          -v "$GITHUB_WORKSPACE/voice:/tests:ro" -w /tests
+          overtchat-voice-test -B -m unittest discover -s /tests -p 'test_*.py'

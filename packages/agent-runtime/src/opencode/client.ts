@@ -165,6 +165,7 @@ function questionFields(questions: QuestionInfo[]) {
         : ("text" as const),
     required: true,
     secret: false,
+    allowOther: question.custom !== false,
     options: question.options.map((option) => ({
       value: option.label,
       label: option.label,
@@ -205,10 +206,19 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
   private modeId?: string;
   private streaming = false;
   private compacting = false;
+  private contextUsage: AgentSessionStats["contextUsage"];
+  private readonly preCompactionMessageIds = new Set<string>();
+  private readonly usageCompactionParts = new Set<string>();
   private stopped = false;
+  private stopPromise?: Promise<void>;
+  private abortOnCloseStarted = false;
   private submissions: Record<string, string> = {};
   private todos: Todo[] = [];
   private activeSelection?: OpenCodeTurnSelection;
+  private resolveEventStreamReady: () => void = () => {};
+  private readonly eventStreamReady = new Promise<void>((resolve) => {
+    this.resolveEventStreamReady = resolve;
+  });
 
   constructor(
     private readonly target: HostTarget,
@@ -222,6 +232,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       this.abortEvents.abort();
       const lease = this.lease;
       this.lease = undefined;
+      await this.abortSessionOnClose();
       await lease?.release().catch(() => {});
       throw error;
     });
@@ -249,6 +260,25 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     };
   }
 
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "both")
+      throw new Error("OpenCode rewinds conversation and files together.");
+    await this.readyPromise;
+    this.session = resultData(
+      await this.client!.session.revert({
+        sessionID: this.session!.id,
+        directory: this.launch.cwd,
+        messageID: messageId,
+      }),
+      "OpenCode rewind",
+    );
+    this.messageInfo.clear();
+    this.messageParts.clear();
+  }
+
   async getMessages(): Promise<{ messages: unknown[] }> {
     await this.readyPromise;
     const messages = await this.fetchMessages();
@@ -269,6 +299,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       ?.contextWindow;
     return {
       ...parseOpenCodeStats(messages, contextWindow ?? undefined),
+      ...(this.contextUsage ? { contextUsage: this.contextUsage } : {}),
       sessionFile: this.session!.id,
       sessionId: this.session!.id,
     };
@@ -436,12 +467,49 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     });
   }
 
-  async stop(): Promise<void> {
-    if (this.stopped) return;
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
     this.stopped = true;
     this.abortEvents.abort();
-    await this.readyPromise.catch(() => {});
-    await this.lease?.release().catch(() => {});
+    this.stopPromise = this.close();
+    return this.stopPromise;
+  }
+
+  private async close(): Promise<void> {
+    try {
+      await this.readyPromise.catch(() => {});
+      await this.abortSessionOnClose();
+    } finally {
+      await this.lease?.release();
+    }
+  }
+
+  private async abortSessionOnClose(): Promise<void> {
+    if (this.abortOnCloseStarted || !this.client || !this.session) return;
+    this.abortOnCloseStarted = true;
+    const abort = new AbortController();
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const result = await Promise.race([
+        this.client.session.abort(
+          { sessionID: this.session.id, directory: this.launch.cwd },
+          { signal: abort.signal },
+        ),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => {
+            abort.abort();
+            reject(new Error("OpenCode session shutdown timed out."));
+          }, 2_000);
+        }),
+      ]);
+      assertResult(result, "OpenCode session shutdown");
+    } catch (error) {
+      console.warn(
+        `Unable to abort OpenCode session during shutdown: ${openCodeErrorText(error)}`,
+      );
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async initialize(): Promise<void> {
@@ -449,6 +517,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     this.client = createOpencodeClient({
       baseUrl: this.lease.baseUrl,
       directory: this.launch.cwd,
+      signal: this.abortEvents.signal,
     });
     const stream = await this.client.global.event({ signal: this.abortEvents.signal });
     void this.runEventLoop(stream.stream);
@@ -532,6 +601,7 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     steering: boolean,
   ): Promise<unknown> {
     await this.readyPromise;
+    await this.awaitEventStreamReady();
     const selection = steering
       ? (this.activeSelection ?? this.currentSelection())
       : this.currentSelection();
@@ -627,7 +697,11 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
       sessionID: this.session!.id,
       directory: this.launch.cwd,
     });
-    return resultData(result, "OpenCode messages");
+    const messages = resultData(result, "OpenCode messages");
+    const boundary = this.session?.revert?.messageID;
+    return boundary
+      ? messages.filter((message) => message.info.id < boundary)
+      : messages;
   }
 
   private rememberMessage(message: OpenCodeMessageWithParts): void {
@@ -661,10 +735,30 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
     }
   }
 
+  // Wait for server.connected before dispatching the first prompt.
+  // The SDK returns a lazy stream, before its HTTP connection is established.
+  private async awaitEventStreamReady(): Promise<void> {
+    const signal = this.abortEvents.signal;
+    if (signal.aborted) throw new Error("OpenCode is stopped.");
+    await new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        clearTimeout(timer);
+        signal.removeEventListener("abort", aborted);
+        if (error) reject(error);
+        else resolve();
+      };
+      const aborted = () => finish(new Error("OpenCode is stopped."));
+      const timer = setTimeout(() => finish(new Error("OpenCode event stream is not connected; your message was not sent.")), 15_000);
+      signal.addEventListener("abort", aborted, { once: true });
+      void this.eventStreamReady.then(() => finish());
+    });
+  }
+
   private async consumeEvents(stream: AsyncIterable<GlobalEvent>): Promise<void> {
     for await (const envelope of stream) {
       if (this.stopped) continue;
       const payload = envelope.payload as unknown as Record<string, unknown>;
+      if (payload.type === "server.connected") this.resolveEventStreamReady();
       if (
         typeof payload.type !== "string" ||
         !payload.properties ||
@@ -836,6 +930,9 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
           this.messageInfo.set(info.id, info);
           this.messageParts.set(info.id, this.messageParts.get(info.id) ?? new Map());
           this.emitProjected(info.id);
+          if (info.role === "assistant" && !info.summary && !this.preCompactionMessageIds.has(info.id)) {
+            this.updateContextUsage(info.tokens, `${info.providerID}/${info.modelID}`);
+          }
         }
         break;
       }
@@ -847,6 +944,16 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
           this.messageParts.set(part.messageID, parts);
           this.emitProjected(part.messageID);
           if (part.type === "tool") this.emitTool(part);
+          if (part.type === "compaction" && !this.usageCompactionParts.has(part.id)) {
+            this.usageCompactionParts.add(part.id);
+            if (!this.compacting) this.invalidateContextUsage();
+            this.compacting = true;
+          }
+          const info = this.messageInfo.get(part.messageID);
+          if (part.type === "step-finish" && info?.role === "assistant" && !info.summary &&
+              !this.preCompactionMessageIds.has(part.messageID)) {
+            this.updateContextUsage(part.tokens, `${info.providerID}/${info.modelID}`);
+          }
         }
         break;
       }
@@ -934,18 +1041,67 @@ export class OpenCodeRuntimeClient implements AgentRuntimeClient {
         break;
       }
       case "session.compacted":
+        if (!this.compacting) this.invalidateContextUsage();
         this.compacting = false;
         this.emit({ type: "compaction_end" });
         break;
       case "session.next.compaction.started":
+        if (!this.compacting) this.invalidateContextUsage();
         this.compacting = true;
         this.emit({ type: "compaction_start", reason: properties.reason });
         break;
       case "session.next.compaction.ended":
+        if (!this.compacting) this.invalidateContextUsage();
         this.compacting = false;
         this.emit({ type: "compaction_end" });
         break;
     }
+  }
+
+  private invalidateContextUsage(): void {
+    for (const id of this.messageInfo.keys())
+      this.preCompactionMessageIds.add(id);
+    const contextWindow =
+      this.contextUsage?.contextWindow ??
+      this.models.find((model) => model.id === this.selectedModel)
+        ?.contextWindow;
+    if (!contextWindow) return;
+    this.contextUsage = { tokens: null, contextWindow, percent: null };
+    this.emit({
+      type: "usage_update",
+      usage: { contextUsage: this.contextUsage },
+    });
+  }
+
+  private updateContextUsage(
+    usage: {
+      input: number;
+      output: number;
+      reasoning: number;
+      cache: { read: number; write: number };
+    },
+    modelId: string,
+  ): void {
+    const contextWindow = this.models.find(
+      (model) => model.id === modelId,
+    )?.contextWindow;
+    const tokens =
+      usage.input +
+      usage.output +
+      usage.reasoning +
+      usage.cache.read +
+      usage.cache.write;
+    // OpenCode sends an empty assistant message before reporting actual usage.
+    if (!contextWindow || !Number.isFinite(tokens) || tokens <= 0) return;
+    this.contextUsage = {
+      tokens,
+      contextWindow,
+      percent: (tokens / contextWindow) * 100,
+    };
+    this.emit({
+      type: "usage_update",
+      usage: { contextUsage: this.contextUsage },
+    });
   }
 
   private emitTool(part: Extract<Part, { type: "tool" }>): void {

@@ -7,9 +7,11 @@ const mocks = vi.hoisted(() => ({
   steer: vi.fn(),
   abort: vi.fn(),
   forkSession: vi.fn(),
+  rewind: vi.fn(),
   stop: vi.fn(),
   saveQueue: vi.fn(),
   getState: vi.fn(),
+  getSessionStats: vi.fn(),
   getMessages: vi.fn(),
   getAvailableModels: vi.fn(),
   setModel: vi.fn(),
@@ -41,6 +43,8 @@ const stats = {
 vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
   agentProviderAdapter: (provider: AgentProviderId) => ({
     provider,
+    steering: provider === "hermes" ? "restart" : undefined,
+    pollUsage: provider === "pi" || provider === "omp",
     capabilities: { steer: true },
     probeConnection: vi.fn(),
     probeTarget: vi.fn(),
@@ -49,23 +53,24 @@ vi.mock("@overtchat/agent-runtime/providers/registry", () => ({
     startSession: (_target: unknown, launch: Record<string, unknown>) => {
       mocks.launches.push(launch);
       return {
-      onEvent: vi.fn((subscriber: (event: AgentRuntimeEvent) => void) => {
-        mocks.eventSubscriber = subscriber;
-        return vi.fn();
-      }),
-      getState: mocks.getState,
-      getMessages: mocks.getMessages,
-      getAvailableModels: mocks.getAvailableModels,
-      getSessionStats: vi.fn().mockResolvedValue(stats),
-      getCommands: vi.fn().mockResolvedValue([]),
-      prompt: mocks.prompt,
-      steer: mocks.steer,
-      abort: mocks.abort,
-      setModel: mocks.setModel,
-      setThinkingLevel: mocks.setThinkingLevel,
-      setMode: mocks.setMode,
-      forkSession: mocks.forkSession,
-      stop: mocks.stop,
+        onEvent: vi.fn((subscriber: (event: AgentRuntimeEvent) => void) => {
+          mocks.eventSubscriber = subscriber;
+          return vi.fn();
+        }),
+        getState: mocks.getState,
+        getMessages: mocks.getMessages,
+        getAvailableModels: mocks.getAvailableModels,
+        getSessionStats: mocks.getSessionStats,
+        getCommands: vi.fn().mockResolvedValue([]),
+        prompt: mocks.prompt,
+        steer: mocks.steer,
+        abort: mocks.abort,
+        setModel: mocks.setModel,
+        setThinkingLevel: mocks.setThinkingLevel,
+        setMode: mocks.setMode,
+        forkSession: mocks.forkSession,
+        rewind: mocks.rewind,
+        stop: mocks.stop,
       };
     },
     sessionIdentity: () => ({
@@ -92,7 +97,8 @@ import { AgentRuntimeRegistry } from "./registry.js";
 
 describe("agent runtime", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
+    mocks.getSessionStats.mockResolvedValue(stats);
     mocks.prompt.mockResolvedValue({ accepted: true });
     mocks.steer.mockResolvedValue({ accepted: true });
     mocks.abort.mockResolvedValue({ interrupted: true });
@@ -150,6 +156,54 @@ describe("agent runtime", () => {
     mocks.eventSubscriber = null;
   });
 
+  it("checks native delivery after restart without replacing the retained display transcript", async () => {
+    const displayed = [
+      { id: "old-answer", role: "assistant", content: "Keep this completed answer" },
+      { role: "user", content: "Continue", overtchatSubmissionId: "pending" },
+    ];
+    mocks.getMessages.mockResolvedValue({ messages: [
+      { role: "compactionSummary", content: "Compacted context" },
+      { role: "user", content: "Continue", overtchatSubmissionId: "pending" },
+    ] });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadTranscript: async () => displayed,
+      loadQueuedMessages: () => [{ id: "pending", message: "Continue", status: "sending" }],
+      saveQueuedMessages: mocks.saveQueue,
+    });
+    const runtime = await registry.getOrStart({
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "omp", target: { transport: "local" }, executable: "omp", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    expect(runtime.snapshot().messages).toEqual(displayed);
+    expect(runtime.snapshot().queuedMessages).toEqual([]);
+    expect(mocks.getMessages).toHaveBeenCalledOnce();
+    expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it("retains an interrupted compaction marker when the provider restarts", async () => {
+    const displayed = [
+      { id: "old", role: "user", content: "Keep this history" },
+      { id: "compaction:old", role: "compactionSummary", status: "running", trigger: "auto", timestamp: 1 },
+    ];
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      loadTranscript: async () => displayed,
+    });
+    const runtime = await registry.getOrStart({
+      sessionId: "session", connectionId: "connection", workspaceId: "workspace",
+      provider: "omp", target: { transport: "local" }, executable: "omp", cwd: "/workspace",
+      providerSessionId: "provider-session", providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    expect(runtime.snapshot().messages).toEqual([displayed[0], { ...displayed[1], status: "interrupted" }]);
+    expect(mocks.getMessages).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
   it("refreshes the existing runtime after adopting an edited provider session", async () => {
     mocks.getState
       .mockResolvedValueOnce({
@@ -198,7 +252,7 @@ describe("agent runtime", () => {
     });
 
     await expect(
-      registry.fork(runtime, {
+      registry.changeSessionHistory(runtime, {
         type: "edit_message",
         messageId: "source-user",
       }),
@@ -215,6 +269,89 @@ describe("agent runtime", () => {
       },
       messages: [],
     });
+  });
+
+  it("rewinds provider history and publishes a replacement without stale submissions", async () => {
+    mocks.getMessages.mockResolvedValue({
+      messages: [
+        { role: "user", id: "native-user", content: "Restore me" },
+        {
+          role: "assistant",
+          id: "native-answer",
+          content: [{ type: "text", text: "Discard me" }],
+        },
+      ],
+    });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    const events: unknown[] = [];
+    runtime.observe((event) => events.push(event));
+    mocks.rewind.mockImplementationOnce(async () => {
+      mocks.getMessages.mockResolvedValue({ messages: [] });
+    });
+    await expect(
+      registry.changeSessionHistory(runtime, {
+        type: "rewind",
+        messageId: "native-user",
+        mode: "conversation",
+      }),
+    ).resolves.toMatchObject({
+      draft: "Restore me",
+      replacesCurrentSession: true,
+    });
+    expect(mocks.rewind).toHaveBeenCalledWith("native-user", "conversation");
+    expect(runtime.snapshot().messages).toEqual([]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "snapshot",
+        data: expect.objectContaining({ messages: [] }),
+      }),
+    );
+    await registry.stopAll();
+  });
+
+  it("rejects an unsupported rewind or unknown prompt before aborting active work", async () => {
+    mocks.getState.mockResolvedValue({
+      isStreaming: true,
+      sessionId: "provider-session",
+      sessionFile: "/sessions/provider-session.jsonl",
+    });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    await expect(runtime.rewind("missing", "files")).rejects.toThrow(
+      "does not support",
+    );
+    await expect(runtime.rewind("missing", "conversation")).rejects.toThrow(
+      "not been acknowledged",
+    );
+    expect(mocks.abort).not.toHaveBeenCalled();
+    await registry.stopAll();
   });
 
   it("removes a restored send already accepted by the provider", async () => {
@@ -617,6 +754,94 @@ describe("agent runtime", () => {
       ]);
     });
     expect(mocks.prompt).not.toHaveBeenCalled();
+    await registry.stopAll();
+  });
+
+  it.each(["pi", "omp"] as const)("preserves %s display history across compaction, settings and settle", async (provider) => {
+    mocks.getMessages
+      .mockResolvedValueOnce({ messages: [] })
+      .mockResolvedValueOnce({
+        messages: [
+          { id: "final", role: "assistant", content: [{ type: "text", text: "Done" }] },
+          {
+            id: "tools",
+            role: "assistant",
+            content: [{ type: "toolCall", id: "call-1", name: "bash", arguments: {} }],
+          },
+        ],
+      });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+    const runtime = await registry.getOrStart({
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider,
+      target: { transport: "local" },
+      executable: provider,
+      cwd: "/workspace",
+      sessionId: "session",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+
+    mocks.eventSubscriber?.({
+      type: "message_end",
+      message: {
+        id: "tools",
+        role: "assistant",
+        content: [
+          { type: "toolCall", id: "call-1", name: "bash", arguments: {} },
+        ],
+      },
+    });
+    mocks.eventSubscriber?.({
+      type: "tool_execution_end",
+      toolCallId: "call-1",
+      toolName: "bash",
+      result: { content: [{ type: "text", text: "output" }] },
+    });
+    mocks.eventSubscriber?.({
+      type: "message_end",
+      message: {
+        role: "custom",
+        customType: "async-result",
+        content: "<system-notice>Background job bg_4 completed</system-notice>",
+        timestamp: 2,
+      },
+    });
+    mocks.eventSubscriber?.({
+      type: "message_end",
+      message: {
+        id: "final",
+        role: "assistant",
+        content: [{ type: "text", text: "Done" }],
+      },
+    });
+    mocks.eventSubscriber?.({
+      type: "agent_end",
+      messages: [{ role: "assistant", content: "Done" }],
+    });
+
+    await vi.waitFor(() => expect(runtime.snapshot().status).toBe("idle"));
+    await runtime.refreshState();
+    const displayed = structuredClone(runtime.snapshot().messages);
+    // Compaction changes the model context; it does not rewrite past UI rows.
+    mocks.eventSubscriber?.({ type: "compaction_start" });
+    mocks.eventSubscriber?.({ type: "compaction_end" });
+    await runtime.refreshState();
+    await runtime.command({ type: "set_model", modelId: "other/model" });
+    await runtime.command({ type: "set_thinking_level", level: "low" });
+    expect(runtime.snapshot().messages).toEqual(displayed);
+    expect(mocks.getMessages).toHaveBeenCalledOnce();
+    expect(
+      runtime.snapshot().messages.map((message) =>
+        message && typeof message === "object"
+          ? Reflect.get(message, "role")
+          : null,
+      ),
+    ).toEqual(["assistant", "toolResult", "custom", "assistant"]);
     await registry.stopAll();
   });
 
@@ -1100,6 +1325,37 @@ describe("agent runtime", () => {
     },
   );
 
+  it("keeps a replacement queued when cancellation fails, without submitting it", async () => {
+    mocks.abort.mockRejectedValueOnce(new Error("Cancellation failed"));
+    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    try {
+      const runtime = await registry.getOrStart({
+        connectionId: "connection",
+        workspaceId: "workspace",
+        provider: "hermes",
+        target: { transport: "local" },
+        executable: "hermes",
+        cwd: "/workspace",
+        sessionId: "session",
+        providerSessionId: "provider-session",
+        providerSessionPath: "provider-session",
+        launchConfig: {},
+      });
+      await runtime.command({ type: "prompt", message: "Original" }, "original");
+      await runtime.command({ type: "queue", message: "Correction" }, "correction");
+      await expect(
+        runtime.command({ type: "steer_queued_message", id: "correction" }),
+      ).rejects.toThrow("Cancellation failed");
+      expect(mocks.prompt).toHaveBeenCalledTimes(1);
+      expect(mocks.steer).not.toHaveBeenCalled();
+      expect(runtime.snapshot().queuedMessages).toEqual([
+        expect.objectContaining({ id: "correction", status: "pending" }),
+      ]);
+    } finally {
+      await registry.stopAll();
+    }
+  });
+
   it("publishes one canonical user message when a provider echoes before accepting", async () => {
     mocks.prompt.mockImplementation(async (_message, _images, options) => {
       mocks.eventSubscriber?.({
@@ -1148,7 +1404,7 @@ describe("agent runtime", () => {
     await registry.stopAll();
   });
 
-  it("keeps submitted image presentation through provider history refresh", async () => {
+  it("keeps submitted image presentation when a turn settles", async () => {
     mocks.getState.mockResolvedValue({
       isStreaming: false,
       sessionId: "provider-session",
@@ -1234,7 +1490,8 @@ describe("agent runtime", () => {
     const submitted = runtime.snapshot().messages[0] as Record<string, unknown>;
 
     mocks.eventSubscriber?.({ type: "agent_end", messages: [] });
-    await vi.waitFor(() => expect(mocks.getMessages).toHaveBeenCalledTimes(2));
+    await runtime.refreshState();
+    expect(mocks.getMessages).toHaveBeenCalledOnce();
 
     expect(runtime.snapshot().messages).toEqual([
       {
@@ -1541,7 +1798,9 @@ describe("agent runtime", () => {
   });
 
   it("does not consume a private sequence when another subscriber joins", async () => {
-    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
     const runtime = await registry.getOrStart({
       connectionId: "connection",
       workspaceId: "workspace",
@@ -1581,7 +1840,9 @@ describe("agent runtime", () => {
   });
 
   it("stamps provider events once before updating state and publishing", async () => {
-    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
     const runtime = await registry.getOrStart({
       connectionId: "connection",
       workspaceId: "workspace",
@@ -1619,7 +1880,9 @@ describe("agent runtime", () => {
   });
 
   it("resets synchronization when the cursor is from another epoch or ahead", async () => {
-    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
     const runtime = await registry.getOrStart({
       connectionId: "connection",
       workspaceId: "workspace",
@@ -1655,7 +1918,9 @@ describe("agent runtime", () => {
   });
 
   it("resolves provider defaults into an explicit launch tuple", async () => {
-    const registry = new AgentRuntimeRegistry({ resolveImages: async () => [] });
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
     const created = await registry.create("session", {
       connectionId: "connection",
       workspaceId: "workspace",
@@ -1673,6 +1938,47 @@ describe("agent runtime", () => {
     expect(mocks.launches).toContainEqual(
       expect.objectContaining(created.launchConfig),
     );
+    await registry.stopAll();
+  });
+
+  it("uses a connector-supplied catalog without probing the provider again", async () => {
+    const resolveCatalog = vi.fn().mockResolvedValue({
+      provider: "codex",
+      models: [
+        {
+          provider: "codex",
+          id: "cached-model",
+          label: "Cached model",
+          isDefault: true,
+          api: "codex-app-server",
+          baseUrl: "",
+          reasoning: true,
+          input: ["text"],
+          contextWindow: null,
+          maxTokens: null,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        },
+      ],
+      modes: [],
+      defaultModeId: null,
+    });
+    const registry = new AgentRuntimeRegistry({
+      resolveImages: async () => [],
+      resolveCatalog,
+    });
+
+    const created = await registry.create("session", {
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+    });
+
+    expect(resolveCatalog).toHaveBeenCalledOnce();
+    expect(mocks.fetchCatalog).not.toHaveBeenCalled();
+    expect(created.launchConfig.model).toBe("cached-model");
     await registry.stopAll();
   });
 
@@ -1704,4 +2010,104 @@ describe("agent runtime", () => {
     });
     await registry.stopAll();
   });
+
+  it("publishes live usage and prevents an older refresh overwriting the context count", async () => {
+    const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+    const runtime = await registry.getOrStart({
+      sessionId: "session",
+      connectionId: "connection",
+      workspaceId: "workspace",
+      provider: "codex",
+      target: { transport: "local" },
+      executable: "codex",
+      cwd: "/workspace",
+      providerSessionId: "provider-session",
+      providerSessionPath: "/sessions/provider-session.jsonl",
+      launchConfig: {},
+    });
+    const envelopes: unknown[] = [];
+    runtime.observe((envelope) => envelopes.push(envelope));
+    let finish!: (value: Record<string, unknown>) => void;
+    mocks.getState.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    mocks.getSessionStats.mockResolvedValue({
+      ...stats,
+      cost: 2,
+      contextUsage: { tokens: 90000, contextWindow: 100000, percent: 90 },
+    });
+    const refresh = runtime.refreshState();
+    mocks.eventSubscriber?.({
+      type: "usage_update",
+      usage: {
+        contextUsage: { tokens: 12000, contextWindow: 100000, percent: 12 },
+      },
+    });
+    expect(runtime.snapshot().stats.contextUsage?.tokens).toBe(12000);
+    expect(envelopes).toContainEqual(
+      expect.objectContaining({
+        type: "runtime_event",
+        data: expect.objectContaining({ type: "usage_update" }),
+      }),
+    );
+    finish({ isStreaming: false });
+    await refresh;
+    expect(runtime.snapshot().stats.contextUsage?.tokens).toBe(12000);
+    expect(runtime.snapshot().stats.cost).toBe(2);
+    mocks.eventSubscriber?.({
+      type: "usage_update",
+      usage: { contextUsage: null },
+    });
+    expect(runtime.snapshot().stats.contextUsage).toBeUndefined();
+    mocks.getSessionStats.mockRejectedValueOnce(
+      new Error("temporary stats failure"),
+    );
+    await runtime.refreshState();
+    expect(runtime.snapshot().stats.cost).toBe(2);
+    await registry.stopAll();
+  });
+
+  it.each(["pi", "omp"] as const)(
+    "polls %s usage during a turn and stops on shutdown",
+    async (provider) => {
+      vi.useFakeTimers();
+      const registry = new AgentRuntimeRegistry({
+        resolveImages: async () => [],
+      });
+      try {
+        const runtime = await registry.getOrStart({
+          sessionId: "session",
+          connectionId: "connection",
+          workspaceId: "workspace",
+          provider,
+          target: { transport: "local" },
+          executable: provider,
+          cwd: "/workspace",
+          providerSessionId: "provider-session",
+          providerSessionPath: "/sessions/provider-session.jsonl",
+          launchConfig: {},
+        });
+        mocks.eventSubscriber?.({ type: "agent_start" });
+        mocks.getSessionStats.mockResolvedValue({
+          ...stats,
+          contextUsage: { tokens: 12000, contextWindow: 100000, percent: 12 },
+        });
+        await vi.advanceTimersByTimeAsync(3000);
+        expect(runtime.snapshot().stats.contextUsage?.tokens).toBe(12000);
+        expect(runtime.snapshot().status).toBe("running");
+        await registry.stopAll();
+        const calls = mocks.getSessionStats.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(10000);
+        expect(mocks.getSessionStats).toHaveBeenCalledTimes(calls);
+      } finally {
+        await registry.stopAll();
+        vi.useRealTimers();
+      }
+    },
+  );
 });

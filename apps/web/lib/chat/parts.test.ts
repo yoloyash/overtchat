@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { UIMessage } from "ai";
-import { groupMessageParts, type MessageSegment } from "@overtchat/shared";
+import { groupMessageParts, imageOptionsFromMetadata, type MessageSegment } from "@overtchat/shared";
 
 type Part = UIMessage["parts"][number];
 
@@ -35,6 +35,18 @@ const memory = (key: string): Part =>
   }) as unknown as Part;
 
 describe("groupMessageParts", () => {
+  it("keeps explicit image settings for reply regeneration without inventing image intent", () => {
+    expect(imageOptionsFromMetadata({ imageGeneration: { size: "1024x1536", quality: "low" } })).toEqual({ size: "1024x1536", quality: "low" });
+    expect(imageOptionsFromMetadata({ imageGeneration: { size: "invalid", quality: "invalid" } })).toEqual({ size: "auto", quality: "auto" });
+    expect(imageOptionsFromMetadata(undefined)).toBeUndefined();
+    expect(imageOptionsFromMetadata({ stats: {} })).toBeUndefined();
+  });
+
+  it("renders image operations as inline artifacts in their original order", () => {
+    const image = { type: "tool-generate_image", toolCallId: "image", state: "input-available", input: { prompt: "A kite" } } as Part;
+    expect(groupMessageParts([reasoning("working"), image, text("Done")]).map((part) => part.kind)).toEqual(["activity", "image", "text"]);
+  });
+
   it("collapses interleaved reasoning + tools into one activity block", () => {
     const segs = groupMessageParts([
       reasoning("a"),

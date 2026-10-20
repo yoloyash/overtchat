@@ -44,7 +44,7 @@ export async function PATCH(
     );
   }
   try {
-    createConfiguredLanguageModel(parsed.data);
+    if (parsed.data.modelType !== "image") createConfiguredLanguageModel(parsed.data);
   } catch (error) {
     if (!isProviderConfigurationError(error)) throw error;
     return Response.json({ error: error.message }, { status: 400 });

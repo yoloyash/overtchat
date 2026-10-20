@@ -1,6 +1,8 @@
+import { detectAppleSpeech, prepareAppleSpeech, type SpeechChange } from "./apple-speech.js";
+import { platformServices } from "./platform.js";
 import { cp, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { confirm, isCancel, note, outro, spinner } from "@clack/prompts";
+import { confirm, isCancel, note, outro } from "@clack/prompts";
 import {
   defaultInstallationConfig,
   initialSecrets,
@@ -10,8 +12,12 @@ import {
   writeInstallationConfig,
   writeSecretsFile,
 } from "./config.js";
-import { installManagedConnector } from "./connector.js";
+import { completeAgentConnections, prepareAgentConnections, reportPendingAgentConnections } from "./connector-setup.js";
+import { installationSpinner as spinner } from "./install-progress.js";
+import { protectInstallationSecrets } from "./install-log.js";
 import {
+  CLOUD_PROXY_CONFIG,
+  CLOUD_TUNNEL_CONFIG,
   renderComposeFile,
   renderStackEnvironment,
   SEARXNG_SETTINGS,
@@ -43,6 +49,11 @@ import {
 } from "./release.js";
 import { createPreMigrationSnapshot } from "./snapshot.js";
 import type { ExistingInstallation, InstallationConfig } from "./types.js";
+import { accessSummary, connectionInstructions } from "./access.js";
+import { initialSetupLink } from "./initial-setup.js";
+import { finishAccess } from "./connection-check.js";
+import { checkServeRoute, removeServe, sameServeRoute } from "./tailscale.js";
+import { startStack, recoverSpeech } from "./stack.js";
 
 export type SetupOptions = {
   dryRun: boolean;
@@ -137,8 +148,8 @@ async function exists(file: string): Promise<boolean> {
 export async function prepareFiles(
   config: InstallationConfig,
   existingSearxngConfigPath: string | undefined,
+  paths = runtimePaths(),
 ): Promise<void> {
-  const paths = runtimePaths();
   await mkdir(paths.stackDirectory, { recursive: true, mode: 0o700 });
   await mkdir(paths.searxngDirectory, { recursive: true, mode: 0o700 });
   if (
@@ -158,6 +169,21 @@ export async function prepareFiles(
       mode: 0o600,
     });
   }
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  if (cloud) {
+    await mkdir(paths.cloudDirectory, { recursive: true, mode: 0o700 });
+    const files: Array<[string, string]> = [
+      ["frpc.toml", CLOUD_TUNNEL_CONFIG],
+      ["Caddyfile", CLOUD_PROXY_CONFIG],
+      ["relay-ca.pem", `${cloud.relayCaPem.trim()}\n`],
+    ];
+    for (const [file, contents] of files) {
+      await writeFile(path.join(paths.cloudDirectory, file), contents, {
+        encoding: "utf8",
+        mode: 0o600,
+      });
+    }
+  }
   await writeFile(paths.composeFile, renderComposeFile(config), {
     encoding: "utf8",
     mode: 0o600,
@@ -167,11 +193,12 @@ export async function prepareFiles(
 export async function waitForApp(url: string): Promise<void> {
   const deadline = Date.now() + 180_000;
   while (Date.now() < deadline) {
-    const response = await fetch(url, {
+    const response = await fetch(new URL("/api/ping", url), {
       redirect: "manual",
       signal: AbortSignal.timeout(5_000),
     }).catch(() => null);
-    if (response && response.status >= 200 && response.status < 500) return;
+    const body = response?.ok ? await response.json().catch(() => null) : null;
+    if (body?.ok === true && body?.name === "overtchat") return;
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
   throw new Error("OvertChat did not become ready within three minutes.");
@@ -293,8 +320,8 @@ export async function setup(
   options: SetupOptions,
   productionManifest?: ReleaseManifest,
 ): Promise<void> {
-  if (process.platform !== "linux") {
-    throw new Error("The managed OvertChat installer currently supports Linux.");
+  if (process.platform !== "linux" && process.platform !== "darwin") {
+    throw new Error("The managed OvertChat installer supports Linux and macOS.");
   }
   const sourceDirectory = path.resolve(
     process.env.OVERTCHAT_SOURCE_DIR || process.env.INIT_CWD || process.cwd(),
@@ -307,6 +334,7 @@ export async function setup(
   }
   let docker = await detectDockerCommand();
   if (!docker) {
+    if (process.platform === "darwin") await installDockerEngine();
     if (options.defaults) {
       throw new Error("Docker Engine was not found.");
     }
@@ -335,6 +363,7 @@ export async function setup(
   const saved = await readInstallationConfig(paths);
   const adopting = installationNeedsAdoption(existing, paths.stackDirectory);
   const previousSecrets = await readInstallationSecrets(paths);
+  protectInstallationSecrets(...Object.values(previousSecrets));
   let config = saved ?? defaultInstallationConfig(existing, manifest);
   config = applyReleaseManifest(config, manifest);
   if (saved) {
@@ -344,6 +373,7 @@ export async function setup(
     );
   }
   config = normalizeInstallationConfig(config);
+  const previousConfig = saved ? structuredClone(config) : null;
   if (options.development) {
     if (!(await exists(path.join(sourceDirectory, "Dockerfile")))) {
       throw new Error(
@@ -358,9 +388,17 @@ export async function setup(
   }
   if (!saved && !existing) {
     const lanAddress = primaryLanAddress();
-    if (lanAddress) config.publicUrl = `http://${lanAddress}:${config.appPort}`;
+    config.access = { mode: lanAddress ? "lan" : "local" };
+    config.bindAddress = lanAddress ? "0.0.0.0" : "127.0.0.1";
+    config.publicUrl = `http://${lanAddress ?? "localhost"}:${config.appPort}`;
   }
   const gpus = await detectNvidiaGpus();
+  const appleChip = await detectAppleSpeech();
+  if (appleChip && !saved && !existing) {
+    for (const id of ["tts", "stt"] as const) {
+      if (config[id].bundledInstalled) config[id] = { ...config[id], accelerator: "apple" };
+    }
+  }
   if (
     (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu") &&
     !config.tts.gpuVariant
@@ -384,6 +422,8 @@ export async function setup(
       config,
       gpus,
       adopting ? existing ?? undefined : undefined,
+      appleChip,
+      { dryRun: options.dryRun },
     );
   } else if (gpus.length > 0 && config.stt.provider === "bundled") {
     const gpu = [...gpus].sort((left, right) => right.memoryMiB - left.memoryMiB)[0];
@@ -395,6 +435,7 @@ export async function setup(
     };
   }
 
+  config = platformServices(config);
   const ttsUsesGpu =
     config.tts.provider === "bundled" &&
     (config.tts.accelerator === "auto" || config.tts.accelerator === "gpu");
@@ -454,10 +495,45 @@ export async function setup(
     }
   }
 
+  const oldRoute = saved?.managedTailscaleRoute;
+  const nextRoute = config.access?.tailscaleRoute;
+  if (!options.dryRun && nextRoute) await checkServeRoute(nextRoute, oldRoute);
   const secrets = initialSecrets(
     existing,
     previousSecrets,
   );
+  const cloud = config.access?.mode === "cloud" ? config.access.cloud : undefined;
+  // A fresh link replaces the stored credential; leaving cloud mode drops it.
+  secrets.cloudCredential = cloud ? (cloud.credential ?? secrets.cloudCredential) : "";
+  if (cloud && !secrets.cloudCredential && !options.dryRun) {
+    throw new Error(
+      "This server has no OvertChat Cloud credential. Run overtchat setup, choose OvertChat Cloud, and link this server again.",
+    );
+  }
+  protectInstallationSecrets(...Object.values(secrets), config.search.apiKey, config.tts.apiKey, config.stt.apiKey);
+  note([
+    accessSummary(config),
+    `App: ${config.appVersion}`,
+    `Web search: ${config.search.provider}`,
+    `Text-to-speech: ${config.tts.provider}`,
+    `Speech-to-text: ${config.stt.provider}`,
+    `Realtime voice: ${config.voice.installed ? "installed" : "set up later"}`,
+    `Agent Connections: ${config.agents.installed ? "installed" : "set up later"}`,
+    `Data: ${config.dataMountType} ${config.dataVolume}`,
+  ].join("\n"), "Selected configuration");
+  if (options.dryRun) {
+    const preview = runtimePaths({
+      ...process.env,
+      OVERTCHAT_CONFIG_DIR: path.join(paths.configDirectory, "preview"),
+      OVERTCHAT_STACK_DIR: path.join(paths.stackDirectory, "preview"),
+    });
+    await prepareFiles(config, existing?.searxngConfigPath, preview);
+    await writeSecretsFile(preview, renderStackEnvironment(config, secrets, preview));
+    await requireDocker(docker, ["compose", "--env-file", preview.secretsFile, "-f", preview.composeFile, "config", "--quiet"]);
+    outro(`Configuration preview written to ${preview.stackDirectory}. Installed settings were not changed.`);
+    return;
+  }
+  const installAgents = await prepareAgentConnections(config, !options.defaults);
   await prepareFiles(config, existing?.searxngConfigPath);
   await writeSecretsFile(
     paths,
@@ -472,11 +548,6 @@ export async function setup(
     paths.composeFile,
   ];
   await requireDocker(docker, [...composeArgs, "config"]);
-  if (options.dryRun) {
-    await writeInstallationConfig(paths, config);
-    outro(`Configuration written to ${paths.stackDirectory}`);
-    return;
-  }
 
   const preparation = spinner();
   preparation.start(
@@ -533,7 +604,10 @@ export async function setup(
     );
   } else {
     preparation.message("Downloading the selected OvertChat components");
-    await requireDocker(docker, [...composeArgs, "pull"], { inherit: true });
+    await requireDocker(docker, [
+      ...composeArgs, "pull",
+      ...(config.appImage === "overtchat-app:setup-dev" ? ["--ignore-pull-failures"] : []),
+    ], { inherit: true });
   }
   const snapshot = adopting && existing
     ? await (async () => {
@@ -550,21 +624,59 @@ export async function setup(
 
   const progress = spinner();
   progress.start("Starting OvertChat");
-  await requireDocker(docker, [...composeArgs, "up", "-d"], { inherit: true });
-  progress.message("Waiting for OvertChat to become ready");
-  await waitForApp(`http://127.0.0.1:${config.appPort}`);
-  progress.message("Applying provider configuration");
-  await syncCapabilities(config, secrets.managementSecret);
-  if (config.agents.installed) {
-    progress.message("Installing Agent Connections");
-    await installManagedConnector(config, secrets.managementSecret);
+  let speechChange: SpeechChange | undefined;
+  let stackStarted = false;
+  try {
+    progress.message("Preparing local speech");
+    speechChange = await prepareAppleSpeech(config, secrets.managementSecret, paths);
+    progress.message("Starting OvertChat services");
+    await startStack(config, saved, secrets, paths, docker, async (url) => {
+      progress.message("Waiting for OvertChat and database migrations");
+      await waitForApp(url);
+    });
+    stackStarted = true;
+    if (oldRoute && !sameServeRoute(oldRoute, nextRoute)) {
+      await removeServe(oldRoute);
+    }
+    progress.message("Applying provider configuration");
+    await syncCapabilities(config, secrets.managementSecret);
+    if (installAgents) {
+      await completeAgentConnections(config, secrets.managementSecret, progress, !options.defaults);
+    }
+    // Record the route before starting Serve so interruption can be recovered.
+    config.managedTailscaleRoute = nextRoute;
+    await writeInstallationConfig(paths, config);
+    progress.message("Reconciling bundled services");
+    await speechChange.commit();
+    speechChange = undefined;
+    const reconciliation = await reconcileManagedSidecars(docker, config);
+    progress.stop(config.agents.pending ? "OvertChat is ready; Agent Connections pending" : "OvertChat is ready");
+
+    showSidecarReconciliation(reconciliation);
+    const instructions = connectionInstructions(config);
+    if (instructions) note(instructions, "Access OvertChat");
+    await finishAccess(config, !options.defaults);
+    await writeInstallationConfig(paths, config);
+    reportPendingAgentConnections(config);
+    outro(accessSummary(config));
+    try {
+      const setupLink = await initialSetupLink(config, secrets.managementSecret);
+      if (setupLink) note(`Create your administrator account:\n${setupLink}\n\nThis private link works once. Run overtchat status to show it again.`, "Next steps");
+      else if (!saved && !existing) note("Open the address above, create your administrator account, then add a model endpoint in Settings.", "Next steps");
+    } catch {
+      note("Could not retrieve the setup link. Run overtchat status to retry, or find the setup code with overtchat logs.", "Account setup");
+    }
+    note("overtchat status\novertchat logs --follow\novertchat update --check", "Manage OvertChat");
+  } catch (error) {
+    if (speechChange) {
+      try {
+        await recoverSpeech(speechChange, config, previousConfig, secrets, paths, docker, waitForApp, syncCapabilities, !stackStarted);
+      } catch (recoveryError) {
+        progress.stop("OvertChat setup failed", 1);
+        throw new AggregateError([error, recoveryError], "Setup failed and speech recovery failed. Run overtchat setup to repair the installation.");
+      }
+    }
+    progress.stop("OvertChat setup failed", 1);
+    throw error;
   }
-  await writeInstallationConfig(paths, config);
-  progress.message("Reconciling bundled services");
-  const reconciliation = await reconcileManagedSidecars(docker, config);
-  progress.stop("OvertChat is ready");
-
-  showSidecarReconciliation(reconciliation);
-
-  outro(`Open: ${config.publicUrl}`);
 }

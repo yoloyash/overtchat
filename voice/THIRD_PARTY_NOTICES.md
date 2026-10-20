@@ -12,6 +12,8 @@ image labels record the exact source or model revisions used by the build.
 
 OvertChat packages the pinned source with a separately curated dependency set
 and runtime configuration. It does not modify the copied upstream source.
+`overtchat_runtime.py` binds connection authorization to server-owned session
+state and selects the model per invocation without mutating pooled handlers.
 
 ## Silero VAD
 

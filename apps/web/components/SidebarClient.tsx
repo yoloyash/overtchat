@@ -1,13 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { Link, useLocation, useRouter } from "@tanstack/react-router";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Menu } from "@base-ui/react/menu";
 import {
   Activity,
   Check,
+  ChevronRight,
+  ListFilter,
+  GripVertical,
   FolderPlus,
+  Library,
   MoreHorizontal,
   PanelLeft,
   Pencil,
@@ -16,14 +19,15 @@ import {
 } from "lucide-react";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 import { agentProviderMetadata } from "@overtchat/agent-bridge";
-import { SidebarChatList } from "@/components/SidebarChatList";
+import { SidebarChatList, SidebarItem } from "@/components/SidebarChatList";
 import {
   SidebarProjects,
   CreateProjectDialog,
 } from "@/components/SidebarProjects";
 import { SidebarAgentWorkspaces } from "@/components/SidebarAgentWorkspaces";
 import { useSidebar } from "@/components/sidebar-context";
-import { useChats } from "@/lib/queries/chats";
+import { useActiveChatIds, useChats } from "@/lib/queries/chats";
+import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import { useProjects } from "@/lib/queries/projects";
 import {
   useAgentConnectionSessionDirectory,
@@ -34,15 +38,41 @@ import { LinkPendingIndicator } from "@/components/ui/link-pending-indicator";
 import { toast } from "@/components/ui/toast";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
-  const { closeMobile, closeSidebar, openPalette } = useSidebar();
+  const { closeMobile, closeSidebar, openPalette, pinFocusRef } = useSidebar();
   const [creatingProject, setCreatingProject] = useState(false);
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = useLocation({ select: (location) => location.pathname });
 
+  const { data: capabilities } = usePublicCapabilities();
+  const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const { data: chats = [] } = useChats();
+  const { data: activeChatIds = [] } = useActiveChatIds();
   const { data: projects = [] } = useProjects();
+  const activeChats = useMemo(() => new Set(activeChatIds), [activeChatIds]);
+
+  // Run after React commits the refetched lists, when the destination row exists.
+  useLayoutEffect(() => {
+    const request = pinFocusRef.current;
+    if (!request) return;
+    const chat = chats.find((item) => item.id === request.id);
+    if (chat ? chat.pinned !== request.pinned : request.pinned) return;
+    pinFocusRef.current = null;
+    if (!request.fromMenu && request.row.isConnected) return;
+    const focused = document.activeElement;
+    if (
+      focused !== document.body && focused !== request.focusedElement &&
+      !request.row.contains(focused)
+    ) return;
+    const target = request.sidebar.querySelector<HTMLAnchorElement>(
+      `[data-chat-id="${CSS.escape(request.id)}"] a`,
+    );
+    (target ?? request.sidebar.querySelector<HTMLButtonElement>(
+      'button[aria-label="Search chats"]',
+    ))?.focus();
+  }, [chats, pinFocusRef]);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),
@@ -52,10 +82,11 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const unprojected = useMemo(
     () =>
       chats
-        .filter((c) => c.projectId == null)
+        .filter((c) => c.projectId == null && !c.pinned)
         .map((c) => ({
           id: c.id,
           title: c.title,
+          pinned: c.pinned,
           kind: c.kind,
           updatedAt: c.updatedAt,
         })),
@@ -65,12 +96,12 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
   const projectsWithChats = useMemo(() => {
     const byProject = new Map<
       string,
-      { id: string; title: string | null; kind: "text" | "voice" }[]
+      { id: string; title: string | null; kind: "text" | "voice"; pinned?: boolean }[]
     >();
     for (const c of chats) {
       if (!c.projectId) continue;
       const list = byProject.get(c.projectId) ?? [];
-      list.push({ id: c.id, title: c.title, kind: c.kind });
+      list.push({ id: c.id, title: c.title, kind: c.kind, pinned: c.pinned });
       byProject.set(c.projectId, list);
     }
     return projectOptions.map((p) => ({
@@ -81,7 +112,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <>
-      <div className="flex h-12 shrink-0 items-center justify-between px-3">
+      <div data-titlebar data-titlebar-inset className="flex h-12 shrink-0 items-center justify-between px-3">
         <span className="font-brand text-sm font-semibold tracking-tight">overtchat</span>
         <button
           type="button"
@@ -96,12 +127,13 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
       <div className="flex-1 overflow-y-auto px-2 pb-2">
         <nav className="flex flex-col gap-0.5 py-1">
           <Link
-            href="/"
+            to="/"
             onClick={(e) => {
               closeMobile();
               if (pathname === "/") {
+                // Reloading `/` starts a new draft and keeps its project.
                 e.preventDefault();
-                router.refresh();
+                void router.invalidate();
               }
             }}
             className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent"
@@ -109,7 +141,7 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
             <Pencil className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">New chat</span>
             <Shortcut keys={["Ctrl", "Shift", "O"]} />
-            <LinkPendingIndicator />
+            <LinkPendingIndicator to="/" />
           </Link>
           <button
             type="button"
@@ -124,7 +156,20 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
             <Shortcut keys={["Ctrl", "K"]} />
           </button>
           <Link
-            href="/activity"
+            to="/library"
+            onClick={closeMobile}
+            aria-current={pathname === "/library" ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
+              pathname === "/library" && "bg-sidebar-accent",
+            )}
+          >
+            <Library className="size-4 shrink-0 text-muted-foreground" />
+            <span className="flex-1">Library</span>
+            <LinkPendingIndicator to="/library" />
+          </Link>
+          <Link
+            to="/activity"
             onClick={closeMobile}
             className={cn(
               "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm motion-colors hover:bg-sidebar-accent",
@@ -133,12 +178,34 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
           >
             <Activity className="size-4 shrink-0 text-muted-foreground" />
             <span className="flex-1">Activity</span>
-            <LinkPendingIndicator />
+            <LinkPendingIndicator to="/activity" />
           </Link>
         </nav>
 
+        {chats.some((chat) => chat.pinned) && (
+          <section aria-label="Pinned chats">
+            <SectionLabel>Pinned</SectionLabel>
+            <ul className="flex flex-col gap-0.5">
+              {chats.filter((chat) => chat.pinned).map((chat) => (
+                <SidebarItem
+                  key={chat.id}
+                  chat={chat}
+                  projects={projectOptions}
+                  currentProjectId={chat.projectId}
+                  generating={activeChats.has(chat.id)}
+                  pinningSupported={pinningSupported}
+                />
+              ))}
+            </ul>
+          </section>
+        )}
+
         <SectionLabel>Projects</SectionLabel>
-        <SidebarProjects projects={projectsWithChats} />
+        <SidebarProjects
+          projects={projectsWithChats}
+          activeChatIds={activeChats}
+          pinningSupported={pinningSupported}
+        />
         <button
           type="button"
           onClick={() => setCreatingProject(true)}
@@ -150,7 +217,13 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 
         {isAdmin && <AdminAgentWorkspaces />}
 
-        <SidebarChatList chats={unprojected} projects={projectOptions} />
+        <SidebarChatList
+          chats={unprojected}
+          emptyMessage={chats.length > 0 ? "No recent chats" : "No chats yet"}
+          projects={projectOptions}
+          activeChatIds={activeChats}
+          pinningSupported={pinningSupported}
+        />
       </div>
 
       <CreateProjectDialog
@@ -162,8 +235,17 @@ export function SidebarClient({ isAdmin }: { isAdmin: boolean }) {
 }
 
 function AdminAgentWorkspaces() {
-  const { data: connections = [] } = useAgentConnections();
+  const { data: connections = [], isPending } = useAgentConnections();
   const refresh = useRefreshAllAgentWorkspaces();
+  const [organizing, setOrganizing] = useState(false);
+  const doneRef = useRef<HTMLButtonElement>(null);
+  const optionsRef = useRef<HTMLButtonElement>(null);
+  const previousOrganizing = useRef(organizing);
+  useEffect(() => {
+    if (previousOrganizing.current === organizing) return;
+    previousOrganizing.current = organizing;
+    (organizing ? doneRef : optionsRef).current?.focus();
+  }, [organizing]);
   useAgentConnectionSessionDirectory(connections);
   const { closeMobile, drawerRef } = useSidebar();
   const [providerFilter, setProviderFilter] = useState<AgentProviderId | null>(
@@ -174,11 +256,13 @@ function AdminAgentWorkspaces() {
   );
   const providers = useMemo(
     () =>
-      [...new Set(
-        connections
-          .filter((connection) => connection.workspaces.length > 0)
-          .map((connection) => connection.provider),
-      )].sort(),
+      [
+        ...new Set(
+          connections
+            .filter((connection) => connection.workspaces.length > 0)
+            .map((connection) => connection.provider),
+        ),
+      ].sort(),
     [connections],
   );
   const activeProviderFilter =
@@ -186,7 +270,33 @@ function AdminAgentWorkspaces() {
       ? providerFilter
       : null;
 
-  if (!hasWorkspaces) return null;
+  if (!hasWorkspaces) {
+    return (
+      <>
+        <SectionLabel>Agent workspaces</SectionLabel>
+        {isPending ? (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            Loading workspaces…
+          </p>
+        ) : (
+          <>
+            <p className="px-2 py-1 text-xs text-muted-foreground">
+              Connect a folder to start an agent chat.
+            </p>
+            <Link
+              to="/settings/connections"
+              search={{ add: "1" }}
+              onClick={closeMobile}
+              className="flex min-h-8 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground max-md:min-h-11"
+            >
+              <FolderPlus aria-hidden="true" className="size-4 shrink-0" />
+              <span>Add workspace</span>
+            </Link>
+          </>
+        )}
+      </>
+    );
+  }
 
   async function refreshAllChats() {
     try {
@@ -221,97 +331,141 @@ function AdminAgentWorkspaces() {
     <>
       <SectionLabel
         action={
-          <span className="flex items-center gap-0.5">
-            <Menu.Root>
-              <Menu.Trigger
-                aria-label={
-                  activeProviderFilter
-                    ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                    : "Agent workspace options"
-                }
-                title={
-                  activeProviderFilter
-                    ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
-                    : "Workspace options"
-                }
-                className={cn(
-                  "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
-                  activeProviderFilter && "bg-sidebar-accent text-foreground",
-                )}
-              >
-                <MoreHorizontal className="size-3.5" />
-                {activeProviderFilter && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
-                  />
-                )}
-              </Menu.Trigger>
-              <Menu.Portal container={drawerRef}>
-                <Menu.Positioner side="bottom" align="end" sideOffset={6}>
-                  <Menu.Popup
-                    className={cn(
-                      "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-                      motionClasses.popup,
-                    )}
-                  >
-                    {providers.length > 1 && (
-                      <>
-                        <Menu.Group>
-                          <Menu.GroupLabel className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
-                            Show chats from
-                          </Menu.GroupLabel>
-                          <Menu.RadioGroup
-                            value={activeProviderFilter ?? "all"}
-                            onValueChange={(value) =>
-                              setProviderFilter(
-                                value === "all"
-                                  ? null
-                                  : (value as AgentProviderId),
-                              )
-                            }
-                          >
-                            <ProviderFilterMenuItem value="all" label="All agents" />
-                            {providers.map((provider) => (
-                              <ProviderFilterMenuItem
-                                key={provider}
-                                value={provider}
-                                label={agentProviderMetadata(provider).label}
-                              />
-                            ))}
-                          </Menu.RadioGroup>
-                        </Menu.Group>
-                        <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-                      </>
-                    )}
-                    <Menu.Item
-                      disabled={refresh.isPending}
-                      onClick={() => void refreshAllChats()}
-                      className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-                    >
-                      <RefreshCw
-                        className={cn(
-                          "size-3.5 shrink-0 text-muted-foreground",
-                          refresh.isPending &&
-                            "animate-spin motion-reduce:animate-none",
-                        )}
-                      />
-                      <span>Refresh all chats</span>
-                    </Menu.Item>
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
-            <Link
-              href="/settings/connections?add=1"
-              onClick={closeMobile}
-              aria-label="Add workspace"
-              title="Add workspace"
-              className="flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground"
+          organizing ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs normal-case tracking-normal"
+              ref={doneRef}
+              onClick={() => setOrganizing(false)}
             >
-              <FolderPlus className="size-3.5" />
-            </Link>
-          </span>
+              Done
+            </Button>
+          ) : (
+            <span className="flex items-center gap-0.5">
+              <Menu.Root>
+                <Menu.Trigger
+                  ref={optionsRef}
+                  aria-label={
+                    activeProviderFilter
+                      ? `Agent workspace options, filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "Agent workspace options"
+                  }
+                  title={
+                    activeProviderFilter
+                      ? `Workspace options · Filtered by ${agentProviderMetadata(activeProviderFilter).label}`
+                      : "Workspace options"
+                  }
+                  className={cn(
+                    "relative flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground motion-colors hover:bg-sidebar-accent hover:text-foreground",
+                    activeProviderFilter && "bg-sidebar-accent text-foreground",
+                  )}
+                >
+                  <MoreHorizontal aria-hidden="true" className="size-3.5" />
+                  {activeProviderFilter && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-0.5 right-0.5 size-1.5 rounded-full bg-primary"
+                    />
+                  )}
+                </Menu.Trigger>
+                <Menu.Portal container={drawerRef}>
+                  <Menu.Positioner side="bottom" align="end" sideOffset={6}>
+                    <Menu.Popup
+                      className={cn(
+                        "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                        motionClasses.popup,
+                      )}
+                    >
+                      <Menu.Item
+                        render={
+                          <Link
+                            to="/settings/connections"
+                            search={{ add: "1" }}
+                            onClick={closeMobile}
+                          />
+                        }
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <FolderPlus className="size-3.5 text-muted-foreground" />
+                        <span>Add workspace…</span>
+                      </Menu.Item>
+                      <Menu.Item
+                        onClick={() => setOrganizing(true)}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <GripVertical className="size-3.5 text-muted-foreground" />
+                        <span>Organize workspaces</span>
+                      </Menu.Item>
+                      {providers.length > 1 && (
+                        <Menu.SubmenuRoot>
+                          <Menu.SubmenuTrigger className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[popup-open]:bg-accent">
+                            <ListFilter className="size-3.5 text-muted-foreground" />
+                            <span>Filter chats</span>
+                            <ChevronRight className="ml-auto size-3.5 text-muted-foreground" />
+                          </Menu.SubmenuTrigger>
+                          <Menu.Portal container={drawerRef}>
+                            <Menu.Positioner
+                              side="right"
+                              align="start"
+                              sideOffset={6}
+                            >
+                              <Menu.Popup
+                                className={cn(
+                                  "z-50 w-48 rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
+                                  motionClasses.popup,
+                                )}
+                              >
+                                <Menu.RadioGroup
+                                  value={activeProviderFilter ?? "all"}
+                                  onValueChange={(value) =>
+                                    setProviderFilter(
+                                      value === "all"
+                                        ? null
+                                        : (value as AgentProviderId),
+                                    )
+                                  }
+                                >
+                                  <ProviderFilterMenuItem
+                                    value="all"
+                                    label="All agents"
+                                  />
+                                  {providers.map((provider) => (
+                                    <ProviderFilterMenuItem
+                                      key={provider}
+                                      value={provider}
+                                      label={
+                                        agentProviderMetadata(provider).label
+                                      }
+                                    />
+                                  ))}
+                                </Menu.RadioGroup>
+                              </Menu.Popup>
+                            </Menu.Positioner>
+                          </Menu.Portal>
+                        </Menu.SubmenuRoot>
+                      )}
+                      <Menu.Separator className="mx-1 my-1 h-px bg-border" />
+                      <Menu.Item
+                        disabled={refresh.isPending}
+                        onClick={() => void refreshAllChats()}
+                        className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <RefreshCw
+                          className={cn(
+                            "size-3.5 shrink-0 text-muted-foreground",
+                            refresh.isPending &&
+                              "animate-spin motion-reduce:animate-none",
+                          )}
+                        />
+                        <span>Refresh all chats</span>
+                      </Menu.Item>
+                    </Menu.Popup>
+                  </Menu.Positioner>
+                </Menu.Portal>
+              </Menu.Root>
+            </span>
+          )
         }
       >
         Agent workspaces
@@ -319,6 +473,7 @@ function AdminAgentWorkspaces() {
       <SidebarAgentWorkspaces
         connections={connections}
         providerFilter={activeProviderFilter}
+        organizing={organizing}
       />
     </>
   );

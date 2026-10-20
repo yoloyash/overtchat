@@ -12,6 +12,8 @@ def main() -> None:
     shared_secret = os.getenv("VOICE_SHARED_SECRET", "").strip()
     if not shared_secret:
         raise SystemExit("VOICE_SHARED_SECRET must not be empty")
+    app_url = os.getenv("OVERTCHAT_VOICE_APP_URL", "http://app:4717").rstrip("/")
+    bridge_url = f"{app_url}/api/internal/voice/v1"
 
     arguments = [
         "serve",
@@ -26,7 +28,7 @@ def main() -> None:
         "--stt",
         "openai",
         "--openai_stt_base_url",
-        "http://app:4717/api/internal/voice/v1",
+        bridge_url,
         "--openai_stt_model",
         "parakeet-tdt-0.6b-v3",
         "--openai_stt_api_key",
@@ -36,7 +38,7 @@ def main() -> None:
         "--llm_backend",
         "chat-completions",
         "--responses_api_base_url",
-        "http://app:4717/api/internal/voice/v1",
+        bridge_url,
         "--responses_api_api_key",
         shared_secret,
         "--model_name",
@@ -44,7 +46,7 @@ def main() -> None:
         "--tts",
         "openai",
         "--openai_tts_base_url",
-        "http://app:4717/api/internal/voice/v1",
+        bridge_url,
         "--openai_tts_model",
         "kokoro",
         "--openai_tts_voice",

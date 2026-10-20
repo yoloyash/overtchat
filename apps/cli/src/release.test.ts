@@ -12,6 +12,8 @@ const releaseImages = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 function config(
@@ -152,6 +154,24 @@ describe("release manifest", () => {
         searxngImage: "docker.io/searxng/searxng:latest",
       }),
     ).toThrow("invalid SearXNG image");
+  });
+
+  it("requires pinned OvertChat Cloud images from their upstream repositories", () => {
+    const base = {
+      format: 1,
+      cliVersion: "1.2.3",
+      appVersion: "4.5.6",
+      voiceVersion: "0.1.0",
+      connectorVersion: "7.8.9",
+      sttVersion: "0.1.0",
+      ...releaseImages,
+    };
+    expect(() => parseReleaseManifest({ ...base, cloudTunnelImage: "ghcr.io/fatedier/frpc:v0.71.1" })).toThrow(
+      "invalid OvertChat Cloud tunnel image",
+    );
+    expect(() =>
+      parseReleaseManifest({ ...base, cloudProxyImage: `ghcr.io/example/caddy@sha256:${"a".repeat(64)}` }),
+    ).toThrow("invalid OvertChat Cloud proxy image");
   });
 
   it("requires both CUDA variants to use pinned Kokoro GPU images", () => {

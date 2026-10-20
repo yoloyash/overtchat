@@ -42,6 +42,7 @@ export interface ConfiguredLanguageModel {
   model: LanguageModelV4;
   providerOptions: Record<string, Record<string, JSONValue>> | undefined;
   providerOptionsKey: string;
+  assistantContinuationOptions?: Record<string, Record<string, JSONValue>>;
   promptCacheStrategy: PromptCacheStrategy | undefined;
 }
 
@@ -50,6 +51,15 @@ export function createConfiguredLanguageModel(
 ): ConfiguredLanguageModel {
   validateProviderModelConfig(config);
   const adapter = getProviderAdapter(config.providerId);
+  if (
+    config.reasoningLevel &&
+    config.reasoningLevel !== "default" &&
+    !adapter.acceptsReasoningLevel
+  ) {
+    throw new ProviderConfigurationError(
+      `${getProvider(config.providerId).label} does not support per-chat reasoning levels.`,
+    );
+  }
   let resolved: ReturnType<ProviderAdapter["createLanguageModel"]>;
   try {
     resolved = adapter.createLanguageModel(config);
@@ -61,10 +71,13 @@ export function createConfiguredLanguageModel(
       { cause: error },
     );
   }
-  const options = {
+  const configuredOptions = {
     ...(resolved.defaultProviderOptions ?? {}),
     ...(config.providerOptions ?? {}),
   };
+  const options = resolved.transformProviderOptions
+    ? resolved.transformProviderOptions(configuredOptions)
+    : configuredOptions;
 
   return {
     model: wrapLanguageModel({
@@ -81,6 +94,16 @@ export function createConfiguredLanguageModel(
           }
         : undefined,
     providerOptionsKey: resolved.providerOptionsKey,
+    ...(resolved.assistantContinuationOptions
+      ? {
+          assistantContinuationOptions: {
+            [resolved.providerOptionsKey]: {
+              ...options,
+              ...resolved.assistantContinuationOptions,
+            } as Record<string, JSONValue>,
+          },
+        }
+      : {}),
     promptCacheStrategy: resolvePromptCacheStrategy(
       resolved.promptCacheKind,
       options,

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ChatRequestError, parseChatRequest } from "./request";
+import {
+  chatRequestFingerprint,
+  ChatRequestError,
+  parseChatRequest,
+} from "./request";
 
 function request(body: unknown): Request {
   return new Request("http://example.test/api/chat", {
@@ -23,6 +27,37 @@ const validBody = {
 };
 
 describe("chat request parsing", () => {
+  it("accepts continuation only for the final assistant message", async () => {
+    const action = { type: "continue", targetAssistantMessageId: "answer" };
+    const body = { ...validBody, action, messages: [{
+      id: "answer", role: "assistant", parts: [{ type: "text", text: "partial" }],
+    }] };
+    await expect(parseChatRequest(request(body))).resolves.toMatchObject({ action });
+    await expect(parseChatRequest(request({ ...body, action: { ...action, targetAssistantMessageId: "other" } })))
+      .rejects.toThrow("does not match the assistant");
+    await expect(parseChatRequest(request({ ...validBody, action })))
+      .rejects.toThrow("does not match the assistant");
+  });
+  it("accepts a compact request referencing the last assistant without a new user turn", async () => {
+    const body = {
+      ...validBody,
+      messages: [{ id: "answer", role: "assistant", parts: [] }],
+    };
+    await expect(
+      parseChatRequest(request({ ...body, action: { type: "compact" } })),
+    ).resolves.toMatchObject({ action: { type: "compact" } });
+    await expect(
+      parseChatRequest(request({ ...body, action: { type: "submit" } })),
+    ).rejects.toThrow("final message must be a user");
+  });
+  it("validates image options and binds them to the idempotency fingerprint", async () => {
+    const initial = await parseChatRequest(request({ ...validBody, imageGeneration: { size: "1024x1024", quality: "low" } }));
+    expect(initial.imageGeneration).toEqual({ size: "1024x1024", quality: "low" });
+    const changed = { ...initial, imageGeneration: { size: "1024x1024" as const, quality: "high" as const } };
+    expect(chatRequestFingerprint(initial)).not.toBe(chatRequestFingerprint(changed));
+    await expect(parseChatRequest(request({ ...validBody, imageGeneration: { size: "unbounded" } }))).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
   it("validates and normalizes an explicit submit request", async () => {
     await expect(
       parseChatRequest(
@@ -34,7 +69,61 @@ describe("chat request parsing", () => {
       forceSearch: false,
       temporary: false,
       action: { type: "submit" },
+      reasoningLevel: "default",
     });
+  });
+
+  it("accepts supported reasoning levels and rejects unknown values", async () => {
+    await expect(
+      parseChatRequest(request({ ...validBody, reasoningLevel: "xhigh" })),
+    ).resolves.toMatchObject({ reasoningLevel: "xhigh" });
+    await expect(
+      parseChatRequest(request({ ...validBody, reasoningLevel: "ultra" })),
+    ).rejects.toBeInstanceOf(ChatRequestError);
+  });
+
+  it("preserves a submission receipt and creates one for legacy clients", async () => {
+    await expect(
+      parseChatRequest(
+        request({ ...validBody, clientRequestId: "request-one" }),
+      ),
+    ).resolves.toMatchObject({ clientRequestId: "request-one" });
+
+    const legacy = await parseChatRequest(request(validBody));
+    expect(legacy.clientRequestId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+    );
+  });
+
+  it("fingerprints the intent independently of its retry receipt", async () => {
+    const first = await parseChatRequest(
+      request({ ...validBody, clientRequestId: "request-one" }),
+    );
+    const retry = await parseChatRequest(
+      request({ ...validBody, clientRequestId: "request-two" }),
+    );
+    const changed = await parseChatRequest(
+      request({
+        ...validBody,
+        clientRequestId: "request-one",
+        forceSearch: true,
+      }),
+    );
+    const changedReasoning = await parseChatRequest(
+      request({
+        ...validBody,
+        clientRequestId: "request-one",
+        reasoningLevel: "low",
+      }),
+    );
+
+    expect(chatRequestFingerprint(first)).toBe(chatRequestFingerprint(retry));
+    expect(chatRequestFingerprint(changed)).not.toBe(
+      chatRequestFingerprint(first),
+    );
+    expect(chatRequestFingerprint(changedReasoning)).not.toBe(
+      chatRequestFingerprint(first),
+    );
   });
 
   it("rejects malformed JSON", async () => {

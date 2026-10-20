@@ -1,15 +1,17 @@
 services:
   app:
-    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.19.0}
+    image: ghcr.io/yoloyash/overtchat-app:${APP_VERSION:-0.27.0}
     build: .
     container_name: overtchat-app
     restart: unless-stopped
     ports:
-      - "${APP_PORT:-4718}:4717"
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-4718}:4717"
     environment:
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET in .env}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:4718}
+      EXTRA_TRUSTED_ORIGINS: ${EXTRA_TRUSTED_ORIGINS:-}
       DISABLE_UPDATE_CHECK: ${DISABLE_UPDATE_CHECK:-false}
+      OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR: ${OVERTCHAT_REQUIRE_ADMIN_TWO_FACTOR:-false}
       HOST_CONNECTOR_URL: ${HOST_CONNECTOR_URL:-http://127.0.0.1:${APP_PORT:-4718}}
       OVERTCHAT_INSTALLED_CAPABILITIES: ${OVERTCHAT_INSTALLED_CAPABILITIES:-search,tts,stt}
       VOICE_SHARED_SECRET: ${VOICE_SHARED_SECRET:-}
@@ -34,7 +36,7 @@ services:
         condition: service_healthy
 
   voice:
-    image: ghcr.io/yoloyash/overtchat-voice:${VOICE_VERSION:-0.1.0}
+    image: ghcr.io/yoloyash/overtchat-voice:${VOICE_VERSION:-0.1.3}
     build: ./voice
     container_name: overtchat-voice
     restart: unless-stopped
@@ -104,7 +106,7 @@ services:
   stt-cpu:
     image: ghcr.io/yoloyash/overtchat-stt-cpu:${STT_VERSION:-0.1.1}
     build:
-      context: ./stt
+      context: ./speech/stt
       dockerfile: Dockerfile.cpu
     container_name: overtchat-stt-cpu
     restart: unless-stopped
@@ -118,7 +120,7 @@ services:
   stt-gpu:
     image: ghcr.io/yoloyash/overtchat-stt-gpu:${STT_VERSION:-0.1.1}
     build:
-      context: ./stt
+      context: ./speech/stt
       dockerfile: Dockerfile.gpu
     container_name: overtchat-stt-gpu
     restart: unless-stopped

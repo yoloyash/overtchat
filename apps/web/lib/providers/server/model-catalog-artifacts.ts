@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-export const MODEL_CATALOG_SCHEMA_VERSION = 1;
+export const MODEL_CATALOG_SCHEMA_VERSION = 2;
 export const MODEL_CATALOG_SOURCE_URL = "https://models.dev/api.json";
 
 export interface ModelCatalogManifest {

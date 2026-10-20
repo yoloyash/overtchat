@@ -1,10 +1,20 @@
 "use client";
 
-import { useLinkStatus } from "next/link";
+import { useRouterState } from "@tanstack/react-router";
 import { cn } from "@/lib/utils";
 
-export function LinkPendingIndicator({ className }: { className?: string }) {
-  const { pending } = useLinkStatus();
+/** Pulses while the router is loading the page at `to`. */
+export function LinkPendingIndicator({
+  to,
+  className,
+}: {
+  to: string;
+  className?: string;
+}) {
+  const pending = useRouterState({
+    select: (state) =>
+      state.status === "pending" && state.location.pathname === to,
+  });
 
   return (
     <span

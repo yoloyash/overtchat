@@ -28,6 +28,36 @@ describe("messagesForChatRequest", () => {
 });
 
 describe("reconstructPersistedMessages", () => {
+  it("continues the canonical latest assistant, ignoring client-supplied content", () => {
+    const action = { type: "continue" as const, targetAssistantMessageId: "assistant-2" };
+    expect(reconstructPersistedMessages({ storedMessages: stored, action,
+      requestMessages: [{ ...stored[3], parts: [{ type: "text", text: "fabricated" }] }],
+    })).toEqual({ messages: stored, persistUserMessage: false });
+    expect(() => reconstructPersistedMessages({ storedMessages: stored,
+      requestMessages: [stored[1]], action: { ...action, targetAssistantMessageId: "assistant-1" },
+    })).toThrow(ChatHistoryConflictError);
+    expect(() => reconstructPersistedMessages({ storedMessages: stored.slice(0, 3),
+      requestMessages: [stored[2]], action: { ...action, targetAssistantMessageId: "user-2" },
+    })).toThrow(ChatHistoryConflictError);
+  });
+  it("compacts canonical history without adding or replacing a message", () => {
+    expect(
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [
+          { ...stored.at(-1)!, parts: [{ type: "text", text: "fabricated" }] },
+        ],
+        action: { type: "compact" },
+      }),
+    ).toEqual({ messages: stored, persistUserMessage: false });
+    expect(() =>
+      reconstructPersistedMessages({
+        storedMessages: stored,
+        requestMessages: [stored[0]],
+        action: { type: "compact" },
+      }),
+    ).toThrow(ChatHistoryConflictError);
+  });
   it("appends only the requested user turn to canonical stored history", () => {
     const next = message("user-3", "user");
 

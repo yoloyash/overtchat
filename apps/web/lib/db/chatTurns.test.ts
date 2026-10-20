@@ -3,6 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  createContextCheckpoint,
+  restoreContextCheckpoint,
+} from "../chat/context-checkpoint";
+import {
   afterAll,
   beforeAll,
   beforeEach,
@@ -26,17 +30,36 @@ raw.exec(`
   CREATE TABLE user (
     id TEXT PRIMARY KEY NOT NULL
   );
+  CREATE TABLE voice_sessions (chat_id TEXT PRIMARY KEY, id TEXT NOT NULL, user_id TEXT NOT NULL, auth_session_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
   CREATE TABLE chats (
+    model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
     project_id TEXT,
     title TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     kind TEXT DEFAULT 'text' NOT NULL,
     active_stream_id TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     updated_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
     FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
   );
+  CREATE TABLE chat_generations (
+    id TEXT PRIMARY KEY NOT NULL,
+    chat_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    client_request_id TEXT NOT NULL,
+    request_fingerprint TEXT NOT NULL,
+    status TEXT DEFAULT 'running' NOT NULL,
+    error TEXT,
+    response_message_id TEXT,
+    started_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),
+    completed_at INTEGER,
+    FOREIGN KEY (chat_id) REFERENCES chats(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES user(id) ON DELETE CASCADE
+  );
+  CREATE UNIQUE INDEX chat_generations_userId_clientRequestId_idx
+    ON chat_generations (user_id, client_request_id);
   CREATE TABLE messages (
     id TEXT PRIMARY KEY NOT NULL,
     chat_id TEXT NOT NULL,
@@ -93,7 +116,9 @@ beforeAll(async () => {
 
 beforeEach(() => {
   raw.exec(`
+    DELETE FROM voice_sessions;
     DELETE FROM generation_usage;
+    DELETE FROM chat_generations;
     DELETE FROM messages;
     DELETE FROM messages_fts;
     DELETE FROM chats;
@@ -146,6 +171,244 @@ function messageIds(): string[] {
 }
 
 describe("transactional chat turns", () => {
+  it("fences old voice sessions and competing text writes inside the transaction", () => {
+    seedChat();
+    raw.prepare("INSERT INTO voice_sessions VALUES ('chat', 'voice-session', 'user', 'login', ?)").run(Date.now() + 60000);
+    const input = { chatId: "chat", userId: "user", projectId: null, streamId: "stream",
+      clientRequestId: "request", requestFingerprint: "fingerprint", staleStreamId: null,
+      userMessage: { id: "spoken", parts: [{ type: "text" as const, text: "Hello" }], metadata: { responseStyle: "voice-v1" } },
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("stream-active");
+    expect(chatTurns.commitChatTurn({ ...input, voiceSessionId: "old-session" })).toBe("stream-active");
+    expect(messageIds()).not.toContain("spoken");
+    expect(chatTurns.commitChatTurn({ ...input, voiceSessionId: "voice-session" })).toBe("committed");
+    expect(JSON.parse((raw.prepare("SELECT metadata FROM messages WHERE id='spoken'").get() as { metadata: string }).metadata)).toEqual({ responseStyle: "voice-v1" });
+    chatTurns.completeChatStream({ chatId: "chat", streamId: "stream", status: "aborted" });
+    raw.prepare("DELETE FROM voice_sessions").run();
+    const next = { ...input, clientRequestId: "next", streamId: "next", userMessage: { id: "typed", parts: [{ type: "text" as const, text: "Again" }] } };
+    expect(chatTurns.commitChatTurn({ ...next, voiceSessionId: "voice-session" })).toBe("stream-active");
+    expect(chatTurns.commitChatTurn(next)).toBe("committed");
+  });
+
+  it("claims continuation without deleting output and updates its row, search index, and usage", async () => {
+    seedChat();
+    const original = (await chatDb.getMessages("chat")).at(-1)!;
+    const input = { chatId: "chat", userId: "user", projectId: null, streamId: "continuation",
+      clientRequestId: "continue-request", requestFingerprint: "continue-fingerprint", staleStreamId: null,
+      continueMessage: original,
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("committed");
+    expect((await chatDb.getMessages("chat")).at(-1)).toEqual(original);
+    expect(chatTurns.commitChatTurn(input)).toBe("duplicate");
+    const parts = [{ type: "text" as const, text: "Old answer continued" }];
+    expect(chatTurns.completeChatStream({ chatId: "chat", streamId: "continuation",
+      assistantMessage: { id: original.id, parts }, usage: {
+        occurredAt: new Date(), providerId: "vllm", model: "fixture", inputTokens: 10, outputTokens: 2,
+      },
+    })).toBe(true);
+    expect(messageIds()).toEqual(["before", "edit", "assistant"]);
+    const saved = (await chatDb.getMessages("chat")).at(-1)!;
+    expect(saved.parts).toEqual(parts);
+    expect(raw.prepare("SELECT created_at FROM messages WHERE id = 'assistant'").get()).toEqual({ created_at: 2000 });
+    expect(raw.prepare("SELECT content FROM messages_fts WHERE message_id = 'assistant'").all())
+      .toEqual([{ content: "Old answer continued" }]);
+    expect(raw.prepare("SELECT COUNT(*) AS count FROM generation_usage").get()).toEqual({ count: 1 });
+    expect(chatTurns.completeChatStream({ chatId: "chat", streamId: "continuation",
+      assistantMessage: { id: original.id, parts },
+    })).toBe(false);
+    expect(chatTurns.commitChatTurn({ ...input, clientRequestId: "stale", streamId: "stale" })).toBe("history-conflict");
+    expect(chatTurns.commitChatTurn({ ...input, continueMessage: saved, streamId: "failed", clientRequestId: "failed" })).toBe("committed");
+    expect(chatTurns.failChatStream({ chatId: "chat", streamId: "failed", error: "provider error" })).toBe(true);
+    expect((await chatDb.getMessages("chat")).at(-1)).toEqual(saved);
+  });
+  it("records the model only when the turn is committed and leaves it unchanged on rejected turns", async () => {
+    const input = {
+      chatId: "chat", userId: "user", projectId: null,
+      streamId: "stream", clientRequestId: "request", requestFingerprint: "fingerprint",
+      staleStreamId: null, modelConfigId: "first-model",
+    };
+    expect(chatTurns.commitChatTurn(input)).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.modelConfigId).toBe("first-model");
+    expect(chatTurns.commitChatTurn({ ...input, userId: "other", clientRequestId: "other" })).toBe("not-found");
+    expect(chatTurns.commitChatTurn({ ...input, clientRequestId: "next", modelConfigId: "other-model" })).toBe("stream-active");
+    expect((await chatDb.getChat("chat", "user"))?.modelConfigId).toBe("first-model");
+    expect(chatTurns.commitChatTurn({ ...input, streamId: "next", clientRequestId: "next", staleStreamId: "stream", modelConfigId: "other-model" })).toBe("committed");
+    expect((await chatDb.getChat("chat", "user"))?.modelConfigId).toBe("other-model");
+  });
+
+  it("persists checkpoints with the owned response and invalidates them when editing covered history", async () => {
+    seedChat();
+    const original = await chatDb.getMessages("chat");
+    const checkpoint = createContextCheckpoint(
+      original,
+      "edit",
+      "Remember Before",
+    );
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "compact-stream",
+        clientRequestId: "compact-request",
+        requestFingerprint: "compact-fingerprint",
+        staleStreamId: null,
+        userMessage: {
+          id: "new-question",
+          parts: [{ type: "text", text: "Continue" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "wrong-stream",
+        assistantMessage: {
+          id: "wrong-answer",
+          parts: [],
+          metadata: { contextCheckpoint: checkpoint },
+        },
+      }),
+    ).toBe(false);
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "compact-stream",
+        assistantMessage: {
+          id: "compact-answer",
+          parts: [{ type: "text", text: "Answer" }],
+          metadata: { contextCheckpoint: checkpoint },
+        },
+      }),
+    ).toBe(true);
+    const saved = await chatDb.getMessages("chat");
+    expect(saved.slice(0, original.length)).toEqual(original);
+    expect(restoreContextCheckpoint(saved).checkpoint).toEqual(checkpoint);
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "edit-stream",
+        clientRequestId: "edit-request",
+        requestFingerprint: "edit-fingerprint",
+        staleStreamId: null,
+        truncateFromMessageId: "before",
+        userMessage: {
+          id: "before",
+          parts: [{ type: "text", text: "Changed" }],
+        },
+      }),
+    ).toBe("committed");
+    expect(
+      restoreContextCheckpoint(await chatDb.getMessages("chat")).checkpoint,
+    ).toBeUndefined();
+    expect(messageIds()).toEqual(["before"]);
+  });
+
+  it("lists only generations that still own a running chat stream", async () => {
+    seedChat();
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Hello" }],
+        },
+      }),
+    ).toBe("committed");
+
+    await expect(chatDb.listActiveChatIds("user")).resolves.toEqual(["chat"]);
+
+    expect(
+      chatTurns.completeChatStream({
+        chatId: "chat",
+        streamId: "stream-one",
+        status: "error",
+        error: "Generation failed",
+      }),
+    ).toBe(true);
+    await expect(chatDb.listActiveChatIds("user")).resolves.toEqual([]);
+  });
+
+  it("returns the original generation for an exact duplicate submission", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message",
+          parts: [{ type: "text", text: "Hello" }],
+        },
+      }),
+    ).toBe("committed");
+
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-two",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+        userMessage: {
+          id: "user-message-two",
+          parts: [{ type: "text", text: "Duplicate" }],
+        },
+      }),
+    ).toBe("duplicate");
+
+    expect(messageIds()).toEqual(["user-message"]);
+    expect(
+      raw
+        .prepare("SELECT id FROM chat_generations ORDER BY started_at")
+        .all(),
+    ).toEqual([{ id: "stream-one" }]);
+    expect(
+      raw
+        .prepare("SELECT active_stream_id AS id FROM chats WHERE id = 'chat'")
+        .get(),
+    ).toEqual({ id: "stream-one" });
+  });
+
+  it("rejects reuse of a receipt for a different intent", () => {
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-one",
+        clientRequestId: "request-one",
+        requestFingerprint: "fingerprint-one",
+        staleStreamId: null,
+      }),
+    ).toBe("committed");
+
+    expect(
+      chatTurns.commitChatTurn({
+        chatId: "chat",
+        userId: "user",
+        projectId: null,
+        streamId: "stream-two",
+        clientRequestId: "request-one",
+        requestFingerprint: "different-intent",
+        staleStreamId: null,
+      }),
+    ).toBe("idempotency-conflict");
+  });
+
   it("rolls back branch deletion when replacement insertion fails", () => {
     seedChat();
 
@@ -155,6 +418,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream",
+        clientRequestId: "request-stream",
+        requestFingerprint: "fingerprint-stream",
         staleStreamId: null,
         truncateFromMessageId: "edit",
         userMessage: {
@@ -181,6 +446,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream",
+        clientRequestId: "request-stream",
+        requestFingerprint: "fingerprint-stream",
         staleStreamId: null,
         truncateFromMessageId: "edit",
         userMessage: {
@@ -208,6 +475,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream-one",
+        clientRequestId: "request-stream-one",
+        requestFingerprint: "fingerprint-stream-one",
         staleStreamId: null,
         userMessage: {
           id: "user-message",
@@ -222,6 +491,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream-two",
+        clientRequestId: "request-stream-two",
+        requestFingerprint: "fingerprint-stream-two",
         staleStreamId: null,
         userMessage: {
           id: "second-user-message",
@@ -270,6 +541,19 @@ describe("transactional chat turns", () => {
         .get(),
     ).toEqual({ id: null });
     expect(messageIds()).toEqual(["user-message", "assistant-message"]);
+    expect(
+      raw
+        .prepare(
+          `SELECT status, response_message_id AS responseMessageId,
+                  completed_at AS completedAt
+           FROM chat_generations WHERE id = 'stream-one'`,
+        )
+        .get(),
+    ).toEqual({
+      status: "complete",
+      responseMessageId: "assistant-message",
+      completedAt: expect.any(Number),
+    });
     expect(
       raw.prepare("SELECT message_id FROM messages_fts ORDER BY rowid").all(),
     ).toEqual([
@@ -346,6 +630,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "stream",
+        clientRequestId: "request-stream",
+        requestFingerprint: "fingerprint-stream",
         staleStreamId: null,
         userMessage: {
           id: "user-message",
@@ -431,6 +717,8 @@ describe("transactional chat turns", () => {
         userId: "user",
         projectId: null,
         streamId: "new-stream",
+        clientRequestId: "request-new-stream",
+        requestFingerprint: "fingerprint-new-stream",
         staleStreamId: null,
         truncateFromMessageId: "edit",
         userMessage: {

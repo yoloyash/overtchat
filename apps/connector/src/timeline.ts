@@ -18,6 +18,9 @@ import {
   type AgentRuntimeSnapshot,
   type AgentSessionSync,
   reconcileAgentRuntimeSnapshot,
+  windowAgentSnapshot,
+  agentHistoryPage,
+  type AgentHistoryPage,
 } from "@overtchat/agent-bridge";
 
 const FORMAT = 1;
@@ -181,10 +184,25 @@ export class ConnectorTimelineStore {
     return new ConnectorTimelineStore(directory);
   }
 
+  /** Restore the complete display transcript, never a window intended for UI paging. */
+  async readTranscript(
+    sessionId: string,
+    providerSessionId: string,
+  ): Promise<unknown[] | null> {
+    this.assertOpen();
+    await this.flushPending(sessionId);
+    return this.enqueue(sessionId, async () => {
+      const state = await this.load(sessionId);
+      if (!state || state.providerSessionId !== providerSessionId) return null;
+      return structuredClone(state.snapshot.messages);
+    });
+  }
+
   async openSession(
     sessionId: string,
     providerSessionId: string,
     snapshot: AgentRuntimeSnapshot,
+    replaceHistory = false,
   ): Promise<AgentRuntimeCursor> {
     this.assertOpen();
     if (snapshot.sessionId !== sessionId) {
@@ -213,7 +231,7 @@ export class ConnectorTimelineStore {
         return { epoch: state.epoch, sequence: state.sequence };
       }
 
-      if (state.providerSessionId !== providerSessionId) {
+      if (replaceHistory || state.providerSessionId !== providerSessionId) {
         const envelope: AgentRuntimeEnvelope = {
           epoch: crypto.randomUUID(),
           sequence: 1,
@@ -325,6 +343,19 @@ export class ConnectorTimelineStore {
     });
   }
 
+  async history(sessionId: string, before: string): Promise<AgentHistoryPage> {
+    this.assertOpen();
+    await this.flushPending(sessionId);
+    return this.enqueue(sessionId, async () => {
+      const state = await this.requireState(sessionId);
+      return agentHistoryPage(
+        state.snapshot,
+        { epoch: state.epoch, sequence: state.sequence },
+        before,
+      );
+    });
+  }
+
   async flush(sessionId: string): Promise<void> {
     this.assertOpen();
     await this.flushPending(sessionId);
@@ -391,10 +422,9 @@ export class ConnectorTimelineStore {
             epoch: state.epoch,
             sequence: ++sequence,
             type: source.type,
-            data:
-              source.type === "snapshot"
-                ? reconcileAgentRuntimeSnapshot(snapshot, source.data)
-                : source.data,
+            // Runtime snapshots already own the complete display transcript.
+            // Re-merging missing rows here can resurrect compacted/rewound work.
+            data: source.data,
           } as AgentRuntimeEnvelope;
           const nextSnapshot = applyAgentRuntimeEnvelope(snapshot, envelope);
           if (!nextSnapshot) {
@@ -462,7 +492,7 @@ export class ConnectorTimelineStore {
     const reset = (): AgentSessionSync => ({
       reset: true,
       cursor,
-      snapshot: state.snapshot,
+      snapshot: windowAgentSnapshot(state.snapshot, state.epoch),
     });
     if (
       !after ||
@@ -485,7 +515,19 @@ export class ConnectorTimelineStore {
     ) {
       return reset();
     }
-    return { reset: false, cursor, events };
+    if (
+      events.reduce(
+        (bytes, event) => bytes + Buffer.byteLength(JSON.stringify(event)),
+        0,
+      ) >
+      8 * 1024 * 1024
+    )
+      return reset();
+    return {
+      reset: false,
+      cursor,
+      events: events.map((event) => this.clientEnvelope(event)),
+    };
   }
 
   private async load(sessionId: string): Promise<TimelineState | null> {
@@ -684,6 +726,15 @@ export class ConnectorTimelineStore {
     }
   }
 
+  private clientEnvelope(envelope: AgentRuntimeEnvelope): AgentRuntimeEnvelope {
+    return envelope.type === "snapshot"
+      ? {
+          ...envelope,
+          data: windowAgentSnapshot(envelope.data, envelope.epoch),
+        }
+      : envelope;
+  }
+
   private notify(
     state: TimelineState,
     envelopes: AgentRuntimeEnvelope[],
@@ -691,7 +742,7 @@ export class ConnectorTimelineStore {
     for (const envelope of envelopes) {
       for (const subscriber of state.subscribers) {
         try {
-          subscriber(envelope);
+          subscriber(this.clientEnvelope(envelope));
         } catch (error) {
           console.error("Host Connector timeline subscriber failed.", error);
         }

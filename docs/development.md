@@ -1,0 +1,1331 @@
+# Development
+
+Use Node 22 and npm 10.9.8. From the repository root:
+
+```sh
+npm install
+npm run dev
+```
+
+The full development stack supports Linux and macOS and requires Docker for
+Redis. On other platforms, use `npm run dev:web` to run the web app only.
+
+The command starts the web app, an isolated Redis container, and a source Host
+Connector. Open [localhost:4717](http://localhost:4717). On an empty database,
+use the setup code printed by the web server to create the first administrator
+account. The code is tied to `BETTER_AUTH_SECRET` and survives restarts with the
+same database and secret.
+
+Ctrl-C stops web and connector processes; `npm run dev:down` stops the retained
+Redis container. Disposable connector state lives in `.overtchat-dev/`, separate from production.
+
+## Environment and commands
+
+Development runs with checked-in defaults; copying `.env.example` is optional.
+That file is a reference for manual source configuration. Managed installations
+use `overtchat setup`, which generates their environment separately.
+
+Defaults are in `apps/web/.env.development`; machine-specific values belong in
+`apps/web/.env.local`. The root `.env` configures source development;
+`apps/web/.env` must remain a symlink to `../../.env`. For another development
+origin, configure `EXTRA_TRUSTED_ORIGINS` and Next.js `allowedDevOrigins`.
+
+| Command or variable | Purpose |
+| --- | --- |
+| `npm run dev:web` | Web only |
+| `npm run dev:mobile` | Expo client |
+| `npm run dev:desktop` | Electron client, with the web UI hot-reloaded from source |
+| `npm run dev:site` | Public site |
+| `npm run dev:reset-connector` | Reset an incompatible disposable connector journal |
+| `npm run dev:managed` | Exercise production provisioning from the worktree |
+| `OVERTCHAT_DEV_PORT` | Override the web port |
+| `OVERTCHAT_DEV_REDIS_PORT` | Override the development Redis port |
+
+Chat generation runs on the server. SQLite persists its status and completed
+messages; Redis buffers live events for reconnecting clients. Without Redis,
+generations still complete and clients recover saved messages, but cannot
+replay missed live deltas.
+
+## Dependency updates
+
+Use the pinned npm 10.9.8 for dependency changes, including Dependabot PRs.
+After updating dependencies, regenerate the lockfile from the repository root:
+
+```sh
+npm run deps:lockfile
+```
+
+This uses npm's resolver to regenerate `package-lock.json` without installing
+packages or running lifecycle scripts. Review the diff for unrelated version,
+integrity, or dependency changes and commit the generated lockfile. Avoid
+hand-editing dependency flags or adding overrides just to repair lockfile metadata.
+
+The Validate workflow regenerates the lockfile with the pinned npm and fails if
+it changes. `npm ci` alone does not detect all dependency-flag drift. Run
+`npm ci`, `npm run deps:check`, and the affected workspace checks after regeneration.
+
+Keep Better Auth and its Expo package aligned across web and mobile, including
+the pinned `auth` CLI in the web workspace. Web/mobile Vitest and the web
+`@vitest/ui` package are pinned to the same patch: Better Auth's optional Vitest
+peer can otherwise make npm 10 resolve mismatched Vitest/UI peers and crash with
+`Cannot read properties of null (reading 'edgesOut')` when adding auth plugins.
+Update those test-package pins together and verify plugin installation in a
+disposable copy before changing this constraint. Do not use `--legacy-peer-deps`
+or `--force` for normal installs or CI.
+
+### Authentication upgrade validation
+
+Run the web/mobile checks and the desktop checks below. The compatibility
+fixture was generated with Better Auth 1.6.23 using synthetic credentials; its
+generator accepts a separate old web workspace so the old dependency is never
+installed in the current application. The test checks existing password hashes,
+signed cookies, desktop bearer tokens, restart, sign-in, and sign-out against
+the current auth configuration and migrated SQLite schema.
+
+```sh
+npm run test -w apps/web -- lib/auth/upgrade-compatibility.test.ts lib/auth/initial-setup.test.ts lib/auth/password-recovery.test.ts
+npm run typecheck -w apps/mobile
+npm run test -w apps/mobile
+E2E_PORT=4879 npm run test:e2e -w apps/web -- initial-setup.spec.ts users.spec.ts desktop-updates.spec.ts attachment-security.spec.ts
+```
+
+Compare generated auth table definitions with `lib/db/schema.ts` before adding
+a migration. The 1.6.23 to 1.7.10 upgrade leaves our four auth tables unchanged.
+The auth CLI currently cannot load transitive `server-only` imports; perform
+generation in a disposable checkout with those markers temporarily removed,
+then restore them. Never replace the complete application schema with only the
+generated auth fragment.
+
+On a real phone, verify login, force-quit/reopen, background/foreground, sign-out,
+and authenticated image previews/uploads. Better Auth 1.7 reads SecureStore
+asynchronously: imperative requests await `getAuthCookie()`, while rendered
+image sources and notification scopes use `useAuthCookie()` and wait for a
+resolved cookie. An old server/account's pending read must never populate the
+new identity. Test push registration with a build signed for push notifications;
+an isolated wildcard-profile build cannot establish APNs delivery.
+
+KaTeX is temporarily pinned to 0.18.2 in the web workspace and root npm
+override. The published Streamdown math, rehype-katex, Mermaid, and micromark
+math packages still declare 0.16 ranges, which retain the trust-restriction
+security vulnerability fixed in 0.18.2. The override aligns their renderer with
+the imported stylesheet; mixing 0.16 markup with 0.18 CSS breaks equation
+layout. Keep both pins aligned, and remove the override once upstream ranges
+support the patched version. Validate changes with:
+
+```sh
+npm run test -w apps/web -- lib/chat/markdown-math.test.tsx
+E2E_PORT=4827 npm run test:e2e -w apps/web -- math.spec.ts mermaid.spec.ts
+```
+
+## CI browser and desktop smoke diagnostics
+
+Web E2E and Linux desktop dependency installation have a five-minute step
+deadline, separate from test execution. `.github/apt-ci.conf` limits APT
+connection and stalled-download waits to 30 seconds, disables download retries,
+and makes incomplete package-index updates fail. These settings apply only to
+the disposable CI runners; they do not change operator installations.
+
+When a check fails, inspect the failed step first. A dependency-installation
+failure means the tests did not run. Diagnose the package source or runner
+network before changing test assertions or increasing job timeouts.
+
+The stable-release promotion workflow retries its pinned npm bootstrap once,
+after three seconds, only when npm reports `ECONNRESET`. npm's built-in fetch
+retries do not cover a connection reset while reading the registry JSON body.
+Both attempts' output remains in the job log; a failed second attempt or any
+other npm error still fails the step.
+
+The Windows installer smoke logs the elapsed time and full PowerShell subprocess
+result when its installation preflight fails, including the exit status, signal,
+spawn error, stdout, and stderr. Inspect these job-log details before interpreting
+the failure as an existing installation. The preflight timeout remains 15 seconds.
+
+Web E2E uses both line and HTML reporters in CI. The `playwright-report` artifact
+contains `playwright-report/` and `test-results/`, including retained failure
+traces. Upload is attempted after success, failure, or cancellation when files
+exist; a forcibly terminated runner may not finish reports or upload artifacts.
+After extracting the artifact, open the report with:
+
+```sh
+npx playwright show-report <artifact-directory>/playwright-report
+```
+
+## Windows SSH validation
+
+The Windows suite runs through a real SSH alias and creates isolated temporary
+directories on both machines. Install Node.js 22, Git for Windows, and an
+authenticated Oh My Pi CLI on the target. Set the optional Node override when
+Node is not on the SSH PATH:
+
+```sh
+WINDOWS_SSH_ALIAS=gaming-pc \
+OVERTCHAT_SSH_NODE_PATHS='{"gaming-pc":"C:\\Program Files\\nodejs\\node.exe"}' \
+npm run test -w apps/connector -- src/windows-ssh.integration.test.ts
+```
+
+Set `WINDOWS_SSH_GIT_DIR` to the remote directory containing `git.exe` to enable
+the native Git status test; that directory is added only to test process
+environments. Set `WINDOWS_SSH_PROMPT=1` to include a small real model turn
+(uses the target's configured provider credentials). The default suite probes
+the installed provider and exercises its RPC lifecycle without model requests.
+
+Coverage includes native and batch-wrapper argv, binary streams, scripts above
+Windows command-line limits, Windows paths and filesystem confinement, provider
+discovery, PowerShell command entry, detached descendants, SSH transport loss,
+connector ledger recovery, and a busy agent that delays reading stdin beyond
+the heartbeat timeout. Batch tests include the extensionless Unix shim next to
+the Windows wrapper, as produced by npm installations.
+Run against an ordinary `cmd.exe` SSH host and
+also a host configured with PowerShell as its default shell before expanding
+the supported Windows matrix. The nested PowerShell entry test exercises its
+parser without changing the target's SSH server configuration.
+
+Run the connector, agent-runtime, and agent-bridge suites and typechecks alongside
+the web workspace checks. Windows path acceptance is shared by the form and API;
+the connector remains the only product process executing host commands. The
+Windows helper has an internal versioned stdin bootstrap and adds no public
+connector protocol messages or remotely listening service.
+The Validate workflow also runs the helper's binary-stream, startup-gate, and
+batch-wrapper tests on Windows, using real PowerShell and Job Objects. Focused
+tests cover signal escalation, cancellation during startup, heartbeat handling
+under backpressure, and the pending-input bound.
+
+## Connector journal validation
+
+Persistence changes must preserve journal-before-ack ordering, command receipts,
+and canonical timeline recovery. Run the connector tests, typecheck, lint, and
+build, then the incident-scale qualification:
+
+```sh
+npm run test -w apps/connector --
+npm run typecheck -w apps/connector --
+npm run lint -w apps/connector --
+npm run build -w apps/connector --
+npm run test:journal-scale -w apps/connector
+```
+
+The scale check creates disposable synthetic state containing about 610 MB of
+queued events, 6,338 receipts, and 412 sessions. It migrates with a 256 MiB Node
+heap limit, exercises actual connector HTTP delivery through a failed request,
+checks every delivered event by hash, and verifies receipts and queued messages
+survive restart. It reports memory, startup/drain times, and reclaimed disk
+space. The crash regressions use actual subprocess `SIGKILL`, including before
+and after commits and during migration. SQLite page quotas test full-database
+rollback; filesystem publication failures must leave the original JSON intact.
+
+Build the packaged connector and check it without contacting production:
+
+```sh
+npm run build:binary -w apps/connector
+node .github/scripts/smoke-connector-journal.mjs apps/connector/dist/overtchat-connector
+bun build apps/connector/src/test-support/journal-runtime-smoke.ts --compile --outfile /tmp/overtchat-journal-smoke
+/tmp/overtchat-journal-smoke
+E2E_PORT=4747 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
+```
+
+Run `/tmp/overtchat-journal-smoke --scale` to qualify the same incident workload
+under the compiled Bun runtime. Both qualifications require peak RSS below 1 GiB.
+The connector workflow runs packaged migration/backup, native `SIGKILL`, compiled
+journal operations, and incident-scale checks on Linux/macOS for both CPU
+architectures. Development journal reset moves the entire connector directory,
+including WAL and migration archives.
+Operator backup and upgrade recovery are documented in [Deploy](deploy.md).
+
+## Custom image provider validation
+
+Image models can use **Custom (OpenAI-compatible)** with an optional API key,
+base URL ending at the API root (for example, `http://host:8731/v1`), and a model
+ID. The server appends `/images/generations`. A configured size such as
+`512x512` overrides chat and model suggestions; blank uses the backend default.
+Extra request parameters are a JSON object for settings such as `seed` or
+`quality`. They cannot replace the model, prompt, size, response format, image
+count, streaming mode, or reference images. Custom providers expose editing
+only when the administrator enables **Supports image editing** for a backend
+and model that support multipart `/images/edits` requests. **Editing size**
+overrides the generation size for edits; blank inherits the generation size,
+and `auto` uses the backend default. Existing configurations keep their shared
+size until an override is saved. Bundled desktop clients need API level 5 to
+read the new option; coordinate releases as described in [Releases](release.md).
+
+The synchronous response must contain one image in `data`: either `b64_json`
+or an inline base64 image `url`. Remote image URLs are not fetched. Generated
+PNG, JPEG, WebP, and GIF bytes use the existing authenticated upload store.
+Backend-specific parameters and credentials stay in admin settings.
+
+```sh
+npm run test -w apps/web -- lib/images lib/model-config/schema.test.ts lib/providers/server/registry.test.ts
+E2E_PORT=4859 npm run test:e2e -w apps/web -- image-generation.spec.ts
+```
+
+The tests use local HTTP fixtures, including a strict request contract based on
+[Halogen's documented image API](https://github.com/peonist-ai/halogen-flash-server/blob/main/docs/NPU.md#images).
+They cover keyless configuration, fixed-size precedence, separate generation
+and editing sizes, override reset and inheritance, extra parameters,
+base64/data-URL PNGs, generation-only tools, persistence, download, cancellation,
+invalid responses, and existing OpenAI/Gemini generation and editing. They do
+not run Halogen inference; a real deployment smoke test remains useful before
+claiming compatibility with a particular backend version.
+
+## Model catalog refresh
+
+The weekday `Refresh model catalog` workflow fetches models.dev, validates the
+generated catalog and manifest, and opens or updates `automation/model-catalog`.
+To run the same validation locally:
+
+```sh
+npm run catalog:generate
+npm run catalog:check
+npm run test -w apps/web -- \
+  lib/providers/server/model-catalog-artifacts.test.ts \
+  lib/providers/server/model-catalog.test.ts \
+  lib/providers/server/model-cost.test.ts
+```
+
+Commit both generated artifacts together. Lookup and cost arithmetic tests use
+`model-catalog.fixture.ts` for fixed inputs; do not regenerate this fixture or
+assert fixed provider prices or limits against the changing catalog. The artifact
+tests exercise the actual generated catalog, including pricing compatibility for
+every priced model. A legitimate upstream price change should produce a catalog
+diff for review without failing a test that expects yesterday's prices.
+
+## Chat compaction validation
+
+Regular chat automatically compacts at 80% of the resolved model context window,
+or earlier to leave room for an explicitly configured output limit and 10%
+headroom. Ordinary replies keep their existing output settings: compaction adds
+no reply cap. When no output limit is configured, the budget reserves an estimated
+10% of the window (bounded by the model's known output maximum); this is not a
+guarantee about an unknown provider default. Summary generation alone is capped
+at up to 4,096 tokens, a quarter of the window, and the model's output maximum.
+The Advanced context-window override controls this budget. Checkpoints live in
+message metadata; the original transcript remains intact. Token counts use a local tokenizer estimate calibrated with provider
+usage, including tool schemas and media allowances. `/compact` forces a checkpoint
+below the threshold without generating a chat answer; it retains the newest turn
+and shows a permanent inline marker. Failed summaries stop the operation with a
+retryable error and leave the prior checkpoint and transcript intact. The recent
+turns have a retention target of 40% of the input budget; the newest turn is
+always kept. Unknown model windows leave ordinary chat available without automatic
+compaction;
+set a window in Advanced to enable compaction. Existing checkpoints remain in
+the model context when switching to a model with an unknown window.
+
+Run the focused regressions with:
+
+```sh
+npm run test -w apps/web -- lib/chat/compaction.test.ts app/api/chat/route.test.ts lib/db/chatTurns.test.ts
+E2E_PORT=4727 npm run test:e2e -w apps/web -- compaction.spec.ts
+```
+
+The browser regression uses a controlled provider and a real HTTP MCP connection
+through the production chat route. It checks large tool results across successive
+agent steps, call/result pairing, unchanged reply settings, complete stored results,
+and a durable inline marker. On a native device or emulator, also check `/compact`,
+automatic compaction, Stop during summarization, and reopening the saved chat.
+
+For live validation, use a disposable chat and a copy of a local model config
+with tool calling disabled, so memory/tool side effects cannot influence the
+recall check. Import a synthetic transcript larger than its input budget, with
+known facts near the beginning and several recent turns. Ask for those facts,
+verify a compaction notice and checkpoint, then continue to verify reuse. Add
+more history to trigger another compaction. Test an 8k context override and an
+edit before the checkpoint; the edited conversation must not reuse the old
+summary. Verify `/compact` below the threshold, reload its marker, and continue
+from its saved checkpoint. Verify failed and cancelled compactions do not save a
+replacement checkpoint. Remove the test chat and model config afterward.
+
+## Chat continuation validation
+
+The latest assistant answer ending in text offers **Continue response** on web,
+desktop, and mobile. This sends canonical history ending in that assistant
+message and appends output under the same message ID. Reasoning-only output and
+incomplete tool calls cannot be continued. Backend support for assistant prefill
+varies: vLLM and llama.cpp use explicit continuation flags on the first request
+only; other providers receive the final assistant message with ordinary options.
+There is no automatic retry when a response reaches its output limit.
+
+Run the focused regressions and browser coverage with:
+
+```sh
+npm run test -w apps/web -- lib/chat/continuation.test.ts lib/chat/request.test.ts lib/chat/history.test.ts lib/search/extract.test.ts lib/db/chatTurns.test.ts lib/providers/server/registry.test.ts app/api/chat/route.test.ts
+E2E_PORT=4727 npm run test:e2e -w apps/web -- continuation.spec.ts
+```
+
+To include a live vLLM check, set `CONTINUATION_LIVE_URL` to its `/v1` endpoint:
+
+```sh
+CONTINUATION_LIVE_URL=http://127.0.0.1:8001/v1 E2E_PORT=4727 npm run test:e2e -w apps/web -- continuation.spec.ts
+```
+
+The live test uses the first served model, seeds a JSON prefix in the isolated
+E2E database, and continues with a 24-token output limit until the array is
+complete. It verifies the combined content, stable message ID, and reload.
+Controlled-provider tests cover code fences, normal request flag isolation,
+stale targets, provider failure, cancellation, temporary chats, search indexing,
+and usage recording. On Android and iOS, also check the Continue action/menu,
+Stop, and reopening the saved response.
+
+## Chat message queue validation
+
+Regular chat queues messages submitted during generation on web, desktop, and
+mobile. Each queued message retains its attachments and send-time model, search,
+reasoning, and image options. Messages run as separate FIFO turns. Edit changes
+queued text in place without replacing the composer's draft; Delete removes the
+pending message. Send now cancels the current generation, waits for server
+finalization and the local reader, then promotes the selected message ahead of
+other queued turns. Stop and generation errors pause automatic sending; Send now
+resumes it. Editing a queue item holds automatic dispatch until Save or Cancel.
+Foreground/network recovery only replaces the local reader and does not pause
+the queue. A newer Stop or unmount invalidates pending dispatch/cancellation;
+late completions cannot restart it. Send now has a 30-second cancellation
+deadline and keeps the pending message available if cancellation fails.
+
+Queues live in client memory, scoped to the user, server, and chat. They survive
+in-app navigation, but dispatch only while that chat is mounted. Reloading the
+web app or restarting the native app clears pending messages. Temporary-chat
+queues are discarded when leaving the chat and never persisted. Empty queues
+are released on unmount. Deleting a chat or changing the authenticated session
+clears its pending messages.
+
+```sh
+npm run test -w apps/web -- lib/chat/chat-queue.test.ts lib/chat/chat-generation.test.ts lib/chat/useChatGenerationRecovery.test.tsx lib/chat/history.test.ts app/api/chat/route.test.ts
+npm run test -w apps/mobile --
+E2E_PORT=4831 npm run test:e2e -w apps/web -- chat-queue.spec.ts composer-drafts.spec.ts continuation.spec.ts stream-resumption.spec.ts
+```
+
+The browser tests cover FIFO dispatch, edit/delete, preservation of an unrelated
+draft, attachments, navigation, partial-response persistence after cancellation,
+failed cancellation, Stop during Send now, foreground recovery, session cleanup,
+provider errors, and temporary chats. Unit regressions also cover stale readers
+and cancellation deadlines. Include a local vLLM
+model through the real product routes with:
+
+```sh
+CHAT_QUEUE_LIVE_URL=http://127.0.0.1:8001/v1 E2E_PORT=4831 npm run test:e2e -w apps/web -- chat-queue.spec.ts
+```
+
+Before releasing native clients, also check queue/edit/delete/Send now on Android
+and iOS, including keyboard clearance, chat switching, and foreground recovery.
+
+## Chat pinning validation
+
+Chat pins are stored on the server and appear in the web/Electron sidebar and
+native mobile drawer. The chat list includes every pin alongside its recent-chat
+window. Pinning preserves activity timestamps and project membership. Bundled
+clients show Pin/Unpin only when `/api/capabilities` advertises `chatPinning: true`;
+older servers retain their existing chat controls.
+
+```sh
+npm run test -w apps/web -- lib/db/chats.test.ts 'app/api/chats/[id]/route.test.ts' app/api/capabilities/route.test.ts
+E2E_PORT=4727 npm run test:e2e -w apps/web -- chat-pinning.spec.ts sidebar.spec.ts voice.spec.ts stream-resumption.spec.ts
+npm run test -w apps/mobile -- src/components/drawer/ChatRowMenu.test.tsx
+npm run typecheck -w apps/mobile --
+```
+
+The browser regression covers inline/menu keyboard pinning, older-server support,
+persistence, older pins, project shortcuts and moves, failed writes, deletion,
+and the touch drawer. Touch generation checks cover pinned and recent rows,
+title/action spacing, open menus, and servers without pinning support; desktop
+checks preserve voice indicators and generation feedback. On native Android and
+iOS, also check the drawer's long-press Pin/Unpin actions, refresh, and reopening
+the app.
+
+## Appearance validation
+
+Accent colors are device preferences: browser storage is scoped to the origin
+and browser profile, desktop uses its local renderer storage, and mobile uses
+SecureStore. Palettes originate in `packages/shared/src/theme/tokens.ts`;
+regenerate the committed CSS, React Native, and browser-chrome background outputs
+after palette changes:
+
+```sh
+npm run theme:generate -w packages/shared --
+npm run test -w packages/shared --
+E2E_PORT=4827 npm run test:e2e -w apps/web -- settings.spec.ts
+```
+
+The browser coverage checks live changes across tabs, keyboard selection,
+light/dark mode, reload and pre-hydration application, independent browser
+preferences, default restoration, narrow layouts, and high-contrast focus and
+selection. Shared tests verify generated web/native parity and text/control
+contrast for every preset in light and dark mode. On native clients, also
+select colors in Appearance, switch light/dark/system modes, navigate back to
+chat, and restart the app to verify the tint and selection persist locally.
+Run affected shared, web, desktop, mobile, and site checks for palette changes.
+
+Browser/PWA toolbar metadata follows the saved accent and the app's resolved
+light/dark mode, including before hydration and when system appearance changes.
+The install manifest and OS-native splash retain static brand defaults: those
+launch surfaces appear before device-local preferences can be read. Native root,
+navigation, and status-bar appearance follow the palette once the app renders.
+Validate release splash behavior with a release build, since Expo development
+clients do not reproduce all native splash properties.
+
+## Mobile validation
+
+For Agent Connections changes:
+
+```sh
+npm run typecheck -w apps/mobile --
+npm run test -w apps/mobile --
+```
+
+Run affected web and bridge checks when shared projections or replicas change.
+To validate both native bundles without publishing, run from `apps/mobile`:
+
+```sh
+npx expo export --platform android --platform ios --output-dir /tmp/overtchat-mobile-export
+```
+
+Native Android builds require a locally installed JDK 17 and the Android SDK.
+Set `JAVA_HOME` to JDK 17 before prebuilding/building (on macOS, use
+`export JAVA_HOME=$(/usr/libexec/java_home -v 17)`). Keep Expo's generated Gradle
+wrapper version. With the current React Native 0.85.3 toolchain, a missing JDK
+17 triggers a Foojay downloader that is incompatible with Gradle 9; downgrading
+an ignored wrapper file hides the missing prerequisite and is not a reproducible
+fix. The [mobile release workflow](../.github/workflows/mobile-eas.yml) installs
+JDK 17 explicitly; [release.md](release.md#mobile-release) owns production
+build validation.
+
+On Android and iOS, check session creation/resume, web/mobile switching,
+background and network recovery, model/permission controls, commands,
+approvals/questions, image input, tool output, keyboard clearance, and back
+gestures. Use an existing development client unless native modules change.
+For navigation changes, check the shared drawer from regular and agent chats,
+the remembered Agents section expansion, recent agent selection, workspace
+chat creation, and opening both chat types from push notifications. Check native
+Back alongside the conversation menu, edge-only drawer swipes on chat and agent
+list screens, and horizontal tool/code scrolling on agent detail screens.
+
+### Mobile realtime voice
+
+Mobile voice uses the existing voice session lease, realtime WebSocket, and
+canonical message event stream. `packages/voice-client` owns the shared realtime
+protocol; each app supplies audio and transport adapters. The local Expo module
+in `apps/mobile/modules/two-way-audio` captures and plays mono 24 kHz PCM16 with
+native voice processing. Its README records the upstream source and license.
+Rebuild the native app after changing this module; Expo Go and older native
+binaries cannot start live voice.
+
+Calls are foreground-only. Leaving the chat, locking the phone, switching apps,
+or losing audio focus ends the call and releases the microphone and playback.
+Returning never automatically opens the microphone. Ending keeps text submission
+gated until the server lease and generation settle, then reloads saved messages.
+Typed messages during a call use the same interruption and persistence path as
+spoken turns. Dictation and read-aloud remain separate features.
+
+Check microphone permission before requesting it: Android can launch its
+permission activity even when access is already granted. While an initial
+permission request is pending, its temporary background transition must not
+cancel that request. Capture still waits for the app to be active, and End or
+navigation away invalidates the pending start. Test both denial followed by
+grant and subsequent starts with permission already granted.
+
+```sh
+npm run test -w packages/voice-client
+npm run typecheck -w packages/voice-client
+npm run test -w apps/mobile
+npm run typecheck -w apps/mobile
+npm run test -w apps/web -- lib/voice components/chat/VoiceSession.test.tsx
+```
+
+Export both native bundles using the command above, then build and install a
+native client. On a physical device, connect to a server with configured voice,
+STT, TTS, and a reachable chat model. Validate a spoken turn and audible reply,
+barge-in, mute/unmute, typed interruption, End followed by normal text, repeated
+start/end, permission denial, network loss, navigation away, and background or
+lock followed by return. Check the persisted conversation for duplicate turns
+and the microphone indicator for cleanup. Test speaker and headset routes on
+both iOS and Android; JavaScript fixtures and bundle exports do not validate
+echo cancellation, Bluetooth routing, or native audio focus behavior.
+
+#### Mobile voice tradeoffs and qualification
+
+The mobile client reuses the existing PCM16-over-WebSocket voice protocol and
+canonical history stream. It does not add a WebRTC media stack. At 24 kHz mono,
+16-bit audio uses 48 KB/s per active direction before encoding; base64 adds
+roughly one third. Expect higher bandwidth than compressed voice codecs and
+qualify latency on cellular and lossy networks, not only local Wi-Fi.
+
+The local native module is an upstream adaptation that we maintain. iOS uses
+AVAudioEngine voice processing; Android echo cancellation depends on device
+support. Speaker, Bluetooth, phone interruptions, and returning to dictation or
+read-aloud require device checks. iOS keeps microphone capture active during the
+first reply rather than discarding the first two seconds of input. On the tested
+iPhone 13 Pro Max, three silent speaker trials (two at 50% volume, one at 90%)
+produced no self-transcribed turns, and speech within the first two seconds
+reached transcription. This is single-device evidence; check first-reply echo
+and early spoken interruption when qualifying another device or audio route.
+
+Metro selects the realtime SDK's browser exports. Startup synchronously installs
+missing DOM events using `event-target-shim` and `@whatwg-node/events`, and text
+encoding streams using `@stardazed/streams-text-encoding`. Runtime-provided
+globals are preserved; no React Native private imports are required. Recheck
+the polyfill integration tests, both native bundle exports, and on-device text
+streaming and voice after SDK or React Native upgrades.
+
+For the voice UI, verify the empty-draft voice/send swap, pending text preview,
+permission/connecting status, mute, interrupt versus End, model changes, and
+cleanup retry. Dismissing a turn warning must not dismiss a cleanup error or
+disable End after cleanup has failed. Include long pasted text, larger text
+sizes, reduced motion, and keyboard-open layouts in device review.
+
+## Desktop validation
+
+The desktop app needs a server at its API level, so run one from the same
+worktree, e.g. `npm run dev:web`, and connect to it from `npm run dev:desktop`.
+Development builds keep their server, sign-in, and window state in an
+`overtchat-dev` profile, separate from installed builds.
+
+```sh
+npm run typecheck -w apps/desktop --
+npm run test -w apps/desktop --
+npm run build -w apps/desktop --
+```
+
+Windows uses a frameless main window with minimize, maximize/restore, and close
+buttons in the existing app header. The native menu is hidden; menu keyboard
+shortcuts still work. Header whitespace drags the window, and double-clicking
+it maximizes/restores. macOS and Linux keep their existing window presentation.
+After building, validate native Windows controls with an isolated source profile
+(no installed app or saved sign-in is touched):
+
+```sh
+node --import tsx .github/scripts/smoke-desktop-windows-chrome.mjs
+```
+
+Check dragging and edge resizing on a Windows desktop, plus header actions with
+the sidebar collapsed, the workspace files pane open, light/dark themes, and
+zoom. The automated smoke covers native minimize/maximize/restore/close,
+fullscreen and zoom, connection/sign-in screens, and chat header controls down
+to a 420px window with a collapsed sidebar.
+It also keeps `/api/ping` healthy while session/setup requests fail, relaunches
+with the saved server, and checks **Try again**, **Change server**, and native
+window controls on the error screen.
+It also checks Windows `WM_NCHITTEST` at each button: Chromium-injected clicks
+alone bypass native drag regions and can pass even when physical clicks fail.
+Keep the window controls after the page content in DOM order so their `no-drag`
+region excludes the underlying headers from Electron's native drag region.
+
+The connect screen discovers local servers in the background at ports 4718
+and 4717, plus the app port in the manager's public installation state. Custom
+manager locations follow `OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_HOME`; discovery
+never reads `stack.env`. Custom source-development ports still require manual
+entry. Check that discovery preserves typed input, Connect selects a server,
+Check again finds a newly started server, and relaunch keeps the saved server.
+
+A packaged Linux regression uses a disposable API fixture, manager state, and
+application profile to exercise discovery, explicit selection, saved-server
+restoration, compatibility failures, and retry through real preload IPC:
+
+```sh
+xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop/release/linux-unpacked/overtchat-desktop
+```
+
+Build/package first using the Linux instructions below. The same sandbox and
+runtime prerequisites as the packaged Linux smoke test apply. Set
+`DESKTOP_SMOKE_ARTIFACT_DIR` to save a connection-screen screenshot. Optionally
+set `DESKTOP_DISCOVERY_LIVE_ORIGIN=http://localhost:4717` while a compatible
+source server is running to also select it and verify its login/setup screen;
+this does not create an account or sign in.
+
+The regression also covers session/setup failures after a successful ping,
+relaunch with the failing server, and recovery through the visible buttons.
+Source mode additionally injects rejected startup/retry IPC calls. Desktop
+unit tests cover address defaults, retained HTTPS upgrades, and rejection of
+redirects to another host or an unsupported API path. The shared browser
+router's session/setup failure recovery is covered by:
+
+```sh
+E2E_PORT=4829 npm run test:e2e -w apps/web -- connection-recovery.spec.ts
+```
+
+On macOS and Windows, the same regression can run the compiled desktop from
+source with Playwright's Electron launcher. It sets an isolated application-data directory
+before loading main, so it can run alongside an installed app without changing
+its profile. This also checks recovery from a rejected connection IPC call:
+
+```sh
+npm run build -w apps/desktop --
+node .github/scripts/smoke-desktop-local-discovery.mjs apps/desktop --source
+```
+
+This exercises the compiled main, preload and renderer; signed bundle,
+credential persistence and updater qualification remain release checks.
+
+`npm run start -w apps/desktop --` runs the production build. Check connecting
+(including an outdated server and a wrong address), signing in and out, chat
+streaming, uploaded images, the menu commands, Change Server, zoom, fullscreen,
+and the macOS titlebar with the sidebar open and collapsed.
+Development builds show manual download options and never download or install
+an update. Force a desktop UI state while running the web server normally:
+
+```sh
+OVERTCHAT_DESKTOP_UPDATE_PREVIEW=available npm run dev:desktop
+```
+
+Click the desktop download icon to simulate progress and reach the ready icon.
+Click it to test the **Later** / **Update and restart** confirmation.
+Other presets are `ready`, `downloading`, `error`, `blocked`, and
+`idle`. Preview restarts leave the app running. Installed apps ignore this
+variable. To show both desktop and server update actions, start the local web
+server in another terminal with:
+
+```sh
+OVERTCHAT_SERVER_UPDATE_PREVIEW=1 npm run dev:web
+```
+
+Connect Electron to that local server and sign in as an administrator. The
+server flag returns a simulated newer version through the authenticated update
+endpoint, even when normal update checks are disabled. Production servers
+ignore it. The sidebar update regression uses an injected bridge:
+
+```sh
+E2E_PORT=4797 npm run test:e2e -w apps/web -- sidebar.spec.ts agent-workspace-order.spec.ts desktop-updates.spec.ts
+node --test .github/scripts/desktop-update-metadata.test.mjs .github/scripts/publish-desktop-updates.test.mjs
+```
+
+The tests cover compatibility, download/retry/restart state, separate desktop
+and server actions, final artifact hashes, and monotonic feed publication.
+Desktop unit tests also cover polling, focus/wake throttling, shutdown cleanup,
+and keeping update actions visible during metadata checks.
+Qualify real signed and Linux native updates using the release runbook.
+
+On a Mac, package a local application with:
+
+```sh
+npm run package:mac -w apps/desktop --
+```
+
+Open `apps/desktop/release/mac-arm64/overtchat.app` on Apple Silicon, or
+`apps/desktop/release/mac/overtchat.app` on Intel. The command builds for the
+current Mac's architecture; append `--arm64` or `--x64` to select one explicitly.
+It uses ad-hoc signing without notarization or publishing. The shared
+`electron-builder.yml` defines the bundle identity, packaged files, icon, and
+microphone permissions for future release builds.
+
+Packaged builds use the `overtchat` profile, separate from `overtchat-dev`.
+Launch the `.app` normally and approve its macOS Keychain prompt to test saved
+sign-in. A command-line test process may be unable to show that prompt, and
+ad-hoc rebuilds can request access again. Public releases need a consistent
+Developer ID signing identity.
+Repeat the checks above in the `.app`, including sign-in across a full quit and
+relaunch, microphone access, and loading images from the selected server.
+Local packaging does not produce a publicly distributable, notarized release.
+See [Desktop macOS release](release.md#desktop-macos-release) for Developer ID
+signing, notarization, CI builds, and the release validation gate.
+
+On Linux x64, build all downloadable formats without publishing:
+
+```sh
+npm run package:linux -w apps/desktop --
+```
+
+Install `binutils`, `rpm`, `cpio`, and `desktop-file-utils` to also run
+`bash .github/scripts/package-desktop-linux.sh`, which verifies the unpacked
+app and the app extracted from each download and writes SHA-256 checksums.
+The output is under `apps/desktop/release/` with the prefix
+`overtchat-X.Y.Z-linux-x64`, except the AppImage's stable filename
+`overtchat-linux-x64.AppImage`. See [Desktop Linux release](release.md#desktop-linux-release)
+for installation, sandbox requirements, credential storage, and native validation.
+
+The packaged Linux smoke test requires a regular user, Xvfb, a session D-Bus,
+and the Electron runtime libraries. It uses isolated XDG settings and a local
+API fixture, never a production account. For the session-only storage case:
+
+```sh
+xvfb-run -a dbus-run-session -- node .github/scripts/smoke-desktop-linux.mjs /usr/bin/overtchat-desktop session
+```
+
+The `persistent` case additionally needs an unlocked GNOME Secret Service in
+the same D-Bus session. Pass `kwallet5` or `kwallet6` as a third argument to
+test an unlocked KDE Wallet instead. CI shows the complete GNOME setup. The test checks rendered
+login, preload IPC, main-process bearer transport, sign-out, three process
+launches, encrypted persistence or session-only fallback, and the renderer's
+kernel seccomp filter and PID namespace. It does not replace the live-server,
+microphone, desktop integration, and upgrade checks in the release runbook.
+Set `DESKTOP_SMOKE_UPGRADE_DEB` to a higher-version candidate to install it
+between the first two launches and verify encrypted sign-in survives; this
+test requires noninteractive `sudo apt-get` access in an isolated test system.
+
+### Windows packaging and qualification
+
+On Windows x64, use Node 22 and npm 10.9.8 from the repository root:
+
+```powershell
+npm ci
+npm run typecheck -w apps/desktop --
+npm run test -w apps/desktop --
+npm run package:windows -w apps/desktop --
+node --import tsx .github/scripts/package-desktop-windows.mjs
+```
+
+The EXE, checksums, and `stable.yml` are written to `apps/desktop/release/`.
+No signing credentials are required. See [Windows release validation](release.md#desktop-windows-release)
+for the disposable-account installer/update smoke and interactive Windows checks.
+The desktop workflow runs that smoke on a Windows runner for every relevant PR.
+
+## Speech
+
+Speech failures distinguish disabled or missing configuration from an unreachable
+provider, timeout, rejected credentials, rate limiting, and invalid responses.
+The proxy returns a public message and stable `code`; clients must not infer
+configuration state from HTTP 503. Provider response bodies stay out of public
+errors. Web and mobile share code-to-message mapping in `packages/shared/src/errors.ts`.
+The API boundary accepts known codes and the documented `{ error: string }`
+public message field. Endpoints own that display copy; do not put raw provider
+bodies there. Unknown codes, malformed responses, and unclassified exceptions
+use the operation's fallback. Only normalized `ApiError` messages are displayed
+from exceptions. Do not diagnose failures by parsing their
+message text. Notice and toast strings are display copy supplied by the caller.
+
+Use the web/native `ErrorNotice` beside failed operations that need recovery;
+keep field validation beside its field and use existing toasts for brief action
+feedback. Actions belong to the operation: dictation records again because failed
+recordings are discarded, playback can retry, and agent commands must not be
+automatically replayed when their outcome is unknown. Keep operator setup commands
+in settings and deployment help.
+
+Validate speech error handling with:
+
+```sh
+npm run test -w apps/web -- lib/errors.test.ts lib/speech/proxy.test.ts
+npm run test -w apps/mobile --
+E2E_PORT=4729 npm run test:e2e -w apps/web -- error-feedback.spec.ts speech-services.spec.ts voice.spec.ts
+```
+
+The browser regression uses a local fake provider and recorder to exercise real
+proxy failures, draft preservation, dismissal, and recovery at desktop/mobile
+viewport sizes. Also check microphone permissions and playback on native devices
+when changing their platform audio hooks.
+
+`speech/stt/` contains CPU/CUDA STT containers; `speech/apple/` contains native
+Kokoro/PyTorch MPS and Parakeet/MLX inference. Container TTS uses upstream Kokoro
+images. Realtime orchestration remains in `voice/`.
+
+Build STT with `docker compose --profile stt build stt-cpu` or
+`docker compose --profile stt-gpu build stt-gpu`.
+
+### Realtime voice
+
+Voice can be started and ended in saved text chats. Both input modes call
+`apps/web/lib/chat/run.ts`: model settings, system instructions, tools,
+compaction, message IDs, search indexing, and generation usage share the normal
+chat path. A versioned response-style hint is persisted on each voice user turn;
+conversion replays that hint on its original turn without modifying the system
+prompt or prior turns. Existing `kind=voice` records need no content migration
+and can be continued with text on web, desktop, and mobile.
+
+The pinned Hugging Face engine still handles PCM transport, STT, turn detection,
+and TTS. Its authenticated bridge supplies only the latest committed user input;
+server-owned history and tool execution replace browser transcript uploads. The
+browser receives canonical message snapshots over `/api/voice/events`. End
+revokes the connection, aborts generation, and waits for it to settle before
+returning to text. A 90-second session lease expires abandoned connections;
+heartbeats renew it while the authenticated event reader stays connected.
+Delivery and cancellation remain process-local, matching the single-replica
+chat deployment. SQLite remains the durable source of truth.
+
+Migration 0020 adds leases only. API level 3 and voice ticket version 2 require
+updating bundled clients and the voice image together; obsolete browser history
+uploads return 410 with a reload instruction. Temporary chats and native mobile
+microphone transport retain their existing availability limits.
+
+Run the focused regressions and build the pinned engine image:
+
+```sh
+npm run test -w apps/web -- lib/voice lib/speech/proxy.test.ts app/api/voice app/api/internal/voice lib/db/voiceSessions.test.ts lib/db/chatTurns.test.ts lib/chat/response-style.test.ts app/api/chat/route.test.ts
+docker compose -f voice/compose.test.yml build voice
+docker run --rm --entrypoint python -v "$PWD/voice:/tests:ro" -w /tests overtchat-voice:test -B -m unittest discover -s /tests -p 'test_*.py'
+```
+
+Sending text during voice interrupts the current response immediately: playback
+is cleared, late audio is filtered by response ID, and the replacement waits
+for realtime cancellation and any targeted canonical generation to settle.
+Typing alone does not interrupt. A completed written answer remains intact if
+only its playback is interrupted; unfinished generation retains its partial
+answer. Pending submissions remain visible until canonical acceptance, and
+rapid sends are serialized. The interruption route can wait for completion of
+its specific target; it never cancels a later turn.
+Session cleanup also checks generation ownership, so a late End after lease
+expiry cannot cancel a newer text response. Text submitted before voice connects
+or after startup fails stays in the composer. Temporary mode cannot be toggled
+during voice, and the per-message force-search control is disabled; automatic
+search remains available through the shared tool loop. Historical chat kinds
+remain in storage for compatibility but no longer produce separate voice badges.
+
+Voice startup also has a component regression test under React Strict Mode,
+which replays effect setup and cleanup in development. Run
+`npm run test -w apps/web -- components/chat/RealtimeVoiceSession.test.ts`
+when changing session startup or cleanup. It covers duplicate setup, delayed
+grants during configuration changes, End during startup, and actionable
+session conflicts. Production-build browser tests do not exercise this replay.
+
+The opt-in browser integration test uses real CPU Parakeet and Kokoro, a
+controlled text provider, the app's real authorization/persistence routes, and
+Chromium audio playback. It checks text → voice → text in the same conversation,
+system-prompt equality, durable style replay, and speech/model recovery. It also
+records input sent to real Kokoro to verify streaming citation markers are
+removed from speech while remaining in canonical history. The speech projection
+handles literal and Unicode markers split across provider chunks; run
+`npm run test -w apps/web -- lib/voice/speech-text.test.ts`
+for the chunk-boundary cases. The browser test uses the normal isolated E2E database and does not
+touch a managed installation. Start speech services first; the test starts the
+voice engine after the app is ready for engine warmup:
+
+```sh
+docker compose -f voice/compose.test.yml up -d stt tts
+VOICE_LIVE_TEST=1 VOICE_URL=http://127.0.0.1:18765 \
+  VOICE_SHARED_SECRET=voice-integration-test-secret \
+  OVERTCHAT_INSTALLED_CAPABILITIES=voice,stt,tts E2E_PORT=4831 \
+  npm run test:e2e -w apps/web -- voice-live.spec.ts
+docker compose -f voice/compose.test.yml down
+```
+
+For a real-model run, add `VOICE_LIVE_MODEL_URL=http://<vllm-host>:8000/v1`
+to the environment above and run `voice-model-live.spec.ts`. This separate test
+uses the live model for every answer and tool decision, verifies text → spoken
+question → text context recall, unchanged request prefixes and tools, and a
+memory-tool call during voice. A transparent proxy records provider-reported
+usage and model response timing; the test attaches these alongside persisted
+usage and browser audio timing. Cache hits are observed, not required: they
+depend on the server configuration and cache state. The test discovers the
+first served model unless `VOICE_LIVE_MODEL` selects one explicitly. It creates
+only an isolated E2E model configuration and never changes the user's models.
+
+Set `VOICE_LIVE_EXTERNAL=1` to reuse a separately started voice worker at
+`VOICE_URL` without recreating the Compose voice service. That worker must use
+the same `VOICE_SHARED_SECRET` and an `OVERTCHAT_VOICE_APP_URL` pointing to the
+E2E app. This allows speech testing alongside an active development voice
+worker. The CPU integration test covers text interruption during unfinished
+generation and completed-answer playback; the live-model test also interrupts
+a long spoken answer and verifies subsequent recall.
+
+Only these test containers expose speech ports, bound to loopback. The model
+cache stays in a test-only volume. `OVERTCHAT_VOICE_APP_URL` directs engine
+warmup and inference to the test app; managed deployments retain `http://app:4717`.
+
+### Apple speech
+
+After changing the server or lockfile, regenerate the payload embedded in the
+CLI; no runtime checkout or separate speech release artifact is required:
+
+```sh
+npm run speech:bundle
+npm run speech:check
+npm run test -w apps/cli --
+npm run test -w apps/web -- lib/speech/proxy.test.ts
+python3 -m venv /tmp/overtchat-speech-tests
+/tmp/overtchat-speech-tests/bin/pip install -r speech/apple/requirements-test.txt
+/tmp/overtchat-speech-tests/bin/python -m unittest discover -s speech/apple -p 'test_*.py'
+```
+
+The Python tests use fake inference and real FFmpeg, including an M4A seeking
+regression. Regenerate dependencies on an Apple Silicon Mac using uv 0.12.18:
+
+```sh
+MACOSX_DEPLOYMENT_TARGET=14.0 uv pip compile speech/apple/requirements.in \
+  --python-version 3.12 --python-platform aarch64-apple-darwin \
+  --generate-hashes --output-file speech/apple/requirements.lock
+npm run speech:bundle
+```
+
+On an isolated, logged-in Apple Silicon Mac, run `speech/apple/smoke.py` with
+the managed runtime's Python and its private `service.json` path. Use
+`--fixture spoken.wav` for an independent recording containing "the quick brown
+fox". Never print or commit the service token. Verify Docker connectivity,
+long recordings, setup/update recovery, CPU switching, and restart at login.
+Linux tests cover transport/codecs; physical Mac tests cover inference.
+
+## OpenCode process lifecycle validation
+
+The connector owns cleanup for local and SSH OpenCode servers. To exercise real
+session cancellation, shared server leases, failed SSH cleanup retries, and
+recovery after killing a test connector, run:
+
+```sh
+RUN_OPENCODE_LIFECYCLE_INTEGRATION=1 npm run test -w apps/connector -- src/opencode-lifecycle.integration.test.ts
+```
+
+Set `OPENCODE_COMMAND` if the local executable is not `opencode`. Set
+`OPENCODE_SSH_ALIASES=linux-host,mac-host` to include configured OpenSSH aliases;
+each remote login environment must provide `opencode`. These tests create and
+remove disposable workspaces, sessions, and process records. They run a native
+shell tool without making model requests and only terminate helpers they own.
+
+## Hermes ACP validation
+
+Hermes uses `@agentclientprotocol/sdk` 0.17.1, which retains the ACP model
+catalog and `session/set_model` API implemented by Hermes. Keep the SDK pinned;
+an SDK upgrade must verify those APIs against the supported Hermes release.
+Live validation has covered Hermes `0.21.5+2372.g678a476`.
+
+```sh
+npm run test -w packages/agent-runtime -- src/acp/client.test.ts
+RUN_HERMES_INTEGRATION=1 HERMES_SSH_ALIAS=home-server npm run test -w apps/connector -- src/hermes.integration.test.ts
+```
+
+Omit `HERMES_SSH_ALIAS` to test locally; `HERMES_COMMAND` overrides the executable.
+The opt-in test uses the host's configured model credentials for a small
+conversation, creates a disposable workspace, and checks discovery, streaming,
+cancel-and-restart steering during a harmless sleep tool, process cleanup and
+persisted history after restart. It selects Don't Ask only in its disposable
+session. It deletes only its own test session and workspace. Unit tests use the
+actual ACP SDK with an in-memory stdio agent to cover approvals, cancellation,
+history, tool projection and
+replacement-turn approval, image steering and cancellation ordering. Runtime
+queue tests also cover cancellation failures before a replacement is sent.
+Also run the bridge/runtime/connector tests and typechecks, connector build,
+web typecheck/lint/build and mobile typecheck/tests. In the running app, check
+Hermes discovery, model selection, tool approval choices, Stop and reopening
+the conversation over SSH.
+
+## Library benchmark
+
+Run `npm run bench:library -w apps/web --` without competing builds or tests.
+It uses a disposable database with production migrations and synthetic
+histories, ignoring `DATABASE_URL`. Results cover 2,000–200,000 messages and
+two message sizes, with median and maximum query times across seven warm runs.
+HTTP, rendering, concurrent users, and cold caches are excluded.
+
+## README assets
+
+See [README media](readme-media.md) for capture commands, shared fixtures,
+and image review.
+
+## Management CLI validation
+
+```sh
+npm run test -w apps/cli --
+npm run typecheck -w apps/cli --
+npm run lint -w apps/cli --
+npm run build -w apps/cli --
+```
+
+Use a disposable installation when testing setup or update. Changing only
+`OVERTCHAT_CONFIG_DIR` and `OVERTCHAT_STACK_DIR` does not isolate Docker
+containers, data volumes, or the host connector.
+
+Exercise command help, bare version compatibility, status/version JSON, logs,
+and `update --check`. Check reporting with Docker unavailable and stopped
+components. Verify that update checks do not require Docker, read credentials,
+self-update, or write installation files. Setup and update retain their existing
+provisioning behavior; setup dry runs still write preview files and an installation log.
+
+Connector installation failures should finish setup/update with a visible pending
+warning, preserve the agent selection, commit successful app/speech changes, and
+retry on the next run. Cover fresh setup, updates, unavailable service prerequisites,
+interactive retry/skip, and unattended runs. Confirm `logs install` and `logs connector`
+work before installation state exists and that diagnostics exclude credentials.
+Verify CLI self-update preserves terminal stdin. Connector recovery tests must show
+that offline SSH hosts do not delay the channel, new launches await target recovery,
+and shutdown cancels probes before releasing the journal's instance lock.
+
+Installer binary and terminal checks are documented in [Release process](release.md).
+
+## Agent transport validation
+
+Connector delivery uses an 8 MiB serialized JSON request budget. A single larger
+journal event is transferred in 1 MiB fragments, verified by digest, and
+acknowledged only after the complete event commits. Existing connector journals
+remain readable. Live events alternate with durable batches so backlog recovery
+also lets active sessions update. Events above 128 MiB return an explicit response
+error or a live reconciliation hint rather than trapping the entire queue.
+
+Codex emits changed messages and appended text with expected offsets. Missing
+baselines trigger authoritative reconciliation. Initial and reset snapshots load
+ten recent user prompts, keeping each native turn intact; older messages load
+through a session-scoped cursor. The connector retains the complete canonical
+transcript. Replay exceeding the byte budget falls back to the recent window.
+
+Run the bridge/runtime/connector tests and typechecks, connector build, web
+checks, and mobile checks. The browser regression below runs a real connector
+journal, authenticated HTTP relay, production Next.js proxy, SSE stream, and UI.
+Only provider execution is deterministic. It creates disposable local data and
+does not read production accounts or databases.
+
+```sh
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'drains an oversized connector backlog'
+```
+
+The test drains production-sized replies plus one event larger than 10 MiB,
+loads all older pages, queues and steers a message, and verifies live text before
+refreshing. Unit regressions additionally cover receiver restart during fragments,
+Unicode byte accounting, cursor invalidation after rewind, unchanged tool results,
+and timeline persistence. Also verify foreground reconnect and history paging on
+Android and iOS before releasing bundled clients.
+
+### Workspace terminal validation
+
+Terminals use xterm.js in the shared web/desktop UI, an authenticated WebSocket
+relay in the server, and connector-owned PTYs. Node development uses `node-pty`;
+compiled connector binaries use Bun's native terminal API. Test both runtimes.
+Terminal input must not enter the agent RPC queue or durable event journal.
+
+Run the connector and bridge tests/typechecks, web tests/typecheck/lint/build,
+and desktop build. The terminal route tests cover authorization; the connector
+stream tests exercise real PTYs, one-use origin-bound tickets, reconnects,
+concurrent viewers, resizing, restart and large output bursts.
+
+```sh
+npm run test -w apps/connector
+npm run test -w packages/agent-bridge
+E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
+  npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
+npm run build -w apps/desktop
+OVERTCHAT_TERMINAL_DESKTOP_E2E=1 E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
+  npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
+npm run build:binary -w apps/connector
+apps/connector/dist/overtchat-connector terminal-smoke
+bun build apps/connector/scripts/transport-fixture.mjs --compile --outfile /tmp/overtchat-terminal-fixture
+OVERTCHAT_TERMINAL_CONNECTOR_EXECUTABLE=/tmp/overtchat-terminal-fixture \
+  E2E_PORT=4919 OVERTCHAT_TERMINAL_RELAY_PORT=14919 \
+  npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'workspace terminal streams'
+```
+
+The desktop variant launches the built Electron application with a disposable
+profile and signs into the real test server. It does not alter the installed
+desktop profile. The test uses real authentication, production Next.js proxying,
+connector transport and shell execution; only the agent provider is deterministic.
+It forces a terminal-channel disconnect, retains shell state, sends a 1 MiB
+output burst, and records 20 local input-to-render samples while synthetic agent
+responses are enqueued at about 1.3 MB/s. The broad 500 ms p95 assertion detects
+queueing regressions; retain the JSON attachment for actual timings.
+
+The internal relay port is captured at build time alongside the Next.js rewrite.
+Set `OVERTCHAT_TERMINAL_RELAY_PORT` before both build and startup when running
+multiple local servers; changing it only after a build does not move the relay.
+The default is 14717. Do not expose this loopback port publicly.
+
+Before release, also test local and SSH interactive programs, Ctrl-C, Unicode
+paste, copy/selection, panel resizing, concurrent views, long-running output and
+reconnects. Report real SSH/network timings separately from local rendering
+latency. Native mobile UI and Windows SSH shells are outside this feature's scope.
+
+## Agent display transcript lifecycle
+
+The connector owns the display transcript. Model, effort, permissions, usage,
+name, and turn-settlement updates refresh metadata without reimporting provider
+messages. Provider compaction changes model context, not existing display rows.
+Normal runtime/connector restarts seed the runtime from the complete durable
+timeline; UI history windows are never used as that seed.
+
+Initial imports, explicit `/reload`, conversation rewinds and provider-native
+resets replace history as a whole. A reload restarts the idle provider and reads
+its current branch, so it also picks up changes made in the native CLI. It rejects
+active turns, pending interactions and queued messages. Native context may be
+compacted and omit earlier display rows. Never preserve arbitrary `custom` or
+`toolResult` rows by role or reinsert them using old positions. Only presentation
+attached to an identified submitted user message transfers to its native row.
+
+Existing checkpoints are retained as-is, including any previously misordered
+rows. There is no automatic transcript migration. Explicit `/reload` imports
+native history atomically with a new epoch; a failed import preserves the old
+checkpoint.
+
+Validate this lifecycle through the real runtime and timeline store, plus the
+browser test using a deterministic OMP RPC process and real connector/relay/UI:
+
+```sh
+npm run test -w apps/connector -- src/transcript-lifecycle.test.ts src/timeline.test.ts src/daemon.test.ts
+npm run test -w packages/agent-runtime --
+npm run test -w packages/agent-bridge --
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'keeps OMP history stable'
+```
+
+Also run the connector journal validation above and the web/mobile consumer
+checks. The browser regression changes model and effort after compaction, reloads
+the page, restarts the connector, and explicitly imports provider history. It
+asserts exact row order and provider history-fetch counts. No production session
+or model credentials are used.
+
+### Coding-agent compaction markers
+
+Pi and OMP manual compaction RPCs and automatic compaction events produce one
+inline divider per operation. The divider updates in place, retains its position
+in the saved display transcript, and shows the trigger and reported token counts.
+Failed, skipped, or stopped operations are not labeled as successful. A provider
+restart settles an unfinished marker as stopped. Imported native compaction
+summaries use the same divider; existing display history is not reimported just
+to obtain compaction metadata.
+
+The OMP lifecycle browser test above covers automatic and manual markers,
+model/effort changes, page reload, connector restart, and explicit native import.
+For installed OMP validation, run:
+
+```sh
+RUN_OMP_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/integration.test.ts
+RUN_OMP_COMPACTION_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/integration.test.ts
+```
+
+The second command uses the host's configured model credentials to summarize
+synthetic history in a disposable native session. It uses a temporary compaction
+configuration, disables tools/extensions, checks the RPC result and imported
+summary, and removes its own session files. It does not modify existing sessions.
+
+### Pi and OMP task progress
+
+OMP native todos and Pi's example `todo` and `rpiv-todo` extension results feed
+the shared task checklist on web, desktop, and mobile. Pi extensions must already
+be installed by the operator; OvertChat does not inject a todo tool. Unknown or
+failed tools retain their ordinary activity display. Cleared lists remove the
+current task badge, while earlier progress remains in the transcript. OMP blocked
+tasks retain their blocker text and abandoned tasks leave the active checklist.
+
+Provider adapters normalize confirmed results before connector persistence.
+Native history imports rebuild those results; OMP also imports current todo state
+to recover tasks omitted by compaction or code-mode tools. Reminders and turn
+completion reconcile OMP's full state without treating an unfinished-task reminder
+as a complete list. Turn completion reuses the runtime's existing state refresh;
+failed reminder refreshes are logged and can recover on the next state refresh.
+Normal connector restarts retain the durable display history.
+This displays task progress; it does not add a plan-approval workflow.
+
+```sh
+npm run test -w packages/agent-runtime -- src/pi/todos.test.ts
+npm run test -w apps/web -- lib/agents/presentation.test.ts
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'keeps OMP history stable'
+RUN_OMP_TODO_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/todos.integration.test.ts
+```
+
+The browser test exercises live progress, compaction, model changes, page reload,
+connector restart and native history import through the real connector and relay,
+including a narrow viewport. The opt-in installed-OMP test uses local model
+credentials for one small turn, enables only the todo tool in a disposable
+workspace/session, and verifies progress and native restoration after restart.
+Set `OMP_COMMAND` or `OMP_MODEL` to override the executable or model. It removes
+its session files and does not modify existing sessions or settings.
+
+### OMP background work lifecycle
+
+Background work runs between turns. When the
+agent yields to an async job (`agent_end` with `awaitingAsyncWork`), the turn
+ends and the session is idle: messages send right away, and the job's result
+wakes the agent into a new turn. Prompts carry `streamingBehavior: "steer"`, so
+a prompt that races a wake steers into that turn instead of failing. The
+transcript shows job completion notices; there is no separate waiting state.
+Older connectors and journals may still carry the retired `activeTurn.phase`
+and `responsePhase` fields; clients accept and ignore them.
+
+Stop ends the current turn. OMP's native abort interrupts the foreground but
+leaves async jobs running; after its acknowledgement the session is idle and the
+queue drains while those jobs continue. `/reload` restarts the provider, which
+ends every job. Idle runtime cleanup does not stop a provider that still reports
+background work. An abort the provider cannot complete for a running turn
+restarts the provider process on the same native session.
+
+Turns end from provider state, not from elapsed time. After a terminal event the
+runtime polls state until the provider reports idle; reported work keeps the
+turn open, while state that stays unreadable past the settle window ends it
+with an error. The OMP adapter does not use native `isSettled`: it also counts
+pending background work and hidden next-turn context that only the next
+explicit prompt delivers, so an idle session can report false indefinitely
+([can1357/oh-my-pi#14948](https://github.com/can1357/oh-my-pi/issues/14948)).
+
+Validate the provider/runtime lifecycle and the real connector/relay/browser
+flow (including reload, background wake, sending during a job and Stop):
+
+```sh
+npm run test -w packages/agent-runtime -- src/providers/omp.test.ts src/runtime/omp-lifecycle.test.ts
+E2E_PORT=4819 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'ends OMP turns'
+RUN_OMP_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/omp/background.integration.test.ts
+```
+
+The installed-OMP test uses an isolated native profile, a loopback model fixture,
+and a real async bash job in a temporary workspace. It exercises the yield,
+a prompt while the job runs, the automatic wake, Stop mid-turn with the job
+surviving, and settlement after a failed todo call, without model credentials or
+existing sessions. Every case has been validated with OMP 18.11.1. Set
+`OMP_COMMAND` to override the local executable. Also run bridge/runtime/connector
+tests and typechecks, connector build, web typecheck/lint/build and mobile
+tests/typecheck.
+
+### Claude background work lifecycle
+
+Claude follows the same model. The adapter tracks main turns using native
+`system/init` and `result` messages, including autonomous turns started after a
+task notification; a parent `result` ends the turn even while children or
+background commands run. The `background_tasks_changed` roster only feeds
+`hasPendingAsyncWork`, which keeps idle cleanup from stopping the process. Each
+roster replaces the previous set; task completion notifications do not re-add
+tasks after an empty roster. CLI-wide `session_state_changed` messages do not
+identify parent turn boundaries and must not end a newly submitted turn.
+
+Stop interrupts only the main turn, as Esc does in Claude Code: the query
+declares `perTaskStopAffordance`, so the CLI spares background tasks. Claude
+stops its own tasks with TaskStop, and `/reload` ends them all. If Claude does
+not end the turn within five seconds of the interrupt, the client restarts the
+query, which ends its tasks.
+
+```sh
+npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/providers/claude.test.ts
+RUN_CLAUDE_BACKGROUND_INTEGRATION=1 npm run test -w packages/agent-runtime -- src/claude/background.integration.test.ts
+```
+
+The opt-in integration test uses the installed Claude CLI and its configured
+credentials/model for real model requests. It creates separate native sessions
+and temporary workspaces for background Bash, subagent and Stop cases. The
+harness releases each job only after observing the idle parent, then verifies
+autonomous parent resumption and final idle; the Stop case verifies the job
+survives the interrupt. Cleanup releases the test job and closes its query.
+Set `CLAUDE_COMMAND` or `CLAUDE_BACKGROUND_MODEL` to override the executable or
+model; existing sessions and settings are not changed. Validated with Claude
+Code 2.1.304.
+
+### Claude context meter
+
+The adapter reads capacity and idle context usage from the SDK's
+`getContextUsage()` control request on open/resume, model changes, and turn
+completion. During turns, parent request usage includes input, cache reads,
+cache writes, and output; streaming deltas replace counters they contain.
+Cumulative result totals are never a context reading. Older CLIs can fall back
+to the active model's result capacity and request/last-iteration usage. Unknown
+capacity stays unknown; it is not inferred from a model alias or `[1m]` suffix.
+
+```sh
+npm run test -w packages/agent-runtime -- src/claude/client.test.ts src/claude/models.test.ts
+E2E_PORT=4883 npm run test:e2e -w apps/web -- agent-runtime.spec.ts --grep 'agent context meter stays visible'
+RUN_CLAUDE_CONTEXT_INTEGRATION=1 npm run test -w apps/connector -- src/claude-context.integration.test.ts
+```
+
+The last command uses the installed/authenticated CLI, creates a disposable
+workspace and a new native session, sends one small prompt, then stops and
+resumes it without another prompt to check restored usage. It requires working
+model credentials and leaves that test session in Claude's native history.
+`CLAUDE_COMMAND` and `CLAUDE_CONTEXT_MODEL` override the executable/model.
+The rewind integration below also checks native context restoration using
+synthetic history, without model requests or credentials.
+
+## Claude rewind durability
+
+Claude conversation rewinds materialize a native transcript with the SDK's
+standalone fork operation before storing its new session ID. The connector
+transports the complete transcript through a host-backed SDK session store;
+SSH targets need Node and Claude Code, but no separate SDK installation.
+Transcripts above 64 MiB fail explicitly without switching session identity.
+Forked message UUIDs are reloaded before another rewind. File restoration still
+runs against the original session, because native forks do not copy file undo
+history.
+
+Rewinding the first message persists an empty-session sidecar marker. OvertChat starts
+that ID fresh until a native user or assistant message exists; it does not ask
+Claude to resume an empty conversation. The sidecar is retired when resumed native history contains messages.
+
+The regression uses synthetic native transcripts and an isolated Claude config;
+it sends no model prompts and does not touch existing conversations:
+
+```sh
+RUN_CLAUDE_REWIND_INTEGRATION=1 \
+CLAUDE_COMMAND=/absolute/path/to/claude \
+npm run test -w apps/connector -- src/claude-rewind.integration.test.ts
+
+RUN_CLAUDE_REWIND_INTEGRATION=1 \
+CLAUDE_REWIND_SSH_ALIAS=your-agent-host \
+CLAUDE_COMMAND=/remote/absolute/path/to/claude \
+npm run test -w apps/connector -- src/claude-rewind.integration.test.ts
+```
+
+It covers rewind, close without a follow-up prompt, reopen, another rewind using
+remapped UUIDs, and an empty reset across reopen and settings changes. Run the
+runtime and connector suites, typechecks, connector lint, and connector build
+alongside it. This prevents new broken rewind records; it does not migrate or
+repair sessions whose native transcript was already missing.

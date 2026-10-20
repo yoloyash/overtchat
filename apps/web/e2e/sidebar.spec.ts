@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 const SIDEBAR_STORAGE_KEY = "overtchat_sidebar_collapsed";
 
@@ -35,7 +35,7 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
       }),
     });
   });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Sidebar Admin");
   await page.locator("#email").fill("sidebar-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -43,7 +43,7 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await page.waitForURL("**/");
 
   const accountButton = page.getByRole("button", {
-    name: "Sidebar Admin Update available v99.0.0",
+    name: "Sidebar Admin",
   });
   await expect(accountButton).toBeVisible();
   await accountButton.click();
@@ -52,13 +52,12 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
   await expect(
     page.getByRole("menuitem", { name: "Administration" }),
   ).toBeVisible();
-  await page
-    .getByRole("menuitem", { name: "Update available v99.0.0" })
-    .click();
-  const updateDialog = page.getByRole("dialog", { name: "Update available" });
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Server update available", exact: true }).click();
+  const updateDialog = page.getByRole("dialog", { name: "Server update available" });
   await expect(updateDialog).toBeVisible();
   await expect(updateDialog).toContainText(
-    "OvertChat v99.0.0 is ready. Run this on the OvertChat host.",
+    "Server v99.0.0 is available. Run this on the OvertChat host.",
   );
   await expect(
     updateDialog.getByLabel("OvertChat update command"),
@@ -144,13 +143,10 @@ test("sidebar behavior stays consistent across desktop and mobile", async ({
     "transform, translate, scale, rotate",
   );
   const mobileAccountButton = drawer.getByRole("button", {
-    name: "Sidebar Admin Update available v99.0.0",
+    name: "Sidebar Admin",
   });
   await expect(mobileAccountButton).toBeVisible();
-  await mobileAccountButton.click();
-  await page
-    .getByRole("menuitem", { name: "Update available v99.0.0" })
-    .click();
+  await drawer.getByRole("button", { name: "Server update available", exact: true }).click();
   await expect(updateDialog).toBeVisible();
   await expect(
     updateDialog.getByLabel("OvertChat update command"),

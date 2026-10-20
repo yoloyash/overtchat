@@ -1,6 +1,12 @@
+import { TerminalChannel } from "./terminal-channel.js";
+import { connectorTerminalSupport } from "./terminal.js";
+import { createHash } from "node:crypto";
+import { boundedEventBatch } from "./event-batch.js";
 import {
+  HOST_CONNECTOR_EVENT_BATCH_BYTES,
+  HOST_CONNECTOR_FRAGMENT_BYTES,
+  HOST_CONNECTOR_MAX_EVENT_BYTES,
   HOST_CONNECTOR_CAPABILITIES,
-  HOST_CONNECTOR_EVENT_BATCH_LIMIT,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isHostConnectorCommand,
   MAX_AGENT_IMAGE_BYTES,
@@ -8,7 +14,6 @@ import {
   type HostConnectorEventAck,
   type HostConnectorEventBatch,
   type HostConnectorEventPayload,
-  type HostConnectorCapability,
 } from "@overtchat/agent-bridge";
 import type { ResolvedAgentImage } from "@overtchat/agent-runtime";
 import {
@@ -18,11 +23,15 @@ import {
   type ConnectorConfig,
 } from "./config.js";
 import { ConnectorDaemon } from "./daemon.js";
+import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorInstanceLock } from "./lock.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
-import { connectorTerminalSupport } from "./terminal.js";
 import { CONNECTOR_VERSION } from "./version.js";
+import {
+  ConnectorCommandScheduler,
+  isConnectorCommandBarrier,
+} from "./command-scheduler.js";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
@@ -31,7 +40,7 @@ const MAX_BUFFERED_LIVE_EVENTS = 2_048;
 
 type LiveEventPayload = Extract<
   HostConnectorEventPayload,
-  { type: "session_event" | "terminal_event" }
+  { type: "session_event" }
 >;
 
 type LiveEventBatch = {
@@ -65,17 +74,11 @@ function waitForRetry(milliseconds: number, signal: AbortSignal): Promise<void> 
   });
 }
 
-function availableCapabilities(): HostConnectorCapability[] {
-  const terminalSupport = connectorTerminalSupport();
-  return HOST_CONNECTOR_CAPABILITIES.filter(
-    (capability) =>
-      capability !== "workspace-terminal-v1" || terminalSupport.available,
-  );
-}
-
 export class ConnectorClient {
+  private readonly terminalChannel: TerminalChannel;
+  private readonly capabilities = HOST_CONNECTOR_CAPABILITIES.filter((capability) => capability !== "workspace-terminal-v1" || connectorTerminalSupport().available);
   private readonly daemon: ConnectorDaemon;
-  private readonly capabilities = availableCapabilities();
+  private readonly commandScheduler: ConnectorCommandScheduler;
   private readonly stopAbort = new AbortController();
   private commandStreamAbort: AbortController | undefined;
   private eventRequestAbort: AbortController | undefined;
@@ -83,6 +86,7 @@ export class ConnectorClient {
   private reconnectAttempt = 0;
   private eventRetryAttempt = 0;
   private flushing = false;
+  private preferLiveEvents = false;
   private stopped = false;
   private acceptingDurableEvents = true;
   private stopPromise: Promise<void> | undefined;
@@ -104,6 +108,7 @@ export class ConnectorClient {
     private readonly journal: ConnectorStateJournal,
     private readonly timelines: ConnectorTimelineStore,
     private readonly lock: ConnectorInstanceLock,
+    processHost: ConnectorProcessHost,
   ) {
     this.daemon = new ConnectorDaemon(
       (event) => this.enqueue(event),
@@ -111,6 +116,12 @@ export class ConnectorClient {
       journal,
       timelines,
       (error) => this.fail(error),
+      undefined,
+      processHost,
+    );
+    this.terminalChannel = new TerminalChannel(config.serverUrl, config.token, this.daemon.terminals);
+    this.commandScheduler = new ConnectorCommandScheduler((command) =>
+      this.daemon.handle(command),
     );
   }
 
@@ -121,13 +132,20 @@ export class ConnectorClient {
     let journal: ConnectorStateJournal | undefined;
     let timelines: ConnectorTimelineStore | undefined;
     try {
+      const processHost = new ConnectorProcessHost(
+        `${connectorStatePath(config.connectorId)}.processes`,
+      );
       journal = await ConnectorStateJournal.open(
         connectorStatePath(config.connectorId),
       );
       timelines = await ConnectorTimelineStore.open(
         connectorTimelinePath(config.connectorId),
       );
-      return new ConnectorClient(config, journal, timelines, lock);
+      const client = new ConnectorClient(config, journal, timelines, lock, processHost);
+      // Remote cleanup must not delay the authenticated channel. Per-target launches
+      // still await recovery, and shutdown cancels recovery before releasing the lock.
+      processHost.startRecovery();
+      return client;
     } catch (error) {
       await timelines?.close().catch(() => {});
       await journal?.close().catch(() => {});
@@ -137,6 +155,7 @@ export class ConnectorClient {
   }
 
   async run(): Promise<void> {
+    if (this.capabilities.includes("workspace-terminal-v1")) this.terminalChannel.start();
     void this.flush();
     while (!this.stopped && !this.terminalError) {
       try {
@@ -169,6 +188,7 @@ export class ConnectorClient {
   async stop(): Promise<void> {
     if (this.stopPromise) return this.stopPromise;
     this.stopped = true;
+    this.terminalChannel.stop();
     this.stopPromise = (async () => {
       if (this.flushTimer) clearTimeout(this.flushTimer);
       this.flushTimer = undefined;
@@ -177,6 +197,10 @@ export class ConnectorClient {
       this.eventRequestAbort?.abort();
       let failure: unknown;
       for (const close of [
+        async () => {
+          this.commandScheduler.close();
+          await this.commandScheduler.drain();
+        },
         () => this.daemon.stop(),
         // Requests already accepted by the daemon may finish while stop is
         // draining them. Their responses are durable protocol events, so
@@ -211,7 +235,8 @@ export class ConnectorClient {
         headers: {
           Authorization: `Bearer ${this.config.token}`,
           "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
-          "X-OvertChat-Connector-Capabilities": this.capabilities.join(","),
+          "X-OvertChat-Connector-Capabilities":
+            this.capabilities.join(","),
           "X-OvertChat-Connector-Protocol": String(
             HOST_CONNECTOR_PROTOCOL_VERSION,
           ),
@@ -219,9 +244,9 @@ export class ConnectorClient {
       },
     );
     if (!response.ok || !response.body) {
-      const detail = (await response.json().catch(() => null)) as
-        | { error?: string }
-        | null;
+      const detail = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
       throw new Error(
         detail?.error ?? `OvertChat returned HTTP ${response.status}.`,
       );
@@ -244,7 +269,15 @@ export class ConnectorClient {
             if (!isHostConnectorCommand(command)) {
               throw new Error("OvertChat sent an invalid connector command.");
             }
-            await this.daemon.handle(command);
+            if (command.type === "sync") {
+              await this.commandScheduler.drain();
+              await this.daemon.handle(command);
+            } else if (isConnectorCommandBarrier(command)) {
+              await this.commandScheduler.drain();
+              await this.daemon.handle(command);
+            } else {
+              this.commandScheduler.enqueue(command);
+            }
           }
           newline = buffered.indexOf("\n");
         }
@@ -257,13 +290,12 @@ export class ConnectorClient {
   }
 
   private enqueue(payload: HostConnectorEventPayload): void {
-    if (payload.type === "session_event" || payload.type === "terminal_event") {
+    if (payload.type === "session_event") {
       if (this.stopped) return;
-      // Session events are recovered through authoritative timeline sync. A
-      // terminal event carries its own revision, so a lost/bounded hint makes
-      // the browser reattach from the connector's headless terminal snapshot.
-      // Keeping either high-volume stream in the durable journal would let an
-      // offline server grow connector state without bound.
+      // The per-session timeline is already synced to disk before the daemon
+      // emits this live hint. Keeping a second durable copy here caused stale
+      // connectors to accumulate hundreds of megabytes. A lost/bounded hint is
+      // recovered through the authoritative session sync.
       this.liveEvents.push(payload);
       if (this.liveEvents.length > MAX_BUFFERED_LIVE_EVENTS) {
         const displaced = this.liveEvents.splice(
@@ -290,11 +322,12 @@ export class ConnectorClient {
 
   private async flush(): Promise<void> {
     if (this.stopped || this.flushing) return;
-    const durableEvents = this.journal.eventBatch();
+    const pendingDurable = this.journal.eventBatch();
     const liveBatch =
-      durableEvents.length === 0
+      pendingDurable.length === 0 || this.preferLiveEvents
         ? this.takeLiveEventBatch()
         : undefined;
+    const durableEvents = liveBatch?.payloads.length ? [] : pendingDurable;
     const livePayloads = liveBatch?.payloads ?? [];
     if (durableEvents.length === 0 && livePayloads.length === 0) return;
     this.flushing = true;
@@ -316,27 +349,7 @@ export class ConnectorClient {
     this.eventRequestAbort = abort;
     try {
       if (durableEvents.length > 0) await this.journal.flush();
-      const response = await fetch(
-        endpoint(this.config.serverUrl, "/api/host-connectors/events"),
-        {
-          signal: abort.signal,
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.config.token}`,
-            "Content-Type": "application/json",
-            "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
-            "X-OvertChat-Connector-Capabilities": this.capabilities.join(","),
-            "X-OvertChat-Connector-Protocol": String(
-              HOST_CONNECTOR_PROTOCOL_VERSION,
-            ),
-          },
-          body: JSON.stringify(body),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`OvertChat returned HTTP ${response.status}.`);
-      }
-      const ack = (await response.json()) as HostConnectorEventAck;
+      const ack = await this.deliverBatch(body, abort.signal);
       if (
         ack.connectorEpoch !== connectorEpoch ||
         !Number.isSafeInteger(ack.acknowledgedSequence)
@@ -367,6 +380,7 @@ export class ConnectorClient {
         }
         this.liveEventSequence = expected;
       }
+      this.preferLiveEvents = durableEvents.length > 0;
       this.eventRetryAttempt = 0;
     } catch (error) {
       if (livePayloads.length > 0 && liveBatch) {
@@ -398,17 +412,141 @@ export class ConnectorClient {
     }
   }
 
-  private takeLiveEventBatch(): LiveEventBatch {
-    const hints: Array<[string, LiveEventPayload]> = [];
-    for (const entry of this.liveOverflowHints) {
-      if (hints.length >= HOST_CONNECTOR_EVENT_BATCH_LIMIT) break;
-      hints.push(entry);
-      this.liveOverflowHints.delete(entry[0]);
+  private async deliverBatch(
+    body: HostConnectorEventBatch,
+    signal: AbortSignal,
+  ): Promise<HostConnectorEventAck> {
+    const post = async (
+      batch: HostConnectorEventBatch,
+    ): Promise<HostConnectorEventAck> => {
+      const serialized = JSON.stringify(batch);
+      const bytes = Buffer.byteLength(serialized);
+      if (bytes > HOST_CONNECTOR_EVENT_BATCH_BYTES)
+        throw new Error("Connector request exceeds the byte budget.");
+      const response = await fetch(
+        endpoint(this.config.serverUrl, "/api/host-connectors/events"),
+        {
+          signal,
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.config.token}`,
+            "Content-Type": "application/json",
+            "X-OvertChat-Connector-Build-Version": CONNECTOR_VERSION,
+            "X-OvertChat-Connector-Capabilities":
+              this.capabilities.join(","),
+            "X-OvertChat-Connector-Protocol": String(
+              HOST_CONNECTOR_PROTOCOL_VERSION,
+            ),
+          },
+          body: serialized,
+        },
+      );
+      if (!response.ok) {
+        console.error(
+          `[connector:delivery] bytes=${bytes} events=${batch.events.length} fragment=${batch.fragment?.index ?? "none"} status=${response.status}`,
+        );
+        throw new Error(`OvertChat returned HTTP ${response.status}.`);
+      }
+      const ack = (await response.json()) as HostConnectorEventAck;
+      if (this.eventRetryAttempt > 0)
+        console.info(
+          `[connector:delivery] recovered bytes=${bytes} events=${batch.events.length} acknowledged_sequence=${ack.acknowledgedSequence}`,
+        );
+      return ack;
+    };
+    if (
+      Buffer.byteLength(JSON.stringify(body)) <=
+      HOST_CONNECTOR_EVENT_BATCH_BYTES
+    )
+      return post(body);
+    if (body.events.length !== 1)
+      throw new Error("An oversized batch must contain exactly one event.");
+    let event = body.events[0]!;
+    const bytes = Buffer.from(JSON.stringify(event));
+    if (bytes.length > HOST_CONNECTOR_MAX_EVENT_BYTES) {
+      // A failed read must not poison the durable queue for every other session.
+      if (event.payload.type === "response") {
+        event = {
+          sequence: event.sequence,
+          payload: {
+            type: "response",
+            requestId: event.payload.requestId,
+            success: false,
+            error:
+              "The agent response exceeds the 128 MiB transport limit. Inspect the session before retrying a command.",
+          },
+        };
+      } else if (event.payload.type === "session_event") {
+        // Live events are hints. Force recovery from the authoritative timeline instead of blocking every session.
+        event = {
+          ...event,
+          payload: {
+            ...event.payload,
+            envelope: {
+              ...event.payload.envelope,
+              type: "runtime_event",
+              data: { type: "overtchat_resync" },
+            },
+          },
+        };
+      } else
+        throw new Error(
+          "Connector metadata event exceeds the maximum transport size.",
+        );
+      return post({ ...body, events: [event] });
     }
-    const queued = this.liveEvents.splice(
-      0,
-      HOST_CONNECTOR_EVENT_BATCH_LIMIT - hints.length,
-    );
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const count = Math.ceil(bytes.length / HOST_CONNECTOR_FRAGMENT_BYTES);
+    let index = 0;
+    while (index < count) {
+      const ack = await post({
+        ...body,
+        events: [],
+        fragment: {
+          sequence: event.sequence,
+          digest,
+          index,
+          totalBytes: bytes.length,
+          data: bytes
+            .subarray(
+              index * HOST_CONNECTOR_FRAGMENT_BYTES,
+              (index + 1) * HOST_CONNECTOR_FRAGMENT_BYTES,
+            )
+            .toString("base64"),
+        },
+      });
+      if (ack.connectorEpoch !== body.connectorEpoch)
+        throw new Error("Invalid fragment epoch acknowledgement.");
+      if (
+        ack.acknowledgedSequence === event.sequence &&
+        ack.nextFragmentIndex === count
+      )
+        return ack;
+      if (
+        ack.acknowledgedSequence !== event.sequence - 1 ||
+        !Number.isSafeInteger(ack.nextFragmentIndex) ||
+        ack.nextFragmentIndex! < 0 ||
+        ack.nextFragmentIndex! >= count ||
+        (ack.nextFragmentIndex !== 0 && ack.nextFragmentIndex! <= index)
+      )
+        throw new Error("Invalid fragment acknowledgement.");
+      // A restarted receiver explicitly asks to begin again, without acknowledging the event.
+      index = ack.nextFragmentIndex!;
+    }
+    throw new Error("The fragmented event was not acknowledged.");
+  }
+
+  private takeLiveEventBatch(): LiveEventBatch {
+    const candidates = [...this.liveOverflowHints.values(), ...this.liveEvents];
+    const count = boundedEventBatch(
+      candidates.map((payload, index) => ({
+        sequence: this.liveEventSequence + index + 1,
+        payload,
+      })),
+    ).length;
+    const hints = [...this.liveOverflowHints.entries()].slice(0, count);
+    for (const [key] of hints) this.liveOverflowHints.delete(key);
+    const queued = this.liveEvents.splice(0, count - hints.length);
     return {
       payloads: [...hints.map(([, payload]) => payload), ...queued],
       hints,

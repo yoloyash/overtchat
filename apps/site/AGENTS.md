@@ -30,7 +30,7 @@ Next.js applies `basePath` to its own `Link` components. Use normal root-relativ
 route hrefs there; use `sitePath()` for emitted asset or manifest paths and
 `absoluteSiteUrl()` when a complete URL is required.
 
-A failed GitHub request or a feed with no stable web/mobile releases must fail
+A failed GitHub request or a feed with no stable web/mobile/desktop releases must fail
 the build. Release Markdown is external content: keep raw HTML disabled,
 preserve `target="_blank"` and `rel="noopener noreferrer"` on external links,
 and keep headings below the page-level heading.

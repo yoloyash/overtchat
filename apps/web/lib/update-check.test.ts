@@ -24,6 +24,27 @@ describe("app update check", () => {
     expect(isNewerVersion("0.16.0", "not-a-version")).toBe(false);
   });
 
+  it("can preview a server update in development without requesting the manifest", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("OVERTCHAT_SERVER_UPDATE_PREVIEW", "1");
+    vi.stubEnv("DISABLE_UPDATE_CHECK", "true");
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const { getAppUpdateStatus, isNewerVersion } = await import("./update-check");
+    const status = await getAppUpdateStatus();
+    expect(status.updateAvailable).toBe(true);
+    expect(isNewerVersion(status.currentVersion, status.latestVersion!)).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores the preview flag in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("OVERTCHAT_SERVER_UPDATE_PREVIEW", "1");
+    vi.stubEnv("DISABLE_UPDATE_CHECK", "true");
+    const { getAppUpdateStatus } = await import("./update-check");
+    await expect(getAppUpdateStatus()).resolves.toMatchObject({ latestVersion: null, updateAvailable: false });
+  });
+
   it("fetches the current public manifest for every check", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

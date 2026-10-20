@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { registerSqliteFunctions } from "./sqlite-functions";
 
 const DB_PATH = process.env.DATABASE_URL ?? "./data/chat.db";
 
@@ -9,6 +10,7 @@ fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const sqlite = new Database(DB_PATH);
 sqlite.pragma("foreign_keys = ON");
+registerSqliteFunctions(sqlite);
 
 export const db = drizzle({ client: sqlite });
 

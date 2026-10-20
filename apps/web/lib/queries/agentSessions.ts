@@ -1,7 +1,9 @@
 "use client";
 
+import { ApiError, apiError } from "@overtchat/shared";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { generateId } from "ai";
 import type {
   AgentQueuedMessage,
   AgentProviderNotice,
@@ -13,6 +15,8 @@ import type {
 import {
   isAgentRuntimeEnvelope,
   isAgentSessionSync,
+  isAgentHistoryPage,
+  prependAgentHistoryPage,
 } from "@overtchat/agent-bridge";
 import {
   applyEnvelopeToReplica,
@@ -28,13 +32,14 @@ import {
   agentConnectionKeys,
   agentSessionKeys,
 } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
-class AgentSessionHttpError extends Error {
+class AgentSessionHttpError extends ApiError {
   constructor(
     message: string,
     readonly status: number,
   ) {
-    super(message);
+    super(message, status);
     this.name = "AgentSessionHttpError";
   }
 }
@@ -44,9 +49,31 @@ async function responseError(response: Response): Promise<Error> {
     error?: string;
   } | null;
   return new AgentSessionHttpError(
-    data?.error ?? `HTTP ${response.status}`,
+    apiError(response.status, data, "Could not complete the agent request. Please try again.").message,
     response.status,
   );
+}
+
+export type AgentSessionCommandResult = {
+  sessionId?: string;
+  draft?: string;
+  forkContext?: import("@overtchat/agent-bridge").AgentForkContext;
+  queuedMessages?: AgentQueuedMessage[];
+  usage?: AgentUsageSnapshot;
+  notice?: AgentProviderNotice;
+};
+
+export async function sendAgentSessionCommand(
+  id: string,
+  command: AgentSessionCommand,
+): Promise<AgentSessionCommandResult> {
+  const response = await fetch(apiUrl(`/api/agent-sessions/${id}`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(command),
+  });
+  if (!response.ok) throw await responseError(response);
+  return (await response.json()) as AgentSessionCommandResult;
 }
 
 function isRetryableSessionOpenError(error: unknown): boolean {
@@ -70,7 +97,7 @@ async function fetchAgentSession(
   const after = current?.cursor
     ? `?after=${encodeURIComponent(formatAgentRuntimeCursor(current.cursor))}`
     : "";
-  const response = await fetch(`/api/agent-sessions/${id}${after}`, {
+  const response = await fetch(apiUrl(`/api/agent-sessions/${id}${after}`), {
     cache: "no-store",
   });
   if (!response.ok) throw await responseError(response);
@@ -78,7 +105,13 @@ async function fetchAgentSession(
     snapshot?: AgentRuntimeSnapshot;
     sync?: unknown;
   };
-  if (data.snapshot?.sessionId !== id) {
+  if (
+    (data.snapshot && data.snapshot.sessionId !== id) ||
+    (isAgentSessionSync(data.sync) &&
+      data.sync.reset &&
+      data.sync.snapshot.sessionId !== id) ||
+    (!data.snapshot && !isAgentSessionSync(data.sync))
+  ) {
     throw new Error("The Host Connector opened a different session.");
   }
   let sync: AgentSessionSync | undefined;
@@ -89,7 +122,7 @@ async function fetchAgentSession(
     sync = data.sync;
   }
   const result: AgentSessionOpenResult = {
-    snapshot: data.snapshot,
+    ...(data.snapshot ? { snapshot: data.snapshot } : {}),
     ...(sync ? { sync } : {}),
   };
   return replicaFromOpenResult(result, current);
@@ -132,6 +165,35 @@ export function useAgentSession(id: string) {
     },
     select: (replica) => replica.snapshot,
     retry: false,
+  });
+
+  const history = useMutation({
+    mutationFn: async () => {
+      const current = queryClient.getQueryData<AgentSessionReplica>(
+        agentSessionKeys.detail(id),
+      );
+      const before = current?.snapshot.history?.beforeCursor;
+      if (!before) return;
+      const response = await fetch(
+        apiUrl(
+          `/api/agent-sessions/${id}?before=${encodeURIComponent(before)}`,
+        ),
+        { cache: "no-store" },
+      );
+      if (!response.ok) throw await responseError(response);
+      const page: unknown = await response.json();
+      if (!isAgentHistoryPage(page) || page.sessionId !== id)
+        throw new Error("Invalid agent history page.");
+      queryClient.setQueryData<AgentSessionReplica>(
+        agentSessionKeys.detail(id),
+        (latest) => {
+          if (!latest) return latest;
+          const next = prependAgentHistoryPage(latest, page);
+          replicaRef.current = next;
+          return next;
+        },
+      );
+    },
   });
 
   const sessionReady = query.data !== undefined;
@@ -221,7 +283,7 @@ export function useAgentSession(id: string) {
         params.set("after", formatAgentRuntimeCursor(cursor));
       }
       const source = new EventSource(
-        `/api/agent-sessions/${id}/events?${params.toString()}`,
+        apiUrl(`/api/agent-sessions/${id}/events?${params.toString()}`),
       );
       events = source;
       source.onopen = () => {
@@ -324,7 +386,7 @@ export function useAgentSession(id: string) {
     };
   }, [id, queryClient, sessionReady]);
 
-  return { ...query, streamStatus };
+  return { ...query, streamStatus, history };
 }
 
 export function useAgentSessionCommand(id: string) {
@@ -336,13 +398,7 @@ export function useAgentSessionCommand(id: string) {
   return useMutation({
     mutationFn: async (
       command: AgentSessionCommand,
-    ): Promise<{
-      sessionId?: string;
-      draft?: string;
-      queuedMessages?: AgentQueuedMessage[];
-      usage?: AgentUsageSnapshot;
-      notice?: AgentProviderNotice;
-    }> => {
+    ): Promise<AgentSessionCommandResult> => {
       const needsIdentity =
         (command.type === "prompt" ||
           command.type === "queue" ||
@@ -354,7 +410,7 @@ export function useAgentSessionCommand(id: string) {
         generatedClientMessageId =
           retainedIdentity.current?.fingerprint === fingerprint
             ? retainedIdentity.current.clientMessageId
-            : crypto.randomUUID();
+            : generateId();
         retainedIdentity.current = {
           fingerprint,
           clientMessageId: generatedClientMessageId,
@@ -363,15 +419,18 @@ export function useAgentSessionCommand(id: string) {
       const wireCommand = generatedClientMessageId
         ? { ...command, clientMessageId: generatedClientMessageId }
         : command;
-      let response: Response;
       try {
-        response = await fetch(`/api/agent-sessions/${id}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(wireCommand),
-        });
+        const result = await sendAgentSessionCommand(id, wireCommand);
+        if (
+          fingerprint &&
+          retainedIdentity.current?.fingerprint === fingerprint &&
+          retainedIdentity.current.clientMessageId === generatedClientMessageId
+        ) {
+          retainedIdentity.current = null;
+        }
+        return result;
       } catch (cause) {
-        if (generatedClientMessageId) {
+        if (generatedClientMessageId && cause instanceof TypeError) {
           throw new Error(
             "The connection was lost while sending, so the command outcome is unknown. Inspect the session before retrying; an unchanged retry will reuse the same command identity.",
             { cause },
@@ -379,22 +438,6 @@ export function useAgentSessionCommand(id: string) {
         }
         throw cause;
       }
-      if (!response.ok) throw await responseError(response);
-      const result = (await response.json()) as {
-        sessionId?: string;
-        draft?: string;
-        queuedMessages?: AgentQueuedMessage[];
-        usage?: AgentUsageSnapshot;
-        notice?: AgentProviderNotice;
-      };
-      if (
-        fingerprint &&
-        retainedIdentity.current?.fingerprint === fingerprint &&
-        retainedIdentity.current.clientMessageId === generatedClientMessageId
-      ) {
-        retainedIdentity.current = null;
-      }
-      return result;
     },
     onSuccess: (data, command) => {
       if (data.queuedMessages) {
@@ -413,6 +456,8 @@ export function useAgentSessionCommand(id: string) {
         );
       }
       if (
+        command.type === "rewind" ||
+        command.type === "reload_history" ||
         command.type === "set_model" ||
         command.type === "set_thinking_level" ||
         command.type === "set_collaboration_mode" ||
@@ -435,6 +480,7 @@ export function useAgentSessionCommand(id: string) {
         command.type === "steer_queued_message" ||
         command.type === "set_session_name" ||
         command.type === "new_session" ||
+        command.type === "rewind" ||
         command.type === "edit_message" ||
         command.type === "fork_message"
       ) {
@@ -449,7 +495,7 @@ export function useAgentSessionCommand(id: string) {
 export function useAgentSessionUsage(id: string) {
   return useMutation({
     mutationFn: async (): Promise<AgentUsageSnapshot> => {
-      const response = await fetch(`/api/agent-sessions/${id}`, {
+      const response = await fetch(apiUrl(`/api/agent-sessions/${id}`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type: "show_usage" }),

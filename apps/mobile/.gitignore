@@ -44,3 +44,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Local Firebase app configuration (or use GOOGLE_SERVICES_JSON).
+google-services.json

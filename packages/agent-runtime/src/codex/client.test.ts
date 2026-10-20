@@ -1298,7 +1298,7 @@ describe("CodexRuntimeClient", () => {
       expect.arrayContaining([
         expect.objectContaining({ type: "turn_start", turnId: "turn-1" }),
         expect.objectContaining({
-          type: "overtchat_turn_update",
+          type: "overtchat_turn_delta",
           turnId: "turn-1",
           messages: expect.arrayContaining([
             expect.objectContaining({
@@ -1308,7 +1308,7 @@ describe("CodexRuntimeClient", () => {
             }),
           ]),
         }),
-        expect.objectContaining({ type: "overtchat_turn_update" }),
+        expect.objectContaining({ type: "overtchat_turn_delta" }),
         expect.objectContaining({ type: "turn_end", status: "completed" }),
       ]),
     );
@@ -1454,10 +1454,7 @@ describe("CodexRuntimeClient", () => {
       },
     });
 
-    const update = events.findLast(
-      (event) => event.type === "overtchat_turn_update",
-    );
-    const messages = Array.isArray(update?.messages) ? update.messages : [];
+    const messages = (await client.getMessages()).messages;
     expect(
       messages.map((message) =>
         message && typeof message === "object"
@@ -1982,6 +1979,10 @@ describe("CodexRuntimeClient", () => {
       type: "interaction_request",
       id: "codex:approval-1",
       method: "select",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      toolDetail: { type: "shell", command: "npm install" },
       options: ["Allow once", "Allow for session", "Deny"],
     });
 
@@ -2000,6 +2001,10 @@ describe("CodexRuntimeClient", () => {
         fileSystem: null,
       },
     });
+    expect(events.at(-1)).toMatchObject({
+      approvalKind: "tool",
+      toolDetail: { type: "json", value: { network: { enabled: true }, fileSystem: null } },
+    });
     client.respondToInteraction("codex:permission-1", {
       value: "Allow once",
     });
@@ -2009,6 +2014,104 @@ describe("CodexRuntimeClient", () => {
         permissions: { network: { enabled: true } },
         scope: "turn",
       },
+    });
+  });
+
+  it("attaches only the requested file item's patches and refreshes pending approval previews", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: { id: "turn-1", status: "inProgress", items: [] },
+    });
+    for (const [id, path] of [
+      ["edit-1", "one.ts"],
+      ["edit-2", "two.ts"],
+    ]) {
+      server.emit("item/started", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        item: {
+          id,
+          type: "fileChange",
+          status: "inProgress",
+          changes: [{ path, kind: "update", diff: "@@\n-old\n+new" }],
+        },
+      });
+    }
+    server.ask("file-approval", "item/fileChange/requestApproval", {
+      turnId: "turn-1",
+      itemId: "edit-1",
+    });
+    const approval = () =>
+      events.filter((e) => e.type === "interaction_request").at(-1)!;
+    expect(approval()).toMatchObject({
+      id: "codex:file-approval",
+      toolDetail: {
+        type: "edit",
+        changes: [{ filePath: "one.ts", patch: "@@\n-old\n+new" }],
+      },
+    });
+    expect(JSON.stringify(approval())).not.toContain("two.ts");
+    server.emit("item/fileChange/patchUpdated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "edit-1",
+      changes: [
+        {
+          path: "one.ts",
+          kind: { type: "update", movePath: "renamed.ts" },
+          diff: "@@\n-old\n+revised",
+        },
+      ],
+    });
+    expect(approval()).toMatchObject({
+      toolDetail: {
+        changes: [
+          {
+            filePath: "one.ts",
+            movePath: "renamed.ts",
+            patch: "@@\n-old\n+revised",
+          },
+        ],
+      },
+    });
+    client.respondToInteraction("codex:file-approval", { value: "Deny" });
+    expect(server.responses.at(-1)).toMatchObject({
+      id: "file-approval",
+      result: { decision: "decline" },
+    });
+    const count = events.filter((e) => e.type === "interaction_request").length;
+    server.emit("item/fileChange/patchUpdated", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "edit-1",
+      changes: [],
+    });
+    expect(events.filter((e) => e.type === "interaction_request")).toHaveLength(
+      count,
+    );
+  });
+
+  it("does not substitute another file's patch when the requested item is unavailable", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    server.ask("missing", "item/fileChange/requestApproval", {
+      turnId: "missing",
+      itemId: "unknown",
+    });
+    expect(events.at(-1)).toMatchObject({
+      toolDetail: { type: "edit", changes: [] },
     });
   });
 
@@ -2143,8 +2246,8 @@ describe("CodexRuntimeClient", () => {
     expect(events.at(-1)).toMatchObject({
       type: "interaction_request",
       id: "codex:question-1",
-      method: "input",
-      secret: true,
+      method: "form",
+      fields: [expect.objectContaining({ id: "token", type: "text", secret: true })],
       timeout: 5_000,
     });
 
@@ -2185,11 +2288,11 @@ describe("CodexRuntimeClient", () => {
     expect(events.at(-1)).toMatchObject({
       type: "interaction_request",
       id: "codex:tool-question",
-      method: "select",
-      options: ["A", "B"],
+      method: "form",
+      fields: [expect.objectContaining({ id: "choice", options: [{ value: "A", label: "A", description: "First" }, { value: "B", label: "B", description: "Second" }] })],
     });
 
-    client.respondToInteraction("codex:tool-question", { value: "B" });
+    client.respondToInteraction("codex:tool-question", { values: { choice: "B" } });
     expect(server.responses.at(-1)).toEqual({
       id: "tool-question",
       result: {
@@ -2611,7 +2714,7 @@ describe("CodexRuntimeClient", () => {
     );
   });
 
-  it("emits each question in a multi-question request", async () => {
+  it("emits all questions together and returns answers by provider ID", async () => {
     const client = new CodexRuntimeClient(
       { transport: "local" },
       { executable: "codex", cwd: "/workspace" },
@@ -2640,14 +2743,13 @@ describe("CodexRuntimeClient", () => {
         },
       ],
     });
-    client.respondToInteraction("codex:question-2", { value: "A" });
     expect(events.at(-1)).toMatchObject({
       type: "interaction_request",
       id: "codex:question-2",
-      title: "Second",
-      options: ["B"],
+      method: "form",
+      fields: [expect.objectContaining({ id: "first", label: "First" }), expect.objectContaining({ id: "second", label: "Second" })],
     });
-    client.respondToInteraction("codex:question-2", { value: "B" });
+    client.respondToInteraction("codex:question-2", { values: { first: "A", second: "B" } });
     expect(server.responses.at(-1)).toEqual({
       id: "question-2",
       result: {
@@ -2656,6 +2758,99 @@ describe("CodexRuntimeClient", () => {
           second: { answers: ["B"] },
         },
       },
+    });
+  });
+  it("round-trips custom answers without a second prompt and dismisses the whole form", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" }, { executable: "codex", cwd: "/workspace" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    await client.getState();
+    const questions = [{ id: "custom", header: "Choice", question: "Which option?", isOther: true, options: [{ label: "A", description: "First option" }] }];
+    server.ask("custom-question", "item/tool/requestUserInput", { questions });
+    expect(events.at(-1)).toMatchObject({ method: "form", fields: [expect.objectContaining({ allowOther: true, options: [{ value: "A", label: "A", description: "First option" }] })] });
+    const count = events.length;
+    client.respondToInteraction("codex:custom-question", { values: { custom: "An answer, with punctuation" } });
+    expect(events).toHaveLength(count);
+    expect(server.responses.at(-1)).toEqual({ id: "custom-question", result: { answers: { custom: { answers: ["An answer, with punctuation"] } } } });
+    server.ask("dismiss-question", "item/tool/requestUserInput", { questions });
+    client.respondToInteraction("codex:dismiss-question", { cancelled: true });
+    expect(server.responses.at(-1)).toEqual({ id: "dismiss-question", result: { answers: {} } });
+  });
+
+
+  it("publishes context reductions during a turn and usage received after completion", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const report = (last?: number) =>
+      server.emit("thread/tokenUsage/updated", {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        tokenUsage: {
+          total: { totalTokens: 900000 },
+          ...(last === undefined ? {} : { last: { totalTokens: last } }),
+          modelContextWindow: 100000,
+        },
+      });
+    server.emit("turn/started", {
+      threadId: "thread-1",
+      turn: { id: "turn-1", status: "inProgress", items: [] },
+    });
+    report(90000);
+    server.emit("item/started", {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      item: { id: "compact", type: "contextCompaction" },
+    });
+    expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+    report(12000);
+    server.emit("turn/completed", {
+      threadId: "thread-1",
+      turn: { id: "turn-1", status: "completed", items: [] },
+    });
+    report(13000);
+    expect(
+      events
+        .filter((event) => event.type === "usage_update")
+        .map(
+          (event) =>
+            (event.usage as { contextUsage: { tokens: number | null } })
+              .contextUsage.tokens,
+        ),
+    ).toEqual([90000, null, 12000, 13000]);
+    report();
+    expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+    expect(events.at(-1)).toMatchObject({
+      type: "usage_update",
+      usage: { contextUsage: { tokens: null } },
+    });
+    server.emit("thread/tokenUsage/updated", {
+      threadId: "child-thread",
+      tokenUsage: { last: { totalTokens: 1 }, modelContextWindow: 100000 },
+    });
+    expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+  });
+
+  it("accepts a current usage reading without cumulative totals, including zero", async () => {
+    const client = new CodexRuntimeClient(
+      { transport: "local" },
+      { executable: "codex", cwd: "/workspace" },
+    );
+    await client.getState();
+    server.emit("thread/tokenUsage/updated", {
+      threadId: "thread-1",
+      tokenUsage: { last: { totalTokens: 0 }, modelContextWindow: 100000 },
+    });
+    expect((await client.getSessionStats()).contextUsage).toEqual({
+      tokens: 0,
+      contextWindow: 100000,
+      percent: 0,
     });
   });
 });

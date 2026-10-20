@@ -9,7 +9,9 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
+  CHAT_GENERATION_STATUSES,
   CHAT_KINDS,
+  type ChatGenerationStatus,
   type ChatKind,
   type ModelCapabilities,
 } from "@overtchat/shared";
@@ -19,6 +21,12 @@ import {
 } from "@/lib/providers/catalog";
 import type { ModelPricing } from "@/lib/model-config/schema";
 import type { McpServerConfig } from "@/lib/mcp/schema";
+
+// One durable bootstrap record. A null nonce means setup is permanently closed.
+export const initialSetup = sqliteTable("initial_setup", {
+  id: integer("id").primaryKey(),
+  nonce: text("nonce"),
+});
 
 export const user = sqliteTable("user", {
   id: text("id").primaryKey(),
@@ -39,7 +47,31 @@ export const user = sqliteTable("user", {
   banned: integer("banned", { mode: "boolean" }).default(false),
   banReason: text("ban_reason"),
   banExpires: integer("ban_expires", { mode: "timestamp_ms" }),
+  twoFactorEnabled: integer("two_factor_enabled", { mode: "boolean" }).default(
+    false,
+  ),
 });
+
+// Better Auth's twoFactor plugin. The secret and backup codes are encrypted
+// with BETTER_AUTH_SECRET; `verified` stays false until the first code checks.
+export const twoFactor = sqliteTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: integer("verified", { mode: "boolean" }).default(true),
+    failedVerificationCount: integer("failed_verification_count").default(0),
+    lockedUntil: integer("locked_until", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("twoFactor_secret_idx").on(table.secret),
+    index("twoFactor_userId_idx").on(table.userId),
+  ],
+);
 
 export const session = sqliteTable(
   "session",
@@ -61,6 +93,26 @@ export const session = sqliteTable(
     impersonatedBy: text("impersonated_by"),
   },
   (table) => [index("session_userId_idx").on(table.userId)],
+);
+
+// Registrations belong to a login as well as a user: revoking the login also
+// revokes delivery, even if the device cannot unregister before signing out.
+export const pushDevices = sqliteTable(
+  "push_devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sessionId: text("session_id")
+      .notNull()
+      .references(() => session.id, { onDelete: "cascade" }),
+    token: text("token").notNull().unique(),
+    chats: integer("chats", { mode: "boolean" }).notNull().default(false),
+    agents: integer("agents", { mode: "boolean" }).notNull().default(false),
+    previews: integer("previews", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [index("push_devices_user_idx").on(table.userId)],
 );
 
 export const account = sqliteTable(
@@ -358,6 +410,10 @@ export const chats = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title"),
+    pinned: integer("pinned", { mode: "boolean" }).default(false).notNull(),
+    modelConfigId: text("model_config_id").references(() => modelConfigs.id, {
+      onDelete: "set null",
+    }),
     kind: text("kind", { enum: CHAT_KINDS })
       .$type<ChatKind>()
       .default("text")
@@ -373,10 +429,55 @@ export const chats = sqliteTable(
   },
   (table) => [
     index("chats_userId_updatedAt_idx").on(table.userId, table.updatedAt),
+    index("chats_userId_pinned_updatedAt_idx").on(
+      table.userId,
+      table.pinned,
+      table.updatedAt,
+    ),
     index("chats_userId_projectId_updatedAt_idx").on(
       table.userId,
       table.projectId,
       table.updatedAt,
+    ),
+  ],
+);
+
+/**
+ * Durable identity and lifecycle for a model generation. Stream chunks remain
+ * ephemeral (Redis when configured); SQLite is the authority for whether a
+ * user intent is already running or has reached a terminal state.
+ */
+export const chatGenerations = sqliteTable(
+  "chat_generations",
+  {
+    id: text("id").primaryKey(),
+    chatId: text("chat_id")
+      .notNull()
+      .references(() => chats.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    clientRequestId: text("client_request_id").notNull(),
+    requestFingerprint: text("request_fingerprint").notNull(),
+    status: text("status", { enum: CHAT_GENERATION_STATUSES })
+      .$type<ChatGenerationStatus>()
+      .default("running")
+      .notNull(),
+    error: text("error"),
+    responseMessageId: text("response_message_id"),
+    startedAt: integer("started_at", { mode: "timestamp_ms" })
+      .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
+      .notNull(),
+    completedAt: integer("completed_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    uniqueIndex("chat_generations_userId_clientRequestId_idx").on(
+      table.userId,
+      table.clientRequestId,
+    ),
+    index("chat_generations_chatId_startedAt_idx").on(
+      table.chatId,
+      table.startedAt,
     ),
   ],
 );
@@ -513,8 +614,23 @@ export const chatsRelations = relations(chats, ({ one, many }) => ({
     references: [projects.id],
   }),
   messages: many(messages),
+  generations: many(chatGenerations),
   generationUsage: many(generationUsage),
 }));
+
+export const chatGenerationsRelations = relations(
+  chatGenerations,
+  ({ one }) => ({
+    chat: one(chats, {
+      fields: [chatGenerations.chatId],
+      references: [chats.id],
+    }),
+    user: one(user, {
+      fields: [chatGenerations.userId],
+      references: [user.id],
+    }),
+  }),
+);
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(user, {
@@ -647,11 +763,21 @@ export const uploadsRelations = relations(uploads, ({ one }) => ({
   }),
 }));
 
+export const userModelPreferences = sqliteTable("user_model_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  defaultModelId: text("default_model_id").references(() => modelConfigs.id, {
+    onDelete: "set null",
+  }),
+});
+
 export const modelConfigs = sqliteTable(
   "model_configs",
   {
     id: text("id").primaryKey(),
     label: text("label").notNull(),
+    modelType: text("model_type", { enum: ["chat", "image"] }).default("chat").notNull(),
     providerId: text("provider_id", { enum: PROVIDER_IDS })
       .default("custom")
       .notNull(),
@@ -688,6 +814,9 @@ export const modelConfigs = sqliteTable(
       .notNull(),
   },
   (table) => [
+    uniqueIndex("model_configs_activeImage_idx")
+      .on(table.enabled)
+      .where(sql`${table.modelType} = 'image' AND ${table.enabled} = true`),
     uniqueIndex("model_configs_taskModel_idx")
       .on(table.taskModel)
       .where(sql`${table.taskModel} = true`),
@@ -755,4 +884,14 @@ export const serverCapabilities = sqliteTable("server_capabilities", {
     .default(sql`(cast(unixepoch('subsecond') * 1000 as integer))`)
     .$onUpdate(() => new Date())
     .notNull(),
+});
+
+// A voice connection leases a chat; messages and generations use the ordinary
+// chat tables. No chat FK: starting the microphone must not create an empty chat.
+export const voiceSessions = sqliteTable("voice_sessions", {
+  chatId: text("chat_id").primaryKey(),
+  id: text("id").notNull().unique(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  authSessionId: text("auth_session_id").notNull().references(() => session.id, { onDelete: "cascade" }),
+  expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
 });

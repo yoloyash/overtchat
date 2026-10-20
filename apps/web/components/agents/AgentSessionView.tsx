@@ -1,6 +1,16 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
+import { generateId } from "ai";
+import { agentRewindOptions } from "@overtchat/shared/agent-presentation";
+
+import { isAgentQuestion } from "@overtchat/shared/agent-interaction";
+import { AgentQuestionCard } from "./AgentQuestionCard";
+import { AgentApprovalCard } from "./AgentApprovalCard";
+
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -10,10 +20,8 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useRouter } from "next/navigation";
-import dynamic from "next/dynamic";
+import { useNavigate } from "@tanstack/react-router";
 import {
-  AlertTriangle,
   Loader2,
   LockKeyhole,
   RefreshCw,
@@ -41,6 +49,10 @@ import {
 import { commandForAgentSessionSubmit } from "@/lib/agents/sessionCommands";
 import { latestAgentTaskList } from "@/lib/agents/presentation";
 import {
+  agentForkDraftKey,
+  agentSessionDraftRestoreKey,
+} from "@/lib/agents/sessionDraft";
+import {
   AGENT_CREATE_PREFERENCES_KEY,
   DEFAULT_AGENT_CREATE_PREFERENCES,
   mergeAgentProviderPreferences,
@@ -52,11 +64,15 @@ import { cn } from "@/lib/utils";
 import { AgentComposer } from "./AgentComposer";
 import {
   AgentInteractionDialog,
+  AgentSessionStatsDialog,
   AgentUsageDialog,
   CompactAgentSessionDialog,
   RenameAgentSessionDialog,
 } from "./AgentSessionDialogs";
 import { AgentMessageList } from "./AgentMessageList";
+import { MiniSpeechPlayer } from "@/components/chat/MiniSpeechPlayer";
+import { useSpeech } from "@/lib/useSpeech";
+import { authClient } from "@/lib/auth/client";
 import type { AgentRunActivity } from "./AgentActivity";
 import { AgentSessionContext } from "./AgentSessionContext";
 import { AgentSessionHeader } from "./AgentSessionHeader";
@@ -79,10 +95,9 @@ const MAX_TERMINAL_PANE_HEIGHT = 720;
 const MIN_TRANSCRIPT_HEIGHT = 240;
 const TERMINAL_PANE_HEIGHT_KEY = "overtchat:agent-terminal-pane-height";
 
-const AgentTerminalPane = dynamic(
+const AgentTerminalPane = lazy(
   () =>
-    import("./AgentTerminalPane").then((module) => module.AgentTerminalPane),
-  { ssr: false },
+    import("./AgentTerminalPane").then((module) => ({ default: module.AgentTerminalPane })),
 );
 
 function recordOf(value: unknown): UnknownRecord | null {
@@ -180,10 +195,6 @@ function currentGoal(snapshot: AgentRuntimeSnapshot): AgentGoal | null {
   };
 }
 
-function forkDraftKey(sessionId: string): string {
-  return `overtchat:agent-fork-draft:${sessionId}`;
-}
-
 function workspaceFileSelection(value: unknown): AgentWorkspaceFileSelection | null {
   const record = recordOf(value);
   if (!record || typeof record.path !== "string" || !record.path) return null;
@@ -252,8 +263,13 @@ export function AgentSessionView({
   initialSessionName: string;
 }) {
   const providerLabel = agentProviderMetadata(provider).label;
-  const router = useRouter();
+  const navigate = useNavigate();
   const session = useAgentSession(sessionId);
+  const speech = useSpeech();
+  const stopSpeech = speech.stop;
+  useEffect(() => () => stopSpeech(), [sessionId, stopSpeech]);
+  const { data: authSession } = authClient.useSession();
+  const isAdmin = authSession?.user.role === "admin";
   const command = useAgentSessionCommand(sessionId);
   const usageCommand = useAgentSessionUsage(sessionId);
   const [storedPreferences, setStoredPreferences] = useLocalStorage<unknown>(
@@ -269,6 +285,7 @@ export function AgentSessionView({
   const [usage, setUsage] = useState<AgentUsageSnapshot | null>(null);
   const [usageOpen, setUsageOpen] = useState(false);
   const [usageError, setUsageError] = useState("");
+  const [sessionUsageOpen, setSessionUsageOpen] = useState(false);
   const [dialogError, setDialogError] = useState("");
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [restoredDraft, setRestoredDraft] = useState<{
@@ -318,6 +335,9 @@ export function AgentSessionView({
     null,
   );
   const [resizingTerminal, setResizingTerminal] = useState(false);
+  const [openedTerminalSession, setOpenedTerminalSession] = useState<string | null>(
+    terminalOpen ? sessionId : null,
+  );
   const terminalResizeStart = useRef<{
     pointerY: number;
     height: number;
@@ -533,6 +553,7 @@ export function AgentSessionView({
   async function run(
     input: AgentSessionCommand,
     options: {
+      chooseWorkspace?: boolean;
       closeRename?: boolean;
       closeCompact?: boolean;
       toastTitle?: string;
@@ -544,12 +565,28 @@ export function AgentSessionView({
       if (result.notice) {
         toast.warning(result.notice.message);
       }
-      if (
-        input.type === "edit_message" ||
-        input.type === "fork_message"
-      ) {
+      if (input.type === "fork_message") {
+        if (!result.forkContext)
+          throw new Error("The agent did not return conversation history.");
+        const draftId = generateId();
+        window.sessionStorage.setItem(
+          agentForkDraftKey(draftId),
+          JSON.stringify(result.forkContext),
+        );
+        void navigate({
+          to: "/agents/new",
+          search: {
+            workspaceId,
+            provider,
+            fork: draftId,
+            chooseWorkspace: options.chooseWorkspace ? "1" : undefined,
+          },
+        });
+        return true;
+      }
+      if (input.type === "rewind" || input.type === "edit_message") {
         if (!result.sessionId) {
-          throw new Error(`${providerLabel} did not return the forked session.`);
+          throw new Error(`${providerLabel} did not return the updated session.`);
         }
         const draft = result.draft;
         if (draft !== undefined) {
@@ -561,18 +598,18 @@ export function AgentSessionView({
             return true;
           }
           window.sessionStorage.setItem(
-            forkDraftKey(result.sessionId),
+            agentSessionDraftRestoreKey(result.sessionId),
             draft,
           );
         }
-        router.push(`/agents/${result.sessionId}`);
+        void navigate({ to: "/agents/$id", params: { id: result.sessionId } });
         return true;
       }
       if (input.type === "new_session") {
         if (!result.sessionId) {
           throw new Error(`${providerLabel} did not return the new session.`);
         }
-        router.push(`/agents/${result.sessionId}`);
+        void navigate({ to: "/agents/$id", params: { id: result.sessionId } });
         return true;
       }
       if (options.closeRename) setRenameOpen(false);
@@ -635,13 +672,11 @@ export function AgentSessionView({
     if (input.type === "show_usage") return showUsage();
 
     const toastTitle =
-      input.type === "compact"
-        ? "Compaction started"
-        : input.type === "set_session_name"
-          ? "Session renamed"
-          : input.type === "set_auto_compaction"
-            ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
-            : undefined;
+      input.type === "set_session_name"
+        ? "Session renamed"
+        : input.type === "set_auto_compaction"
+          ? `Auto-compaction ${input.enabled ? "enabled" : "disabled"}`
+          : undefined;
     return run(input, { toastTitle });
   }
 
@@ -651,21 +686,12 @@ export function AgentSessionView({
   if (!snapshot) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-12 shrink-0 items-center border-b px-3">
+        <header data-titlebar className="flex h-12 shrink-0 items-center border-b px-3">
           <SidebarToggle />
         </header>
         <div className="flex flex-1 items-center justify-center px-6">
-          <div className="max-w-md text-center">
-            <AlertTriangle className="mx-auto size-5 text-destructive" />
-            <p className="mt-3 text-sm font-medium">
-              {providerLabel} session could not be opened
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {session.error instanceof Error
-                ? session.error.message
-                : "The connection failed."}
-            </p>
-          </div>
+          <ErrorNotice className="max-w-md" title={`${providerLabel} session could not be opened`}
+            message={session.error} fallback="The connection failed. Please try again." />
         </div>
       </div>
     );
@@ -720,19 +746,26 @@ export function AgentSessionView({
   return (
     <AgentWorkspaceNavigationProvider value={workspaceNavigation}>
       <div className="relative flex min-h-0 flex-1 overflow-hidden">
-        <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div data-titlebar-interior={filesOpen || undefined} className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           <AgentSessionHeader
             provider={provider}
             workspaceId={workspaceId}
             workspacePath={workspacePath}
-            stats={snapshot.stats}
             running={running}
             commandPending={command.isPending}
             readOnly={Boolean(readOnly)}
+            accountUsageAvailable={snapshot.capabilities.usage === true}
+            accountUsagePending={usageCommand.isPending}
             filesOpen={filesOpen}
             onToggleFiles={() => setFilesOpen(!filesOpen)}
             terminalOpen={terminalOpen}
-            onToggleTerminal={() => setTerminalOpen(!terminalOpen)}
+            onToggleTerminal={() => { setOpenedTerminalSession(sessionId); setTerminalOpen(!terminalOpen); }}
+            onShowWorkspaceChanges={() => {
+              setStoredFileSelection(null);
+              setFilesOpen(true);
+            }}
+            onShowSessionUsage={() => setSessionUsageOpen(true)}
+            onShowAccountUsage={() => void showUsage()}
             onRename={() => {
               setDialogError("");
               setRenameOpen(true);
@@ -776,6 +809,25 @@ export function AgentSessionView({
           )}
 
           <AgentMessageList
+            history={{ hasOlder: Boolean(snapshot.history?.beforeCursor), loading: session.history.isPending, error: session.history.error?.message, load: () => session.history.mutate() }}
+            speech={speech}
+            question={snapshot.pendingInteraction?.approvalKind === "tool" ? (
+              <AgentApprovalCard
+                key={snapshot.pendingInteraction.id}
+                request={snapshot.pendingInteraction}
+                pending={command.isPending || Boolean(readOnly) || exited}
+                error={dialogError}
+                onRespond={(response) => void run({ type: "interaction_response", id: snapshot.pendingInteraction!.id, ...response })}
+              />
+            ) : isAgentQuestion(snapshot.pendingInteraction) && snapshot.pendingInteraction ? (
+              <AgentQuestionCard
+                key={snapshot.pendingInteraction.id}
+                request={snapshot.pendingInteraction}
+                pending={command.isPending || Boolean(readOnly) || exited}
+                error={dialogError}
+                onRespond={(response) => void run({ type: "interaction_response", id: snapshot.pendingInteraction!.id, ...response })}
+              />
+            ) : undefined}
             providerLabel={providerLabel}
             messages={snapshot.messages}
             streaming={running}
@@ -783,28 +835,27 @@ export function AgentSessionView({
             activityStartedAt={activityStartedAt}
             error={runtimeError}
             workspaceName={workspaceName}
-            canEditMessages={
-              snapshot.capabilities.editSentMessages === true
-            }
+            rewindOptions={agentRewindOptions(snapshot.capabilities)}
             canForkMessages={snapshot.capabilities.forkMessages === true}
             actionsDisabled={
-              running ||
               exited ||
+              Boolean(readOnly) ||
               command.isPending ||
               Boolean(snapshot.pendingInteraction)
             }
             suppressScrollButton={composerMenuOpen}
-            onEditMessage={(messageId) =>
-              void run({ type: "edit_message", messageId })
-            }
-            onForkMessage={(messageId) =>
-              void run({ type: "fork_message", messageId })
+            onRewindMessage={async (messageId, mode) => {
+              await run({ type: "rewind", messageId, mode });
+            }}
+            onForkMessage={(messageId, chooseWorkspace) =>
+              void run({ type: "fork_message", messageId }, { chooseWorkspace })
             }
             onImplementPlan={(plan) =>
               void run({ type: "implement_plan", plan })
             }
           />
 
+          <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
             <div className="mx-auto max-w-3xl">
               <AgentSessionContext
@@ -841,6 +892,8 @@ export function AgentSessionView({
                 pending={command.isPending}
                 stopping={pendingCommand === "abort"}
                 disabled={composerDisabled}
+                isAdmin={isAdmin}
+                onBeforeDictate={stopSpeech}
                 controls={{
                   providerLabel,
                   models: snapshot.models,
@@ -915,17 +968,17 @@ export function AgentSessionView({
                 onSteerQueued={(id) =>
                   run({ type: "steer_queued_message", id })
                 }
-                restoreDraftKey={forkDraftKey(sessionId)}
+                restoreDraftKey={agentSessionDraftRestoreKey(sessionId)}
                 restoredDraft={restoredDraft}
               />
             </div>
           </div>
 
-          {terminalOpen && (
+          {(terminalOpen || openedTerminalSession === sessionId) && (
             <div
               data-testid="agent-terminal-pane"
               style={{ height: `${terminalHeight}px` }}
-              className="relative shrink-0 border-t bg-background"
+              className={cn("relative shrink-0 border-t bg-background", !terminalOpen && "hidden")}
             >
               <div
                 role="separator"
@@ -958,11 +1011,13 @@ export function AgentSessionView({
                   )}
                 />
               </div>
+              <Suspense fallback={<div className="p-3 text-xs text-muted-foreground">Opening terminal…</div>}>
               <AgentTerminalPane
                 sessionId={sessionId}
                 active={terminalOpen}
-                onClose={() => setTerminalOpen(false)}
+                onClose={() => { setOpenedTerminalSession(sessionId); setTerminalOpen(false); }}
               />
+              </Suspense>
             </div>
           )}
 
@@ -1001,13 +1056,13 @@ export function AgentSessionView({
                   type: "compact",
                   ...(customInstructions ? { customInstructions } : {}),
                 },
-                { closeCompact: true, toastTitle: "Compaction started" },
+                { closeCompact: true },
               )
             }
           />
           <AgentInteractionDialog
             providerLabel={providerLabel}
-            request={snapshot.pendingInteraction}
+            request={isAgentQuestion(snapshot.pendingInteraction) || snapshot.pendingInteraction?.approvalKind === "tool" ? undefined : snapshot.pendingInteraction}
             pending={command.isPending}
             error={dialogError}
             onRespond={(response) =>
@@ -1030,6 +1085,11 @@ export function AgentSessionView({
                 setUsageError("");
               }
             }}
+          />
+          <AgentSessionStatsDialog
+            open={sessionUsageOpen}
+            stats={snapshot.stats}
+            onOpenChange={setSessionUsageOpen}
           />
         </div>
 
@@ -1120,8 +1180,8 @@ export function AgentSessionView({
 function AgentSessionLoading({ providerLabel }: { providerLabel: string }) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
-        <div className="size-8 rounded-md motion-skeleton" />
+      <div data-titlebar className="flex h-12 shrink-0 items-center gap-3 border-b px-3">
+        <div data-titlebar-leading className="size-8 rounded-md motion-skeleton" />
         <div className="h-4 w-48 rounded motion-skeleton" />
       </div>
       <div className="flex flex-1 items-center justify-center">

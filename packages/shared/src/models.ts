@@ -31,6 +31,27 @@ export const MODEL_BRAND_ICON_IDS = [
 
 export type ModelBrandIconId = (typeof MODEL_BRAND_ICON_IDS)[number];
 
+export const REASONING_EFFORTS = [
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+] as const;
+
+export type ReasoningEffort = (typeof REASONING_EFFORTS)[number];
+export type ModelReasoningLevel = "off" | "on" | ReasoningEffort;
+
+export interface ModelReasoningControls {
+  /** The runtime can render a distinct non-reasoning prompt. */
+  toggle: boolean;
+  /** Explicit level whose rendered prompt matches an omitted override. */
+  defaultLevel: ModelReasoningLevel;
+  /** Distinct effort behaviors accepted by the loaded chat template. */
+  efforts?: ReasoningEffort[];
+}
+
 /**
  * Capabilities reported by a provider/runtime or supplied by the exact
  * vendored model catalog. Missing fields are unknown, not false.
@@ -43,6 +64,7 @@ export interface ModelCapabilities {
   attachment?: boolean;
   toolCalling?: boolean;
   reasoning?: boolean;
+  reasoningControls?: ModelReasoningControls;
   structuredOutput?: boolean;
   temperature?: boolean;
 }

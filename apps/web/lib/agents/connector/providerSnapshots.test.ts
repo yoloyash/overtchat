@@ -49,6 +49,7 @@ const snapshot = {
       shellMode: "interactive" as const,
     },
     { provider: "claude" as const, status: "unavailable" as const },
+    { provider: "hermes" as const, status: "unavailable" as const },
   ],
   refreshedAt: 123,
 };

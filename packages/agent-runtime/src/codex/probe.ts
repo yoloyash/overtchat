@@ -1,6 +1,7 @@
 import type { ConnectorShellMode } from "@overtchat/agent-bridge";
 import type {
   AgentConnectionDraft,
+  AgentModel,
   AgentReadyConnectionProbe,
 } from "@overtchat/agent-bridge";
 import {
@@ -64,7 +65,20 @@ export async function probeCodexTarget(
     throw new Error(`Codex could not be started. ${failures.join(" ")}`);
   }
 
-  const server = await startCodexAppServer(resolved.target, executable);
+  const models = await fetchCodexModels(resolved.target, executable);
+  return {
+    status: "ready",
+    version: resolved.version,
+    models,
+    shellMode: resolved.shellMode,
+  };
+}
+
+export async function fetchCodexModels(
+  target: HostTarget,
+  executable: string,
+): Promise<AgentModel[]> {
+  const server = await startCodexAppServer(target, executable);
   try {
     await server.ready();
     const [accountResponse, modelResponse] = await Promise.all([
@@ -87,12 +101,7 @@ export async function probeCodexTarget(
         "Codex is installed, but it did not report any usable models.",
       );
     }
-    return {
-      status: "ready",
-      version: resolved.version,
-      models,
-      shellMode: resolved.shellMode,
-    };
+    return models;
   } finally {
     await server.stop();
   }

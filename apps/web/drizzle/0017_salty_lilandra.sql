@@ -1,0 +1,2 @@
+ALTER TABLE `model_configs` ADD `model_type` text DEFAULT 'chat' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `model_configs_activeImage_idx` ON `model_configs` (`enabled`) WHERE "model_configs"."model_type" = 'image' AND "model_configs"."enabled" = true;

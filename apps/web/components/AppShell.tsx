@@ -7,9 +7,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useLocation, useNavigate } from "@tanstack/react-router";
 import { Dialog } from "@base-ui/react/dialog";
-import { SidebarContext } from "@/components/sidebar-context";
+import { SidebarContext, type ChatPinFocusRequest } from "@/components/sidebar-context";
 import { SearchChatsPalette } from "@/components/SearchChatsPalette";
 import { useLocalStorage } from "@/lib/useLocalStorage";
 import {
@@ -17,6 +17,7 @@ import {
   SIDEBAR_COLLAPSED_STORAGE_KEY,
 } from "@/lib/sidebar";
 import { useIsMobile } from "@/lib/useIsMobile";
+import { desktopBridge } from "@/lib/desktop";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -27,7 +28,7 @@ export function AppShell({
   sidebar: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const [openMobileRoute, setOpenMobileRoute] = useState<string | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -36,9 +37,8 @@ export function AppShell({
     false,
   );
   const drawerRef = useRef<HTMLElement | null>(null);
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const routeKey = `${pathname}?${searchParams.toString()}`;
+  const pinFocusRef = useRef<ChatPinFocusRequest | null>(null);
+  const routeKey = useLocation({ select: (location) => location.href });
   const openMobile = isMobile && openMobileRoute === routeKey;
 
   const openPalette = useCallback(() => setPaletteOpen(true), []);
@@ -90,12 +90,30 @@ export function AppShell({
       } else if (key === "o" && e.shiftKey) {
         e.preventDefault();
         closeMobile();
-        router.push("/");
+        void navigate({ to: "/" });
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [closeMobile, router]);
+  }, [closeMobile, navigate]);
+
+  // Menu commands from the desktop app.
+  useEffect(() => {
+    return desktopBridge()?.onCommand((command) => {
+      if (command === "new-chat") {
+        closeMobile();
+        void navigate({ to: "/" });
+      } else if (command === "search-chats") {
+        setPaletteOpen(true);
+      } else if (command === "open-settings") {
+        closeMobile();
+        void navigate({ to: "/settings" });
+      } else if (command === "toggle-sidebar") {
+        if (isMobile) setOpenMobile(!openMobile);
+        else setCollapsed(!collapsed);
+      }
+    });
+  }, [closeMobile, collapsed, isMobile, navigate, openMobile, setCollapsed, setOpenMobile]);
 
   return (
     <SidebarContext.Provider
@@ -106,6 +124,7 @@ export function AppShell({
         closeMobile,
         openPalette,
         drawerRef,
+        pinFocusRef,
       }}
     >
       <Dialog.Root

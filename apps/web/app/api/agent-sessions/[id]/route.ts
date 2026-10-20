@@ -7,6 +7,7 @@ import {
   agentSessionCommandSchema,
   isAgentProviderNotice,
   isAgentSessionSync,
+  isAgentHistoryPage,
   type AgentRuntimeSnapshot,
   type AgentSessionSync,
 } from "@overtchat/agent-bridge";
@@ -60,18 +61,41 @@ export async function GET(
   const authorized = await authorize(req, id);
   if ("error" in authorized) return authorized.error;
   try {
+    const before = new URL(req.url).searchParams.get("before");
+    if (before !== null) {
+      if (!before || before.length > 2048)
+        return Response.json(
+          { error: "Invalid history cursor." },
+          { status: 400 },
+        );
+      const page = await hostConnectorBroker.request(
+        authorized.owned.host.connectorId,
+        {
+          type: "session_history",
+          session: daemonSession(authorized.owned),
+          before,
+        },
+      );
+      if (
+        !isAgentHistoryPage(page) ||
+        page.sessionId !== id ||
+        page.anchor !== before
+      )
+        throw new Error("The Host Connector returned an invalid history page.");
+      return Response.json(page);
+    }
     const after = parseAgentRuntimeCursor(
       new URL(req.url).searchParams.get("after"),
     );
     const result = await hostConnectorBroker.request<{
-      snapshot: AgentRuntimeSnapshot;
+      snapshot?: AgentRuntimeSnapshot;
       sync?: unknown;
     }>(authorized.owned.host.connectorId, {
       type: "open_session",
       session: daemonSession(authorized.owned),
       ...(after ? { after } : {}),
     });
-    if (result.snapshot?.sessionId !== id) {
+    if (result.snapshot && result.snapshot.sessionId !== id) {
       throw new Error("The Host Connector opened a different session.");
     }
     let sync: AgentSessionSync | undefined;
@@ -91,10 +115,9 @@ export async function GET(
       }
       sync = result.sync;
     }
-    return Response.json({
-      snapshot: result.snapshot,
-      ...(sync ? { sync } : {}),
-    });
+    if (!sync && !result.snapshot)
+      throw new Error("The Host Connector omitted its session sync.");
+    return Response.json(sync ? { sync } : { snapshot: result.snapshot });
   } catch (error) {
     return Response.json(
       {
@@ -158,7 +181,7 @@ export async function POST(
     const result = await hostConnectorBroker.request<{
       commandResult?: unknown;
       snapshot?: { queuedMessages?: unknown[] };
-      fork?: {
+      sessionChange?: {
         session: unknown;
         draft?: string;
         replacesCurrentSession?: boolean;
@@ -170,11 +193,14 @@ export async function POST(
       session: daemonSession(authorized.owned),
       command,
     });
-    if (result.fork) {
+    if (command.type === "fork_message") {
+      return Response.json(result.commandResult);
+    }
+    if (result.sessionChange) {
       const providerSession = parseProviderSessionMetadata(
-        result.fork.session,
+        result.sessionChange.session,
       );
-      if (result.fork.replacesCurrentSession) {
+      if (result.sessionChange.replacesCurrentSession) {
         hostConnectorBroker.replaceSessionProviderSession(
           authorized.owned.host.connectorId,
           id,
@@ -184,8 +210,8 @@ export async function POST(
         return Response.json({
           accepted: true,
           sessionId: id,
-          ...(result.fork.draft !== undefined
-            ? { draft: result.fork.draft }
+          ...(result.sessionChange.draft !== undefined
+            ? { draft: result.sessionChange.draft }
             : {}),
         });
       }
@@ -196,8 +222,8 @@ export async function POST(
       return Response.json({
         accepted: true,
         sessionId: row.id,
-        ...(result.fork.draft !== undefined
-          ? { draft: result.fork.draft }
+        ...(result.sessionChange.draft !== undefined
+          ? { draft: result.sessionChange.draft }
           : {}),
       });
     }

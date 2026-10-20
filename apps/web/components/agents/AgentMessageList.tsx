@@ -1,23 +1,33 @@
 "use client";
 
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 import { useStickToBottom } from "use-stick-to-bottom";
 import {
   AlertTriangle,
   Check,
   ChevronDown,
+  ChevronRight,
   Copy,
   Info,
+  GitBranch,
   ListChecks,
   Minimize2,
   Play,
   Terminal,
-  GitBranch,
-  Pencil,
+  Loader2,
+  Square,
+  Volume2,
 } from "lucide-react";
+import { stripMarkdown } from "@/lib/chat/message";
+import { motionClasses } from "@/lib/motion";
+import type { useSpeech } from "@/lib/useSpeech";
 import { Button } from "@/components/ui/button";
+import {
+  MessageActions,
+  MessageActionButton,
+} from "@/components/chat/MessageActions";
 import { toast } from "@/components/ui/toast";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
@@ -26,12 +36,17 @@ import {
 import { remarkAgentLinks } from "@/lib/agents/links";
 import {
   agentActivitySequencePosition,
+  agentActiveTurnStart,
+  agentResponseActions,
   describeAgentActivity,
   presentAgentError,
   projectAgentTranscript,
+  foldAgentTranscript,
+  agentWorkLabel,
   type AgentActivitySequencePosition,
   type AgentErrorPresentation,
   type AgentTranscriptItem,
+  type AgentResponseActions,
 } from "@/lib/agents/presentation";
 import { cn } from "@/lib/utils";
 import {
@@ -41,8 +56,13 @@ import {
   type AgentRunActivity,
 } from "./AgentActivity";
 import { AgentTaskProgressCard } from "./AgentTaskList";
+import { AgentForkMenu } from "./AgentForkMenu";
+import { AgentRewindMenu } from "./AgentRewindMenu";
+import type { AgentRewindMode } from "@overtchat/agent-bridge";
 import { AgentLinkIcon } from "./AgentLinkIcon";
 import { AgentWorkspaceLink } from "./AgentWorkspaceLink";
+import { AgentTranscriptMotion, useAgentDisclosureAnchor } from "./AgentTranscriptMotion";
+import { serverUrl } from "@/lib/api-url";
 
 export type { AgentRunActivity } from "./AgentActivity";
 
@@ -98,51 +118,111 @@ function textOfContent(content: unknown): string {
 }
 
 export function AgentMessageList({
+  speech,
+  history,
   providerLabel,
+  question,
   messages,
   streaming,
   activity,
   activityStartedAt,
   error,
   workspaceName,
-  canEditMessages,
+  rewindOptions,
   canForkMessages,
   actionsDisabled,
   suppressScrollButton,
-  onEditMessage,
+  onRewindMessage,
   onForkMessage,
   onImplementPlan,
 }: {
+  speech: ReturnType<typeof useSpeech>;
+  history?: {
+    hasOlder: boolean;
+    loading: boolean;
+    error?: string;
+    load: () => void;
+  };
   providerLabel: string;
+  question?: React.ReactNode;
   messages: unknown[];
   streaming: boolean;
   activity: AgentRunActivity | null;
   activityStartedAt: number | null;
   error?: string;
   workspaceName: string;
-  canEditMessages: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
   actionsDisabled: boolean;
   suppressScrollButton: boolean;
-  onEditMessage: (messageId: string) => void;
-  onForkMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
+  onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
   onImplementPlan: (plan: string) => void;
 }) {
-  const { scrollRef, contentRef, isAtBottom, scrollToBottom } =
+  const { scrollRef, contentRef, isAtBottom, scrollToBottom, stopScroll } =
     useStickToBottom({
       initial: "instant",
       resize: "instant",
     });
-  const transcript = useMemo(
+  const historyAnchor = useRef<{ element: HTMLElement; top: number } | null>(null);
+  useLayoutEffect(() => {
+    const anchor = historyAnchor.current;
+    if (!anchor || history?.loading) return;
+    if (anchor.element.isConnected && scrollRef.current) {
+      scrollRef.current.scrollTop += anchor.element.getBoundingClientRect().top - anchor.top;
+    }
+    historyAnchor.current = null;
+  }, [messages, history?.loading, scrollRef]);
+  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set());
+  const projectedTranscript = useMemo(
     () => projectAgentTranscript(messages),
     [messages],
   );
+  const unsettled = streaming || Boolean(activity || error || question);
+  const transcript = useMemo(
+    () => foldAgentTranscript(projectedTranscript, { unsettled, expanded: expandedTurns, retainFolded: true }),
+    [projectedTranscript, unsettled, expandedTurns],
+  );
+  const anchorDisclosure = useAgentDisclosureAnchor();
+  const toggleWork = (key: string, button: HTMLElement) => {
+    stopScroll();
+    anchorDisclosure(button, scrollRef.current);
+    setExpandedTurns((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const responseActions = useMemo(
+    () => agentResponseActions(projectedTranscript, unsettled),
+    [projectedTranscript, unsettled],
+  );
+  const transcriptGroups = useMemo(() => {
+    const groups: Array<Array<{ item: AgentTranscriptItem; index: number }>> = [];
+    transcript.forEach((item, index) => {
+      const previousGroup = groups.at(-1);
+      const previousItem = previousGroup?.at(-1)?.item;
+      if (
+        previousGroup &&
+        item.type === "turn_footer" &&
+        item.messageId !== null &&
+        previousItem?.type === "assistant_text" &&
+        previousItem.messageId === item.messageId
+      ) {
+        previousGroup.push({ item, index });
+      } else {
+        groups.push([{ item, index }]);
+      }
+    });
+    return groups;
+  }, [transcript]);
   const trailingItem = transcript.at(-1);
+  const activeTurnStart = agentActiveTurnStart(transcript, streaming);
   const activityAlreadyVisible =
-    activity === "working" &&
-    streaming &&
-    trailingItem?.type === "activity" &&
-    describeAgentActivity(trailingItem.entries, true).status === "running";
+    (activity === "compacting" && transcript.some((item) => item.type === "compaction" && item.active)) ||
+    (activity === "working" && streaming && trailingItem?.type === "activity" &&
+      describeAgentActivity(trailingItem.entries, true).status === "running");
 
   return (
     <div
@@ -157,7 +237,29 @@ export function AgentMessageList({
           ref={contentRef}
           className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-4 pt-8 pb-8"
         >
-          {messages.length === 0 && !error && !activity ? (
+          {history?.hasOlder && (
+            <div className="mb-6 text-center">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={history.loading}
+                onClick={() => {
+                  stopScroll();
+                  const element = contentRef.current?.querySelector<HTMLElement>("[data-transcript-row]");
+                  historyAnchor.current = element ? { element, top: element.getBoundingClientRect().top } : null;
+                  history.load();
+                }}
+              >
+                {history.loading ? "Loading…" : "Load older messages"}
+              </Button>
+              {history.error && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {history.error}
+                </p>
+              )}
+            </div>
+          )}
+          {messages.length === 0 && !error && !activity && !question ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <Terminal className="size-6 text-muted-foreground" />
               <p className="mt-3 text-sm font-medium">{workspaceName}</p>
@@ -167,52 +269,59 @@ export function AgentMessageList({
             </div>
           ) : (
             <div className="flex flex-col">
-              {transcript.map((item, index) => {
-                const previous = transcript[index - 1];
-                const sequencePosition = agentActivitySequencePosition(
-                  transcript,
-                  index,
-                );
-                const compact =
-                  previous &&
-                  (item.type === "activity" ||
-                    previous.type === "activity" ||
-                    item.type === "turn_footer");
-                return (
-                  <div
-                    key={item.key}
-                    className={cn(
-                      index > 0 && (compact ? "mt-3" : "mt-6"),
-                      (sequencePosition === "middle" ||
-                        sequencePosition === "last") &&
-                        "mt-0",
-                      item.type === "turn_footer" && "mt-2",
-                    )}
-                  >
-                    <AgentTranscriptRow
-                      item={item}
-                      active={streaming && index === transcript.length - 1}
-                      canEditMessages={canEditMessages}
-                      canForkMessages={canForkMessages}
-                      actionsDisabled={actionsDisabled}
-                      onEditMessage={onEditMessage}
-                      onForkMessage={onForkMessage}
-                      onImplementPlan={onImplementPlan}
-                      activitySequencePosition={sequencePosition}
-                    />
-                  </div>
-                );
-              })}
-              {activity && !activityAlreadyVisible && (
+              {transcriptGroups.map((group) => (
+                <AgentTranscriptMotion key={group[0].item.key} collapsed={group.every(({ item }) => item.folded)}>
+                  {group.map(({ item, index }) => {
+                    const previous = transcript[index - 1];
+                    const sequencePosition = agentActivitySequencePosition(
+                      transcript,
+                      index,
+                    );
+                    const compact =
+                      previous &&
+                      (item.type === "activity" ||
+                        previous.type === "activity" ||
+                        item.type === "turn_footer");
+                    return (
+                      <div
+                        key={item.key}
+                        className={cn(
+                          index > 0 && (compact ? "mt-3" : "mt-6"),
+                          (sequencePosition === "middle" ||
+                            sequencePosition === "last") &&
+                            "mt-0",
+                          item.type === "turn_footer" && "mt-2",
+                        )}
+                      >
+                        <AgentTranscriptRow
+                          speech={speech}
+                          item={item}
+                          onToggleWork={toggleWork}
+                          active={streaming && index === transcript.length - 1}
+                          turnActive={index >= activeTurnStart}
+                          responseActions={responseActions.get(item.key)}
+                          rewindOptions={rewindOptions}
+                          canForkMessages={canForkMessages}
+                          actionsDisabled={actionsDisabled}
+                          onRewindMessage={onRewindMessage}
+                          onForkMessage={onForkMessage}
+                          onImplementPlan={onImplementPlan}
+                          activitySequencePosition={sequencePosition}
+                        />
+                      </div>
+                    );
+                  })}
+                </AgentTranscriptMotion>
+              ))}
+              {activity && !question && !activityAlreadyVisible && (
                 <AgentRunIndicator
                   activity={activity}
                   startedAt={activityStartedAt}
                   providerLabel={providerLabel}
                 />
               )}
-              {error && (
-                <AgentErrorNotice error={presentAgentError(error)} />
-              )}
+              {question && <div className="mt-4">{question}</div>}
+              {error && <AgentErrorNotice error={presentAgentError(error)} />}
             </div>
           )}
         </div>
@@ -237,33 +346,74 @@ export function AgentMessageList({
 }
 
 function AgentTranscriptRow({
+  speech,
   item,
+  onToggleWork,
   active,
-  canEditMessages,
+  turnActive,
+  responseActions,
+  rewindOptions,
   canForkMessages,
   actionsDisabled,
-  onEditMessage,
+  onRewindMessage,
   onForkMessage,
   onImplementPlan,
   activitySequencePosition,
 }: {
+  speech: ReturnType<typeof useSpeech>;
   item: AgentTranscriptItem;
+  onToggleWork: (key: string, button: HTMLElement) => void;
   active: boolean;
-  canEditMessages: boolean;
+  turnActive: boolean;
+  responseActions: AgentResponseActions | undefined;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   canForkMessages: boolean;
   actionsDisabled: boolean;
-  onEditMessage: (messageId: string) => void;
-  onForkMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
+  onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
   onImplementPlan: (plan: string) => void;
   activitySequencePosition: AgentActivitySequencePosition | null;
 }) {
+  if (item.type === "compaction") {
+    return (
+      <div role="separator" aria-label={item.label} data-testid="agent-compaction"
+        className="flex items-center gap-3 py-2 text-xs text-muted-foreground">
+        <span className="h-px min-w-4 flex-1 bg-border" />
+        <span className={cn("flex min-w-0 items-center gap-2", item.failed && "text-destructive")}>
+          {item.active ? <Loader2 className="size-3.5 shrink-0 motion-safe:animate-spin" />
+            : <Minimize2 className="size-3.5 shrink-0" />}
+          <span className="text-center">
+            {item.label}
+            {item.detail && <span className="mt-0.5 block tabular-nums">{item.detail}</span>}
+          </span>
+        </span>
+        <span className="h-px min-w-4 flex-1 bg-border" />
+      </div>
+    );
+  }
+  if (item.type === "work_summary") {
+    return (
+      <div className="flex items-center border-b border-border/60 pb-2 pt-1">
+        <button
+          type="button"
+          aria-expanded={item.expanded}
+          onClick={(event) => onToggleWork(item.key, event.currentTarget)}
+          className="flex min-h-8 cursor-pointer items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums motion-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
+          data-testid="agent-work-summary"
+        >
+          {agentWorkLabel(item.durationMs)}
+          <ChevronRight className={cn("size-3.5 motion-transform", item.expanded && "rotate-90")} />
+        </button>
+      </div>
+    );
+  }
   if (item.type === "message") {
     return (
       <AgentMessage
         message={item.message}
-        canEdit={canEditMessages}
+        rewindOptions={rewindOptions}
         actionsDisabled={actionsDisabled}
-        onEditMessage={onEditMessage}
+        onRewindMessage={onRewindMessage}
       />
     );
   }
@@ -271,15 +421,21 @@ function AgentTranscriptRow({
     return (
       <div className="group/assistant relative text-sm leading-relaxed">
         <Markdown streaming={active}>{item.text}</Markdown>
-        {canForkMessages && item.actionable && item.messageId && (
-          <MessageAction
-            label="Fork from this response"
-            className="-bottom-6 left-0"
-            disabled={actionsDisabled}
-            onClick={() => onForkMessage(item.messageId!)}
-          >
-            <GitBranch />
-          </MessageAction>
+        {responseActions && (
+          <div className="mt-2">
+            <MessageActions show alwaysVisible>
+              <AgentCopyButton text={responseActions.text} disabled={actionsDisabled} />
+              <AgentSpeakButton id={item.key} text={responseActions.text} speech={speech} />
+              {canForkMessages && responseActions.messageId && (
+                <AgentForkMenu
+                  disabled={actionsDisabled}
+                  onFork={(chooseWorkspace) =>
+                    onForkMessage(responseActions.messageId!, chooseWorkspace)
+                  }
+                />
+              )}
+            </MessageActions>
+          </div>
         )}
       </div>
     );
@@ -287,9 +443,13 @@ function AgentTranscriptRow({
   if (item.type === "assistant_error") {
     return <AgentErrorNotice error={item.error} />;
   }
+  if (item.type === "notification") {
+    return <AgentNotificationNotice notification={item.notification} />;
+  }
   if (item.type === "turn_footer") {
     return (
       <AgentTurnFooter
+        speech={speech}
         item={item}
         canFork={canForkMessages}
         actionsDisabled={actionsDisabled}
@@ -300,8 +460,10 @@ function AgentTranscriptRow({
   if (item.type === "plan") {
     return (
       <AgentPlanCard
+        speech={speech}
+        active={turnActive}
         item={item}
-        disabled={actionsDisabled || active}
+        disabled={actionsDisabled || turnActive}
         onImplement={() => onImplementPlan(item.text)}
       />
     );
@@ -318,69 +480,74 @@ function AgentTranscriptRow({
   );
 }
 
+function AgentNotificationNotice({
+  notification,
+}: {
+  notification: Extract<
+    AgentTranscriptItem,
+    { type: "notification" }
+  >["notification"];
+}) {
+  const warning = notification.level === "warning";
+  const error = notification.level === "error";
+  const Icon = warning || error ? AlertTriangle : Info;
+  return (
+    <div
+      className="flex items-start gap-2 py-1 text-sm text-muted-foreground"
+      role={error ? "alert" : "status"}
+    >
+      <Icon
+        className={cn(
+          "mt-0.5 size-4 shrink-0",
+          warning && "text-amber-500",
+          error && "text-destructive",
+        )}
+      />
+      <span className="min-w-0 flex-1 text-foreground/90">
+        {notification.message}
+      </span>
+    </div>
+  );
+}
+
 function AgentTurnFooter({
+  speech,
   item,
   canFork,
   actionsDisabled,
   onForkMessage,
 }: {
+  speech: ReturnType<typeof useSpeech>;
   item: Extract<AgentTranscriptItem, { type: "turn_footer" }>;
   canFork: boolean;
   actionsDisabled: boolean;
-  onForkMessage: (messageId: string) => void;
+  onForkMessage: (messageId: string, chooseWorkspace?: boolean) => void;
 }) {
-  const [copied, setCopied] = useState(false);
   const showFork = canFork && item.messageId !== null;
 
   if (!item.text && !showFork && item.durationMs === null) return null;
-
-  function copyTurn() {
-    void clipboardWriteText(item.text)
-      .then(() => {
-        setCopied(true);
-        window.setTimeout(() => setCopied(false), 1_200);
-      })
-      .catch(() => {
-        toast.error({
-          title: "Failed to copy",
-          description: "Clipboard access was denied by the browser.",
-        });
-      });
-  }
 
   return (
     <div
       className="flex min-h-7 items-center gap-1 text-xs text-muted-foreground"
       data-testid="agent-turn-footer"
     >
-      {item.text && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="size-7"
-          aria-label={copied ? "Copied response" : "Copy response"}
-          title={copied ? "Copied" : "Copy response"}
-          disabled={actionsDisabled}
-          onClick={copyTurn}
-        >
-          {copied ? <Check /> : <Copy />}
-        </Button>
-      )}
-      {showFork && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="size-7"
-          aria-label="Fork from this response"
-          title="Fork from this response"
-          disabled={actionsDisabled}
-          onClick={() => onForkMessage(item.messageId!)}
-        >
-          <GitBranch />
-        </Button>
-      )}
+      <MessageActions show={!!item.text || showFork} alwaysVisible>
+        {item.text && (
+          <>
+            <AgentCopyButton text={item.text} disabled={actionsDisabled} />
+            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          </>
+        )}
+        {showFork && (
+          <AgentForkMenu
+            disabled={actionsDisabled}
+            onFork={(chooseWorkspace) =>
+              onForkMessage(item.messageId!, chooseWorkspace)
+            }
+          />
+        )}
+      </MessageActions>
       {item.durationMs !== null && (
         <span className="ml-1 tabular-nums">
           Worked for {formatAgentElapsed(item.durationMs)}
@@ -391,10 +558,14 @@ function AgentTurnFooter({
 }
 
 function AgentPlanCard({
+  speech,
+  active,
   item,
   disabled,
   onImplement,
 }: {
+  speech: ReturnType<typeof useSpeech>;
+  active: boolean;
   item: Extract<AgentTranscriptItem, { type: "plan" }>;
   disabled: boolean;
   onImplement: () => void;
@@ -426,6 +597,11 @@ function AgentPlanCard({
             ))}
           </ol>
         ) : null}
+        {!active && (
+          <div className="mt-1">
+            <AgentSpeakButton id={item.key} text={item.text} speech={speech} />
+          </div>
+        )}
         {item.actionable && (
           <div className="flex justify-end border-t pt-3">
             <Button
@@ -441,6 +617,63 @@ function AgentPlanCard({
         )}
       </div>
     </section>
+  );
+}
+
+function AgentSpeakButton({
+  id,
+  text,
+  speech,
+}: {
+  id: string;
+  text: string;
+  speech: ReturnType<typeof useSpeech>;
+}) {
+  const spokenText = useMemo(() => stripMarkdown(text), [text]);
+  if (!spokenText) return null;
+  const active = speech.activeId === id;
+  const loading = active && speech.status === "loading";
+  const tooLong = spokenText.length > 5_000;
+  const label = active
+    ? loading ? "Cancel loading speech" : "Stop reading"
+    : tooLong ? "Read aloud supports up to 5,000 characters" : "Read aloud";
+  return (
+    <MessageActionButton
+      label={label}
+      disabled={!active && tooLong}
+      onClick={() => void speech.play(id, spokenText)}
+      icon={loading ? (
+        <Loader2 className={cn("size-3.5", motionClasses.spinner)} />
+      ) : active ? (
+        <Square className="size-3.5" />
+      ) : (
+        <Volume2 className="size-3.5" />
+      )}
+    />
+  );
+}
+
+function AgentCopyButton({ text, disabled }: { text: string; disabled: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <MessageActionButton
+      label={copied ? "Copied response" : "Copy response"}
+      icon={copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      disabled={disabled}
+      onClick={() => {
+        void clipboardWriteText(text)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1_200);
+          })
+          .catch(() => {
+            toast.error({
+              title: "Failed to copy",
+              description: "Clipboard access was denied by the browser.",
+            });
+          });
+      }}
+    />
   );
 }
 
@@ -479,14 +712,14 @@ function AgentErrorNotice({ error }: { error: AgentErrorPresentation }) {
 
 function AgentMessage({
   message,
-  canEdit,
+  rewindOptions,
   actionsDisabled,
-  onEditMessage,
+  onRewindMessage,
 }: {
   message: unknown;
-  canEdit: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   actionsDisabled: boolean;
-  onEditMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
   const record = recordOf(message);
   if (!record) return null;
@@ -495,15 +728,19 @@ function AgentMessage({
     return (
       <UserMessage
         content={contentOf(message)}
-        messageId={typeof record.id === "string" ? record.id : null}
-        canEdit={canEdit}
+        messageId={
+          record.overtchatRewindable !== false && typeof record.id === "string"
+            ? record.id
+            : null
+        }
+        rewindOptions={rewindOptions}
         actionsDisabled={actionsDisabled}
-        onEditMessage={onEditMessage}
+        onRewindMessage={onRewindMessage}
       />
     );
   }
-  if (role === "compactionSummary" || role === "branchSummary") {
-    return <SummaryMessage message={record} role={role} />;
+  if (role === "branchSummary") {
+    return <BranchSummaryMessage message={record} />;
   }
   if (role === "custom") {
     if (record.display === false) return null;
@@ -523,15 +760,15 @@ function AgentMessage({
 function UserMessage({
   content,
   messageId,
-  canEdit,
+  rewindOptions,
   actionsDisabled,
-  onEditMessage,
+  onRewindMessage,
 }: {
   content: unknown;
   messageId: string | null;
-  canEdit: boolean;
+  rewindOptions: Array<{ mode: AgentRewindMode; label: string }>;
   actionsDisabled: boolean;
-  onEditMessage: (messageId: string) => void;
+  onRewindMessage: (messageId: string, mode: AgentRewindMode) => Promise<void>;
 }) {
   const text = textOfContent(content);
   const images = Array.isArray(content)
@@ -564,61 +801,30 @@ function UserMessage({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           key={index}
-          src={image.src}
+          src={serverUrl(image.src)}
           alt={image.alt}
           className="max-h-64 max-w-[80%] rounded-lg border object-contain"
         />
       ))}
-      {text && (
+      {(text || images.length > 0) && (
         <div className="relative min-w-0 max-w-[80%]">
-          <div className="rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
-            {text}
-          </div>
-          {canEdit && messageId && (
-            <MessageAction
-              label="Edit from this message"
-              className="right-full bottom-0 mr-1"
-              disabled={actionsDisabled}
-              onClick={() => onEditMessage(messageId)}
-            >
-              <Pencil />
-            </MessageAction>
+          {text && (
+            <div className="rounded-2xl bg-secondary px-4 py-2.5 text-sm whitespace-pre-wrap wrap-anywhere text-secondary-foreground">
+              {text}
+            </div>
+          )}
+          {messageId && !messageId.startsWith("submission:") && (
+            <div className="absolute right-full bottom-0 mr-1 opacity-0 motion-opacity group-hover/user:opacity-100 group-focus-within/user:opacity-100 has-[[data-popup-open]]:opacity-100 [@media(hover:none)]:opacity-100">
+              <AgentRewindMenu
+                options={rewindOptions}
+                disabled={actionsDisabled}
+                onRewind={(mode) => onRewindMessage(messageId, mode)}
+              />
+            </div>
           )}
         </div>
       )}
     </div>
-  );
-}
-
-function MessageAction({
-  label,
-  className,
-  disabled,
-  onClick,
-  children,
-}: {
-  label: string;
-  className: string;
-  disabled: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      className={cn(
-        "absolute size-6 text-muted-foreground opacity-60 motion-opacity hover:text-foreground sm:opacity-0 sm:group-hover/user:opacity-100 sm:group-hover/assistant:opacity-100 sm:focus:opacity-100",
-        className,
-      )}
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      {children}
-    </Button>
   );
 }
 
@@ -644,22 +850,9 @@ function Markdown({
   );
 }
 
-function SummaryMessage({
-  message,
-  role,
-}: {
-  message: UnknownRecord;
-  role: "compactionSummary" | "branchSummary";
-}) {
+function BranchSummaryMessage({ message }: { message: UnknownRecord }) {
   const [open, setOpen] = useState(false);
-  const summary =
-    typeof message.summary === "string" ? message.summary : "";
-  const compacted = role === "compactionSummary";
-  const tokens =
-    compacted && typeof message.tokensBefore === "number"
-      ? message.tokensBefore
-      : null;
-  const Icon = compacted ? Minimize2 : GitBranch;
+  const summary = typeof message.summary === "string" ? message.summary : "";
   return (
     <div className="overflow-hidden rounded-lg border bg-muted/10 text-xs">
       <button
@@ -668,16 +861,11 @@ function SummaryMessage({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left motion-colors hover:bg-muted/30"
       >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block font-medium">
-            {compacted ? "Conversation compacted" : "Branch summarized"}
+            Branch summarized
           </span>
-          {tokens !== null && (
-            <span className="block text-[11px] text-muted-foreground">
-              Compacted from {tokens.toLocaleString()} tokens
-            </span>
-          )}
         </span>
         <ChevronDown
           className={cn("size-3 motion-transform", open && "rotate-180")}

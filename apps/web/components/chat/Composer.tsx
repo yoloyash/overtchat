@@ -11,15 +11,23 @@ import {
   useState,
 } from "react";
 import type { FileUIPart } from "ai";
+import type {
+  ImageGenerationOptions,
+  ChatReasoningLevel,
+  ModelReasoningControls,
+} from "@overtchat/shared";
 import {
   AlertCircle,
   AudioLines,
   ArrowUp,
   Check,
   Cpu,
+  Shrink,
   Ghost,
+  ImageIcon,
   Globe,
   Loader2,
+  Library,
   Mic,
   Paperclip,
   Pencil,
@@ -31,6 +39,8 @@ import {
 } from "lucide-react";
 import { Menu } from "@base-ui/react/menu";
 import { Button } from "@/components/ui/button";
+import { ModelPicker } from "@/components/ModelPicker";
+import { LibraryPicker } from "@/components/library/LibraryPicker";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
@@ -38,7 +48,6 @@ import {
   formatSize,
   getDataTransferFiles,
 } from "@/lib/chat/attachments";
-import { dictationErrorMessage } from "@/lib/chat/message";
 import { useComposerDraft } from "@/lib/chat/use-composer-draft";
 import { motionClasses } from "@/lib/motion";
 import { useDictation } from "@/lib/useDictation";
@@ -51,6 +60,8 @@ import {
   type SlashCommand,
 } from "@/lib/chat/slash-commands";
 import type { PublicModelConfig } from "@/lib/model-config/schema";
+import { DictateButton, DictateError } from "./DictateButton";
+import { ImageOptions } from "./ImageOptions";
 import { CategoryIcon } from "./attachment-icons";
 import {
   SlashCommandMenu,
@@ -62,9 +73,12 @@ import {
   type ChatAttachment,
   useChatAttachments,
 } from "./useChatAttachments";
+import { MessageQueue, type MessageQueueProps } from "./MessageQueue";
+import { serverUrl } from "@/lib/api-url";
 
 export interface ComposerHandle {
   addFiles: (files: readonly File[]) => void;
+  addReference: (file: FileUIPart) => void;
   focus: (options?: FocusOptions) => void;
 }
 
@@ -73,6 +87,7 @@ export interface ComposerHandle {
  * composer; everything that mutates chat-level state is declared by `ChatArea`.
  */
 export interface ComposerCommandActions {
+  compact?: { onCompact: () => void; unavailableReason?: string };
   /** Runs `/temporary`; omitted once the chat has messages. */
   temporary?: { active: boolean; onToggle: () => void };
   onNewChat: () => void;
@@ -82,14 +97,23 @@ export interface ComposerCommandActions {
 }
 
 interface ComposerProps {
+  chatQueue: MessageQueueProps;
   configured: boolean;
   streaming: boolean;
   searchAvailable: boolean;
   searchUnavailableReason: string;
   searchRequested: boolean;
+  imageAvailable?: boolean;
+  imageModel?: string | null;
+  imageSupportsQuality?: boolean;
+  imageConfiguredSize?: string;
+  imageOptions?: ImageGenerationOptions;
+  onImageOptions?: (options: ImageGenerationOptions | undefined) => void;
   dropActive: boolean;
   models: PublicModelConfig[] | null;
   selectedModelId: string;
+  reasoningControls?: ModelReasoningControls;
+  reasoningLevel: ChatReasoningLevel;
   voiceInstalled: boolean;
   voiceEligible: boolean;
   voiceAvailable: boolean;
@@ -98,11 +122,15 @@ interface ComposerProps {
   attachmentsEnabled: boolean;
   textInputDisabled: boolean;
   commandActions: ComposerCommandActions;
+  onSelectReasoningLevel: (level: ChatReasoningLevel) => void;
   onToggleSearch: () => void;
-  onSubmit: (input: string, attachments: FileUIPart[]) => void;
+  /** Return false when the submission was not accepted; retain the draft. */
+  onSubmit: (input: string, attachments: FileUIPart[]) => void | boolean;
   onStop: () => void;
   onStartVoice: () => void;
   onEndVoice: () => void;
+  /** Stops text-to-speech before dictation so playback is not transcribed. */
+  onBeforeDictate?: () => void;
   isAdmin: boolean;
   draftUserId?: string;
   draftScope: string | null;
@@ -110,14 +138,18 @@ interface ComposerProps {
 }
 
 export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer({
+  chatQueue,
   configured,
   streaming,
   searchAvailable,
   searchUnavailableReason,
   searchRequested,
+  imageAvailable, imageModel, imageSupportsQuality, imageConfiguredSize, imageOptions, onImageOptions,
   dropActive,
   models,
   selectedModelId,
+  reasoningControls,
+  reasoningLevel,
   voiceInstalled,
   voiceEligible,
   voiceAvailable,
@@ -126,17 +158,20 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   attachmentsEnabled,
   textInputDisabled,
   commandActions,
+  onSelectReasoningLevel,
   onToggleSearch,
   onSubmit,
   onStop,
   onStartVoice,
   onEndVoice,
+  onBeforeDictate,
   isAdmin,
   draftUserId,
   draftScope,
   draftEnabled,
 }, ref) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleDraftRestore = useCallback(() => {
     requestAnimationFrame(() => {
@@ -161,6 +196,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
     addFiles,
     removeAttachment,
     clearAttachments,
+    addReadyParts,
   } = useChatAttachments();
 
   useImperativeHandle(
@@ -173,11 +209,15 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           0,
         );
       },
+      addReference(file) {
+        addReadyParts([file]);
+        textareaRef.current?.focus({ preventScroll: true });
+      },
       focus(options) {
         textareaRef.current?.focus(options);
       },
     }),
-    [addFiles],
+    [addFiles, addReadyParts],
   );
 
   const dictation = useDictation((text) => {
@@ -197,7 +237,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }, [input]);
 
   function startDictation() {
-    if (dictation.status === "idle") void dictation.start();
+    if (dictation.status !== "idle") return;
+    onBeforeDictate?.();
+    void dictation.start();
   }
 
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
@@ -252,6 +294,19 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
         keywords: ["incognito", "private", "unsaved"],
         toggle: { active: commandActions.temporary.active },
         run: commandActions.temporary.onToggle,
+      });
+    }
+
+    if (commandActions.compact) {
+      list.push({
+        name: "compact",
+        title: "Compact conversation",
+        description: "Summarize older context now",
+        group: "actions",
+        icon: Shrink,
+        keywords: ["summarize", "context"],
+        toggle: { active: false, unavailableReason: commandActions.compact.unavailableReason },
+        run: commandActions.compact.onCompact,
       });
     }
 
@@ -426,10 +481,11 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   function submit() {
     const text = input.trim();
-    if (streaming || uploading || textInputDisabled) return;
+    if (uploading || textInputDisabled) return;
+    if (streaming && text.toLowerCase() === "/compact" && !readyParts.length) return;
     if (!text && readyParts.length === 0) return;
     if (!configured) return;
-    onSubmit(text, readyParts);
+    if (onSubmit(text, readyParts) === false) return;
     clearDraft();
     setDismissedQuery(null);
     setActiveIndex(0);
@@ -443,6 +499,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.nativeEvent.isComposing) return;
     if (handleMenuKeyDown(e)) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -460,11 +517,16 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
 
   return (
     <>
-      {dictation.error && (
-        <p className="mb-2 text-sm text-destructive">
-          {dictationErrorMessage(dictation.error, isAdmin)}
-        </p>
-      )}
+      <DictateError
+        error={dictation.error}
+        isAdmin={isAdmin}
+        onDismiss={dictation.clearError}
+        onRecordAgain={() => {
+          onBeforeDictate?.();
+          void dictation.start();
+        }}
+      />
+      <MessageQueue {...chatQueue} />
       <div className="relative">
         {menuOpen && query && (
           <SlashCommandMenu
@@ -485,6 +547,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             dropActive && "border-ring bg-accent/20 ring-2 ring-ring/30",
           )}
         >
+          {imageOptions && onImageOptions && <ImageOptions value={imageOptions} model={imageModel} supportsQuality={imageSupportsQuality} configuredSize={imageConfiguredSize} onChange={onImageOptions} onClose={() => onImageOptions(undefined)} />}
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-2 px-1 pt-1">
               {attachments.map((att) => (
@@ -504,7 +567,9 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 ? "Resume voice to continue"
                 : configured
                   ? "Message… or / for commands"
-                  : "No models configured"
+                  : models === null || models.length > 0
+                    ? "Loading model…"
+                    : "No models configured"
             }
             className="max-h-48 min-h-10 resize-none border-0 bg-transparent px-1 py-0 shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
             value={input}
@@ -528,7 +593,7 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
             aria-autocomplete="list"
           />
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-1">
+            <div className="flex min-w-0 flex-1 items-center gap-1">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -575,6 +640,25 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                           </span>
                         </span>
                       </Menu.Item>
+                      <Menu.Item
+                        onClick={() => setLibraryOpen(true)}
+                        disabled={!attachmentsEnabled}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none motion-colors data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+                      >
+                        <Library className="size-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-medium">Add from library</span>
+                          <span className="block text-xs text-muted-foreground">Reuse files from your chats</span>
+                        </span>
+                      </Menu.Item>
+                      {imageAvailable && <Menu.Item
+                        disabled={!attachmentsEnabled}
+                        onClick={() => onImageOptions?.(imageOptions ? undefined : { size: "auto", quality: "auto" })}
+                        className="flex min-h-12 cursor-pointer items-center gap-3 rounded-lg px-2.5 py-2 outline-none data-[disabled]:opacity-50 data-[highlighted]:bg-accent"
+                      >
+                        <ImageIcon className="size-4 text-muted-foreground" />
+                        <span><span className="block font-medium">Create image</span><span className="block text-xs text-muted-foreground">{imageModel}</span></span>
+                      </Menu.Item>}
                       <Menu.CheckboxItem
                         checked={searchRequested}
                         onCheckedChange={onToggleSearch}
@@ -603,51 +687,30 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 <button
                   type="button"
                   onClick={onToggleSearch}
-                  className="flex h-7 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:h-10 max-md:px-3"
+                  className="flex h-7 shrink-0 items-center gap-1.5 rounded-full bg-accent px-2.5 text-xs font-medium text-accent-foreground outline-none motion-colors hover:bg-accent/80 focus-visible:ring-3 focus-visible:ring-ring/50 max-md:size-10 max-md:justify-center max-md:px-0"
                   aria-label="Remove Web search from this message"
                 >
                   <Globe className="size-3.5" />
-                  <span>Web search</span>
-                  <X className="size-3" />
+                  <span className="max-md:hidden">Web search</span>
+                  <X className="size-3 max-md:hidden" />
                 </button>
               )}
+              <ModelPicker
+                models={models}
+                selectedId={selectedModelId}
+                onSelect={commandActions.onSelectModel}
+                reasoningControls={reasoningControls}
+                reasoningLevel={reasoningLevel}
+                onSelectReasoningLevel={onSelectReasoningLevel}
+              />
             </div>
-            <div className="flex items-center gap-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                className={cn(
-                  "rounded-full",
-                  dictation.status === "recording" &&
-                    "bg-destructive text-destructive-foreground hover:bg-destructive hover:text-destructive-foreground",
-                )}
-                onClick={() => {
-                  if (dictation.status === "recording") {
-                    dictation.stop();
-                  } else if (dictation.status === "idle") {
-                    void dictation.start();
-                  }
-                }}
-                disabled={dictation.status === "transcribing" || voiceActive}
-                aria-label={
-                  dictation.status === "recording"
-                    ? "Stop dictation"
-                    : dictation.status === "transcribing"
-                      ? "Transcribing"
-                      : "Dictate"
-                }
-                aria-pressed={dictation.status === "recording"}
-              >
-                {dictation.status === "transcribing" ? (
-                  <Loader2 className={motionClasses.spinner} />
-                ) : dictation.status === "recording" ? (
-                  <Square className="size-3 fill-current" />
-                ) : (
-                  <Mic />
-                )}
-              </Button>
-              {streaming ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <DictateButton
+                dictation={dictation}
+                disabled={voiceActive}
+                onBeforeStart={onBeforeDictate}
+              />
+              {streaming && (
                 <Button
                   size="icon-sm"
                   variant="secondary"
@@ -657,18 +720,21 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                 >
                   <Square className="size-3 fill-current" />
                 </Button>
-              ) : voiceActive && !input.trim() && readyParts.length === 0 ? (
+              )}
+              {voiceActive && (
                 <Button
                   type="button"
                   variant="secondary"
                   size="icon-sm"
                   className="shrink-0 rounded-full"
                   onClick={onEndVoice}
+                  disabled={textInputDisabled}
                   aria-label="End voice session"
                 >
                   <X />
                 </Button>
-              ) : voiceInstalled &&
+              )}
+              {!voiceActive && !streaming && voiceInstalled &&
                 voiceEligible &&
                 !input.trim() &&
                 readyParts.length === 0 ? (
@@ -691,12 +757,13 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
                   size="icon-sm"
                   className="shrink-0 rounded-full"
                   disabled={
-                    uploading ||
+                    textInputDisabled || uploading ||
                     (!input.trim() &&
                       readyParts.length === 0)
                   }
                   onClick={submit}
-                  aria-label="Send message"
+                  aria-label={streaming ? "Queue message" : "Send message"}
+                  title={streaming ? "Send after the current response" : "Send message"}
                 >
                   {uploading ? <Loader2 className={motionClasses.spinner} /> : <ArrowUp />}
                 </Button>
@@ -705,6 +772,24 @@ export const Composer = forwardRef<ComposerHandle, ComposerProps>(function Compo
           </div>
         </div>
       </div>
+      {libraryOpen && attachmentsEnabled && (
+        <LibraryPicker
+          attachedUrls={new Set(readyParts.map((part) => part.url))}
+          onClose={() => {
+            setLibraryOpen(false);
+            textareaRef.current?.focus({ preventScroll: true });
+          }}
+          onAdd={(items) => addReadyParts(
+            items.map((item) => ({
+              type: "file" as const,
+              url: item.url,
+              filename: item.filename,
+              mediaType: item.mediaType,
+            })),
+            new Map(items.map((item) => [item.url, item])),
+          )}
+        />
+      )}
     </>
   );
 });
@@ -736,7 +821,7 @@ function AttachmentChip({
   // Images render as a thumbnail while uploading/ready. On failure we fall back
   // to the row chip below so the actual error reason has room to show.
   if (isImage && status !== "error") {
-    const src = attachment.previewUrl ?? part?.url;
+    const src = attachment.previewUrl ?? (part?.url && serverUrl(part.url));
     return (
       <div className="group/chip relative h-16 w-16 overflow-hidden rounded-lg border bg-muted">
         {src && (

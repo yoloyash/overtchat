@@ -3,14 +3,25 @@ import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isHostConnectorCommand,
+  isAgentRuntimeEnvelope,
+  isAgentSessionSync,
+  isAgentSessionDirectoryEntry,
   isHostConnectorEvent,
   parseHostConnectorCapabilities,
 } from "./index";
 import { agentProviderCatalogSchema } from "./agents";
 
 describe("Host Connector protocol compatibility", () => {
+  it.each([undefined, "responding", "waiting"])("accepts the retired response phase %s from older connectors and journals", (phase) => {
+    const snapshot = { sessionId: "session", status: "running", activeTurn: { startedAt: 123, phase } };
+    expect(isAgentRuntimeEnvelope({ epoch: "epoch", sequence: 1, type: "snapshot", data: snapshot })).toBe(true);
+    expect(isAgentSessionSync({ reset: true, cursor: { epoch: "epoch", sequence: 1 }, snapshot })).toBe(true);
+    expect(isAgentSessionDirectoryEntry({ sessionId: "session", runtimeStatus: "running", responsePhase: phase })).toBe(true);
+    expect(isAgentRuntimeEnvelope({ epoch: "epoch", sequence: 1, type: "runtime_event", data: { type: "overtchat_status", status: "running", phase } })).toBe(true);
+  });
+
   it("identifies the current wire protocol", () => {
-    expect(HOST_CONNECTOR_PROTOCOL_VERSION).toBe(3);
+    expect(HOST_CONNECTOR_PROTOCOL_VERSION).toBe(6);
   });
 
   it("selects known capabilities and ignores unknown additive tokens", () => {
@@ -64,58 +75,6 @@ describe("Host Connector protocol compatibility", () => {
         }),
       ).toBe(true);
     }
-  });
-
-  it("validates additive workspace terminal commands and live events", () => {
-    const session = {
-      connectionId: "connection",
-      workspaceId: "workspace",
-      provider: "codex",
-      target: { transport: "local" },
-      executable: "codex",
-      cwd: "/srv/project",
-      sessionId: "session",
-      providerSessionId: "provider-session",
-      providerSessionPath: "/sessions/provider-session.jsonl",
-      launchConfig: {},
-    } as const;
-    expect(
-      isHostConnectorCommand({
-        type: "request",
-        requestId: "request",
-        request: {
-          type: "subscribe_terminal",
-          subscriptionId: "terminal-subscription",
-          session,
-          size: { cols: 120, rows: 30 },
-        },
-      }),
-    ).toBe(true);
-    expect(
-      isHostConnectorCommand({
-        type: "terminal_input",
-        sessionId: "session",
-        data: "npm test\r",
-      }),
-    ).toBe(true);
-    expect(
-      isHostConnectorCommand({
-        type: "terminal_resize",
-        sessionId: "session",
-        size: { cols: 0, rows: 30 },
-      }),
-    ).toBe(false);
-    expect(
-      isHostConnectorEvent({
-        sequence: 1,
-        payload: {
-          type: "terminal_event",
-          subscriptionId: "terminal-subscription",
-          sessionId: "session",
-          event: { type: "output", revision: 1, data: "ready\r\n" },
-        },
-      }),
-    ).toBe(true);
   });
 
   it("accepts a session-directory snapshot and provider-independent upserts", () => {
@@ -180,5 +139,31 @@ describe("Host Connector protocol compatibility", () => {
         models: [{ ...catalog.models[0], provider: "pi" }],
       }).success,
     ).toBe(false);
+  });
+
+  it("validates usage events, including explicit unknown context", () => {
+    const envelope = (usage: unknown) => ({
+      epoch: "runtime",
+      sequence: 1,
+      type: "runtime_event",
+      data: { type: "usage_update", usage },
+    });
+    expect(isAgentRuntimeEnvelope(envelope({ contextUsage: null }))).toBe(true);
+    expect(
+      isAgentRuntimeEnvelope(
+        envelope({
+          contextUsage: { tokens: 0, contextWindow: 100000, percent: 0 },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isAgentRuntimeEnvelope(
+        envelope({ contextUsage: { tokens: 12, contextWindow: 0, percent: 0 } }),
+      ),
+    ).toBe(false);
+    expect(isAgentRuntimeEnvelope(envelope({ cost: Infinity }))).toBe(false);
+    expect(isAgentRuntimeEnvelope(envelope({ tokens: { total: -1 } }))).toBe(
+      false,
+    );
   });
 });

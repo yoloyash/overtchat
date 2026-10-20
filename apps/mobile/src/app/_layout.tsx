@@ -1,4 +1,5 @@
 import "@/polyfills";
+import "@/lib/notifications/client";
 
 import * as Sentry from "@sentry/react-native";
 import {
@@ -32,6 +33,7 @@ import {
   Roboto_500Medium,
   Roboto_600SemiBold,
 } from "@expo-google-fonts/roboto";
+import { getChatQueueStore } from "@overtchat/shared";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { setAudioModeAsync } from "expo-audio";
 import { useFonts } from "expo-font";
@@ -142,7 +144,9 @@ function SessionRoutes({ backgroundColor }: { backgroundColor: string }) {
   return (
     <QueryClientScope key={userId}>
       <RootStack
-        authReady={!session.isPending}
+        // A signed-out refetch also reports pending; keep the screens mounted
+        // so the login form keeps its two-factor step.
+        authReady={!session.isPending || session.isRefetching}
         hasServer
         hasSession={Boolean(session.data?.user)}
         backgroundColor={backgroundColor}
@@ -155,6 +159,7 @@ function QueryClientScope({ children }: { children: ReactNode }) {
   // This component is remounted when the selected server or authenticated user
   // changes, so server state can never bleed across either identity boundary.
   const [client] = useState(() => new QueryClient());
+  useEffect(() => () => getChatQueueStore(client).clear(), [client]);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 

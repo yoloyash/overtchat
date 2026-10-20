@@ -7,6 +7,7 @@ import { expect, test } from "@playwright/test";
 import {
   openE2eDatabase,
   resetE2eDatabase,
+  setupUrl,
 } from "./helpers/database";
 
 const workspacePath = path.resolve(process.cwd(), "../..");
@@ -272,8 +273,31 @@ async function enterWorkspacePath(
   await dialog.getByLabel("Directory path").fill(workspace);
 }
 
+async function openAgentDraft(
+  page: import("@playwright/test").Page,
+  providerLabel: string,
+  provider: string,
+): Promise<void> {
+  const isDraftUrl = (url: URL) =>
+    url.pathname === "/agents/new" &&
+    url.searchParams.get("provider") === provider;
+  const startButton = page
+    .getByRole("dialog", { name: "Choose an agent" })
+    .getByRole("button", { name: `Start ${providerLabel} session` });
+
+  const outcome = await Promise.race([
+    startButton.waitFor({ state: "visible" }).then(() => "choose" as const),
+    page.waitForURL(isDraftUrl).then(() => "navigated" as const),
+  ]);
+
+  if (outcome === "choose") {
+    await startButton.click();
+    await page.waitForURL(isDraftUrl);
+  }
+}
+
 test("explains agent access before setup", async ({ page }, testInfo) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Connections E2E Admin");
   await page
     .locator("#email")
@@ -284,11 +308,11 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
 
   await expect(
     page.getByText("Agent workspaces", { exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("link", { name: "Add workspace" }),
-  ).toHaveCount(0);
-  await page.goto("/settings/connections");
+  ).toBeVisible();
+  const addWorkspace = page.getByRole("link", { name: "Add workspace", exact: true });
+  await expect(addWorkspace).toHaveAttribute("href", "/settings/connections?add=1");
+  await addWorkspace.click();
+  await page.waitForURL("**/settings/connections?add=1");
   await expect(
     page.getByText(
       "Run coding agents in project folders on this server or over SSH.",
@@ -336,6 +360,10 @@ test("explains agent access before setup", async ({ page }, testInfo) => {
         document.documentElement.clientWidth,
     ),
   ).toBe(true);
+  await page.getByRole("button", { name: "Open sidebar" }).click();
+  await expect(addWorkspace).toBeVisible();
+  await addWorkspace.click();
+  await expect(page.getByRole("dialog", { name: "Navigation" })).toBeHidden();
 });
 
 test("shows the no-re-pair upgrade command for an older connector", async ({
@@ -360,7 +388,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
       }),
     });
   });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Connector Upgrade Admin");
   await page.locator("#email").fill("connector-upgrade@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -385,7 +413,7 @@ test("shows the no-re-pair upgrade command for an older connector", async ({
 
 test("shows the consolidated Add workspace flow after setup", async ({ page }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Agent Setup E2E Admin");
   await page
     .locator("#email")
@@ -437,11 +465,11 @@ test("shows the consolidated Add workspace flow after setup", async ({ page }, t
   ).toBe(true);
 });
 
-test("groups providers by directory, filters chats, refreshes globally, and reveals launch options progressively", async ({
+test("groups providers by directory, filters chats, refreshes globally, and opens inline launch controls", async ({
   page,
 }, testInfo) => {
   test.setTimeout(90_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Workspace UX E2E Admin");
   await page
     .locator("#email")
@@ -452,6 +480,21 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
 
   await startHostConnector(page, testInfo);
   const workspaceIds = seedMixedProviderWorkspace();
+  let releaseCatalog: () => void = () => undefined;
+  const catalogGate = new Promise<void>((resolve) => {
+    releaseCatalog = resolve;
+  });
+  let sessionCreateRequests = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      /\/api\/agent-workspaces\/[^/]+\/sessions$/u.test(
+        new URL(request.url()).pathname,
+      )
+    ) {
+      sessionCreateRequests += 1;
+    }
+  });
   await page.route("**/api/agent-connections/discover", async (route) => {
     const target = route.request().postDataJSON();
     await route.fulfill({
@@ -505,6 +548,7 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
   await page.route(
     /\/api\/agent-workspaces\/[^/]+\/catalog(?:\?.*)?$/u,
     async (route) => {
+      await catalogGate;
       const url = new URL(route.request().url());
       const id = url.pathname.split("/").at(-2);
       const provider =
@@ -580,14 +624,19 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Add workspace" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: `Expand ${workspaceName}` })
     .click();
-  await expect(page.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
+  const workspaces = page.getByRole("list", { name: "Agent workspaces", exact: true });
+  await expect(workspaces.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
+  await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toBeVisible();
 
   await page.getByRole("button", { name: "Agent workspace options" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Add workspace…", exact: true }),
+  ).toHaveAttribute("href", "/settings/connections?add=1");
+  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
   await expect(
     page.getByRole("menuitemradio", { name: "All agents" }),
   ).toBeVisible();
@@ -597,8 +646,8 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
     animations: "disabled",
   });
   await page.getByRole("menuitemradio", { name: "Codex" }).click();
-  await expect(page.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "OMP sidebar chat" })).toHaveCount(0);
+  await expect(workspaces.getByRole("link", { name: "Codex sidebar chat" })).toBeVisible();
+  await expect(workspaces.getByRole("link", { name: "OMP sidebar chat" })).toHaveCount(0);
   await expect(
     page.getByRole("button", {
       name: "Agent workspace options, filtered by Codex",
@@ -609,6 +658,7 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
       name: "Agent workspace options, filtered by Codex",
     })
     .click();
+  await page.getByRole("menuitem", { name: "Filter chats" }).hover();
   await page.getByRole("menuitemradio", { name: "All agents" }).click();
   await page.screenshot({
     path: testInfo.outputPath("workspace-leading-provider-logos.png"),
@@ -623,20 +673,38 @@ test("groups providers by directory, filters chats, refreshes globally, and reve
   await page
     .getByRole("button", { name: `New session in ${workspaceName}` })
     .click();
-  const dialog = page.getByRole("dialog", {
-    name: `New session in ${workspaceName}`,
-  });
-  await expect(dialog.getByText("Choose an agent", { exact: true })).toBeVisible();
-  await expect(dialog.getByLabel("Model")).toHaveCount(0);
+  const dialog = page.getByRole("dialog", { name: "Choose an agent" });
+  await expect(dialog).toBeVisible();
   await expect(dialog.getByText(workspaceIds.codex, { exact: true })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Select Codex" }).click();
-  await expect(dialog.getByLabel("Model")).toBeVisible();
-  await expect(dialog.getByLabel("Reasoning")).toBeVisible();
-  await expect(dialog.getByLabel("Permissions")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Start session" })).toBeEnabled();
+  await dialog
+    .getByRole("button", { name: "Start Codex session" })
+    .click();
+  await page.waitForURL(
+    (url) =>
+      url.pathname === "/agents/new" &&
+      url.searchParams.get("provider") === "codex",
+  );
+  await expect(page.getByRole("heading", { name: "New Codex session" })).toBeVisible();
+  const composer = page.getByTestId("agent-composer");
+  await expect(
+    composer.getByRole("button", {
+      name: "Model defaults are still loading",
+    }),
+  ).toBeVisible();
+  await expect(composer.getByRole("combobox")).toBeDisabled();
+  await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
+  expect(sessionCreateRequests).toBe(0);
+
+  releaseCatalog();
+  await expect(composer.getByRole("combobox")).toBeEnabled();
+  await composer.getByRole("combobox").fill("Ready when I choose to send");
+  await expect(composer.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  expect(sessionCreateRequests).toBe(0);
+  await expect(composer.getByTestId("agent-model-effort-trigger")).toBeVisible();
+  await expect(composer.getByTestId("agent-access-mode-trigger")).toBeVisible();
 
   await page.screenshot({
-    path: testInfo.outputPath("workspace-progressive-launch.png"),
+    path: testInfo.outputPath("workspace-inline-launch.png"),
     fullPage: true,
   });
 });
@@ -656,7 +724,7 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
   });
 
   await test.step("create the administrator", async () => {
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await page.locator("#name").fill("Pi E2E Admin");
     await page
       .locator("#email")
@@ -817,23 +885,30 @@ test("connect local Pi, attach a workspace, and open a native session", async ({
         exact: true,
       })
       .click();
-    const sessionDialog = page.getByRole("dialog", {
-      name: `New session in ${workspaceName}`,
-    });
-    await sessionDialog.getByRole("button", { name: "Select Pi" }).click();
-    await expect(sessionDialog.getByLabel("Model")).toBeVisible({
+    await openAgentDraft(page, "Pi", "pi");
+    await expect(page.getByRole("heading", { name: "New Pi session" })).toBeVisible();
+    const draftComposer = page.getByTestId("agent-composer");
+    await expect(draftComposer.getByTestId("agent-model-effort-trigger")).toBeVisible({
       timeout: 30_000,
     });
-    await sessionDialog.getByRole("button", { name: "Start session" }).click();
-    await page.waitForURL("**/agents/**", { timeout: 150_000 });
+    await draftComposer.getByRole("combobox").fill("/name Initial Pi Session");
+    await draftComposer.getByRole("combobox").press("Enter");
+    await page.waitForURL(
+      (url) => url.pathname.startsWith("/agents/") && url.pathname !== "/agents/new",
+      { timeout: 150_000 },
+    );
     await expect(page.getByText("New Pi session")).toBeVisible({
       timeout: 150_000,
     });
     await expect(
       page.getByTestId("agent-composer").getByRole("combobox"),
     ).toBeVisible();
-    await expect(page.getByLabel("Session usage")).toBeVisible();
     await expect(page.getByLabel("Session actions")).toBeVisible();
+    await page.getByLabel("Session actions").click();
+    await expect(
+      page.getByRole("menuitem", { name: "Session usage" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
   });
 
   await test.step("select and execute a built-in slash command", async () => {
@@ -953,7 +1028,7 @@ test("connect local Oh My Pi and use its native commands", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("OMP E2E Admin");
   await page.locator("#email").fill("omp-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -987,24 +1062,23 @@ test("connect local Oh My Pi and use its native commands", async ({
       exact: true,
     })
     .click();
-  const sessionDialog = page.getByRole("dialog", {
-    name: `New session in ${workspaceName}`,
-  });
-  await sessionDialog
-    .getByRole("button", { name: "Select Oh My Pi" })
-    .click();
-  await expect(sessionDialog.getByLabel("Model")).toBeVisible({
+  await openAgentDraft(page, "Oh My Pi", "omp");
+  await expect(page.getByRole("heading", { name: "New Oh My Pi session" })).toBeVisible();
+  const draftComposer = page.getByTestId("agent-composer");
+  await expect(draftComposer.getByTestId("agent-model-effort-trigger")).toBeVisible({
     timeout: 30_000,
   });
-  await sessionDialog.getByRole("button", { name: "Start session" }).click();
-  await page.waitForURL("**/agents/**", { timeout: 150_000 });
+  await draftComposer.getByRole("combobox").fill("/model");
+  await draftComposer.getByRole("combobox").press("Enter");
+  await page.waitForURL(
+    (url) => url.pathname.startsWith("/agents/") && url.pathname !== "/agents/new",
+    { timeout: 150_000 },
+  );
   await expect(page.getByText("New Oh My Pi session")).toBeVisible({
     timeout: 150_000,
   });
 
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
-  await composer.fill("/model");
-  await composer.press("Enter");
   await expect(page.getByText(/Current model:/)).toBeVisible({
     timeout: 30_000,
   });
@@ -1036,7 +1110,7 @@ test("connect local Codex and resume a native thread", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Codex E2E Admin");
   await page
     .locator("#email")
@@ -1068,15 +1142,18 @@ test("connect local Codex and resume a native thread", async ({
       exact: true,
     })
     .click();
-  const sessionDialog = page.getByRole("dialog", {
-    name: `New session in ${workspaceName}`,
-  });
-  await sessionDialog.getByRole("button", { name: "Select Codex" }).click();
-  await expect(sessionDialog.getByLabel("Model")).toBeVisible({
+  await openAgentDraft(page, "Codex", "codex");
+  await expect(page.getByRole("heading", { name: "New Codex session" })).toBeVisible();
+  const draftComposer = page.getByTestId("agent-composer");
+  await expect(draftComposer.getByTestId("agent-model-effort-trigger")).toBeVisible({
     timeout: 30_000,
   });
-  await sessionDialog.getByRole("button", { name: "Start session" }).click();
-  await page.waitForURL("**/agents/**", { timeout: 150_000 });
+  await draftComposer.getByRole("combobox").fill("/name Codex E2E Session");
+  await draftComposer.getByRole("combobox").press("Enter");
+  await page.waitForURL(
+    (url) => url.pathname.startsWith("/agents/") && url.pathname !== "/agents/new",
+    { timeout: 150_000 },
+  );
   await expect(page.getByText("New Codex session")).toBeVisible({
     timeout: 150_000,
   });
@@ -1204,7 +1281,7 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
     if (message.type() === "error") browserErrors.push(message.text());
   });
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("OMP SSH E2E Admin");
   await page
     .locator("#email")
@@ -1254,24 +1331,23 @@ test("connect to Oh My Pi through an existing SSH alias", async ({
       exact: true,
     })
     .click();
-  const sessionDialog = page.getByRole("dialog", {
-    name: `New session in ${remoteWorkspaceName}`,
-  });
-  await sessionDialog
-    .getByRole("button", { name: "Select Oh My Pi" })
-    .click();
-  await expect(sessionDialog.getByLabel("Model")).toBeVisible({
+  await openAgentDraft(page, "Oh My Pi", "omp");
+  await expect(page.getByRole("heading", { name: "New Oh My Pi session" })).toBeVisible();
+  const draftComposer = page.getByTestId("agent-composer");
+  await expect(draftComposer.getByTestId("agent-model-effort-trigger")).toBeVisible({
     timeout: 30_000,
   });
-  await sessionDialog.getByRole("button", { name: "Start session" }).click();
-  await page.waitForURL("**/agents/**", { timeout: 150_000 });
+  await draftComposer.getByRole("combobox").fill("/model");
+  await draftComposer.getByRole("combobox").press("Enter");
+  await page.waitForURL(
+    (url) => url.pathname.startsWith("/agents/") && url.pathname !== "/agents/new",
+    { timeout: 150_000 },
+  );
   await expect(page.getByText("New Oh My Pi session")).toBeVisible({
     timeout: 150_000,
   });
 
   const composer = page.getByTestId("agent-composer").getByRole("combobox");
-  await composer.fill("/model");
-  await composer.press("Enter");
   await expect(page.getByText(/Current model:/)).toBeVisible({
     timeout: 30_000,
   });

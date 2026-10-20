@@ -1,3 +1,4 @@
+import { isAgentTurnDelta } from "./message-delta";
 import type {
   AgentConnectionDraft,
   AgentDiscoveryTarget,
@@ -8,32 +9,27 @@ import type {
   AgentSessionSync,
   AgentSessionCommand,
   AgentSessionLaunchConfig,
-  AgentTerminalEvent,
-  AgentTerminalSize,
-  AgentTerminalSnapshot,
   ConnectorShellMode,
 } from "./agents";
 import {
-  AGENT_TERMINAL_MAX_COLUMNS,
-  AGENT_TERMINAL_MAX_INPUT_CHARS,
-  AGENT_TERMINAL_MAX_OUTPUT_CHARS,
-  AGENT_TERMINAL_MAX_SNAPSHOT_CHARS,
-  AGENT_TERMINAL_MIN_COLUMNS,
-  AGENT_TERMINAL_MAX_ROWS,
-  AGENT_TERMINAL_MIN_ROWS,
   CONNECTOR_SHELL_MODES,
   AGENT_PROVIDER_IDS,
   agentConnectionDraftSchema,
+  agentUsageUpdateSchema,
   agentDiscoveryTargetSchema,
   agentSessionCommandSchema,
   agentSessionLaunchConfigSchema,
 } from "./agents";
 
 /** Increment only for a breaking web-to-connector wire contract change. */
-export const HOST_CONNECTOR_PROTOCOL_VERSION = 3;
+export const HOST_CONNECTOR_PROTOCOL_VERSION = 6;
 /** Published connector artifact version; independent of wire compatibility. */
-export const HOST_CONNECTOR_RELEASE_VERSION = "0.9.0";
+export const HOST_CONNECTOR_RELEASE_VERSION = "0.14.2";
 export const HOST_CONNECTOR_EVENT_BATCH_LIMIT = 256;
+/** Headroom below Next.js's default 10 MiB proxy buffer. */
+export const HOST_CONNECTOR_EVENT_BATCH_BYTES = 8 * 1024 * 1024;
+export const HOST_CONNECTOR_FRAGMENT_BYTES = 1024 * 1024;
+export const HOST_CONNECTOR_MAX_EVENT_BYTES = 128 * 1024 * 1024;
 
 export const HOST_CONNECTOR_CAPABILITIES = [
   "session-sync-v1",
@@ -50,9 +46,14 @@ export type HostConnectorServerInfo = {
 };
 
 export * from "./agents";
+export * from "./paths";
 export * from "./catalog";
+export * from "./history";
 export * from "./commands";
 export * from "./state";
+export * from "./replica";
+export * from "./transcript";
+export * from "./message-delta";
 
 export type ConnectorTarget =
   | { transport: "local" }
@@ -123,19 +124,6 @@ export type AgentDaemonRequest =
       path: string;
     }
   | {
-      type: "subscribe_terminal";
-      subscriptionId: string;
-      session: AgentDaemonSessionDescriptor;
-      size: AgentTerminalSize;
-    }
-  | { type: "unsubscribe_terminal"; subscriptionId: string }
-  | {
-      type: "restart_terminal";
-      session: AgentDaemonSessionDescriptor;
-      size: AgentTerminalSize;
-    }
-  | { type: "kill_terminal"; sessionId: string }
-  | {
       type: "create_session";
       sessionId: string;
       workspace: AgentDaemonWorkspaceDescriptor;
@@ -146,6 +134,7 @@ export type AgentDaemonRequest =
       session: AgentDaemonSessionDescriptor;
       after?: AgentRuntimeCursor;
     }
+  | { type: "session_history"; session: AgentDaemonSessionDescriptor; before: string }
   | {
       type: "session_command";
       commandId: string;
@@ -176,12 +165,6 @@ export type HostConnectorCommand =
       type: "request";
       requestId: string;
       request: AgentDaemonRequest;
-    }
-  | { type: "terminal_input"; sessionId: string; data: string }
-  | {
-      type: "terminal_resize";
-      sessionId: string;
-      size: AgentTerminalSize;
     };
 
 export type HostConnectorEventPayload =
@@ -214,12 +197,6 @@ export type HostConnectorEventPayload =
         launchConfig?: AgentSessionLaunchConfig;
       };
     }
-  | {
-      type: "terminal_event";
-      subscriptionId: string;
-      sessionId: string;
-      event: AgentTerminalEvent;
-    }
   | { type: "session_directory"; sessions: AgentSessionDirectoryEntry[] }
   | { type: "session_update"; session: AgentSessionDirectoryEntry };
 
@@ -232,12 +209,34 @@ export type HostConnectorEventBatch = {
   protocolVersion: typeof HOST_CONNECTOR_PROTOCOL_VERSION;
   connectorEpoch: string;
   events: HostConnectorEvent[];
+  /** One event can span requests; it is acknowledged only after reassembly. */
+  fragment?: HostConnectorEventFragment;
+};
+
+export type HostConnectorEventFragment = {
+  sequence: number;
+  digest: string;
+  index: number;
+  totalBytes: number;
+  data: string;
 };
 
 export type HostConnectorEventAck = {
   connectorEpoch: string;
   acknowledgedSequence: number;
+  nextFragmentIndex?: number;
 };
+
+export function isHostConnectorEventFragment(value: unknown): value is HostConnectorEventFragment {
+  return isRecord(value) && Number.isSafeInteger(value.sequence) && Number(value.sequence) > 0 &&
+    typeof value.digest === "string" && /^[a-f0-9]{64}$/u.test(value.digest) &&
+    Number.isSafeInteger(value.totalBytes) && Number(value.totalBytes) > 0 &&
+    Number(value.totalBytes) <= HOST_CONNECTOR_MAX_EVENT_BYTES &&
+    Number.isSafeInteger(value.index) && Number(value.index) >= 0 &&
+    Number(value.index) < Math.ceil(Number(value.totalBytes) / HOST_CONNECTOR_FRAGMENT_BYTES) &&
+    typeof value.data === "string" && value.data.length <= Math.ceil(HOST_CONNECTOR_FRAGMENT_BYTES / 3) * 4 &&
+    value.data.length > 0 && value.data.length % 4 === 0 && /^[A-Za-z0-9+/]*={0,2}$/u.test(value.data);
+}
 
 export function parseHostConnectorCapabilities(
   value: string | null | undefined,
@@ -307,37 +306,6 @@ function isAgentDaemonTarget(value: unknown): value is AgentDaemonTarget {
   );
 }
 
-export function isAgentTerminalSize(
-  value: unknown,
-): value is AgentTerminalSize {
-  if (!isRecord(value)) return false;
-  return (
-    Number.isSafeInteger(value.cols) &&
-    Number(value.cols) >= AGENT_TERMINAL_MIN_COLUMNS &&
-    Number(value.cols) <= AGENT_TERMINAL_MAX_COLUMNS &&
-    Number.isSafeInteger(value.rows) &&
-    Number(value.rows) >= AGENT_TERMINAL_MIN_ROWS &&
-    Number(value.rows) <= AGENT_TERMINAL_MAX_ROWS
-  );
-}
-
-export function isAgentTerminalSnapshot(
-  value: unknown,
-): value is AgentTerminalSnapshot {
-  if (!isRecord(value) || !isAgentTerminalSize(value)) return false;
-  const snapshot = value as Record<string, unknown>;
-  return (
-    isNonEmptyString(snapshot.sessionId) &&
-    Number.isSafeInteger(snapshot.revision) &&
-    Number(snapshot.revision) >= 0 &&
-    typeof snapshot.data === "string" &&
-    snapshot.data.length <= AGENT_TERMINAL_MAX_SNAPSHOT_CHARS &&
-    typeof snapshot.exited === "boolean" &&
-    (snapshot.exitCode === null || Number.isSafeInteger(snapshot.exitCode)) &&
-    (snapshot.signal === null || Number.isSafeInteger(snapshot.signal))
-  );
-}
-
 export function isAgentDaemonWorkspaceDescriptor(
   value: unknown,
 ): value is AgentDaemonWorkspaceDescriptor {
@@ -403,21 +371,6 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
         value.root.length > 0 &&
         typeof value.path === "string"
       );
-    case "subscribe_terminal":
-      return (
-        isNonEmptyString(value.subscriptionId) &&
-        isAgentDaemonSessionDescriptor(value.session) &&
-        isAgentTerminalSize(value.size)
-      );
-    case "unsubscribe_terminal":
-      return isNonEmptyString(value.subscriptionId);
-    case "restart_terminal":
-      return (
-        isAgentDaemonSessionDescriptor(value.session) &&
-        isAgentTerminalSize(value.size)
-      );
-    case "kill_terminal":
-      return isNonEmptyString(value.sessionId);
     case "create_session":
       return (
         isNonEmptyString(value.sessionId) &&
@@ -429,6 +382,8 @@ function isAgentDaemonRequest(value: unknown): value is AgentDaemonRequest {
         isAgentDaemonSessionDescriptor(value.session) &&
         (value.after === undefined || isAgentRuntimeCursor(value.after))
       );
+    case "session_history":
+      return isAgentDaemonSessionDescriptor(value.session) && typeof value.before === "string" && value.before.length > 0 && value.before.length <= 2048;
     case "session_command":
       return (
         isNonEmptyString(value.commandId) &&
@@ -482,17 +437,6 @@ export function isHostConnectorCommand(
         isNonEmptyString(value.requestId) &&
         isAgentDaemonRequest(value.request)
       );
-    case "terminal_input":
-      return (
-        isNonEmptyString(value.sessionId) &&
-        typeof value.data === "string" &&
-        value.data.length > 0 &&
-        value.data.length <= AGENT_TERMINAL_MAX_INPUT_CHARS
-      );
-    case "terminal_resize":
-      return (
-        isNonEmptyString(value.sessionId) && isAgentTerminalSize(value.size)
-      );
     default:
       return false;
   }
@@ -525,7 +469,10 @@ export function isAgentRuntimeEnvelope(
   return value.type === "snapshot"
     ? isNonEmptyString(value.data.sessionId) &&
         ["idle", "running", "exited"].includes(String(value.data.status))
-    : isNonEmptyString(value.data.type);
+    : isNonEmptyString(value.data.type) &&
+      (value.data.type !== "overtchat_turn_delta" || isAgentTurnDelta(value.data)) &&
+      (value.data.type !== "usage_update" ||
+        agentUsageUpdateSchema.safeParse(Reflect.get(value.data, "usage")).success);
 }
 
 export function isAgentSessionDirectoryEntry(
@@ -615,31 +562,6 @@ export function isHostConnectorEvent(
         payload.envelope.data.sessionId === payload.sessionId)
     );
   }
-  if (payload.type === "terminal_event") {
-    if (
-      !isNonEmptyString(payload.subscriptionId) ||
-      !isNonEmptyString(payload.sessionId) ||
-      !isRecord(payload.event) ||
-      !Number.isSafeInteger(payload.event.revision) ||
-      Number(payload.event.revision) < 1
-    ) {
-      return false;
-    }
-    if (payload.event.type === "output") {
-      return (
-        typeof payload.event.data === "string" &&
-        payload.event.data.length > 0 &&
-        payload.event.data.length <= AGENT_TERMINAL_MAX_OUTPUT_CHARS
-      );
-    }
-    return (
-      payload.event.type === "exit" &&
-      (payload.event.exitCode === null ||
-        Number.isSafeInteger(payload.event.exitCode)) &&
-      (payload.event.signal === null ||
-        Number.isSafeInteger(payload.event.signal))
-    );
-  }
   if (payload.type === "session_metadata") {
     if (!isNonEmptyString(payload.sessionId) || !isRecord(payload.patch)) {
       return false;
@@ -682,3 +604,5 @@ export function isHostConnectorEvent(
   }
   return false;
 }
+
+export * from "./terminal";

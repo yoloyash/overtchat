@@ -1,6 +1,12 @@
+export const libraryKeys = {
+  all: () => ["library"] as const,
+  list: (query: string) => [...libraryKeys.all(), "list", query] as const,
+};
+
 export const chatKeys = {
   all: () => ["chats"] as const,
   list: () => [...chatKeys.all(), "list"] as const,
+  active: () => [...chatKeys.all(), "active"] as const,
   detail: (id: string) => [...chatKeys.all(), "detail", id] as const,
   usage: (id: string) => [...chatKeys.detail(id), "usage"] as const,
 };
@@ -84,6 +90,10 @@ export const modelConfigKeys = {
   health: (id: string) => [...modelConfigKeys.all(), "health", id] as const,
 };
 
+export const modelPreferenceKeys = {
+  detail: (userId: string) => ["modelPreferences", userId] as const,
+};
+
 export const mcpServerKeys = {
   all: () => ["mcpServers"] as const,
   adminList: () => [...mcpServerKeys.all(), "list", "admin"] as const,
@@ -122,4 +132,10 @@ export const searchKeys = {
 export const appUpdateKeys = {
   all: () => ["appUpdate"] as const,
   status: () => [...appUpdateKeys.all(), "status"] as const,
+};
+
+export const authKeys = {
+  all: () => ["auth"] as const,
+  session: () => [...authKeys.all(), "session"] as const,
+  twoFactor: () => [...authKeys.all(), "two-factor"] as const,
 };

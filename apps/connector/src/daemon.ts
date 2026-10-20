@@ -1,3 +1,4 @@
+import { ConnectorTerminalManager } from "./terminal.js";
 import { createHash } from "node:crypto";
 import type {
   AgentDaemonRequest,
@@ -7,6 +8,7 @@ import type {
   AgentPromptImage,
   AgentRuntimeEnvelope,
   AgentRuntimeStatus,
+  AgentSessionDirectoryEntry,
   HostConnectorCommand,
   HostConnectorEventPayload,
 } from "@overtchat/agent-bridge";
@@ -16,9 +18,12 @@ import {
 } from "@overtchat/agent-bridge";
 import {
   AgentRuntimeRegistry,
+  AgentProviderCatalogManager,
   AgentProviderSnapshotManager,
   agentProviderAdapter,
   configureProcessSpawner,
+  configureHostEnvironmentResolver,
+  configureManagedProcessSpawner,
   configureTcpTunnelOpener,
   inspectAgentWorkspaceGitStatus,
   listAgentDirectories,
@@ -32,7 +37,6 @@ import { listSshHosts } from "./ssh.js";
 import { ConnectorProcessHost } from "./runtime.js";
 import { ConnectorStateJournal } from "./state.js";
 import { ConnectorTimelineStore } from "./timeline.js";
-import { ConnectorTerminalManager } from "./terminal.js";
 
 type Emit = (event: HostConnectorEventPayload) => void;
 type ResolveImages = (
@@ -125,15 +129,15 @@ function sessionDescriptor(descriptor: AgentDaemonSessionDescriptor) {
 }
 
 export class ConnectorDaemon {
-  private readonly processHost = new ConnectorProcessHost();
+  readonly terminals = new ConnectorTerminalManager();
   private readonly providerSnapshots = new AgentProviderSnapshotManager();
-  private readonly terminals = new ConnectorTerminalManager();
+  private readonly providerCatalogs = new AgentProviderCatalogManager();
   private readonly registry: AgentRuntimeRegistry;
   private readonly subscriptions = new Map<string, SessionSubscription>();
   private readonly captures = new Map<string, TimelineCapture>();
   private readonly publishedSessions = new Map<
     string,
-    AgentRuntimeStatus
+    AgentSessionDirectoryEntry
   >();
   private readonly sessionTails = new Map<string, Promise<void>>();
   private readonly activeRequests = new Set<Promise<void>>();
@@ -150,11 +154,16 @@ export class ConnectorDaemon {
     private readonly timelines: ConnectorTimelineStore,
     private readonly fail: (error: Error) => void = () => {},
     private readonly shutdownGraceMs = SHUTDOWN_GRACE_MS,
+    private readonly processHost = new ConnectorProcessHost(),
   ) {
     configureProcessSpawner(this.processHost.spawn);
+    configureHostEnvironmentResolver(this.processHost.inspectEnvironment);
+    configureManagedProcessSpawner(this.processHost.spawnManaged);
     configureTcpTunnelOpener(this.processHost.openTcpTunnel);
     this.registry = new AgentRuntimeRegistry({
       resolveImages,
+      loadTranscript: ({ sessionId, providerSessionId }) =>
+        this.timelines.readTranscript(sessionId, providerSessionId),
       updateSessionMetadata: async (sessionId, patch) => {
         const { providerModifiedAt, ...metadata } = patch;
         if (patch.launchConfig) {
@@ -184,6 +193,8 @@ export class ConnectorDaemon {
           );
         });
       },
+      resolveCatalog: (descriptor) =>
+        this.providerCatalogs.getCatalog(descriptor),
     });
   }
 
@@ -205,14 +216,7 @@ export class ConnectorDaemon {
       );
       return;
     }
-    if (command.type === "terminal_input") {
-      this.terminals.write(command.sessionId, command.data);
-      return;
-    }
-    if (command.type === "terminal_resize") {
-      this.terminals.resize(command.sessionId, command.size);
-      return;
-    }
+    const startedAt = Date.now();
     try {
       const data = await this.handleRequest(command.request);
       this.emit({
@@ -228,6 +232,13 @@ export class ConnectorDaemon {
         success: false,
         error: errorMessage(error),
       });
+    } finally {
+      const elapsedMs = Date.now() - startedAt;
+      if (elapsedMs >= 250) {
+        console.info(
+          `[connector:timing] request type=${command.request.type} elapsed_ms=${elapsedMs}`,
+        );
+      }
     }
   }
 
@@ -265,7 +276,7 @@ export class ConnectorDaemon {
       this.settleWithin(captureCleanup, this.shutdownGraceMs),
       this.settleWithin(runtimeCleanup, this.shutdownGraceMs),
     ]);
-    this.processHost.stop();
+    await this.processHost.stop();
     const failure = [captureOutcome, runtimeOutcome].find(
       (outcome): outcome is PromiseRejectedResult =>
         outcome?.status === "rejected",
@@ -327,7 +338,6 @@ export class ConnectorDaemon {
         this.closeSubscription(subscription);
       }
       this.subscriptions.clear();
-      this.terminals.disconnectSubscribers();
     }
     const active = new Set(activeSessionIds);
     const removed = this.journal
@@ -336,7 +346,6 @@ export class ConnectorDaemon {
     await Promise.all(
       removed.map((sessionId) => this.registry.stopSession(sessionId)),
     );
-    for (const sessionId of removed) this.terminals.stopSession(sessionId);
     this.assertAccepting();
     await Promise.all(
       removed.map((sessionId) => this.finishCapture(sessionId, true)),
@@ -351,6 +360,9 @@ export class ConnectorDaemon {
       case "list_ssh_hosts":
         return listSshHosts();
       case "provider_snapshot":
+        if (request.refresh) this.processHost.refreshEnvironment(request.target.transport === "local"
+          ? { transport: "local" }
+          : { transport: "ssh", alias: request.target.sshAlias });
         return this.providerSnapshots.getSnapshot(request.target, {
           refresh: request.refresh,
         });
@@ -368,14 +380,7 @@ export class ConnectorDaemon {
       }
       case "get_catalog": {
         const workspace = workspaceDescriptor(request.workspace);
-        return agentProviderAdapter(workspace.provider).fetchCatalog(
-          workspace.target,
-          {
-            executable: workspace.executable,
-            cwd: workspace.cwd,
-            detectedVersion: workspace.detectedVersion,
-          },
-        );
+        return this.providerCatalogs.getCatalog(workspace);
       }
       case "list_directories":
         return listAgentDirectories(hostTarget(request.target), request.path);
@@ -398,38 +403,20 @@ export class ConnectorDaemon {
           request.root,
           request.path,
         );
-      case "subscribe_terminal": {
-        const snapshot = await this.terminals.subscribe(
-          request.subscriptionId,
-          request.session,
-          request.size,
-          (event) => {
-            this.emit({
-              type: "terminal_event",
-              subscriptionId: request.subscriptionId,
-              sessionId: request.session.sessionId,
-              event,
-            });
-          },
-        );
-        return { subscribed: true, snapshot };
-      }
-      case "unsubscribe_terminal":
-        this.terminals.unsubscribe(request.subscriptionId);
-        return { subscribed: false };
-      case "restart_terminal":
-        return {
-          snapshot: await this.terminals.restart(request.session, request.size),
-        };
-      case "kill_terminal":
-        return { killed: this.terminals.kill(request.sessionId) };
       case "create_session": {
+        const workspace = workspaceDescriptor(request.workspace);
         const created = await this.serializeSession(request.sessionId, async () => {
-          const result = await this.registry.create(
-            request.sessionId,
-            workspaceDescriptor(request.workspace),
-            request.launchConfig,
-          );
+          let result;
+          try {
+            result = await this.registry.create(
+              request.sessionId,
+              workspace,
+              request.launchConfig,
+            );
+          } catch (error) {
+            this.providerCatalogs.invalidate(workspace);
+            throw error;
+          }
           await this.assertRuntimeAccepted(request.sessionId);
           await this.journal.recordSession({
             ...request.workspace,
@@ -453,20 +440,20 @@ export class ConnectorDaemon {
           session: created.session,
           launchConfig: created.launchConfig,
           snapshot: sync.reset ? sync.snapshot : created.runtime.snapshot(),
-          ...(this.serverCapabilities.has("session-sync-v1") ? { sync } : {}),
         };
       }
       case "open_session": {
-        const runtime = await this.open(request.session);
+        await this.open(request.session);
         this.assertAccepting();
         const sync = await this.timelines.sync(
           request.session.sessionId,
           request.after,
         );
-        return {
-          snapshot: sync.reset ? sync.snapshot : runtime.snapshot(),
-          ...(this.serverCapabilities.has("session-sync-v1") ? { sync } : {}),
-        };
+        return { sync };
+      }
+      case "session_history": {
+        await this.open(request.session);
+        return this.timelines.history(request.session.sessionId, request.before);
       }
       case "session_command":
         if (request.command.type === "show_usage") {
@@ -523,7 +510,6 @@ export class ConnectorDaemon {
         this.subscriptions.delete(request.subscriptionId);
         return { subscribed: false };
       case "stop_session":
-        this.terminals.stopSession(request.sessionId);
         await this.registry.stopSession(request.sessionId);
         this.assertAccepting();
         await this.finishCapture(request.sessionId, true);
@@ -623,21 +609,48 @@ export class ConnectorDaemon {
       }
       let attemptedProviderAction = false;
       try {
-        const runtime = await this.openRuntime(request.session);
+        let runtime = await this.openRuntime(request.session);
         const normalized = runtime.normalizeCommand(request.command);
+        if (normalized.type === "reload_history") {
+          const snapshot = runtime.snapshot();
+          if (
+            snapshot.status === "running" ||
+            snapshot.state.isCompacting === true ||
+            snapshot.pendingInteraction ||
+            snapshot.queuedMessages.length
+          ) {
+            throw new Error(
+              "Finish or stop the current turn and clear queued messages before reloading history.",
+            );
+          }
+          attemptedProviderAction = true;
+          runtime = await this.restartRuntime(request.session, true);
+        }
         attemptedProviderAction = true;
+        if (normalized.type === "abort") {
+          try {
+            await this.awaitProviderAction(runtime.command(normalized));
+          } catch (error) {
+            // A provider that cannot complete an abort would otherwise leave
+            // the turn running, so restart it on the same native session.
+            if (runtime.snapshot().status !== "running") throw error;
+            runtime = await this.restartRuntime(request.session, false);
+          }
+        }
         const data =
-          normalized.type === "edit_message" ||
-          normalized.type === "fork_message"
+          normalized.type === "rewind" || normalized.type === "edit_message"
             ? {
-                fork: await this.awaitProviderAction(
-                  this.registry.fork(runtime, normalized),
+                sessionChange: await this.awaitProviderAction(
+                  this.registry.changeSessionHistory(runtime, normalized),
                 ),
               }
             : await this.awaitProviderAction(
-                runtime.command(normalized, request.clientMessageId),
+                normalized.type === "reload_history" || normalized.type === "abort"
+                  ? Promise.resolve()
+                  : runtime.command(normalized, request.clientMessageId),
               ).then((commandResult) => ({
-                ...(normalized.type === "show_usage" ||
+                ...(normalized.type === "fork_message" ||
+                normalized.type === "show_usage" ||
                 isAgentProviderNotice(commandResult)
                   ? { commandResult }
                   : {}),
@@ -645,11 +658,11 @@ export class ConnectorDaemon {
                   queuedMessages: runtime.snapshot().queuedMessages,
                 },
               }));
-        if ("fork" in data && data.fork.replacesCurrentSession) {
+        if ("sessionChange" in data && data.sessionChange.replacesCurrentSession) {
           const descriptor = {
             ...request.session,
-            providerSessionId: data.fork.session.providerSessionId,
-            providerSessionPath: data.fork.session.providerSessionPath,
+            providerSessionId: data.sessionChange.session.providerSessionId,
+            providerSessionPath: data.sessionChange.session.providerSessionPath,
           };
           this.assertStoresAvailable();
           await this.journal.recordSession(descriptor);
@@ -658,6 +671,7 @@ export class ConnectorDaemon {
             runtime,
             descriptor.providerSessionId,
             descriptor.providerSessionPath,
+            normalized.type === "rewind" && normalized.mode !== "files",
           );
         }
         this.assertStoresAvailable();
@@ -737,6 +751,34 @@ export class ConnectorDaemon {
     }
   }
 
+  /** Replace a session's provider process, resuming its native session. */
+  private async restartRuntime(
+    session: AgentDaemonSessionDescriptor,
+    reloadHistory: boolean,
+  ): Promise<AgentSessionRuntime> {
+    const capture = this.captures.get(session.sessionId)!;
+    const descriptor = {
+      ...session,
+      providerSessionId: capture.providerSessionId,
+      providerSessionPath: capture.providerSessionPath,
+    };
+    await this.finishCapture(descriptor.sessionId, false);
+    this.assertAccepting();
+    await this.awaitProviderAction(this.registry.stopSession(descriptor.sessionId));
+    this.assertAccepting();
+    const runtime = await this.registry.getOrStart(sessionDescriptor(descriptor), {
+      hydrateHistory: reloadHistory,
+    });
+    await this.assertRuntimeAccepted(descriptor.sessionId);
+    await this.attachTimeline(
+      runtime,
+      descriptor.providerSessionId,
+      descriptor.providerSessionPath,
+      reloadHistory,
+    );
+    return runtime;
+  }
+
   private async assertRuntimeAccepted(sessionId: string): Promise<void> {
     if (this.accepting) return;
     await this.registry.stopSession(sessionId);
@@ -747,16 +789,18 @@ export class ConnectorDaemon {
     runtime: AgentSessionRuntime,
     providerSessionId: string,
     providerSessionPath: string,
+    replaceHistory = false,
   ): Promise<void> {
     const sessionId = runtime.dbSessionId;
     const existing = this.captures.get(sessionId);
     if (existing?.runtime === runtime) {
       await this.flushCapture(sessionId);
-      if (existing.providerSessionId !== providerSessionId) {
+      if (replaceHistory || existing.providerSessionId !== providerSessionId) {
         await this.timelines.openSession(
           sessionId,
           providerSessionId,
           runtime.snapshot(),
+          replaceHistory,
         );
         existing.providerSessionId = providerSessionId;
         existing.providerSessionPath = providerSessionPath;
@@ -784,13 +828,14 @@ export class ConnectorDaemon {
     });
     this.captures.set(sessionId, capture);
     capture.ready = this.timelines
-      .openSession(sessionId, providerSessionId, runtime.snapshot())
+      .openSession(sessionId, providerSessionId, runtime.snapshot(), replaceHistory)
       .then(() => undefined);
     try {
       await capture.ready;
       this.assertAccepting();
       capture.initialized = true;
-      this.publishSessionStatus(sessionId, runtime.snapshot().status);
+      const snapshot = runtime.snapshot();
+      this.publishSessionStatus(sessionId, snapshot.status);
       for (const envelope of capture.buffered.splice(0)) {
         this.commitCapturedEnvelope(sessionId, capture, envelope);
       }
@@ -853,6 +898,10 @@ export class ConnectorDaemon {
       this.publishSessionStatus(sessionId, envelope.data.status);
       return;
     }
+    if (envelope.data.type === "agent_start" || envelope.data.type === "turn_start") {
+      this.publishSessionStatus(sessionId, "running");
+      return;
+    }
     if (
       envelope.data.type === "overtchat_status" &&
       ["idle", "running", "exited"].includes(String(envelope.data.status))
@@ -868,23 +917,23 @@ export class ConnectorDaemon {
     sessionId: string,
     status: AgentRuntimeStatus,
   ): void {
-    if (this.publishedSessions.get(sessionId) === status) return;
-    this.publishedSessions.set(sessionId, status);
+    if (this.publishedSessions.get(sessionId)?.runtimeStatus === status) return;
+    const session = { sessionId, runtimeStatus: status };
+    this.publishedSessions.set(sessionId, session);
     this.emit({
       type: "session_update",
-      session: { sessionId, runtimeStatus: status },
+      session,
     });
   }
 
   private publishSessionDirectory(sessionIds: ReadonlySet<string>): void {
     const sessions = [...sessionIds].map((sessionId) => ({
       sessionId,
-      runtimeStatus:
-        this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
+      runtimeStatus: this.captures.get(sessionId)?.runtime.snapshot().status ?? "idle",
     }));
     this.publishedSessions.clear();
     for (const session of sessions) {
-      this.publishedSessions.set(session.sessionId, session.runtimeStatus);
+      this.publishedSessions.set(session.sessionId, session);
     }
     this.emit({ type: "session_directory", sessions });
   }

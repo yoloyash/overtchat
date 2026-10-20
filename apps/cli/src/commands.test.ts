@@ -1,0 +1,110 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { main, parseArgs, usage } from "./commands.js";
+import { CLI_VERSION } from "./constants.js";
+import { readInstallationConfig } from "./config.js";
+import { latestReleaseManifest, updateCliIfNeeded } from "./release.js";
+import { setup } from "./setup.js";
+import { status } from "./status.js";
+import { resetPassword } from "./reset-password.js";
+import { resetTwoFactor } from "./reset-two-factor.js";
+vi.mock("./install-log.js", async (original) => ({
+  ...(await original<typeof import("./install-log.js")>()),
+  withInstallationLog: async (_operation: string, run: () => Promise<unknown>) => run(),
+}));
+vi.mock("./config.js", async (original) => ({
+  ...(await original<typeof import("./config.js")>()),
+  readInstallationConfig: vi.fn(),
+}));
+vi.mock("./release.js", async (original) => ({
+  ...(await original<typeof import("./release.js")>()),
+  latestReleaseManifest: vi.fn(),
+  updateCliIfNeeded: vi.fn(),
+}));
+vi.mock("./setup.js", () => ({ setup: vi.fn(), waitForApp: vi.fn() }));
+vi.mock("./status.js", () => ({ status: vi.fn() }));
+vi.mock("./reset-password.js", () => ({ resetPassword: vi.fn() }));
+vi.mock("./reset-two-factor.js", () => ({ resetTwoFactor: vi.fn() }));
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.spyOn(console, "log").mockImplementation(() => {});
+});
+afterEach(() => vi.restoreAllMocks());
+describe("CLI contract", () => {
+  it.each([
+    "setup",
+    "update",
+    "status",
+    "version",
+    "logs",
+    "reset-password",
+    "reset-two-factor",
+  ])(
+    "supports %s --help without loading installation state",
+    async (command) => {
+      await main([command, "--help"]);
+      expect(console.log).toHaveBeenCalledWith(usage(command));
+      expect(readInstallationConfig).not.toHaveBeenCalled();
+      expect(latestReleaseManifest).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["version", "--version", "-v"])(
+    "keeps bare version machine-readable: %j",
+    async (args) => {
+      await main([args]);
+      expect(console.log).toHaveBeenCalledExactlyOnceWith(CLI_VERSION);
+      expect(readInstallationConfig).not.toHaveBeenCalled();
+    },
+  );
+  it.each([
+    ["version", "--typo"],
+    ["status", "extra"],
+    ["restart", "--yes"],
+    ["logs", "--tail", "-1"],
+    ["logs", "--tail"],
+    ["update", "--json"],
+    ["help", "setup", "extra"],
+    ["reset-password", "--password", "secret"],
+    ["reset-two-factor", "--email", "admin@example.com"],
+  ])("rejects invalid arguments %j", (...args) => {
+    expect(() => parseArgs(args)).toThrow();
+  });
+  it("parses service logs and zero tail", () => {
+    expect(parseArgs(["logs", "connector", "--tail", "0", "-f"])).toMatchObject(
+      { service: "connector", tail: 0, flags: new Set(["--tail", "-f"]) },
+    );
+  });
+  it("runs password recovery without setup or updates", async () => {
+    await main(["reset-password"]);
+    expect(resetPassword).toHaveBeenCalledOnce();
+    expect(setup).not.toHaveBeenCalled();
+    expect(latestReleaseManifest).not.toHaveBeenCalled();
+  });
+  it("runs two-factor recovery without setup or updates", async () => {
+    await main(["reset-two-factor"]);
+    expect(resetTwoFactor).toHaveBeenCalledOnce();
+    expect(setup).not.toHaveBeenCalled();
+    expect(latestReleaseManifest).not.toHaveBeenCalled();
+  });
+  it("shows overview without reconfiguring an existing installation", async () => {
+    vi.mocked(readInstallationConfig).mockResolvedValue({ format: 1 } as never);
+    await main([]);
+    expect(status).toHaveBeenCalledOnce();
+    expect(setup).not.toHaveBeenCalled();
+  });
+  it("keeps setup release selection and CLI self-update behavior", async () => {
+    const manifest = { cliVersion: "99.0.0" } as never;
+    vi.mocked(latestReleaseManifest).mockResolvedValue(manifest);
+    vi.mocked(updateCliIfNeeded).mockResolvedValue(null);
+    await main(["setup", "--defaults"]);
+    expect(latestReleaseManifest).toHaveBeenCalledOnce();
+    expect(updateCliIfNeeded).toHaveBeenCalledWith(manifest);
+    expect(setup).toHaveBeenCalledWith(
+      { dryRun: false, defaults: true, development: false }, manifest,
+    );
+  });
+  it.each(["doctor", "start", "stop", "restart", "uninstall"])(
+    "rejects deferred command %s", (command) => {
+      expect(() => parseArgs([command])).toThrow("Unknown command");
+    },
+  );
+});

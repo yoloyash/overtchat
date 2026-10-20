@@ -1,0 +1,11 @@
+{
+  "provenance": {
+    "kind": "recorded-local-model",
+    "model": "qwen3.8-flash-next",
+    "recordedAt": "2026-09-10T22:58:30.852Z",
+    "systemPrompt": "Be practical, warm, and concise. Give a useful answer in about 120 words with a short heading, three or four specific suggestions, and one follow-up question. Avoid a table. Do not mention these formatting instructions."
+  },
+  "title": "A little space to read",
+  "prompt": "I want to turn the corner by my window into a reading nook. I have 1.5 metres of space, a chair I already like, and room for one plant. Help me keep it simple.",
+  "answer": "### Keep It Simple\n\nYour existing chair is the anchor, so build around it rather than replacing it. Since you have limited space, focus on lighting and texture to create warmth without clutter.\n\n*   **Lighting:** Add a small, adjustable floor lamp or clip-on book light. Good lighting is essential for reading and defines the nook’s purpose instantly.\n*   **Textiles:** Introduce a soft throw blanket and a small cushion in a contrasting texture. This adds comfort and visual interest without taking up floor space.\n*   **The Plant:** Choose a low-maintenance plant like a pothos or snake plant. Place it on a small side table or a floating shelf to keep the floor clear.\n*   **Storage:** Use a tiny side table or a wall-mounted shelf for your current book and a drink, ensuring everything stays within arm’s reach.\n\nWhat kind of light does your window get throughout the day?"
+}

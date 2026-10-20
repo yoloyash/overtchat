@@ -549,6 +549,112 @@ describe("agent connection persistence", () => {
     ).toEqual({ count: 0 });
   });
 
+  it("removes only the selected workspace when another was added after listing", async () => {
+    const owned = createAliceConnection();
+    const selected = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/selected", name: "selected" },
+    );
+    const listed = await repository.listAgentConnections("alice");
+    expect(listed[0].workspaces).toHaveLength(1);
+    const added = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/new", name: "new" },
+    );
+    const session = await repository.upsertAgentSession(added!.id, {
+      providerSessionId: "new-session",
+      providerSessionPath: "/remote/new.jsonl",
+      name: "New chat",
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    });
+
+    await expect(
+      repository.deleteAgentWorkspace(selected!.id, "alice"),
+    ).resolves.toBe(true);
+    await expect(
+      repository.getOwnedAgentWorkspace(added!.id, "alice"),
+    ).resolves.not.toBeNull();
+    await expect(
+      repository.getOwnedAgentSession(session.id, "alice"),
+    ).resolves.not.toBeNull();
+    await expect(
+      repository.getOwnedAgentConnection(owned.connection.id, "alice"),
+    ).resolves.not.toBeNull();
+  });
+
+  it("cleans up the last workspace's empty connection and host without removing the connector", async () => {
+    const owned = createAliceConnection();
+    const workspace = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/only", name: "only" },
+    );
+    await repository.upsertAgentSession(workspace!.id, {
+      providerSessionId: "session",
+      providerSessionPath: "/remote/session.jsonl",
+      name: null,
+      firstMessage: null,
+      messageCount: 0,
+      createdAt: null,
+      modifiedAt: null,
+    });
+    await expect(
+      repository.deleteAgentWorkspace(workspace!.id, "bob"),
+    ).resolves.toBe(false);
+    await expect(
+      repository.deleteAgentWorkspace(workspace!.id, "alice"),
+    ).resolves.toBe(true);
+    await expect(
+      repository.deleteAgentWorkspace(workspace!.id, "alice"),
+    ).resolves.toBe(false);
+    for (const table of [
+      "agent_sessions",
+      "agent_workspaces",
+      "agent_connections",
+      "agent_hosts",
+    ]) {
+      expect(
+        raw.prepare(`SELECT count(*) AS count FROM ${table}`).get(),
+      ).toEqual({ count: 0 });
+    }
+    expect(
+      raw.prepare("SELECT count(*) AS count FROM host_connectors").get(),
+    ).toEqual({ count: 1 });
+  });
+
+  it("keeps a shared host when another provider connection still uses it", async () => {
+    const owned = createAliceConnection();
+    raw
+      .prepare(
+        "INSERT INTO agent_connections (id, host_id, provider, executable) VALUES (?, ?, 'codex', 'codex')",
+      )
+      .run("other-provider", owned.host.id);
+    const selected = await repository.createAgentWorkspace(
+      owned.connection.id,
+      "alice",
+      { path: "/work/selected", name: "selected" },
+    );
+    const other = await repository.createAgentWorkspace(
+      "other-provider",
+      "alice",
+      { path: "/work/other", name: "other" },
+    );
+    await expect(
+      repository.deleteAgentWorkspace(selected!.id, "alice"),
+    ).resolves.toBe(true);
+    await expect(
+      repository.getOwnedAgentConnection("other-provider", "alice"),
+    ).resolves.not.toBeNull();
+    await expect(
+      repository.getOwnedAgentWorkspace(other!.id, "alice"),
+    ).resolves.not.toBeNull();
+  });
+
   it("reconciles only sessions still authorized for a connector", async () => {
     const owned = createAliceConnection();
     const workspace = await repository.createAgentWorkspace(

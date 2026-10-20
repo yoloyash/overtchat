@@ -29,6 +29,10 @@ function createReleasePaginator(): ReleasePaginator {
     userAgent: "overtchat-project-site",
     request: {
       timeout: REQUEST_TIMEOUT_MS,
+      // Next's persistent fetch cache can otherwise reuse an older release list
+      // across static builds. Publication must be reflected on every rebuild.
+      fetch: (url: string | URL | Request, init?: RequestInit) =>
+        fetch(url, { ...init, cache: "no-store" }),
     },
   });
 

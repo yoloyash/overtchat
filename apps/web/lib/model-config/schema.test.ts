@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { modelSupportsToolCalling } from "@overtchat/shared";
+import {
+  modelSupportsChatReasoningLevel,
+  modelSupportsToolCalling,
+  type ModelCapabilities,
+} from "@overtchat/shared";
 
 import { ModelConfigSchema, ProviderConnectionSchema } from "./schema";
 
@@ -115,7 +119,6 @@ describe("provider configuration", () => {
       providerOptions: null,
       toolCallingEnabled: true,
       enabled: true,
-      sortOrder: 0,
     });
   });
 
@@ -170,6 +173,11 @@ describe("provider configuration", () => {
         maxOutputTokens: 8192,
         inputModalities: ["text", "image"],
         toolCalling: false,
+        reasoningControls: {
+          toggle: true,
+          defaultLevel: "xhigh",
+          efforts: ["low", "medium", "xhigh"],
+        },
       },
     });
 
@@ -177,11 +185,28 @@ describe("provider configuration", () => {
       maxOutputTokens: 8192,
       inputModalities: ["text", "image"],
       toolCalling: false,
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "xhigh",
+        efforts: ["low", "medium", "xhigh"],
+      },
     });
     expect(
       ModelConfigSchema.safeParse({
         ...result,
         discoveredCapabilities: { maxOutputTokens: -1 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ModelConfigSchema.safeParse({
+        ...result,
+        discoveredCapabilities: {
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "on",
+            efforts: ["ultra"],
+          },
+        },
       }).success,
     ).toBe(false);
   });
@@ -197,15 +222,13 @@ describe("provider configuration", () => {
     };
 
     expect(
-      ModelConfigSchema.parse({ ...base, contextWindow: 32_768 })
-        .contextWindow,
+      ModelConfigSchema.parse({ ...base, contextWindow: 32_768 }).contextWindow,
     ).toBe(32_768);
     expect(
       ModelConfigSchema.safeParse({ ...base, contextWindow: 0 }).success,
     ).toBe(false);
     expect(
-      ModelConfigSchema.safeParse({ ...base, contextWindow: 32_768.5 })
-        .success,
+      ModelConfigSchema.safeParse({ ...base, contextWindow: 32_768.5 }).success,
     ).toBe(false);
     expect(
       ModelConfigSchema.parse({
@@ -239,5 +262,145 @@ describe("provider configuration", () => {
     expect(modelSupportsToolCalling({ toolCallingEnabled: false })).toBe(false);
     expect(modelSupportsToolCalling({})).toBe(true);
     expect(modelSupportsToolCalling(null)).toBe(false);
+  });
+
+  it("accepts only reasoning levels discovered for a model", () => {
+    const capabilities: ModelCapabilities = {
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "xhigh",
+        efforts: ["low", "xhigh"],
+      },
+    };
+    expect(modelSupportsChatReasoningLevel(capabilities, "default")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "on")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "off")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "xhigh")).toBe(true);
+    expect(modelSupportsChatReasoningLevel(capabilities, "medium")).toBe(false);
+  });
+});
+
+describe("image model configuration", () => {
+  const image = {
+    label: "Pictures",
+    modelType: "image",
+    providerId: "openai",
+    apiFormat: "auto",
+    baseUrl: "https://api.openai.com/v1",
+    apiKey: "key",
+    model: "gpt-image-1",
+  };
+  it("accepts both image providers and strips chat-only settings", () => {
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        systemPrompt: "Chat",
+        contextWindow: 1000,
+        toolCallingEnabled: true,
+      }),
+    ).toMatchObject({
+      modelType: "image",
+      systemPrompt: null,
+      contextWindow: null,
+      toolCallingEnabled: false,
+    });
+    expect(
+      ModelConfigSchema.parse({
+        ...image,
+        providerId: "google",
+        model: "gemini-3.1-flash-image",
+      }).providerId,
+    ).toBe("google");
+    expect(
+      ModelConfigSchema.parse({ ...image, modelType: undefined }).modelType,
+    ).toBe("chat");
+  });
+  it.each([
+    { providerId: "anthropic" },
+    { model: "" },
+    { baseUrl: "invalid" },
+    { baseUrl: "https://user:secret@example.com/v1" },
+    { baseUrl: "https://example.com/v1?api_key=secret" },
+  ])("rejects unsupported or malformed image configuration %j", (patch) => {
+    expect(ModelConfigSchema.safeParse({ ...image, ...patch }).success).toBe(
+      false,
+    );
+  });
+  it.each(["openai", "google"])(
+    "lets the admin assign any model ID to %s image generation",
+    (providerId) => {
+      for (const model of ["studio-art", "gemini-2.5-flash", "gpt-4o"]) {
+        expect(
+          ModelConfigSchema.parse({ ...image, providerId, model }),
+        ).toMatchObject({ modelType: "image", providerId, model });
+      }
+    },
+  );
+});
+
+describe("custom image configuration", () => {
+  const custom = {
+    modelType: "image",
+    label: "Local images",
+    providerId: "custom",
+    apiFormat: "openai-images",
+    baseUrl: "http://192.168.0.30:8731/v1/",
+    model: "flux2-klein-4b",
+  };
+  it("accepts keyless endpoints and normalizes generation-only defaults", () => {
+    expect(ModelConfigSchema.parse(custom)).toMatchObject({
+      apiKey: null,
+      baseUrl: "http://192.168.0.30:8731/v1",
+      providerOptions: {
+        size: "auto",
+        responseFormat: "b64_json",
+        supportsEditing: false,
+        extraBody: {},
+      },
+    });
+  });
+  it("preserves backend settings through save and re-save", () => {
+    const parsed = ModelConfigSchema.parse({
+      ...custom,
+      providerOptions: {
+        size: "512x512",
+        editSize: "256x256",
+        responseFormat: "url",
+        supportsEditing: true,
+        extraBody: { seed: 7, quality: "standard", nested: { scales: [1, 2] } },
+      },
+    });
+    expect(ModelConfigSchema.parse(parsed)).toEqual(parsed);
+    expect(parsed.providerOptions).toMatchObject({
+      size: "512x512",
+      editSize: "256x256",
+      extraBody: { seed: 7 },
+    });
+  });
+  it.each([
+    { apiFormat: "openai-chat" },
+    { apiFormat: "anthropic-messages" },
+    { modelType: "chat" },
+    { providerOptions: { responseFormat: "base64" } },
+    { providerOptions: { editSize: "" } },
+    { providerOptions: { editSize: "   " } },
+    { providerOptions: { editSize: "x".repeat(65) } },
+    { providerOptions: { editSize: 512 } },
+    { providerOptions: { extraBody: [] } },
+    { providerOptions: { extraBody: { seed: "x".repeat(17000) } } },
+    ...[
+      "model",
+      "prompt",
+      "n",
+      "size",
+      "response_format",
+      "image",
+      "mask",
+      "stream",
+    ].map((key) => ({ providerOptions: { extraBody: { [key]: "override" } } })),
+  ])("rejects ambiguous or conflicting configuration %j", (patch) => {
+    expect(ModelConfigSchema.safeParse({ ...custom, ...patch }).success).toBe(
+      false,
+    );
   });
 });

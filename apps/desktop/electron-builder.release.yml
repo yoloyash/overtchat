@@ -1,0 +1,12 @@
+extends: ./electron-builder.yml
+forceCodeSigning: true
+electronFuses:
+  enableNodeCliInspectArguments: false
+mac:
+  target:
+    - dmg
+    - zip
+  artifactName: overtchat-${version}-mac-${arch}.${ext}
+  notarize: true
+dmg:
+  sign: true

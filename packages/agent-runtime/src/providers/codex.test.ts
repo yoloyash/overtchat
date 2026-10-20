@@ -1,9 +1,38 @@
 import { describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({
+  fetchCodexModels: vi.fn(),
+}));
+
+vi.mock("@overtchat/agent-runtime/codex/probe", () => ({
+  fetchCodexModels: mocks.fetchCodexModels,
+  probeCodexConnection: vi.fn(),
+  probeCodexTarget: vi.fn(),
+}));
 
 import { codexProviderAdapter } from "./codex";
 
 describe("codexProviderAdapter", () => {
+  it("loads a catalog without repeating the executable version probe", async () => {
+    mocks.fetchCodexModels.mockResolvedValueOnce([]);
+
+    await expect(
+      codexProviderAdapter.fetchCatalog(
+        { transport: "ssh", alias: "host", shellMode: "login" },
+        {
+          executable: "/usr/local/bin/codex",
+          cwd: "/workspace",
+          detectedVersion: "0.147.0",
+        },
+      ),
+    ).resolves.toMatchObject({ provider: "codex", models: [] });
+
+    expect(mocks.fetchCodexModels).toHaveBeenCalledWith(
+      expect.objectContaining({ shellMode: "login" }),
+      "/usr/local/bin/codex",
+    );
+  });
+
   it("marks compaction as working before its turn notification arrives", () => {
     const classifier = codexProviderAdapter.createEventClassifier();
     expect(classifier.classify({ type: "compaction_start" })).toEqual({

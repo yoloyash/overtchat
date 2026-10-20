@@ -2,9 +2,11 @@ import type {
   AgentQueuedMessage,
   AgentRuntimeEnvelope,
   AgentRuntimeSnapshot,
+  AgentSessionStats,
 } from "./agents";
-import { agentPromptImageSchema } from "./agents";
+import { agentPromptImageSchema, agentUsageUpdateSchema } from "./agents";
 import { agentProviderMetadata } from "./catalog";
+import { applyAgentTurnDelta, isAgentTurnDelta } from "./message-delta";
 
 type AgentRuntimeEvent = Extract<
   AgentRuntimeEnvelope,
@@ -225,20 +227,16 @@ function upsertMessage(messages: unknown[], message: unknown): unknown[] {
   if (timestamp !== null) {
     const index = next.findIndex(
       (candidate) =>
-        roleOf(candidate) === role && timestampOf(candidate) === timestamp,
+        roleOf(candidate) === role &&
+        timestampOf(candidate) === timestamp &&
+        // An explicit, different ID denotes a different message, even when
+        // two messages start in the same millisecond. Timestamp matching is
+        // retained for native history and older events without IDs.
+        !(id && idOf(candidate)),
     );
     if (index >= 0) {
       next[index] = message;
       return next;
-    }
-  }
-  if (role === "assistant") {
-    for (let index = next.length - 1; index >= 0; index -= 1) {
-      if (roleOf(next[index]) === "assistant") {
-        next[index] = message;
-        return next;
-      }
-      if (roleOf(next[index]) !== null) break;
     }
   }
   if (role === "toolResult") {
@@ -295,6 +293,10 @@ export function applyAgentRuntimeMessageEvent(
   messages: unknown[],
   event: AgentRuntimeEvent,
 ): unknown[] {
+  if (event.type === "overtchat_turn_delta" && isAgentTurnDelta(event)) {
+    const turn = applyAgentTurnDelta(messages, event);
+    return turn ? replaceTurnMessages(messages, event.turnId, turn) : messages;
+  }
   if (
     event.type === "overtchat_turn_update" &&
     typeof event.turnId === "string" &&
@@ -344,120 +346,31 @@ export function applyAgentRuntimeMessageEvent(
   return messages;
 }
 
-function isConnectorCheckpointMessage(message: unknown): boolean {
-  // Provider history is authoritative on resume. Keep only rows created by
-  // OvertChat itself and not yet folded into that history. Provider-projected
-  // Codex rows carry a turn id, so they must not survive a fresh projection
-  // merely because their native message is no longer present.
-  if (turnIdOf(message)) return false;
-  const role = roleOf(message);
-  return (
-    role === "custom" ||
-    (role === "toolResult" && toolCallIdOf(message) !== null)
-  );
-}
-
-function freshContainsConnectorMessage(
-  fresh: readonly unknown[],
-  durable: unknown,
-): boolean {
-  const role = roleOf(durable);
-  const submissionId = submissionIdOf(durable);
-  if (submissionId) {
-    return fresh.some(
-      (message) => submissionIdOf(message) === submissionId,
-    );
-  }
-  const toolCallId = toolCallIdOf(durable);
-  if (role === "toolResult" && toolCallId) {
-    return fresh.some(
-      (message) =>
-        roleOf(message) === "toolResult" &&
-        toolCallIdOf(message) === toolCallId,
-    );
-  }
-  const id = idOf(durable);
-  if (id) {
-    return fresh.some(
-      (message) => roleOf(message) === role && idOf(message) === id,
-    );
-  }
-  const timestamp = timestampOf(durable);
-  if (timestamp !== null) {
-    return fresh.some(
-      (message) =>
-        roleOf(message) === role && timestampOf(message) === timestamp,
-    );
-  }
-  const text = textOf(durable);
-  return (
-    role === "custom" &&
-    text !== "" &&
-    fresh.some(
-      (message) => roleOf(message) === "custom" && textOf(message) === text,
-    )
-  );
-}
-
-function endsProviderHistoryUnit(
-  messages: readonly unknown[],
-  index: number,
-): boolean {
-  const turnId = turnIdOf(messages[index]);
-  return !turnId || turnIdOf(messages[index + 1]) !== turnId;
-}
-
-/** Reconcile a freshly resumed provider projection with connector-owned
- * messages that may not have reached the provider's history yet. All runtime
- * metadata and provider history come from `fresh`; only identifiable
- * connector checkpoint rows survive. */
+/** A provider import replaces the entire transcript. Only presentation attached
+ * to an identified user submission transfers to the corresponding native row.
+ * Runtime snapshots already contain the display timeline and need no merging. */
 export function reconcileAgentRuntimeSnapshot(
   durable: AgentRuntimeSnapshot,
   fresh: AgentRuntimeSnapshot,
 ): AgentRuntimeSnapshot {
-  const providerMessages = reconcileSubmittedUserMessages(
-    durable.messages,
-    fresh.messages,
-  );
-  const connectorRowsByProviderUnit = new Map<number, unknown[]>();
-  let providerUnit = 0;
-  for (let index = 0; index < durable.messages.length; index += 1) {
-    const message = durable.messages[index];
-    if (isConnectorCheckpointMessage(message)) {
-      if (!freshContainsConnectorMessage(providerMessages, message)) {
-        const rows = connectorRowsByProviderUnit.get(providerUnit) ?? [];
-        rows.push(message);
-        connectorRowsByProviderUnit.set(providerUnit, rows);
-      }
-      continue;
-    }
-    if (endsProviderHistoryUnit(durable.messages, index)) providerUnit += 1;
-  }
-
-  const messages: unknown[] = [];
-  const insertedUnits = new Set<number>();
-  providerUnit = 0;
-  const insertConnectorRows = () => {
-    if (insertedUnits.has(providerUnit)) return;
-    messages.push(...(connectorRowsByProviderUnit.get(providerUnit) ?? []));
-    insertedUnits.add(providerUnit);
+  return {
+    ...fresh,
+    messages: reconcileSubmittedUserMessages(durable.messages, fresh.messages),
   };
-  for (let index = 0; index < providerMessages.length; index += 1) {
-    const message = providerMessages[index];
-    if (!isConnectorCheckpointMessage(message)) insertConnectorRows();
-    messages.push(message);
-    if (
-      !isConnectorCheckpointMessage(message) &&
-      endsProviderHistoryUnit(providerMessages, index)
-    ) {
-      providerUnit += 1;
-    }
-  }
-  insertConnectorRows();
-  for (const [unit, rows] of connectorRowsByProviderUnit) {
-    if (!insertedUnits.has(unit)) messages.push(...rows);
-  }
-  return { ...fresh, messages };
+}
+
+export function applyAgentRuntimeUsageEvent(
+  stats: AgentSessionStats,
+  event: AgentRuntimeEvent,
+): AgentSessionStats {
+  if (event.type !== "usage_update") return stats;
+  const parsed = agentUsageUpdateSchema.safeParse(event.usage);
+  if (!parsed.success) return stats;
+  const { contextUsage, ...usage } = parsed.data;
+  const next = { ...stats, ...usage };
+  if (contextUsage === null) delete next.contextUsage;
+  else if (contextUsage !== undefined) next.contextUsage = contextUsage;
+  return next;
 }
 
 export function applyAgentRuntimeStateEvent(
@@ -480,13 +393,22 @@ export function applyAgentRuntimeEnvelope(
   if (envelope.type === "snapshot") return envelope.data;
   if (!current) return current;
   const event = envelope.data;
+  if (event.type === "overtchat_turn_delta") {
+    if (!isAgentTurnDelta(event)) return undefined;
+    const turn = applyAgentTurnDelta(current.messages, event);
+    return turn ? { ...current, messages: replaceTurnMessages(current.messages, event.turnId, turn) } : undefined;
+  }
+  if (event.type === "usage_update") {
+    const stats = applyAgentRuntimeUsageEvent(current.stats, event);
+    return stats === current.stats ? current : { ...current, stats };
+  }
 
   if (event.type === "agent_start" || event.type === "turn_start") {
     return {
       ...current,
       status: "running",
-      activeTurn: current.activeTurn ?? {
-        startedAt: runtimeEventTimestamp(event),
+      activeTurn: {
+        startedAt: current.activeTurn?.startedAt ?? runtimeEventTimestamp(event),
       },
       state: { ...current.state, isStreaming: true },
       error: undefined,
@@ -501,12 +423,13 @@ export function applyAgentRuntimeEnvelope(
       status: event.status,
       activeTurn:
         event.status === "running"
-          ? (current.activeTurn ?? {
+          ? {
               startedAt:
-                typeof event.startedAt === "number"
+                current.activeTurn?.startedAt ??
+                (typeof event.startedAt === "number"
                   ? event.startedAt
-                  : runtimeEventTimestamp(event),
-            })
+                  : runtimeEventTimestamp(event)),
+            }
           : null,
       state: {
         ...current.state,

@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import dotenv from "dotenv";
 import path from "node:path";
+import { promptedOrigins } from "./e2e/helpers/storage";
 
 dotenv.config({ path: path.resolve(__dirname, ".env.local") });
 
@@ -15,9 +16,11 @@ export default defineConfig({
   forbidOnly: isCI,
   retries: isCI ? 2 : 0,
   workers: 1,
-  reporter: "line",
+  reporter: isCI ? [["line"], ["html", { open: "never" }]] : "line",
   use: {
     baseURL,
+    // The one-time two-factor prompt would cover pages in unrelated tests.
+    storageState: { cookies: [], origins: promptedOrigins() },
     trace: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
@@ -25,8 +28,8 @@ export default defineConfig({
     // Run the standalone server so CI exercises the same artifact the Docker image ships.
     // Static assets aren't bundled into the standalone tree, so copy them in first.
     command: isCI
-      ? "mkdir -p .next/standalone/apps/web/.next && cp -r .next/static .next/standalone/apps/web/.next/static && node .next/standalone/apps/web/server.js"
-      : "npm run build && mkdir -p .next/standalone/apps/web/.next && cp -r .next/static .next/standalone/apps/web/.next/static && node .next/standalone/apps/web/server.js",
+      ? "mkdir -p .next/standalone/apps/web/.next .next/standalone/apps/web/public && cp -r .next/static .next/standalone/apps/web/.next/static && cp -r public/. .next/standalone/apps/web/public && node .next/standalone/apps/web/server.js"
+      : "npm run build && mkdir -p .next/standalone/apps/web/.next .next/standalone/apps/web/public && cp -r .next/static .next/standalone/apps/web/.next/static && cp -r public/. .next/standalone/apps/web/public && node .next/standalone/apps/web/server.js",
     url: baseURL,
     reuseExistingServer: !isCI,
     timeout: 180 * 1000,
@@ -36,6 +39,8 @@ export default defineConfig({
       MIGRATIONS_FOLDER: path.resolve(__dirname, "drizzle"),
       BETTER_AUTH_SECRET: "testsecret1234567890123456789012",
       BETTER_AUTH_URL: baseURL,
+      OVERTCHAT_E2E_DISABLE_AUTH_RATE_LIMIT: "1",
+      OVERTCHAT_MANAGEMENT_SECRET: "e2e-management-secret-1234567890123456",
       ...(redisUrl ? { REDIS_URL: redisUrl } : {}),
     },
   },

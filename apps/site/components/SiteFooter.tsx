@@ -6,11 +6,14 @@ export function SiteFooter() {
       <div className="site-container footer-inner">
         <div>
           <div className="footer-wordmark">overtchat</div>
-          <p>A complete, self-hosted chat client that runs on a server you own.</p>
+          <p>Your AI chat, running on your side of the internet.</p>
         </div>
         <nav className="footer-links" aria-label="Footer navigation">
+          <Link href="/downloads/">Downloads</Link>
+          <Link href="/setup/">Set up a server</Link>
           <Link href="/releases/">Releases</Link>
           <Link href="/privacy/">Privacy</Link>
+          <Link href="/terms/">Terms</Link>
           <a href="https://github.com/yoloyash/overtchat/blob/main/docs/deploy.md">
             Deploy docs
           </a>
@@ -19,7 +22,7 @@ export function SiteFooter() {
       </div>
       <div className="site-container footer-meta">
         <span>MIT licensed.</span>
-        <span>No usage analytics. No hosted backend.</span>
+        <span>No usage analytics.</span>
       </div>
     </footer>
   );

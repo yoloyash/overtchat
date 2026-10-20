@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type {
@@ -22,6 +22,8 @@ export type InstallationSecrets = {
   managementSecret: string;
   searxngSecret: string;
   voiceSharedSecret: string;
+  // Issued by OvertChat Cloud when this server is linked; empty otherwise.
+  cloudCredential: string;
 };
 
 function generatedSecret(): string {
@@ -53,6 +55,7 @@ export function defaultInstallationConfig(
     : `${APP_IMAGE}:${manifest.appVersion}`;
   return {
     format: 1,
+    instanceId: randomUUID(),
     appVersion,
     appImage,
     voiceVersion: manifest.voiceVersion,
@@ -64,6 +67,8 @@ export function defaultInstallationConfig(
     kokoroImage: manifest.kokoroImage,
     kokoroGpuImage: manifest.kokoroGpuImage,
     kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+    cloudTunnelImage: manifest.cloudTunnelImage,
+    cloudProxyImage: manifest.cloudProxyImage,
     appPort: existing?.appPort ?? DEFAULT_APP_PORT,
     bindAddress: existing?.bindAddress ?? "0.0.0.0",
     publicUrl:
@@ -140,6 +145,7 @@ export async function readInstallationConfig(
     const config = parsed as InstallationConfig;
     const migrated = {
       ...config,
+      instanceId: config.instanceId ?? randomUUID(),
       // State written by the first installer draft only supported volumes.
       dataMountType: config.dataMountType ?? "volume",
       bindAddress: config.bindAddress ?? "0.0.0.0",
@@ -206,6 +212,7 @@ export function normalizeInstallationConfig(
 
   return {
     ...config,
+    agents: { ...config.agents },
     search: {
       ...config.search,
       bundledInstalled: config.search.provider === "bundled",
@@ -232,12 +239,18 @@ function withoutApiKey<T extends { apiKey?: string }>(
 export function withoutProviderKeys(
   config: InstallationConfig,
 ): InstallationConfig {
-  return {
+  const persisted = {
     ...config,
     search: withoutApiKey(config.search),
     tts: withoutApiKey(config.tts),
     stt: withoutApiKey(config.stt),
   };
+  if (config.access?.cloud?.credential) {
+    const cloud = { ...config.access.cloud };
+    delete cloud.credential;
+    persisted.access = { ...config.access, cloud };
+  }
+  return persisted;
 }
 
 export function initialSecrets(
@@ -255,6 +268,7 @@ export function initialSecrets(
       existing?.environment.get("SEARXNG_SECRET") ||
       generatedSecret(),
     voiceSharedSecret: previous.voiceSharedSecret || generatedSecret(),
+    cloudCredential: previous.cloudCredential ?? "",
   };
 }
 
@@ -286,6 +300,7 @@ export async function readInstallationSecrets(
       managementSecret: values.get("OVERTCHAT_MANAGEMENT_SECRET"),
       searxngSecret: values.get("SEARXNG_SECRET"),
       voiceSharedSecret: values.get("VOICE_SHARED_SECRET"),
+      cloudCredential: values.get("OVERTCHAT_CLOUD_CREDENTIAL"),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};

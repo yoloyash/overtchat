@@ -6,6 +6,10 @@ import {
 } from "./createPreferences";
 
 describe("agent create preferences", () => {
+  it("preserves Hermes model and permission preferences", () => {
+    const preferences = { providerPreferences: { hermes: { model: "openrouter:test/model", mode: "default" } } };
+    expect(parseAgentCreatePreferences(preferences)).toEqual(preferences);
+  });
   it("keeps model-specific reasoning choices when another model changes", () => {
     const first = mergeAgentProviderPreferences({
       preferences: {},

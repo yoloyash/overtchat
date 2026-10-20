@@ -227,3 +227,10 @@ describe("agent slash commands", () => {
     ).toThrow("Usage: /new");
   });
 });
+
+it("normalizes an explicit history reload without forwarding a prompt", () => {
+  expect(normalizeAgentSessionCommand({ type: "prompt", message: "/reload" }, {}))
+    .toEqual({ type: "reload_history" });
+  expect(() => normalizeAgentSessionCommand({ type: "prompt", message: "/reload extra" }, {}))
+    .toThrow("Usage: /reload");
+});

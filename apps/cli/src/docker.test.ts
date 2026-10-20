@@ -36,6 +36,8 @@ function config(
     kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
     kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
     kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+    cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+    cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
     appPort: 4718,
     bindAddress: "127.0.0.1",
     publicUrl: "https://chat.example.com",
@@ -193,6 +195,44 @@ describe("managed sidecar reconciliation", () => {
     );
   });
 
+  it("takes the cloud address offline when another access mode is chosen", async () => {
+    mocks.runCommand.mockImplementation(
+      async (_command: string, args: string[]) => {
+        const name = args[1];
+        if (args[0] === "inspect" && (name === "overtchat-cloud-tunnel" || name === "overtchat-cloud-proxy")) {
+          return {
+            stdout: inspectedContainer(name, name.replace("overtchat-", "")),
+            stderr: "",
+            exitCode: 0,
+          };
+        }
+        if (args[0] === "inspect") {
+          return { stdout: "", stderr: "No such container", exitCode: 1 };
+        }
+        return { stdout: name ?? "", stderr: "", exitCode: 0 };
+      },
+    );
+    const cloud = {
+      hostname: "smiths.overtchat.app",
+      relayHost: "relay.overtchat.app",
+      relayPort: 443,
+      relayServerName: "relay.overtchat.app",
+      relayCaPem: "ca",
+    };
+    const docker = { command: "docker", prefix: [] };
+
+    const kept = await reconcileManagedSidecars(docker, config({ access: { mode: "cloud", cloud } }));
+    expect(kept.removed).not.toContain("OvertChat Cloud tunnel");
+
+    const removed = await reconcileManagedSidecars(docker, config({ access: { mode: "lan" } }));
+    expect(removed.removed).toEqual(expect.arrayContaining(["OvertChat Cloud tunnel", "OvertChat Cloud proxy"]));
+    expect(mocks.runCommand).toHaveBeenCalledWith(
+      "docker",
+      ["container", "rm", "--force", "overtchat-cloud-tunnel"],
+      {},
+    );
+  });
+
   it("removes the old CPU container when managed STT moves to NVIDIA", async () => {
     mocks.runCommand.mockImplementation(
       async (_command: string, args: string[]) => {
@@ -221,7 +261,7 @@ describe("managed sidecar reconciliation", () => {
     );
 
     expect(result.removed).toEqual(["Parakeet (CPU)"]);
-    expect(mocks.runCommand).toHaveBeenLastCalledWith(
+    expect(mocks.runCommand).toHaveBeenCalledWith(
       "sudo",
       [
         "docker",
@@ -388,5 +428,29 @@ describe("existing TTS accelerator detection", () => {
       ttsGpuUuid: "GPU-5090",
       ttsGpuVariant: "blackwell",
     });
+  });
+});
+
+describe("macOS Docker discovery", () => {
+  it("does not attempt sudo when Docker Desktop is stopped", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    try {
+      mocks.commandExists.mockResolvedValue(true);
+      mocks.runCommand.mockResolvedValue({ exitCode: 1, stdout: "", stderr: "not running" });
+      const { detectDockerCommand } = await import("./docker.js");
+      await expect(detectDockerCommand()).rejects.toThrow("Start Docker Desktop");
+      expect(mocks.runCommand).toHaveBeenCalledExactlyOnceWith("docker", ["info"]);
+    } finally {
+      platform.mockRestore();
+    }
+  });
+  it("does not offer NVIDIA acceleration on Mac", async () => {
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("darwin");
+    try {
+      await expect(detectNvidiaGpus()).resolves.toEqual([]);
+      expect(mocks.commandExists).not.toHaveBeenCalled();
+    } finally {
+      platform.mockRestore();
+    }
   });
 });

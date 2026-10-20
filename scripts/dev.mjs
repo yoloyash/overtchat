@@ -362,9 +362,13 @@ export async function runDevelopment(args = process.argv.slice(2)) {
     await resetConnectorState(paths);
     return 0;
   }
-  if (!options.webOnly && process.platform !== "linux") {
+  if (
+    !options.webOnly &&
+    process.platform !== "linux" &&
+    process.platform !== "darwin"
+  ) {
     throw new Error(
-      "The Host Connector requires Linux. Use npm run dev:web on this platform.",
+      "The Host Connector supports Linux and macOS. Use npm run dev:web on this platform.",
     );
   }
 

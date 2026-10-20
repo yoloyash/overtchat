@@ -1,9 +1,20 @@
 import { safeValidateUIMessages, type UIMessage } from "ai";
-import type { ChatRequestAction } from "@overtchat/shared";
+import {
+  REASONING_EFFORTS,
+  IMAGE_SIZES, IMAGE_QUALITIES, type ImageGenerationOptions,
+  type ChatReasoningLevel,
+  type ChatRequestAction,
+} from "@overtchat/shared";
+import { createHash } from "node:crypto";
 import { z } from "zod";
 
 const ChatRequestActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("submit") }),
+  z.object({ type: z.literal("compact") }),
+  z.object({
+    type: z.literal("continue"),
+    targetAssistantMessageId: z.string().trim().min(1),
+  }),
   z.object({
     type: z.literal("edit"),
     targetUserMessageId: z.string().trim().min(1),
@@ -22,14 +33,26 @@ const ChatRequestEnvelopeSchema = z.object({
   messages: z.unknown(),
   modelConfigId: z.string().trim().min(1, "Missing modelConfigId"),
   chatId: z.string().trim().min(1, "Missing chatId"),
+  // Optional for wire compatibility with released clients. Current clients
+  // mint one UUID per user intent so a repeated POST can attach to the same
+  // generation instead of starting a second model call.
+  clientRequestId: z.string().trim().min(1).max(200).optional(),
   webSearchEnabled: z.boolean().optional().default(true),
   forceSearch: z.boolean().optional(),
+  imageGeneration: z.object({
+    size: z.enum(IMAGE_SIZES).default("auto"),
+    quality: z.enum(IMAGE_QUALITIES).default("auto"),
+  }).optional(),
   // Accepted during the mobile rollout. `true` maps cleanly to the new
   // one-message action; `false` now means the normal automatic policy.
   searchEnabled: z.boolean().optional(),
   timeZone: z.string().trim().min(1).max(100).optional(),
   projectId: z.string().nullable().optional(),
   action: ChatRequestActionSchema.optional(),
+  reasoningLevel: z
+    .enum(["default", "off", "on", ...REASONING_EFFORTS])
+    .optional()
+    .default("default"),
   // Kept as a wire-compatibility input for already-open web clients and
   // released mobile clients. New clients send `action` explicitly.
   trigger: z
@@ -38,18 +61,23 @@ const ChatRequestEnvelopeSchema = z.object({
     .default("submit-message"),
   messageId: z.string().optional(),
   temporary: z.boolean().optional().default(false),
+  responseStyle: z.enum(["text", "voice"]).optional().default("text"),
 });
 
 export interface ParsedChatRequest {
   messages: UIMessage[];
   modelConfigId: string;
   chatId: string;
+  clientRequestId: string;
   webSearchEnabled: boolean;
   forceSearch: boolean;
+  imageGeneration?: ImageGenerationOptions;
   timeZone?: string;
   projectId?: string | null;
   action: ChatRequestAction;
+  reasoningLevel: ChatReasoningLevel;
   temporary: boolean;
+  responseStyle?: "text" | "voice";
 }
 
 export class ChatRequestError extends Error {
@@ -60,6 +88,40 @@ export class ChatRequestError extends Error {
     this.name = "ChatRequestError";
     this.status = status;
   }
+}
+
+export function chatRequestFingerprint({
+  messages,
+  modelConfigId,
+  chatId,
+  webSearchEnabled,
+  forceSearch,
+  imageGeneration,
+  timeZone,
+  projectId,
+  action,
+  reasoningLevel,
+  temporary,
+  responseStyle = "text",
+}: ParsedChatRequest): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        messages,
+        modelConfigId,
+        chatId,
+        webSearchEnabled,
+        forceSearch,
+        imageGeneration,
+        timeZone: timeZone ?? null,
+        projectId: projectId ?? null,
+        action,
+        reasoningLevel,
+        temporary,
+        responseStyle,
+      }),
+    )
+    .digest("hex");
 }
 
 export async function parseChatRequest(
@@ -90,7 +152,11 @@ export async function parseChatRequest(
   }
 
   const last = validated.data[validated.data.length - 1];
-  if (last.role !== "user") {
+  if (
+    last.role !== "user" &&
+    envelope.data.action?.type !== "compact" &&
+    envelope.data.action?.type !== "continue"
+  ) {
     throw new ChatRequestError("The final message must be a user message");
   }
 
@@ -101,6 +167,12 @@ export async function parseChatRequest(
       messageId: envelope.data.messageId,
       userMessageId: last.id,
     });
+  if (
+    action.type === "continue" &&
+    (last.role !== "assistant" || action.targetAssistantMessageId !== last.id)
+  ) {
+    throw new ChatRequestError("Chat action does not match the assistant message");
+  }
   if (
     (action.type === "edit" && action.targetUserMessageId !== last.id) ||
     (action.type === "retry" && action.userMessageId !== last.id)
@@ -114,12 +186,16 @@ export async function parseChatRequest(
     messages: validated.data,
     modelConfigId: envelope.data.modelConfigId,
     chatId: envelope.data.chatId,
+    clientRequestId: envelope.data.clientRequestId ?? crypto.randomUUID(),
     webSearchEnabled: envelope.data.webSearchEnabled,
     forceSearch: envelope.data.webSearchEnabled && forceSearch,
+    imageGeneration: envelope.data.imageGeneration,
     timeZone: envelope.data.timeZone,
     projectId: envelope.data.projectId,
     action,
+    reasoningLevel: envelope.data.reasoningLevel,
     temporary: envelope.data.temporary,
+    responseStyle: envelope.data.responseStyle,
   };
 }
 

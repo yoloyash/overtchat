@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { FlashList } from "@shopify/flash-list";
 import * as Haptics from "expo-haptics";
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import type { DrawerContentComponentProps } from "expo-router/build/react-navigation/drawer";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -23,6 +23,7 @@ import {
   useDeleteChat,
   useMoveChat,
   useRenameChat,
+  useSetChatPinned,
   type ChatListItem,
 } from "@/lib/queries/chats";
 import {
@@ -30,9 +31,11 @@ import {
   useProjects,
   type ProjectListItem,
 } from "@/lib/queries/projects";
+import { useCapabilities } from "@/lib/queries/capabilities";
 import { useTheme } from "@/lib/theme";
 import { toastError, toastSuccess } from "@/lib/toast";
 import { ChatRowMenu } from "./ChatRowMenu";
+import { DrawerAgents } from "./DrawerAgents";
 import { CreateProjectSheet } from "./CreateProjectSheet";
 import { MoveToProjectSheet } from "./MoveToProjectSheet";
 import { RenameChatSheet } from "./RenameChatSheet";
@@ -41,6 +44,7 @@ type ListEntry =
   | { kind: "section"; key: string; label: string }
   | { kind: "project-row"; key: string; project: ProjectListItem; expanded: boolean; isActive: boolean }
   | { kind: "project-chat"; key: string; chat: ChatListItem; isActive: boolean }
+  | { kind: "pinned-chat"; key: string; chat: ChatListItem; isActive: boolean }
   | { kind: "project-empty"; key: string }
   | { kind: "new-project"; key: string }
   | { kind: "date-header"; key: string; label: DateBucket }
@@ -56,12 +60,16 @@ function initialsOf(name: string | null | undefined, email: string | null | unde
 export function AppDrawer(props: DrawerContentComponentProps) {
   const { colors, radii, fonts } = useTheme();
   const {
-    activeChatId,
+    activeChatId: sessionChatId,
     openChat: openSession,
     startNewChat: startSessionNewChat,
   } = useChatSession();
+  const pathname = usePathname();
+  const activeChatId = pathname === "/chat" ? sessionChatId : null;
   const { data: chats, isPending, isFetching, error, refetch } = useChats();
   const { data: projects } = useProjects();
+  const { data: capabilities } = useCapabilities();
+  const pinningSupported = capabilities?.capabilities.chatPinning === true;
   const session = getAuthClient().useSession();
   const user = session.data?.user as
     | { name?: string | null; email?: string | null }
@@ -70,6 +78,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const renameMutation = useRenameChat();
   const deleteMutation = useDeleteChat();
   const moveMutation = useMoveChat();
+  const pinMutation = useSetChatPinned();
   const createProjectMutation = useCreateProject();
 
   const renameSheetRef = useRef<BottomSheetModal>(null);
@@ -110,7 +119,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
           const list = byProject.get(c.projectId) ?? [];
           list.push(c);
           byProject.set(c.projectId, list);
-        } else {
+        } else if (!c.pinned) {
           flat.push(c);
         }
       }
@@ -133,6 +142,19 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   const entries = useMemo<ListEntry[]>(() => {
     const out: ListEntry[] = [];
     const projectList = projects ?? [];
+
+    const pinned = (chats ?? []).filter((chat) => chat.pinned);
+    if (pinned.length > 0) {
+      out.push({ kind: "section", key: "s-pinned", label: "Pinned" });
+      for (const chat of pinned) {
+        out.push({
+          kind: "pinned-chat",
+          key: `pin-${chat.id}`,
+          chat,
+          isActive: chat.id === activeChatId,
+        });
+      }
+    }
 
     if (projectList.length > 0) {
       out.push({ kind: "section", key: "s-projects", label: "Projects" });
@@ -181,7 +203,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     }
 
     return out;
-  }, [projects, expanded, chatsByProject, unprojected, activeChatId, activeProjectId]);
+  }, [chats, projects, expanded, chatsByProject, unprojected, activeChatId, activeProjectId]);
 
   function toggleProject(id: string) {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -195,16 +217,19 @@ export function AppDrawer(props: DrawerContentComponentProps) {
   function openChat(item: ChatListItem) {
     openSession(item.id);
     props.navigation.closeDrawer();
+    router.navigate("/chat");
   }
 
   function startNewChatHere() {
     startSessionNewChat(null);
     props.navigation.closeDrawer();
+    router.navigate("/chat");
   }
 
   function startNewChatInProject(projectId: string) {
     startSessionNewChat(projectId);
     props.navigation.closeDrawer();
+    router.navigate("/chat");
   }
 
   function openRename(item: ChatListItem) {
@@ -232,6 +257,18 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     );
   }
 
+  function togglePin(item: ChatListItem) {
+    pinMutation.mutate(
+      { id: item.id, pinned: !item.pinned },
+      {
+        onError: (error) => toastError(
+          item.pinned ? "Couldn't unpin chat" : "Couldn't pin chat",
+          error,
+        ),
+      },
+    );
+  }
+
   function submitMove(projectId: string | null) {
     if (!moveTarget) return;
     if (moveTarget.projectId === projectId) return;
@@ -255,7 +292,7 @@ export function AppDrawer(props: DrawerContentComponentProps) {
     const target = deleteTarget;
     deleteMutation.mutate(target.id, {
       onSuccess: () => {
-        if (activeChatId === target.id) {
+        if (sessionChatId === target.id) {
           startSessionNewChat(null);
         }
         toastSuccess("Chat deleted");
@@ -330,127 +367,127 @@ export function AppDrawer(props: DrawerContentComponentProps) {
       <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
       <View style={styles.list}>
-        {isPending ? (
-          <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
-        ) : error ? (
-          <Text
-            style={[
-              styles.empty,
-              { color: colors.destructive, fontFamily: fonts.sansRegular },
-            ]}
-          >
-            Couldn't load chats
-          </Text>
-        ) : entries.length === 1 ? (
-          // Only the new-project entry — nothing else exists yet.
-          <View>
-            <NewProjectButton onPress={() => createProjectSheetRef.current?.present()} />
-            <Text
-              style={[
-                styles.empty,
-                { color: colors.mutedForeground, fontFamily: fonts.sansRegular },
-              ]}
-            >
-              No chats yet
-            </Text>
-          </View>
-        ) : (
-          <FlashList<ListEntry>
-            data={entries}
-            keyExtractor={(e) => e.key}
-            getItemType={(e) => e.kind}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            refreshing={isFetching && !isPending}
-            onRefresh={onPullToRefresh}
-            renderItem={({ item: entry }) => {
-              switch (entry.kind) {
-                case "section":
-                  return (
-                    <Text
-                      style={[
-                        styles.sectionLabel,
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: fonts.sansMedium,
-                        },
-                      ]}
-                    >
-                      {entry.label}
-                    </Text>
-                  );
-                case "project-row":
-                  return (
-                    <ProjectRow
-                      project={entry.project}
-                      expanded={entry.expanded}
-                      isActive={entry.isActive}
-                      onToggle={() => toggleProject(entry.project.id)}
-                      onOpen={() => openProject(entry.project.id)}
-                      onNewChat={() => startNewChatInProject(entry.project.id)}
-                    />
-                  );
-                case "project-chat":
-                  return (
-                    <ChatRow
-                      item={entry.chat}
-                      isActive={entry.isActive}
-                      indented
-                      onTap={openChat}
-                      onRename={openRename}
-                      onMove={openMove}
-                      onDelete={openDeleteConfirm}
-                    />
-                  );
-                case "project-empty":
-                  return (
-                    <Text
-                      style={[
-                        styles.projectEmpty,
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: fonts.sansRegular,
-                        },
-                      ]}
-                    >
-                      No chats yet
-                    </Text>
-                  );
-                case "new-project":
-                  return (
-                    <NewProjectButton
-                      onPress={() => createProjectSheetRef.current?.present()}
-                    />
-                  );
-                case "date-header":
-                  return (
-                    <Text
-                      style={[
-                        styles.groupLabel,
-                        {
-                          color: colors.mutedForeground,
-                          fontFamily: fonts.sansMedium,
-                        },
-                      ]}
-                    >
-                      {entry.label}
-                    </Text>
-                  );
-                case "chat-row":
-                  return (
-                    <ChatRow
-                      item={entry.chat}
-                      isActive={entry.isActive}
-                      onTap={openChat}
-                      onRename={openRename}
-                      onMove={openMove}
-                      onDelete={openDeleteConfirm}
-                    />
-                  );
-              }
-            }}
-          />
-        )}
+        <FlashList<ListEntry>
+          data={isPending || error ? [] : entries}
+          ListHeaderComponent={
+            <DrawerAgents onNavigate={() => props.navigation.closeDrawer()} />
+          }
+          ListEmptyComponent={
+            isPending ? (
+              <ActivityIndicator color={colors.mutedForeground} style={{ marginTop: 24 }} />
+            ) : error ? (
+              <Text style={[styles.empty, { color: colors.destructive, fontFamily: fonts.sansRegular }]}>
+                Couldn't load chats
+              </Text>
+            ) : null
+          }
+          ListFooterComponent={
+            !isPending && !error && entries.length === 1 ? (
+              <Text style={[styles.empty, { color: colors.mutedForeground, fontFamily: fonts.sansRegular }]}>
+                No chats yet
+              </Text>
+            ) : null
+          }
+          keyExtractor={(e) => e.key}
+          getItemType={(e) => e.kind}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          refreshing={isFetching && !isPending}
+          onRefresh={onPullToRefresh}
+          renderItem={({ item: entry }) => {
+            switch (entry.kind) {
+              case "section":
+                return (
+                  <Text
+                    style={[
+                      styles.sectionLabel,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansMedium,
+                      },
+                    ]}
+                  >
+                    {entry.label}
+                  </Text>
+                );
+              case "project-row":
+                return (
+                  <ProjectRow
+                    project={entry.project}
+                    expanded={entry.expanded}
+                    isActive={entry.isActive}
+                    onToggle={() => toggleProject(entry.project.id)}
+                    onOpen={() => openProject(entry.project.id)}
+                    onNewChat={() => startNewChatInProject(entry.project.id)}
+                  />
+                );
+              case "project-chat":
+                return (
+                  <ChatRow
+                    item={entry.chat}
+                    isActive={entry.isActive}
+                    indented
+                    onTap={openChat}
+                    onRename={openRename}
+                    onPin={togglePin}
+                    pinPending={pinMutation.isPending}
+                    pinningSupported={pinningSupported}
+                    onMove={openMove}
+                    onDelete={openDeleteConfirm}
+                  />
+                );
+              case "project-empty":
+                return (
+                  <Text
+                    style={[
+                      styles.projectEmpty,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansRegular,
+                      },
+                    ]}
+                  >
+                    No chats yet
+                  </Text>
+                );
+              case "new-project":
+                return (
+                  <NewProjectButton
+                    onPress={() => createProjectSheetRef.current?.present()}
+                  />
+                );
+              case "date-header":
+                return (
+                  <Text
+                    style={[
+                      styles.groupLabel,
+                      {
+                        color: colors.mutedForeground,
+                        fontFamily: fonts.sansMedium,
+                      },
+                    ]}
+                  >
+                    {entry.label}
+                  </Text>
+                );
+              case "pinned-chat":
+              case "chat-row":
+                return (
+                  <ChatRow
+                    item={entry.chat}
+                    isActive={entry.isActive}
+                    onTap={openChat}
+                    onRename={openRename}
+                    onPin={togglePin}
+                    pinPending={pinMutation.isPending}
+                    pinningSupported={pinningSupported}
+                    onMove={openMove}
+                    onDelete={openDeleteConfirm}
+                  />
+                );
+            }
+          }}
+        />
       </View>
 
       <View style={[styles.footer, { borderTopColor: colors.border }]}>
@@ -657,6 +694,9 @@ function ChatRow({
   indented = false,
   onTap,
   onRename,
+  onPin,
+  pinPending,
+  pinningSupported,
   onMove,
   onDelete,
 }: {
@@ -665,6 +705,9 @@ function ChatRow({
   indented?: boolean;
   onTap: (item: ChatListItem) => void;
   onRename: (item: ChatListItem) => void;
+  onPin: (item: ChatListItem) => void;
+  pinPending: boolean;
+  pinningSupported: boolean;
   onMove: (item: ChatListItem) => void;
   onDelete: (item: ChatListItem) => void;
 }) {
@@ -705,20 +748,25 @@ function ChatRow({
         >
           {item.title?.trim() || "Untitled"}
         </Text>
-        {item.kind === "voice" ? (
+        {item.pinned && (
           <Ionicons
-            name="pulse-outline"
-            size={16}
+            name="pin"
+            size={14}
             color={colors.mutedForeground}
+            accessibilityLabel="Pinned chat"
           />
-        ) : null}
+        )}
       </Pressable>
       <ChatRowMenu
         from={menu.anchorRect}
         visible={menu.visible}
+        pinned={!!item.pinned}
+        pinPending={pinPending}
+        pinningSupported={pinningSupported}
         onClose={menu.close}
         onSelect={(action) => {
           if (action === "rename") onRename(item);
+          else if (action === "pin" || action === "unpin") onPin(item);
           else if (action === "move") onMove(item);
           else onDelete(item);
         }}

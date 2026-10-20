@@ -26,6 +26,11 @@ describe("model discovery client", () => {
                 toolCalling: true,
                 inputModalities: ["text", "image", "image", ""],
                 maxOutputTokens: 8192,
+                reasoningControls: {
+                  toggle: true,
+                  defaultLevel: "xhigh",
+                  efforts: ["low", "medium", "xhigh", "ultra"],
+                },
               },
             },
             {
@@ -54,6 +59,11 @@ describe("model discovery client", () => {
           toolCalling: true,
           inputModalities: ["text", "image"],
           maxOutputTokens: 8192,
+          reasoningControls: {
+            toggle: true,
+            defaultLevel: "xhigh",
+            efforts: ["low", "medium", "xhigh"],
+          },
         },
       },
       {

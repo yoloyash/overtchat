@@ -11,12 +11,13 @@ const MAX_ALIASES = 128;
 const MAX_CONFIG_FILES = 128;
 const SAFE_ALIAS = /^(?!-)[a-zA-Z0-9._-]{1,253}$/u;
 
-function shellQuote(value: string): string {
+export function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
 export function buildSshRemoteCommand(
   launch: AgentProcessHostLaunch,
+  processIdentity?: string,
 ): string {
   const env = Object.entries(launch.env ?? {})
     .map(([key, value]) => `${key}=${shellQuote(value)}`)
@@ -28,7 +29,10 @@ export function buildSshRemoteCommand(
   const agentCommand = launch.cwd
     ? `cd -- ${shellQuote(launch.cwd)} && ${invocation}`
     : invocation;
-  const loginCommand = `exec 1>&3 3>&-; ${agentCommand}`;
+  // Keep managed ownership visible in argv while shell startup files run,
+  // before exec replaces the shell with the final helper command.
+  const identity = processIdentity ? `: ${shellQuote(processIdentity)}; ` : "";
+  const loginCommand = `${identity}exec 1>&3 3>&-; ${agentCommand}`;
   const shellFlags =
     launch.shellMode === "interactive" ? "-ilc" : "-lc";
   return `exec "\${SHELL:-/bin/sh}" ${shellFlags} ${shellQuote(loginCommand)} 3>&1 1>&2`;
@@ -38,6 +42,11 @@ export function sshSpawnArgs(
   alias: string,
   launch: AgentProcessHostLaunch,
 ): string[] {
+  return sshCommandArgs(alias, buildSshRemoteCommand(launch));
+}
+
+/** Control commands do not need the user's interactive agent environment. */
+export function sshCommandArgs(alias: string, command: string): string[] {
   if (!SAFE_ALIAS.test(alias)) throw new Error("Invalid SSH host alias.");
   return [
     "-T",
@@ -46,7 +55,7 @@ export function sshSpawnArgs(
     "-o",
     "ConnectTimeout=10",
     alias,
-    buildSshRemoteCommand(launch),
+    command,
   ];
 }
 

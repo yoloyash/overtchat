@@ -1,9 +1,13 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HOST_CONNECTOR_CAPABILITIES,
+  HOST_CONNECTOR_EVENT_BATCH_BYTES,
+  HOST_CONNECTOR_FRAGMENT_BYTES,
+  HOST_CONNECTOR_RELEASE_VERSION,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   type HostConnectorEventBatch,
   type HostConnectorEventPayload,
@@ -40,7 +44,6 @@ afterEach(async () => {
   delete process.env.OVERTCHAT_CONNECTOR_STATE;
   delete process.env.OVERTCHAT_CONNECTOR_TIMELINES;
   delete process.env.OVERTCHAT_CONNECTOR_LOCK;
-  delete process.env.OVERTCHAT_DISABLE_AGENT_TERMINAL;
   await Promise.all(
     directories.splice(0).map((directory) =>
       rm(directory, { recursive: true, force: true }),
@@ -49,6 +52,75 @@ afterEach(async () => {
 });
 
 describe.sequential("connector client compatibility", () => {
+  it("restarts a fragmented transfer after receiver state loss without acknowledging it early", async () => {
+    const client = await ConnectorClient.create(await config());
+    const indices: number[] = [];
+    const chunks: Buffer[] = [];
+    let restarted = false;
+    const event = {
+      sequence: 4,
+      payload: {
+        type: "response" as const,
+        requestId: "large",
+        success: true as const,
+        data: "x".repeat(11 * 1024 * 1024),
+      },
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_input: unknown, init?: RequestInit) => {
+        expect(Buffer.byteLength(String(init?.body))).toBeLessThanOrEqual(
+          HOST_CONNECTOR_EVENT_BATCH_BYTES,
+        );
+        const batch = JSON.parse(String(init?.body)) as HostConnectorEventBatch;
+        const fragment = batch.fragment!;
+        indices.push(fragment.index);
+        if (fragment.index === 1 && !restarted) {
+          restarted = true;
+          chunks.length = 0;
+          return Response.json({
+            connectorEpoch: "epoch",
+            acknowledgedSequence: 3,
+            nextFragmentIndex: 0,
+          });
+        }
+        expect(fragment.index).toBe(chunks.length);
+        chunks.push(Buffer.from(fragment.data, "base64"));
+        const count = Math.ceil(
+          fragment.totalBytes / HOST_CONNECTOR_FRAGMENT_BYTES,
+        );
+        const complete = chunks.length === count;
+        if (complete)
+          expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual(event);
+        return Response.json({
+          connectorEpoch: "epoch",
+          acknowledgedSequence: complete ? 4 : 3,
+          nextFragmentIndex: chunks.length,
+        });
+      }),
+    );
+    try {
+      const deliver = Reflect.get(client, "deliverBatch") as (
+        body: HostConnectorEventBatch,
+        signal: AbortSignal,
+      ) => Promise<unknown>;
+      expect(
+        await deliver.call(
+          client,
+          {
+            protocolVersion: HOST_CONNECTOR_PROTOCOL_VERSION,
+            connectorEpoch: "epoch",
+            events: [event],
+          },
+          new AbortController().signal,
+        ),
+      ).toMatchObject({ acknowledgedSequence: 4 });
+      expect(indices.slice(0, 4)).toEqual([0, 1, 0, 1]);
+    } finally {
+      await client.stop();
+    }
+  });
+
   it("persists a drained request response when shutdown has already started", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => emptyChannel()));
     const client = await ConnectorClient.create(await config());
@@ -75,16 +147,13 @@ describe.sequential("connector client compatibility", () => {
     });
     let responseWasDurableBeforeClose = false;
     vi.spyOn(journal, "close").mockImplementation(async () => {
-      const persisted = JSON.parse(
-        await readFile(process.env.OVERTCHAT_CONNECTOR_STATE!, "utf8"),
-      ) as {
-        events: Array<{ payload: HostConnectorEventPayload }>;
-      };
-      responseWasDurableBeforeClose = persisted.events.some(
-        (event) =>
-          event.payload.type === "response" &&
-          event.payload.requestId === "drained-request",
-      );
+      const db = new DatabaseSync(process.env.OVERTCHAT_CONNECTOR_STATE!, { readOnly: true });
+      try {
+        responseWasDurableBeforeClose = db.prepare("SELECT payload_json FROM events").all().some((row) => {
+          const payload = JSON.parse(String(row.payload_json)) as HostConnectorEventPayload;
+          return payload.type === "response" && payload.requestId === "drained-request";
+        });
+      } finally { db.close(); }
       await originalJournalClose();
     });
 
@@ -134,38 +203,13 @@ describe.sequential("connector client compatibility", () => {
 
     const headers = new Headers(requests[0]!.init?.headers);
     expect(headers.get("x-overtchat-connector-version")).toBeNull();
-    expect(headers.get("x-overtchat-connector-build-version")).toBe("0.9.0");
+    expect(headers.get("x-overtchat-connector-build-version")).toBe(HOST_CONNECTOR_RELEASE_VERSION);
     expect(headers.get("x-overtchat-connector-protocol")).toBe(
       String(HOST_CONNECTOR_PROTOCOL_VERSION),
     );
     expect(headers.get("x-overtchat-connector-capabilities")).toBe(
       HOST_CONNECTOR_CAPABILITIES.join(","),
     );
-    await client.stop();
-    await running;
-  });
-
-  it("keeps ordinary connector capabilities when terminals are disabled", async () => {
-    process.env.OVERTCHAT_DISABLE_AGENT_TERMINAL = "1";
-    const requests: Array<{ url: string; init?: RequestInit }> = [];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-        requests.push({ url: String(input), init });
-        return emptyChannel();
-      }),
-    );
-    const client = await ConnectorClient.create(await config());
-    const running = client.run();
-    await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0));
-
-    const headers = new Headers(requests[0]!.init?.headers);
-    expect(headers.get("x-overtchat-connector-capabilities")?.split(","))
-      .toEqual(
-        HOST_CONNECTOR_CAPABILITIES.filter(
-          (capability) => capability !== "workspace-terminal-v1",
-        ),
-      );
     await client.stop();
     await running;
   });

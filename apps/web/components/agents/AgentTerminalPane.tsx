@@ -5,22 +5,12 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { RotateCcw, Square, X } from "lucide-react";
 import {
-  AGENT_TERMINAL_MAX_INPUT_CHARS,
-  type AgentTerminalEvent,
-  type AgentTerminalSize,
-  type AgentTerminalSnapshot,
+  AGENT_TERMINAL_MAX_INPUT_CHARS, TERMINAL_STREAM_PROTOCOL, TERMINAL_MAX_BUFFER_BYTES,
+  isTerminalViewMessage, type TerminalControl, type AgentTerminalSize,
 } from "@overtchat/agent-bridge";
 import { Button } from "@/components/ui/button";
+import { apiUrl } from "@/lib/api-url";
 import { cn } from "@/lib/utils";
-
-type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error";
-
-let terminalControlSequence = 0;
-
-function createTerminalControlId(): string {
-  terminalControlSequence += 1;
-  return `${Date.now().toString(36)}-${terminalControlSequence.toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
 
 function terminalTheme(element: HTMLElement) {
   const styles = getComputedStyle(element);
@@ -49,398 +39,234 @@ function terminalTheme(element: HTMLElement) {
   };
 }
 
-function readSnapshot(value: unknown): AgentTerminalSnapshot | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const snapshot = value as Partial<AgentTerminalSnapshot>;
-  return typeof snapshot.sessionId === "string" &&
-    Number.isSafeInteger(snapshot.revision) &&
-    typeof snapshot.data === "string" &&
-    Number.isSafeInteger(snapshot.cols) &&
-    Number.isSafeInteger(snapshot.rows) &&
-    typeof snapshot.exited === "boolean" &&
-    (snapshot.exitCode === null || Number.isSafeInteger(snapshot.exitCode)) &&
-    (snapshot.signal === null || Number.isSafeInteger(snapshot.signal))
-    ? (snapshot as AgentTerminalSnapshot)
-    : null;
-}
 
-function readEvent(
-  value: unknown,
-  type: "output" | "exit",
-): AgentTerminalEvent | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const event = value as Record<string, unknown>;
-  if (event.type !== type || !Number.isSafeInteger(event.revision)) return null;
-  if (type === "output") {
-    return typeof event.data === "string"
-      ? { type, revision: Number(event.revision), data: event.data }
-      : null;
-  }
-  return (event.exitCode === null || Number.isSafeInteger(event.exitCode)) &&
-    (event.signal === null || Number.isSafeInteger(event.signal))
-    ? {
-        type,
-        revision: Number(event.revision),
-        exitCode: event.exitCode === null ? null : Number(event.exitCode),
-        signal: event.signal === null ? null : Number(event.signal),
-      }
-    : null;
-}
-
-function parseJson(value: string): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return null;
-  }
-}
-
-async function responseError(response: Response): Promise<string> {
-  const value = (await response.json().catch(() => null)) as {
-    error?: unknown;
-  } | null;
-  return typeof value?.error === "string"
-    ? value.error
-    : `Terminal request failed (${response.status}).`;
-}
-
-export function AgentTerminalPane({
-  sessionId,
-  active,
-  onClose,
-}: {
-  sessionId: string;
-  active: boolean;
-  onClose: () => void;
+export function AgentTerminalPane({ sessionId, active, onClose }: {
+  sessionId: string; active: boolean; onClose: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const activeRef = useRef(active);
+  useEffect(() => { activeRef.current = active; }, [active]);
+  const sendRef = useRef<(control: TerminalControl) => void>(() => {});
+  const resumeRef = useRef<() => void>(() => {});
   const sizeRef = useRef<AgentTerminalSize>({ cols: 80, rows: 24 });
-  const [status, setStatus] = useState<ConnectionStatus>("connecting");
+  const [status, setStatus] = useState("Connecting…");
   const [error, setError] = useState("");
   const [exited, setExited] = useState(false);
-  const [exitLabel, setExitLabel] = useState("");
-  const controlUrl = `/api/agent-sessions/${encodeURIComponent(sessionId)}/terminal`;
 
   useEffect(() => {
-    if (!active || !containerRef.current) return;
     const container = containerRef.current;
+    if (!container) return;
     const terminal = new Terminal({
-      allowProposedApi: false,
-      convertEol: false,
-      cursorBlink: true,
-      cursorStyle: "block",
-      fontFamily:
-        getComputedStyle(container)
-          .getPropertyValue("--font-geist-mono")
-          .trim() || "ui-monospace, monospace",
-      fontSize: 13,
-      lineHeight: 1.15,
-      scrollback: 10_000,
-      theme: terminalTheme(container),
+      cursorBlink: true, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+      fontSize: 13, lineHeight: 1.15, scrollback: 10_000, theme: terminalTheme(container),
     });
-    const fitAddon = new FitAddon();
-    terminal.loadAddon(fitAddon);
+    const fit = new FitAddon();
+    terminal.loadAddon(fit);
     terminal.open(container);
     let disposed = false;
-    let source: EventSource | null = null;
-    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-    let preflightTimer: ReturnType<typeof setTimeout> | undefined;
-    let resizeTimer: ReturnType<typeof setTimeout> | undefined;
-    let inputTimer: ReturnType<typeof setTimeout> | undefined;
+    let socket: WebSocket | undefined;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let fitFrame = 0;
+    let ready = false;
     let revision = 0;
-    let hasSnapshot = false;
-    let inputBuffer = "";
-    let inputChain = Promise.resolve();
-    let lastSize = sizeRef.current;
-    const controlId = createTerminalControlId();
+    let generation = 0;
+    let snapshotGeneration = 0;
+    let attempt = 0;
+    let connecting = false;
+    let exitLabel = "";
+    let pendingWrites = 0;
+    let restoring = false;
+    let restoreBuffer: string[] = [];
+    let restoreBytes = 0;
+    let request: AbortController | undefined;
 
-    const post = async (body: unknown) => {
-      const response = await fetch(controlUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          body && typeof body === "object"
-            ? { ...body, controlId }
-            : body,
-        ),
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      return response;
-    };
-
-    const flushInput = () => {
-      inputTimer = undefined;
-      const data = inputBuffer;
-      inputBuffer = "";
-      if (!data) return;
-      for (
-        let offset = 0;
-        offset < data.length;
-        offset += AGENT_TERMINAL_MAX_INPUT_CHARS
-      ) {
-        const chunk = data.slice(
-          offset,
-          offset + AGENT_TERMINAL_MAX_INPUT_CHARS,
-        );
-        inputChain = inputChain.then(() =>
-          post({ type: "input", data: chunk }).then(() => undefined),
-        );
+    const send = (control: TerminalControl) => {
+      if (!ready || socket?.readyState !== WebSocket.OPEN) return;
+      const data = JSON.stringify(control);
+      if (socket.bufferedAmount + new TextEncoder().encode(data).byteLength > 256 * 1024) {
+        setError("Terminal input is congested. Reconnect before typing again.");
+        ready = false;
+        socket.close();
+        return;
       }
-      inputChain = inputChain.catch((cause) => {
-        if (disposed) return;
-        setStatus("error");
-        setError(cause instanceof Error ? cause.message : String(cause));
-      });
+      socket.send(data);
     };
-
-    const dataDisposable = terminal.onData((data) => {
-      inputBuffer += data;
-      if (!inputTimer) inputTimer = setTimeout(flushInput, 8);
+    sendRef.current = send;
+    const fitTerminal = (claim = false) => {
+      if (!activeRef.current || !container.clientWidth || !container.clientHeight) return;
+      fit.fit();
+      const size = { cols: Math.min(1000, Math.max(2, terminal.cols)), rows: Math.min(1000, Math.max(1, terminal.rows)) };
+      if (claim || size.cols !== sizeRef.current.cols || size.rows !== sizeRef.current.rows) {
+        sizeRef.current = size;
+        send({ type: "resize", size, claim });
+      }
+    };
+    const write = (data: string) => {
+      const bytes = new TextEncoder().encode(data).byteLength;
+      if (pendingWrites + bytes > TERMINAL_MAX_BUFFER_BYTES) { socket?.close(); return; }
+      pendingWrites += bytes;
+      terminal.write(data, () => { pendingWrites -= bytes; });
+    };
+    const dataSubscription = terminal.onData((data) => {
+      if (restoring) return;
+      for (let offset = 0; offset < data.length;) {
+        let end = Math.min(offset + AGENT_TERMINAL_MAX_INPUT_CHARS, data.length);
+        if (end < data.length && /[\uD800-\uDBFF]/u.test(data[end - 1])) end -= 1;
+        send({ type: "input", data: data.slice(offset, end) });
+        offset = end;
+      }
     });
-
-    const dimensions = () => ({
-      cols: Math.max(2, terminal.cols || 80),
-      rows: Math.max(1, terminal.rows || 24),
+    const claim = () => fitTerminal(true);
+    container.addEventListener("pointerdown", claim);
+    container.addEventListener("focusin", claim);
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type === "keydown" && (event.ctrlKey || event.metaKey) && event.shiftKey && event.code === "KeyC" && terminal.hasSelection()) {
+        void navigator.clipboard?.writeText(terminal.getSelection()).catch(() => setError("Copy failed. Use the browser copy command."));
+        return false;
+      }
+      return true;
     });
+    const resize = new ResizeObserver(() => {
+      cancelAnimationFrame(fitFrame);
+      fitFrame = requestAnimationFrame(() => fitTerminal());
+    });
+    resize.observe(container);
+    const theme = new MutationObserver(() => { terminal.options.theme = terminalTheme(container); });
+    theme.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style"] });
 
-    const applyFit = (notify: boolean) => {
-      try {
-        fitAddon.fit();
-      } catch {
-        return;
-      }
-      const next = dimensions();
-      if (next.cols === lastSize.cols && next.rows === lastSize.rows) return;
-      lastSize = next;
-      sizeRef.current = next;
-      if (!notify || !hasSnapshot) return;
-      if (resizeTimer) clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(() => {
-        void post({ type: "resize", size: lastSize }).catch((cause) => {
-          if (!disposed)
-            setError(cause instanceof Error ? cause.message : String(cause));
-        });
-      }, 60);
-    };
-
-    const reconnect = () => {
-      if (disposed || reconnectTimer) return;
-      source?.close();
-      setStatus("reconnecting");
-      reconnectTimer = setTimeout(() => {
-        reconnectTimer = undefined;
-        connect();
-      }, 250);
-    };
-
-    const acceptEvent = (event: AgentTerminalEvent) => {
-      if (!hasSnapshot || event.revision !== revision + 1) {
-        reconnect();
-        return;
-      }
-      revision = event.revision;
-      if (event.type === "output") {
-        terminal.write(event.data);
-        return;
-      }
-      setExited(true);
-      setExitLabel(
-        event.signal !== null
-          ? `Exited from signal ${event.signal}`
-          : `Exited with code ${event.exitCode ?? "unknown"}`,
-      );
-    };
-
-    const connect = () => {
+    const connect = async () => {
       if (disposed) return;
-      source?.close();
-      hasSnapshot = false;
-      revision = 0;
-      setStatus("connecting");
-      setError("");
-      const size = dimensions();
-      lastSize = size;
-      sizeRef.current = size;
-      source = new EventSource(
-        `${controlUrl}/events?cols=${size.cols}&rows=${size.rows}&controlId=${encodeURIComponent(controlId)}`,
-      );
-      source.onopen = () => {
-        if (!disposed) setStatus(hasSnapshot ? "connected" : "connecting");
-      };
-      source.addEventListener("terminal-snapshot", (message) => {
-        const snapshot = readSnapshot(
-          parseJson((message as MessageEvent<string>).data),
-        );
-        if (!snapshot || snapshot.sessionId !== sessionId) {
-          reconnect();
-          return;
-        }
-        revision = snapshot.revision;
-        hasSnapshot = true;
-        setExited(snapshot.exited);
-        setExitLabel(
-          snapshot.exited
-            ? snapshot.signal !== null
-              ? `Exited from signal ${snapshot.signal}`
-              : `Exited with code ${snapshot.exitCode ?? "unknown"}`
-            : "",
-        );
-        terminal.reset();
-        terminal.write(snapshot.data, () => {
-          if (disposed) return;
-          applyFit(true);
-          terminal.focus();
-        });
-        setStatus("connected");
-      });
-      source.addEventListener("terminal-output", (message) => {
-        const event = readEvent(
-          parseJson((message as MessageEvent<string>).data),
-          "output",
-        );
-        if (event) acceptEvent(event);
-        else reconnect();
-      });
-      source.addEventListener("terminal-exit", (message) => {
-        const event = readEvent(
-          parseJson((message as MessageEvent<string>).data),
-          "exit",
-        );
-        if (event) acceptEvent(event);
-        else reconnect();
-      });
-      source.onerror = () => {
-        if (!disposed) setStatus("reconnecting");
-      };
-    };
-
-    const resizeObserver = new ResizeObserver(() => applyFit(true));
-    resizeObserver.observe(container);
-    const themeObserver = new MutationObserver(() => {
-      terminal.options.theme = terminalTheme(container);
-    });
-    themeObserver.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class", "style"],
-    });
-    applyFit(false);
-    const preflight = async () => {
+      connecting = true;
+      const epoch = ++generation;
+      ready = false;
+      setStatus(attempt ? "Reconnecting…" : "Connecting…");
+      fitTerminal();
+      request = new AbortController();
       try {
-        const response = await fetch(controlUrl, { cache: "no-store" });
+        const response = await fetch(apiUrl(`/api/agent-sessions/${encodeURIComponent(sessionId)}/terminal`), {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(sizeRef.current), signal: request.signal,
+        });
         if (!response.ok) {
-          const message = await responseError(response);
-          if (response.status === 503 && !disposed) {
-            setStatus("reconnecting");
-            setError(message);
-            preflightTimer = setTimeout(() => void preflight(), 1_000);
+          const value = await response.json().catch(() => null) as { error?: string } | null;
+          throw Object.assign(new Error(value?.error ?? `Terminal unavailable (${response.status}).`), { retry: response.status >= 500 });
+        }
+        const grant = await response.json() as { path: string; ticket: string };
+        if (disposed || generation !== epoch) return;
+        const url = new URL(apiUrl(grant.path), window.location.href);
+        url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+        const connection = new WebSocket(url, [TERMINAL_STREAM_PROTOCOL, `ticket.${grant.ticket}`]);
+        socket = connection;
+        connection.onmessage = (event) => {
+          if (disposed || socket !== connection) return;
+          let message: unknown;
+          try { message = JSON.parse(event.data as string); } catch { connection.close(); return; }
+          if (!isTerminalViewMessage(message)) { connection.close(); return; }
+          if (message.type === "error") {
+            setError(message.message);
+            ready = true;
             return;
           }
-          throw new Error(message);
-        }
-        if (!disposed) connect();
+          if (message.type === "snapshot") {
+            const baseline = ++snapshotGeneration;
+            ready = false;
+            revision = message.snapshot.revision;
+            exitLabel = message.snapshot.exited ? `Exited (${message.snapshot.exitCode ?? message.snapshot.signal ?? "unknown"})` : "";
+            setExited(message.snapshot.exited);
+            restoring = true;
+            restoreBuffer = [];
+            restoreBytes = 0;
+            const snapshot = message.snapshot;
+            terminal.write("", () => {
+              if (disposed || socket !== connection || baseline !== snapshotGeneration) return;
+              terminal.reset();
+              terminal.resize(snapshot.cols, snapshot.rows);
+              terminal.write(snapshot.data, () => {
+                if (disposed || socket !== connection || baseline !== snapshotGeneration) return;
+                for (const output of restoreBuffer) write(output);
+                restoreBuffer = [];
+                restoring = false;
+                ready = true;
+                attempt = 0;
+                setStatus(exitLabel || "Connected");
+                setError("");
+                fitTerminal(true);
+                if (activeRef.current) terminal.focus();
+              });
+            });
+            return;
+          }
+          if (message.revision !== revision + 1) { connection.close(); return; }
+          revision = message.revision;
+          if (message.type === "exit") {
+            setExited(true);
+            exitLabel = `Exited (${message.exitCode ?? message.signal ?? "unknown"})`;
+            setStatus(exitLabel);
+          } else if (restoring) {
+            restoreBytes += new TextEncoder().encode(message.data).byteLength;
+            if (restoreBytes > TERMINAL_MAX_BUFFER_BYTES) { connection.close(); return; }
+            restoreBuffer.push(message.data);
+          } else write(message.data);
+        };
+        connection.onclose = (event) => {
+          if (disposed || socket !== connection) return;
+          ready = false;
+          setStatus("Disconnected");
+          if (event.code === 1008) { setError("Terminal access expired. Reopen the terminal to reconnect."); return; }
+          schedule();
+        };
       } catch (cause) {
         if (disposed) return;
-        setStatus("error");
         setError(cause instanceof Error ? cause.message : String(cause));
+        if (!(cause instanceof Error && "retry" in cause && cause.retry === false)) schedule();
+        else setStatus("Unavailable");
+      } finally {
+        if (generation === epoch) connecting = false;
       }
     };
-    void preflight();
-
+    const schedule = () => {
+      if (disposed || retry) return;
+      setStatus("Reconnecting…");
+      retry = setTimeout(() => { retry = undefined; void connect(); }, Math.min(250 * 2 ** attempt++, 5000));
+    };
+    resumeRef.current = () => {
+      fitTerminal(true);
+      terminal.focus();
+      if ((!socket || socket.readyState === WebSocket.CLOSED) && !retry && !connecting) void connect();
+    };
+    void connect();
     return () => {
       disposed = true;
-      source?.close();
-      if (reconnectTimer) clearTimeout(reconnectTimer);
-      if (preflightTimer) clearTimeout(preflightTimer);
-      if (resizeTimer) clearTimeout(resizeTimer);
-      if (inputTimer) clearTimeout(inputTimer);
-      resizeObserver.disconnect();
-      themeObserver.disconnect();
-      dataDisposable.dispose();
+      ready = false;
+      request?.abort();
+      if (retry) clearTimeout(retry);
+      cancelAnimationFrame(fitFrame);
+      socket?.close();
+      resize.disconnect();
+      theme.disconnect();
+      container.removeEventListener("pointerdown", claim);
+      container.removeEventListener("focusin", claim);
+      dataSubscription.dispose();
       terminal.dispose();
+      sendRef.current = () => {};
+      resumeRef.current = () => {};
     };
-  }, [active, controlUrl, sessionId]);
-
-  async function runControl(type: "restart" | "kill") {
-    setError("");
-    try {
-      const response = await fetch(controlUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          type === "restart" ? { type, size: sizeRef.current } : { type },
-        ),
-      });
-      if (!response.ok) throw new Error(await responseError(response));
-      if (type === "restart") {
-        setExited(false);
-        setExitLabel("");
-        setStatus("reconnecting");
-      }
-    } catch (cause) {
-      setStatus("error");
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }
+  }, [sessionId]);
+  useEffect(() => { if (active) resumeRef.current(); }, [active]);
 
   return (
-    <section
-      className="flex h-full min-h-0 flex-col bg-background"
-      aria-label="Workspace terminal"
-    >
+    <section className="flex h-full min-h-0 flex-col bg-background" aria-label="Workspace terminal">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b px-2">
         <span className="text-xs font-medium">Terminal</span>
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            status === "connected" && !exited
-              ? "bg-emerald-500"
-              : status === "error"
-                ? "bg-destructive"
-                : "bg-muted-foreground/60",
-          )}
-          aria-hidden="true"
-        />
-        <span className="truncate text-[11px] text-muted-foreground">
-          {error ||
-            exitLabel ||
-            (status === "connected" ? "Connected" : "Reconnecting…")}
-        </span>
+        <span className={cn("size-1.5 rounded-full", status === "Connected" && !exited ? "bg-emerald-500" : "bg-muted-foreground/60")} aria-hidden="true" />
+        <span className="truncate text-[11px] text-muted-foreground" role="status">{error || status}</span>
         <div className="ml-auto flex items-center gap-0.5">
-          {!exited && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Stop terminal"
-              title="Stop terminal"
-              onClick={() => void runControl("kill")}
-            >
-              <Square className="size-3.5" />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Restart terminal"
-            title="Restart terminal"
-            onClick={() => void runControl("restart")}
-          >
-            <RotateCcw className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Close terminal panel"
-            title="Close terminal panel"
-            onClick={onClose}
-          >
-            <X className="size-3.5" />
-          </Button>
+          {!exited && <Button variant="ghost" size="icon-sm" aria-label="Stop terminal" title="Stop terminal" onClick={() => sendRef.current({ type: "kill" })}><Square className="size-3.5" /></Button>}
+          <Button variant="ghost" size="icon-sm" aria-label="Restart terminal" title="Restart terminal" onClick={() => sendRef.current({ type: "restart", size: sizeRef.current })}><RotateCcw className="size-3.5" /></Button>
+          <Button variant="ghost" size="icon-sm" aria-label="Close terminal panel" title="Close terminal panel" onClick={onClose}><X className="size-3.5" /></Button>
         </div>
       </div>
-      <div
-        ref={containerRef}
-        className="min-h-0 flex-1 overflow-hidden bg-background p-2"
-      />
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden bg-background p-2" />
     </section>
   );
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { resetE2eDatabase } from "./helpers/database";
+import { resetE2eDatabase, setupUrl } from "./helpers/database";
 
 test.beforeEach(resetE2eDatabase);
 
@@ -10,7 +10,7 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
   }
 
   await test.step("admin signup", async () => {
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await expect(page.locator("h1")).toContainText("Create the first account");
     await page.locator("#name").fill("E2E Tester");
     await page.locator("#email").fill("test-admin@overtchat-test.local");
@@ -39,7 +39,7 @@ test("signup, configure Gemini, stream a response", async ({ page }) => {
     }
 
     await page.locator("#p-label").fill("Gemini Lite Smoke Test");
-    await page.getByRole("button", { name: "Create", exact: true }).click();
+    await page.getByRole("button", { name: "Add model", exact: true }).click();
     await page.waitForURL("**/settings/models");
   });
 

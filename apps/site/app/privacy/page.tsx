@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { createPageMetadata } from "@/lib/metadata";
 
 export const metadata: Metadata = createPageMetadata({
   title: "Privacy Policy",
   description:
-    "How the OvertChat app and project website handle data, permissions, and diagnostics.",
+    "How the OvertChat app, OvertChat Cloud, and the project website handle data, permissions, and diagnostics.",
   path: "/privacy/",
 });
 
@@ -19,12 +20,13 @@ export default function PrivacyPage() {
         <header className="legal-header">
           <p className="eyebrow">Legal</p>
           <h1 className="page-title">Privacy Policy</h1>
-          <p className="legal-updated">Last updated 22 August 2026</p>
+          <p className="legal-updated">Last updated 18 October 2026</p>
           <p className="page-lede">
-            OvertChat is an open-source chat client that connects to a server you
-            choose. The short version: we do not operate a hosted chat service,
-            and the server you point the app at is governed by whoever operates
-            it—which may be you.
+            OvertChat is open-source software that runs on a server you choose.
+            The short version: we do not operate a hosted chat service, and the
+            server you use is governed by whoever operates it—which may be you.
+            If you use the optional OvertChat Cloud, we also hold a small
+            account record, described below.
           </p>
         </header>
 
@@ -43,9 +45,9 @@ export default function PrivacyPage() {
           <section>
             <h2>What the app sends to your server</h2>
             <p>
-              Except for crash reporting described below, the app communicates
-              with the server URL you configured, over HTTPS or HTTP, in order
-              to:
+              Except for crash reporting and optional push notifications
+              described below, the app communicates with the server URL you
+              configured, over HTTPS or HTTP, in order to:
             </p>
             <ul>
               <li>
@@ -53,8 +55,9 @@ export default function PrivacyPage() {
                 locally on your device),
               </li>
               <li>
-                send your messages, attachments, and voice dictation audio to
-                your server so it can talk to a language model on your behalf,
+                send your messages, attachments, voice dictation, and realtime
+                voice audio to your server so it can use the speech and language
+                model providers configured by its administrator,
               </li>
               <li>
                 load chat history, projects, and settings you have created on
@@ -64,17 +67,24 @@ export default function PrivacyPage() {
             <p>
               How that server stores, retains, or shares that data is governed by
               whoever administers it—that is a separate policy from this one. If
-              you self-host, you are that administrator.
+              you self-host, you are that administrator. Local providers can keep
+              processing on infrastructure the administrator controls; hosted
+              providers receive the requests routed to them under their own
+              policies.
             </p>
           </section>
 
           <section>
             <h2>What is stored on your device</h2>
             <ul>
-              <li>The server URL you entered (in Android secure storage).</li>
-              <li>Your auth session cookie (in Android secure storage).</li>
+              <li>The server URL you entered (in device secure storage).</li>
+              <li>Your auth session cookie (in device secure storage).</li>
               <li>
                 Your appearance, chat font, and web-search toggle preferences.
+              </li>
+              <li>
+                Notification preferences and, if enabled, a push registration
+                identifier and token.
               </li>
               <li>
                 Cached image previews and temporary copies of files you select,
@@ -83,8 +93,11 @@ export default function PrivacyPage() {
               </li>
             </ul>
             <p>
-              Uninstalling the app removes all of the above. You can also clear
-              the server URL from inside the app to start over.
+              You can sign out and change the server from inside the app.
+              Uninstalling removes ordinary app data, but iOS may retain secure
+              storage entries in Keychain. Removing the app does not delete
+              your account or conversations from your server; contact its
+              administrator to manage that data.
             </p>
           </section>
 
@@ -92,13 +105,73 @@ export default function PrivacyPage() {
             <h2>What we collect</h2>
             <p>
               We—the publisher of the app—do not operate a hosted OvertChat
-              backend. The app and project website do not include usage analytics
+              backend, and your chats never pass through our servers in readable
+              form. The app and project website do not include usage analytics
               or advertising SDKs.
             </p>
             <p>
               We receive limited crash diagnostics through Sentry when crash
-              reporting is configured in the distributed app, as described
-              next.
+              reporting is configured in the distributed app, and hold an
+              account record if you use OvertChat Cloud, as described next.
+            </p>
+          </section>
+
+          <section>
+            <h2>OvertChat Cloud</h2>
+            <p>
+              OvertChat Cloud is an optional service that gives your server a
+              public address such as <code>name.overtchat.app</code>. It has two
+              parts: an account site at account.overtchat.com, and a relay that
+              forwards visitors to your server. Using it is subject to our{" "}
+              <Link href="/terms/">Terms of Service</Link>.
+            </p>
+            <p>When you create an account, we store:</p>
+            <ul>
+              <li>
+                the name, email address, and profile picture link from your
+                Google account. We do not keep Google&apos;s access tokens.
+              </li>
+              <li>
+                your sign-in sessions, with the IP address and browser they
+                came from. A session ends when you sign out or after 30 days
+                without use.
+              </li>
+              <li>
+                your server&apos;s name, a hashed connection credential, and when
+                it was linked, first connected, and last connected.
+              </li>
+            </ul>
+            <p>
+              The relay forwards encrypted connections to your server without
+              decrypting them, so it cannot read pages, chats, passwords, or
+              files. It sees your server&apos;s name, visitors&apos; IP addresses
+              (which it passes on to your server), and when connections happen
+              and how much data they carry. It does not log visitors&apos; IP
+              addresses. The relay&apos;s code is public at{" "}
+              <a href="https://github.com/yoloyash/overtchat-relay">
+                github.com/yoloyash/overtchat-relay
+              </a>
+              , with instructions for checking this yourself.
+            </p>
+            <p>
+              Your server&apos;s address is public. Its HTTPS certificate is
+              issued by Let&apos;s Encrypt and, like every public certificate,
+              recorded in public Certificate Transparency logs.
+            </p>
+            <p>
+              The account site runs on{" "}
+              <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare</a>,
+              which keeps short-lived request logs we use for troubleshooting.
+              The relay runs on a server rented from{" "}
+              <a href="https://www.hetzner.com/legal/privacy-policy/">Hetzner</a>.
+              We do not sell or share account data with anyone else.
+            </p>
+            <p>
+              You can delete your account at any time from account.overtchat.com.
+              Deleting it removes your account and turns off your address. If
+              your server ever connected, we keep its name and your Google
+              account identifier for 7 days so no one else can take over the
+              address straight away, then delete them.
             </p>
           </section>
 
@@ -162,6 +235,34 @@ export default function PrivacyPage() {
           </section>
 
           <section>
+            <h2>Push notifications</h2>
+            <p>
+              Notifications are optional and off until you enable them. The app
+              registers with Expo Push Service and sends its push token and a
+              registration identifier to your configured server, which associates
+              them with your account to deliver chat-response and agent-idle
+              notifications. Expo handles push registration information to route
+              notifications through Apple Push Notification service on iOS or
+              Firebase Cloud Messaging on Android.
+            </p>
+            <p>
+              Notification payloads include identifiers used to open the relevant
+              chat or agent session. Message previews are off by default. If you
+              enable previews, a response excerpt or agent-session name is also
+              sent through the push services and may appear on your lock screen.
+              You can disable previews or notifications in the app settings.
+            </p>
+            <p>
+              Expo states that notification contents are held only as needed for
+              delivery. See its{" "}
+              <a href="https://docs.expo.dev/push-notifications/faq/">
+                push notification privacy information
+              </a>{" "}
+              and <a href="https://expo.dev/privacy">privacy policy</a>.
+            </p>
+          </section>
+
+          <section>
             <h2>Server version checks</h2>
             <p>
               When an administrator opens the account menu, an OvertChat server
@@ -174,9 +275,10 @@ export default function PrivacyPage() {
             <p>
               Cloudflare processes ordinary request data such as the server IP
               address and request time when delivering the manifest. Server
-              operators can disable version checks by setting the documented
-              {" "}
-              <code>DISABLE_UPDATE_CHECK</code> environment variable.
+              operators can disable version checks by running{" "}
+              <code>overtchat setup</code> and choosing No for “Automatically
+              check for updates?”. Manually managed deployments can set{" "}
+              <code>DISABLE_UPDATE_CHECK=true</code>.
             </p>
           </section>
 
@@ -184,10 +286,12 @@ export default function PrivacyPage() {
             <h2>Permissions and why we ask for them</h2>
             <ul>
               <li>
-                <strong>Microphone</strong>—used only when you tap the dictation
-                button. The recording is sent to your configured server for
-                transcription when you stop recording and is deleted from the
-                app cache after transcription completes.
+                <strong>Microphone</strong>—used only after you start dictation or
+                a realtime voice conversation. Dictation is sent to your server
+                for transcription when you stop recording and is deleted from
+                the mobile app cache afterward. During browser realtime voice,
+                audio streams to your server while the session is active; its
+                transcript is saved there as a chat.
               </li>
               <li>
                 <strong>Camera</strong>—used only when you choose “Take Photo” to
@@ -208,8 +312,10 @@ export default function PrivacyPage() {
               Data selected through them leaves the device only when you choose
               an app action that uses it—for example, selecting an attachment
               uploads it to your server, and stopping dictation sends the
-              recording for transcription. Crash diagnostics are a separate
-              data flow to Sentry, described above.
+              recording for transcription. Realtime microphone streaming stops
+              when you mute or end the voice session. Crash diagnostics and
+              optional push notifications are separate data flows, described
+              above.
             </p>
           </section>
 
@@ -236,7 +342,9 @@ export default function PrivacyPage() {
           <section>
             <h2>Contact</h2>
             <p>
-              Questions or concerns? Open an issue at{" "}
+              Questions or concerns? Email{" "}
+              <a href="mailto:support@overtchat.com">support@overtchat.com</a>{" "}
+              or open an issue at{" "}
               <a href="https://github.com/yoloyash/overtchat/issues">
                 github.com/yoloyash/overtchat/issues
               </a>.

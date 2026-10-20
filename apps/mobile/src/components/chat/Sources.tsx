@@ -1,8 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
+import { useLayoutState } from "@shopify/flash-list";
 import {
   Image,
-  LayoutAnimation,
   Linking,
   Pressable,
   StyleSheet,
@@ -20,15 +19,12 @@ import { useTheme } from "@/lib/theme";
 
 export function Sources({ message }: { message: UIMessage }) {
   const { colors, fonts } = useTheme();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useLayoutState(false);
 
   const all: WebSearchResult[] = buildWebCitationIndex(message.parts).sources;
   if (all.length === 0) return null;
 
   function toggle() {
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(180, "easeInEaseOut", "opacity"),
-    );
     setOpen((o) => !o);
   }
 

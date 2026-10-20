@@ -1,14 +1,21 @@
 # Web app guidance
 
-This workspace is the self-hosted OvertChat product: a Next.js App Router
-server, browser client, mobile API, and SQLite persistence layer. SQLite is the
+This workspace is the self-hosted OvertChat product: a Next.js server, the
+browser client, the mobile API, and the SQLite persistence layer. SQLite is the
 application source of truth. Redis is optional infrastructure for reconnectable
 chat delivery.
 
 ## Architecture
 
-- `app/(app)` contains authenticated product routes, `app/(auth)` contains
-  login and bootstrap signup, and `app/api` serves browser and mobile clients.
+- `app/api` serves browser, desktop, and mobile clients. Every other path is
+  served by `app/[[...slug]]`, which renders the client-only UI in `spa/`.
+- `spa/` is the browser application: TanStack Router routes, loaders, and the
+  `App` entry. The desktop app bundles the same `App`. UI code reaches the
+  server only through `/api`, resolved with `apiUrl()`. It must not import
+  server modules or `next/*` routing, image, or header APIs.
+- Route loaders and `beforeLoad` guards read data through the `queryOptions`
+  in `lib/queries`, so the hooks start with that data already cached. A missing
+  resource redirects, and any other failure surfaces as an error.
 - `components/AppShell.tsx`, `components/Sidebar.tsx`, and
   `components/chat/ChatArea.tsx` form the main browser application.
 - `lib/db` owns schema, queries, transactions, migrations, and search indexing.
@@ -18,9 +25,10 @@ chat delivery.
   owns cancellation and optional reconnectable-stream integration.
 - `lib/capabilities` validates search and speech configuration;
   `lib/db/serverCapabilities.ts` persists it.
-- `lib/voice` owns realtime-session tickets, browser transport, history
-  conversion, tool definitions, and service availability. Durable voice chats
-  remain ordinary chat records distinguished by their chat kind.
+- `lib/voice` owns realtime-session tickets, browser transport, audio
+  delivery, session leases, and service availability. Voice and text
+  turns share canonical messages and generation in `lib/chat/run.ts`. Chat kind
+  is legacy provenance; it does not restrict input mode.
 - `lib/agents` owns Agent Connections projections and access rules.
   `lib/agents/connector` owns the authorized web-side connector relay.
 - `lib/mcp` owns MCP configuration, connections, tool bindings, and lifecycle.
@@ -28,9 +36,17 @@ chat delivery.
 
 ## Authentication boundaries
 
-Better Auth sessions authorize browser and mobile APIs. Database operations
-must also scope resources by the authenticated user; checking only that a
-session exists is insufficient.
+Better Auth sessions authorize browser and mobile APIs. Clients on other
+origins, such as the desktop app, send the session token as
+`Authorization: Bearer` through Better Auth's bearer plugin, so routes resolve
+sessions only through `auth.api.getSession()`. Database operations must also
+scope resources by the authenticated user; checking only that a session exists
+is insufficient.
+
+`proxy.ts` applies CORS to every `/api` route for the origins allowed by
+`lib/cors.ts`; routes do not set CORS headers or export `OPTIONS` handlers.
+Increment `CLIENT_API_LEVEL` in `@overtchat/shared/ping` when a change breaks
+existing bundled clients.
 
 Host Connector routes authenticate connector tokens. Internal management routes
 authenticate `OVERTCHAT_MANAGEMENT_SECRET`. Keep both separate from user
@@ -42,12 +58,15 @@ chat-bound tickets. Internal voice routes independently authenticate
 `VOICE_SHARED_SECRET` and verify the ticket; the sidecar must not become a
 trusted substitute for user authorization.
 
-The first created user becomes the administrator. Public signup closes after
-that; administrators create subsequent users through Better Auth's admin path.
+Initial administrator creation requires the operator's one-time setup code and
+atomically consumes setup authorization. Public signup cannot bypass this;
+administrators create subsequent users through Better Auth's admin path.
+See [initial setup](../../docs/deploy.md#install).
 
 ## Chat and persistence
 
-`app/api/chat/route.ts` is the streaming orchestration boundary. Validate and
+`lib/chat/run.ts` is the shared streaming orchestration boundary for text and
+voice; API routes authenticate and adapt transport. Validate and
 authorize the complete request, resolve the provider and project, inline
 uploads, and convert messages before mutating persistent state.
 
@@ -90,8 +109,9 @@ chat-deletion cleanup.
 reconnect handling, and subscriptions. It is process-local; durable connection,
 workspace, and session metadata belongs in `lib/db`.
 
-`lib/agents/sessionReplica.ts` projects connector snapshots and ordered events
-for the browser UI. It is not an independent runtime or persistence layer.
+`lib/agents/sessionReplica.ts` re-exports the bridge's shared client replica
+helpers for connector snapshots and ordered events. It is not an independent
+runtime or persistence layer.
 Preserve cursor, epoch, and sequence reconciliation when changing the
 agent-session APIs or SSE client.
 
@@ -100,8 +120,10 @@ automatically replay it unless the connector command journal makes that
 operation replay-safe.
 
 Protocol payloads come from `@overtchat/agent-bridge`. Provider transcript
-normalization remains in the runtime/connector; web-specific presentation
-belongs in `lib/agents/presentation.ts`.
+normalization remains in the runtime/connector. `lib/agents/presentation.ts`
+re-exports the shared transcript projection from
+`@overtchat/shared/agent-presentation`; browser-specific rendering stays in
+`components/agents`.
 
 ## Database and startup
 

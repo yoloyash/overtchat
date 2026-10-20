@@ -1,14 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Menu } from "@base-ui/react/menu";
 import {
   Check,
   ChevronUp,
-  CircleArrowUp,
+  CloudDownload,
   Clipboard,
   ExternalLink,
   FileText,
@@ -16,30 +15,43 @@ import {
   ServerCog,
   Settings,
   ShieldCheck,
+  Smartphone,
   User,
   UserRound,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
+import { MobileAppDialog } from "@/components/MobileAppDialog";
+import { DesktopUpdateAction } from "@/components/DesktopUpdateAction";
+import { UpdateActionTooltip } from "@/components/UpdateActionTooltip";
 import { toast } from "@/components/ui/toast";
 import { authClient } from "@/lib/auth/client";
+import { getApiOrigin } from "@/lib/api-url";
+import { useResetAuthState } from "@/lib/queries/auth";
 import { getErrorMessage } from "@/lib/errors";
 import { motionClasses } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { APP_VERSION } from "@/lib/version";
-import { useAppUpdate } from "@/lib/queries/appUpdate";
+import { useAppUpdate, useServerVersion } from "@/lib/queries/appUpdate";
+import { desktopBridge } from "@/lib/desktop";
+import { useDesktopUpdate } from "@/lib/useDesktopUpdate";
 import { useSidebar } from "@/components/sidebar-context";
 import { clearComposerDraftsForUser } from "@/lib/chat/composer-drafts";
 
 const UPDATE_COMMAND = "overtchat update";
 
 export function AccountMenu() {
-  const router = useRouter();
+  const navigate = useNavigate();
+  const resetAuthState = useResetAuthState();
   const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
+  const [mobileAppOrigin, setMobileAppOrigin] = useState<string | null>(null);
   const { data: session, isPending } = authClient.useSession();
   const isAdmin = session?.user.role === "admin";
+  const isDesktop = !!desktopBridge();
+  const desktopUpdate = useDesktopUpdate();
+  const { data: serverVersion } = useServerVersion(isDesktop);
   const { data: update, isStale, refetch } = useAppUpdate(isAdmin);
-  const availableVersion = update?.updateAvailable
+  const availableVersion = isAdmin && update?.updateAvailable
     ? update.latestVersion
     : null;
   const updateAvailable = availableVersion !== null;
@@ -64,8 +76,8 @@ export function AccountMenu() {
         return;
       }
       if (session?.user.id) clearComposerDraftsForUser(session.user.id);
-      router.replace("/login");
-      router.refresh();
+      resetAuthState();
+      await navigate({ to: "/login", replace: true });
     } catch (err) {
       toast.error({
         title: "Failed to log out",
@@ -76,51 +88,50 @@ export function AccountMenu() {
 
   return (
     <Menu.Root onOpenChange={handleOpenChange}>
-      <Menu.Trigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-auto w-full justify-start gap-2 px-2 py-1.5 text-sidebar-foreground hover:bg-sidebar-accent"
-          />
-        }
-      >
-        {isPending || !session ? (
-          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-            <User className="size-3.5" />
-          </span>
-        ) : (
-          <ProfileAvatar
-            id={session.user.id}
-            name={session.user.name}
-            image={session.user.image ?? null}
-            size="sm"
-          />
-        )}
-        <span className="min-w-0 flex-1 text-left">
+      <div className="flex min-w-0 items-center">
+        <Menu.Trigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-auto min-w-0 flex-1 justify-start gap-2 px-2 py-1.5 text-sidebar-foreground hover:bg-sidebar-accent"
+            />
+          }
+        >
           {isPending || !session ? (
-            <span className="block truncate text-sm font-medium text-muted-foreground">
-              Loading…
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <User className="size-3.5" />
             </span>
           ) : (
-            <span className="block truncate text-sm font-medium">
-              {session.user.name}
-            </span>
+            <ProfileAvatar
+              id={session.user.id}
+              name={session.user.name}
+              image={session.user.image ?? null}
+              size="sm"
+            />
           )}
-        </span>
-        {updateAvailable && (
-          <span
-            className="shrink-0 text-ring"
-            title={`Update available v${availableVersion}`}
-          >
-            <CircleArrowUp className="size-4" aria-hidden="true" />
-            <span className="sr-only">
-              Update available v{availableVersion}
-            </span>
+          <span className="min-w-0 flex-1 text-left">
+            {isPending || !session ? (
+              <span className="block truncate text-sm font-medium text-muted-foreground">
+                Loading…
+              </span>
+            ) : (
+              <span className="block truncate text-sm font-medium">
+                {session.user.name}
+              </span>
+            )}
           </span>
+          <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
+        </Menu.Trigger>
+        {updateAvailable && (
+          <UpdateActionTooltip content="Server update available">
+            <Button variant="ghost" size="sm" aria-label="Server update available" onClick={() => setUpdateDialogOpen(true)} className="h-8 shrink-0 px-1.5 text-ring hover:bg-sidebar-accent">
+              <CloudDownload className="size-3.5" aria-hidden="true" />
+            </Button>
+          </UpdateActionTooltip>
         )}
-        <ChevronUp className="size-3.5 shrink-0 text-muted-foreground" />
-      </Menu.Trigger>
+        {isDesktop && <DesktopUpdateAction onServerUpdate={updateAvailable ? () => setUpdateDialogOpen(true) : undefined} />}
+      </div>
       <Menu.Portal container={drawerRef}>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
           <Menu.Popup
@@ -156,7 +167,7 @@ export function AccountMenu() {
             <Menu.Separator className="mx-1 my-1 h-px bg-border" />
             <Menu.Item
               render={
-                <Link href="/settings/profile" onClick={closeMobile} />
+                <Link to="/settings/profile" onClick={closeMobile} />
               }
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
@@ -165,17 +176,24 @@ export function AccountMenu() {
             </Menu.Item>
             <Menu.Item
               render={
-                <Link href="/settings/general" onClick={closeMobile} />
+                <Link to="/settings/general" onClick={closeMobile} />
               }
               className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
             >
               <Settings className="size-3.5 shrink-0 text-muted-foreground" />
               <span>Settings</span>
             </Menu.Item>
+            <Menu.Item
+              onClick={() => setMobileAppOrigin(getApiOrigin() || window.location.origin)}
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+            >
+              <Smartphone className="size-3.5 shrink-0 text-muted-foreground" />
+              <span>Get the mobile app</span>
+            </Menu.Item>
             {isAdmin && (
               <Menu.Item
                 render={
-                  <Link href="/settings/models" onClick={closeMobile} />
+                  <Link to="/settings/models" onClick={closeMobile} />
                 }
                 className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
               >
@@ -184,36 +202,21 @@ export function AccountMenu() {
               </Menu.Item>
             )}
             <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-            {updateAvailable ? (
-              <Menu.Item
-                onClick={() => {
-                  setUpdateDialogOpen(true);
-                }}
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-              >
-                <CircleArrowUp className="size-3.5 shrink-0 text-ring" />
-                <span className="flex-1 font-medium">Update available</span>
-                <span className="text-xs font-medium text-ring">
-                  v{availableVersion}
-                </span>
-              </Menu.Item>
-            ) : (
-              <Menu.Item
-                render={
-                  <a
-                    href="https://overtchat.com/releases/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={closeMobile}
-                  />
-                }
-                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
-              >
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="flex-1">Release notes</span>
-                <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
-              </Menu.Item>
-            )}
+            <Menu.Item
+              render={
+                <a
+                  href="https://overtchat.com/releases/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={closeMobile}
+                />
+              }
+              className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 outline-none motion-colors data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground"
+            >
+              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="flex-1">Release notes</span>
+              <ExternalLink className="size-3 shrink-0 text-muted-foreground" />
+            </Menu.Item>
             <Menu.Item
               render={
                 <a
@@ -238,11 +241,16 @@ export function AccountMenu() {
               <span>Log out</span>
             </Menu.Item>
             <div className="px-2 pt-1.5 pb-1 text-[11px] text-muted-foreground">
-              OvertChat v{APP_VERSION}
+              {isDesktop && desktopUpdate ? (
+                <UpdateActionTooltip content={`Desktop v${desktopUpdate.currentVersion}${serverVersion ? ` · Server v${serverVersion}` : ""}`}>
+                  <span tabIndex={0} className="cursor-help">OvertChat v{desktopUpdate.currentVersion}</span>
+                </UpdateActionTooltip>
+              ) : isDesktop ? "OvertChat" : <>OvertChat v{APP_VERSION}</>}
             </div>
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
+      {mobileAppOrigin && <MobileAppDialog origin={mobileAppOrigin} onClose={() => setMobileAppOrigin(null)} />}
       {availableVersion && (
         <AppUpdateDialog
           open={updateDialogOpen}
@@ -295,10 +303,10 @@ function AppUpdateDialog({
           )}
         >
           <Dialog.Title className="text-lg font-semibold tracking-tight">
-            Update available
+            Server update available
           </Dialog.Title>
           <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-            OvertChat v{version} is ready. Run this on the OvertChat host.
+            Server v{version} is available. Run this on the OvertChat host.
           </Dialog.Description>
 
           <div className="mt-4 flex items-center gap-2">

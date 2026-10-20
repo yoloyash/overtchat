@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 type Deferred = {
   promise: Promise<void>;
@@ -20,11 +20,13 @@ let modelServer: Server;
 let modelBaseUrl: string;
 let firstChunk = deferred();
 let continueStream = deferred();
+let streamingRequests = 0;
 
 test.beforeEach(() => {
   resetE2eDatabase();
   firstChunk = deferred();
   continueStream = deferred();
+  streamingRequests = 0;
 });
 
 test.beforeAll(async () => {
@@ -60,6 +62,8 @@ test.beforeAll(async () => {
       );
       return;
     }
+
+    streamingRequests += 1;
 
     response.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -136,10 +140,138 @@ function seedModel() {
   }
 }
 
+test("new chats submit without crypto.randomUUID on HTTP origins", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("HTTP Chat Tester");
+  await page.locator("#email").fill("http-chat@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedModel();
+  await page.reload();
+
+  // Localhost is a secure context even over HTTP. Remove the API to reproduce
+  // the browser capabilities of a plain HTTP LAN origin.
+  await page.evaluate(() => {
+    Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  continueStream.resolve();
+
+  const requestIds: string[] = [];
+  for (const text of ["First message over HTTP", "Second message over HTTP"]) {
+    const requestPromise = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/chat" && request.method() === "POST",
+    );
+    await page.getByPlaceholder("Message…").fill(text);
+    await page.getByLabel("Send message").click();
+    const body = (await requestPromise).postDataJSON();
+    expect(body.clientRequestId).toEqual(expect.any(String));
+    expect(body.clientRequestId.length).toBeGreaterThan(0);
+    requestIds.push(body.clientRequestId);
+    await expect(page.getByLabel("Send message")).toBeVisible();
+    await expect(page.getByText("Before reload. After reload.", { exact: true }))
+      .toHaveCount(requestIds.length);
+  }
+  expect(new Set(requestIds).size).toBe(2);
+  expect(streamingRequests).toBe(2);
+  expect(errors).toEqual([]);
+});
+
+test("a new chat keeps streaming when its URL moves to the saved chat", async ({
+  page,
+}) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Draft Handoff Tester");
+  await page.locator("#email").fill("draft-handoff@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedModel();
+  await page.reload();
+
+  const historyRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/^\/api\/chat\/[^/]+\/messages$/u.test(new URL(request.url()).pathname)) {
+      historyRequests.push(request.url());
+    }
+  });
+  // The composer moves out of the empty state on send; the header does not.
+  const header = await page.locator("header").elementHandle();
+  if (!header) throw new Error("Chat header did not render");
+
+  try {
+    await page.getByPlaceholder("Message…").fill("Stream across the URL change.");
+    await page.getByLabel("Send message").click();
+    await firstChunk.promise;
+    await expect(page).toHaveURL(/\/chat\/[^/]+$/u);
+    await expect(page.getByText("Before reload.", { exact: false })).toBeVisible();
+
+    continueStream.resolve();
+    await expect(
+      page.getByText("Before reload. After reload.", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    continueStream.resolve();
+  }
+
+  // The chat that was already on screen stays mounted and is not refetched.
+  expect(await header.evaluate((element) => element.isConnected)).toBe(true);
+  expect(historyRequests).toEqual([]);
+  expect(streamingRequests).toBe(1);
+});
+
+test("sidebar tracks generation after leaving the active chat", async ({
+  page,
+}) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Sidebar Generation Tester");
+  await page.locator("#email").fill("sidebar-generation@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+  seedModel();
+  await page.reload();
+
+  try {
+    await page
+      .getByPlaceholder("Message…")
+      .fill("Keep generating in the background.");
+    await page.getByLabel("Send message").click();
+    await firstChunk.promise;
+
+    const generating = page.getByRole("status", {
+      name: /Generating response for/u,
+    });
+    await expect(generating).toBeVisible();
+
+    const generatingRow = generating.locator("xpath=ancestor::li[1]");
+    const chatActions = generatingRow.getByRole("button", {
+      name: "Chat actions",
+    });
+    await expect(chatActions).toHaveCSS("opacity", "0");
+    await generatingRow.hover();
+    await expect(generating).toHaveCSS("opacity", "0");
+    await expect(chatActions).toHaveCSS("opacity", "1");
+    await page.getByRole("link", { name: /New chat/u }).hover();
+    await expect(generating).toHaveCSS("opacity", "1");
+
+    await page.getByRole("link", { name: /New chat/u }).click();
+    await expect(page).toHaveURL(/\/$/u);
+    await expect(generating).toBeVisible();
+
+    continueStream.resolve();
+    await expect(generating).toHaveCount(0, { timeout: 10_000 });
+  } finally {
+    continueStream.resolve();
+  }
+});
+
 test("reload resumes an active chat stream through Redis", async ({ page }) => {
   test.skip(!process.env.REDIS_URL, "REDIS_URL is required for resumption.");
 
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Resumption Tester");
   await page
     .locator("#email")
@@ -171,4 +303,51 @@ test("reload resumes an active chat stream through Redis", async ({ page }) => {
     page.getByText("Before reload. After reload.", { exact: false }),
   ).toBeVisible({ timeout: 15_000 });
   await page.getByLabel("Send message").waitFor({ state: "visible" });
+});
+
+test("network restoration reconciles the same generation without restarting it", async ({
+  page,
+  context,
+}) => {
+  test.skip(!process.env.REDIS_URL, "REDIS_URL is required for resumption.");
+
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Foreground Tester");
+  await page.locator("#email").fill("foreground@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/", { timeout: 15_000 });
+  seedModel();
+  await page.reload();
+
+  await page.getByPlaceholder("Message…").fill("Finish while I am offline.");
+  await page.getByLabel("Send message").click();
+  await firstChunk.promise;
+  await expect(page.getByText("Before reload.", { exact: false })).toBeVisible();
+
+  await context.setOffline(true);
+  continueStream.resolve();
+  await expect
+    .poll(() => {
+      const database = openE2eDatabase();
+      try {
+        return (
+          database
+            .prepare(
+              "SELECT status FROM chat_generations ORDER BY started_at DESC LIMIT 1",
+            )
+            .get() as { status?: string } | undefined
+        )?.status;
+      } finally {
+        database.close();
+      }
+    })
+    .toBe("complete");
+
+  await context.setOffline(false);
+  await expect(
+    page.getByText("Before reload. After reload.", { exact: false }),
+  ).toBeVisible({ timeout: 15_000 });
+  expect(streamingRequests).toBe(1);
+  await expect(page.getByRole("button", { name: "Reconnect" })).toHaveCount(0);
 });

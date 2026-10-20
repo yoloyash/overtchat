@@ -1,0 +1,36 @@
+{
+  "version": "1.6.23",
+  "secret": "upgrade-fixture-secret-not-for-production-12345",
+  "password": "upgrade-fixture-password-123",
+  "cookie": "better-auth.session_token=5Y1aHEpLAfszNk198LaLbUpNeFsNYOaN.TSN4EDKa1%2FQlgGxOtmH4CBN0RR8Z7NznYXz70E0ZQng%3D",
+  "bearer": "5Y1aHEpLAfszNk198LaLbUpNeFsNYOaN.TSN4EDKa1/QlgGxOtmH4CBN0RR8Z7NznYXz70E0ZQng=",
+  "user": {
+    "name": "Existing Owner",
+    "email": "upgrade@example.test",
+    "emailVerified": false,
+    "createdAt": "2026-10-16T11:52:27.235Z",
+    "updatedAt": "2026-10-16T11:52:27.235Z",
+    "role": "admin",
+    "banned": false,
+    "id": "qjRx45BwXf4ZGxPuaktoPtd6cD8W6uzd"
+  },
+  "account": {
+    "accountId": "qjRx45BwXf4ZGxPuaktoPtd6cD8W6uzd",
+    "providerId": "credential",
+    "userId": "qjRx45BwXf4ZGxPuaktoPtd6cD8W6uzd",
+    "password": "09d9d8dec89feb10c1a90005969d273d:b9d42111b40b6a6559730c237ca87ad0af10e481fc1c477b3d8500c189175a48151a75c379e6fb46a7a719d9bd0513265aa914c00c38c75bd11fd7cbff10165e",
+    "createdAt": "2026-10-16T11:52:27.236Z",
+    "updatedAt": "2026-10-16T11:52:27.236Z",
+    "id": "3H1lHSdx56yXMBP8IP2eAQrr9TqlWjFa"
+  },
+  "session": {
+    "expiresAt": "2027-10-16T11:52:27.237Z",
+    "token": "5Y1aHEpLAfszNk198LaLbUpNeFsNYOaN",
+    "createdAt": "2026-10-16T11:52:27.237Z",
+    "updatedAt": "2026-10-16T11:52:27.237Z",
+    "ipAddress": "",
+    "userAgent": "",
+    "userId": "qjRx45BwXf4ZGxPuaktoPtd6cD8W6uzd",
+    "id": "R4jY0FkSoxFYlq4quLLJNA2KLZNaqY37"
+  }
+}

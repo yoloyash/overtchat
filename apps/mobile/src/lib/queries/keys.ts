@@ -1,5 +1,18 @@
 export const queryKeys = {
+  authCookie: (server: string, sessionId?: string, updatedAt?: string) =>
+    ["authCookie", server, sessionId, updatedAt] as const,
+  capabilities: () => ["capabilities", "public"] as const,
+  twoFactor: () => ["two-factor"] as const,
+  agentConnections: (server: string) =>
+    ["agents", server, "connections"] as const,
+  agentSession: (server: string, id: string) =>
+    ["agents", server, "session", id] as const,
+  agentCatalog: (server: string, workspace: string, provider: string) =>
+    ["agents", server, "catalog", workspace, provider] as const,
+  agentGitStatus: (server: string, workspace: string) =>
+    ["agents", server, "git-status", workspace] as const,
   modelConfigs: () => ["modelConfigs"] as const,
+  modelPreferences: (server: string, userId: string) => ["modelPreferences", server, userId] as const,
   chats: () => ["chats"] as const,
   chatMessages: (id: string) => ["chat", id, "messages"] as const,
   search: (q: string) => ["search", q] as const,

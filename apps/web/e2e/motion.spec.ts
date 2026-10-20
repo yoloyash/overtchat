@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { openE2eDatabase, resetE2eDatabase } from "./helpers/database";
+import { openE2eDatabase, resetE2eDatabase, setupUrl } from "./helpers/database";
 
 function seedModelConfig() {
   const db = openE2eDatabase();
@@ -27,7 +27,7 @@ test.beforeEach(resetE2eDatabase);
 
 test("motion primitives respect the reduced-motion preference", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
 
   const submit = page.getByRole("button", { name: "Create account" });
   await expect(submit).toBeVisible();
@@ -47,7 +47,7 @@ test("interactive surfaces remain usable with reduced motion", async ({ page }) 
   await page.emulateMedia({ reducedMotion: "reduce" });
 
   await test.step("admin signup", async () => {
-    await page.goto("/signup");
+    await page.goto(await setupUrl());
     await page.locator("#name").fill("Motion Admin");
     await page.locator("#email").fill("motion-admin@overtchat-test.local");
     await page.locator("#password").fill("test-password-123");

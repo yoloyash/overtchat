@@ -1,3 +1,4 @@
+import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -16,7 +17,7 @@ const mocks = vi.hoisted(() => ({
   create: vi.fn(),
   getOrStart: vi.fn(),
   get: vi.fn(),
-  fork: vi.fn(),
+  changeSessionHistory: vi.fn(),
   stopAll: vi.fn(),
   stopSession: vi.fn(),
   stopWorkspace: vi.fn(),
@@ -55,7 +56,7 @@ vi.mock("@overtchat/agent-runtime", async (importOriginal) => {
       create = mocks.create;
       getOrStart = mocks.getOrStart;
       get = mocks.get;
-      fork = mocks.fork;
+      changeSessionHistory = mocks.changeSessionHistory;
       stopAll = mocks.stopAll;
       stopSession = mocks.stopSession;
       stopWorkspace = mocks.stopWorkspace;
@@ -201,7 +202,7 @@ beforeEach(() => {
   });
   mocks.getOrStart.mockResolvedValue(runtime());
   mocks.get.mockReturnValue(null);
-  mocks.fork.mockResolvedValue({
+  mocks.changeSessionHistory.mockResolvedValue({
     session: {
       providerSessionId: "forked-provider-session",
       providerSessionPath: "/sessions/forked-provider-session.jsonl",
@@ -241,69 +242,91 @@ afterEach(async () => {
 });
 
 describe("connector daemon command identity", () => {
-  it("routes terminal subscriptions, input, and output through the daemon", async () => {
+  it.each(["running", "compacting", "queued", "interaction"])(
+    "rejects a history reload while %s before stopping the provider",
+    async (busy) => {
+      const { journal, timelines } = await openJournal();
+      const events: HostConnectorEventPayload[] = [];
+      mocks.snapshot.mockReturnValue({
+        ...mocks.snapshot(),
+        status: busy === "running" ? "running" : "idle",
+        state: { isCompacting: busy === "compacting" },
+        queuedMessages: busy === "queued" ? [{ id: "queued", message: "Wait", status: "pending" }] : [],
+        pendingInteraction: busy === "interaction" ? { id: "approval" } : undefined,
+      });
+      const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
+      await daemon.handle({
+        type: "request", requestId: "reload", request: {
+          type: "session_command", commandId: "reload-command", session,
+          command: { type: "reload_history" },
+        },
+      });
+      expect(events).toContainEqual(expect.objectContaining({
+        type: "response", success: false,
+        error: "Finish or stop the current turn and clear queued messages before reloading history.",
+      }));
+      expect(mocks.stopSession).not.toHaveBeenCalled();
+      expect(mocks.command).not.toHaveBeenCalled();
+      await daemon.stop();
+      await timelines.close();
+      await journal.close();
+    },
+  );
+
+  it("restarts the provider when it cannot abort a running turn", async () => {
     const { journal, timelines } = await openJournal();
     const events: HostConnectorEventPayload[] = [];
-    const daemon = new ConnectorDaemon(
-      (event) => events.push(event),
-      async () => [],
-      journal,
-      timelines,
-    );
-    const terminalSession = {
-      ...session,
-      cwd: process.cwd(),
-      sessionId: "terminal-daemon",
-    };
-    const marker = `terminal-daemon-${process.pid}`;
-
+    const busy = { ...mocks.snapshot(), status: "running", activeTurn: { startedAt: 42, phase: "responding" } };
+    mocks.snapshot.mockReturnValue(busy);
+    mocks.command.mockRejectedValue(new Error("Timed out waiting for Oh My Pi abort."));
+    const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
     await daemon.handle({
-      type: "request",
-      requestId: "subscribe-terminal",
-      request: {
-        type: "subscribe_terminal",
-        subscriptionId: "terminal-subscription",
-        session: terminalSession,
-        size: { cols: 80, rows: 24 },
+      type: "request", requestId: "stop", request: {
+        type: "session_command", commandId: "stop-command", session,
+        command: { type: "abort" },
       },
     });
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "response",
-        requestId: "subscribe-terminal",
-        success: true,
-        data: expect.objectContaining({
-          subscribed: true,
-          snapshot: expect.objectContaining({
-            sessionId: "terminal-daemon",
-            cols: 80,
-            rows: 24,
-          }),
-        }),
-      }),
+    expect(events).toContainEqual(expect.objectContaining({ type: "response", success: true }));
+    expect(mocks.command).toHaveBeenCalledOnce();
+    expect(mocks.stopSession).toHaveBeenCalledWith("session");
+    expect(mocks.getOrStart).toHaveBeenCalledTimes(2);
+    expect(mocks.getOrStart).toHaveBeenLastCalledWith(
+      expect.objectContaining({ sessionId: "session" }),
+      { hydrateHistory: false },
     );
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
+  });
 
-    await daemon.handle({
-      type: "terminal_input",
-      sessionId: "terminal-daemon",
-      data: `printf '${marker}\\n'; exit\r`,
+  it.each([
+    ["aborts the foreground turn without restarting", "responding", undefined],
+    ["aborts without restarting while background work remains", "waiting", undefined],
+    ["reports a failed abort once the turn already ended", "responding", new Error("Abort failed.")],
+  ] as const)("%s", async (_case, phase, failure) => {
+    const { journal, timelines } = await openJournal();
+    const events: HostConnectorEventPayload[] = [];
+    const busy = { ...mocks.snapshot(), status: "running", activeTurn: { startedAt: 42, phase } };
+    mocks.snapshot.mockReturnValue(busy);
+    mocks.command.mockImplementation(async () => {
+      mocks.snapshot.mockReturnValue({ ...busy, status: "idle", activeTurn: null });
+      if (failure) throw failure;
+      return {};
     });
-    await vi.waitFor(
-      () => {
-        expect(events).toContainEqual(
-          expect.objectContaining({
-            type: "terminal_event",
-            subscriptionId: "terminal-subscription",
-            sessionId: "terminal-daemon",
-            event: expect.objectContaining({
-              type: "output",
-              data: expect.stringContaining(marker),
-            }),
-          }),
-        );
+    const daemon = new ConnectorDaemon((event) => events.push(event), async () => [], journal, timelines);
+    await daemon.handle({
+      type: "request", requestId: "stop", request: {
+        type: "session_command", commandId: "stop-command", session,
+        command: { type: "abort" },
       },
-      { timeout: 5_000 },
-    );
+    });
+    expect(events).toContainEqual(expect.objectContaining(
+      failure
+        ? { type: "response", success: false, error: expect.stringContaining(failure.message) }
+        : { type: "response", success: true },
+    ));
+    expect(mocks.command).toHaveBeenCalledOnce();
+    expect(mocks.stopSession).not.toHaveBeenCalled();
     await daemon.stop();
     await timelines.close();
     await journal.close();
@@ -491,7 +514,7 @@ describe("connector daemon command identity", () => {
     const openTimeline = vi.spyOn(timelines, "openSession");
     const activeRuntime = runtime();
     mocks.getOrStart.mockResolvedValue(activeRuntime);
-    mocks.fork.mockResolvedValueOnce({
+    mocks.changeSessionHistory.mockResolvedValueOnce({
       session: {
         providerSessionId: "edited-provider-session",
         providerSessionPath: "/sessions/edited-provider-session.jsonl",
@@ -525,7 +548,7 @@ describe("connector daemon command identity", () => {
       },
     });
 
-    expect(mocks.fork).toHaveBeenCalledWith(activeRuntime, {
+    expect(mocks.changeSessionHistory).toHaveBeenCalledWith(activeRuntime, {
       type: "edit_message",
       messageId: "turn-1:user:0",
     });
@@ -533,6 +556,7 @@ describe("connector daemon command identity", () => {
       "session",
       "edited-provider-session",
       mocks.snapshot(),
+      false,
     );
     await daemon.handle({
       type: "request",
@@ -540,23 +564,21 @@ describe("connector daemon command identity", () => {
       request: { type: "open_session", session },
     });
     expect(openTimeline).toHaveBeenCalledTimes(2);
-    const persisted = JSON.parse(await readFile(file, "utf8")) as {
-      sessions: Record<
-        string,
-        { descriptor: AgentDaemonSessionDescriptor }
-      >;
-    };
-    expect(persisted.sessions.session?.descriptor).toMatchObject({
-      sessionId: "session",
-      providerSessionId: "edited-provider-session",
-      providerSessionPath: "/sessions/edited-provider-session.jsonl",
-    });
+    const db = new DatabaseSync(file, { readOnly: true });
+    try {
+      const row = db.prepare("SELECT state_json FROM sessions WHERE session_id = ?").get("session")!;
+      expect(JSON.parse(String(row.state_json)).descriptor).toMatchObject({
+        sessionId: "session",
+        providerSessionId: "edited-provider-session",
+        providerSessionPath: "/sessions/edited-provider-session.jsonl",
+      });
+    } finally { db.close(); }
     expect(events).toContainEqual({
       type: "response",
       requestId: "edit-request",
       success: true,
       data: {
-        fork: expect.objectContaining({
+        sessionChange: expect.objectContaining({
           replacesCurrentSession: true,
           draft: "Rewrite this prompt",
         }),
@@ -565,6 +587,85 @@ describe("connector daemon command identity", () => {
     await daemon.stop();
     await timelines.close();
     await journal.close();
+  });
+
+  it("resets unchanged native identity on rewind and reuses the durable result after restart", async () => {
+    const { file, journal, timelineDirectory, timelines } = await openJournal();
+    const activeRuntime = runtime();
+    mocks.getOrStart.mockResolvedValue(activeRuntime);
+    const openTimeline = vi.spyOn(timelines, "openSession");
+    mocks.changeSessionHistory.mockResolvedValueOnce({
+      session: {
+        providerSessionId: session.providerSessionId,
+        providerSessionPath: session.providerSessionPath,
+      },
+      draft: "Restore this prompt",
+      replacesCurrentSession: true,
+    });
+    const request: HostConnectorCommand = {
+      type: "request",
+      requestId: "rewind-first",
+      request: {
+        type: "session_command",
+        commandId: "rewind-command",
+        session,
+        command: {
+          type: "rewind",
+          messageId: "native-user",
+          mode: "conversation",
+        },
+      },
+    };
+    const firstEvents: HostConnectorEventPayload[] = [];
+    const first = new ConnectorDaemon(
+      (event) => firstEvents.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    await first.handle(request);
+    expect(openTimeline).toHaveBeenLastCalledWith(
+      "session",
+      session.providerSessionId,
+      mocks.snapshot(),
+      true,
+    );
+    expect(mocks.changeSessionHistory).toHaveBeenCalledTimes(1);
+    expect(firstEvents).toContainEqual(
+      expect.objectContaining({ type: "response", success: true }),
+    );
+    await first.stop();
+    await timelines.close();
+    await journal.close();
+
+    const restored = await ConnectorStateJournal.open(file);
+    const restoredTimelines = await ConnectorTimelineStore.open(
+      timelineDirectory,
+    );
+    const replay: HostConnectorEventPayload[] = [];
+    const second = new ConnectorDaemon(
+      (event) => replay.push(event),
+      async () => [],
+      restored,
+      restoredTimelines,
+    );
+    await second.handle({ ...request, requestId: "rewind-retry" });
+    expect(mocks.changeSessionHistory).toHaveBeenCalledTimes(1);
+    expect(replay).toContainEqual(
+      expect.objectContaining({
+        type: "response",
+        success: true,
+        data: {
+          sessionChange: expect.objectContaining({
+            draft: "Restore this prompt",
+            replacesCurrentSession: true,
+          }),
+        },
+      }),
+    );
+    await second.stop();
+    await restoredTimelines.close();
+    await restored.close();
   });
 
   it("reuses an accepted result after a daemon restart", async () => {
@@ -738,13 +839,29 @@ describe("connector daemon command identity", () => {
       data: { type: "overtchat_status", status: "idle" },
     });
     await timelines.flush("session");
-
-    await vi.waitFor(() => {
-      expect(emitted).toContainEqual({
-        type: "session_update",
-        session: { sessionId: "session", runtimeStatus: "idle" },
-      });
+    await vi.waitFor(() => expect(emitted).toContainEqual({
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "idle" },
+    }));
+    observer?.({
+      epoch: "runtime-ephemeral",
+      sequence: 2,
+      type: "runtime_event",
+      data: { type: "agent_start" },
     });
+    // A repeated status does not republish the directory entry.
+    observer?.({
+      epoch: "runtime-ephemeral",
+      sequence: 3,
+      type: "runtime_event",
+      data: { type: "overtchat_status", status: "running" },
+    });
+    await timelines.flush("session");
+    await vi.waitFor(() => expect(emitted).toContainEqual({
+      type: "session_update",
+      session: { sessionId: "session", runtimeStatus: "running" },
+    }));
+    expect(emitted.filter((event) => event.type === "session_update")).toHaveLength(2);
     expect(emitted).not.toContainEqual(
       expect.objectContaining({ type: "session_event" }),
     );
@@ -905,9 +1022,11 @@ describe("connector daemon command identity", () => {
     await journal.close();
   });
 
-  it("bounds shutdown when an accepted provider command never settles", async () => {
+  it.each(["queue", "reload_history"] as const)("bounds shutdown when an accepted %s never settles", async (type) => {
     const { journal, timelines } = await openJournal();
-    mocks.command.mockReturnValueOnce(new Promise(() => {}));
+    const action = type === "reload_history" ? mocks.stopSession : mocks.command;
+    const pending = deferred<void>();
+    action.mockReturnValueOnce(pending.promise);
     const emitted: HostConnectorEventPayload[] = [];
     const daemon = new ConnectorDaemon(
       (event) => emitted.push(event),
@@ -917,8 +1036,16 @@ describe("connector daemon command identity", () => {
       undefined,
       5,
     );
-    const handling = daemon.handle(command("request-1"));
-    await vi.waitFor(() => expect(mocks.command).toHaveBeenCalledOnce());
+    const request = command("request-1");
+    if (type === "reload_history" && request.type === "request" &&
+      request.request.type === "session_command") {
+      mocks.snapshot.mockReturnValue({
+        ...mocks.snapshot(), status: "idle", state: { isStreaming: false }, queuedMessages: [],
+      });
+      request.request.command = { type };
+    }
+    const handling = daemon.handle(request);
+    await vi.waitFor(() => expect(action).toHaveBeenCalledOnce());
 
     const stopped = daemon.stop().then(() => true);
     await expect(
@@ -942,6 +1069,10 @@ describe("connector daemon command identity", () => {
     );
     await timelines.close();
     await journal.close();
+    pending.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Late settlement cannot restart the agent or touch the closed stores.
+    expect(mocks.getOrStart).toHaveBeenCalledOnce();
   });
 
   it("rejects a late runtime queue write after journal shutdown", async () => {
@@ -962,14 +1093,17 @@ describe("connector daemon command identity", () => {
       ]),
     ).rejects.toThrow();
 
-    expect(journal.sessionQueue("session")).toEqual([]);
+    expect(() => journal.sessionQueue("session")).toThrow("state journal is closed");
+    const restored = await ConnectorStateJournal.open(file);
+    expect(restored.sessionQueue("session")).toEqual([]);
+    await restored.close();
     await expect(readFile(file, "utf8")).resolves.toBe(
       persistedBeforeLateWrite,
     );
   });
 
   it("does not let a late open continuation write after shutdown", async () => {
-    const { journal, timelines } = await openJournal();
+    const { file, journal, timelines } = await openJournal();
     const started = deferred<ReturnType<typeof runtime>>();
     mocks.getOrStart.mockReturnValueOnce(started.promise);
     mocks.stopAll.mockReturnValueOnce(new Promise(() => {}));
@@ -995,7 +1129,9 @@ describe("connector daemon command identity", () => {
     started.resolve(runtime());
     await handling;
 
-    expect(journal.sessionIds()).toEqual([]);
+    const persisted = new DatabaseSync(file, { readOnly: true });
+    try { expect(persisted.prepare("SELECT session_id FROM sessions").all()).toEqual([]); }
+    finally { persisted.close(); }
     expect(mocks.stopSession).toHaveBeenCalledWith("session");
     expect(emitted).toContainEqual(
       expect.objectContaining({
@@ -1008,7 +1144,7 @@ describe("connector daemon command identity", () => {
   });
 
   it("does not let a late create continuation write after shutdown", async () => {
-    const { journal, timelines } = await openJournal();
+    const { file, journal, timelines } = await openJournal();
     const created = deferred<Awaited<ReturnType<typeof mocks.create>>>();
     mocks.create.mockReturnValueOnce(created.promise);
     const emitted: HostConnectorEventPayload[] = [];
@@ -1049,7 +1185,9 @@ describe("connector daemon command identity", () => {
     });
     await handling;
 
-    expect(journal.sessionIds()).toEqual([]);
+    const persisted = new DatabaseSync(file, { readOnly: true });
+    try { expect(persisted.prepare("SELECT session_id FROM sessions").all()).toEqual([]); }
+    finally { persisted.close(); }
     expect(mocks.stopSession).toHaveBeenCalledWith("session");
     expect(emitted).toContainEqual(
       expect.objectContaining({
@@ -1059,6 +1197,48 @@ describe("connector daemon command identity", () => {
         error: "The Host Connector is shutting down.",
       }),
     );
+  });
+
+  it("invalidates the shared provider catalog after a failed launch", async () => {
+    const { journal, timelines } = await openJournal();
+    mocks.create.mockRejectedValueOnce(new Error("launch failed"));
+    const emitted: HostConnectorEventPayload[] = [];
+    const daemon = new ConnectorDaemon(
+      (event) => emitted.push(event),
+      async () => [],
+      journal,
+      timelines,
+    );
+    const catalogs = Reflect.get(daemon, "providerCatalogs") as {
+      invalidate: (descriptor: unknown) => void;
+    };
+    const invalidate = vi.spyOn(catalogs, "invalidate");
+
+    await daemon.handle({
+      type: "request",
+      requestId: "create",
+      request: {
+        type: "create_session",
+        sessionId: "session",
+        workspace,
+        launchConfig: {},
+      },
+    });
+
+    expect(invalidate).toHaveBeenCalledWith(
+      expect.objectContaining({ workspaceId: "workspace" }),
+    );
+    expect(emitted).toContainEqual(
+      expect.objectContaining({
+        type: "response",
+        requestId: "create",
+        success: false,
+        error: "launch failed",
+      }),
+    );
+    await daemon.stop();
+    await timelines.close();
+    await journal.close();
   });
 
   it("discards a subscription that resolves after bounded shutdown", async () => {

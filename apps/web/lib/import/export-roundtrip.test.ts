@@ -15,10 +15,12 @@ process.env.DATABASE_URL = databasePath;
 const raw = new Database(databasePath);
 raw.exec(`
   CREATE TABLE chats (
+    model_config_id TEXT,
     id TEXT PRIMARY KEY NOT NULL,
     user_id TEXT NOT NULL,
     project_id TEXT,
     title TEXT,
+    pinned INTEGER NOT NULL DEFAULT 0,
     kind TEXT DEFAULT 'text' NOT NULL,
     active_stream_id TEXT,
     created_at INTEGER NOT NULL DEFAULT (cast(unixepoch('subsecond') * 1000 as integer)),

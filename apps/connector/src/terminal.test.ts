@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import type { AgentDaemonSessionDescriptor } from "@overtchat/agent-bridge";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { AgentDaemonWorkspaceDescriptor } from "@overtchat/agent-bridge";
 import { AGENT_TERMINAL_MAX_OUTPUT_CHARS } from "@overtchat/agent-bridge";
 import {
   connectorTerminalSupport,
@@ -7,18 +7,16 @@ import {
   runConnectorTerminalSmoke,
 } from "./terminal.js";
 
-const descriptor: AgentDaemonSessionDescriptor = {
+const descriptor: AgentDaemonWorkspaceDescriptor = {
   connectionId: "connection",
   workspaceId: "workspace",
   provider: "codex",
   target: { transport: "local", shellMode: "login" },
   executable: "codex",
   cwd: process.cwd(),
-  sessionId: "terminal-test",
-  providerSessionId: "provider-session",
-  providerSessionPath: "/provider-session",
-  launchConfig: {},
 };
+beforeEach(() => { vi.stubEnv("SHELL", "/bin/sh"); });
+afterEach(() => { vi.unstubAllEnvs(); });
 
 describe("connector terminal manager", () => {
   it("runs a real local PTY in the connector workspace", async () => {
@@ -37,7 +35,7 @@ describe("connector terminal manager", () => {
       );
       manager.unsubscribe("first");
       expect(
-        manager.write(descriptor.sessionId, `printf '${marker}\\n'\r`),
+        manager.write(descriptor.workspaceId, `printf '${marker}\\n'\r`),
       ).toBe(true);
       await expect
         .poll(
@@ -62,14 +60,14 @@ describe("connector terminal manager", () => {
       );
       expect(snapshot.data).toContain(marker);
       expect(snapshot).toMatchObject({ cols: 100, rows: 30, exited: false });
-      manager.stopSession(descriptor.sessionId);
-      expect(manager.write(descriptor.sessionId, "pwd\r")).toBe(false);
+      manager.stopWorkspace(descriptor.workspaceId);
+      expect(manager.write(descriptor.workspaceId, "pwd\r")).toBe(false);
     } finally {
       manager.stopAll();
     }
   });
 
-  it("cleans up a terminal after its final subscriber remains idle", async () => {
+  it("cleans up an exited terminal after its final subscriber detaches", async () => {
     const manager = new ConnectorTerminalManager(10);
     try {
       await manager.subscribe(
@@ -78,13 +76,14 @@ describe("connector terminal manager", () => {
         { cols: 80, rows: 24 },
         () => {},
       );
+      manager.write(descriptor.workspaceId, "exit\r");
       manager.unsubscribe("idle");
 
       await expect
         .poll(
           () =>
             (Reflect.get(manager, "terminals") as Map<string, unknown>).has(
-              descriptor.sessionId,
+              descriptor.workspaceId,
             ),
           { timeout: 1_000 },
         )
@@ -94,7 +93,7 @@ describe("connector terminal manager", () => {
     }
   });
 
-  it("bounds coalesced output and forces snapshot recovery after truncation", async () => {
+  it("flushes large output bursts without dropping bytes or creating revision gaps", async () => {
     const manager = new ConnectorTerminalManager();
     const events: Array<{ revision: number }> = [];
     try {
@@ -113,7 +112,7 @@ describe("connector terminal manager", () => {
           parseTail: Promise<void>;
         }
       >;
-      const terminal = terminals.get(descriptor.sessionId)!;
+      const terminal = terminals.get(descriptor.workspaceId)!;
       const queueOutput = Reflect.get(manager, "queueOutput") as (
         terminal: unknown,
         data: string,
@@ -139,9 +138,7 @@ describe("connector terminal manager", () => {
       terminal.outputTimer = null;
       flushOutputWindow.call(manager, terminal);
       await terminal.parseTail;
-      expect(events[0]!.revision).toBeGreaterThan(
-        revisionBeforeOverflow + 1,
-      );
+      expect(events[0]!.revision).toBe(revisionBeforeOverflow + 1);
     } finally {
       manager.stopAll();
     }

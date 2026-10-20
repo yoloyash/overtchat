@@ -1,7 +1,13 @@
 "use client";
 
+import { apiError } from "@overtchat/shared";
 import { useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type {
   AgentConnectionListItem,
   AgentDiscoveryTarget,
@@ -23,16 +29,18 @@ import {
   agentConnectionHasRunningSession,
   withAgentSessionDirectory,
 } from "@/lib/agents/sidebar";
+import { apiUrl } from "@/lib/api-url";
+import type { AgentWorkspaceGroup } from "@/lib/agents/workspaces";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
     error?: string;
   } | null;
-  return new Error(data?.error ?? `HTTP ${response.status}`);
+  return apiError(response.status, data, "Could not complete the request. Please try again.");
 }
 
 async function fetchAgentConnections(): Promise<AgentConnectionListItem[]> {
-  const response = await fetch("/api/agent-connections");
+  const response = await fetch(apiUrl("/api/agent-connections"));
   if (!response.ok) throw await responseError(response);
   const data = (await response.json()) as {
     connections: AgentConnectionListItem[];
@@ -40,10 +48,14 @@ async function fetchAgentConnections(): Promise<AgentConnectionListItem[]> {
   return data.connections;
 }
 
+export const agentConnectionListQuery = queryOptions({
+  queryKey: agentConnectionKeys.list(),
+  queryFn: fetchAgentConnections,
+});
+
 export function useAgentConnections() {
   return useQuery({
-    queryKey: agentConnectionKeys.list(),
-    queryFn: fetchAgentConnections,
+    ...agentConnectionListQuery,
     refetchInterval: (query) =>
       query.state.data?.some(agentConnectionHasRunningSession)
         ? 2_000
@@ -65,7 +77,7 @@ export function useAgentConnectionSessionDirectory(
     .join("\n");
   useEffect(() => {
     if (!sessionFingerprint) return;
-    const source = new EventSource("/api/agent-connections/events");
+    const source = new EventSource(apiUrl("/api/agent-connections/events"));
     const parseEvent = (event: Event): unknown => {
       try {
         return JSON.parse((event as MessageEvent<string>).data);
@@ -111,7 +123,7 @@ export function useHostConnectors() {
   return useQuery({
     queryKey: agentConnectionKeys.connectors(),
     queryFn: async (): Promise<HostConnectorListItem[]> => {
-      const response = await fetch("/api/host-connectors");
+      const response = await fetch(apiUrl("/api/host-connectors"));
       if (!response.ok) throw await responseError(response);
       return ((await response.json()) as {
         connectors: HostConnectorListItem[];
@@ -124,7 +136,7 @@ export function useHostConnectors() {
 export function useCreateHostConnectorPairing() {
   return useMutation({
     mutationFn: async (): Promise<HostConnectorPairing> => {
-      const response = await fetch("/api/host-connectors", { method: "POST" });
+      const response = await fetch(apiUrl("/api/host-connectors"), { method: "POST" });
       if (!response.ok) throw await responseError(response);
       return (await response.json()) as HostConnectorPairing;
     },
@@ -136,7 +148,7 @@ export function useDeleteHostConnector() {
   return useMutation({
     mutationFn: async (id: string) => {
       const response = await fetch(
-        `/api/host-connectors?id=${encodeURIComponent(id)}`,
+        apiUrl(`/api/host-connectors?id=${encodeURIComponent(id)}`),
         { method: "DELETE" },
       );
       if (!response.ok) throw await responseError(response);
@@ -156,9 +168,9 @@ export function useAgentSshHosts(
     queryKey: agentConnectionKeys.sshHosts(connectorId ?? ""),
     queryFn: async (): Promise<AgentSshHostCandidate[]> => {
       const response = await fetch(
-        `/api/agent-connections/ssh-hosts?connectorId=${encodeURIComponent(
+        apiUrl(`/api/agent-connections/ssh-hosts?connectorId=${encodeURIComponent(
           connectorId ?? "",
-        )}`,
+        )}`),
       );
       if (!response.ok) throw await responseError(response);
       return ((await response.json()) as {
@@ -182,7 +194,7 @@ export function useDetectedAgentInstallations(
     ),
     queryFn: async (): Promise<DetectedAgentInstallation[]> => {
       if (!target) return [];
-      const response = await fetch("/api/agent-connections/discover", {
+      const response = await fetch(apiUrl("/api/agent-connections/discover"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(target),
@@ -210,7 +222,7 @@ export function useAgentProviderSnapshot(
     ),
     queryFn: async (): Promise<AgentProviderSnapshot> => {
       if (!target) throw new Error("Choose a machine first.");
-      const response = await fetch("/api/agent-connections/discover?refresh=0", {
+      const response = await fetch(apiUrl("/api/agent-connections/discover?refresh=0"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(target),
@@ -239,7 +251,7 @@ export function useAgentTargetDirectories(
     ),
     queryFn: async (): Promise<AgentDirectoryListing> => {
       if (!target) throw new Error("Choose a machine first.");
-      const response = await fetch("/api/agent-connections/directories", {
+      const response = await fetch(apiUrl("/api/agent-connections/directories"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target, ...(path ? { path } : {}) }),
@@ -272,7 +284,7 @@ export async function reconcileAgentWorkspace({
   path,
   installations,
 }: ReconcileAgentWorkspaceInput): Promise<AgentWorkspaceReconcileResult> {
-  const response = await fetch("/api/agent-workspaces", {
+  const response = await fetch(apiUrl("/api/agent-workspaces"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -299,7 +311,7 @@ export function useRefreshAllAgentWorkspaces() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (): Promise<AgentWorkspaceReconcileResult> => {
-      const response = await fetch("/api/agent-workspaces/sync", {
+      const response = await fetch(apiUrl("/api/agent-workspaces/sync"), {
         method: "POST",
       });
       if (!response.ok) throw await responseError(response);
@@ -316,7 +328,7 @@ export function useTestAgentConnection() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string): Promise<AgentReadyConnectionProbe> => {
-      const response = await fetch(`/api/agent-connections/${id}`, {
+      const response = await fetch(apiUrl(`/api/agent-connections/${id}`), {
         method: "POST",
       });
       if (!response.ok) throw await responseError(response);
@@ -333,7 +345,7 @@ export function useDeleteAgentConnection() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/agent-connections/${id}`, {
+      const response = await fetch(apiUrl(`/api/agent-connections/${id}`), {
         method: "DELETE",
       });
       if (!response.ok) throw await responseError(response);
@@ -347,12 +359,36 @@ export function useDeleteAgentWorkspace() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const response = await fetch(`/api/agent-workspaces/${id}`, {
+      const response = await fetch(apiUrl(`/api/agent-workspaces/${id}`), {
         method: "DELETE",
       });
       if (!response.ok) throw await responseError(response);
     },
     onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
+  });
+}
+
+// A sidebar row can represent the same workspace attached to several providers.
+export function useDeleteAgentWorkspaceGroup() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (group: AgentWorkspaceGroup) => {
+      for (const { workspace } of group.targets) {
+        const response = await fetch(
+          apiUrl(`/api/agent-workspaces/${workspace.id}`),
+          {
+            method: "DELETE",
+          },
+        );
+        // A retry after a partial removal may encounter an already removed target.
+        if (!response.ok && response.status !== 404) {
+          throw await responseError(response);
+        }
+      }
+    },
+    // Refresh even when only some provider records were removed.
+    onSettled: () =>
       queryClient.invalidateQueries({ queryKey: agentConnectionKeys.list() }),
   });
 }
@@ -370,7 +406,7 @@ export function useCreateAgentSession() {
       launchConfig: AgentSessionLaunchConfig;
     }): Promise<string> => {
       const response = await fetch(
-        `/api/agent-workspaces/${workspaceId}/sessions`,
+        apiUrl(`/api/agent-workspaces/${workspaceId}/sessions`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -398,7 +434,7 @@ export function useAgentWorkspaceCatalog(
     ),
     queryFn: async (): Promise<AgentProviderCatalog> => {
       const response = await fetch(
-        `/api/agent-workspaces/${workspaceId}/catalog?provider=${encodeURIComponent(provider ?? "")}`,
+        apiUrl(`/api/agent-workspaces/${workspaceId}/catalog?provider=${encodeURIComponent(provider ?? "")}`),
       );
       if (!response.ok) throw await responseError(response);
       return (await response.json()) as AgentProviderCatalog;

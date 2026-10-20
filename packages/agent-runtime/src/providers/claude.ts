@@ -42,7 +42,8 @@ class ClaudeEventClassifier implements AgentRuntimeEventClassifier {
   classify(event: AgentRuntimeEvent) {
     return {
       started: event.type === "turn_start" || event.type === "compaction_start",
-      terminal: event.type === "turn_end" || event.type === "compaction_end",
+      // Automatic compaction can finish while the same turn keeps working.
+      terminal: event.type === "turn_end",
     };
   }
 }
@@ -102,6 +103,7 @@ export const claudeProviderAdapter: AgentProviderAdapter = {
   fetchCatalog,
   sessionIdentity,
   createEventClassifier: () => new ClaudeEventClassifier(),
+  busyFromState: (state) => state.isStreaming === true,
   commandsFromEvent: (event) =>
     event.type === "available_commands_update" && Array.isArray(event.commands)
       ? (event.commands as AgentSlashCommand[])

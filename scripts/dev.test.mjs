@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import net from "node:net";
 import path from "node:path";
+import process from "node:process";
 import test from "node:test";
 import {
   connectorIdentityChanged,
@@ -8,7 +10,46 @@ import {
   devRuntimePaths,
   installedCapabilities,
   parseDevOptions,
+  runDevelopment,
 } from "./dev.mjs";
+
+for (const platform of ["linux", "darwin", "win32", "freebsd"]) {
+  test(`full development platform check on ${platform}`, async (t) => {
+    const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+    const startupReached = new Error("Reached development startup");
+    t.mock.method(net, "createServer", () => {
+      throw startupReached;
+    });
+    Object.defineProperty(process, "platform", { value: platform });
+    try {
+      await assert.rejects(
+        runDevelopment([]),
+        platform === "linux" || platform === "darwin"
+          ? (error) => error === startupReached
+          : /The Host Connector supports Linux and macOS\. Use npm run dev:web/u,
+      );
+    } finally {
+      Object.defineProperty(process, "platform", descriptor);
+    }
+  });
+}
+
+test("web-only development bypasses the connector platform check", async (t) => {
+  const descriptor = Object.getOwnPropertyDescriptor(process, "platform");
+  const startupReached = new Error("Reached development startup");
+  t.mock.method(net, "createServer", () => {
+    throw startupReached;
+  });
+  Object.defineProperty(process, "platform", { value: "win32" });
+  try {
+    await assert.rejects(
+      runDevelopment(["--web-only"]),
+      (error) => error === startupReached,
+    );
+  } finally {
+    Object.defineProperty(process, "platform", descriptor);
+  }
+});
 
 test("development ports use explicit validated overrides", () => {
   assert.equal(developmentPort(undefined, 4717), 4717);

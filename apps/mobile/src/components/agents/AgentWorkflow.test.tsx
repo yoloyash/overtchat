@@ -1,0 +1,2213 @@
+import React, { act, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { parseHTML } from "linkedom";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { toastError } from "@/lib/toast";
+import type { AgentConnectionListItem } from "@overtchat/agent-bridge";
+import type { AgentDraft } from "@/lib/agents/drafts";
+import { snapshot } from "@/lib/agents/test-fixtures";
+
+const mocks = vi.hoisted(() => ({
+  snapshot: undefined as ReturnType<typeof snapshot> | undefined,
+  status: "connected",
+  sessionError: undefined as string | undefined,
+  send: vi.fn(),
+  reconnect: vi.fn(),
+  history: { mutate: vi.fn(), isPending: false, error: null as Error | null },
+  replace: vi.fn(),
+  push: vi.fn(),
+  navigate: vi.fn(),
+  pathname: "/chat",
+  canGoBack: false,
+  toggleDrawer: vi.fn(),
+  storage: new Map<string, string>(),
+  alert: vi.fn(),
+  copy: vi.fn(),
+  stopSpeech: vi.fn(),
+  playSpeech: vi.fn(),
+  dictation: {
+    status: "idle" as "idle" | "recording" | "transcribing",
+    error: null as { kind: string; role?: string } | null,
+    onResult: (_text: string) => {},
+    start: vi.fn(async () => {}),
+    stop: vi.fn(async () => {}),
+    clearError: vi.fn(),
+  },
+  uuid: vi.fn(),
+  invalidDismiss: vi.fn(),
+  backHandlers: new Set<() => boolean>(),
+  scrollToEnd: vi.fn(),
+  scrollToOffset: vi.fn(),
+  listHandlers: {} as {
+    onLoad?: () => void;
+    onScrollBeginDrag?: () => void;
+    onEndReached?: () => void;
+    onContentSizeChange?: () => void;
+    onScroll?: (event: {
+      nativeEvent: {
+        contentSize: { height: number };
+        contentOffset: { y: number };
+        layoutMeasurement: { height: number };
+      };
+    }) => void;
+  },
+  measurements: { height: 2000, viewport: 500, offset: 1500 },
+  draft: { message: "", images: [] } as AgentDraft,
+  params: {
+    id: "session",
+    workspace: "workspace",
+    name: "Project",
+    provider: "codex",
+  },
+  api: vi.fn(),
+  saveDraftToSession: vi.fn(),
+  catalog: undefined as unknown,
+  connections: [] as AgentConnectionListItem[],
+}));
+
+// Native host primitives are adapted to DOM for interaction tests. Production
+// components, event handlers, command construction, and transcript projection run unchanged.
+vi.mock("react-native", async () => {
+  const React = await import("react");
+  type Props = {
+    children?: ReactNode;
+    accessibilityLabel?: string;
+    accessibilityState?: { selected?: boolean; expanded?: boolean };
+    onPress?: () => void;
+    disabled?: boolean;
+    value?: string;
+    onChangeText?: (value: string) => void;
+    editable?: boolean;
+    testID?: string;
+  };
+  const View = ({ children }: Props) => <div>{children}</div>;
+  const Text = ({ children }: Props) => <span>{children}</span>;
+  const TextInput = ({
+    value,
+    onChangeText,
+    accessibilityLabel,
+    editable,
+  }: Props) => (
+    <input
+      aria-label={accessibilityLabel}
+      value={value ?? ""}
+      disabled={editable === false}
+      onInput={(event) => onChangeText?.(event.currentTarget.value)}
+      onChange={() => {}}
+    />
+  );
+  return {
+    View,
+    StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
+    useWindowDimensions: () => ({ width: 390, height: 844 }),
+    Text,
+    ScrollView: View,
+    FlatList: ({
+      data,
+      renderItem,
+      ListHeaderComponent,
+      ListEmptyComponent,
+    }: {
+      data: unknown[];
+      renderItem: (args: { item: unknown }) => ReactNode;
+      ListHeaderComponent?: ReactNode;
+      ListEmptyComponent?: ReactNode;
+    }) => (
+      <div>
+        {ListHeaderComponent}
+        {data.length
+          ? data.map((item, i) => <div key={i}>{renderItem({ item })}</div>)
+          : ListEmptyComponent}
+      </div>
+    ),
+    SectionList: ({
+      sections,
+      renderItem,
+      renderSectionHeader,
+      renderSectionFooter,
+      ListHeaderComponent,
+      ListEmptyComponent,
+    }: {
+      ListEmptyComponent?: ReactNode;
+      sections: { key: string; data: unknown[] }[];
+      renderItem: (args: { item: unknown; section: unknown }) => ReactNode;
+      renderSectionHeader: (args: { section: unknown }) => ReactNode;
+      renderSectionFooter?: (args: { section: unknown }) => ReactNode;
+      ListHeaderComponent?: ReactNode;
+    }) => (
+      <div>
+        {ListHeaderComponent}
+        {!sections.length && ListEmptyComponent}
+        {sections.map((section) => (
+          <div key={section.key}>
+            {renderSectionHeader({ section })}
+            {section.data.map((item, i) => (
+              <div key={i}>{renderItem({ item, section })}</div>
+            ))}
+            {renderSectionFooter?.({ section })}
+          </div>
+        ))}
+      </div>
+    ),
+    TextInput,
+    Pressable: ({
+      children,
+      onPress,
+      disabled,
+      accessibilityLabel,
+      accessibilityState,
+      testID,
+    }: Props) => (
+      <button
+        aria-label={accessibilityLabel}
+        aria-expanded={accessibilityState?.expanded}
+        aria-selected={accessibilityState?.selected}
+        data-testid={testID}
+        disabled={disabled}
+        onClick={onPress}
+      >
+        {children}
+      </button>
+    ),
+    ActivityIndicator: ({
+      accessibilityLabel,
+    }: {
+      accessibilityLabel?: string;
+    }) => (
+      <span role="progressbar" aria-label={accessibilityLabel}>
+        Loading
+      </span>
+    ),
+    BackHandler: { addEventListener: (_: string, handler: () => boolean) => {
+      mocks.backHandlers.add(handler);
+      return { remove: () => mocks.backHandlers.delete(handler) };
+    } },
+    Keyboard: { dismiss: vi.fn() },
+    Alert: { alert: mocks.alert },
+    Linking: { openURL: vi.fn() },
+    Switch: ({
+      value,
+      onValueChange,
+      accessibilityLabel,
+    }: {
+      value: boolean;
+      onValueChange: (value: boolean) => void;
+      accessibilityLabel: string;
+    }) => (
+      <input
+        type="checkbox"
+        aria-label={accessibilityLabel}
+        checked={value}
+        onChange={() => onValueChange(!value)}
+      />
+    ),
+  };
+});
+vi.mock("@gorhom/bottom-sheet", async () => {
+  const { useState, useRef, useImperativeHandle, forwardRef } = await import(
+    "react"
+  );
+  const { TextInput, View } = await import("react-native");
+  return {
+    BottomSheetBackdrop: View,
+    BottomSheetScrollView: View,
+    BottomSheetTextInput: TextInput,
+    BottomSheetModal: forwardRef(
+      (
+        { children, onDismiss }: { children: ReactNode; onDismiss: () => void },
+        ref,
+      ) => {
+        const [open, setOpen] = useState(false);
+        const stuckDismissing = useRef(false);
+        useImperativeHandle(ref, () => ({
+          present: () => {
+            if (!stuckDismissing.current) setOpen(true);
+          },
+          dismiss: () => {
+            if (open) {
+              setOpen(false);
+              onDismiss();
+            } else {
+              // Gorhom 5.2: dismissing INITIAL blocks subsequent portal renders.
+              stuckDismissing.current = true;
+              mocks.invalidDismiss();
+            }
+          },
+        }));
+        return open ? <div role="dialog">{children}</div> : null;
+      },
+    ),
+  };
+});
+vi.mock("@/lib/theme", () => ({
+  useTheme: () => ({ colors: {}, fonts: {}, radii: {} }),
+}));
+vi.mock("react-native-svg", () => ({
+  default: ({ children }: { children: ReactNode }) => <svg>{children}</svg>,
+  Circle: () => <circle />,
+}));
+vi.mock("expo-secure-store", () => ({
+  getItem: (key: string) => mocks.storage.get(key) ?? null,
+  setItem: (key: string, value: string) => mocks.storage.set(key, value),
+}));
+vi.mock("expo-router", async () => ({
+  useFocusEffect: (await import("react")).useEffect,
+  useLocalSearchParams: () => mocks.params,
+  usePathname: () => mocks.pathname,
+  router: { replace: mocks.replace, push: mocks.push, navigate: mocks.navigate },
+  Stack: {
+    Screen: ({
+      options,
+    }: {
+      options?: {
+        headerTitle?: () => ReactNode;
+        headerLeft?: (props: { canGoBack: boolean }) => ReactNode;
+        headerRight?: (props: { canGoBack: boolean }) => ReactNode;
+        headerBackVisible?: boolean;
+      };
+    }) => (
+      <header data-back-visible={options?.headerBackVisible}>
+        <div data-header-left>{options?.headerLeft?.({ canGoBack: mocks.canGoBack })}</div>
+        {options?.headerTitle?.()}
+        <div data-header-right>{options?.headerRight?.({ canGoBack: mocks.canGoBack })}</div>
+      </header>
+    ),
+  },
+}));
+vi.mock("expo-router/build/react-navigation/drawer", () => ({
+  useDrawerStatus: () => "open",
+  DrawerToggleButton: () => <button aria-label="Show navigation menu" onClick={mocks.toggleDrawer} />,
+}));
+vi.mock("expo-router/react-navigation", () => ({ useHeaderHeight: () => 50 }));
+vi.mock("@/lib/useSpeech", () => ({
+  useSpeech: () => ({
+    activeId: null,
+    status: "idle",
+    stop: mocks.stopSpeech,
+    play: mocks.playSpeech,
+  }),
+}));
+vi.mock("@/components/chat/MiniSpeechPlayer", () => ({
+  MiniSpeechPlayer: () => null,
+}));
+vi.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 20 }),
+}));
+vi.mock("react-native-keyboard-controller", async () => ({
+  KeyboardAvoidingView: (await import("react-native")).View,
+  useKeyboardState: () => false,
+}));
+vi.mock("expo-crypto", () => ({ randomUUID: mocks.uuid }));
+vi.mock("@expo/vector-icons", () => ({
+  Ionicons: ({ name }: { name: string }) => (
+    <span data-icon={name} aria-hidden="true" />
+  ),
+}));
+vi.mock("expo-paste-input", () => ({
+  TextInputWrapper: ({ children }: { children: ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+vi.mock("expo-clipboard", () => ({ setStringAsync: mocks.copy }));
+vi.mock("@/lib/toast", () => ({ toastSuccess: vi.fn(), toastError: vi.fn() }));
+vi.mock("@/lib/auth/client", () => ({
+  getAuthClient: () => ({
+    useSession: () => ({ data: { user: { role: "admin" } } }),
+  }),
+}));
+vi.mock("@/lib/useDictation", () => ({
+  useDictation: (onResult: (text: string) => void) => {
+    mocks.dictation.onResult = onResult;
+    return mocks.dictation;
+  },
+}));
+vi.mock("expo-image-picker", () => ({}));
+vi.mock("expo-file-system", () => ({ File: class {} }));
+vi.mock("@/lib/api", () => ({
+  uploadFile: vi.fn(),
+  getApiBase: () => "https://chat.example",
+  getAuthCookie: () => "cookie",
+}));
+vi.mock("@/lib/auth/useAuthCookie", () => ({ useAuthCookie: () => "cookie" }));
+vi.mock("expo-image", () => ({ Image: () => <img /> }));
+vi.mock("react-native-image-viewing", () => ({ default: () => null }));
+vi.mock("./AgentProviderIcon", () => ({
+  AgentProviderIcon: ({ provider }: { provider: string }) => (
+    <span data-provider={provider} />
+  ),
+}));
+vi.mock("./AgentImage", () => ({
+  AgentImage: ({ label }: { label: string }) => <span>{label}</span>,
+}));
+vi.mock("@/components/chat/MarkdownBody", () => ({
+  MarkdownBody: ({ text }: { text: string }) => <p>{text}</p>,
+}));
+vi.mock("@shopify/flash-list", async () => {
+  const { forwardRef, useImperativeHandle } = await import("react");
+  return {
+    FlashList: forwardRef(
+      (
+        props: {
+          data: unknown[];
+          renderItem: (args: { item: unknown; index: number }) => ReactNode;
+          ListEmptyComponent: ReactNode;
+          ListHeaderComponent: ReactNode;
+          ListFooterComponent: ReactNode;
+        } & typeof mocks.listHandlers,
+        ref,
+      ) => {
+        mocks.listHandlers = props;
+        useImperativeHandle(ref, () => ({
+          scrollToEnd: mocks.scrollToEnd,
+          scrollToOffset: mocks.scrollToOffset,
+          getLayout: (index: number) => ({ y: index * 100 }),
+          prepareForLayoutAnimationRender: vi.fn(),
+          getWindowSize: () => ({ height: mocks.measurements.viewport }),
+          getChildContainerDimensions: () => ({
+            height: mocks.measurements.height,
+          }),
+          getAbsoluteLastScrollOffset: () => mocks.measurements.offset,
+        }));
+        return (
+          <div>
+            {props.ListHeaderComponent}
+            {props.data.length
+              ? props.data.map((item, i) => (
+                  <div key={i}>{props.renderItem({ item, index: i })}</div>
+                ))
+              : props.ListEmptyComponent}
+            {props.ListFooterComponent}
+          </div>
+        );
+      },
+    ),
+  };
+});
+vi.mock("react-native-reanimated", async () => {
+  const { useRef } = await import("react");
+  const { View } = await import("react-native");
+  const transition = { delay: () => transition, duration: () => transition, reduceMotion: () => transition };
+  return {
+    default: { View }, FadeIn: transition, ReduceMotion: { System: "system" },
+    useSharedValue: (value: number) => useRef({ value }).current,
+    useAnimatedStyle: (style: () => unknown) => style(),
+    withTiming: (value: number) => value,
+  };
+});
+vi.mock("@/lib/queries/agents", () => ({
+  useAgentSession: () => ({
+    snapshot: mocks.snapshot,
+    status: mocks.status,
+    error: mocks.sessionError,
+    reconnect: mocks.reconnect,
+    history: mocks.history,
+  }),
+  useAgentCommand: () => ({ mutateAsync: mocks.send, isPending: false }),
+  useAgentConnections: () => ({
+    data: mocks.connections,
+    refetch: vi.fn(),
+    isPending: false,
+  }),
+  useAgentGitStatus: () => ({
+    data: { isGit: true, branch: "main", dirty: false },
+  }),
+  useAgentCatalog: () => ({ data: mocks.catalog, isPending: false }),
+}));
+vi.mock("@/lib/agents/api", () => ({ agentJson: mocks.api }));
+vi.mock("@/lib/agents/drafts", async () => {
+  const { useState } = await import("react");
+  return {
+    useAgentDraft: () => {
+      const [draft, update] = useState(mocks.draft);
+      return {
+        draft,
+        saveDraftToSession: mocks.saveDraftToSession,
+        setDraft: (next: AgentDraft | ((value: AgentDraft) => AgentDraft)) => {
+          mocks.draft = typeof next === "function" ? next(mocks.draft) : next;
+          update(mocks.draft);
+        },
+      };
+    },
+  };
+});
+
+import AgentSessionScreen from "@/app/(authed)/(drawer)/agents/[id]";
+import AgentsScreen from "@/app/(authed)/(drawer)/agents/index";
+import AgentWorkspaceScreen from "@/app/(authed)/(drawer)/agents/workspace";
+import { DrawerAgents } from "@/components/drawer/DrawerAgents";
+import { AgentDetailSections } from "./AgentToolDetails";
+import NewAgentScreen from "@/app/(authed)/(drawer)/agents/new";
+
+let root: Root;
+let container: HTMLElement;
+const model = {
+  id: "first",
+  label: "First model",
+  provider: "codex" as const,
+  api: "codex",
+  baseUrl: "",
+  reasoning: true,
+  input: ["text", "image"] as ("text" | "image")[],
+  contextWindow: null,
+  maxTokens: null,
+  thinkingOptions: [
+    { id: "low", label: "Low" },
+    { id: "high", label: "High" },
+  ],
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+};
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.storage.clear();
+  mocks.history.isPending = false;
+  mocks.history.error = null;
+  mocks.pathname = "/chat";
+  mocks.canGoBack = false;
+  mocks.params = { id: "session", workspace: "workspace", name: "Project", provider: "codex" };
+  mocks.connections = [];
+  mocks.copy.mockResolvedValue(undefined);
+  mocks.uuid.mockReturnValue("message-id");
+  mocks.measurements = { height: 2000, viewport: 500, offset: 1500 };
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    (callback: (timestamp: number) => void) => setTimeout(() => callback(0), 0),
+  );
+  vi.stubGlobal("cancelAnimationFrame", clearTimeout);
+  const { window } = parseHTML(
+    '<html><body><div id="root"></div></body></html>',
+  );
+  for (const [key, value] of Object.entries({
+    window,
+    document: window.document,
+    navigator: window.navigator,
+    HTMLElement: window.HTMLElement,
+    Event: window.Event,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  }))
+    vi.stubGlobal(key, value);
+  container = window.document.getElementById("root") as unknown as HTMLElement;
+  root = createRoot(container);
+  mocks.snapshot = {
+    ...snapshot(),
+    models: [model, { ...model, id: "second", label: "Second model" }],
+    state: {
+      model: { id: "first" },
+      modeId: "safe",
+      modes: [
+        { id: "safe", label: "Safe", description: "Ask before changes" },
+        {
+          id: "full",
+          label: "Full access",
+          description: "Unrestricted",
+          dangerous: true,
+        },
+      ],
+    },
+    commands: [
+      { name: "compact", source: "builtin", description: "Compact context" },
+    ],
+  };
+  mocks.draft = { message: "", images: [] };
+  mocks.dictation.status = "idle";
+  mocks.dictation.error = null;
+  mocks.status = "connected";
+  mocks.sessionError = undefined;
+  mocks.send.mockResolvedValue({});
+  mocks.catalog = {
+    provider: "codex",
+    models: [model],
+    modes: mocks.snapshot.state.modes,
+    defaultModeId: "safe",
+  };
+  mocks.api.mockResolvedValue({ session: { id: "created" } });
+});
+afterEach(async () => {
+  await act(async () => root.unmount());
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+async function render(element: ReactNode = <AgentSessionScreen />) {
+  await act(async () => root.render(element));
+}
+async function click(label: string) {
+  const button = container.querySelector(
+    `button[aria-label="${label}"]`,
+  ) as HTMLButtonElement | null;
+  expect(button, `button ${label}`).not.toBeNull();
+  await act(async () => button!.click());
+}
+async function input(value: string) {
+  const field = container.querySelector(
+    'input[aria-label="Message agent"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    field.value = value;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+it.each([false, true])("keeps the drawer and context controls accessible with canGoBack=%s", async (canGoBack) => {
+  mocks.canGoBack = canGoBack;
+  await render();
+  expect(container.querySelector("header")?.getAttribute("data-back-visible")).toBe("true");
+  const menu = container.querySelector('button[aria-label="Show navigation menu"]');
+  expect(container.querySelectorAll('button[aria-label="Show navigation menu"]')).toHaveLength(1);
+  expect(menu?.parentElement?.closest(canGoBack ? "[data-header-right]" : "[data-header-left]")).not.toBeNull();
+  await click("Show navigation menu");
+  expect(mocks.toggleDrawer).toHaveBeenCalledTimes(1);
+  await click("Context usage unavailable. Show details");
+  expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+});
+
+describe("agent context usage", () => {
+  it("opens details from the header and updates them from live context, not cumulative tokens", async () => {
+    mocks.snapshot!.stats.contextUsage = {
+      tokens: 49000,
+      contextWindow: 100000,
+      percent: 49,
+    };
+    mocks.snapshot!.stats.tokens.total = 900000;
+    await render();
+    expect(
+      container.querySelector(
+        'header [aria-label="Context: 49% used. Show details"]',
+      ),
+    ).not.toBeNull();
+    await click("Context: 49% used. Show details");
+    const details = () =>
+      container.querySelector('[role="dialog"]')!.textContent;
+    expect(details()).toContain("49,000 tokens");
+    expect(details()).toContain("51,000 tokens");
+    expect(details()).toContain("100,000 tokens");
+    expect(details()).not.toContain("900,000");
+    mocks.snapshot!.stats.contextUsage.tokens = 120000;
+    await render();
+    expect(details()).toContain("120% used");
+    expect(details()).toContain("Remaining0 tokens");
+    await click("Close context usage");
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+
+  it("keeps missing usage unknown, including after compaction clears a reading", async () => {
+    mocks.snapshot!.stats.contextUsage = {
+      tokens: null,
+      contextWindow: 100000,
+      percent: null,
+    };
+    await render();
+    await click("Context usage unavailable. Show details");
+    expect(container.textContent).toContain(
+      "hasn't reported context usage yet",
+    );
+    expect(container.textContent).not.toContain("0% used");
+    mocks.snapshot!.stats.contextUsage.tokens = 10000;
+    await render();
+    expect(container.textContent).toContain("10% used");
+    mocks.snapshot!.stats.contextUsage.tokens = null;
+    await render();
+    expect(container.textContent).not.toContain("10% used");
+    mocks.status = "reconnecting";
+    await render();
+    expect(container.textContent).toContain("Last reported usage");
+  });
+});
+
+describe("agent history actions", () => {
+  it("loads older native transcript pages and exposes loading and retry feedback", async () => {
+    mocks.snapshot!.history = { beforeCursor: "older" };
+    await render();
+    await click("Load older messages");
+    expect(mocks.history.mutate).toHaveBeenCalledTimes(1);
+    mocks.history.isPending = true;
+    await render();
+    expect(container.querySelector('button[aria-label="Loading…"]')?.hasAttribute("disabled")).toBe(true);
+    mocks.history.isPending = false;
+    mocks.history.error = new Error("History changed. Try again.");
+    await render();
+    expect(container.textContent).toContain("History changed. Try again.");
+    mocks.snapshot!.history.beforeCursor = null;
+    await render();
+    expect(container.querySelector('button[aria-label="Load older messages"]')).toBeNull();
+  });
+
+  it("rewinds from a native message and preserves an existing draft", async () => {
+    mocks.snapshot!.capabilities.rewindConversation = true;
+    mocks.snapshot!.messages = [
+      { role: "user", id: "native-user", content: "Original prompt" },
+    ];
+    mocks.draft.message = "Keep my draft";
+    mocks.send.mockResolvedValue({
+      sessionId: "session",
+      draft: "Original prompt",
+    });
+    await render();
+    await click("Rewind to this message");
+    expect(container.textContent).toContain("This action cannot be undone");
+    await click("Rewind conversation");
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "rewind",
+      messageId: "native-user",
+      mode: "conversation",
+    });
+    expect(mocks.draft.message).toBe("Keep my draft");
+  });
+
+  it("restores a rewound prompt into an empty composer", async () => {
+    mocks.snapshot!.capabilities.rewindBoth = true;
+    mocks.snapshot!.messages = [
+      { role: "user", id: "native-user", content: "Original" },
+    ];
+    mocks.send.mockResolvedValue({ sessionId: "session", draft: "Original" });
+    await render();
+    await click("Rewind to this message");
+    await click("Rewind conversation and files");
+    expect(mocks.draft.message).toBe("Original");
+  });
+
+  it("hides current-turn speech and fork actions through tool calls until completion", async () => {
+    mocks.snapshot!.status = "running";
+    mocks.snapshot!.messages = [
+      { role: "user", id: "old-user", content: "Earlier question" },
+      { role: "assistant", id: "old-answer", content: [{ type: "text", text: "Earlier answer" }] },
+      { role: "user", id: "current-user", content: "Check the files" },
+      { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking the files" }] },
+      { role: "assistant", id: "tool", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }] },
+    ];
+    const speechButtons = () => container.querySelectorAll('button[aria-label="Read aloud"]');
+    const forkButtons = () => container.querySelectorAll('button[aria-label="Fork conversation"]');
+    await render();
+    expect(speechButtons()).toHaveLength(1);
+    expect(forkButtons()).toHaveLength(1);
+    mocks.snapshot!.messages = [
+      ...mocks.snapshot!.messages,
+      { role: "assistant", id: "final", content: [{ type: "text", text: "Finished checking" }] },
+    ];
+    await render();
+    expect(speechButtons()).toHaveLength(1);
+    expect(forkButtons()).toHaveLength(1);
+    mocks.snapshot!.status = "idle";
+    await render();
+    expect(speechButtons()).toHaveLength(2);
+    expect(forkButtons()).toHaveLength(2);
+    expect(container.textContent).not.toContain("Checking the files");
+    expect(container.textContent).toContain("Finished checking");
+    await click("Worked");
+    expect(speechButtons()).toHaveLength(2);
+    expect(forkButtons()).toHaveLength(2);
+    expect(container.textContent).toContain("Checking the files");
+    await click("Worked");
+    expect(container.textContent).not.toContain("Checking the files");
+  });
+
+  it("uses one action row for a completed native turn and reads the footer response", async () => {
+    mocks.snapshot!.messages = [
+      { role: "user", id: "user", content: "Check" },
+      { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking" }] },
+      { role: "assistant", id: "answer", content: [{ type: "text", text: "Summary" }, { type: "text", text: "Details" }] },
+      { role: "turnFooter", messageId: "boundary", content: "Summary\n\nDetails", durationMs: 2000 },
+    ];
+    await render();
+    await click("Worked for 2s");
+    expect(container.querySelectorAll('button[aria-label="Read aloud"]')).toHaveLength(1);
+    expect(container.querySelectorAll('button[aria-label="Copy response"]')).toHaveLength(1);
+    expect(container.querySelectorAll('button[aria-label="Fork conversation"]')).toHaveLength(1);
+    await click("Read aloud");
+    expect(mocks.playSpeech).toHaveBeenCalledWith(expect.any(String), "Summary\n\nDetails");
+    await click("Copy response");
+    expect(mocks.copy).toHaveBeenCalledWith("Summary\n\nDetails");
+  });
+
+  it("opens a fork draft with attached history without sending a prompt", async () => {
+    mocks.snapshot!.messages = [
+      {
+        role: "assistant",
+        id: "answer",
+        content: [{ type: "text", text: "An answer" }],
+      },
+    ];
+    const forkContext = {
+      text: "Chat history",
+      launchConfig: { model: "model-id" },
+    };
+    mocks.send.mockResolvedValue({ forkContext });
+    await render();
+    const forkTrigger = container.querySelector('button[aria-label="Fork conversation"]')!;
+    expect(forkTrigger.textContent).not.toContain("Fork conversation");
+    expect(forkTrigger.querySelector('[data-icon="git-branch-outline"]')).not.toBeNull();
+    await click("Fork conversation");
+    await click("Fork in new session");
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "fork_message",
+      messageId: "answer",
+    });
+    expect(mocks.saveDraftToSession).toHaveBeenCalledWith(
+      expect.stringMatching(/^fork:/),
+      { message: "", images: [], forkContext },
+    );
+    expect(mocks.push).toHaveBeenCalledWith(
+      expect.objectContaining({ pathname: "/agents/new" }),
+    );
+  });
+});
+
+describe("native agent screen workflows", () => {
+  it("suppresses brief reconnect notices while disabling sends immediately", async () => {
+    vi.useFakeTimers();
+    mocks.draft.message = "Continue";
+    await render();
+    mocks.status = "reconnecting";
+    await render();
+    const sendButton = () => container.querySelector(
+      'button[aria-label="Send message"]',
+    ) as HTMLButtonElement;
+    expect(sendButton().disabled).toBe(true);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    mocks.status = "connected";
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    expect(sendButton().disabled).toBe(false);
+  });
+
+  it("shows sustained recovery, keeps its deadline across retries, and clears it on pause", async () => {
+    vi.useFakeTimers();
+    mocks.status = "reconnecting";
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    mocks.sessionError = "Network lost";
+    await render();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(499);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(container.textContent).toContain("Reconnecting to your agent");
+    await click("Retry");
+    expect(mocks.reconnect).toHaveBeenCalledTimes(1);
+    mocks.status = "paused";
+    await render();
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+    mocks.status = "reconnecting";
+    await render();
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+  });
+
+  it("shows terminal connection errors immediately and cancels a pending recovery notice", async () => {
+    vi.useFakeTimers();
+    mocks.status = "reconnecting";
+    await render();
+    mocks.status = "error";
+    mocks.sessionError = "Your session expired. Sign in again.";
+    await render();
+    expect(container.textContent).toContain(mocks.sessionError);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(container.textContent).not.toContain("Reconnecting to your agent");
+  });
+
+  it("renders a resumed transcript, sends a prompt, and clears only acknowledged drafts", async () => {
+    mocks.snapshot!.messages = [
+      { role: "user", content: "Earlier request" },
+      { role: "assistant", content: [{ type: "text", text: "Earlier reply" }] },
+    ];
+    await render();
+    expect(container.textContent).toContain("Earlier reply");
+    await input("Continue");
+    await click("Send message");
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "prompt",
+      message: "Continue",
+      clientMessageId: "message-id",
+    });
+    expect(mocks.draft.message).toBe("");
+    expect(mocks.reconnect).toHaveBeenCalled();
+  });
+  it("retains an uncertain send and retries with its original identity", async () => {
+    mocks.send.mockRejectedValueOnce(new TypeError("Network lost"));
+    await render();
+    await input("Keep going");
+    await click("Send message");
+    expect(mocks.draft.message).toBe("Keep going");
+    expect(container.textContent).toContain(
+      "Check the conversation before retrying",
+    );
+    await click("Send message");
+    expect(mocks.send.mock.calls[1][0]).toEqual(mocks.send.mock.calls[0][0]);
+    expect(mocks.draft.message).toBe("");
+  });
+  it("queues while running and exposes stop and slash commands", async () => {
+    mocks.snapshot!.status = "running";
+    await render();
+    await input("Then test it");
+    await click("Queue message");
+    expect(mocks.send.mock.lastCall?.[0].type).toBe("queue");
+    await click("Stop agent");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({ type: "abort" });
+    await input("/");
+    await click("/compact");
+    await click("Queue message");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({ type: "compact" });
+  });
+  it("changes models and reasoning and requires confirmation for full access", async () => {
+    await render();
+    await click("Model, effort, and permissions");
+    await click("Model");
+    await click("Second model");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "set_model",
+      modelId: "second",
+    });
+    await click("Reasoning effort");
+    await click("High");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "set_thinking_level",
+      level: "high",
+    });
+    const calls = mocks.send.mock.calls.length;
+    await click("Permissions");
+    await click("Full access");
+    expect(mocks.send).toHaveBeenCalledTimes(calls);
+    const actions = mocks.alert.mock.lastCall?.[2] as {
+      text: string;
+      onPress?: () => void;
+    }[];
+    await act(async () =>
+      actions.find((action) => action.text === "Enable")!.onPress!(),
+    );
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "set_mode",
+      modeId: "full",
+    });
+  });
+  it("submits the provider's approval value and leaves dismissed requests pending", async () => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "approval",
+      method: "select",
+      title: "Approve command?",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
+      options: ["Allow once", "Deny"],
+    };
+    await render();
+    await click("Close request");
+    expect(mocks.send).not.toHaveBeenCalled();
+    await click("Respond");
+    await click("Allow once");
+    expect(mocks.send).toHaveBeenCalledWith({
+      type: "interaction_response",
+      id: "approval",
+      value: "Allow once",
+    });
+  });
+  it("sends image references and supports image-only prompts", async () => {
+    mocks.draft.images = [
+      {
+        uploadId: "image",
+        filename: "screen.png",
+        mediaType: "image/png",
+        size: 100,
+        uri: "file:///screen.png",
+      },
+    ];
+    await render();
+    await click("Send message");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "prompt",
+      message: "",
+      clientMessageId: "message-id",
+      images: [
+        { uploadId: "image", filename: "screen.png", mediaType: "image/png" },
+      ],
+    });
+  });
+  it("disables sends while reconnecting but allows editing the draft", async () => {
+    mocks.status = "reconnecting";
+    await render();
+    await input("Save for later");
+    await click("Send message");
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.draft.message).toBe("Save for later");
+  });
+  it("opens the composer without creating a session, then sends using resolved defaults", async () => {
+    await render(<NewAgentScreen />);
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('button[aria-label="Start chat"]'),
+    ).toBeNull();
+    await input("Build the feature");
+    await click("Send message");
+    expect(mocks.api).toHaveBeenNthCalledWith(
+      1,
+      "/api/agent-workspaces/workspace/sessions",
+      {
+        provider: "codex",
+        launchConfig: {
+          model: "first",
+          modeId: "safe",
+          thinkingOptionId: "low",
+        },
+      },
+      expect.any(AbortSignal),
+    );
+    expect(mocks.api).toHaveBeenNthCalledWith(
+      2,
+      "/api/agent-sessions/created",
+      {
+        type: "prompt",
+        message: "Build the feature",
+        clientMessageId: "message-id",
+      },
+      expect.any(AbortSignal),
+    );
+    expect(mocks.replace).toHaveBeenCalledWith({
+      pathname: "/agents/[id]",
+      params: { id: "created", workspace: "workspace", name: "Project" },
+    });
+    const submitted = mocks.saveDraftToSession.mock.calls[0][1];
+    const clear = mocks.saveDraftToSession.mock.lastCall![1];
+    expect(clear(submitted)).toEqual({ message: "", images: [] });
+    const newer = { message: "Newer draft", images: [] };
+    expect(clear(newer)).toBe(newer);
+  });
+  it("uses a provider-designated model and effort even when they are not first in the catalog", async () => {
+    mocks.catalog = {
+      provider: "codex",
+      models: [
+        model,
+        {
+          ...model,
+          id: "preferred",
+          label: "Provider default",
+          isDefault: true,
+          defaultThinkingOptionId: "high",
+        },
+      ],
+      modes: [{ id: "safe", label: "Safe" }],
+      defaultModeId: "safe",
+    };
+    await render(<NewAgentScreen />);
+    await input("Hello");
+    await click("Send message");
+    expect(mocks.api.mock.calls[0][1]).toEqual({
+      provider: "codex",
+      launchConfig: {
+        model: "preferred",
+        thinkingOptionId: "high",
+        modeId: "safe",
+      },
+    });
+  });
+  it("retains optional model controls without requiring a selection before writing", async () => {
+    mocks.catalog = {
+      provider: "codex",
+      models: [model, { ...model, id: "second", label: "Second model" }],
+      modes: [{ id: "safe", label: "Safe" }],
+      defaultModeId: "safe",
+    };
+    await render(<NewAgentScreen />);
+    await input("Hello");
+    await click("Model, effort, and permissions");
+    await click("Model");
+    await click("Second model");
+    await click("Reasoning effort");
+    await click("High");
+    await click("Done");
+    await click("Send message");
+    expect(mocks.api.mock.calls[0][1]).toEqual({
+      provider: "codex",
+      launchConfig: {
+        model: "second",
+        thinkingOptionId: "high",
+        modeId: "safe",
+      },
+    });
+  });
+  it("keeps the first prompt and message identity in the created chat if sending fails", async () => {
+    mocks.api
+      .mockResolvedValueOnce({ session: { id: "created" } })
+      .mockRejectedValueOnce(new Error("Disconnected"));
+    await render(<NewAgentScreen />);
+    await input("Keep this message");
+    await click("Send message");
+    expect(mocks.api).toHaveBeenCalledTimes(2);
+    expect(mocks.saveDraftToSession).toHaveBeenCalledTimes(1);
+    expect(mocks.saveDraftToSession).toHaveBeenCalledWith("created", {
+      message: "Keep this message",
+      images: [],
+      pending: {
+        fingerprint: JSON.stringify({
+          message: "Keep this message",
+          images: [],
+        }),
+        command: {
+          type: "prompt",
+          message: "Keep this message",
+          clientMessageId: "message-id",
+        },
+      },
+    });
+    expect(mocks.replace.mock.lastCall?.[0].params.id).toBe("created");
+  });
+  it("preserves attached fork history and retry identity when its first send fails", async () => {
+    mocks.draft.forkContext = { text: "Previous history", launchConfig: { model: model.id } };
+    mocks.api.mockResolvedValueOnce({ session: { id: "fork-created" } }).mockRejectedValueOnce(new Error("Disconnected"));
+    await render(<NewAgentScreen />);
+    await input("Continue here");
+    await click("Send message");
+    const message = "Previous history\n\nContinue here";
+    expect(mocks.api.mock.calls[1][1]).toMatchObject({ type: "prompt", message });
+    expect(mocks.saveDraftToSession).toHaveBeenCalledWith("fork-created", expect.objectContaining({
+      message, forkContext: undefined,
+      pending: { fingerprint: JSON.stringify({ message, images: [] }), command: { type: "prompt", message, clientMessageId: "message-id" } },
+    }));
+  });
+
+  it("keeps the draft if creation fails and doesn't send or navigate", async () => {
+    mocks.api.mockRejectedValueOnce(new Error("Provider unavailable"));
+    await render(<NewAgentScreen />);
+    await input("Keep this draft");
+    await click("Send message");
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.draft.message).toBe("Keep this draft");
+    expect(container.textContent).toContain("Provider unavailable");
+  });
+  it("allows drafting while defaults are unavailable and prevents creation", async () => {
+    mocks.catalog = undefined;
+    await render(<NewAgentScreen />);
+    await input("Write while loading");
+    expect(
+      (
+        container.querySelector(
+          'button[aria-label="Send message"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(mocks.draft.message).toBe("Write while loading");
+  });
+});
+
+describe("agent presentation regressions", () => {
+  it("opens, dismisses, and reopens settings without dismissing an unmounted native sheet", async () => {
+    await render();
+    expect(mocks.invalidDismiss).not.toHaveBeenCalled();
+    for (let i = 0; i < 2; i++) {
+      await click("Model, effort, and permissions");
+      expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+      await click("Done");
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+    }
+    expect(mocks.invalidDismiss).not.toHaveBeenCalled();
+  });
+
+  it("renders Codex's answer once and reserves footer content for copying", async () => {
+    const answer = "## Finished\n\n**All done.**";
+    mocks.snapshot!.messages = [
+      {
+        id: "assistant",
+        role: "assistant",
+        overtchatTurnBoundaryId: "turn",
+        content: [{ type: "text", text: answer }],
+      },
+      {
+        id: "footer",
+        role: "turnFooter",
+        messageId: "turn",
+        content: answer,
+        durationMs: 65000,
+      },
+    ];
+    await render();
+    expect(container.textContent?.split(answer)).toHaveLength(2);
+    expect(container.textContent).toContain("Worked for 1m 5s");
+    expect(container.textContent).not.toContain("Copy response");
+    await click("Copy response");
+    expect(mocks.copy).toHaveBeenCalledWith(answer);
+    expect(
+      container.querySelector('button[aria-label="Copied response"]'),
+    ).not.toBeNull();
+  });
+
+  it("keeps the jump button hidden during initial layout and clears it when jumping or reaching the end", async () => {
+    await render();
+    const scroll = (offset: number) =>
+      mocks.listHandlers.onScroll?.({
+        nativeEvent: {
+          contentSize: { height: 2000 },
+          contentOffset: { y: offset },
+          layoutMeasurement: { height: 500 },
+        },
+      });
+    const jump = () =>
+      container.querySelector('button[aria-label="Jump to latest"]');
+    await act(async () => scroll(0));
+    expect(jump()).toBeNull();
+    await act(async () => mocks.listHandlers.onLoad?.());
+    expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: false });
+    await act(async () => {
+      mocks.listHandlers.onScrollBeginDrag?.();
+      scroll(200);
+    });
+    expect(jump()).not.toBeNull();
+    await click("Jump to latest");
+    expect(mocks.scrollToEnd).toHaveBeenCalledWith({ animated: true });
+    expect(jump()).toBeNull();
+    // Position correction may leave a stale native callback on the way down.
+    await act(async () => scroll(200));
+    expect(jump()).toBeNull();
+    await act(async () => {
+      mocks.listHandlers.onScrollBeginDrag?.();
+      scroll(200);
+    });
+    expect(jump()).not.toBeNull();
+    await act(async () => mocks.listHandlers.onEndReached?.());
+    expect(jump()).toBeNull();
+  });
+
+  it("recomputes the jump button when content shrinks without a scroll callback", async () => {
+    await render();
+    await act(async () => {
+      mocks.listHandlers.onScrollBeginDrag?.();
+      mocks.listHandlers.onScroll?.({
+        nativeEvent: {
+          contentSize: { height: 2000 },
+          contentOffset: { y: 200 },
+          layoutMeasurement: { height: 500 },
+        },
+      });
+    });
+    const jump = container.querySelector(
+      'button[aria-label="Jump to latest"]',
+    )!;
+    expect(jump).not.toBeNull();
+    expect(jump.querySelector('[data-icon="arrow-down"]')).not.toBeNull();
+    expect(jump.querySelector('[data-icon="checkmark"]')).toBeNull();
+    mocks.measurements = { height: 600, viewport: 500, offset: 100 };
+    await act(async () => {
+      mocks.listHandlers.onContentSizeChange?.();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(
+      container.querySelector('button[aria-label="Jump to latest"]'),
+    ).toBeNull();
+  });
+});
+
+describe("workspace navigation at scale", () => {
+  function setupWorkspaces() {
+    const sessions = Array.from({ length: 105 }, (_, i) => ({
+      id: `chat-${i}`,
+      providerSessionId: `native-${i}`,
+      name: `Chat ${i}`,
+      firstMessage: null,
+      messageCount: 2,
+      createdAt: i,
+      modifiedAt: i,
+      runtimeStatus: "idle" as const,
+    }));
+    const host = {
+      id: "host",
+      connectorId: "connector",
+      name: "My computer",
+      transport: "local" as const,
+      sshAlias: null,
+    };
+    const connection = {
+      id: "codex",
+      provider: "codex" as const,
+      executable: "codex",
+      detectedVersion: null,
+      lastValidatedAt: null,
+      host,
+      workspaces: [
+        { id: "workspace", path: "/project", name: "Project", sessions },
+        {
+          id: "other",
+          path: "/other",
+          name: "Other project",
+          sessions: [
+            {
+              ...sessions[0],
+              id: "other-chat",
+              name: "Other chat",
+              modifiedAt: null,
+              createdAt: 300,
+            },
+          ],
+        },
+      ],
+    };
+    mocks.connections = [
+      connection,
+      {
+        ...connection,
+        id: "claude",
+        provider: "claude",
+        workspaces: [
+          {
+            id: "claude-workspace",
+            name: "Project",
+            path: "/project",
+            sessions: [
+              {
+                ...sessions[0],
+                id: "claude-chat",
+                name: "Claude chat",
+                modifiedAt: 200,
+              },
+            ],
+          },
+        ],
+      },
+    ];
+  }
+  it("opens the five most recent agent chats directly from the drawer and marks the current one", async () => {
+    setupWorkspaces();
+    mocks.pathname = "/agents/claude-chat";
+    const closeDrawer = vi.fn();
+    await render(<DrawerAgents onNavigate={closeDrawer} />);
+    await click("Expand agents");
+    const rows = [...container.querySelectorAll('button[aria-label*="My computer"]')];
+    expect(rows.map((row) => row.getAttribute("aria-label"))).toEqual([
+      "Other chat, Codex, Other project · My computer",
+      "Claude chat, Claude Code, Project · My computer",
+      "Chat 104, Codex, Project · My computer",
+      "Chat 103, Codex, Project · My computer",
+      "Chat 102, Codex, Project · My computer",
+    ]);
+    expect(rows[1].getAttribute("aria-selected")).toBe("true");
+    expect(rows[0].getAttribute("aria-selected")).toBe("false");
+    await click("Claude chat, Claude Code, Project · My computer");
+    expect(closeDrawer).toHaveBeenCalledTimes(1);
+    expect(mocks.navigate).toHaveBeenLastCalledWith({
+      pathname: "/agents/[id]",
+      params: { id: "claude-chat", workspace: "claude-workspace", name: "Project" },
+    });
+    await click("View all agents");
+    expect(mocks.navigate).toHaveBeenLastCalledWith("/agents");
+    expect(closeDrawer).toHaveBeenCalledTimes(2);
+    expect(container.querySelector('button[aria-label="New agent chat"]')).toBeNull();
+  });
+
+  it("starts collapsed and remembers expansion across drawer remounts", async () => {
+    setupWorkspaces();
+    const drawer = (key: string) => <DrawerAgents key={key} onNavigate={() => {}} />;
+    await render(drawer("first"));
+    expect(container.querySelector('button[aria-label="Expand agents"]')?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.textContent).not.toContain("Claude chat");
+    expect(container.textContent).not.toContain("View all");
+    expect(container.querySelector('button[aria-label="New agent chat"]')).toBeNull();
+    await click("Expand agents");
+    expect(container.querySelector('button[aria-label="Collapse agents"]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.textContent).toContain("Claude chat");
+    expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("1");
+    await render(drawer("reopened"));
+    expect(container.textContent).toContain("Claude chat");
+    await click("Collapse agents");
+    expect(mocks.storage.get("overtchat.drawer.agentsExpanded")).toBe("0");
+    mocks.pathname = "/agents/claude-chat";
+    await render(drawer("agent-chat"));
+    expect(container.querySelector('button[aria-label="Expand agents"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Claude chat");
+    expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps provider selection in the workspace with plain provider names", async () => {
+    setupWorkspaces();
+    await render(<AgentsScreen />);
+    await click("New chat in Project");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/workspace",
+      params: { workspace: "workspace", name: "Project", create: "1" },
+    });
+    await render(<AgentWorkspaceScreen />);
+    await click("New chat");
+    const picker = container.querySelector('[role="dialog"]');
+    expect(picker?.textContent).toContain("Project");
+    expect(picker?.querySelector('button[aria-label="Codex"]')).not.toBeNull();
+    expect(picker?.querySelector('button[aria-label="Claude Code"]')).not.toBeNull();
+    expect(picker?.textContent).not.toContain("New Claude Code chat in Project");
+    await click("Claude Code");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/new",
+      params: { workspace: "claude-workspace", provider: "claude", name: "Project" },
+    });
+    expect(mocks.api).not.toHaveBeenCalled();
+  });
+
+  it("keeps agent navigation available when there are no sessions", async () => {
+    await render(<DrawerAgents onNavigate={() => {}} />);
+    await click("Expand agents");
+    expect(container.textContent).toContain("No agent chats yet");
+    await click("View all agents");
+    expect(mocks.navigate).toHaveBeenCalledWith("/agents");
+  });
+
+  it("shows global recents above collapsed workspaces and opens chats and full history", async () => {
+    setupWorkspaces();
+    await render(<AgentsScreen />);
+    expect(
+      [...container.querySelectorAll('button[aria-label*="My computer"]')].map(
+        (button) => button.getAttribute("aria-label"),
+      ),
+    ).toEqual([
+      "Other chat, Codex, Other project · My computer",
+      "Claude chat, Claude Code, Project · My computer",
+      "Chat 104, Codex, Project · My computer",
+      "Chat 103, Codex, Project · My computer",
+      "Chat 102, Codex, Project · My computer",
+    ]);
+    expect(container.textContent).toContain("Other project");
+    expect(container.textContent).not.toContain("Chat 0");
+    expect(
+      container.querySelectorAll('button[aria-label="Expand Project"]'),
+    ).toHaveLength(1);
+    await click("Other chat, Codex, Other project · My computer");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/[id]",
+      params: { id: "other-chat", workspace: "other", name: "Other project" },
+    });
+    await click("Expand Project");
+    expect(container.textContent).toContain("Chat 101");
+    await click("Collapse Project");
+    expect(container.textContent).not.toContain("Chat 101");
+    expect(container.textContent).toContain("Claude chat");
+    await click("Expand Project");
+    await click("View all 106 chats");
+    expect(mocks.push).toHaveBeenLastCalledWith({
+      pathname: "/agents/workspace",
+      params: { workspace: "workspace", name: "Project" },
+    });
+    await render(<AgentWorkspaceScreen />);
+    expect(container.textContent).toContain("Chat 0");
+    await click("Claude chat, Claude Code");
+    expect(mocks.push.mock.lastCall?.[0].params).toEqual({
+      id: "claude-chat",
+      workspace: "claude-workspace",
+      name: "Project",
+    });
+  });
+  it("finds an older chat outside the preview without expanding all histories", async () => {
+    setupWorkspaces();
+    await render(<AgentsScreen />);
+    const field = container.querySelector(
+      'input[aria-label="Search workspaces and chats"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      field.value = "Chat 0";
+      field.dispatchEvent(new window.Event("input", { bubbles: true }));
+    });
+    expect(container.textContent).toContain("Chat 0");
+    expect(container.textContent).not.toContain("Other project");
+    expect(container.textContent).not.toContain("Recent chats");
+    expect(container.querySelectorAll("[data-provider]")).toHaveLength(1);
+    await click("Clear search");
+    expect(container.textContent).toContain("Recent chats");
+    expect(container.textContent).not.toContain("Chat 0");
+    expect(
+      container.querySelector('button[aria-label="Expand Project"]'),
+    ).not.toBeNull();
+  });
+});
+
+describe("queued-message composer cards", () => {
+  function queue(status: "pending" | "sending" | "uncertain" = "pending") {
+    mocks.snapshot!.status = "running";
+    mocks.snapshot!.capabilities.steer = true;
+    mocks.snapshot!.queuedMessages = [
+      { id: "queued-1", message: "Then add tests", status },
+    ];
+  }
+  it("shows the actual queued card and its actions above the input, without a standing notice", async () => {
+    queue();
+    await render();
+    expect(container.textContent).not.toContain("Messages sent while working");
+    expect(container.textContent).toContain("Then add tests");
+    expect(container.textContent).toContain("Queued");
+    const card = container.querySelector(
+      'button[aria-label="Edit queued message"]',
+    )!;
+    const input = container.querySelector('input[aria-label="Message agent"]')!;
+    expect(
+      [...container.querySelectorAll("button, input")].indexOf(card),
+    ).toBeLessThan(
+      [...container.querySelectorAll("button, input")].indexOf(input),
+    );
+    await click("Steer with queued message");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "steer_queued_message",
+      id: "queued-1",
+    });
+    await click("Delete queued message");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "remove_queued_message",
+      id: "queued-1",
+    });
+  });
+  it("moves a queued message and images into an empty composer only after removal succeeds", async () => {
+    queue();
+    mocks.snapshot!.queuedMessages[0].images = [
+      { uploadId: "image", filename: "screen.png", mediaType: "image/png" },
+    ];
+    await render();
+    await click("Edit queued message");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "remove_queued_message",
+      id: "queued-1",
+    });
+    expect(mocks.draft.message).toBe("Then add tests");
+    expect(mocks.draft.images[0]).toMatchObject({
+      uploadId: "image",
+      filename: "screen.png",
+      mediaType: "image/png",
+    });
+    expect(
+      (
+        container.querySelector(
+          'button[aria-label="Edit queued message"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+  });
+  it("keeps the draft empty when removing a queued message fails", async () => {
+    queue();
+    mocks.send.mockRejectedValueOnce(new Error("Already sending"));
+    await render();
+    await click("Edit queued message");
+    expect(mocks.draft).toEqual({ message: "", images: [] });
+    expect(container.textContent).toContain("Already sending");
+  });
+  it("matches web's sending and uncertain delivery action availability", async () => {
+    queue("sending");
+    await render();
+    expect(
+      container.querySelector('button[aria-label="Edit queued message"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('button[aria-label="Delete queued message"]'),
+    ).toBeNull();
+    queue("uncertain");
+    await render();
+    expect(
+      container.querySelector('button[aria-label="Steer with queued message"]'),
+    ).toBeNull();
+    await click("Delete queued message");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "remove_queued_message",
+      id: "queued-1",
+    });
+  });
+});
+
+describe("agent conversation header", () => {
+  it("places the conversation title, provider icon, branch in the navigation bar without an idle-status row", async () => {
+    mocks.snapshot!.state.sessionName = "Polish mobile navigation";
+    await render();
+    const header = container.querySelector("header")!;
+    expect(header.textContent).toContain("Polish mobile navigation");
+    expect(header.textContent).toContain("main");
+    expect(header.querySelector('[data-provider="codex"]')).not.toBeNull();
+    expect(container.textContent).not.toContain("Ready");
+    expect(
+      container.querySelector('button[aria-label="Open workspace files"]'),
+    ).toBeNull();
+  });
+  it("keeps the workspace title while a session has no name", async () => {
+    await render();
+    const header = container.querySelector("header")!;
+    expect(header.textContent).toContain("Project");
+    expect(header.textContent).not.toContain("Ready");
+  });
+});
+
+describe("agent working indicators", () => {
+  it("keeps a compaction divider after work finishes and shows imported markers", async () => {
+    const marker = { id: "compact", role: "compactionSummary", status: "running", trigger: "manual" };
+    mocks.snapshot!.messages = [marker];
+    mocks.snapshot!.state.isCompacting = true;
+    await render();
+    expect(container.textContent).toContain("Compacting context…");
+    mocks.snapshot!.messages = [{ ...marker, status: "completed", tokensBefore: 42000 }];
+    mocks.snapshot!.state.isCompacting = false;
+    await render();
+    expect(container.textContent).not.toContain("Compacting context…");
+    expect(container.textContent).toContain("Context manually compacted");
+    expect(container.textContent).toContain("From 42,000 tokens");
+    mocks.snapshot!.messages = [{ role: "compactionSummary", summary: "Native context", tokensBefore: 120000 }];
+    await render();
+    expect(container.textContent).toContain("Context compacted");
+    expect(container.textContent).toContain("From 120,000 tokens");
+    expect(container.textContent).not.toContain("Native context");
+  });
+
+  it("shows activity in the chat header while working or compacting, and removes it when idle or disconnected", async () => {
+    mocks.snapshot!.status = "running";
+    await render();
+    const spinner = () =>
+      container.querySelector('header [aria-label="Agent working"]');
+    expect(spinner()).not.toBeNull();
+    mocks.snapshot!.status = "idle";
+    await render();
+    expect(spinner()).toBeNull();
+    mocks.snapshot!.state.isCompacting = true;
+    await render();
+    expect(spinner()).not.toBeNull();
+    mocks.status = "connecting";
+    await render();
+    expect(spinner()).toBeNull();
+  });
+  it("shows activity on running chat rows and on their collapsed workspace", async () => {
+    mocks.connections = [
+      {
+        id: "codex",
+        provider: "codex",
+        executable: "codex",
+        detectedVersion: null,
+        lastValidatedAt: null,
+        host: {
+          id: "host",
+          connectorId: "connector",
+          name: "Computer",
+          transport: "local",
+          sshAlias: null,
+        },
+        workspaces: [
+          {
+            id: "workspace",
+            name: "Project",
+            path: "/project",
+            sessions: [
+              {
+                id: "running-chat",
+                providerSessionId: "native",
+                name: "Working chat",
+                firstMessage: null,
+                messageCount: 2,
+                modifiedAt: 1,
+                createdAt: 1,
+                runtimeStatus: "running",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    await render(<AgentsScreen />);
+    expect(
+      container.querySelector('[aria-label="Agent working"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[aria-label="1 agent working in Project"]'),
+    ).not.toBeNull();
+    await click("Expand Project");
+    await click("Collapse Project");
+    expect(
+      container.querySelector('[aria-label="1 agent working in Project"]'),
+    ).not.toBeNull();
+    mocks.connections[0].workspaces[0].sessions[0].runtimeStatus = "idle";
+    mocks.connections = [...mocks.connections];
+    await render(<AgentsScreen />);
+    expect(
+      container.querySelector('[aria-label="1 agent working in Project"]'),
+    ).toBeNull();
+  });
+});
+
+describe("readable approvals and tool output", () => {
+  it("renders a tool approval command once with direct provider-valued actions", async () => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "approval",
+      method: "select",
+      title: "Allow tool: bash",
+      approvalKind: "tool",
+      message: "Command: npm test",
+      toolDetail: { type: "shell", command: "npm test" },
+      approveValue: "Approve",
+      denyValue: "Deny",
+    };
+    await render();
+    expect(container.textContent?.split("npm test")).toHaveLength(2);
+    expect(container.textContent).not.toContain('"type"');
+    expect(
+      container.querySelector('button[aria-label="Submit response"]'),
+    ).toBeNull();
+    await click("Allow once");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "interaction_response",
+      id: "approval",
+      value: "Approve",
+    });
+  });
+  it("shows Codex's command as code and submits Allow for session directly", async () => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "codex:1",
+      method: "select",
+      title: "Approve command?",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
+      message: "Requires network",
+      toolDetail: { type: "shell", command: "npm install" },
+      options: ["Allow once", "Allow for session", "Deny"],
+    };
+    await render();
+    expect(container.textContent).toContain("Requires network");
+    await click("Copy command");
+    expect(mocks.copy).toHaveBeenCalledWith("npm install");
+    await click("Allow for session");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "interaction_response",
+      id: "codex:1",
+      value: "Allow for session",
+    });
+  });
+  it("keeps tool output out of the transcript until a tool detail sheet is opened", async () => {
+    mocks.snapshot!.messages = [
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "t1",
+            name: "bash",
+            arguments: { command: "npm test", cwd: "/repo" },
+          },
+        ],
+      },
+      {
+        role: "toolResult",
+        toolCallId: "t1",
+        toolName: "bash",
+        content: [{ type: "text", text: "Tests passed" }],
+      },
+    ];
+    await render();
+    expect(container.textContent).not.toContain("Tests passed");
+    const summary = [...container.querySelectorAll("button")].find((button) =>
+      button.getAttribute("aria-label")?.includes("command"),
+    );
+    expect(summary).toBeDefined();
+    await act(async () => summary!.click());
+    expect(container.textContent).not.toContain("Tests passed");
+    await click("Terminal: npm test, completed");
+    expect(container.querySelector('[role="dialog"]')?.textContent).toContain(
+      "Tests passed",
+    );
+    expect(container.textContent).toContain("Working directory");
+    await click("Copy output");
+    expect(mocks.copy).toHaveBeenCalledWith("Tests passed");
+    await click("Close tool details");
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+  });
+});
+
+it("expands long output explicitly and copies the full value", async () => {
+  const output = Array.from({ length: 300 }, (_, i) => `Output line ${i}`).join(
+    "\n",
+  );
+  await render(
+    <AgentDetailSections
+      sections={[{ label: "Output", value: output, kind: "code" }]}
+    />,
+  );
+  expect(container.textContent).not.toContain("Output line 299");
+  await click("Show more");
+  await click("Show more");
+  expect(container.textContent).toContain("Output line 299");
+  await click("Copy output");
+  expect(mocks.copy).toHaveBeenCalledWith(output);
+});
+
+describe("audit regressions", () => {
+  it("keeps a failed model-change error visible inside the open sheet", async () => {
+    mocks.send.mockRejectedValueOnce(new Error("Model unavailable"));
+    await render();
+    await click("Model, effort, and permissions");
+    await click("Model");
+    await click("Second model");
+    expect(container.querySelector('[role="dialog"]')!.textContent).toContain(
+      "Model unavailable",
+    );
+  });
+  it("preserves partially typed decimal answers", async () => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "numeric",
+      method: "form",
+      title: "Input",
+      fields: [
+        { id: "amount", label: "Amount", type: "number", required: true },
+      ],
+    };
+    await render();
+    const field = container.querySelector(
+      'input[aria-label="Amount"]',
+    ) as HTMLInputElement;
+    await act(async () => {
+      field.value = "1.";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(field.value).toBe("1.");
+    await act(async () => {
+      field.value = "-";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(field.value).toBe("-");
+    expect(
+      (
+        container.querySelector(
+          'button[aria-label="Submit"]',
+        ) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    await act(async () => {
+      field.value = "-1.25";
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0].values).toEqual({ amount: -1.25 });
+  });
+  it("accepts an explicit No for a required boolean", async () => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "boolean",
+      method: "form",
+      title: "Input",
+      fields: [
+        { id: "answer", label: "Answer", type: "boolean", required: true },
+      ],
+    };
+    await render();
+    const submit = container.querySelector(
+      'button[aria-label="Submit"]',
+    ) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    await click("No");
+    expect(submit.disabled).toBe(false);
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0].values).toEqual({ answer: false });
+  });
+  it("does not erase a newer draft when an abandoned creation finishes", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.api.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await render(<NewAgentScreen key="old" />);
+    await input("Old request");
+    await click("Send message");
+    await render(<NewAgentScreen key="new" />);
+    await input("New draft written while the other session starts");
+    await act(async () => finish({ session: { id: "created" } }));
+    expect(mocks.draft.message).toBe(
+      "New draft written while the other session starts",
+    );
+  });
+});
+
+describe("delivery recovery", () => {
+  it("requires confirmation before a fresh send, preserving identity for ordinary retries", async () => {
+    mocks.uuid.mockReturnValueOnce("original").mockReturnValue("fresh");
+    mocks.send.mockRejectedValue(new Error("Previous outcome unknown"));
+    await render();
+    await input("Keep going");
+    await click("Send message");
+    await click("Send message");
+    expect(mocks.send.mock.calls[1][0].clientMessageId).toBe("original");
+    await click("Send again…");
+    expect(mocks.send).toHaveBeenCalledTimes(2);
+    const buttons = mocks.alert.mock.lastCall![2];
+    mocks.snapshot!.status = "running";
+    await render();
+    // Reopen against the current session state; a new send must now queue.
+    await click("Send again…");
+    const confirm = mocks.alert.mock.lastCall![2].find(
+      (b: { text: string }) => b.text === "Send again",
+    );
+    await act(async () => confirm.onPress());
+    expect(mocks.send.mock.lastCall![0]).toMatchObject({
+      type: "queue",
+      clientMessageId: "fresh",
+    });
+    expect(
+      buttons.find((b: { text: string }) => b.text === "Cancel"),
+    ).toBeDefined();
+  });
+  it("can discard an already delivered draft after reopening without sending it", async () => {
+    mocks.draft = {
+      message: "Keep going",
+      images: [],
+      pending: {
+        fingerprint: JSON.stringify({ message: "Keep going", images: [] }),
+        command: {
+          type: "prompt",
+          message: "Keep going",
+          clientMessageId: "original",
+        },
+      },
+    };
+    await render();
+    await click("Already delivered");
+    expect(mocks.send).not.toHaveBeenCalled();
+    expect(mocks.draft).toEqual({ message: "", images: [] });
+  });
+});
+
+it("opens a single-agent workspace directly in the new chat composer", async () => {
+  mocks.connections = [
+    {
+      id: "connection",
+      provider: "codex",
+      executable: "codex",
+      detectedVersion: null,
+      lastValidatedAt: null,
+      host: {
+        id: "host",
+        connectorId: "connector",
+        name: "Host",
+        transport: "local",
+        sshAlias: null,
+      },
+      workspaces: [
+        { id: "workspace", name: "Solo", path: "/solo", sessions: [] },
+      ],
+    },
+  ];
+  await render(<AgentsScreen />);
+  await click("New chat in Solo");
+  expect(mocks.push).toHaveBeenCalledWith({
+    pathname: "/agents/new",
+    params: { workspace: "workspace", provider: "codex", name: "Solo" },
+  });
+});
+
+it("renders file approval previews as diffs while preserving provider decision values", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "codex:edit",
+    method: "select",
+    title: "Approve file changes?",
+      approvalKind: "tool",
+      approveValue: "Allow once",
+      alwaysValue: "Allow for session",
+      alwaysLabel: "Allow for session",
+      denyValue: "Deny",
+    options: ["Allow once", "Allow for session", "Deny"],
+    toolDetail: {
+      type: "edit",
+      changes: [{ filePath: "one.ts", patch: "@@\n-old\n+new" }],
+    },
+  };
+  await render();
+  const dialog = container.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("one.ts");
+  expect(dialog.textContent).toContain("+new");
+  expect(dialog.textContent).not.toContain("did not provide a change preview");
+  await click("Allow for session");
+  expect(mocks.send.mock.lastCall![0]).toMatchObject({
+    type: "interaction_response",
+    id: "codex:edit",
+    value: "Allow for session",
+  });
+});
+
+it("dismisses the top sheet on Android Back and releases its handler", async () => {
+  await render();
+  await click("Model, effort, and permissions");
+  expect(mocks.backHandlers.size).toBe(1);
+  await act(async()=>expect([...mocks.backHandlers].at(-1)!()).toBe(true));
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  expect(mocks.backHandlers.size).toBe(0);
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(mocks.replace).not.toHaveBeenCalled();
+});
+
+it("keeps questions inline, paginates choices, and submits every answer together", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "questions",
+    method: "form",
+    fields: [
+      {
+        id: "framework",
+        label: "Framework",
+        description: "Which framework?",
+        type: "select",
+        required: true,
+        allowOther: true,
+        options: [
+          {
+            value: "react",
+            label: "React",
+            description: "Use the existing components",
+          },
+          { value: "vue", label: "Vue" },
+        ],
+      },
+      {
+        id: "features",
+        label: "Features",
+        description: "Which features?",
+        type: "multiselect",
+        required: true,
+        options: [
+          { value: "search", label: "Search" },
+          { value: "history", label: "History" },
+        ],
+      },
+    ],
+  };
+  await render();
+  expect(container.querySelector('[role="dialog"]')).toBeNull();
+  expect(container.textContent).toContain("Use the existing components");
+  expect(container.textContent).not.toContain("Which features?");
+  await click("React");
+  expect(mocks.send).not.toHaveBeenCalled();
+  expect(container.textContent).toContain("Which features?");
+  await click("Search");
+  await click("History");
+  await click("Question 1 of 2: Framework");
+  expect(container.textContent).toContain("Which framework?");
+  await click("Next");
+  await click("Submit");
+  expect(mocks.send).toHaveBeenCalledWith({
+    type: "interaction_response",
+    id: "questions",
+    values: { framework: "react", features: ["search", "history"] },
+  });
+});
+
+it("keeps a custom answer after a failed submission and resets for the next request", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "custom",
+    method: "form",
+    fields: [
+      {
+        id: "choice",
+        label: "Choice",
+        type: "select",
+        required: true,
+        allowOther: true,
+        options: [{ value: "A", label: "Option A" }],
+      },
+    ],
+  };
+  await render();
+  await click("Option A");
+  const field = container.querySelector(
+    'input[aria-label="Choice"]',
+  ) as HTMLInputElement;
+  await act(async () => {
+    field.value = "Something else";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  mocks.send.mockRejectedValueOnce(new Error("Connection lost"));
+  await click("Submit");
+  expect(mocks.send.mock.lastCall?.[0]).toEqual({
+    type: "interaction_response",
+    id: "custom",
+    values: { choice: "Something else" },
+  });
+  expect(field.value).toBe("Something else");
+  expect(container.textContent).toContain("Connection lost");
+  await click("Submit");
+  expect(mocks.send).toHaveBeenCalledTimes(2);
+  mocks.snapshot!.pendingInteraction = {
+    ...mocks.snapshot!.pendingInteraction,
+    id: "next",
+  };
+  await render();
+  expect(
+    (container.querySelector('input[aria-label="Choice"]') as HTMLInputElement)
+      .value,
+  ).toBe("");
+  expect(
+    (
+      container.querySelector(
+        'button[aria-label="Submit"]',
+      ) as HTMLButtonElement
+    ).disabled,
+  ).toBe(true);
+});
+
+it.each(["input", "editor", "select"])(
+  "renders %s questions inline for extension providers",
+  async (method) => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "extension",
+      method,
+      title: "Your answer",
+      ...(method === "select"
+        ? { options: ["Option"] }
+        : { prefill: "Draft answer" }),
+    };
+    await render();
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    if (method === "select") await click("Option");
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0]).toEqual({
+      type: "interaction_response",
+      id: "extension",
+      value: method === "select" ? "Option" : "Draft answer",
+    });
+  },
+);
+
+it("dismisses required questions but skips optional inputs without cancelling them", async () => {
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "required",
+    method: "input",
+    title: "Answer",
+  };
+  await render();
+  await click("Dismiss");
+  expect(mocks.send.mock.lastCall?.[0]).toEqual({
+    type: "interaction_response",
+    id: "required",
+    cancelled: true,
+  });
+  mocks.snapshot!.pendingInteraction = {
+    type: "interaction_request",
+    id: "optional",
+    method: "input",
+    title: "Comment",
+    optional: true,
+    dismissLabel: "Skip",
+  };
+  await render();
+  await click("Skip");
+  expect(mocks.send.mock.lastCall?.[0]).toEqual({
+    type: "interaction_response",
+    id: "optional",
+    value: "",
+  });
+});
+
+it.each(["select", "multiselect"])(
+  "keeps a typed %s alternative when it passes through an option label",
+  async (type) => {
+    mocks.snapshot!.pendingInteraction = {
+      type: "interaction_request",
+      id: "custom-prefix",
+      method: "form",
+      fields: [
+        {
+          id: "framework",
+          label: "Framework",
+          type,
+          required: true,
+          allowOther: true,
+          options: [{ value: "React", label: "React" }],
+        },
+      ],
+    };
+    await render();
+    const field = container.querySelector(
+      'input[aria-label="Framework"]',
+    ) as HTMLInputElement;
+    for (const char of "React Native") {
+      await act(async () => {
+        field.value += char;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+    }
+    expect(field.value).toBe("React Native");
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0].values).toEqual({
+      framework: type === "multiselect" ? ["React Native"] : "React Native",
+    });
+    await click("React");
+    expect(field.value).toBe("");
+    await click("Submit");
+    expect(mocks.send.mock.lastCall?.[0].values).toEqual({
+      framework: type === "multiselect" ? ["React"] : "React",
+    });
+  },
+);
+
+describe("agent dictation", () => {
+  it("keeps Stop dictation available when the agent disconnects", async () => {
+    mocks.dictation.status = "recording";
+    await render();
+    mocks.status = "reconnecting";
+    await render();
+    const stop = container.querySelector(
+      'button[aria-label="Stop dictation"]',
+    ) as HTMLButtonElement;
+    expect(stop.disabled).toBe(false);
+    await click("Stop dictation");
+    expect(mocks.dictation.stop).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["recording", "transcribing"] as const)(
+    "waits for %s to finish before sending the complete prompt",
+    async (status) => {
+      mocks.draft.message = "Please";
+      mocks.dictation.status = status;
+      await render();
+      const send = () => container.querySelector(
+        'button[aria-label="Send message"]',
+      ) as HTMLButtonElement;
+      expect(send().disabled).toBe(true);
+      expect(mocks.send).not.toHaveBeenCalled();
+      await act(async () => mocks.dictation.onResult("fix the spec"));
+      mocks.dictation.status = "idle";
+      await render();
+      expect(send().disabled).toBe(false);
+      await click("Send message");
+      expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({
+        type: "prompt",
+        message: "Please fix the spec",
+      }));
+    },
+  );
+
+  it("captures through the mic and appends the transcript to the draft", async () => {
+    await render();
+    await click("Start dictation");
+    // Recording must not capture playback, so text-to-speech stops first.
+    expect(mocks.stopSpeech).toHaveBeenCalledTimes(1);
+    expect(mocks.dictation.start).toHaveBeenCalledTimes(1);
+    const field = container.querySelector(
+      'input[aria-label="Message agent"]',
+    ) as HTMLInputElement;
+    await act(async () => mocks.dictation.onResult("fix the failing spec"));
+    expect(field.value).toBe("fix the failing spec");
+    await act(async () => mocks.dictation.onResult("then rerun it"));
+    expect(field.value).toBe("fix the failing spec then rerun it");
+  });
+  it("surfaces a dictation failure and clears it", async () => {
+    mocks.dictation.error = { kind: "stt_unavailable", role: "admin" };
+    await render();
+    expect(container.textContent).toContain("transcription service is temporarily unavailable");
+    expect(container.textContent).not.toContain("overtchat setup");
+    expect(toastError).not.toHaveBeenCalled();
+    expect(mocks.dictation.clearError).not.toHaveBeenCalled();
+    await click("Dismiss error");
+    expect(mocks.dictation.clearError).toHaveBeenCalledTimes(1);
+  });
+});

@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronRight,
   ListTodo,
+  Loader2,
   ShieldAlert,
   ShieldCheck,
   X,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 import { ModelBrandIcon } from "@/components/ModelBrandIcon";
 import { Button } from "@/components/ui/button";
+import { ModelSearch } from "@/components/ModelSearch";
 import type {
   AgentCollaborationMode,
   AgentMode,
@@ -25,6 +27,7 @@ import type {
 } from "@overtchat/agent-bridge";
 import { motionClasses } from "@/lib/motion";
 import { modelIconForModel } from "@/lib/providers/catalog";
+import { AGENT_MODEL_DEFAULTS_LOADING_MESSAGE } from "@/lib/agents/sessionDraft";
 import { cn } from "@/lib/utils";
 
 export interface AgentComposerControlsProps {
@@ -40,6 +43,7 @@ export interface AgentComposerControlsProps {
   modeId: string;
   modes: AgentMode[];
   disabled: boolean;
+  modelLoading?: boolean;
   onSelectModel: (model: AgentModel) => void;
   onSelectThinking: (level: string) => void;
   onSelectCollaborationMode: (mode: AgentCollaborationMode) => void;
@@ -56,6 +60,7 @@ const choiceItemClassName =
 
 export function AgentComposerControls(props: AgentComposerControlsProps) {
   const hasModelOrEffort =
+    props.modelLoading === true ||
     props.models.length > 0 ||
     (props.thinkingOptions.length > 1 && props.thinkingLevel !== null);
   const hasControls =
@@ -101,7 +106,7 @@ export function AgentComposerControls(props: AgentComposerControlsProps) {
 }
 
 function ModeControl(props: AgentComposerControlsProps) {
-  const [fullAccessOpen, setFullAccessOpen] = useState(false);
+  const [pendingMode, setPendingMode] = useState<AgentMode | null>(null);
   const selected =
     props.modes.find((mode) => mode.id === props.modeId) ?? props.modes[0];
   if (!selected) return null;
@@ -110,7 +115,7 @@ function ModeControl(props: AgentComposerControlsProps) {
   function select(mode: AgentMode) {
     if (mode.id === props.modeId) return;
     if (mode.dangerous) {
-      setFullAccessOpen(true);
+      setPendingMode(mode);
       return;
     }
     props.onSelectMode(mode.id);
@@ -185,7 +190,12 @@ function ModeControl(props: AgentComposerControlsProps) {
         </Menu.Portal>
       </Menu.Root>
 
-      <AlertDialog.Root open={fullAccessOpen} onOpenChange={setFullAccessOpen}>
+      <AlertDialog.Root
+        open={pendingMode !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingMode(null);
+        }}
+      >
         <AlertDialog.Portal>
           <AlertDialog.Backdrop
             className={cn(
@@ -200,30 +210,25 @@ function ModeControl(props: AgentComposerControlsProps) {
             )}
           >
             <AlertDialog.Title className="text-base font-semibold tracking-tight">
-              Enable Full access?
+              Enable {pendingMode?.label}?
             </AlertDialog.Title>
             <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              Codex will be able to run commands and modify files without
-              sandbox restrictions or approval prompts.
+              {pendingMode?.description ||
+                `${props.providerLabel} will be able to run commands and modify files without sandbox restrictions or approval prompts.`}
             </AlertDialog.Description>
             <div className="mt-5 flex justify-end gap-2">
-              <AlertDialog.Close
-                render={<Button variant="ghost" size="sm" />}
-              >
+              <AlertDialog.Close render={<Button variant="ghost" size="sm" />}>
                 Cancel
               </AlertDialog.Close>
               <Button
                 variant="destructive"
                 size="sm"
                 onClick={() => {
-                  setFullAccessOpen(false);
-                  const dangerousMode = props.modes.find(
-                    (mode) => mode.dangerous,
-                  );
-                  if (dangerousMode) props.onSelectMode(dangerousMode.id);
+                  if (pendingMode) props.onSelectMode(pendingMode.id);
+                  setPendingMode(null);
                 }}
               >
-                Enable Full access
+                Enable {pendingMode?.label}
               </Button>
             </div>
           </AlertDialog.Popup>
@@ -235,6 +240,14 @@ function ModeControl(props: AgentComposerControlsProps) {
 
 function ModelEffortControl(props: AgentComposerControlsProps) {
   const [panel, setPanel] = useState<"root" | "model" | "effort">("root");
+  const [search, setSearch] = useState("");
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const filteredModels = props.models.filter((model) =>
+    [model.label, model.id, model.provider]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.trim().toLowerCase()),
+  );
   const selectedModel = props.models.find(
     (model) =>
       model.provider === props.currentModel?.provider &&
@@ -243,7 +256,8 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   const modelLabel =
     selectedModel?.label ?? props.currentModel?.id ?? props.providerLabel;
   const effortLabel = props.thinkingLevel
-    ? thinkingLabel(props.thinkingLevel)
+    ? (props.thinkingOptions.find((option) => option.id === props.thinkingLevel)
+        ?.label ?? thinkingLabel(props.thinkingLevel))
     : null;
   const accessibleLabel = effortLabel
     ? `Model and effort: ${modelLabel}, ${effortLabel}`
@@ -251,10 +265,33 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   const showEffort =
     props.thinkingOptions.length > 1 && props.thinkingLevel !== null;
 
+  if (props.modelLoading && props.models.length === 0) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="min-w-0 max-w-48 gap-1.5 px-2"
+        disabled
+        aria-label={AGENT_MODEL_DEFAULTS_LOADING_MESSAGE}
+        data-testid="agent-model-effort-trigger"
+      >
+        <Loader2
+          className={cn("size-4 text-muted-foreground", motionClasses.spinner)}
+        />
+        <span className="truncate">Loading model…</span>
+      </Button>
+    );
+  }
+
   return (
     <Menu.Root
       onOpenChange={(open) => {
-        if (!open) setPanel("root");
+        if (!open) {
+          setPanel("root");
+          setSearch("");
+          setSearchExpanded(false);
+        }
         props.onMenuOpenChange?.(open);
       }}
     >
@@ -263,7 +300,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
           <Button
             variant="ghost"
             size="sm"
-            className="min-w-0 max-w-32 gap-1.5 px-2 @lg:max-w-48 @2xl:max-w-56"
+            className="min-w-0 shrink max-w-32 gap-1.5 px-2 @lg:max-w-48 @2xl:max-w-56"
             disabled={props.disabled}
             aria-label={accessibleLabel}
             data-testid="agent-model-effort-trigger"
@@ -272,10 +309,18 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
       >
         <ModelBrandIcon
           iconId={iconForModel(selectedModel)}
-          className="size-4"
+          className="size-4 shrink-0"
         />
-        <span className="truncate">{modelLabel}</span>
-        <ChevronDown className="text-muted-foreground" />
+        <span className="min-w-0 truncate">{modelLabel}</span>
+        {showEffort && effortLabel && (
+          <span
+            className="shrink-0 text-muted-foreground"
+            data-testid="agent-effort-label"
+          >
+            · {effortLabel}
+          </span>
+        )}
+        <ChevronDown className="shrink-0 text-muted-foreground" />
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner side="top" align="start" sideOffset={6}>
@@ -283,11 +328,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
             aria-label="Model and effort"
             className={cn(
               "z-50 max-h-[min(28rem,calc(100vh-2rem))] max-w-[calc(100vw-1rem)] overflow-y-auto rounded-lg border bg-popover p-1 text-sm text-popover-foreground shadow-md outline-none",
-              panel === "model"
-                ? "w-80"
-                : panel === "effort"
-                  ? "w-56"
-                  : "w-72",
+              panel === "model" ? "w-80" : panel === "effort" ? "w-56" : "w-72",
               motionClasses.popup,
             )}
           >
@@ -328,9 +369,29 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
             )}
             {panel === "model" && (
               <>
-                <BackItem label="Model" onClick={() => setPanel("root")} />
-                <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-                {props.models.map((model) => {
+                <ModelSearch
+                  count={props.models.length}
+                  search={search}
+                  onSearch={setSearch}
+                  expanded={searchExpanded}
+                  onExpanded={setSearchExpanded}
+                  heading={
+                    <BackItem
+                      label="Model"
+                      onClick={() => {
+                        setPanel("root");
+                        setSearch("");
+                        setSearchExpanded(false);
+                      }}
+                    />
+                  }
+                />
+                {filteredModels.length === 0 && (
+                  <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                    No matching models.
+                  </div>
+                )}
+                {filteredModels.map((model) => {
                   const selected =
                     model.provider === props.currentModel?.provider &&
                     model.id === props.currentModel.id;
@@ -389,13 +450,7 @@ function ModelEffortControl(props: AgentComposerControlsProps) {
   );
 }
 
-function BackItem({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick: () => void;
-}) {
+function BackItem({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Menu.Item
       closeOnClick={false}

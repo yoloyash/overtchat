@@ -7,7 +7,7 @@ import Popover, {
 } from "react-native-popover-view";
 import { useTheme } from "@/lib/theme";
 
-export type MessageAction = "copy" | "edit" | "regenerate";
+export type MessageAction = "copy" | "edit" | "regenerate" | "continue";
 
 const ACTION_META: Record<
   MessageAction,
@@ -16,6 +16,7 @@ const ACTION_META: Record<
   copy: { label: "Copy", icon: "copy" },
   edit: { label: "Edit", icon: "edit-3" },
   regenerate: { label: "Regenerate", icon: "rotate-ccw" },
+  continue: { label: "Continue response", icon: "play" },
 };
 
 export function MessageMenu({

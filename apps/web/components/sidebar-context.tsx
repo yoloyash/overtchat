@@ -2,6 +2,15 @@
 
 import { createContext, useContext, type RefObject } from "react";
 
+export interface ChatPinFocusRequest {
+  id: string;
+  pinned: boolean;
+  row: HTMLElement;
+  sidebar: HTMLElement;
+  focusedElement: Element | null;
+  fromMenu: boolean;
+}
+
 interface SidebarCtx {
   collapsed: boolean;
   openSidebar: () => void;
@@ -15,6 +24,7 @@ interface SidebarCtx {
   // doesn't recognize taps on menu items as "inside" events and the menu
   // never opens on touch. Null on desktop (portal to body as usual).
   drawerRef: RefObject<HTMLElement | null>;
+  pinFocusRef: RefObject<ChatPinFocusRequest | null>;
 }
 
 export const SidebarContext = createContext<SidebarCtx | null>(null);

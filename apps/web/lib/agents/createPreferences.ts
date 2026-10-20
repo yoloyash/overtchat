@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
+import { AGENT_PROVIDER_IDS } from "@overtchat/agent-bridge";
 
 export type AgentProviderPreferences = {
   model?: string;
@@ -22,7 +23,7 @@ const providerPreferencesSchema = z.strictObject({
 const preferencesSchema = z.strictObject({
   providerPreferences: z
     .partialRecord(
-      z.enum(["pi", "omp", "codex", "opencode", "claude"]),
+      z.enum(AGENT_PROVIDER_IDS),
       providerPreferencesSchema,
     )
     .optional(),

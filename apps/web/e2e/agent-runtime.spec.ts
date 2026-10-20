@@ -1,4 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { createHash } from "node:crypto";
+import { mkdtemp, mkdir, readFile, writeFile, rm } from "node:fs/promises";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import os from "node:os";
+import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { _electron, expect, test, type ElectronApplication, type Locator } from "@playwright/test";
 import type {
   AgentConnectionListItem,
   AgentRuntimeSnapshot,
@@ -6,6 +13,7 @@ import type {
 import {
   openE2eDatabase,
   resetE2eDatabase,
+  setupUrl,
 } from "./helpers/database";
 
 const SESSION_ID = "runtime-session";
@@ -46,6 +54,21 @@ const textModel: AgentRuntimeSnapshot["models"][number] = {
 };
 
 test.beforeEach(resetE2eDatabase);
+
+async function expectHorizontalMessageActions(actions: Locator) {
+  const buttons = actions.getByRole("button");
+  await expect(buttons).toHaveCount(3);
+  const boxes = await buttons.evaluateAll((elements) =>
+    elements.map((element) => {
+      const box = element.getBoundingClientRect();
+      return { x: box.x, right: box.right, centerY: box.y + box.height / 2 };
+    }),
+  );
+  for (let index = 1; index < boxes.length; index++) {
+    expect(boxes[index].centerY).toBeCloseTo(boxes[0].centerY, 0);
+    expect(boxes[index].x).toBeGreaterThanOrEqual(boxes[index - 1].right);
+  }
+}
 
 function seedAgentSession() {
   const db = openE2eDatabase();
@@ -93,6 +116,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
       steer: true,
       usage: true,
       editSentMessages: true,
+      rewindConversation: true,
       forkMessages: true,
     },
     status: "running",
@@ -112,12 +136,14 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
         {
           id: "auto",
           label: "Default Permissions",
-          description: "Edit files and run commands with Codex's default approval flow.",
+          description:
+            "Edit files and run commands with Codex's default approval flow.",
         },
         {
           id: "auto-review",
           label: "Auto-review",
-          description: "Route eligible approvals through Codex's auto-reviewer.",
+          description:
+            "Route eligible approvals through Codex's auto-reviewer.",
         },
         {
           id: "full-access",
@@ -181,8 +207,7 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
           {
             id: "answer",
             type: "text",
-            text:
-              "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
+            text: "I will inspect the runtime. https://github.com/overtchat/overtchat/pull/232\n\nReview [the agent view](apps/web/components/agents/AgentSessionView.tsx#L391), [the docs](https://docs.example.com/guide/start), [the config](./fixtures/config.json), [the native app](./fixtures/App.cs), and [the fixture](./fixtures/custom.xyz).",
           },
         ],
         timestamp: 2.2,
@@ -351,10 +376,200 @@ function runtimeSnapshot(startedAt: number): AgentRuntimeSnapshot {
   };
 }
 
+test("new chats, follow-up prompts, and fork drafts work without crypto.randomUUID", async ({
+  page,
+}) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("HTTP Agent Tester");
+  await page.locator("#email").fill("http-agent@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+
+  // Localhost exposes this secure-context API even over HTTP. Remove it on
+  // every navigation to reproduce the capabilities of a plain HTTP LAN origin.
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", {
+      configurable: true,
+      value: undefined,
+    });
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      onerror: ((event: Event) => void) | null = null;
+
+      constructor() {
+        super();
+        window.setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.messages = [];
+  let releaseCatalog: () => void = () => {};
+  const catalogReady = new Promise<void>((resolve) => { releaseCatalog = resolve; });
+  await page.route("**/api/agent-workspaces/workspace/catalog?provider=codex", async (route) => {
+    await catalogReady;
+    return route.fulfill({
+      json: { provider: "codex", models: [imageModel], modes: [] },
+    });
+  });
+  let createdSessions = 0;
+  await page.route("**/api/agent-workspaces/workspace/sessions", (route) => {
+    createdSessions += 1;
+    return route.fulfill({ json: { session: { id: SESSION_ID } } });
+  });
+  const forkHistory =
+    "# Conversation context\n\nUser: Original question\n\nAssistant: Original answer\n\n--- End of prior conversation ---";
+  const submittedCommands: Array<Record<string, unknown>> = [];
+  await page.route(
+    new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`),
+    async (route) => {
+      if (route.request().method() === "POST") {
+        const command = route.request().postDataJSON();
+        submittedCommands.push(command);
+        await route.fulfill({
+          json:
+            command.type === "fork_message"
+              ? {
+                  forkContext: {
+                    text: forkHistory,
+                    launchConfig: {
+                      model: imageModel.id,
+                      thinkingOptionId: "high",
+                    },
+                  },
+                }
+              : { accepted: true },
+        });
+        return;
+      }
+      await route.fulfill({ json: { snapshot } });
+    },
+  );
+
+  await page.goto("/agents/new?workspaceId=workspace&provider=codex");
+  const composer = page.getByTestId("agent-composer").getByRole("combobox");
+  await expect(composer).toBeDisabled();
+  releaseCatalog();
+  await expect(composer).toBeEnabled();
+  await expect(page.getByTestId("agent-model-effort-trigger")).toBeVisible();
+  await composer.fill("First agent prompt over HTTP");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.length).toBe(1);
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+
+  await composer.fill("Follow-up agent prompt over HTTP");
+  await composer.press("Enter");
+  await expect.poll(() => submittedCommands.length).toBe(2);
+  expect(submittedCommands).toEqual([
+    {
+      type: "prompt",
+      message: "First agent prompt over HTTP",
+      clientMessageId: expect.any(String),
+    },
+    {
+      type: "prompt",
+      message: "Follow-up agent prompt over HTTP",
+      clientMessageId: expect.any(String),
+    },
+  ]);
+  const ids = submittedCommands.map((command) => command.clientMessageId);
+  expect(ids.every((id) => typeof id === "string" && id.length > 0)).toBe(true);
+  expect(new Set(ids).size).toBe(2);
+  await expect(page.getByText("Codex command failed", { exact: true })).toHaveCount(0);
+  snapshot.messages = [
+    {
+      role: "user",
+      id: "original-user",
+      content: [{ type: "text", text: "Original question" }],
+      timestamp: 1,
+    },
+    {
+      role: "assistant",
+      id: "original-answer",
+      content: [{ type: "text", text: "Original answer" }],
+      timestamp: 2,
+    },
+  ];
+  const completedMessages = snapshot.messages;
+  snapshot.status = "running";
+  snapshot.messages = [
+    ...completedMessages,
+    { role: "user", id: "current-user", content: "Keep checking", timestamp: 3 },
+    { role: "assistant", id: "progress", content: [{ type: "text", text: "Checking the files" }], timestamp: 4 },
+    { role: "assistant", id: "tool", content: [{ type: "toolCall", id: "call", name: "bash", arguments: { command: "ls" } }], timestamp: 5 },
+  ];
+  await page.reload();
+  const transcriptActions = page.getByTestId("agent-message-list").locator('[data-slot="message-actions"]');
+  await expect(transcriptActions).toHaveCount(1);
+  await page.mouse.move(0, 0);
+  await expect(transcriptActions).toHaveCSS("opacity", "1");
+  snapshot.messages.push({ role: "assistant", id: "final", content: [{ type: "text", text: "Finished checking" }], timestamp: 6 });
+  await page.reload();
+  await expect(page.getByText("Finished checking", { exact: true })).toBeVisible();
+  await expect(transcriptActions).toHaveCount(1);
+  snapshot.status = "idle";
+  await page.reload();
+  await expect(transcriptActions).toHaveCount(2);
+  await expect(page.getByText("Checking the files", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Finished checking", { exact: true })).toBeVisible();
+  const workSummary = page.getByTestId("agent-work-summary");
+  await expect(workSummary).toHaveAttribute("aria-expanded", "false");
+  await workSummary.click();
+  await expect(workSummary).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByText("Checking the files", { exact: true })).toBeVisible();
+  await expect(transcriptActions).toHaveCount(2);
+  await workSummary.click();
+  await expect(page.getByText("Checking the files", { exact: true })).toHaveCount(0);
+  snapshot.messages = completedMessages;
+  await page.reload();
+  await page.mouse.move(0, 0);
+  const messageActions = page.locator('[data-slot="message-actions"]');
+  await expect(messageActions).toHaveCSS("opacity", "1");
+  await expectHorizontalMessageActions(messageActions);
+  await page.getByRole("button", { name: "Fork from this response" }).click();
+  await page.mouse.move(0, 0);
+  await expect(messageActions).toHaveCSS("opacity", "1");
+  await page
+    .getByRole("menuitem", { name: "Fork in another workspace" })
+    .click();
+  await page.waitForURL("**/agents/new?**");
+  await expect(page.getByText("Chat history attached")).toBeVisible();
+  await expect(
+    page.getByRole("combobox", { name: "Fork workspace" }),
+  ).toHaveValue("workspace");
+  await expect(composer).toHaveValue("");
+  expect(createdSessions).toBe(1);
+  expect(submittedCommands.at(-1)).toMatchObject({
+    type: "fork_message",
+    messageId: "original-answer",
+  });
+  await composer.fill("Continue the fork");
+  await composer.press("Enter");
+  await expect.poll(() => createdSessions).toBe(2);
+  await expect
+    .poll(() => submittedCommands.at(-1))
+    .toMatchObject({
+      type: "prompt",
+      message: `${forkHistory}\n\nContinue the fork`,
+    });
+  await page.waitForURL(`**/agents/${SESSION_ID}`);
+  expect(errors).toEqual([]);
+});
+
 test("requires inspection before retrying an uncertain queued message", async ({
   page,
 }) => {
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Uncertain Queue E2E Admin");
   await page
     .locator("#email")
@@ -442,7 +657,7 @@ test("shows durable turn activity without changing completed tool status", async
   page,
 }, testInfo) => {
   test.setTimeout(60_000);
-  await page.goto("/signup");
+  await page.goto(await setupUrl());
   await page.locator("#name").fill("Runtime E2E Admin");
   await page.locator("#email").fill("runtime-admin@overtchat-test.local");
   await page.locator("#password").fill("test-password-123");
@@ -579,7 +794,7 @@ test("shows durable turn activity without changing completed tool status", async
           contentType: "application/json",
           body: JSON.stringify({
             accepted: true,
-            ...(command.type === "edit_message"
+            ...(command.type === "rewind"
               ? {
                   sessionId: SESSION_ID,
                   draft: "Inspect the runtime",
@@ -848,9 +1063,9 @@ test("shows durable turn activity without changing completed tool status", async
     });
   }, snapshot);
 
-  const sessionActivity = page.getByRole("status", {
-    name: "Runtime activity is working",
-  });
+  const sessionActivity = page
+    .getByRole("list", { name: "Agent workspaces", exact: true })
+    .getByRole("status", { name: "Runtime activity is working" });
   await expect(sessionActivity).toBeVisible();
   const agentHeader = page.getByTestId("agent-session-header");
   const agentComposer = page.getByTestId("agent-composer");
@@ -1117,6 +1332,17 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(headerGitStatus).toContainText("2 files");
   await expect(headerGitStatus).toContainText("+8");
   await expect(headerGitStatus).toContainText("-3");
+  await headerGitStatus
+    .getByRole("button", { name: "View 2 changed files" })
+    .click();
+  await expect(workspacePane.getByRole("heading", { name: "Changes" })).toBeVisible();
+  await expect(workspacePane.getByRole("tab", { name: "Files" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await workspacePane
+    .getByRole("button", { name: "Close workspace files" })
+    .click();
   const sidebarGitStatus = page.locator(
     '[data-testid="sidebar-workspace-git-status-workspace"]:visible',
   );
@@ -1125,6 +1351,34 @@ test("shows durable turn activity without changing completed tool status", async
     "title",
     "feature/runtime-status · 2 changed files · +8 −3",
   );
+  const accountUsageButton = page.getByRole("button", {
+    name: "Account usage",
+  });
+  const sessionActionsButton = page.getByRole("button", {
+    name: "Session actions",
+  });
+  const workspaceFilesButton = page.getByRole("button", {
+    name: "Open workspace files",
+  });
+  await expect(accountUsageButton).toBeVisible();
+  const [accountUsageBox, sessionActionsBox, workspaceFilesBox] =
+    await Promise.all([
+      accountUsageButton.boundingBox(),
+      sessionActionsButton.boundingBox(),
+      workspaceFilesButton.boundingBox(),
+    ]);
+  expect(accountUsageBox).not.toBeNull();
+  expect(sessionActionsBox).not.toBeNull();
+  expect(workspaceFilesBox).not.toBeNull();
+  expect(accountUsageBox!.x).toBeLessThan(sessionActionsBox!.x);
+  expect(sessionActionsBox!.x).toBeLessThan(workspaceFilesBox!.x);
+  await accountUsageButton.click();
+  const accountUsage = page.getByRole("dialog", { name: "Codex usage" });
+  await expect(accountUsage).toBeVisible();
+  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
+    type: "show_usage",
+  });
+  await accountUsage.getByRole("button", { name: "Done" }).click();
   await page.getByRole("button", { name: "Session actions" }).click();
   await expect(
     page.getByRole("menuitem", { name: "Copy workspace path" }),
@@ -1132,7 +1386,10 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(
     page.getByRole("menuitem", { name: "Copy branch name" }),
   ).toBeVisible();
-  await page.keyboard.press("Escape");
+  await page.getByRole("menuitem", { name: "Session usage" }).click();
+  const sessionUsage = page.getByRole("dialog", { name: "Session usage" });
+  await expect(sessionUsage).toContainText("Tool calls");
+  await sessionUsage.getByRole("button", { name: "Done" }).click();
   const newSessionButton = page.getByRole("button", {
     name: "New session in Runtime test",
   });
@@ -1147,7 +1404,7 @@ test("shows durable turn activity without changing completed tool status", async
 
   await page.getByRole("button", { name: "Collapse Runtime test" }).click();
   const workspaceActivity = page.getByRole("status", {
-    name: "Runtime test has running sessions",
+    name: "1 running chat in Runtime test",
   });
   await expect(workspaceActivity).toBeVisible();
   const [activityBox, newSessionBox] = await Promise.all([
@@ -1166,6 +1423,9 @@ test("shows durable turn activity without changing completed tool status", async
 
   const genericActivity = page.getByTestId("agent-run-activity");
   await expect(genericActivity).toHaveCount(0);
+  const completedWork = page.getByRole("button", { name: "Worked for 4m 6s", exact: true });
+  await expect(completedWork).toHaveAttribute("aria-expanded", "false");
+  await completedWork.click();
   await expect(
     page.locator('[data-activity-sequence="single"]'),
   ).toHaveCount(1);
@@ -1182,10 +1442,18 @@ test("shows durable turn activity without changing completed tool status", async
     page.getByText("I'm auditing the release state before merging anything."),
   ).toBeVisible();
   const completedTurn = page.getByTestId("agent-turn-footer");
-  await expect(completedTurn).toContainText("Worked for 4m 6s");
+  await expect(completedTurn).not.toContainText("Worked for 4m 6s");
   await expect(
     completedTurn.getByRole("button", { name: "Copy response" }),
   ).toBeVisible();
+  const turnActions = completedTurn.locator('[data-slot="message-actions"]');
+  await page.mouse.move(0, 0);
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await page.getByRole("paragraph").filter({ hasText: "I will inspect the runtime." }).hover();
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await completedTurn.hover();
+  await expect(turnActions).toHaveCSS("opacity", "1");
+  await expectHorizontalMessageActions(turnActions);
   const thinking = page.getByRole("button", { name: "Thoughts" });
   await thinking.click();
   await expect(
@@ -1561,13 +1829,28 @@ test("shows durable turn activity without changing completed tool status", async
   snapshot.activeTurn = null;
   snapshot.state.isStreaming = false;
   const sessionUrl = page.url();
+  const rewindButton = page.getByRole("button", { name: "Rewind to this message" });
+  const rewindAction = rewindButton.locator("..");
+  await composer.hover();
+  await expect(rewindAction).toHaveCSS("opacity", "0");
+  await page.getByText("Inspect the runtime", { exact: true }).hover();
+  await expect(rewindAction).toHaveCSS("opacity", "1");
+  await composer.hover();
+  await rewindButton.focus();
+  await expect(rewindAction).toHaveCSS("opacity", "1");
+  await rewindButton.click();
+  await page.mouse.move(0, 0);
+  await expect(rewindAction).toHaveCSS("opacity", "1");
   await page
-    .getByRole("button", { name: "Edit from this message" })
+    .getByRole("menuitem", { name: "Rewind conversation", exact: true })
     .click();
-  await expect.poll(() => submittedCommands.at(-1)).toMatchObject({
-    type: "edit_message",
-    messageId: "turn-1:user:0",
-  });
+  await expect
+    .poll(() => submittedCommands.at(-1))
+    .toMatchObject({
+      type: "rewind",
+      mode: "conversation",
+      messageId: "turn-1:user:0",
+    });
   await expect(composer).toHaveValue("Inspect the runtime");
   await expect(page).toHaveURL(sessionUrl);
   await expect(composer).toBeFocused();
@@ -1576,6 +1859,9 @@ test("shows durable turn activity without changing completed tool status", async
     name: "Model and effort: GPT-5.6, High",
   });
   await expect(modelEffortControl).toBeEnabled();
+  await expect(
+    modelEffortControl.getByTestId("agent-effort-label"),
+  ).toHaveText("· High");
   await modelEffortControl.click();
   await expect(
     page.getByRole("button", { name: "Scroll to bottom" }),
@@ -1660,6 +1946,12 @@ test("shows durable turn activity without changing completed tool status", async
       },
     });
   }, imageModel);
+  const lowModelEffortControl = agentComposer.getByRole("button", {
+    name: "Model and effort: GPT-5.6, Low",
+  });
+  await expect(
+    lowModelEffortControl.getByTestId("agent-effort-label"),
+  ).toHaveText("· Low");
   const planModeControl = agentComposer.getByRole("button", {
     name: "Plan mode",
   });
@@ -1676,11 +1968,7 @@ test("shows durable turn activity without changing completed tool status", async
   await expect(planModeControl).toHaveCount(0);
 
   await page.setViewportSize({ width: 1280, height: 720 });
-  await agentComposer
-    .getByRole("button", {
-      name: "Model and effort: GPT-5.6, Low",
-    })
-    .click();
+  await lowModelEffortControl.click();
   await page
     .getByRole("menu", { name: "Model and effort" })
     .getByRole("menuitem", { name: /Model.*GPT-5\.6/u })
@@ -1699,6 +1987,12 @@ test("shows durable turn activity without changing completed tool status", async
     path: testInfo.outputPath("runtime-model-effort-desktop.png"),
     fullPage: true,
   });
+  await modelEffortMenu.getByRole("menuitem", { name: "Search models", exact: true }).click();
+  const modelSearch = page.getByRole("textbox", { name: "Search models" });
+  await modelSearch.fill("no-such-agent-model");
+  await expect(page.getByText("No matching models.", { exact: true })).toBeVisible();
+  await modelSearch.fill(" mini ");
+  await expect(modelEffortMenu.getByRole("menuitem", { name: /GPT-5.6 Mini/u })).toBeVisible();
   await page
     .getByRole("menu", { name: "Model and effort" })
     .getByRole("menuitem", { name: /GPT-5.6 Mini/u })
@@ -1798,27 +2092,147 @@ test("shows durable turn activity without changing completed tool status", async
     ],
   };
   await page.reload();
+  const questionCard = page.getByTestId("agent-question-card");
+  await expect(questionCard).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(
-    page.getByRole("dialog", { name: "GitHub needs your input" }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Token")).toHaveAttribute("type", "password");
-  await page.getByLabel("Token").fill("secret");
-  await page.getByLabel("Environment").selectOption("staging");
-  await page.getByRole("checkbox", { name: "Repo", exact: true }).check();
-  await page
-    .getByRole("switch", { name: "Private repository (optional)", exact: true })
+    questionCard.getByLabel("Personal access token", { exact: true }),
+  ).toHaveAttribute("type", "password");
+  await questionCard
+    .getByLabel("Personal access token", { exact: true })
+    .fill("secret");
+  await questionCard.getByRole("button", { name: "Next", exact: true }).click();
+  await questionCard
+    .getByRole("radio", { name: "Production", exact: true })
+    .focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(
+    questionCard.getByRole("radio", { name: "Staging", exact: true }),
+  ).toBeChecked();
+  await expect(
+    questionCard.getByRole("radio", { name: "Staging", exact: true }),
+  ).toBeFocused();
+  await questionCard.getByRole("button", { name: "Next", exact: true }).click();
+  await questionCard
+    .getByRole("checkbox", { name: "Repo", exact: true })
     .click();
-  await page.getByRole("button", { name: "Submit" }).click();
-  await expect.poll(() => interactionResponse).toMatchObject({
-    type: "interaction_response",
-    id: "mcp-form",
-    values: {
-      token: "secret",
-      environment: "staging",
-      scopes: ["repo"],
-      private: true,
-    },
+  await questionCard.getByRole("button", { name: "Next", exact: true }).click();
+  await questionCard.getByRole("radio", { name: "Yes", exact: true }).click();
+  await questionCard
+    .getByRole("tab", { name: "Question 2 of 4: Environment" })
+    .click();
+  await expect(
+    questionCard.getByRole("radio", { name: "Staging", exact: true }),
+  ).toBeChecked();
+  await questionCard
+    .getByRole("tab", { name: "Question 4 of 4: Private repository" })
+    .click();
+  await page.screenshot({
+    path: testInfo.outputPath("inline-agent-question-desktop.png"),
   });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await questionCard.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: testInfo.outputPath("inline-agent-question-mobile.png"),
+  });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await questionCard
+    .getByRole("button", { name: "Submit", exact: true })
+    .click();
+  await expect
+    .poll(() => interactionResponse)
+    .toMatchObject({
+      type: "interaction_response",
+      id: "mcp-form",
+      values: {
+        token: "secret",
+        environment: "staging",
+        scopes: ["repo"],
+        private: true,
+      },
+    });
+
+  interactionResponse = null;
+  snapshot.pendingInteraction = {
+    type: "interaction_request",
+    id: "codex:approval",
+    method: "select",
+    title: "Run dependency checks?",
+    approvalKind: "tool",
+    approveValue: "Allow once",
+    alwaysValue: "Allow for session",
+    alwaysLabel: "Allow for session",
+    denyValue: "Deny",
+    message: "Check the workspace dependencies.",
+    toolDetail: { type: "shell", command: "npm test" },
+  };
+  await page.reload();
+  const approvalCard = page.getByRole("region", {
+    name: "Run dependency checks?",
+  });
+  await expect(approvalCard).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(questionCard).toHaveCount(0);
+  await expect(
+    approvalCard.getByText("npm test", { exact: true }),
+  ).toBeVisible();
+  await approvalCard
+    .getByRole("button", { name: "Allow for session", exact: true })
+    .click();
+  await expect
+    .poll(() => interactionResponse)
+    .toMatchObject({
+      type: "interaction_response",
+      id: "codex:approval",
+      value: "Allow for session",
+    });
+
+  interactionResponse = null;
+  snapshot.pendingInteraction = {
+    type: "interaction_request",
+    id: "custom-question",
+    method: "form",
+    fields: [
+      {
+        id: "framework",
+        label: "Framework",
+        description: "Which framework?",
+        type: "select",
+        required: true,
+        allowOther: true,
+        options: [
+          {
+            value: "React",
+            label: "React",
+            description: "Use the current framework",
+          },
+          { value: "Vue", label: "Vue" },
+        ],
+      },
+    ],
+  };
+  await page.reload();
+  const customInput = questionCard.getByRole("textbox", {
+    name: "Which framework?",
+  });
+  await customInput.pressSequentially("React Native");
+  await expect(customInput).toHaveValue("React Native");
+  await expect(
+    questionCard.getByRole("radio", { name: "React", exact: true }),
+  ).not.toBeChecked();
+  await questionCard.getByRole("radio", { name: "Vue", exact: true }).click();
+  await expect(customInput).toHaveValue("");
+  await customInput.pressSequentially("React Native");
+  await questionCard
+    .getByRole("button", { name: "Submit", exact: true })
+    .click();
+  await expect
+    .poll(() => interactionResponse)
+    .toMatchObject({
+      type: "interaction_response",
+      id: "custom-question",
+      values: { framework: "React Native" },
+    });
 
   interactionResponse = null;
   snapshot.pendingInteraction = {
@@ -1887,4 +2301,849 @@ test("shows durable turn activity without changing completed tool status", async
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Retry" }).click();
   await expect.poll(() => retryRequested).toBe(true);
+});
+
+test("folds long completed work smoothly, anchors disclosures, and respects reduced motion", async ({ page }, testInfo) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Motion Tester");
+  await page.locator("#email").fill("motion@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.messages = [
+    { role: "user", id: "user", content: "Check this", timestamp: 100000 },
+    { role: "assistant", id: "progress", timestamp: 103000, content: [{ type: "text", text: Array.from({ length: 25 }, (_, i) => `Progress line ${i}`).join("\n\n") }] },
+    { role: "assistant", id: "answer", timestamp: 165000, content: [{ type: "text", text: Array.from({ length: 20 }, (_, i) => `Answer line ${i}`).join("\n\n") }] },
+  ];
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    const sources: EventTarget[] = [];
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor(url: string) {
+        super();
+        if (url.includes("/api/agent-sessions/")) sources.push(this);
+        setTimeout(() => this.onopen?.(new Event("open")), 0);
+      }
+      close() { const i = sources.indexOf(this); if (i >= 0) sources.splice(i, 1); }
+    }
+    Object.assign(window, {
+      EventSource: FakeEventSource,
+      __motionEmit: (snapshot: unknown) => sources.forEach((source) => source.dispatchEvent(new MessageEvent("runtime", {
+        data: JSON.stringify({ epoch: "motion", sequence: 1, type: "snapshot", data: snapshot }),
+      }))),
+    });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  await expect(page.getByText("Progress line 0", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(0);
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  const heights = await page.evaluate(async (completed) => {
+    const paragraph = [...document.querySelectorAll("p")].find((node) => node.textContent === "Progress line 0")!;
+    const row = paragraph.closest("[data-transcript-row]")!;
+    const heights = [row.getBoundingClientRect().height];
+    (window as unknown as { __motionEmit: (snapshot: unknown) => void }).__motionEmit(completed);
+    const end = performance.now() + 420;
+    while (performance.now() < end) {
+      await new Promise(requestAnimationFrame);
+      heights.push(row.getBoundingClientRect().height);
+    }
+    return heights;
+  }, snapshot);
+  expect(heights[0]).toBeGreaterThan(500);
+  expect(heights.some((height) => height > 5 && height < heights[0] - 5)).toBe(true);
+  expect(heights.at(-1)).toBe(0);
+  await expect(page.getByText("Progress line 0", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Copy response", exact: true })).toHaveCount(1);
+  const summary = page.getByRole("button", { name: "Worked for 1m 5s", exact: true });
+  await summary.scrollIntoViewIfNeeded();
+  const before = (await summary.boundingBox())!.y;
+  await summary.click();
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Read aloud", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Copy response", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Fork from this response", exact: true })).toHaveCount(1);
+  await expect(summary.locator("svg")).toHaveCSS("rotate", "90deg");
+  await expect.poll(async () => Math.abs((await summary.boundingBox())!.y - before)).toBeLessThan(2);
+  await expect(page.getByText("Progress line 0", { exact: true })).toBeVisible();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await summary.click();
+  await expect(page.getByText("Progress line 0", { exact: true })).toHaveCount(0);
+  await expect(summary.locator("svg")).toHaveCSS("transition-duration", "0s");
+  await expect(page.getByText("Answer line 0", { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("completed-work.png") });
+});
+
+test("preserves an OMP markdown answer through continuation, abort and reload", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Transcript E2E Admin");
+  await page.locator("#email").fill("transcript-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-transcript-fixture-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare(
+      "UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'",
+    ).run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare(
+      "UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'",
+    ).run();
+  } finally {
+    db.close();
+  }
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "overtchat-transcript-e2e-"),
+  );
+  let fixture: ChildProcess | undefined;
+  try {
+    const canonical = runtimeSnapshot(Date.now());
+    canonical.provider = "omp";
+    canonical.status = "idle";
+    canonical.activeTurn = null;
+    canonical.state = { isStreaming: false };
+    canonical.messages = [];
+    canonical.models = [];
+    const draft = {
+      role: "assistant",
+      timestamp: 100,
+      content: [
+        {
+          type: "text",
+          text: "## Client downloads\n\nHere is the complete draft.\n\n```markdown\n[Desktop](https://example.com/desktop)\n```",
+        },
+      ],
+    };
+    const tool = {
+      role: "assistant",
+      timestamp: 200,
+      content: [
+        {
+          type: "toolCall",
+          id: "bash-1",
+          name: "bash",
+          arguments: { command: "pwd" },
+        },
+      ],
+    };
+    const aborted = {
+      role: "assistant",
+      timestamp: 400,
+      content: [],
+      stopReason: "aborted",
+      errorMessage: "Request was aborted",
+    };
+    const configFile = path.join(directory, "fixture.json");
+    await writeFile(
+      configFile,
+      JSON.stringify({
+        snapshot: canonical,
+        directory,
+        connectorId: "connector",
+        token: `oct_connector.${secret}`,
+        serverUrl: String(testInfo.project.use.baseURL),
+        eventBatches: {
+          draft: [
+            { type: "agent_start" },
+            { type: "message_start", message: { ...draft, content: [] } },
+            { type: "message_update", message: draft },
+            { type: "message_end", message: { ...draft, stopReason: "stop" } },
+          ],
+          continuation: [
+            { type: "todo_reminder" },
+            { type: "agent_start" },
+            { type: "turn_start" },
+            { type: "message_start", message: { ...tool, content: [] } },
+            { type: "message_update", message: tool },
+            {
+              type: "message_end",
+              message: { ...tool, stopReason: "toolUse" },
+            },
+            {
+              type: "message_end",
+              message: {
+                role: "toolResult",
+                toolCallId: "bash-1",
+                timestamp: 300,
+                content: [{ type: "text", text: "Command aborted" }],
+                isError: true,
+              },
+            },
+            {
+              type: "message_start",
+              message: { ...aborted, errorMessage: undefined },
+            },
+            { type: "message_end", message: aborted },
+            { type: "overtchat_status", status: "idle" },
+          ],
+        },
+      }),
+    );
+    fixture = spawn(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        path.resolve(
+          __dirname,
+          "../../connector/scripts/transport-fixture.mjs",
+        ),
+        configFile,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "";
+    fixture.stdout!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    fixture.stderr!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    await expect
+      .poll(
+        () => {
+          if (fixture!.exitCode !== null)
+            throw new Error(`Transcript fixture exited: ${output}`);
+          return output.includes("transport-fixture-ready");
+        },
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    await page.goto(`/agents/${SESSION_ID}`);
+    await expect(
+      page.getByPlaceholder("Message Oh My Pi or type / for commands"),
+    ).toBeVisible();
+    const sendBatch = async (message: string) => {
+      const response = await page.request.post(
+        `/api/agent-sessions/${SESSION_ID}`,
+        { data: { type: "prompt", message } },
+      );
+      expect(response.ok(), await response.text()).toBe(true);
+    };
+    const assertDraft = async () => {
+      await expect(
+        page.getByRole("heading", { name: "Client downloads", exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("Here is the complete draft.", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText("[Desktop](https://example.com/desktop)", {
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("heading", { name: "Client downloads", exact: true }),
+      ).toHaveCount(1);
+    };
+    await sendBatch("draft");
+    await assertDraft();
+    await sendBatch("continuation");
+    await expect(
+      page.getByText("Request was aborted", { exact: true }),
+    ).toBeVisible();
+    await assertDraft();
+    await page.reload();
+    await expect(
+      page.getByText("Request was aborted", { exact: true }),
+    ).toBeVisible();
+    await assertDraft();
+  } finally {
+    if (fixture && fixture.exitCode === null) {
+      fixture.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          fixture!.kill("SIGKILL");
+          resolve();
+        }, 5000);
+        fixture!.once("exit", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("drains an oversized connector backlog, pages history, and streams steer without refreshing", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Transport E2E Admin");
+  await page.locator("#email").fill("transport-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-transport-fixture-token";
+  const token = `oct_connector.${secret}`;
+  const db = openE2eDatabase();
+  try {
+    db.prepare(
+      "UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'",
+    ).run(createHash("sha256").update(secret).digest("base64url"));
+  } finally {
+    db.close();
+  }
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "overtchat-transport-e2e-"),
+  );
+  let fixture: ChildProcess | undefined;
+  try {
+    const canonical = runtimeSnapshot(Date.now());
+    canonical.messages = Array.from({ length: 35 }, (_, index) => [
+      {
+        id: `user-${index}`,
+        role: "user",
+        content: `Historical prompt ${index}`,
+        overtchatTurnId: `turn-${index}`,
+        timestamp: index * 2,
+      },
+      {
+        id: `answer-${index}`,
+        role: "assistant",
+        content: [{ type: "text", text: `Historical answer ${index}` }],
+        overtchatTurnId: `turn-${index}`,
+        timestamp: index * 2 + 1,
+      },
+    ]).flat();
+    const configFile = path.join(directory, "fixture.json");
+    await writeFile(
+      configFile,
+      JSON.stringify({
+        snapshot: canonical,
+        directory,
+        connectorId: "connector",
+        token,
+        serverUrl: String(testInfo.project.use.baseURL),
+      }),
+    );
+    fixture = spawn(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        path.resolve(
+          __dirname,
+          "../../connector/scripts/transport-fixture.mjs",
+        ),
+        configFile,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    let output = "";
+    fixture.stdout!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    fixture.stderr!.on("data", (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    await expect
+      .poll(
+        () => {
+          if (fixture!.exitCode !== null)
+            throw new Error(`Transport fixture exited: ${output}`);
+          return output.includes("transport-fixture-ready");
+        },
+        { timeout: 45_000 },
+      )
+      .toBe(true)
+      .catch((error: unknown) => {
+        throw new Error(`${String(error)}\n${output}`);
+      });
+    await page.goto(`/agents/${SESSION_ID}`);
+    await expect(
+      page.getByText("Historical prompt 34", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Historical prompt 0", { exact: true }),
+    ).toHaveCount(0);
+    const older = page.getByRole("button", {
+      name: "Load older messages",
+      exact: true,
+    });
+    await older.scrollIntoViewIfNeeded();
+    const anchor = page.getByText("Historical prompt 25", { exact: true });
+    const anchorTop = (await anchor.boundingBox())!.y;
+    for (let index = 0; index < 3; index++) {
+      await older.click();
+      await expect(
+        page.getByRole("button", { name: "Loading…", exact: true }),
+      ).toHaveCount(0);
+      // Allow one line of button/scroll settling, but never a page-sized jump.
+      if (index === 0) await expect.poll(async () => Math.abs((await anchor.boundingBox())!.y - anchorTop)).toBeLessThan(32);
+    }
+    await page.getByText("Historical prompt 0", { exact: true }).scrollIntoViewIfNeeded();
+    await expect(page.getByText("Historical prompt 0", { exact: true })).toBeVisible();
+    await expect(older).toHaveCount(0);
+    const composer = page.getByPlaceholder(
+      "Message Codex or type / for commands",
+    );
+    await composer.fill("Please steer this turn");
+    await composer.press("Enter");
+    await page
+      .getByRole("button", { name: "Steer with queued message", exact: true })
+      .click();
+    await expect(
+      page.getByText("Steer accepted and streamed", { exact: true }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(
+      page.getByText("Steer accepted and streamed", { exact: true }),
+    ).toBeVisible();
+  } finally {
+    if (fixture && fixture.exitCode === null) {
+      fixture.kill("SIGTERM");
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          fixture!.kill("SIGKILL");
+          resolve();
+        }, 5000);
+        fixture!.once("exit", () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("keeps OMP history stable after compaction, model changes and connector restart", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Transcript Lifecycle Admin");
+  await page.locator("#email").fill("lifecycle-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-omp-lifecycle-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'").run();
+  } finally { db.close(); }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-lifecycle-"));
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({
+    directory, connectorId: "connector", token: `oct_connector.${secret}`,
+    serverUrl: String(testInfo.project.use.baseURL),
+  }));
+  let fixture: ChildProcess | undefined;
+  let output = "";
+  const start = async () => {
+    output = "";
+    fixture = spawn(process.execPath, ["--import", "tsx",
+      path.resolve(__dirname, "../../connector/scripts/omp-transcript-fixture.mjs"), configFile,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    fixture.stdout!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    fixture.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => {
+      if (fixture!.exitCode !== null) throw new Error(output);
+      return output.includes("omp-transcript-fixture-ready");
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  const stop = async () => {
+    if (!fixture || fixture.exitCode !== null) return;
+    const child = fixture;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+      child.kill("SIGTERM");
+    });
+  };
+  try {
+    await start();
+    await page.goto(`/agents/${SESSION_ID}`);
+    const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
+    await expect(composer).toBeVisible();
+    await composer.fill("Measure startup times");
+    await composer.press("Enter");
+    await expect(page.getByRole("separator", { name: "Compacting context…", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "1 of 2 tasks complete", exact: true })).toBeVisible();
+    const marker = page.getByRole("separator", { name: "Context automatically compacted", exact: true });
+    await expect(marker).toContainText("From 120,000 tokens");
+    const answer = page.getByRole("heading", { name: "Measured timings", exact: true });
+    await expect(answer).toBeVisible();
+    await expect(page.getByText("The container is back up and healthy.", { exact: true })).toBeVisible();
+    const tasks = page.getByRole("button", { name: "2 of 2 tasks complete", exact: true });
+    await expect(tasks).toBeVisible();
+    await tasks.click();
+    await expect(page.getByTestId("agent-task-panel")).toContainText("Inspect startup");
+    await expect(page.getByTestId("agent-task-panel")).toContainText("Verify startup");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    const rows = () => page.locator("[data-transcript-row]").allTextContents();
+    await composer.fill("/compact");
+    await page.getByRole("button", { name: "Send message", exact: true }).click();
+    await expect(page.getByRole("separator", { name: "Compacting context…", exact: true })).toBeVisible();
+    const manualMarker = page.getByRole("separator", { name: "Context manually compacted", exact: true });
+    await expect(manualMarker).toContainText("From 42,000 tokens");
+    await expect(page.getByTestId("agent-compaction")).toHaveCount(2);
+    const before = await rows();
+    expect(before.join("\n")).toContain("Earlier work completed.");
+
+    await page.getByTestId("agent-model-effort-trigger").click();
+    const menu = page.getByRole("menu", { name: "Model and effort" });
+    await menu.getByRole("menuitem", { name: /Model.*Model A/u }).click();
+    await menu.getByRole("menuitem", { name: /Model B/u }).click();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect.poll(rows).toEqual(before);
+    await page.getByTestId("agent-model-effort-trigger").click();
+    await menu.getByRole("menuitem", { name: /Effort/u }).click();
+    await menu.getByRole("menuitem", { name: "Low", exact: true }).click();
+    await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
+    await expect.poll(rows).toEqual(before);
+
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect.poll(rows).toEqual(before);
+    await stop();
+    await start();
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect(page.getByTestId("agent-model-effort-trigger")).toContainText("Model B");
+    await expect(page.getByTestId("agent-effort-label")).toContainText("Low");
+    await expect.poll(rows).toEqual(before);
+    const requests = (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).trim().split("\n");
+    await expect(tasks).toBeVisible();
+    expect(requests.filter((request) => request === "get_messages")).toHaveLength(1);
+    await page.screenshot({ path: testInfo.outputPath("omp-transcript-after-model-and-restart.png"), fullPage: true });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await tasks.click();
+    await expect(page.getByTestId("agent-task-panel")).toContainText("Verify startup");
+    await page.screenshot({ path: testInfo.outputPath("omp-tasks-narrow.png"), fullPage: true, animations: "disabled" });
+    await page.keyboard.press("Escape");
+    await manualMarker.scrollIntoViewIfNeeded();
+    await expect(manualMarker).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+    await page.screenshot({ path: testInfo.outputPath("omp-compaction-narrow.png"), fullPage: true });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await composer.fill("/reload");
+    await composer.press("Enter");
+    await expect.poll(async () => (await rows()).join("\n")).not.toContain("Earlier work completed.");
+    await expect(answer).toBeVisible();
+    await expect(page.getByText(/Background job bg_[1-4] completed/u)).toHaveCount(0);
+    await expect(page.getByRole("separator", { name: "Context compacted", exact: true })).toBeVisible();
+    await expect(page.getByTestId("agent-compaction")).toHaveCount(1);
+    await expect(tasks).toBeVisible();
+    await page.reload();
+    await expect(answer).toBeVisible();
+    await expect.poll(async () => (await rows()).join("\n")).not.toContain("Earlier work completed.");
+  } catch (error) {
+    throw new Error(`${String(error)}\nConnector output:\n${output}`, { cause: error });
+  } finally {
+    await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("ends OMP turns when the agent yields to background work and starts a new turn on wake", async ({ page }, testInfo) => {
+  test.setTimeout(90_000);
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Background Lifecycle Admin");
+  await page.locator("#email").fill("background-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const secret = "local-omp-lifecycle-token";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_connections SET provider = 'omp', executable = 'omp' WHERE id = 'connection'").run();
+  } finally { db.close(); }
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-omp-lifecycle-"));
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({
+    backgroundLifecycle: true, directory, connectorId: "connector", token: `oct_connector.${secret}`,
+    serverUrl: String(testInfo.project.use.baseURL),
+  }));
+  let fixture: ChildProcess | undefined;
+  let output = "";
+  const start = async () => {
+    output = "";
+    fixture = spawn(process.execPath, ["--import", "tsx",
+      path.resolve(__dirname, "../../connector/scripts/omp-transcript-fixture.mjs"), configFile,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+    fixture.stdout!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    fixture.stderr!.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    await expect.poll(() => {
+      if (fixture!.exitCode !== null) throw new Error(output);
+      return output.includes("omp-transcript-fixture-ready");
+    }, { timeout: 20_000 }).toBe(true);
+  };
+  const stop = async () => {
+    if (!fixture || fixture.exitCode !== null) return;
+    const child = fixture;
+    await new Promise<void>((resolve) => {
+      const timeout = setTimeout(() => { child.kill("SIGKILL"); resolve(); }, 5000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+      child.kill("SIGTERM");
+    });
+  };
+  try {
+    await start();
+    await page.goto(`/agents/${SESSION_ID}`);
+    const composer = page.getByPlaceholder("Message Oh My Pi or type / for commands");
+    const control = path.join(directory, "background-control");
+    const prompts = async () => (await readFile(path.join(directory, "rpc-requests.jsonl"), "utf8"))
+      .split("\n").filter((line) => line === "prompt").length;
+    const indicator = page.getByTestId("agent-run-activity");
+    const sidebarWorking = page.getByRole("status", { name: /is working$/ });
+    const stopButton = page.getByRole("button", { name: "Stop Oh My Pi", exact: true });
+    await composer.fill("Start background work");
+    await composer.press("Enter");
+    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    // The agent handed control back, so its background job does not hold the turn.
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText("Answer finished; job continues.", { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    // Directory activity follows a wake without an open transcript stream.
+    await page.goto("/");
+    await writeFile(control, "wake");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await writeFile(control, "wait");
+    await expect(sidebarWorking).toHaveCount(0);
+    await page.goto(`/agents/${SESSION_ID}`);
+    // A message sends right away while the job keeps running.
+    await composer.fill("Next");
+    await composer.press("Enter");
+    await expect(page.getByText("Queued message answered.", { exact: true })).toBeVisible();
+    await expect(indicator).toHaveCount(0);
+    expect(await prompts()).toBe(2);
+    // Stop ends a woken turn; the native abort leaves the job running.
+    await writeFile(control, "wake-2");
+    await expect(indicator).toContainText("Working");
+    await expect(sidebarWorking.first()).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("omp-background-wake.png"), fullPage: true });
+    await stopButton.click();
+    await expect.poll(async () => readFile(path.join(directory, "rpc-requests.jsonl"), "utf8")).toContain("abort");
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    // The surviving job's result wakes the agent into a new turn.
+    await writeFile(control, "wake-3");
+    await expect(indicator).toContainText("Working");
+    await writeFile(control, "settle");
+    await expect(indicator).toHaveCount(0);
+    await expect(stopButton).toHaveCount(0);
+    await expect(sidebarWorking).toHaveCount(0);
+  } finally {
+    await stop();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("agent context meter stays visible while unknown and renders a 1M reading after reload", async ({ page }) => {
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Context Tester");
+  await page.locator("#email").fill("context@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const snapshot = runtimeSnapshot(Date.now());
+  snapshot.status = "idle";
+  snapshot.activeTurn = null;
+  snapshot.state.isStreaming = false;
+  snapshot.stats.contextUsage = undefined;
+  await page.route(new RegExp(`/api/agent-sessions/${SESSION_ID}(?:\\?.*)?$`), (route) => route.fulfill({ json: { snapshot } }));
+  await page.addInitScript(() => {
+    class FakeEventSource extends EventTarget {
+      onopen: ((event: Event) => void) | null = null;
+      constructor() { super(); setTimeout(() => this.onopen?.(new Event("open")), 0); }
+      close() {}
+    }
+    Object.assign(window, { EventSource: FakeEventSource });
+  });
+  await page.goto(`/agents/${SESSION_ID}`);
+  const composer = page.getByTestId("agent-composer");
+  const unknown = composer.getByRole("button", { name: "Usage: context usage unavailable. Show details" });
+  await expect(unknown).toBeVisible();
+  await unknown.click();
+  await expect(page.getByText("Context usage unavailable. Waiting for a reading from the agent.")).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Context used" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  snapshot.stats.contextUsage = { tokens: 516_000, contextWindow: 1_000_000, percent: 51.6 };
+  await page.reload();
+  const known = composer.getByRole("button", { name: "Usage: 52% context used. Show details" });
+  await expect(known).toBeVisible();
+  await known.click();
+  await expect(page.getByText("516,000 used", { exact: true })).toBeVisible();
+  await expect(page.getByText("484,000 remaining", { exact: true })).toBeVisible();
+  await expect(page.getByRole("progressbar", { name: "Context used" })).toHaveAttribute("aria-valuenow", "52");
+  await page.keyboard.press("Escape");
+
+  // Compaction can temporarily clear the count while retaining known capacity.
+  snapshot.stats.contextUsage = { tokens: null, contextWindow: 1_000_000, percent: null };
+  await page.reload();
+  await expect(unknown).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(unknown).toBeVisible();
+});
+
+test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
+  test.setTimeout(120_000);
+  let page = browserPage;
+  let desktop: ElectronApplication | undefined;
+  await page.goto(await setupUrl());
+  await page.locator("#name").fill("Terminal E2E Admin");
+  await page.locator("#email").fill("terminal-admin@overtchat-test.local");
+  await page.locator("#password").fill("test-password-123");
+  await page.getByRole("button", { name: "Create account" }).click();
+  await page.waitForURL("**/");
+  seedAgentSession();
+  const directory = await mkdtemp(path.join(os.tmpdir(), "overtchat-terminal-e2e-"));
+  const secret = "terminal-fixture-secret";
+  const db = openE2eDatabase();
+  try {
+    db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
+      .run(createHash("sha256").update(secret).digest("base64url"));
+    db.prepare("UPDATE agent_workspaces SET path = ? WHERE id = 'workspace'").run(directory);
+  } finally { db.close(); }
+  const canonical = runtimeSnapshot(Date.now());
+  canonical.status = "idle";
+  canonical.activeTurn = null;
+  canonical.state = { ...canonical.state, isStreaming: false };
+  const configFile = path.join(directory, "fixture.json");
+  await writeFile(configFile, JSON.stringify({ snapshot: canonical, directory, connectorId: "connector", token: `oct_connector.${secret}`, serverUrl: String(testInfo.project.use.baseURL), eventBatches: {}, terminalTraffic: true }));
+  const fixtureExecutable = process.env.OVERTCHAT_TERMINAL_CONNECTOR_EXECUTABLE;
+  const child = spawn(fixtureExecutable ?? process.execPath, fixtureExecutable ? [configFile] : ["--import", "tsx", path.resolve(__dirname, "../../connector/scripts/transport-fixture.mjs"), configFile], {
+    stdio: ["ignore", "pipe", "pipe", "ipc"], env: { ...process.env, SHELL: "/bin/sh" },
+  });
+  let logs = "";
+  child.stdout!.on("data", (chunk) => { logs += chunk.toString(); });
+  child.stderr!.on("data", (chunk) => { logs += chunk.toString(); });
+  try {
+    await expect.poll(() => { if (child.exitCode !== null) throw new Error(`Terminal fixture exited: ${logs}`); return logs.includes("transport-fixture-ready"); }).toBe(true);
+    if (process.env.OVERTCHAT_TERMINAL_DESKTOP_E2E === "1") {
+      const appData = path.join(directory, "desktop-profile");
+      await mkdir(path.join(appData, "overtchat-dev"), { recursive: true });
+      await writeFile(path.join(appData, "overtchat-dev/settings.json"), JSON.stringify({ serverOrigin: testInfo.project.use.baseURL }));
+      const wrapper = path.join(directory, "desktop-main.mjs");
+      const main = pathToFileURL(path.resolve(__dirname, "../../desktop/out/main/index.js")).href;
+      await writeFile(wrapper, `import { app } from "electron";\napp.setPath("appData", ${JSON.stringify(appData)});\nawait import(${JSON.stringify(main)});\n`);
+      const requireDesktop = createRequire(path.resolve(__dirname, "../../desktop/package.json"));
+      desktop = await _electron.launch({ executablePath: requireDesktop("electron"), args: [wrapper], chromiumSandbox: true });
+      page = await desktop.firstWindow();
+      await page.context().addInitScript(() => localStorage.setItem("overtchat_two_factor_prompted", "e2e"));
+      await page.goto("overtchat://app/#/login");
+      await page.reload();
+      await page.locator("#email").fill("terminal-admin@overtchat-test.local");
+      await page.locator("#password").fill("test-password-123");
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      await expect(page.locator("#password")).toBeHidden();
+    }
+    await page.goto(desktop ? `overtchat://app/#/agents/${SESSION_ID}` : `/agents/${SESSION_ID}`);
+    await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+    const pane = page.getByRole("region", { name: "Workspace terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 20_000 });
+    const input = pane.locator(".xterm-helper-textarea");
+    const output = () => pane.locator(".xterm-rows").innerText();
+    const command = async (text: string) => {
+      await input.focus();
+      await page.keyboard.insertText(text);
+      await page.keyboard.press("Enter");
+    };
+    await command("export TERMINAL_SAVED=retained; printf '__%s__\\n' READY");
+    await expect.poll(output).toContain("__READY__");
+    await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();
+    await expect(pane).toBeHidden();
+    await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await command("stty -icanon -echo; printf '__%s__\\n' LATENCY_READY; cat");
+    await expect.poll(output).toContain("__LATENCY_READY__");
+    const latency: number[] = [];
+    for (const character of "abcdefghijklmnopqrst") {
+      const marker = `~${character}`;
+      await page.evaluate((marker) => {
+        const rows = document.querySelector(".xterm-rows")!;
+        const start = performance.now();
+        const state = window as typeof window & { terminalLatency?: Promise<number> };
+        state.terminalLatency = new Promise((resolve) => {
+          const observer = new MutationObserver(() => {
+            if (!rows.textContent?.includes(marker)) return;
+            observer.disconnect();
+            resolve(performance.now() - start);
+          });
+          observer.observe(rows, { childList: true, characterData: true, subtree: true });
+        });
+      }, marker);
+      await page.keyboard.type(marker);
+      latency.push(await page.evaluate(() => (window as typeof window & { terminalLatency: Promise<number> }).terminalLatency));
+    }
+    latency.sort((a, b) => a - b);
+    await testInfo.attach("terminal-local-input-to-render-latency.json", {
+      body: JSON.stringify({ client: desktop ? "electron" : "chromium", samples: latency, medianMs: latency[10], p95Ms: latency[18], agentTrafficBytesPerSecond: 1_310_720 }),
+      contentType: "application/json",
+    });
+    expect(latency[18]).toBeLessThan(500);
+    await page.keyboard.press("Control+c");
+    await command("stty sane");
+    await command("head -c 1048576 /dev/zero | tr '\\0' x; printf '\\n__%s__\\n' BURST_DONE");
+    await expect.poll(output, { timeout: 20_000 }).toContain("__BURST_DONE__");
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    const separator = page.getByRole("separator", { name: "Resize workspace terminal" });
+    await separator.focus();
+    await page.keyboard.press("ArrowUp");
+    await command("stty size; printf '__%s__\\n' RESIZED");
+    await expect.poll(output).toContain("__RESIZED__");
+    child.send({ type: "disconnect-terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await page.reload();
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await command("printf '__%s__\\n' \"$TERMINAL_SAVED\"");
+    await expect.poll(output).toContain("__retained__");
+    await page.screenshot({ path: testInfo.outputPath("workspace-terminal.png") });
+    await page.getByRole("button", { name: "Stop terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toContainText("Exited");
+    await page.getByRole("button", { name: "Restart terminal", exact: true }).click();
+    await expect(pane.getByRole("status")).toHaveText("Connected");
+    await command("printf '__%s__\\n' RESTARTED");
+    await expect.poll(output).toContain("__RESTARTED__");
+    await command("vi -u NONE -n terminal-edit.txt");
+    await expect.poll(output).toContain("terminal-edit.txt");
+    await page.keyboard.press("i");
+    await page.keyboard.insertText("terminal café 日本語");
+    await expect.poll(output).toContain("terminal café 日本語");
+    child.send({ type: "disconnect-terminal" });
+    await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+    await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+    await expect.poll(output).toContain("terminal café 日本語");
+    await page.keyboard.press("Escape");
+    await page.keyboard.type(":wq");
+    await page.keyboard.press("Enter");
+    await command("cat terminal-edit.txt; printf '__%s__\\n' EDITOR_DONE");
+    await expect.poll(output).toContain("__EDITOR_DONE__");
+    expect(await readFile(path.join(directory, "terminal-edit.txt"), "utf8")).toBe("terminal café 日本語\n");
+  } finally {
+    await desktop?.close();
+    child.kill("SIGTERM");
+    await new Promise<void>((resolve) => { if (child.exitCode !== null) resolve(); else child.once("exit", () => resolve()); });
+    await rm(directory, { recursive: true, force: true });
+  }
 });

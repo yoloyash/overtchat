@@ -44,7 +44,7 @@ export async function PUT(
       { status: 409 },
     );
   }
-  const apiKey = parsed.data.apiKey ?? current.apiKey;
+  const apiKey = parsed.data.apiKey || current.apiKey;
   if (parsed.data.provider === "brave" && !apiKey) {
     return Response.json(
       { error: "Enter a Brave Search API key." },

@@ -1,7 +1,7 @@
 export type SearchProvider = "bundled" | "brave" | "searxng" | "disabled";
 export type TtsProvider = "bundled" | "openai-compatible" | "disabled";
 export type SttProvider = "bundled" | "openai-compatible" | "disabled";
-export type SpeechAccelerator = "auto" | "cpu" | "gpu";
+export type SpeechAccelerator = "auto" | "cpu" | "gpu" | "apple";
 export type KokoroGpuVariant = "standard" | "blackwell";
 
 export type Gpu = {
@@ -42,15 +42,41 @@ export type SttConfig = {
 };
 
 export type AgentConfig = {
+  // Selected for this installation; pending distinguishes an incomplete attempt.
   installed: boolean;
+  pending?: boolean;
 };
 
 export type VoiceConfig = {
   installed: boolean;
 };
 
+export type AccessMode = "local" | "lan" | "tailscale" | "advanced" | "cloud";
+export type TailscaleRoute = { hostname: string; port: number; target: string };
+// The relay connection returned when this server was linked to OvertChat Cloud.
+// The credential itself lives only in the secrets file; `credential` carries a
+// freshly issued one from the prompt to setup and is never persisted.
+export type CloudAccess = {
+  hostname: string;
+  relayHost: string;
+  relayPort: number;
+  relayServerName: string;
+  relayCaPem: string;
+  credential?: string;
+};
+export type AccessConfig = {
+  mode: AccessMode;
+  proxy?: "cloudflare" | "other";
+  proxyLocation?: "host" | "docker" | "remote";
+  lanAddress?: string;
+  connectionStatus?: "pending" | "verified";
+  tailscaleRoute?: TailscaleRoute;
+  cloud?: CloudAccess;
+};
+
 export type InstallationConfig = {
   format: 1;
+  instanceId?: string;
   appVersion: string;
   appImage: string;
   voiceVersion: string;
@@ -62,11 +88,18 @@ export type InstallationConfig = {
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  cloudTunnelImage: string;
+  cloudProxyImage: string;
+  appleSpeechPort?: number;
   appPort: number;
   bindAddress: string;
   publicUrl: string;
   extraTrustedOrigins: string[];
   connectorServerUrl: string;
+  access?: AccessConfig;
+  // Records the route managed by setup separately from the access choice.
+  // Only this exact Serve route may be changed or removed by the manager.
+  managedTailscaleRoute?: TailscaleRoute;
   disableUpdateCheck?: boolean;
   composeProject: string;
   dataMountType: "volume" | "bind";
@@ -113,4 +146,5 @@ export type RuntimePaths = {
   composeFile: string;
   searxngDirectory: string;
   searxngSettingsFile: string;
+  cloudDirectory: string;
 };

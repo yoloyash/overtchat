@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   detectDockerCommand: vi.fn(),
   dockerComposeAvailable: vi.fn(),
   installManagedConnector: vi.fn(),
+  checkManagedConnectorPrerequisites: vi.fn(),
+  note: vi.fn(),
   initialSecrets: vi.fn(),
   latestReleaseManifest: vi.fn(),
   outro: vi.fn(),
@@ -28,6 +30,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@clack/prompts", () => ({
   outro: mocks.outro,
+  note: mocks.note,
   spinner: () => ({
     message: mocks.spinnerMessage,
     start: mocks.spinnerStart,
@@ -49,11 +52,22 @@ vi.mock("./config.js", async (importOriginal) => {
 
 vi.mock("./connector.js", () => ({
   installManagedConnector: mocks.installManagedConnector,
+  checkManagedConnectorPrerequisites: mocks.checkManagedConnectorPrerequisites,
 }));
 
-vi.mock("./compose.js", () => ({
+vi.mock("./compose.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./compose.js")>()),
   renderStackEnvironment: mocks.renderStackEnvironment,
 }));
+vi.mock("node:fs/promises", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:fs/promises")>()),
+  writeFile: vi.fn(),
+}));
+vi.mock("./apple-speech.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./apple-speech.js")>()),
+  prepareAppleSpeech: vi.fn(async () => ({ commit: async () => {}, rollback: async () => {} })),
+}));
+import { prepareAppleSpeech } from "./apple-speech.js";
 
 vi.mock("./docker.js", () => ({
   detectDockerCommand: mocks.detectDockerCommand,
@@ -71,6 +85,7 @@ const paths: RuntimePaths = {
   searxngDirectory: "/home/test/.local/share/overtchat/searxng",
   searxngSettingsFile:
     "/home/test/.local/share/overtchat/searxng/settings.yml",
+  cloudDirectory: "/home/test/.local/share/overtchat/cloud",
 };
 
 vi.mock("./paths.js", () => ({ runtimePaths: () => paths }));
@@ -102,6 +117,8 @@ const releaseImages = {
   kokoroImage: `ghcr.io/remsky/kokoro-fastapi-cpu@sha256:${"c".repeat(64)}`,
   kokoroGpuImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"d".repeat(64)}`,
   kokoroGpuBlackwellImage: `ghcr.io/remsky/kokoro-fastapi-gpu@sha256:${"e".repeat(64)}`,
+  cloudTunnelImage: `ghcr.io/fatedier/frpc@sha256:${"f".repeat(64)}`,
+  cloudProxyImage: `docker.io/library/caddy@sha256:${"a".repeat(64)}`,
 };
 
 function config(
@@ -142,6 +159,7 @@ const secrets: InstallationSecrets = {
   managementSecret: "management-secret",
   searxngSecret: "searxng-secret",
   voiceSharedSecret: "voice-secret",
+  cloudCredential: "",
 };
 
 beforeEach(() => {
@@ -184,6 +202,29 @@ beforeEach(() => {
 });
 
 describe("managed updates", () => {
+  it("preserves access settings and disabled update notifications across manual updates", async () => {
+    const current = config({
+      disableUpdateCheck: true,
+      publicUrl: "https://server.example.ts.net:8443",
+      access: {
+        mode: "tailscale",
+        connectionStatus: "pending",
+        tailscaleRoute: { hostname: "server.example.ts.net", port: 8443, target: "http://127.0.0.1:4718" },
+      },
+    });
+    mocks.readInstallationConfig.mockResolvedValue(current);
+    current.managedTailscaleRoute = current.access?.tailscaleRoute;
+    await update();
+    expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({
+      access: current.access,
+      publicUrl: current.publicUrl,
+      bindAddress: current.bindAddress,
+      managedTailscaleRoute: current.managedTailscaleRoute,
+      disableUpdateCheck: true,
+    }));
+    expect(mocks.outro).toHaveBeenCalledWith(`Connection pending: ${current.publicUrl}`);
+  });
+
   it("rejects installations that have not been managed by setup", async () => {
     mocks.readInstallationConfig.mockResolvedValue(null);
 
@@ -362,6 +403,7 @@ describe("managed updates", () => {
     expect(mocks.installManagedConnector).toHaveBeenCalledWith(
       expected,
       "management-secret",
+      expect.objectContaining({ onProgress: expect.any(Function), interactive: false }),
     );
     expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expected);
     expect(
@@ -434,4 +476,51 @@ describe("managed updates", () => {
       1,
     );
   });
+});
+
+it("commits native speech and the updated app when the optional connector fails", async () => {
+  const previous = config({ tts: { provider: "bundled", bundledInstalled: true, accelerator: "apple" }, agents: { installed: true } });
+  mocks.readInstallationConfig.mockResolvedValue(previous);
+  mocks.latestReleaseManifest.mockResolvedValue({
+    format: 1, cliVersion: "0.1.1", appVersion: "0.15.0", voiceVersion: "0.1.0",
+    connectorVersion: "0.4.0", sttVersion: "0.1.0", ...releaseImages,
+  });
+  const rollback = vi.fn(async () => {});
+  const commit = vi.fn();
+  vi.mocked(prepareAppleSpeech).mockResolvedValueOnce({ commit, rollback });
+  mocks.installManagedConnector.mockRejectedValueOnce(new Error("connector failed"));
+  await update();
+  expect(rollback).not.toHaveBeenCalled();
+  expect(commit).toHaveBeenCalledOnce();
+  expect(mocks.requireDocker.mock.calls.filter(([, args]) => args.includes("up"))).toHaveLength(1);
+  expect(mocks.writeInstallationConfig).toHaveBeenLastCalledWith(paths, expect.objectContaining({
+    appVersion: "0.15.0", tts: previous.tts, agents: { installed: true, pending: true },
+  }));
+});
+
+it("checks updates without Docker, credentials, self-update, or writes", async () => {
+  await update({ check: true, json: true });
+  expect(mocks.latestReleaseManifest).toHaveBeenCalledOnce();
+  expect(mocks.detectDockerCommand).not.toHaveBeenCalled();
+  expect(mocks.readInstallationSecrets).not.toHaveBeenCalled();
+  expect(mocks.updateCliIfNeeded).not.toHaveBeenCalled();
+  expect(mocks.prepareFiles).not.toHaveBeenCalled();
+  expect(mocks.writeInstallationConfig).not.toHaveBeenCalled();
+});
+
+it("updates the app when connector prerequisites are unavailable", async () => {
+  mocks.readInstallationConfig.mockResolvedValue(config({ agents: { installed: true } }));
+  mocks.checkManagedConnectorPrerequisites.mockRejectedValueOnce(new Error("No user session"));
+  await update();
+  expect(mocks.installManagedConnector).not.toHaveBeenCalled();
+  expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({ agents: { installed: true, pending: true } }));
+  expect(mocks.checkManagedConnectorPrerequisites.mock.invocationCallOrder[0]).toBeLessThan(mocks.prepareFiles.mock.invocationCallOrder[0]);
+  expect(mocks.spinnerStop).toHaveBeenCalledWith("OvertChat updated; Agent Connections pending");
+});
+
+it("retries a pending connector on the next update and clears its warning on success", async () => {
+  mocks.readInstallationConfig.mockResolvedValue(config({ agents: { installed: true, pending: true } }));
+  await update();
+  expect(mocks.installManagedConnector).toHaveBeenCalledOnce();
+  expect(mocks.writeInstallationConfig).toHaveBeenCalledWith(paths, expect.objectContaining({ agents: { installed: true } }));
 });

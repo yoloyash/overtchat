@@ -1,5 +1,6 @@
 "use client";
 
+import { apiError } from "@overtchat/shared";
 import { useQuery } from "@tanstack/react-query";
 import type {
   AgentWorkspaceDirectoryListing,
@@ -7,19 +8,20 @@ import type {
   AgentWorkspaceGitStatus,
 } from "@overtchat/agent-bridge";
 import { agentWorkspaceKeys } from "@/lib/queries/keys";
+import { apiUrl } from "@/lib/api-url";
 
 async function responseError(response: Response): Promise<Error> {
   const data = (await response.json().catch(() => null)) as {
     error?: string;
   } | null;
-  return new Error(data?.error ?? `HTTP ${response.status}`);
+  return apiError(response.status, data, "Could not complete the request. Please try again.");
 }
 
 async function fetchAgentWorkspaceGitStatus(
   id: string,
 ): Promise<AgentWorkspaceGitStatus> {
   const response = await fetch(
-    `/api/agent-workspaces/${encodeURIComponent(id)}/git-status`,
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/git-status`),
   );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as { status: AgentWorkspaceGitStatus })
@@ -29,17 +31,24 @@ async function fetchAgentWorkspaceGitStatus(
 export function useAgentWorkspaceGitStatus(
   id: string,
   {
+    enabled = true,
     active = false,
     running = false,
-  }: { active?: boolean; running?: boolean } = {},
+  }: { enabled?: boolean; active?: boolean; running?: boolean } = {},
 ) {
   return useQuery({
     queryKey: agentWorkspaceKeys.gitStatus(id),
     queryFn: () => fetchAgentWorkspaceGitStatus(id),
-    enabled: Boolean(id),
+    enabled: Boolean(id) && enabled,
     retry: false,
     staleTime: 4_000,
-    refetchInterval: running ? 2_000 : active ? 5_000 : false,
+    refetchInterval: enabled
+      ? running
+        ? 2_000
+        : active
+          ? 5_000
+          : false
+      : false,
   });
 }
 
@@ -49,7 +58,7 @@ async function fetchAgentWorkspaceDirectory(
 ): Promise<AgentWorkspaceDirectoryListing> {
   const params = new URLSearchParams({ path });
   const response = await fetch(
-    `/api/agent-workspaces/${encodeURIComponent(id)}/files?${params}`,
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/files?${params}`),
   );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as {
@@ -77,7 +86,7 @@ async function fetchAgentWorkspaceFile(
 ): Promise<AgentWorkspaceFilePreview> {
   const params = new URLSearchParams({ path });
   const response = await fetch(
-    `/api/agent-workspaces/${encodeURIComponent(id)}/file?${params}`,
+    apiUrl(`/api/agent-workspaces/${encodeURIComponent(id)}/file?${params}`),
   );
   if (!response.ok) throw await responseError(response);
   return ((await response.json()) as { file: AgentWorkspaceFilePreview }).file;

@@ -99,8 +99,8 @@ jobs:
       - if: steps.image.outputs.should_build == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: ./stt
-          file: ./stt/Dockerfile.cpu
+          context: ./speech/stt
+          file: ./speech/stt/Dockerfile.cpu
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -150,8 +150,8 @@ jobs:
       - if: steps.image.outputs.should_build == 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
         with:
-          context: ./stt
-          file: ./stt/Dockerfile.gpu
+          context: ./speech/stt
+          file: ./speech/stt/Dockerfile.gpu
           platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

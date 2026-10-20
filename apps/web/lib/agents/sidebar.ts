@@ -5,7 +5,7 @@ import type {
   AgentWorkspaceListItem,
 } from "@overtchat/agent-bridge";
 
-export const AGENT_SESSION_PREVIEW_COUNT = 8;
+export const AGENT_SESSION_PREVIEW_COUNT = 5;
 
 export function agentSessionDisplayTitle(
   session: Pick<AgentSessionListItem, "name" | "firstMessage">,
@@ -35,8 +35,8 @@ export function withAgentSessionDirectory(
   connections: AgentConnectionListItem[],
   sessions: readonly AgentSessionDirectoryEntry[],
 ): AgentConnectionListItem[] {
-  const runtimeStatuses = new Map(
-    sessions.map((session) => [session.sessionId, session.runtimeStatus]),
+  const directory = new Map(
+    sessions.map((session) => [session.sessionId, session]),
   );
   let changed = false;
   const next = connections.map((connection) => {
@@ -44,13 +44,10 @@ export function withAgentSessionDirectory(
     const workspaces = connection.workspaces.map((workspace) => {
       let workspaceChanged = false;
       const workspaceSessions = workspace.sessions.map((session) => {
-        const runtimeStatus = runtimeStatuses.get(session.id);
-        if (
-          runtimeStatus === undefined ||
-          runtimeStatus === session.runtimeStatus
-        ) {
-          return session;
-        }
+        const entry = directory.get(session.id);
+        if (!entry) return session;
+        const { runtimeStatus } = entry;
+        if (runtimeStatus === session.runtimeStatus) return session;
         changed = true;
         connectionChanged = true;
         workspaceChanged = true;

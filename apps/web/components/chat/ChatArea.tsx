@@ -1,16 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
 import { useQueryClient } from "@tanstack/react-query";
-import { DefaultChatTransport, type FileUIPart, type UIMessage } from "ai";
+import { DefaultChatTransport, generateId, type FileUIPart, type UIMessage } from "ai";
 import {
   hasSuccessfulMemoryMutation,
+  modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
-  type ChatKind,
+  imageOptionsFromMetadata,
+  type ImageGenerationOptions,
+  type ChatReasoningLevel,
   type ChatRequestAction,
-  type VoiceHistoryItem,
 } from "@overtchat/shared";
 import { FileUp } from "lucide-react";
 import { useSelectedModel } from "@/lib/model-config/client";
@@ -18,11 +20,13 @@ import { useModelConfigs } from "@/lib/queries/modelConfigs";
 import {
   activityKeys,
   chatKeys,
+  libraryKeys,
   personalizationKeys,
 } from "@/lib/queries/keys";
 import { usePublicCapabilities } from "@/lib/queries/capabilities";
 import {
   useChats,
+  setActiveChatInCache,
   useChatUsage,
   useLoadOlderChatMessages,
   type ChatListItem,
@@ -42,8 +46,8 @@ import {
   type StoredMessageStats,
 } from "@/lib/chat/stats";
 import { messagesForChatRequest } from "@/lib/chat/history";
-import { stripCitationMarkers } from "@/lib/citations";
-import { voiceHistoryToUiMessages } from "@/lib/voice/history";
+import { useChatQueue } from "@/lib/chat/useChatQueue";
+import { useChatGenerationRecovery } from "@/lib/chat/useChatGenerationRecovery";
 import {
   CONTEXT_METER_STORAGE_KEY,
   DEFAULT_CONTEXT_METER_ENABLED,
@@ -62,6 +66,11 @@ import {
   type InferenceActivity,
 } from "@/lib/chat/inference-activity";
 import {
+  CONTEXT_STATUS_DATA_TYPE,
+  isContextStatus,
+  type ContextStatus,
+} from "@overtchat/shared";
+import {
   chatComposerDraftScope,
   newChatComposerDraftScope,
 } from "@/lib/chat/composer-drafts";
@@ -76,59 +85,62 @@ import {
   RealtimeVoiceSession,
   type RealtimeVoiceSessionHandle,
 } from "./RealtimeVoiceSession";
-import type { VoiceTranscriptUpdate } from "@/lib/voice/client";
+import { apiUrl } from "@/lib/api-url";
 
 const MESSAGE_STATS_STORAGE_KEY = "overtchat_stats_for_nerds";
+const REASONING_LEVELS_STORAGE_KEY = "overtchat_reasoning_levels";
 
 function shouldAutofocusComposer() {
   return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
 }
 
-function lastUserMessageId(messages: UIMessage[]): string | undefined {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index].role === "user") return messages[index].id;
-  }
-  return undefined;
-}
-
 interface Props {
   chatId: string;
-  chatKind?: ChatKind;
   initialMessages?: UIMessage[];
   initialMessageCursor?: string | null;
+  initialModelId?: string | null;
   isNew?: boolean;
   projectId?: string | null;
   initialQuery?: string;
+  /** Called once when a new chat is first saved, so its URL can move to `/chat/:id`. */
+  onPersisted?: () => void;
 }
 
 export function ChatArea({
   chatId,
-  chatKind,
   initialMessages,
   initialMessageCursor,
+  initialModelId,
   isNew,
   projectId,
   initialQuery,
+  onPersisted,
 }: Props) {
   const qc = useQueryClient();
-  const router = useRouter();
+  const navigate = useNavigate();
   const { openPalette } = useSidebar();
   const { data: chats } = useChats();
 
   const { data: modelsData, isError: modelsError } = useModelConfigs();
   const models = modelsError ? [] : (modelsData ?? null);
-  const [selectedId, setSelectedId] = useSelectedModel();
-
-  useEffect(() => {
-    if (!models || models.length === 0) return;
-    if (!models.some((m) => m.id === selectedId)) {
-      setSelectedId(models[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [models]);
+  const [selectedId, setSelectedId] = useSelectedModel(models, initialModelId);
 
   const configured = (models?.length ?? 0) > 0 && Boolean(selectedId);
+  const modelLoading = models === null || (models.length > 0 && !selectedId);
   const selectedModel = models?.find((model) => model.id === selectedId);
+  const reasoningControls = selectedModel?.capabilities?.reasoningControls;
+  const [reasoningLevels, setReasoningLevels] = useLocalStorage<
+    Record<string, ChatReasoningLevel>
+  >(REASONING_LEVELS_STORAGE_KEY, {});
+  const storedReasoningLevel = reasoningLevels[selectedId];
+  const reasoningLevel: ChatReasoningLevel =
+    storedReasoningLevel !== "default" &&
+    modelSupportsChatReasoningLevel(
+      selectedModel?.capabilities,
+      storedReasoningLevel,
+    )
+      ? storedReasoningLevel
+      : (reasoningControls?.defaultLevel ?? "default");
   const modelSupportsSearch = modelSupportsToolCalling(selectedModel);
   const [webSearchEnabled] = useLocalStorage<boolean>(
     WEB_SEARCH_ENABLED_STORAGE_KEY,
@@ -141,10 +153,10 @@ export function ChatArea({
 
   const [searchRequested, setSearchRequested] = useState(false);
   const { data: capabilitiesData } = usePublicCapabilities();
+  const imageCapability = capabilitiesData?.capabilities.images;
+  const imageAvailable = Boolean(imageCapability?.available && modelSupportsSearch);
+  const [imageOptions, setImageOptions] = useState<ImageGenerationOptions>();
   const voiceCapability = capabilitiesData?.capabilities.voice;
-  const [resolvedChatKind, setResolvedChatKind] = useState<ChatKind | null>(
-    chatKind ?? null,
-  );
   const [voiceActive, setVoiceActive] = useState(false);
   const [messageStatsEnabled] = useLocalStorage<boolean>(
     MESSAGE_STATS_STORAGE_KEY,
@@ -160,6 +172,12 @@ export function ChatArea({
   );
 
   const [temporary, setTemporary] = useState(false);
+  const persistedTitle = chats
+    ?.find((chat) => chat.id === chatId)
+    ?.title?.trim();
+  const headerTitle = temporary
+    ? "Temporary chat"
+    : persistedTitle || (isNew ? null : "Untitled");
   const [composerDraftScope, setComposerDraftScope] = useState<string | null>(
     () =>
       initialQuery?.trim()
@@ -187,6 +205,9 @@ export function ChatArea({
   );
   const [inferenceActivity, setInferenceActivity] =
     useState<InferenceActivity | null>(null);
+  const [contextStatus, setContextStatus] = useState<ContextStatus | null>(
+    null,
+  );
   const [dragDepth, setDragDepth] = useState(0);
 
   const isNewRef = useRef(isNew ?? false);
@@ -204,7 +225,7 @@ export function ChatArea({
   const [transport] = useState(
     () =>
       new DefaultChatTransport<UIMessage>({
-        api: "/api/chat",
+        api: apiUrl("/api/chat"),
         prepareSendMessagesRequest: ({
           messages,
           body,
@@ -240,13 +261,21 @@ export function ChatArea({
     status,
     stop,
     error,
+    resumeStream,
+    clearError,
   } = useChat({
     id: temporary ? undefined : chatId,
-    resume: !temporary && !isNew,
+    resume: false,
     transport,
     messages: initialMessages,
     throttle: 32,
     onData: (part) => {
+      if (
+        part.type === CONTEXT_STATUS_DATA_TYPE &&
+        isContextStatus(part.data)
+      ) {
+        setContextStatus(part.data);
+      }
       if (
         part.type === INFERENCE_ACTIVITY_DATA_TYPE &&
         isInferenceActivity(part.data)
@@ -254,9 +283,31 @@ export function ChatArea({
         setInferenceActivity(part.data);
       }
     },
-    onError: () => setInferenceActivity(null),
-    onFinish: ({ message, isError }) => {
+    onError: () => {
+      setMessages((current) =>
+        current.filter(
+          (m) =>
+            (m.metadata as { contextStatus?: string } | undefined)
+              ?.contextStatus !== "manual-compacting",
+        ),
+      );
       setInferenceActivity(null);
+      setContextStatus(null);
+      if (!temporaryRef.current) {
+        void qc.invalidateQueries({ queryKey: chatKeys.active() });
+        void qc.invalidateQueries({ queryKey: libraryKeys.all() });
+      }
+    },
+    onFinish: ({ message, isError }) => {
+      setMessages((current) =>
+        current.filter(
+          (m) =>
+            (m.metadata as { contextStatus?: string } | undefined)
+              ?.contextStatus !== "manual-compacting",
+        ),
+      );
+      setInferenceActivity(null);
+      setContextStatus(null);
       const stats = readMessageStats(message);
       if (stats && !temporaryRef.current) {
         setStoredStats((current) => {
@@ -266,6 +317,8 @@ export function ChatArea({
         });
       }
       if (temporaryRef.current) return;
+      void qc.invalidateQueries({ queryKey: libraryKeys.all() });
+      setActiveChatInCache(qc, chatId, false);
       if (hasSuccessfulMemoryMutation(message)) {
         void qc.invalidateQueries({ queryKey: personalizationKeys.all() });
       }
@@ -273,10 +326,36 @@ export function ChatArea({
       setChatPersisted(true);
       void Promise.all([
         qc.invalidateQueries({ queryKey: chatKeys.list() }),
+        qc.invalidateQueries({ queryKey: chatKeys.active() }),
         qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
         qc.invalidateQueries({ queryKey: activityKeys.all() }),
       ]);
     },
+  });
+  const handleGenerationSettled = useCallback(() => {
+    setInferenceActivity(null);
+    setContextStatus(null);
+    setChatPersisted(true);
+    setActiveChatInCache(qc, chatId, false);
+    void Promise.all([
+      qc.invalidateQueries({ queryKey: libraryKeys.all() }),
+      qc.invalidateQueries({ queryKey: chatKeys.list() }),
+      qc.invalidateQueries({ queryKey: chatKeys.active() }),
+      qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
+      qc.invalidateQueries({ queryKey: activityKeys.all() }),
+    ]);
+  }, [chatId, qc]);
+  const generation = useChatGenerationRecovery({
+    chatId,
+    temporary,
+    enabled: !temporary && chatPersisted && !voiceActive,
+    status,
+    recoverOnMount: !isNew,
+    stopLocalStream: stop,
+    resumeStream,
+    clearError,
+    setMessages,
+    onSettled: handleGenerationSettled,
   });
   const [olderMessageCursor, setOlderMessageCursor] = useState(
     initialMessageCursor ?? null,
@@ -317,22 +396,35 @@ export function ChatArea({
   const showOnboarding =
     isAdmin &&
     !temporary &&
-    !configured &&
     !onboardingDismissed &&
-    models !== null;
+    models?.length === 0;
 
-  const requestBody = (action: ChatRequestAction, forceSearch = false) => ({
+  const requestBody = (action: ChatRequestAction, forceSearch = false, imageRequest?: ImageGenerationOptions) => ({
+    ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
     modelConfigId: selectedId,
     webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     chatId,
+    clientRequestId: generateId(),
     projectId: projectId ?? null,
     temporary,
     action,
+    reasoningLevel,
   });
 
   const streaming = status === "streaming" || status === "submitted";
+  const chatQueue = useChatQueue({
+    chatId,
+    userId: session?.user.id,
+    temporary,
+    status,
+    sendMessage: (message, options) => {
+      markGenerationStarted();
+      return sendMessage(message, options);
+    },
+    generation,
+  });
   const dropActive = dragDepth > 0;
 
   function handleDragEnter(e: React.DragEvent<HTMLDivElement>) {
@@ -357,7 +449,7 @@ export function ChatArea({
   }
 
   function handleDrop(e: React.DragEvent<HTMLDivElement>) {
-    if (resolvedChatKind === "voice" || voiceActive) return;
+    if (voiceActive) return;
     if (!hasDataTransferFiles(e.dataTransfer)) return;
     e.preventDefault();
     e.stopPropagation();
@@ -367,30 +459,46 @@ export function ChatArea({
   }
 
   function handleStop() {
+    chatQueue.queue.pause();
     setInferenceActivity(null);
-    stop();
-    if (!temporary) {
-      void fetch(`/api/chat/${chatId}/stream/cancel`, { method: "POST" }).catch(
-        () => undefined,
-      );
-    }
+    setContextStatus(null);
+    void generation.cancel().catch(() => {
+      toast.error({
+        title: "Could not stop the response",
+        description: "Check your connection and try again.",
+      });
+    });
   }
 
   const markNewChatPersisted = useCallback(() => {
     if (!isNewRef.current) return false;
     isNewRef.current = false;
+    setChatPersisted(true);
     setComposerDraftScope(chatComposerDraftScope(chatId));
-    window.history.replaceState(null, "", `/chat/${chatId}`);
+    onPersisted?.();
     return true;
-  }, [chatId]);
+  }, [chatId, onPersisted]);
+
+  const markGenerationStarted = useCallback(() => {
+    if (!temporaryRef.current) {
+      setActiveChatInCache(qc, chatId, true);
+    }
+  }, [chatId, qc]);
 
   function handleSubmit(text: string, attachments: FileUIPart[]) {
-    if (voiceActive) {
-      voiceSessionRef.current?.sendMessage(text);
+    if (
+      !voiceActive &&
+      text.trim().toLowerCase() === "/compact" &&
+      attachments.length === 0
+    ) {
+      handleCompact();
       return;
     }
-    if (resolvedChatKind === "voice") return;
+    if (voiceActive) {
+      return voiceSessionRef.current?.sendMessage(text) ?? false;
+    }
     setInferenceActivity(null);
+    setContextStatus(null);
     const wasNew = !temporary && markNewChatPersisted();
     if (wasNew) {
       qc.setQueryData<ChatListItem[]>(chatKeys.list(), (prev) => {
@@ -398,6 +506,7 @@ export function ChatArea({
           id: chatId,
           title: null,
           kind: "text",
+          pinned: false,
           projectId: projectId ?? null,
           updatedAt: Date.now(),
         };
@@ -406,11 +515,14 @@ export function ChatArea({
         return [next, ...prev];
       });
     }
-    sendMessage(
-      { text, files: attachments },
-      { body: requestBody({ type: "submit" }, searchRequested) },
-    );
+    chatQueue.queue.enqueue({
+      id: generateId(),
+      text,
+      files: attachments,
+      body: requestBody({ type: "submit" }, searchRequested, imageOptions),
+    });
     setSearchRequested(false);
+    setImageOptions(undefined);
   }
 
   const initialQueryFiredRef = useRef(false);
@@ -428,28 +540,53 @@ export function ChatArea({
   function handleRegenerate(messageId: string) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    setContextStatus(null);
+    markGenerationStarted();
     regenerate({
       messageId,
-      body: requestBody({
-        type: "regenerate",
-        targetAssistantMessageId: messageId,
-      }),
+      body: requestBody(
+        {
+          type: "regenerate",
+          targetAssistantMessageId: messageId,
+        },
+        false,
+        imageOptionsFromMetadata(
+          messages.find((message) => message.id === messageId)?.metadata,
+        ),
+      ),
     });
   }
 
-  function handleRetry() {
-    if (streaming || !configured) return;
-    const userMessageId = lastUserMessageId(messages);
-    if (!userMessageId) return;
+  function handleCompact() {
+    if (streaming || !configured || messages.length === 0) return;
     setInferenceActivity(null);
-    regenerate({
-      body: requestBody({ type: "retry", userMessageId }),
+    setContextStatus(null);
+    markGenerationStarted();
+    void sendMessage(undefined, { body: requestBody({ type: "compact" }) });
+  }
+
+  function handleContinue(messageId: string) {
+    if (streaming || !configured || messages.at(-1)?.id !== messageId) return;
+    setInferenceActivity(null);
+    setContextStatus(null);
+    markGenerationStarted();
+    void sendMessage(undefined, {
+      body: requestBody({ type: "continue", targetAssistantMessageId: messageId }),
     });
+  }
+
+  function handleReconnect() {
+    if (streaming || !configured) return;
+    setInferenceActivity(null);
+    setContextStatus(null);
+    void generation.reconcile().catch(() => undefined);
   }
 
   function handleEdit(messageId: string, text: string, files: FileUIPart[]) {
     if (streaming || !configured) return;
     setInferenceActivity(null);
+    setContextStatus(null);
+    markGenerationStarted();
     sendMessage(
       { text, files, messageId },
       {
@@ -464,7 +601,16 @@ export function ChatArea({
   // A per-message search request is scoped to the model that supports it, so
   // switching models drops it.
   function handleSelectModel(modelId: string) {
+    if (voiceActive) {
+      void endVoice().then((ended) => { if (ended) handleSelectModelAfterVoice(modelId); });
+      return;
+    }
+    handleSelectModelAfterVoice(modelId);
+  }
+
+  function handleSelectModelAfterVoice(modelId: string) {
     setSearchRequested(false);
+    setImageOptions(undefined);
     setSelectedId(modelId);
   }
 
@@ -491,52 +637,34 @@ export function ChatArea({
     [setMessages],
   );
 
-  const handleVoiceTranscript = useCallback(
-    (update: VoiceTranscriptUpdate) => {
-      const text = stripCitationMarkers(update.text).trim();
-      if (!text) return;
-      mergeVoiceMessages([
-        {
-          id: `voice:${chatId}:${update.id}`,
-          role: update.role,
-          parts: [{ type: "text", text }],
-        },
-      ]);
-    },
-    [chatId, mergeVoiceMessages],
-  );
+  const handleVoicePersisted = useCallback(() => {
+    setChatPersisted(true);
+    markNewChatPersisted();
+    void Promise.all([
+      qc.invalidateQueries({ queryKey: chatKeys.list() }),
+      qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
+      qc.invalidateQueries({ queryKey: activityKeys.all() }),
+    ]);
+  }, [chatId, markNewChatPersisted, qc]);
 
-  const handleVoiceHistory = useCallback(
-    (items: VoiceHistoryItem[]) => {
-      mergeVoiceMessages(voiceHistoryToUiMessages(chatId, items));
-    },
-    [chatId, mergeVoiceMessages],
-  );
-
-  const handleVoicePersisted = useCallback(
-    (chat: ChatListItem) => {
-      setResolvedChatKind("voice");
-      setChatPersisted(true);
-      markNewChatPersisted();
-      qc.setQueryData<ChatListItem[]>(chatKeys.list(), (current) => {
-        const withoutChat = (current ?? []).filter((item) => item.id !== chat.id);
-        return [chat, ...withoutChat];
-      });
-      void Promise.all([
-        qc.invalidateQueries({ queryKey: chatKeys.list() }),
-        qc.invalidateQueries({ queryKey: chatKeys.usage(chatId) }),
-        qc.invalidateQueries({ queryKey: activityKeys.all() }),
-      ]);
-    },
-    [chatId, markNewChatPersisted, qc],
-  );
+  const [voiceEnding, setVoiceEnding] = useState(false);
+  async function endVoice() {
+    if (voiceEnding) return;
+    setVoiceEnding(true);
+    try {
+      await voiceSessionRef.current?.end();
+      setVoiceActive(false);
+      return true;
+    } catch (error) {
+      toast.error({ title: "Could not end voice", description: error instanceof Error ? error.message : "Try again." });
+      return false;
+    } finally { setVoiceEnding(false); }
+  }
 
   // Temporary mode is only switchable before the first message, matching the
   // header toggle's visibility rule.
-  const canToggleTemporary = Boolean(isNew) && messages.length === 0;
-  let contextUsage:
-    | { usedTokens: number; contextWindow?: number }
-    | undefined;
+  const canToggleTemporary = Boolean(isNew) && messages.length === 0 && !voiceActive;
+  let contextUsage: { usedTokens: number; contextWindow?: number } | undefined;
   if (contextMeterEnabled) {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       const message = messages[index];
@@ -560,22 +688,31 @@ export function ChatArea({
       ref={composerRef}
       configured={configured}
       streaming={streaming}
-      searchAvailable={searchAvailable}
-      searchUnavailableReason={searchUnavailableReason}
-      searchRequested={searchAvailable && searchRequested}
+      searchAvailable={searchAvailable && !voiceActive}
+      searchUnavailableReason={voiceActive
+        ? "End voice to require a web search. Voice can still search automatically."
+        : searchUnavailableReason}
+      searchRequested={searchAvailable && !voiceActive && searchRequested}
+      imageAvailable={imageAvailable}
+      imageModel={imageCapability?.model}
+      imageSupportsQuality={imageCapability?.supportsQuality}
+      imageConfiguredSize={imageCapability?.configuredSize}
+      imageOptions={imageAvailable ? imageOptions : undefined}
+      onImageOptions={setImageOptions}
       dropActive={dropActive}
       models={models}
       selectedModelId={selectedId}
+      reasoningControls={reasoningControls}
+      reasoningLevel={reasoningLevel}
       voiceInstalled={voiceCapability?.installed ?? false}
-      voiceEligible={
-        resolvedChatKind === "voice" ||
-        (Boolean(isNew) && messages.length === 0 && !temporary)
-      }
+      voiceEligible={!temporary}
       voiceAvailable={Boolean(voiceCapability?.available && configured)}
       voiceActive={voiceActive}
       voiceUnavailableReason={
         !configured
-          ? "Configure a model before starting voice"
+          ? modelLoading
+            ? "Loading model…"
+            : "Configure a model before starting voice"
           : voiceCapability?.unavailableReason === "stt-unavailable"
             ? "Speech-to-text is disabled"
             : voiceCapability?.unavailableReason === "tts-unavailable"
@@ -584,24 +721,47 @@ export function ChatArea({
                 ? "Voice authentication is not configured"
                 : "Realtime voice is unavailable"
       }
-      attachmentsEnabled={resolvedChatKind !== "voice" && !voiceActive}
-      textInputDisabled={resolvedChatKind === "voice" && !voiceActive}
+      attachmentsEnabled={!voiceActive}
+      textInputDisabled={voiceEnding}
       commandActions={{
+        compact:
+          !voiceActive
+            ? {
+                onCompact: handleCompact,
+                unavailableReason: streaming
+                  ? "Wait for the response to finish"
+                  : !configured
+                    ? modelLoading
+                      ? "Loading model…"
+                      : "Configure a model first"
+                    : messages.length === 0
+                      ? "Start a conversation first"
+                      : undefined,
+              }
+            : undefined,
         temporary: canToggleTemporary
           ? { active: temporary, onToggle: () => setTemporary((t) => !t) }
           : undefined,
-        onNewChat: () => router.push("/"),
+        onNewChat: () => void navigate({ to: "/" }),
         onSearchChats: openPalette,
-        onOpenSettings: () => router.push("/settings"),
+        onOpenSettings: () => void navigate({ to: "/settings" }),
         onSelectModel: handleSelectModel,
       }}
-      onToggleSearch={() => {
-        if (searchAvailable) setSearchRequested((selected) => !selected);
+      onSelectReasoningLevel={(level) => {
+        if (voiceActive) void endVoice().then((ended) => {
+          if (ended) setReasoningLevels({ ...reasoningLevels, [selectedId]: level });
+        });
+        else setReasoningLevels({ ...reasoningLevels, [selectedId]: level });
       }}
+      onToggleSearch={() => {
+        if (searchAvailable && !voiceActive) setSearchRequested((selected) => !selected);
+      }}
+      chatQueue={chatQueue}
       onSubmit={handleSubmit}
       onStop={handleStop}
       onStartVoice={() => setVoiceActive(true)}
-      onEndVoice={() => setVoiceActive(false)}
+      onEndVoice={() => void endVoice()}
+      onBeforeDictate={() => speech.stop()}
       isAdmin={isAdmin}
       draftUserId={session?.user.id}
       draftScope={composerDraftScope}
@@ -618,9 +778,7 @@ export function ChatArea({
       onDrop={handleDrop}
     >
       <ChatHeader
-        models={models}
-        selectedId={selectedId}
-        onSelectModel={handleSelectModel}
+        title={headerTitle}
         contextUsage={contextUsage}
         sessionUsage={sessionCostEnabled ? sessionUsage : undefined}
         showTempToggle={canToggleTemporary}
@@ -628,7 +786,7 @@ export function ChatArea({
         onToggleTemporary={() => setTemporary((t) => !t)}
       />
 
-      <MiniSpeechPlayer speech={speech} />
+      <MiniSpeechPlayer speech={speech} isAdmin={isAdmin} />
 
       {dropActive && (
         <div className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-background/70 backdrop-blur-[2px] motion-overlay">
@@ -660,7 +818,7 @@ export function ChatArea({
               <h1 className="mb-10 text-center text-2xl font-semibold tracking-tight md:text-3xl">
                 {temporary ? "Temporary chat" : "What can I help with?"}
               </h1>
-              {!configured && (
+              {models?.length === 0 && (
                 <p className="mb-6 text-center text-sm text-muted-foreground">
                   No models configured. An admin can add one in Settings →
                   Models.
@@ -682,8 +840,9 @@ export function ChatArea({
             streaming={streaming}
             status={status}
             inferenceActivity={inferenceActivity}
+            contextStatus={contextStatus}
             error={error}
-            configured={configured && resolvedChatKind !== "voice"}
+            configured={configured && !voiceActive}
             speech={speech}
             showStats={messageStatsEnabled}
             storedStats={storedStats}
@@ -691,8 +850,13 @@ export function ChatArea({
             loadingOlderMessages={loadingOlderMessages}
             onLoadOlderMessages={handleLoadOlderMessages}
             onRegenerate={handleRegenerate}
+            onContinue={voiceActive ? undefined : handleContinue}
+                onImageReference={imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {
+                  composerRef.current?.addReference(file);
+                  setImageOptions({ size: "auto", quality: "auto" });
+                } : undefined}
             onEdit={handleEdit}
-            onRetry={handleRetry}
+            onReconnect={handleReconnect}
           />
 
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
@@ -705,8 +869,8 @@ export function ChatArea({
                   modelConfigId={selectedId}
                   modelLabel={selectedModel.label}
                   webSearchEnabled={searchAvailable}
-                  onTranscript={handleVoiceTranscript}
-                  onHistoryItems={handleVoiceHistory}
+                  reasoningLevel={reasoningLevel}
+                  onMessages={mergeVoiceMessages}
                   onPersisted={handleVoicePersisted}
                 />
               )}

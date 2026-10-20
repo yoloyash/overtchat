@@ -11,8 +11,8 @@ export default function NotFound() {
       <p className="eyebrow">404</p>
       <h1 className="page-title">Nothing here.</h1>
       <p className="page-lede">
-        This page either moved or never shipped. The project site and release
-        log are still right where they should be.
+        This page either moved or never shipped. Your way back to OvertChat is
+        still right where it should be.
       </p>
       <Link className="button button-primary" href="/">
         <ArrowLeft aria-hidden="true" />

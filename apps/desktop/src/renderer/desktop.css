@@ -1,0 +1,27 @@
+@import "@fontsource-variable/plus-jakarta-sans/wght.css";
+@import "@fontsource-variable/plus-jakarta-sans/wght-italic.css";
+@import "@fontsource-variable/fraunces/opsz.css";
+@import "@fontsource-variable/fraunces/opsz-italic.css";
+@import "@fontsource-variable/geist-mono/wght.css";
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/roboto/wght.css";
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/ibm-plex-sans/wght.css";
+@import "../../../web/app/globals.css";
+
+/* The UI lives in apps/web; Tailwind scans it from here. */
+@source "../../../web/components";
+@source "../../../web/lib";
+@source "../../../web/spa";
+@source "./";
+
+/* The families the web app loads through next/font, under the same names. */
+:root {
+  --font-plus-jakarta-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-fraunces: "Fraunces Variable", ui-serif, Georgia, serif;
+  --font-geist-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --font-inter: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-roboto: "Roboto Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-geist: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-ibm-plex-sans: "IBM Plex Sans Variable", ui-sans-serif, system-ui, sans-serif;
+}

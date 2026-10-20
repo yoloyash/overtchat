@@ -1,13 +1,19 @@
 "use client";
 
-import type { ModelCapabilities } from "@overtchat/shared";
-import { useLocalStorage } from "@/lib/useLocalStorage";
+import {
+  resolveChatModelId,
+  REASONING_EFFORTS,
+  type ModelCapabilities,
+  type ModelReasoningLevel,
+  type ReasoningEffort,
+} from "@overtchat/shared";
+import { useState } from "react";
+import { useModelPreferences } from "@/lib/queries/modelPreferences";
 import type {
   CatalogModelPricing,
   ModelDiscoveryInput,
 } from "@/lib/model-config/schema";
-
-const SELECTED_MODEL_KEY = "overtchat_selected_model";
+import { apiUrl } from "@/lib/api-url";
 
 export interface AvailableModel {
   id: string;
@@ -23,14 +29,33 @@ export interface AvailableModel {
   catalogPricing?: CatalogModelPricing;
 }
 
-export function useSelectedModel(): [string, (id: string) => void] {
-  return useLocalStorage<string>(SELECTED_MODEL_KEY, "");
+export function useSelectedModel(
+  models: readonly { id: string }[] | null,
+  initialModelId?: string | null,
+): [string, (id: string) => void] {
+  const preferences = useModelPreferences();
+  const [selection, setSelection] = useState<string | null>(
+    initialModelId ?? null,
+  );
+  // Wait for this mount's default refresh before initializing a new chat.
+  const waiting =
+    !models?.some((model) => model.id === selection) &&
+    (preferences.isPending || preferences.isFetching);
+  const selectedId = waiting
+    ? ""
+    : resolveChatModelId(
+        models ?? [],
+        selection,
+        preferences.data?.defaultModelId,
+      );
+  if (selectedId && selectedId !== selection) setSelection(selectedId);
+  return [selectedId, setSelection];
 }
 
 export async function fetchModelsForProvider(
   input: ModelDiscoveryInput,
 ): Promise<AvailableModel[]> {
-  const res = await fetch("/api/models", {
+  const res = await fetch(apiUrl("/api/models"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -61,13 +86,9 @@ export async function fetchModelsForProvider(
       {
         id: record.id,
         ...(contextWindow === undefined ? {} : { contextWindow }),
-        ...(catalogContextWindow === undefined
-          ? {}
-          : { catalogContextWindow }),
+        ...(catalogContextWindow === undefined ? {} : { catalogContextWindow }),
         ...(capabilities === undefined ? {} : { capabilities }),
-        ...(catalogCapabilities === undefined
-          ? {}
-          : { catalogCapabilities }),
+        ...(catalogCapabilities === undefined ? {} : { catalogCapabilities }),
         ...(catalogPricing === undefined ? {} : { catalogPricing }),
       },
     ];
@@ -79,12 +100,7 @@ function readCatalogPricing(value: unknown): CatalogModelPricing | undefined {
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const pricingKeys = [
-    "input",
-    "output",
-    "cacheRead",
-    "cacheWrite",
-  ] as const;
+  const pricingKeys = ["input", "output", "cacheRead", "cacheWrite"] as const;
   if (
     typeof record.tiered !== "boolean" ||
     pricingKeys.some(
@@ -139,5 +155,38 @@ function readCapabilities(value: unknown): ModelCapabilities | undefined {
     const candidate = record[key];
     if (typeof candidate === "boolean") result[key] = candidate;
   }
+  const reasoningControls = readReasoningControls(record.reasoningControls);
+  if (reasoningControls) result.reasoningControls = reasoningControls;
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function readReasoningControls(
+  value: unknown,
+): ModelCapabilities["reasoningControls"] | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.toggle !== "boolean") return undefined;
+  const defaultLevel = readReasoningLevel(record.defaultLevel);
+  if (!defaultLevel) return undefined;
+  const efforts = Array.isArray(record.efforts)
+    ? record.efforts.filter((effort): effort is ReasoningEffort =>
+        REASONING_EFFORTS.includes(effort as ReasoningEffort),
+      )
+    : undefined;
+  return {
+    toggle: record.toggle,
+    defaultLevel,
+    ...(efforts && efforts.length > 0
+      ? { efforts: [...new Set(efforts)] }
+      : {}),
+  };
+}
+
+function readReasoningLevel(value: unknown): ModelReasoningLevel | undefined {
+  if (value === "off" || value === "on") return value;
+  return REASONING_EFFORTS.includes(value as ReasoningEffort)
+    ? (value as ReasoningEffort)
+    : undefined;
 }

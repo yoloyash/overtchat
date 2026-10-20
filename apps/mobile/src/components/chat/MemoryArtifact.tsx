@@ -6,8 +6,8 @@ import {
   type MemoryToolDisplay,
   type MemoryToolPart,
 } from "@overtchat/shared";
+import { useLayoutState } from "@shopify/flash-list";
 import { router } from "expo-router";
-import { useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,7 +19,7 @@ import { useTheme } from "@/lib/theme";
 
 export function MemoryArtifact({ parts }: { parts: MemoryToolPart[] }) {
   const { colors, fonts, radii } = useTheme();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useLayoutState(false);
   const details = parts.map(describeMemoryToolPart);
   const running = details.some((detail) => detail.status === "running");
   const failed = details.some(

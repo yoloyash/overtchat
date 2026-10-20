@@ -5,7 +5,8 @@ import { useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ImageView from "react-native-image-viewing";
-import { getApiBase, getAuthCookie } from "@/lib/api";
+import { getApiBase } from "@/lib/api";
+import { useAuthCookie } from "@/lib/auth/useAuthCookie";
 import {
   type AttachmentCategory,
   type AttachmentMeta,
@@ -51,16 +52,18 @@ export function AttachmentChip({
   meta,
   onRemove,
   onLongPress,
+  large = false,
 }: {
   attachment: FileUIPart;
   meta?: AttachmentMeta;
   onRemove?: () => void;
   onLongPress?: () => void;
+  large?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
   const insets = useSafeAreaInsets();
   const label = attachment.filename ?? "file";
-  const cookie = getAuthCookie();
+  const cookie = useAuthCookie();
   const [previewOpen, setPreviewOpen] = useState(false);
   const longPressedRef = useRef(false);
 
@@ -68,14 +71,15 @@ export function AttachmentChip({
     const localUri = meta?.localUri;
     const source = localUri
       ? { uri: localUri }
-      : {
+      : cookie ? {
         uri: resolveUrl(attachment.url),
-        headers: cookie ? { Cookie: cookie } : undefined,
-      };
+        headers: { Cookie: cookie },
+      } : undefined;
     return (
       <View
         style={[
           styles.imageWrap,
+          ...(large ? [{ width: "100%" as const, height: 280 }] : []),
           {
             borderColor: colors.border,
             backgroundColor: colors.muted,
@@ -110,14 +114,16 @@ export function AttachmentChip({
           <Image
             source={source}
             style={styles.image}
-            contentFit="cover"
+            contentFit={large ? "contain" : "cover"}
             cachePolicy="memory-disk"
             accessibilityLabel={label}
           />
         </Pressable>
-        {onRemove && <RemoveButton onPress={onRemove} label={label} />}
+        {onRemove && (
+          <RemoveButton onPress={onRemove} label={label} compact />
+        )}
         <ImageView
-          images={[source]}
+          images={source ? [source] : []}
           imageIndex={0}
           visible={previewOpen}
           onRequestClose={() => setPreviewOpen(false)}
@@ -166,7 +172,7 @@ export function AttachmentChip({
       borderColor: colors.border,
       backgroundColor: colors.muted,
       borderRadius: radii.md,
-      paddingRight: onRemove ? 30 : 14,
+      paddingRight: onRemove ? 48 : 14,
     },
   ];
   const docContent = (
@@ -227,27 +233,35 @@ export function AttachmentChip({
 function RemoveButton({
   onPress,
   label,
+  compact = false,
 }: {
   onPress: () => void;
   label: string;
+  compact?: boolean;
 }) {
   const { colors } = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={8}
       accessibilityRole="button"
       accessibilityLabel={`Remove ${label}`}
       style={({ pressed }) => [
-        styles.removeBtn,
-        {
-          backgroundColor: colors.background,
-          borderColor: colors.border,
-          opacity: pressed ? 0.7 : 1,
-        },
+        styles.removeButtonTarget,
+        compact && styles.removeButtonTargetCompact,
+        { opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      <Ionicons name="close" size={12} color={colors.foreground} />
+      <View
+        style={[
+          styles.removeButtonSurface,
+          {
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <Ionicons name="close" size={12} color={colors.foreground} />
+      </View>
     </Pressable>
   );
 }
@@ -282,7 +296,18 @@ const styles = StyleSheet.create({
   docMeta: { flex: 1, minWidth: 0 },
   docLabel: { fontSize: 13 },
   docSub: { fontSize: 11, marginTop: 2 },
-  removeBtn: {
+  removeButtonTarget: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    width: 48,
+    height: 48,
+  },
+  removeButtonTargetCompact: {
+    width: 32,
+    height: 32,
+  },
+  removeButtonSurface: {
     position: "absolute",
     top: 4,
     right: 4,

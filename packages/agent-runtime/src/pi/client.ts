@@ -21,6 +21,10 @@ import {
   spawnOnHost,
 } from "@overtchat/agent-runtime/runtime/process";
 import { SubmissionEchoTracker } from "@overtchat/agent-runtime/runtime/submission-echo";
+import { PiAssistantMessages } from "./assistant-messages";
+import { PiCompaction } from "./compaction";
+import { normalizeTodoEvent, normalizeTodoMessage } from "./todo-messages";
+import { parsePiTodos } from "./todos";
 
 export type PiLaunch = {
   executable: string;
@@ -57,6 +61,9 @@ export class PiClient {
   private readonly transport: JsonlRpcTransport;
   private readonly subscribers = new Set<(event: PiRpcEvent) => void>();
   private readonly submissionEchoes = new SubmissionEchoTracker();
+  private readonly assistantMessages = new PiAssistantMessages();
+  private readonly compaction = new PiCompaction((event) => this.emit(event));
+  private historyGeneration = 0;
 
   constructor(process: AgentProcess) {
     this.transport = new JsonlRpcTransport(process, "Pi");
@@ -65,12 +72,26 @@ export class PiClient {
         this.transport.fail("Pi RPC event is missing a type.");
         return;
       }
-      const event = this.submissionEchoes.annotate(record);
+      if (this.compaction.handle(record as PiRpcEvent)) return;
+      const event = normalizeTodoEvent(this.assistantMessages.annotate(
+        this.submissionEchoes.annotate(record) as PiRpcEvent,
+      ), parsePiTodos) as PiRpcEvent;
       this.emit(
         event.type === "extension_ui_request"
           ? ({ ...event, type: "interaction_request" } as PiRpcEvent)
           : (event as PiRpcEvent),
       );
+      if (event.type === "message_end" && event.message &&
+        typeof event.message === "object" && Reflect.get(event.message, "role") === "user") {
+        const generation = this.historyGeneration;
+        void this.identifyMessages([event.message]).then(({ messages }) => {
+          if (generation !== this.historyGeneration) return;
+          const message = messages[0];
+          if (message && typeof message === "object" && typeof Reflect.get(message, "id") === "string") {
+            this.emit({ type: "message_end", message });
+          }
+        }).catch(() => {});
+      }
     });
   }
 
@@ -116,8 +137,72 @@ export class PiClient {
     return parsePiCommands(await this.request({ type: "get_commands" }));
   }
 
-  getMessages(): Promise<{ messages: unknown[] }> {
-    return this.request({ type: "get_messages" });
+  async getMessages(): Promise<{ messages: unknown[] }> {
+    const history = await this.request<{ messages: unknown[] }>({
+      type: "get_messages",
+    });
+    const { messages } = await this.identifyMessages(history.messages);
+    return { messages: messages.map((message) => normalizeTodoMessage(message, parsePiTodos)) };
+  }
+
+  // Resolve native user identity from session entries without importing model
+  // context into the live display transcript (including after compaction).
+  private async identifyMessages(messages: unknown[]): Promise<{ messages: unknown[] }> {
+    // Native entry IDs survive reloads and distinguish repeated identical prompts.
+    const tree = await this.request<{
+      entries?: Array<{
+        id: string;
+        parentId: string | null;
+        type: string;
+        message?: Record<string, unknown>;
+      }>;
+      leafId?: string;
+    }>({ type: "get_entries" }).catch(() => null);
+    if (!tree?.entries) {
+      return { messages: this.assistantMessages.reconcileHistory(messages) };
+    }
+    const entries = new Map(tree.entries.map((entry) => [entry.id, entry]));
+    const branch: typeof tree.entries = [];
+    const seen = new Set<string>();
+    for (let id = tree.leafId; id && !seen.has(id); ) {
+      seen.add(id);
+      const entry = entries.get(id);
+      if (!entry) break;
+      if (entry.type === "message" && entry.message) branch.unshift(entry);
+      id = entry.parentId ?? undefined;
+    }
+    return {
+      messages: this.assistantMessages.reconcileHistory(messages.map((message) => {
+        if (!message || typeof message !== "object") return message;
+        const index = branch.findIndex(
+          (entry) =>
+            entry.message?.role === Reflect.get(message, "role") &&
+            entry.message?.timestamp === Reflect.get(message, "timestamp") &&
+            JSON.stringify(entry.message?.content) ===
+              JSON.stringify(Reflect.get(message, "content")),
+        );
+        if (index < 0) return message;
+        const [entry] = branch.splice(index, 1);
+        return { ...message, id: entry!.id };
+      })),
+    };
+  }
+
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "conversation")
+      throw new Error("Pi supports conversation rewind only.");
+    this.historyGeneration += 1;
+    // Current Pi exposes this natively over RPC; no transcript files are rewritten.
+    const result = await this.request<{ cancelled?: boolean }>({
+      type: "fork",
+      entryId: messageId,
+    });
+    if (result.cancelled) throw new Error("Pi rewind was cancelled.");
+    this.submissionEchoes.clear();
+    this.assistantMessages.clear();
   }
 
   prompt(
@@ -147,8 +232,9 @@ export class PiClient {
   }
 
   abort(): Promise<unknown> {
-    return this.request({ type: "abort" }).then((result) => {
+    return this.compaction.abort(() => this.request({ type: "abort" })).then((result) => {
       this.submissionEchoes.clear();
+      this.assistantMessages.clear();
       return result;
     });
   }
@@ -170,13 +256,13 @@ export class PiClient {
   }
 
   compact(customInstructions?: string): Promise<unknown> {
-    return this.request(
+    return this.compaction.manual(() => this.request(
       {
         type: "compact",
         ...(customInstructions ? { customInstructions } : {}),
       },
       0x7fffffff,
-    );
+    ));
   }
 
   setAutoCompaction(enabled: boolean): Promise<unknown> {
@@ -195,7 +281,9 @@ export class PiClient {
   }
 
   stop(): Promise<void> {
+    this.historyGeneration += 1;
     this.submissionEchoes.clear();
+    this.assistantMessages.clear();
     return this.transport.stop();
   }
 

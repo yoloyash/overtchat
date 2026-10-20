@@ -6,6 +6,35 @@ vi.mock("@overtchat/agent-runtime/omp/client", () => ({ startOmp: mocks.startOmp
 import { ompProviderAdapter } from "./omp";
 
 describe("OMP provider adapter", () => {
+  it("ends the turn when the agent yields to background work but not on retries", () => {
+    const classifier = ompProviderAdapter.createEventClassifier();
+    const answer = { type: "message_end", message: { role: "assistant", content: "Started the job" } };
+    classifier.classify(answer);
+    expect(classifier.classify({ type: "agent_end", isTerminal: false, yielded: true, awaitingAsyncWork: true })).toMatchObject({ terminal: true });
+    classifier.classify(answer);
+    expect(classifier.classify({ type: "agent_end", isTerminal: false, yielded: false })).toMatchObject({ terminal: false });
+    expect(classifier.classify({ type: "session_settled" })).toMatchObject({ terminal: true });
+    expect(classifier.classify({ type: "prompt_result", agentInvoked: true, sessionSettled: true })).toMatchObject({ terminal: true });
+  });
+
+  it.each([
+    // Background work runs between turns; a wake starts a new one.
+    [{ isStreaming: false, hasPendingAsyncWork: true, isSettled: false }, false],
+    [{ isStreaming: true, hasPendingAsyncWork: true }, true],
+    [{ isCompacting: true, hasPendingAsyncWork: true }, true],
+    // Hidden next-turn context keeps isSettled false for an idle session.
+    [{
+      isStreaming: false, hasPendingAsyncWork: false, isSettled: false, queuedMessageCount: 1,
+      queuedMessages: { steering: [], followUp: [], liveSteered: 0 },
+    }, false],
+    [{ isStreaming: false, isSettled: false, queuedMessages: { steering: ["Next"], followUp: [] } }, true],
+    [{ isStreaming: false, isSettled: false, queuedMessages: { steering: [], followUp: ["Later"] } }, true],
+    [{ isStreaming: false, isSettled: true }, false],
+    [{ isStreaming: false }, false],
+  ])("reports provider activity %j", (state, expected) => {
+    expect(ompProviderAdapter.busyFromState!(state)).toBe(expected);
+  });
+
   beforeEach(() => vi.clearAllMocks());
 
   it("launches rpc-ui with an explicit approval mode", () => {
@@ -45,5 +74,82 @@ describe("OMP provider adapter", () => {
       { transport: "local" },
       expect.objectContaining({ modeId: "full" }),
     );
+  });
+
+  it("uses OMP's resolved model and thinking defaults in its catalog", async () => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    mocks.startOmp.mockReturnValue({
+      getState: vi.fn().mockResolvedValue({
+        model: { provider: "omp", id: "vllm/configured" },
+        thinkingLevel: "high",
+      }),
+      getAvailableModels: vi.fn().mockResolvedValue([
+        {
+          provider: "omp",
+          id: "vllm/first",
+          label: "First",
+          thinkingOptions: [{ id: "low", label: "Low", isDefault: true }],
+        },
+        {
+          provider: "omp",
+          id: "vllm/configured",
+          label: "Configured",
+          defaultThinkingOptionId: "low",
+          thinkingOptions: [
+            { id: "low", label: "Low", isDefault: true },
+            { id: "high", label: "High" },
+          ],
+        },
+      ]),
+      stop,
+    });
+
+    const catalog = await ompProviderAdapter.fetchCatalog(
+      { transport: "local" },
+      { executable: "omp", cwd: "/workspace" },
+    );
+
+    expect(catalog.models[0]).not.toHaveProperty("isDefault");
+    expect(catalog.models[1]).toMatchObject({
+      id: "vllm/configured",
+      isDefault: true,
+      defaultThinkingOptionId: "high",
+      thinkingOptions: [
+        expect.objectContaining({ id: "low" }),
+        expect.objectContaining({ id: "high", isDefault: true }),
+      ],
+    });
+    expect(catalog.models[1]?.thinkingOptions?.[0]).not.toHaveProperty(
+      "isDefault",
+    );
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("waits for OMP's terminal agent end across async continuations", () => {
+    const classifier = ompProviderAdapter.createEventClassifier();
+
+    expect(classifier.classify({ type: "agent_start" })).toMatchObject({
+      started: true,
+      terminal: false,
+    });
+    classifier.classify({
+      type: "message_end",
+      message: { role: "assistant", content: "First pass" },
+    });
+
+    expect(
+      classifier.classify({
+        type: "agent_end",
+        isTerminal: false,
+        messages: [{ role: "assistant", content: "First pass" }],
+      }),
+    ).toMatchObject({ terminal: false });
+    expect(
+      classifier.classify({
+        type: "agent_end",
+        isTerminal: true,
+        messages: [{ role: "assistant", content: "Final pass" }],
+      }),
+    ).toMatchObject({ terminal: true });
   });
 });

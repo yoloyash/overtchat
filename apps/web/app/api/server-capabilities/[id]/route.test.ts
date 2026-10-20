@@ -68,8 +68,8 @@ describe("server capability update", () => {
     expect(mocks.updateCapability).not.toHaveBeenCalled();
   });
 
-  it("keeps a masked API key when the admin leaves the field blank", async () => {
-    const response = await PUT(request(searchInput), {
+  it.each([null, ""])("keeps a masked API key when the field is %s", async (apiKey) => {
+    const response = await PUT(request({ ...searchInput, apiKey }), {
       params: Promise.resolve({ id: "search" }),
     });
 

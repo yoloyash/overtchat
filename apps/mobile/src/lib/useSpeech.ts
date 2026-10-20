@@ -1,3 +1,4 @@
+import { ApiError, apiError, getErrorMessage } from "@overtchat/shared";
 import { type AudioPlayer, createAudioPlayer } from "expo-audio";
 import { File as FsFile, Paths } from "expo-file-system";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,6 +12,7 @@ export function useSpeech() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string>();
 
   const playerRef = useRef<AudioPlayer | null>(null);
   const fileRef = useRef<FsFile | null>(null);
@@ -53,6 +55,7 @@ export function useSpeech() {
   const stop = useCallback(() => {
     teardown();
     setError(null);
+    setErrorCode(undefined);
     lastPlayedRef.current = null;
   }, [teardown]);
 
@@ -75,9 +78,10 @@ export function useSpeech() {
       setActiveId(id);
       setStatus("loading");
 
-      const fail = (msg: string) => {
+      const fail = (msg: string, code?: string) => {
         teardown();
         setError(msg);
+        setErrorCode(code);
       };
 
       try {
@@ -87,7 +91,13 @@ export function useSpeech() {
           body: JSON.stringify({ text: trimmed }),
           signal: ac.signal,
         });
-        if (!res.ok) throw new Error(`TTS failed (${res.status})`);
+        if (!res.ok)
+          throw apiError(
+            res.status,
+            await res.text().catch(() => ""),
+            "Couldn't play speech. Please try again.",
+            "tts",
+          );
         const buf = await res.arrayBuffer();
         if (ac.signal.aborted) return;
 
@@ -132,7 +142,10 @@ export function useSpeech() {
         player.play();
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
-        fail(networkErrorMessage(err));
+        fail(
+          networkErrorMessage(err),
+          err instanceof ApiError ? err.code : undefined,
+        );
       }
     },
     [activeId, stop, teardown],
@@ -183,6 +196,11 @@ export function useSpeech() {
     currentTime,
     duration,
     error,
+    canRetry: ![
+      "speech_disabled",
+      "speech_not_configured",
+      "speech_provider_auth",
+    ].includes(errorCode ?? ""),
     play,
     pause,
     resume,
@@ -193,8 +211,5 @@ export function useSpeech() {
 }
 
 function networkErrorMessage(err: unknown): string {
-  const msg = (err as Error)?.message ?? "";
-  if (msg.includes("TTS failed")) return "Speech service unavailable.";
-  if (msg.toLowerCase().includes("network")) return "Network error.";
-  return "Couldn't play speech.";
+  return getErrorMessage(err, "Couldn't play speech. Please try again.");
 }

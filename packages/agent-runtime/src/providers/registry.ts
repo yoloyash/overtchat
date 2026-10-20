@@ -4,6 +4,7 @@ import { ompProviderAdapter } from "@overtchat/agent-runtime/providers/omp";
 import { codexProviderAdapter } from "@overtchat/agent-runtime/providers/codex";
 import { openCodeProviderAdapter } from "@overtchat/agent-runtime/providers/opencode";
 import { claudeProviderAdapter } from "@overtchat/agent-runtime/providers/claude";
+import { hermesProviderAdapter } from "@overtchat/agent-runtime/providers/hermes";
 import type { AgentProviderId } from "@overtchat/agent-bridge";
 
 const adapters = {
@@ -12,6 +13,7 @@ const adapters = {
   codex: codexProviderAdapter,
   opencode: openCodeProviderAdapter,
   claude: claudeProviderAdapter,
+  hermes: hermesProviderAdapter,
 } satisfies Record<AgentProviderId, AgentProviderAdapter>;
 
 export function agentProviderAdapter(

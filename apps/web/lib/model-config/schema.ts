@@ -1,5 +1,6 @@
 import { z } from "zod";
-import type { ModelCapabilities } from "@overtchat/shared";
+import { CustomImageOptionsSchema, customImageOptions } from "./image-options";
+import { REASONING_EFFORTS, type ModelCapabilities } from "@overtchat/shared";
 import {
   API_FORMAT_IDS,
   PROVIDERS,
@@ -23,12 +24,15 @@ export interface CatalogModelPricing extends ModelPricing {
 
 /** Admin-facing model config DTO. Includes secrets and provider options for editing. */
 export interface AdminModelConfig {
+  modelType: "chat" | "image";
   id: string;
   label: string;
   providerId: ProviderId;
   apiFormat: ApiFormat;
   baseUrl: string;
   apiKey: string | null;
+  /** Last model configuration update, in milliseconds since epoch. */
+  updatedAt: number;
   model: string;
   pricing: ModelPricing | null;
   /** Exact models.dev base rates for admin UI guidance. */
@@ -97,6 +101,13 @@ const ModelCapabilitiesSchema = z
     attachment: z.boolean().optional(),
     toolCalling: z.boolean().optional(),
     reasoning: z.boolean().optional(),
+    reasoningControls: z
+      .object({
+        toggle: z.boolean(),
+        defaultLevel: z.enum(["off", "on", ...REASONING_EFFORTS]),
+        efforts: z.array(z.enum(REASONING_EFFORTS)).optional(),
+      })
+      .optional(),
     structuredOutput: z.boolean().optional(),
     temperature: z.boolean().optional(),
   })
@@ -114,6 +125,7 @@ export const RuntimeModelConfigSchema = ProviderConnectionObject.extend(
 ).superRefine(validateProviderConnection);
 
 export const ModelConfigSchema = ProviderConnectionObject.extend({
+  modelType: z.enum(["chat", "image"]).default("chat"),
   label: z.string().trim().min(1, "Display name is required"),
   ...RuntimeModelFields,
   pricing: ModelPricingSchema.nullish().transform((value) => value ?? null),
@@ -143,12 +155,76 @@ export const ModelConfigSchema = ProviderConnectionObject.extend({
     .boolean()
     .nullish()
     .transform((value) => value ?? true),
-  sortOrder: z
-    .number()
-    .int()
-    .nullish()
-    .transform((value) => value ?? 0),
-}).superRefine(validateProviderConnection);
+})
+  .superRefine((value, context) => {
+    validateProviderConnection(value, context);
+    if (value.modelType === "image") {
+      if (!["openai", "google", "custom"].includes(value.providerId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["providerId"],
+          message:
+            "Image models support OpenAI, Google Gemini, and custom OpenAI-compatible providers.",
+        });
+      }
+      if (value.providerId === "custom") {
+        if (value.apiFormat !== "openai-images")
+          context.addIssue({
+            code: "custom",
+            path: ["apiFormat"],
+            message:
+              "Custom image models require the OpenAI Images API format.",
+          });
+        const options = CustomImageOptionsSchema.safeParse(
+          value.providerOptions ?? {},
+        );
+        if (!options.success)
+          for (const issue of options.error.issues)
+            context.addIssue({
+              ...issue,
+              path: ["providerOptions", ...issue.path],
+            });
+      }
+      if (!isHttpEndpoint(value.baseUrl)) return;
+      const endpoint = new URL(value.baseUrl);
+      if (
+        endpoint.username ||
+        endpoint.password ||
+        endpoint.search ||
+        endpoint.hash
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["baseUrl"],
+          message:
+            "Use an endpoint without credentials, query parameters, or fragments.",
+        });
+      }
+    } else if (value.apiFormat === "openai-images") {
+      context.addIssue({
+        code: "custom",
+        path: ["apiFormat"],
+        message: "The Images API cannot be used for chat.",
+      });
+    }
+  })
+  .transform((value) =>
+    value.modelType === "image"
+      ? {
+          ...value,
+          toolCallingEnabled: false,
+          systemPrompt: null,
+          providerOptions:
+            value.providerId === "custom"
+              ? customImageOptions(value.providerOptions)
+              : null,
+          contextWindow: null,
+          discoveredContextWindow: null,
+          discoveredCapabilities: null,
+          pricing: null,
+        }
+      : value,
+  );
 
 export type ModelConfigInput = z.infer<typeof ModelConfigSchema>;
 

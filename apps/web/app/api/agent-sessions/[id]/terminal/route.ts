@@ -1,157 +1,41 @@
 import { auth } from "@/lib/auth/server";
 import { storedConnectionAccessError } from "@/lib/agents/access";
+import { daemonWorkspace } from "@/lib/agents/connector/descriptors";
 import { hostConnectorBroker } from "@/lib/agents/connector/broker";
-import { daemonSession } from "@/lib/agents/connector/descriptors";
 import { getOwnedAgentSession } from "@/lib/db/agentConnections";
-import {
-  AGENT_TERMINAL_MAX_INPUT_CHARS,
-  isAgentTerminalSize,
-  type AgentTerminalSize,
-} from "@overtchat/agent-bridge";
+import { terminalRelay } from "@/lib/agents/terminal/server";
+import { isAgentTerminalSize, TERMINAL_SOCKET_PATH } from "@overtchat/agent-bridge";
 
-type TerminalControl =
-  | { type: "input"; data: string }
-  | { type: "resize"; controlId: string; size: AgentTerminalSize }
-  | { type: "restart"; size: AgentTerminalSize }
-  | { type: "kill" };
-
-function parseControl(value: unknown): TerminalControl | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const record = value as Record<string, unknown>;
-  if (
-    record.type === "input" &&
-    typeof record.data === "string" &&
-    record.data.length > 0 &&
-    record.data.length <= AGENT_TERMINAL_MAX_INPUT_CHARS
-  ) {
-    return { type: "input", data: record.data };
-  }
-  if (
-    record.type === "resize" &&
-    typeof record.controlId === "string" &&
-    record.controlId.length > 0 &&
-    record.controlId.length <= 128 &&
-    isAgentTerminalSize(record.size)
-  ) {
-    return {
-      type: "resize",
-      controlId: record.controlId,
-      size: record.size,
-    };
-  }
-  if (record.type === "restart" && isAgentTerminalSize(record.size)) {
-    return { type: "restart", size: record.size };
-  }
-  return record.type === "kill" ? { type: "kill" } : null;
-}
-
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  const authSession = await auth.api.getSession({ headers: req.headers });
-  if (!authSession) return new Response("Unauthorized", { status: 401 });
-  const accessError = storedConnectionAccessError(authSession.user.role);
-  if (accessError) {
-    return Response.json({ error: accessError }, { status: 403 });
-  }
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) return new Response("Unauthorized", { status: 401 });
+  if (storedConnectionAccessError(session.user.role)) return new Response("Forbidden", { status: 403 });
   const { id } = await params;
-  const owned = await getOwnedAgentSession(id, authSession.user.id);
+  const owned = await getOwnedAgentSession(id, session.user.id);
   if (!owned) return new Response("Not found", { status: 404 });
-  if (!hostConnectorBroker.isOnline(owned.host.connectorId)) {
-    return Response.json(
-      { error: "The OvertChat Host Connector is offline." },
-      { status: 503 },
-    );
+  const size: unknown = await request.json().catch(() => null);
+  if (!isAgentTerminalSize(size)) return new Response("Invalid terminal size", { status: 400 });
+  if (hostConnectorBroker.isOnline(owned.host.connectorId) && !hostConnectorBroker.supports(owned.host.connectorId, "workspace-terminal-v1")) {
+    return Response.json({ error: "Update the Host Connector and enable workspace terminal support." }, { status: 409 });
   }
-  if (
-    !hostConnectorBroker.supports(
-      owned.host.connectorId,
-      "workspace-terminal-v1",
-    )
-  ) {
-    return Response.json(
-      {
-        error:
-          "Update the OvertChat Host Connector to use workspace terminals.",
-      },
-      { status: 426 },
-    );
-  }
-  return Response.json(
-    { available: true },
-    { headers: { "Cache-Control": "no-store" } },
-  );
-}
-
-export async function POST(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-): Promise<Response> {
-  const authSession = await auth.api.getSession({ headers: req.headers });
-  if (!authSession) return new Response("Unauthorized", { status: 401 });
-  const accessError = storedConnectionAccessError(authSession.user.role);
-  if (accessError) {
-    return Response.json({ error: accessError }, { status: 403 });
-  }
-  const { id } = await params;
-  const owned = await getOwnedAgentSession(id, authSession.user.id);
-  if (!owned) return new Response("Not found", { status: 404 });
-  if (
-    hostConnectorBroker.isOnline(owned.host.connectorId) &&
-    !hostConnectorBroker.supports(
-      owned.host.connectorId,
-      "workspace-terminal-v1",
-    )
-  ) {
-    return Response.json(
-      {
-        error:
-          "Update the OvertChat Host Connector to use workspace terminals.",
-      },
-      { status: 426 },
-    );
-  }
-  const control = parseControl(await req.json().catch(() => null));
-  if (!control) {
-    return Response.json(
-      { error: "Invalid terminal command." },
-      { status: 400 },
-    );
-  }
-
   try {
-    if (control.type === "input") {
-      hostConnectorBroker.sendTerminalInput(
-        owned.host.connectorId,
-        id,
-        control.data,
-      );
-      return new Response(null, { status: 204 });
-    }
-    if (control.type === "resize") {
-      hostConnectorBroker.resizeTerminal(
-        owned.host.connectorId,
-        id,
-        control.controlId,
-        control.size,
-      );
-      return new Response(null, { status: 204 });
-    }
-    if (control.type === "restart") {
-      const snapshot = await hostConnectorBroker.restartTerminal(
-        owned.host.connectorId,
-        daemonSession(owned),
-        control.size,
-      );
-      return Response.json({ snapshot });
-    }
-    await hostConnectorBroker.killTerminal(owned.host.connectorId, id);
-    return new Response(null, { status: 204 });
+    const ticket = terminalRelay.issue({
+      connectorId: owned.host.connectorId,
+      workspace: daemonWorkspace(owned),
+      size,
+      origin: request.headers.get("origin") ?? new URL(request.url).origin,
+      authorize: async () => {
+        const current = await auth.api.getSession({ headers: request.headers });
+        if (!current || current.session.id !== session.session.id || storedConnectionAccessError(current.user.role)) return false;
+        const latest = await getOwnedAgentSession(id, current.user.id);
+        return !!latest && latest.host.connectorId === owned.host.connectorId &&
+          latest.connection.id === owned.connection.id &&
+          latest.host.transport === owned.host.transport && latest.host.sshAlias === owned.host.sshAlias &&
+          latest.workspace.id === owned.workspace.id && latest.workspace.path === owned.workspace.path;
+      },
+    });
+    return Response.json({ ticket, path: TERMINAL_SOCKET_PATH }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : String(error) },
-      { status: 400 },
-    );
+    return Response.json({ error: error instanceof Error ? error.message : "Terminal unavailable." }, { status: 503 });
   }
 }

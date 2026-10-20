@@ -7,6 +7,7 @@ export {
 export * from "./runtime/filesystem";
 export * from "./runtime/git";
 export * from "./runtime/process";
+export * from "./runtime/provider-catalogs";
 export * from "./runtime/provider-snapshots";
 export * from "./runtime/registry";
 export {

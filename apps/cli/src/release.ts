@@ -1,3 +1,4 @@
+import { releaseAsset } from "./platform.js";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -31,6 +32,8 @@ export type ReleaseManifest = {
   kokoroImage: string;
   kokoroGpuImage: string;
   kokoroGpuBlackwellImage: string;
+  cloudTunnelImage: string;
+  cloudProxyImage: string;
 };
 
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/u;
@@ -88,6 +91,8 @@ export function applyReleaseManifest(
     kokoroImage: manifest.kokoroImage,
     kokoroGpuImage: manifest.kokoroGpuImage,
     kokoroGpuBlackwellImage: manifest.kokoroGpuBlackwellImage,
+    cloudTunnelImage: manifest.cloudTunnelImage,
+    cloudProxyImage: manifest.cloudProxyImage,
   };
 }
 
@@ -129,6 +134,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     value,
     "kokoroGpuBlackwellImage",
   );
+  const cloudTunnelImage = Reflect.get(value, "cloudTunnelImage");
+  const cloudProxyImage = Reflect.get(value, "cloudProxyImage");
   assertVersion(cliVersion, "CLI version");
   assertVersion(appVersion, "app version");
   assertVersion(voiceVersion, "voice version");
@@ -151,6 +158,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     "Kokoro Blackwell image",
     "ghcr.io/remsky/kokoro-fastapi-gpu",
   );
+  assertDigestImage(cloudTunnelImage, "OvertChat Cloud tunnel image", "ghcr.io/fatedier/frpc");
+  assertDigestImage(cloudProxyImage, "OvertChat Cloud proxy image", "docker.io/library/caddy");
   return {
     format: 1,
     cliVersion,
@@ -163,6 +172,8 @@ export function parseReleaseManifest(value: unknown): ReleaseManifest {
     kokoroImage,
     kokoroGpuImage,
     kokoroGpuBlackwellImage,
+    cloudTunnelImage,
+    cloudProxyImage,
   };
 }
 
@@ -178,15 +189,6 @@ export async function latestReleaseManifest(): Promise<ReleaseManifest> {
     throw new Error(`Could not check for OvertChat updates (HTTP ${response.status}).`);
   }
   return parseReleaseManifest(await response.json());
-}
-
-function cliAsset(): string {
-  if (process.platform !== "linux") {
-    throw new Error("The managed OvertChat CLI currently supports Linux.");
-  }
-  if (process.arch === "x64") return "overtchat-linux-amd64";
-  if (process.arch === "arm64") return "overtchat-linux-arm64";
-  throw new Error(`The OvertChat CLI does not support ${process.arch}.`);
 }
 
 function checksumFor(contents: string, asset: string): string {
@@ -211,7 +213,7 @@ async function download(url: string): Promise<Uint8Array> {
 function currentExecutable(): string | null {
   const executable = process.execPath;
   const basename = path.basename(executable);
-  return basename === "overtchat" || basename.startsWith("overtchat-linux-")
+  return basename === "overtchat" || /^overtchat-(?:linux|darwin)-(?:amd64|arm64)$/u.test(basename)
     ? executable
     : null;
 }
@@ -224,7 +226,7 @@ export async function updateCliIfNeeded(
   // Source/development runs use node, tsx, or bun. Never overwrite those.
   if (!executable) return null;
 
-  const asset = cliAsset();
+  const asset = releaseAsset("overtchat");
   const releaseBase = `https://github.com/${CONNECTOR_REPOSITORY}/releases/download/cli-v${manifest.cliVersion}`;
   const temporaryDirectory = await mkdtemp(
     path.join(path.dirname(executable), ".overtchat-update-"),

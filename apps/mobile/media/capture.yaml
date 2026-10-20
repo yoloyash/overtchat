@@ -1,0 +1,74 @@
+appId: com.overtchat.mobile
+name: OvertChat README native Android captures
+---
+- launchApp
+- runFlow:
+    when:
+      visible: Welcome back
+    commands:
+      - runFlow:
+          when:
+            notVisible: "Server: ${SERVER_HOST}"
+          commands:
+            - tapOn: Change
+- runFlow:
+    when:
+      visible: Get started
+    commands:
+      - tapOn: Get started
+- runFlow:
+    when:
+      visible: Connect to a server
+    commands:
+      - longPressOn: "https?://.*"
+      - tapOn: Cut
+      - eraseText: 100
+      - inputText: ${SERVER_URL}
+      - assertVisible: ${SERVER_URL}
+      - tapOn: Connect
+      - extendedWaitUntil:
+          visible: Welcome back
+          timeout: 15000
+- runFlow:
+    when:
+      visible: Welcome back
+    commands:
+      - tapOn:
+          below: Email
+          above: Password
+      - inputText: alex@example.test
+      - tapOn:
+          below: Password
+          above: Sign in
+      - inputText: readme-demo-account-0000
+      - hideKeyboard
+      - tapOn: Sign in
+- assertVisible: Show navigation menu
+- tapOn: Show navigation menu
+- assertVisible: alex@example.test
+- tapOn: Settings
+- tapOn: Dark
+- back
+- runFlow:
+    when:
+      visible: Show navigation menu
+    commands:
+      - tapOn: Show navigation menu
+- runFlow:
+    when:
+      notVisible: A little space to read
+    commands:
+      - tapOn: Home lab
+- tapOn: A little space to read
+- scrollUntilVisible:
+    element:
+      text: "I want to turn the corner.*"
+    direction: UP
+    timeout: 20000
+    visibilityPercentage: 100
+- assertVisible: Keep It Simple
+- waitForAnimationToEnd
+- takeScreenshot: android-chat
+- tapOn: Show navigation menu
+- waitForAnimationToEnd
+- takeScreenshot: android-projects

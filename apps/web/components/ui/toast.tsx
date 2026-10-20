@@ -106,5 +106,5 @@ function ToastIcon({ type }: { type?: string }) {
 
 function normalizeInput(input: ToastInput): ToastOptions {
   if (typeof input === "string") return { title: input };
-  return input;
+  return { ...input };
 }

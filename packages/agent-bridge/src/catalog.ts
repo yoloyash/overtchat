@@ -1,4 +1,5 @@
 import type {
+  AgentMode,
   AgentProviderId,
   AgentRuntimeCapabilities,
 } from "./agents";
@@ -11,6 +12,41 @@ export type AgentProviderMetadata = {
   capabilities: AgentRuntimeCapabilities;
 };
 
+export type AgentProviderCreationDefaults = {
+  modes: readonly AgentMode[];
+  defaultModeId: string | null;
+};
+
+const NO_CREATION_DEFAULTS: AgentProviderCreationDefaults = {
+  modes: [],
+  defaultModeId: null,
+};
+
+const OMP_CREATION_DEFAULTS: AgentProviderCreationDefaults = {
+  modes: [
+    {
+      id: "full",
+      label: "Full Access",
+      description:
+        "Launches OMP with yolo approval mode so tools run without prompts.",
+      dangerous: true,
+    },
+    {
+      id: "write",
+      label: "Write Approval",
+      description:
+        "Launches OMP with write approval mode — reads are free, writes require approval.",
+    },
+    {
+      id: "ask",
+      label: "Always Ask",
+      description:
+        "Launches OMP with always-ask approval mode for write and exec tools.",
+    },
+  ],
+  defaultModeId: "full",
+};
+
 export const AGENT_PROVIDERS: Record<
   AgentProviderId,
   AgentProviderMetadata
@@ -21,7 +57,9 @@ export const AGENT_PROVIDERS: Record<
     executable: "pi",
     capabilities: {
       steer: true,
+      forkMessages: true,
       customCompactionInstructions: true,
+      rewindConversation: true,
     },
   },
   omp: {
@@ -30,7 +68,9 @@ export const AGENT_PROVIDERS: Record<
     executable: "omp",
     capabilities: {
       steer: true,
+      forkMessages: true,
       customCompactionInstructions: true,
+      rewindConversation: true,
     },
   },
   codex: {
@@ -39,9 +79,10 @@ export const AGENT_PROVIDERS: Record<
     executable: "codex",
     capabilities: {
       steer: true,
+      forkMessages: true,
       usage: true,
       editSentMessages: true,
-      forkMessages: true,
+      rewindConversation: true,
     },
   },
   opencode: {
@@ -49,7 +90,9 @@ export const AGENT_PROVIDERS: Record<
     label: "OpenCode",
     executable: "opencode",
     capabilities: {
+      rewindBoth: true,
       steer: true,
+      forkMessages: true,
     },
   },
   claude: {
@@ -57,8 +100,18 @@ export const AGENT_PROVIDERS: Record<
     label: "Claude Code",
     executable: "claude",
     capabilities: {
+      rewindConversation: true,
+      rewindFiles: true,
+      rewindBoth: true,
       steer: true,
+      forkMessages: true,
     },
+  },
+  hermes: {
+    id: "hermes",
+    label: "Hermes",
+    executable: "hermes",
+    capabilities: { steer: true, renameSession: false },
   },
 };
 
@@ -66,6 +119,16 @@ export function agentProviderMetadata(
   provider: AgentProviderId,
 ): AgentProviderMetadata {
   return AGENT_PROVIDERS[provider];
+}
+
+/**
+ * Launch settings that are part of a provider's stable CLI contract and can be
+ * rendered before runtime catalog discovery completes.
+ */
+export function agentProviderCreationDefaults(
+  provider: AgentProviderId,
+): AgentProviderCreationDefaults {
+  return provider === "omp" ? OMP_CREATION_DEFAULTS : NO_CREATION_DEFAULTS;
 }
 
 export function isAgentProviderId(value: string): value is AgentProviderId {

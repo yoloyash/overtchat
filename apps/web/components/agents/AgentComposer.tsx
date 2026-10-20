@@ -1,5 +1,6 @@
 "use client";
 
+import { restoreAgentComposer } from "@overtchat/shared/agent-presentation";
 import {
   useEffect,
   useId,
@@ -21,7 +22,9 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { agentSlashCommandQuery } from "@overtchat/agent-bridge";
+import {
+  agentSlashCommandQuery,
+} from "@overtchat/agent-bridge";
 import type {
   AgentPromptImage,
   AgentQueuedMessage,
@@ -41,12 +44,15 @@ import {
   type ChatAttachment,
   useChatAttachments,
 } from "@/components/chat/useChatAttachments";
+import { DictateButton, DictateError } from "@/components/chat/DictateButton";
+import { useDictation } from "@/lib/useDictation";
 import { toast } from "@/components/ui/toast";
 import { UsageIndicator } from "@/components/chat/UsageIndicator";
 import {
   AgentComposerControls,
   type AgentComposerControlsProps,
 } from "./AgentComposerControls";
+import { serverUrl } from "@/lib/api-url";
 
 function commandSource(source: AgentSlashCommand["source"]): string {
   const labels: Record<AgentSlashCommand["source"], string> = {
@@ -71,6 +77,8 @@ export function AgentComposer({
   pending,
   stopping,
   disabled,
+  isAdmin,
+  onBeforeDictate,
   controls,
   contextUsage,
   onSubmit,
@@ -90,6 +98,9 @@ export function AgentComposer({
   pending: boolean;
   stopping: boolean;
   disabled: boolean;
+  isAdmin: boolean;
+  /** Stops text-to-speech before dictation so playback is not transcribed. */
+  onBeforeDictate?: () => void;
   controls: AgentComposerControlsProps;
   contextUsage?: AgentSessionStats["contextUsage"];
   onSubmit: (
@@ -121,13 +132,23 @@ export function AgentComposer({
   } = useChatAttachments();
   const listboxId = useId();
   const optionIdPrefix = useId();
-  const composerContextUsage =
-    contextUsage?.tokens !== null && contextUsage?.tokens !== undefined
-      ? {
-          usedTokens: contextUsage.tokens,
-          contextWindow: contextUsage.contextWindow,
-        }
-      : undefined;
+
+  const dictation = useDictation((text) => {
+    // Transcription resolves after an arbitrary recording delay, so merge into
+    // whatever was typed meanwhile instead of replacing it.
+    setInput((prev) => {
+      const trimmed = prev.trimEnd();
+      if (!trimmed) return text;
+      return `${trimmed} ${text}`;
+    });
+    setDismissedDraft(null);
+    setActiveIndex(0);
+    setTimeout(() => textareaRef.current?.focus({ preventScroll: true }), 0);
+  });
+  const composerContextUsage = {
+    usedTokens: contextUsage?.tokens ?? null,
+    contextWindow: contextUsage?.contextWindow,
+  };
 
   useEffect(() => {
     const element = textareaRef.current;
@@ -143,7 +164,7 @@ export function AgentComposer({
     window.sessionStorage.removeItem(restoreDraftKey);
     let focusFrame: number | undefined;
     const restoreFrame = requestAnimationFrame(() => {
-      setInput((current) => current || draft);
+      setInput((current) => restoreAgentComposer(current, draft));
       focusFrame = requestAnimationFrame(() => {
         const element = textareaRef.current;
         element?.focus({ preventScroll: true });
@@ -160,7 +181,7 @@ export function AgentComposer({
     if (!restoredDraft) return;
     let focusFrame: number | undefined;
     const restoreFrame = requestAnimationFrame(() => {
-      setInput((current) => current || restoredDraft.text);
+      setInput((current) => restoreAgentComposer(current, restoredDraft.text));
       focusFrame = requestAnimationFrame(() => {
         const element = textareaRef.current;
         element?.focus({ preventScroll: true });
@@ -222,6 +243,7 @@ export function AgentComposer({
       (!message && images.length === 0) ||
       pending ||
       submittingRef.current ||
+      dictation.status !== "idle" ||
       disabled
     )
       return;
@@ -562,6 +584,16 @@ export function AgentComposer({
         </section>
       )}
 
+      <DictateError
+        error={dictation.error}
+        isAdmin={isAdmin}
+        onDismiss={dictation.clearError}
+        onRecordAgain={() => {
+          onBeforeDictate?.();
+          void dictation.start();
+        }}
+      />
+
       <div className="relative flex flex-col gap-2 rounded-3xl border bg-background px-3.5 pt-3.5 pb-2.5 shadow-sm motion-colors focus-within:border-ring focus-within:ring-1 focus-within:ring-ring">
         {attachments.length > 0 && (
           <div className="flex gap-2 overflow-x-auto px-1">
@@ -628,21 +660,22 @@ export function AgentComposer({
             <AgentComposerControls {...controls} />
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {composerContextUsage && (
-              <>
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  compact
-                  side="top"
-                  className="@2xl:hidden"
-                />
-                <UsageIndicator
-                  contextUsage={composerContextUsage}
-                  side="top"
-                  className="hidden @2xl:inline-flex"
-                />
-              </>
-            )}
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              compact
+              side="top"
+              className="@2xl:hidden"
+            />
+            <UsageIndicator
+              contextUsage={composerContextUsage}
+              side="top"
+              className="hidden @2xl:inline-flex"
+            />
+            <DictateButton
+              dictation={dictation}
+              disabled={disabled || pending || submitting}
+              onBeforeStart={onBeforeDictate}
+            />
             {running && (
               <Button
                 type="button"
@@ -670,6 +703,7 @@ export function AgentComposer({
                 uploading ||
                 pending ||
                 submitting ||
+                dictation.status !== "idle" ||
                 disabled
               }
               onClick={submit}
@@ -698,7 +732,9 @@ function AgentImageChip({
   attachment: ChatAttachment;
   onRemove: () => void;
 }) {
-  const src = attachment.previewUrl ?? attachment.part?.url;
+  const src =
+    attachment.previewUrl ??
+    (attachment.part?.url && serverUrl(attachment.part.url));
   return (
     <div className="relative size-16 shrink-0 overflow-hidden rounded-lg border bg-muted">
       {src && (

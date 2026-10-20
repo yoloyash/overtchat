@@ -6,6 +6,8 @@ import type {
   AgentProcessExit,
 } from "@overtchat/agent-runtime/runtime/process";
 import { buildOmpArgs, OmpClient } from "./client";
+import { PiClient } from "../pi/client";
+import { applyAgentRuntimeMessageEvent } from "@overtchat/agent-bridge";
 
 class FakeAgentProcess implements AgentProcess {
   readonly stdin = new PassThrough();
@@ -74,6 +76,35 @@ function announceReady(process: FakeAgentProcess): void {
 }
 
 describe("OmpClient", () => {
+  it.each(["omp", "pi"])("persists %s manual and automatic compaction as one updated row per operation", async (provider) => {
+    const process = new FakeAgentProcess((command, process) => {
+      if (command.type !== "compact") process.reply(command, { protocolVersion: 2 });
+    });
+    const client = provider === "omp" ? new OmpClient(process, "full") : new PiClient(process);
+    announceReady(process);
+    let messages: unknown[] = [{ id: "old", role: "user", content: "Keep this history" }];
+    client.onEvent((event) => { messages = applyAgentRuntimeMessageEvent(messages, event); });
+    const pending = client.compact();
+    expect(messages).toHaveLength(2);
+    const running = messages[1];
+    expect(running).toMatchObject({ role: "compactionSummary", status: "running", trigger: "manual" });
+    await vi.waitFor(() => expect(process.commands.some((command) => command.type === "compact")).toBe(true));
+    process.reply(process.commands.find((command) => command.type === "compact")!, { tokensBefore: 42000, summary: "Private model context" });
+    await pending;
+    expect(messages).toHaveLength(2);
+    expect(messages[1]).toEqual({ ...(running as object), status: "completed", tokensBefore: 42000 });
+
+    const emit = (event: unknown) => process.stdout.write(`${JSON.stringify(event)}\n`);
+    emit({ type: "auto_compaction_start", reason: "threshold" });
+    emit({ type: "auto_compaction_start", reason: "threshold" });
+    emit({ type: "auto_compaction_end", result: { tokensBefore: 120000 }, aborted: false });
+    emit({ type: "auto_compaction_end", result: { tokensBefore: 120000 }, aborted: false });
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toMatchObject({ content: "Keep this history" });
+    expect(messages[2]).toMatchObject({ role: "compactionSummary", status: "completed", trigger: "auto", tokensBefore: 120000 });
+    await client.stop();
+  });
+
   it("builds rpc-ui and approval arguments", () => {
     expect(
       buildOmpArgs({
@@ -150,6 +181,26 @@ describe("OmpClient", () => {
         "get_messages_page",
       ]),
     );
+    await client.stop();
+  });
+
+  it("does not replay a late native message ID lookup after rewinding", async () => {
+    let lookup: Record<string, unknown> | undefined;
+    const process = new FakeAgentProcess((command, fake) => {
+      if (command.type === "get_branch_messages") lookup = command;
+      else if (command.type === "negotiate_protocol") fake.reply(command, { protocolVersion: 2 });
+      else fake.reply(command, { cancelled: false });
+    });
+    const client = new OmpClient(process, "full");
+    announceReady(process);
+    const events: unknown[] = [];
+    client.onEvent(event => events.push(event));
+    process.stdout.write(`${JSON.stringify({ type: "message_end", message: { role: "user", content: "Discard me" } })}\n`);
+    await vi.waitFor(() => expect(lookup).toBeDefined());
+    await client.rewind("native-user", "conversation");
+    process.reply(lookup!, { messages: [{ entryId: "native-user", text: "Discard me" }] });
+    await new Promise(resolve => setImmediate(resolve));
+    expect(events).toHaveLength(1);
     await client.stop();
   });
 
@@ -244,6 +295,10 @@ describe("OmpClient", () => {
     const process = new FakeAgentProcess((command, fake) => {
       if (command.type === "negotiate_protocol") {
         fake.reply(command, { protocolVersion: 2 });
+        return;
+      }
+      if (command.type === "get_branch_messages") {
+        fake.reply(command, { messages: [] });
         return;
       }
       const message = {

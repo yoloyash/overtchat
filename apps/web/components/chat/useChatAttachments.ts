@@ -8,6 +8,7 @@ import {
   isSupportedAttachment,
   unsupportedAttachmentMessage,
 } from "@/lib/chat/attachments";
+import { apiUrl } from "@/lib/api-url";
 
 export interface ChatAttachment {
   id: number;
@@ -72,7 +73,10 @@ export function useChatAttachments() {
     });
   }
 
-  function addReadyParts(parts: readonly FileUIPart[]): void {
+  function addReadyParts(
+    parts: readonly FileUIPart[],
+    metadata?: ReadonlyMap<string, AttachmentMeta>,
+  ): void {
     const next = parts.map((part) => ({
       id: nextIdRef.current++,
       status: "ready" as const,
@@ -83,6 +87,7 @@ export function useChatAttachments() {
         category: part.mediaType.startsWith("image/")
           ? ("image" as const)
           : undefined,
+        ...metadata?.get(part.url),
       },
     }));
     setAttachments((prev) => [...prev, ...next]);
@@ -121,7 +126,7 @@ export function useChatAttachments() {
     try {
       const form = new FormData();
       form.append("file", file);
-      const res = await fetch("/api/uploads", { method: "POST", body: form });
+      const res = await fetch(apiUrl("/api/uploads"), { method: "POST", body: form });
       const json = (await res.json().catch(() => ({}))) as {
         url?: string;
         mediaType?: string;

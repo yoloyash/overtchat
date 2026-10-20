@@ -10,6 +10,7 @@ import {
   Loader2,
   Pencil,
   RotateCcw,
+  Play,
   Square,
   Volume2,
   X,
@@ -21,7 +22,7 @@ import { toast } from "@/components/ui/toast";
 import { humanMediaLabel } from "@/lib/chat/attachments";
 import {
   STREAMDOWN_DEFAULT_REMARK_PLUGINS,
-  STREAMDOWN_PLUGINS,
+  MESSAGE_MARKDOWN_PLUGINS,
 } from "@/lib/chat/markdown";
 import { speakableText, textOf } from "@/lib/chat/message";
 import { stripCitationMarkers, type CitationRefType } from "@/lib/citations";
@@ -38,8 +39,14 @@ import {
 import { Sources } from "./Sources";
 import { MediaIcon } from "./attachment-icons";
 import { ChainOfThought } from "./ChainOfThought";
+import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { StatsPopover } from "./StatsPopover";
+import {
+  MessageActions,
+  MessageActionButton as ActionButton,
+} from "./MessageActions";
+import { serverUrl } from "@/lib/api-url";
 
 const CITATION_REMARK_PLUGINS = [
   ...STREAMDOWN_DEFAULT_REMARK_PLUGINS,
@@ -56,6 +63,8 @@ export function MessageBubble({
   streaming,
   canAct,
   onRegenerate,
+  onContinue,
+  onImageReference,
   onEdit,
   speech,
   showStats,
@@ -65,6 +74,8 @@ export function MessageBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -126,6 +137,8 @@ export function MessageBubble({
       streaming={streaming}
       canAct={canAct}
       onRegenerate={onRegenerate}
+      onContinue={onContinue}
+      onImageReference={onImageReference}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -138,6 +151,8 @@ function AssistantBubble({
   streaming,
   canAct,
   onRegenerate,
+  onContinue,
+  onImageReference,
   speech,
   showStats,
   stats,
@@ -146,6 +161,8 @@ function AssistantBubble({
   streaming: boolean;
   canAct: boolean;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -188,7 +205,7 @@ function AssistantBubble({
                 <Streamdown
                   key={seg.index}
                   className="font-sans space-y-3 text-[15px] leading-relaxed"
-                  plugins={STREAMDOWN_PLUGINS}
+                  plugins={MESSAGE_MARKDOWN_PLUGINS}
                   remarkPlugins={CITATION_REMARK_PLUGINS}
                   allowedTags={CITATION_ALLOWED_TAGS}
                   components={citationComponents}
@@ -197,6 +214,16 @@ function AssistantBubble({
                 >
                   {(seg.part as { text: string }).text}
                 </Streamdown>
+              );
+            }
+            if (seg.kind === "image") {
+              return (
+                <GeneratedImageCard
+                  key={seg.index}
+                  part={seg.part}
+                  streaming={streaming}
+                  onReference={canAct ? onImageReference : undefined}
+                />
               );
             }
             if (seg.kind === "memory") {
@@ -236,6 +263,13 @@ function AssistantBubble({
             onClick={() => onRegenerate(message.id)}
             icon={<RotateCcw className="size-3.5" />}
           />
+          {onContinue && (
+            <ActionButton
+              label="Continue response"
+              onClick={() => onContinue(message.id)}
+              icon={<Play className="size-3.5" />}
+            />
+          )}
           {showStats && stats && <StatsPopover stats={stats} />}
         </MessageActions>
       )}
@@ -248,10 +282,10 @@ function MessageAttachment({ part }: { part: FileUIPart }) {
   const label = part.filename ?? (isImage ? "image" : "file");
   if (isImage) {
     return (
-      <a href={part.url} target="_blank" rel="noopener noreferrer">
+      <a href={serverUrl(part.url)} target="_blank" rel="noopener noreferrer">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={part.url}
+          src={serverUrl(part.url)}
           alt={label}
           className="max-h-64 max-w-full rounded-xl border object-cover"
         />
@@ -384,43 +418,6 @@ function EditBubble({
         </div>
       </form>
     </div>
-  );
-}
-
-function MessageActions({
-  show,
-  children,
-}: {
-  show: boolean;
-  children: React.ReactNode;
-}) {
-  if (!show) return null;
-  return (
-    <div className="flex items-center gap-0.5 opacity-0 motion-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-      {children}
-    </div>
-  );
-}
-
-function ActionButton({
-  label,
-  icon,
-  onClick,
-}: {
-  label: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={label}
-      title={label}
-      className="rounded-md p-1.5 text-muted-foreground motion-colors hover:bg-accent hover:text-foreground max-md:p-2.5"
-    >
-      {icon}
-    </button>
   );
 }
 

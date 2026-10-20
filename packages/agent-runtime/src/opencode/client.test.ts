@@ -31,6 +31,69 @@ function providerModel(id: string) {
   };
 }
 
+function sdkFixture() {
+  const promptAsync = vi.fn().mockResolvedValue({ data: undefined });
+  const session = {
+    id: "ses-1",
+    title: "New session",
+    metadata: {},
+    time: { created: 1, updated: 1 },
+    model: { providerID: "provider", id: "model-a", variant: "high" },
+    agent: "build",
+  };
+  const sdk = {
+    global: {
+      event: vi.fn().mockResolvedValue({
+        stream: (async function* () { yield { directory: "global", payload: { type: "server.connected", properties: {} } }; })(),
+      }),
+    },
+    provider: {
+      list: vi.fn().mockResolvedValue({
+        data: {
+          all: [
+            {
+              id: "provider",
+              name: "Provider",
+              source: "api",
+              models: {
+                "model-a": providerModel("model-a"),
+                "model-b": providerModel("model-b"),
+              },
+            },
+          ],
+          connected: ["provider"],
+          default: { provider: "model-a" },
+        },
+      }),
+    },
+    app: {
+      agents: vi.fn().mockResolvedValue({
+        data: [
+          { name: "build", mode: "primary", description: "Build" },
+          { name: "review", mode: "primary", description: "Review" },
+        ],
+      }),
+    },
+    command: { list: vi.fn().mockResolvedValue({ data: [] }) },
+    config: {
+      get: vi.fn().mockResolvedValue({
+        data: { model: "provider/model-a", default_agent: "build" },
+      }),
+    },
+    session: {
+      abort: vi.fn().mockResolvedValue({ data: true }),
+      create: vi.fn().mockResolvedValue({ data: session }),
+      messages: vi.fn().mockResolvedValue({ data: [] }),
+      todo: vi.fn().mockResolvedValue({ data: [] }),
+      status: vi
+        .fn()
+        .mockResolvedValue({ data: { "ses-1": { type: "idle" } } }),
+      promptAsync,
+    },
+  };
+  return { sdk, promptAsync };
+}
+
 describe("OpenCode runtime client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,63 +104,29 @@ describe("OpenCode runtime client", () => {
     });
   });
 
+  it("waits for the native event stream handshake before sending a prompt", async () => {
+    const { sdk, promptAsync } = sdkFixture();
+    let connect: () => void = () => {};
+    const connected = new Promise<void>(resolve => { connect = resolve; });
+    sdk.global.event.mockResolvedValue({ stream: (async function* () {
+      await connected;
+      yield { directory: "global", payload: { type: "server.connected", properties: {} } };
+    })() });
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    const client = new OpenCodeRuntimeClient({ transport: "local" }, { executable: "opencode", cwd: "/workspace" });
+    try {
+      await client.getState();
+      const sending = client.prompt("First prompt");
+      await new Promise(resolve => setImmediate(resolve));
+      expect(promptAsync).not.toHaveBeenCalled();
+      connect();
+      await sending;
+      expect(promptAsync).toHaveBeenCalledOnce();
+    } finally { await client.stop(); }
+  });
+
   it("pins steering to the active turn while settings change for the next turn", async () => {
-    const promptAsync = vi.fn().mockResolvedValue({ data: undefined });
-    const session = {
-      id: "ses-1",
-      title: "New session",
-      metadata: {},
-      time: { created: 1, updated: 1 },
-      model: { providerID: "provider", id: "model-a", variant: "high" },
-      agent: "build",
-    };
-    const sdk = {
-      global: {
-        event: vi.fn().mockResolvedValue({
-          stream: (async function* () {})(),
-        }),
-      },
-      provider: {
-        list: vi.fn().mockResolvedValue({
-          data: {
-            all: [
-              {
-                id: "provider",
-                name: "Provider",
-                source: "api",
-                models: {
-                  "model-a": providerModel("model-a"),
-                  "model-b": providerModel("model-b"),
-                },
-              },
-            ],
-            connected: ["provider"],
-            default: { provider: "model-a" },
-          },
-        }),
-      },
-      app: {
-        agents: vi.fn().mockResolvedValue({
-          data: [
-            { name: "build", mode: "primary", description: "Build" },
-            { name: "review", mode: "primary", description: "Review" },
-          ],
-        }),
-      },
-      command: { list: vi.fn().mockResolvedValue({ data: [] }) },
-      config: {
-        get: vi.fn().mockResolvedValue({
-          data: { model: "provider/model-a", default_agent: "build" },
-        }),
-      },
-      session: {
-        create: vi.fn().mockResolvedValue({ data: session }),
-        messages: vi.fn().mockResolvedValue({ data: [] }),
-        todo: vi.fn().mockResolvedValue({ data: [] }),
-        status: vi.fn().mockResolvedValue({ data: { "ses-1": { type: "idle" } } }),
-        promptAsync,
-      },
-    };
+    const { sdk, promptAsync } = sdkFixture();
     mocks.createOpencodeClient.mockReturnValue(sdk);
 
     const client = new OpenCodeRuntimeClient(
@@ -144,6 +173,78 @@ describe("OpenCode runtime client", () => {
     }
   });
 
+  it("aborts a session before releasing its shared server and joins concurrent stops", async () => {
+    const { sdk } = sdkFixture();
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    let finishAbort!: () => void;
+    sdk.session.abort.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishAbort = () => resolve({ data: true });
+        }),
+    );
+    const lease = await mocks.acquire();
+    const client = new OpenCodeRuntimeClient(
+      { transport: "local" },
+      { executable: "opencode", cwd: "/workspace" },
+    );
+    await client.getState();
+    const stopping = client.stop();
+    expect(client.stop()).toBe(stopping);
+    await vi.waitFor(() => expect(sdk.session.abort).toHaveBeenCalledOnce());
+    expect(sdk.session.abort).toHaveBeenCalledWith(
+      { sessionID: "ses-1", directory: "/workspace" },
+      { signal: expect.any(AbortSignal) },
+    );
+    expect(lease.release).not.toHaveBeenCalled();
+    finishAbort();
+    await stopping;
+    expect(lease.release).toHaveBeenCalledOnce();
+  });
+
+  it("releases its lease even when the provider rejects session abort", async () => {
+    const { sdk } = sdkFixture();
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    sdk.session.abort.mockRejectedValue(new Error("provider unavailable"));
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const lease = await mocks.acquire();
+    const client = new OpenCodeRuntimeClient(
+      { transport: "local" },
+      { executable: "opencode", cwd: "/workspace" },
+    );
+    try {
+      await client.getState();
+      await client.stop();
+      expect(lease.release).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("bounds a stalled abort and still releases the server", async () => {
+    const { sdk } = sdkFixture();
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    sdk.session.abort.mockImplementation(() => new Promise(() => {}));
+    const lease = await mocks.acquire();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const client = new OpenCodeRuntimeClient(
+      { transport: "local" },
+      { executable: "opencode", cwd: "/workspace" },
+    );
+    try {
+      await client.getState();
+      vi.useFakeTimers();
+      const stopping = client.stop();
+      await vi.advanceTimersByTimeAsync(2_001);
+      await stopping;
+      expect(lease.release).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+      warn.mockRestore();
+    }
+  });
+
   it("keeps listed sessions when one message history cannot be enriched", async () => {
     const release = vi.fn().mockResolvedValue(undefined);
     mocks.acquire.mockResolvedValueOnce({
@@ -186,12 +287,12 @@ describe("OpenCode runtime client", () => {
       release,
     });
     let eventSignal: AbortSignal | undefined;
-    const event = vi.fn().mockImplementation(
-      async ({ signal }: { signal: AbortSignal }) => {
+    const event = vi
+      .fn()
+      .mockImplementation(async ({ signal }: { signal: AbortSignal }) => {
         eventSignal = signal;
         return { stream: (async function* () {})() };
-      },
-    );
+      });
     mocks.createOpencodeClient.mockReturnValue({
       global: { event },
       provider: {
@@ -232,5 +333,94 @@ describe("OpenCode runtime client", () => {
     expect(eventSignal?.aborted).toBe(true);
     expect(event).toHaveBeenCalledOnce();
     expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("publishes step usage before idle and keeps old history from restoring compacted context", async () => {
+    const { sdk } = sdkFixture();
+    mocks.createOpencodeClient.mockReturnValue(sdk);
+    const client = new OpenCodeRuntimeClient(
+      { transport: "local" },
+      { executable: "opencode", cwd: "/workspace", model: "provider/model-a" },
+    );
+    const events: Array<Record<string, unknown>> = [];
+    client.onEvent((event) => events.push(event));
+    const emit = (type: string, properties: Record<string, unknown>) => {
+      (client as unknown as { handleEvent(event: unknown): void }).handleEvent({
+        type,
+        properties: { sessionID: "ses-1", ...properties },
+      });
+    };
+    const tokens = (input: number) => ({
+      input,
+      output: 0,
+      reasoning: 0,
+      cache: { read: 0, write: 0 },
+    });
+    const info = (id: string, input: number, summary = false) => ({
+      id,
+      role: "assistant",
+      sessionID: "ses-1",
+      providerID: "provider",
+      modelID: "model-a",
+      summary,
+      tokens: tokens(input),
+      cost: 0,
+      time: { created: 1 },
+      parentID: "user",
+      path: { cwd: "/workspace", root: "/workspace" },
+      mode: "build",
+      agent: "build",
+    });
+    try {
+      await client.getState();
+      emit("session.status", { status: { type: "busy" } });
+      emit("message.updated", { info: info("old", 90000) });
+      emit("message.part.updated", {
+        part: {
+          id: "step",
+          messageID: "old",
+          type: "step-finish",
+          tokens: tokens(91000),
+        },
+      });
+      expect(events.at(-1)).toMatchObject({
+        type: "usage_update",
+        usage: { contextUsage: { tokens: 91000 } },
+      });
+      expect((await client.getState()).isStreaming).toBe(true);
+      emit("session.next.compaction.started", {});
+      const compactionPart = {
+        id: "compaction",
+        messageID: "old",
+        type: "compaction",
+        auto: true,
+      };
+      emit("message.part.updated", { part: compactionPart });
+      emit("message.updated", { info: info("summary", 80000, true) });
+      emit("session.next.compaction.ended", {});
+      sdk.session.messages.mockResolvedValue({
+        data: [{ info: info("old", 90000), parts: [] }],
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      emit("message.updated", { info: info("old", 92000) });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      emit("message.updated", { info: info("next", 0) });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBeNull();
+      emit("message.part.updated", {
+        part: {
+          id: "next-step",
+          messageID: "next",
+          type: "step-finish",
+          tokens: tokens(12000),
+        },
+      });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12000);
+      emit("message.part.updated", { part: compactionPart });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12000);
+      emit("message.updated", { info: info("empty", 0) });
+      expect((await client.getSessionStats()).contextUsage?.tokens).toBe(12000);
+    } finally {
+      await client.stop();
+    }
   });
 });

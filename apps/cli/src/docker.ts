@@ -43,21 +43,32 @@ export type DockerCommand = {
   prefix: string[];
 };
 
-export async function detectDockerCommand(): Promise<DockerCommand | null> {
+export async function detectDockerCommand(readOnly = false): Promise<DockerCommand | null> {
   if (!(await commandExists("docker"))) return null;
-  const direct = await runCommand("docker", ["info"]);
+  const direct = readOnly
+    ? await runCommand("docker", ["info"], { timeoutMs: 10_000 })
+    : await runCommand("docker", ["info"]);
   if (direct.exitCode === 0) return { command: "docker", prefix: [] };
+  if (process.platform === "darwin") {
+    throw new Error("Docker is installed but not ready. Start Docker Desktop, wait for its engine, then retry. Check docker context show if you use another Docker runtime.");
+  }
   if (await commandExists("sudo")) {
-    const elevated = await runCommand("sudo", ["-n", "docker", "info"]);
+    const elevated = readOnly
+      ? await runCommand("sudo", ["-n", "docker", "info"], { timeoutMs: 10_000 })
+      : await runCommand("sudo", ["-n", "docker", "info"]);
     if (elevated.exitCode === 0) {
-      return { command: "sudo", prefix: ["docker"] };
+      return { command: "sudo", prefix: readOnly ? ["-n", "docker"] : ["docker"] };
     }
+    if (readOnly) return null;
     return { command: "sudo", prefix: ["docker"] };
   }
   return { command: "docker", prefix: [] };
 }
 
 export async function installDockerEngine(): Promise<void> {
+  if (process.platform !== "linux") {
+    throw new Error("Install and start Docker Desktop for Mac (https://docs.docker.com/desktop/setup/install/mac-install/), then run overtchat setup again.");
+  }
   const response = await fetch("https://get.docker.com", {
     redirect: "follow",
     signal: AbortSignal.timeout(60_000),
@@ -295,6 +306,7 @@ export async function reconcileManagedSidecars(
   docker: DockerCommand,
   config: InstallationConfig,
 ): Promise<SidecarReconciliation> {
+  const cloudSelected = config.access?.mode === "cloud" && config.access.cloud !== undefined;
   const sidecars: ManagedSidecar[] = [
     {
       containerName: "overtchat-searxng",
@@ -308,7 +320,8 @@ export async function reconcileManagedSidecars(
       selected:
         config.tts.bundledInstalled &&
         config.tts.accelerator !== "auto" &&
-        config.tts.accelerator !== "gpu",
+        config.tts.accelerator !== "gpu" &&
+        config.tts.accelerator !== "apple",
       service: "kokoro",
     },
     {
@@ -332,7 +345,8 @@ export async function reconcileManagedSidecars(
       selected:
         config.stt.bundledInstalled &&
         config.stt.accelerator !== "auto" &&
-        config.stt.accelerator !== "gpu",
+        config.stt.accelerator !== "gpu" &&
+        config.stt.accelerator !== "apple",
       service: "stt-cpu",
     },
     {
@@ -343,6 +357,19 @@ export async function reconcileManagedSidecars(
         (config.stt.accelerator === "auto" ||
           config.stt.accelerator === "gpu"),
       service: "stt-gpu",
+    },
+    // Removing the tunnel is what takes the cloud address offline.
+    {
+      containerName: "overtchat-cloud-tunnel",
+      label: "OvertChat Cloud tunnel",
+      selected: cloudSelected,
+      service: "cloud-tunnel",
+    },
+    {
+      containerName: "overtchat-cloud-proxy",
+      label: "OvertChat Cloud proxy",
+      selected: cloudSelected,
+      service: "cloud-proxy",
     },
   ];
   const result: SidecarReconciliation = { removed: [], warnings: [] };
@@ -568,6 +595,7 @@ export async function detectExistingInstallation(
 }
 
 export async function detectNvidiaGpus(): Promise<Gpu[]> {
+  if (process.platform !== "linux") return [];
   if (!(await commandExists("nvidia-smi"))) return [];
   let result = await runCommand("nvidia-smi", [
     "--query-gpu=index,uuid,name,memory.total,compute_cap",

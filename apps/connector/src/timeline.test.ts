@@ -116,6 +116,150 @@ afterEach(async () => {
 });
 
 describe("connector session timeline", () => {
+  it("retains a completed Pi/OMP answer through continuation, replay, restart and native history recovery", async () => {
+    const { directory, store } = await createStore();
+    const initial = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      snapshot(),
+    );
+    const draft = {
+      role: "assistant",
+      timestamp: 100,
+      content: [
+        { type: "text", text: "## Draft\n\nKeep the completed answer." },
+      ],
+    };
+    const continuation = { role: "assistant", timestamp: 200, content: [] };
+    // Deliberately replay pre-fix events with no adapter-generated IDs.
+    await commit(store, { type: "message_end", message: draft });
+    await commit(store, { type: "todo_reminder" });
+    await commit(store, { type: "agent_start" });
+    await commit(store, { type: "message_start", message: continuation });
+    await commit(store, {
+      type: "message_end",
+      message: {
+        ...continuation,
+        stopReason: "aborted",
+        errorMessage: "Request was aborted",
+      },
+    });
+    const replay = await store.sync(SESSION_ID, initial);
+    expect(replay.reset).toBe(false);
+    const expected = [
+      draft,
+      {
+        ...continuation,
+        stopReason: "aborted",
+        errorMessage: "Request was aborted",
+      },
+    ];
+    expect(await store.sync(SESSION_ID)).toMatchObject({
+      reset: true,
+      snapshot: { messages: expected },
+    });
+    await store.close();
+    const restored = await reopen(directory);
+    expect(await restored.sync(SESSION_ID)).toMatchObject({
+      reset: true,
+      snapshot: { messages: expected },
+    });
+    // Reopening a provider imports its authoritative history, which can also
+    // restore answers absent from an older, already-compacted checkpoint.
+    const native = expected.map((message, index) => ({
+      ...message,
+      id: `native-${index}`,
+    }));
+    await restored.openSession(SESSION_ID, PROVIDER_SESSION_ID, {
+      ...snapshot(),
+      messages: native,
+    });
+    expect(await restored.sync(SESSION_ID)).toMatchObject({
+      reset: true,
+      snapshot: { messages: native },
+    });
+  });
+
+  it("bounds replay and initial history while retaining the full canonical transcript after restart", async () => {
+    const { directory, store } = await createStore();
+    const canonical = {
+      ...snapshot(),
+      messages: Array.from({ length: 25 }, (_, i) => ({
+        id: `user-${i}`,
+        role: "user",
+        content: `prompt-${i}`,
+        overtchatTurnId: `turn-${i}`,
+      })),
+    };
+    const initial = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      canonical,
+    );
+    for (let i = 0; i < 3; i++)
+      await store.commit(
+        SESSION_ID,
+        runtimeEvent({
+          type: "overtchat_turn_update",
+          turnId: "turn-24",
+          messages: [
+            {
+              id: "user-24",
+              role: "user",
+              content: "x".repeat(3 * 1024 * 1024),
+              overtchatTurnId: "turn-24",
+            },
+          ],
+        }),
+      );
+    const sync = await store.sync(SESSION_ID, initial);
+    expect(sync.reset).toBe(true);
+    if (!sync.reset) throw new Error("Expected a bounded reset");
+    expect(sync.snapshot.messages).toHaveLength(10);
+    const before = sync.snapshot.history!.beforeCursor!;
+    expect((await store.history(SESSION_ID, before)).messages).toHaveLength(10);
+    await store.close();
+    const restored = await reopen(directory);
+    const saved = JSON.parse(
+      (await readFile(timelineFile(directory), "utf8")).split("\n")[0]!,
+    );
+    expect(saved.snapshot.messages).toHaveLength(25);
+    expect((await restored.history(SESSION_ID, before)).messages).toHaveLength(
+      10,
+    );
+  });
+
+  it("persists a rewind with a new epoch even when the native session ID stays the same", async () => {
+    const { directory, store } = await createStore();
+    const old = {
+      ...snapshot(),
+      messages: [{ role: "user", id: "old", content: "Removed prompt" }],
+    };
+    const cursor = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      old,
+    );
+    const replacement = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      snapshot(),
+      true,
+    );
+    expect(replacement.epoch).not.toBe(cursor.epoch);
+    expect(await store.sync(SESSION_ID, cursor)).toMatchObject({
+      reset: true,
+      snapshot: { messages: [] },
+    });
+    await store.close();
+    const restored = await reopen(directory);
+    expect(await restored.sync(SESSION_ID, cursor)).toMatchObject({
+      reset: true,
+      cursor: replacement,
+      snapshot: { messages: [] },
+    });
+  });
+
   it("persists an event before live delivery and restores its exact cursor", async () => {
     const { directory, file, store } = await createStore();
     const initial = await store.openSession(
@@ -666,5 +810,46 @@ describe("connector session timeline", () => {
     await expect(restored.close()).rejects.toThrow(
       "timeline persistence failed",
     );
+  });
+
+  it("delivers and replays live usage reductions and explicit unknown context", async () => {
+    const { directory, store } = await createStore();
+    const initial = await store.openSession(
+      SESSION_ID,
+      PROVIDER_SESSION_ID,
+      snapshot(),
+    );
+    const delivered: AgentRuntimeEnvelope[] = [];
+    const subscription = await store.subscribe(SESSION_ID, initial, (envelope) =>
+      delivered.push(envelope),
+    );
+    for (const tokens of [90000, null, 12000]) {
+      await commit(store, {
+        type: "usage_update",
+        usage: {
+          contextUsage: {
+            tokens,
+            contextWindow: 100000,
+            percent: tokens === null ? null : tokens / 1000,
+          },
+        },
+      });
+    }
+    expect(delivered).toHaveLength(3);
+    await expect(store.sync(SESSION_ID)).resolves.toMatchObject({
+      reset: true,
+      snapshot: { stats: { contextUsage: { tokens: 12000 } } },
+    });
+    subscription.unsubscribe();
+    await store.close();
+    const restored = await reopen(directory);
+    await expect(restored.sync(SESSION_ID)).resolves.toMatchObject({
+      reset: true,
+      snapshot: { stats: { contextUsage: { tokens: 12000 } } },
+    });
+    await expect(restored.sync(SESSION_ID, initial)).resolves.toMatchObject({
+      reset: false,
+      events: delivered,
+    });
   });
 });

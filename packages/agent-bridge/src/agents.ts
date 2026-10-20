@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isAbsoluteAgentPath } from "./paths";
 
 export const CONNECTOR_SHELL_MODES = ["interactive", "login"] as const;
 export type ConnectorShellMode = (typeof CONNECTOR_SHELL_MODES)[number];
@@ -9,6 +10,7 @@ export const AGENT_PROVIDER_IDS = [
   "codex",
   "opencode",
   "claude",
+  "hermes",
 ] as const;
 export type AgentProviderId = (typeof AGENT_PROVIDER_IDS)[number];
 export type AgentRuntimeStatus = "idle" | "running" | "exited";
@@ -83,7 +85,7 @@ export const addAgentWorkspaceSchema = z.object({
     .trim()
     .min(1)
     .max(4_096)
-    .refine((value) => value.startsWith("/"), {
+    .refine(isAbsoluteAgentPath, {
       message: "Enter an absolute directory path.",
     }),
   name: z.string().trim().min(1).max(120).optional(),
@@ -227,7 +229,7 @@ export type AgentTerminalSize = {
 };
 
 export type AgentTerminalSnapshot = AgentTerminalSize & {
-  sessionId: string;
+  workspaceId: string;
   revision: number;
   data: string;
   exited: boolean;
@@ -421,10 +423,17 @@ export type AgentInteractionValue =
   | boolean
   | string[];
 
+export type AgentRewindMode = "conversation" | "files" | "both";
+
 export type AgentRuntimeCapabilities = {
   steer: boolean;
+  /** Defaults to supported for existing providers. */
+  renameSession?: boolean;
   customCompactionInstructions?: boolean;
   usage?: boolean;
+  rewindConversation?: boolean;
+  rewindFiles?: boolean;
+  rewindBoth?: boolean;
   editSentMessages?: boolean;
   forkMessages?: boolean;
 };
@@ -629,7 +638,13 @@ export const agentSessionCommandSchema = z.discriminatedUnion("type", [
     name: z.string().trim().min(1).max(120),
   }),
   z.object({ type: z.literal("new_session") }),
+  z.object({ type: z.literal("reload_history") }),
   z.object({ type: z.literal("show_usage") }),
+  z.object({
+    type: z.literal("rewind"),
+    messageId: z.string().min(1).max(500),
+    mode: z.enum(["conversation", "files", "both"]),
+  }),
   z.object({
     type: z.literal("edit_message"),
     messageId: z.string().min(1).max(500),
@@ -684,14 +699,38 @@ export type AgentSessionStats = {
   };
 };
 
+/** Usage is independent of transcript counts. Null explicitly clears unknown context. */
+export const agentUsageUpdateSchema = z.object({
+  tokens: z
+    .object({
+      input: z.number().nonnegative(),
+      output: z.number().nonnegative(),
+      cacheRead: z.number().nonnegative(),
+      cacheWrite: z.number().nonnegative(),
+      total: z.number().nonnegative(),
+    })
+    .optional(),
+  cost: z.number().nonnegative().optional(),
+  contextUsage: z
+    .object({
+      tokens: z.number().nonnegative().nullable(),
+      contextWindow: z.number().positive(),
+      percent: z.number().nonnegative().nullable(),
+    })
+    .nullable()
+    .optional(),
+});
+
+export type AgentUsageUpdate = z.infer<typeof agentUsageUpdateSchema>;
+
 export type AgentRuntimeSnapshot = {
+  /** Present only on a client transcript window, never the canonical timeline. */
+  history?: { beforeCursor: string | null };
   sessionId: string;
   provider: AgentProviderId;
   capabilities: AgentRuntimeCapabilities;
   status: AgentRuntimeStatus;
-  activeTurn: {
-    startedAt: number;
-  } | null;
+  activeTurn: { startedAt: number } | null;
   state: Record<string, unknown>;
   messages: unknown[];
   models: AgentModel[];

@@ -1,18 +1,16 @@
+import { AgentIdleNotifications } from "@/lib/notifications/agentIdle";
+import { notifyAgentIdle } from "@/lib/notifications/sender";
 import "server-only";
 import {
   HOST_CONNECTOR_CAPABILITIES,
   HOST_CONNECTOR_PROTOCOL_VERSION,
   isAgentSessionSync,
-  isAgentTerminalSnapshot,
   isConnectorSshHost,
   type AgentDaemonRequest,
   type AgentDaemonSessionDescriptor,
   type AgentRuntimeEnvelope,
   type AgentSessionDirectoryEntry,
   type AgentSessionSync,
-  type AgentTerminalEvent,
-  type AgentTerminalSize,
-  type AgentTerminalSnapshot,
   type ConnectorSshHost,
   type HostConnectorCommand,
   type HostConnectorCapability,
@@ -42,8 +40,7 @@ type PendingRequest = {
 
 function isLedgerProtectedCommand(request: AgentDaemonRequest): boolean {
   return (
-    request.type === "session_command" &&
-    request.command.type !== "show_usage"
+    request.type === "session_command" && request.command.type !== "show_usage"
   );
 }
 
@@ -53,6 +50,7 @@ function sessionIdForRequest(request: AgentDaemonRequest): string | undefined {
     case "stop_session":
       return request.sessionId;
     case "open_session":
+    case "session_history":
     case "session_command":
     case "subscribe_session":
       return request.session.sessionId;
@@ -73,17 +71,6 @@ type SessionSubscription = {
   replayBuffer: AgentRuntimeEnvelope[] | null;
 };
 
-type TerminalSubscription = {
-  connectorId: string;
-  session: AgentDaemonSessionDescriptor;
-  controlId: string;
-  size: AgentTerminalSize;
-  revision: number;
-  subscriber: (event: AgentTerminalEvent) => void;
-  disconnect: (error: Error) => void;
-  replayBuffer: AgentTerminalEvent[] | null;
-};
-
 export type AgentSessionDirectoryEvent =
   | { type: "snapshot"; sessions: AgentSessionDirectoryEntry[] }
   | { type: "update"; session: AgentSessionDirectoryEntry };
@@ -97,11 +84,15 @@ export class HostConnectorBroker {
   private readonly channels = new Map<string, Channel>();
   private readonly pending = new Map<string, PendingRequest>();
   private readonly subscriptions = new Map<string, SessionSubscription>();
-  private readonly terminalSubscriptions = new Map<
+  private readonly notificationSequences = new Map<
     string,
-    TerminalSubscription
+    Map<string, number>
   >();
-  private readonly terminalControlOwners = new Map<string, string>();
+  private readonly idleNotifications = new AgentIdleNotifications((id) => {
+    void notifyAgentIdle(id).catch(() =>
+      console.error("[push] Could not send agent notification."),
+    );
+  });
   private readonly sessionDirectory = new Map<
     string,
     { connectorId: string; session: AgentSessionDirectoryEntry }
@@ -118,11 +109,10 @@ export class HostConnectorBroker {
     return this.channels.has(connectorId);
   }
 
-  supports(
-    connectorId: string,
-    capability: HostConnectorCapability,
-  ): boolean {
-    return this.channels.get(connectorId)?.capabilities.has(capability) ?? false;
+  supports(connectorId: string, capability: HostConnectorCapability): boolean {
+    return (
+      this.channels.get(connectorId)?.capabilities.has(capability) ?? false
+    );
   }
 
   runtimeStatusForSession(
@@ -183,15 +173,12 @@ export class HostConnectorBroker {
     connectorCapabilities: readonly HostConnectorCapability[] = [],
   ): () => void {
     this.clearDisconnectTimer(connectorId);
-    this.disconnectTerminalSubscriptions(
-      connectorId,
-      new Error("The OvertChat Host Connector reconnected."),
-    );
     const supported = new Set<string>(HOST_CONNECTOR_CAPABILITIES);
     const capabilities = new Set(
       connectorCapabilities.filter((capability) => supported.has(capability)),
     );
     const sessionIds = new Set(activeSessionIds);
+    for (const id of sessionIds) this.idleNotifications.reset(id);
     const channel = { send, capabilities, sessionIds };
     this.channels.set(connectorId, channel);
     for (const sessionId of sessionIds) {
@@ -217,6 +204,7 @@ export class HostConnectorBroker {
     return () => {
       if (this.channels.get(connectorId) !== channel) return;
       this.channels.delete(connectorId);
+      for (const id of channel.sessionIds) this.idleNotifications.reset(id);
       this.scheduleDisconnect(connectorId);
     };
   }
@@ -234,6 +222,15 @@ export class HostConnectorBroker {
     const requestId = crypto.randomUUID();
     const sessionId = sessionIdForRequest(request);
     if (sessionId) channel.sessionIds.add(sessionId);
+    if (
+      request.type === "session_command" &&
+      request.command.type === "abort"
+    ) {
+      this.idleNotifications.suppress(request.session.sessionId);
+    }
+    if (request.type === "stop_session")
+      this.idleNotifications.suppress(request.sessionId);
+
     const replaySafe =
       isLedgerProtectedCommand(request) &&
       channel.capabilities.has("command-wal-v1");
@@ -382,149 +379,6 @@ export class HostConnectorBroker {
     };
   }
 
-  async subscribeTerminal(
-    connectorId: string,
-    session: AgentDaemonSessionDescriptor,
-    controlId: string,
-    size: AgentTerminalSize,
-    subscriber: (event: AgentTerminalEvent) => void,
-    disconnect: (error: Error) => void,
-  ): Promise<{
-    unsubscribe: () => void;
-    snapshot: AgentTerminalSnapshot;
-  }> {
-    const channel = this.requireTerminalChannel(connectorId);
-    const subscriptionId = crypto.randomUUID();
-    const replayBuffer: AgentTerminalEvent[] = [];
-    const subscription: TerminalSubscription = {
-      connectorId,
-      session,
-      controlId,
-      size,
-      revision: 0,
-      subscriber,
-      disconnect,
-      replayBuffer,
-    };
-    this.terminalSubscriptions.set(subscriptionId, subscription);
-    let snapshot: AgentTerminalSnapshot;
-    try {
-      const result = await this.request<{ snapshot?: unknown }>(connectorId, {
-        type: "subscribe_terminal",
-        subscriptionId,
-        session,
-        size,
-      });
-      if (
-        this.channels.get(connectorId) !== channel ||
-        this.terminalSubscriptions.get(subscriptionId) !== subscription ||
-        subscription.replayBuffer !== replayBuffer
-      ) {
-        throw new Error(
-          "The Host Connector channel changed while subscribing.",
-        );
-      }
-      if (
-        !isAgentTerminalSnapshot(result?.snapshot) ||
-        result.snapshot.sessionId !== session.sessionId
-      ) {
-        throw new Error(
-          "The Host Connector returned an invalid terminal snapshot.",
-        );
-      }
-      snapshot = result.snapshot;
-      subscription.revision = snapshot.revision;
-    } catch (error) {
-      if (this.terminalSubscriptions.get(subscriptionId) === subscription) {
-        this.terminalSubscriptions.delete(subscriptionId);
-        this.sendTerminalUnsubscribe(connectorId, subscriptionId);
-      }
-      throw error;
-    }
-
-    this.terminalControlOwners.set(
-      this.terminalControlKey(connectorId, session.sessionId),
-      subscriptionId,
-    );
-    subscription.replayBuffer = null;
-    for (const event of replayBuffer) {
-      if (!this.deliverTerminalEvent(subscriptionId, subscription, event)) {
-        break;
-      }
-    }
-    return {
-      snapshot,
-      unsubscribe: () => {
-        if (!this.terminalSubscriptions.delete(subscriptionId)) return;
-        this.sendTerminalUnsubscribe(connectorId, subscriptionId);
-        this.releaseTerminalControl(subscriptionId, subscription);
-      },
-    };
-  }
-
-  sendTerminalInput(
-    connectorId: string,
-    sessionId: string,
-    data: string,
-  ): void {
-    const channel = this.requireTerminalChannel(connectorId);
-    channel.send({ type: "terminal_input", sessionId, data });
-  }
-
-  resizeTerminal(
-    connectorId: string,
-    sessionId: string,
-    controlId: string,
-    size: AgentTerminalSize,
-  ): void {
-    const channel = this.requireTerminalChannel(connectorId);
-    const ownerId = this.terminalControlOwners.get(
-      this.terminalControlKey(connectorId, sessionId),
-    );
-    const owner = ownerId
-      ? this.terminalSubscriptions.get(ownerId)
-      : undefined;
-    if (!owner || owner.controlId !== controlId) {
-      throw new Error(
-        "Another open terminal view currently controls the terminal size.",
-      );
-    }
-    owner.size = size;
-    channel.send({ type: "terminal_resize", sessionId, size });
-  }
-
-  async restartTerminal(
-    connectorId: string,
-    session: AgentDaemonSessionDescriptor,
-    size: AgentTerminalSize,
-  ): Promise<AgentTerminalSnapshot> {
-    this.requireTerminalChannel(connectorId);
-    this.disconnectTerminalSession(
-      connectorId,
-      session.sessionId,
-      new Error("The terminal restarted."),
-    );
-    const result = await this.request<{ snapshot?: unknown }>(connectorId, {
-      type: "restart_terminal",
-      session,
-      size,
-    });
-    if (
-      !isAgentTerminalSnapshot(result?.snapshot) ||
-      result.snapshot.sessionId !== session.sessionId
-    ) {
-      throw new Error(
-        "The Host Connector returned an invalid terminal snapshot.",
-      );
-    }
-    return result.snapshot;
-  }
-
-  async killTerminal(connectorId: string, sessionId: string): Promise<void> {
-    this.requireTerminalChannel(connectorId);
-    await this.request(connectorId, { type: "kill_terminal", sessionId });
-  }
-
   async acceptBatch(
     connectorId: string,
     connectorEpoch: string,
@@ -539,7 +393,22 @@ export class HostConnectorBroker {
       }
     }
     for (const event of events) {
-      await this.accept(connectorId, event.payload);
+      let cursors = this.notificationSequences.get(connectorId);
+      if (!cursors) {
+        cursors = new Map();
+        this.notificationSequences.set(connectorId, cursors);
+      }
+      const sequence = cursors.get(connectorEpoch);
+      const fresh = sequence === undefined || event.sequence > sequence;
+      // Claim the notification cursor before yielding: overlapping retry
+      // batches must not replay status transitions while metadata is awaited.
+      if (fresh) {
+        cursors.set(connectorEpoch, event.sequence);
+        // Durable and live traffic have independent epochs and now alternate.
+        // Retain both deduplication cursors while bounding retired identities.
+        if (cursors.size > 8) cursors.delete(cursors.keys().next().value!);
+      }
+      await this.accept(connectorId, event.payload, fresh);
     }
     return {
       connectorEpoch,
@@ -558,6 +427,7 @@ export class HostConnectorBroker {
   private async accept(
     connectorId: string,
     event: HostConnectorEventPayload,
+    freshNotification = true,
   ): Promise<void> {
     if (event.type === "response") {
       const pending = this.pending.get(event.requestId);
@@ -569,11 +439,25 @@ export class HostConnectorBroker {
       return;
     }
     if (event.type === "session_directory") {
-      this.acceptSessionDirectory(connectorId, event.sessions);
+      this.acceptSessionDirectory(
+        connectorId,
+        event.sessions,
+        freshNotification,
+      );
       return;
     }
     if (event.type === "session_update") {
-      this.acceptSessionDirectory(connectorId, [event.session]);
+      const channel = this.channels.get(connectorId);
+      if (
+        freshNotification &&
+        channel?.sessionIds.has(event.session.sessionId)
+      ) {
+        this.idleNotifications.update(
+          event.session.sessionId,
+          event.session.runtimeStatus,
+        );
+      }
+      this.acceptSessionDirectory(connectorId, [event.session], false);
       return;
     }
     if (event.type === "session_metadata") {
@@ -584,26 +468,6 @@ export class HostConnectorBroker {
           ? { providerModifiedAt: new Date(providerModifiedAt) }
           : {}),
       });
-      return;
-    }
-    if (event.type === "terminal_event") {
-      const subscription = this.terminalSubscriptions.get(event.subscriptionId);
-      if (
-        !subscription ||
-        subscription.connectorId !== connectorId ||
-        subscription.session.sessionId !== event.sessionId
-      ) {
-        return;
-      }
-      if (subscription.replayBuffer) {
-        subscription.replayBuffer.push(event.event);
-        return;
-      }
-      this.deliverTerminalEvent(
-        event.subscriptionId,
-        subscription,
-        event.event,
-      );
       return;
     }
     const subscription = this.subscriptions.get(event.subscriptionId);
@@ -726,11 +590,14 @@ export class HostConnectorBroker {
   private acceptSessionDirectory(
     connectorId: string,
     sessions: readonly AgentSessionDirectoryEntry[],
+    baseline = true,
   ): void {
     const channel = this.channels.get(connectorId);
     if (!channel) return;
     for (const session of sessions) {
       if (!channel.sessionIds.has(session.sessionId)) continue;
+      if (baseline)
+        this.idleNotifications.reset(session.sessionId, session.runtimeStatus);
       this.upsertSessionDirectory(connectorId, session);
     }
   }
@@ -768,131 +635,6 @@ export class HostConnectorBroker {
     }
   }
 
-  private requireTerminalChannel(connectorId: string): Channel {
-    const channel = this.channels.get(connectorId);
-    if (!channel) {
-      throw new Error("The OvertChat Host Connector is offline.");
-    }
-    if (!channel.capabilities.has("workspace-terminal-v1")) {
-      throw new Error(
-        "Update the OvertChat Host Connector to use workspace terminals.",
-      );
-    }
-    return channel;
-  }
-
-  private sendTerminalUnsubscribe(
-    connectorId: string,
-    subscriptionId: string,
-  ): void {
-    const channel = this.channels.get(connectorId);
-    if (!channel?.capabilities.has("workspace-terminal-v1")) return;
-    try {
-      channel.send({
-        type: "request",
-        requestId: crypto.randomUUID(),
-        request: { type: "unsubscribe_terminal", subscriptionId },
-      });
-    } catch {
-      // The connector may have gone offline before the lease could be released.
-    }
-  }
-
-  private deliverTerminalEvent(
-    subscriptionId: string,
-    subscription: TerminalSubscription,
-    event: AgentTerminalEvent,
-  ): boolean {
-    if (event.revision <= subscription.revision) return true;
-    if (event.revision !== subscription.revision + 1) {
-      if (this.terminalSubscriptions.get(subscriptionId) === subscription) {
-        this.terminalSubscriptions.delete(subscriptionId);
-        this.sendTerminalUnsubscribe(subscription.connectorId, subscriptionId);
-        this.releaseTerminalControl(subscriptionId, subscription);
-      }
-      subscription.disconnect(
-        new Error(
-          "Terminal output was interrupted; reconnecting from a snapshot.",
-        ),
-      );
-      return false;
-    }
-    subscription.revision = event.revision;
-    subscription.subscriber(event);
-    return true;
-  }
-
-  private disconnectTerminalSession(
-    connectorId: string,
-    sessionId: string,
-    error: Error,
-  ): void {
-    for (const [subscriptionId, subscription] of this.terminalSubscriptions) {
-      if (
-        subscription.connectorId !== connectorId ||
-        subscription.session.sessionId !== sessionId
-      ) {
-        continue;
-      }
-      this.terminalSubscriptions.delete(subscriptionId);
-      this.sendTerminalUnsubscribe(connectorId, subscriptionId);
-      this.releaseTerminalControl(subscriptionId, subscription);
-      subscription.disconnect(error);
-    }
-  }
-
-  private disconnectTerminalSubscriptions(
-    connectorId: string,
-    error: Error,
-  ): void {
-    for (const [subscriptionId, subscription] of this.terminalSubscriptions) {
-      if (subscription.connectorId !== connectorId) continue;
-      this.terminalSubscriptions.delete(subscriptionId);
-      this.sendTerminalUnsubscribe(connectorId, subscriptionId);
-      this.releaseTerminalControl(subscriptionId, subscription);
-      subscription.disconnect(error);
-    }
-  }
-
-  private terminalControlKey(connectorId: string, sessionId: string): string {
-    return `${connectorId}\u0000${sessionId}`;
-  }
-
-  private releaseTerminalControl(
-    subscriptionId: string,
-    subscription: TerminalSubscription,
-  ): void {
-    const key = this.terminalControlKey(
-      subscription.connectorId,
-      subscription.session.sessionId,
-    );
-    if (this.terminalControlOwners.get(key) !== subscriptionId) return;
-    const fallback = [...this.terminalSubscriptions.entries()]
-      .filter(
-        ([, candidate]) =>
-          candidate.connectorId === subscription.connectorId &&
-          candidate.session.sessionId === subscription.session.sessionId,
-      )
-      .at(-1);
-    if (!fallback) {
-      this.terminalControlOwners.delete(key);
-      return;
-    }
-    const [fallbackId, candidate] = fallback;
-    this.terminalControlOwners.set(key, fallbackId);
-    const channel = this.channels.get(candidate.connectorId);
-    if (!channel?.capabilities.has("workspace-terminal-v1")) return;
-    try {
-      channel.send({
-        type: "terminal_resize",
-        sessionId: candidate.session.sessionId,
-        size: candidate.size,
-      });
-    } catch {
-      // A reconnect will establish a fresh terminal size owner.
-    }
-  }
-
   private readSessionSync(
     connectorId: string,
     session: AgentDaemonSessionDescriptor,
@@ -900,11 +642,7 @@ export class HostConnectorBroker {
     value: unknown,
   ): AgentSessionSync | undefined {
     if (value === undefined) {
-      if (
-        this.channels
-          .get(connectorId)
-          ?.capabilities.has("session-sync-v1")
-      ) {
+      if (this.channels.get(connectorId)?.capabilities.has("session-sync-v1")) {
         throw new Error(
           "The Host Connector omitted the authoritative session sync.",
         );
@@ -959,9 +697,7 @@ export class HostConnectorBroker {
       const error = new Error("The OvertChat Host Connector is offline.");
       for (const [requestId, request] of this.pending) {
         if (request.connectorId !== connectorId) continue;
-        if (
-          isLedgerProtectedCommand(request.request) && request.replaySafe
-        ) {
+        if (isLedgerProtectedCommand(request.request) && request.replaySafe) {
           continue;
         }
         clearTimeout(request.timeout);
@@ -973,11 +709,10 @@ export class HostConnectorBroker {
         this.subscriptions.delete(subscriptionId);
         subscription.disconnect(error);
       }
-      this.disconnectTerminalSubscriptions(connectorId, error);
       for (const entry of this.sessionDirectory.values()) {
         if (entry.connectorId !== connectorId) continue;
         this.upsertSessionDirectory(connectorId, {
-          ...entry.session,
+          sessionId: entry.session.sessionId,
           runtimeStatus: "exited",
         });
       }

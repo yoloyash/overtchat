@@ -2,6 +2,7 @@ import "server-only";
 import type { UIMessagePart, UIDataTypes, UITools } from "ai";
 import {
   webSearchResults,
+  joinContinuationTextParts,
   type PersistedWebSearchOutput,
 } from "@overtchat/shared";
 import { stripCitationMarkers } from "@/lib/citations";
@@ -10,7 +11,7 @@ type AnyPart = UIMessagePart<UIDataTypes, UITools>;
 
 export function extractSearchText(parts: AnyPart[]): string {
   const out: string[] = [];
-  for (const p of parts) {
+  for (const p of joinContinuationTextParts(parts)) {
     if (p.type === "text" && typeof p.text === "string") {
       out.push(stripCitationMarkers(p.text));
     } else if (p.type === "reasoning" && typeof p.text === "string") {

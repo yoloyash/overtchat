@@ -15,6 +15,10 @@
       "env": ["GITHUB_TOKEN", "NEXT_PUBLIC_BASE_PATH", "NEXT_PUBLIC_SITE_ORIGIN"],
       "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "out/**"]
     },
+    "@overtchat/desktop#build": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/apps/web/{app,components,lib,spa,public}/**"],
+      "outputs": ["out/**"]
+    },
     "@overtchat/connector#build": {
       "outputs": ["dist/**"]
     },

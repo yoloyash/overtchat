@@ -7,7 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "overtchat",
     short_name: "overtchat",
-    description: "A lightweight self-hosted chat client.",
+    description:
+      "A polished, privacy-first chat app for local and hosted models.",
     start_url: sitePath("/"),
     scope: sitePath("/"),
     display: "standalone",

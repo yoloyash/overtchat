@@ -11,12 +11,13 @@ import type {
   AgentUsageSnapshot,
 } from "@overtchat/agent-bridge";
 import { AGENT_GOAL_STATUSES } from "@overtchat/agent-bridge";
+import { codexTurnDelta } from "./turn-delta";
 import type {
   AgentRuntimeClient,
   AgentRuntimeEvent,
   AgentSubmissionOptions,
   ResolvedAgentImage,
-  AgentSessionForkResult,
+  AgentSessionChangeResult,
   AgentSessionLaunch,
 } from "@overtchat/agent-runtime/providers/types";
 import type { HostTarget } from "@overtchat/agent-runtime/runtime/process";
@@ -119,11 +120,34 @@ type CompletionWaiter<T> = {
   cancel: () => void;
 };
 
+// Keep approval previews tied to the exact requested item, never the last
+// file operation in a turn (which may belong to a different approval).
+function codexFileApprovalDetail(value: unknown) {
+  return {
+    type: "edit",
+    changes: Array.isArray(value)
+      ? value.flatMap((candidate) => {
+          const change = recordOf(candidate);
+          const filePath = stringOf(change, "path");
+          if (!filePath) return [];
+          return [
+            {
+              filePath,
+              patch: stringOf(change, "diff"),
+              movePath: stringOf(recordOf(change?.kind), "movePath"),
+            },
+          ];
+        })
+      : [],
+  };
+}
+
 type PendingInteraction =
   | {
       kind: "approval";
       rpcId: JsonRpcId;
       method: string;
+      fileChange?: { turnId: string; itemId: string; event: AgentRuntimeEvent };
     }
   | {
       kind: "permissions";
@@ -134,9 +158,6 @@ type PendingInteraction =
       kind: "questions";
       rpcId: JsonRpcId;
       questions: UnknownRecord[];
-      index: number;
-      answers: Record<string, { answers: string[] }>;
-      awaitingOther: boolean;
       timeout?: number;
     }
   | {
@@ -988,6 +1009,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private server!: CodexAppServer;
   private readonly subscribers = new Set<(event: AgentRuntimeEvent) => void>();
   private readonly turns = new Map<string, CodexTurn>();
+  private readonly emittedTurns = new Map<string, unknown[]>();
   private readonly pendingInteractions = new Map<string, PendingInteraction>();
   private readonly turnCompletionWaiters = new Map<
     string,
@@ -1507,10 +1529,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     );
   }
 
+  async rewind(
+    messageId: string,
+    mode: import("@overtchat/agent-bridge").AgentRewindMode,
+  ): Promise<void> {
+    if (mode !== "conversation")
+      throw new Error("Codex supports conversation rewind only.");
+    await this.forkSession(messageId, "edit");
+  }
+
   async forkSession(
     messageId: string,
     mode: "edit" | "fork",
-  ): Promise<AgentSessionForkResult> {
+  ): Promise<AgentSessionChangeResult> {
     await this.readyPromise;
     if (this.activeTurnId) {
       throw new Error("Wait for the current Codex turn to finish first.");
@@ -1608,7 +1639,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   async discardForkedSession(
-    session: AgentSessionForkResult["session"],
+    session: AgentSessionChangeResult["session"],
   ): Promise<void> {
     await this.readyPromise;
     await this.server.request(
@@ -1695,6 +1726,7 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   private hydrateThread(value: UnknownRecord): void {
     this.thread = parseCodexThread(value.thread);
     this.turns.clear();
+    this.emittedTurns.clear();
     this.subagentOwners.clear();
     this.pendingSubagentNotifications.clear();
     this.activeTurnId = null;
@@ -1936,6 +1968,20 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       const turnId = stringOf(data, "turnId");
       const item = recordOf(data?.item);
       if (turnId && item) {
+        if (
+          method === "item/started" &&
+          stringOf(item, "type") === "contextCompaction" &&
+          this.stats.contextUsage
+        ) {
+          this.stats = {
+            ...this.stats,
+            contextUsage: { ...this.stats.contextUsage, tokens: null, percent: null },
+          };
+          this.emit({
+            type: "usage_update",
+            usage: { contextUsage: this.stats.contextUsage },
+          });
+        }
         this.upsertItem(turnId, item);
         if (
           method === "item/started" &&
@@ -2004,6 +2050,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       if (turn && item && Array.isArray(data?.changes)) {
         item.changes = data.changes;
         this.emitTurn(turn);
+        for (const pending of this.pendingInteractions.values()) {
+          if (
+            pending.kind !== "approval" ||
+            pending.fileChange?.turnId !== turnId ||
+            pending.fileChange.itemId !== itemId
+          )
+            continue;
+          pending.fileChange.event = {
+            ...pending.fileChange.event,
+            toolDetail: codexFileApprovalDetail(item.changes),
+          };
+          this.emit(pending.fileChange.event);
+        }
       }
       return;
     }
@@ -2183,19 +2242,22 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
       const reason = stringOf(params, "reason");
       const network = recordOf(params?.networkApprovalContext);
       const id = `codex:${request.id}`;
-      this.pendingInteractions.set(id, {
-        kind: "approval",
-        rpcId: request.id,
-        method: request.method,
-      });
-      this.emit({
+      const turnId = stringOf(params, "turnId");
+      const itemId = stringOf(params, "itemId");
+      const fileChange = request.method === "item/fileChange/requestApproval";
+      const item =
+        turnId && itemId
+          ? this.turns
+              .get(turnId)
+              ?.items.find((candidate) => candidate.id === itemId)
+          : undefined;
+      const event: AgentRuntimeEvent = {
         type: "interaction_request",
         id,
         method: "select",
-        title:
-          network
-            ? "Approve network access?"
-            : request.method === "item/fileChange/requestApproval"
+        title: network
+          ? "Approve network access?"
+          : request.method === "item/fileChange/requestApproval"
             ? "Approve file changes?"
             : "Approve command?",
         message:
@@ -2210,12 +2272,36 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
                   .filter((value) => value !== null && value !== undefined)
                   .join(" · ")
               : null,
-            !network && command ? `$ ${command}` : null,
           ]
             .filter(Boolean)
             .join("\n\n") || "Codex needs approval to continue.",
         options: ["Allow once", "Allow for session", "Deny"],
+        approvalKind: "tool",
+        approveValue: "Allow once",
+        alwaysValue: "Allow for session",
+        alwaysLabel: "Allow for session",
+        denyValue: "Deny",
+        ...(fileChange
+          ? {
+              toolDetail: codexFileApprovalDetail(
+                item?.changes ?? params?.changes,
+              ),
+            }
+          : !network && command
+            ? { toolDetail: { type: "shell", command } }
+            : {}),
+      };
+      this.pendingInteractions.set(id, {
+        kind: "approval",
+        rpcId: request.id,
+        method: request.method,
+        ...(fileChange && turnId && itemId
+          ? {
+              fileChange: { turnId, itemId, event },
+            }
+          : {}),
       });
+      this.emit(event);
       return;
     }
     if (
@@ -2240,9 +2326,6 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         kind: "questions",
         rpcId: request.id,
         questions,
-        index: 0,
-        answers: {},
-        awaitingOther: false,
         ...(typeof params?.autoResolutionMs === "number" &&
         params.autoResolutionMs > 0
           ? { timeout: params.autoResolutionMs }
@@ -2326,24 +2409,19 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
         rpcId: request.id,
         requested,
       });
-      const details = [
-        params?.reason,
-        requested.network
-          ? `Network: ${toolOutput(requested.network)}`
-          : null,
-        requested.fileSystem
-          ? `Files: ${toolOutput(requested.fileSystem)}`
-          : null,
-      ]
-        .filter((value): value is string => typeof value === "string" && !!value)
-        .join("\n\n");
       this.emit({
         type: "interaction_request",
         id,
         method: "select",
         title: "Approve additional permissions?",
-        message: details || "Codex needs additional permissions to continue.",
+        message: stringOf(params, "reason") || "Codex needs additional permissions to continue.",
+        toolDetail: { type: "json", value: requested },
         options: ["Allow once", "Allow for session", "Deny"],
+        approvalKind: "tool",
+        approveValue: "Allow once",
+        alwaysValue: "Allow for session",
+        alwaysLabel: "Allow for session",
+        denyValue: "Deny",
       });
       return;
     }
@@ -2358,66 +2436,70 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     id: string,
     pending: Extract<PendingInteraction, { kind: "questions" }>,
     response: {
-      value?: string;
+      values?: Record<string, AgentInteractionValue>;
       cancelled?: boolean;
     },
   ): void {
-    if (response.cancelled) {
-      this.pendingInteractions.delete(id);
-      this.server.respond(pending.rpcId, { answers: pending.answers });
-      return;
-    }
-    const question = pending.questions[pending.index];
-    const questionId = stringOf(question, "id");
-    if (!questionId) return;
-    if (response.value === "Other…" && !pending.awaitingOther) {
-      pending.awaitingOther = true;
-      this.emitQuestion(id, pending);
-      return;
-    }
-    pending.answers[questionId] = {
-      answers: response.value === undefined ? [] : [response.value],
-    };
-    pending.index += 1;
-    pending.awaitingOther = false;
-    if (pending.index < pending.questions.length) {
-      this.emitQuestion(id, pending);
-      return;
+    const answers: Record<string, { answers: string[] }> = {};
+    if (!response.cancelled) {
+      for (const question of pending.questions) {
+        const questionId = stringOf(question, "id");
+        if (!questionId) continue;
+        const value = response.values?.[questionId];
+        answers[questionId] = {
+          answers: Array.isArray(value)
+            ? value
+            : typeof value === "string"
+              ? [value]
+              : [],
+        };
+      }
     }
     this.pendingInteractions.delete(id);
-    this.server.respond(pending.rpcId, { answers: pending.answers });
+    this.server.respond(pending.rpcId, { answers });
   }
 
   private emitQuestion(
     id: string,
     pending: Extract<PendingInteraction, { kind: "questions" }>,
   ): void {
-    const question = pending.questions[pending.index];
-    const options = Array.isArray(question?.options)
-      ? question.options
-          .map(recordOf)
-          .flatMap((option) => {
-            const label = stringOf(option, "label");
-            return label ? [label] : [];
-          })
-      : [];
-    const other = question?.isOther === true;
     this.emit({
       type: "interaction_request",
       id,
-      method:
-        pending.awaitingOther || (options.length === 0 && !other)
-          ? "input"
-          : "select",
-      title: stringOf(question, "header") ?? "Codex needs your input",
-      message: stringOf(question, "question") ?? "",
-      ...(question?.isSecret === true ? { secret: true } : {}),
+      method: "form",
+      title: "Codex needs your input",
       ...(pending.timeout ? { timeout: pending.timeout } : {}),
-      ...(pending.awaitingOther
-        ? { placeholder: "Enter another answer" }
-        : options.length > 0 || other
-          ? { options: [...options, ...(other ? ["Other…"] : [])] }
-          : {}),
+      fields: pending.questions.map((question, index) => {
+        const options = Array.isArray(question.options)
+          ? question.options.map(recordOf).flatMap((option) => {
+              const label = stringOf(option, "label");
+              return label
+                ? [
+                    {
+                      value: label,
+                      label,
+                      description: stringOf(option, "description"),
+                    },
+                  ]
+                : [];
+            })
+          : [];
+        return {
+          id: stringOf(question, "id") ?? String(index),
+          label: stringOf(question, "header") ?? `Question ${index + 1}`,
+          description: stringOf(question, "question") ?? "",
+          type:
+            question.multiSelect === true
+              ? "multiselect"
+              : options.length
+                ? "select"
+                : "text",
+          required: true,
+          secret: question.isSecret === true,
+          allowOther: question.isOther === true,
+          options,
+        };
+      }),
     });
   }
 
@@ -2995,11 +3077,11 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
   }
 
   private emitTurn(turn: CodexTurn): void {
-    this.emit({
-      type: "overtchat_turn_update",
-      turnId: turn.id,
-      messages: canonicalTurnMessages(turn),
-    });
+    const messages = canonicalTurnMessages(turn);
+    const delta = codexTurnDelta(turn.id, this.emittedTurns.get(turn.id) ?? [], messages);
+    this.emittedTurns.set(turn.id, structuredClone(messages));
+    if (this.emittedTurns.size > 8) this.emittedTurns.delete(this.emittedTurns.keys().next().value!);
+    this.emit(delta);
   }
 
   private updateTokenUsage(data: UnknownRecord | null): void {
@@ -3007,33 +3089,41 @@ export class CodexRuntimeClient implements AgentRuntimeClient {
     if (threadId && threadId !== this.thread?.id) return;
     const tokenUsage = recordOf(data?.tokenUsage);
     const usage = recordOf(tokenUsage?.total);
-    if (!usage) return;
+    if (!tokenUsage) return;
     const context = recordOf(tokenUsage?.last);
     const input = numberOf(usage, "inputTokens") ?? 0;
     const output = numberOf(usage, "outputTokens") ?? 0;
     const cacheRead = numberOf(usage, "cachedInputTokens") ?? 0;
     const cacheWrite = numberOf(usage, "cacheWriteInputTokens") ?? 0;
     const total = numberOf(usage, "totalTokens") ?? input + output;
-    const contextTokens = numberOf(context, "totalTokens") ?? total;
+    const contextTokens = numberOf(context, "totalTokens") ?? null;
     const contextWindow = numberOf(
       tokenUsage,
       "modelContextWindow",
-    );
+    ) ?? this.stats.contextUsage?.contextWindow;
     this.stats = {
       ...this.stats,
       sessionFile: this.thread?.path ?? this.thread?.id ?? null,
       sessionId: this.thread?.id ?? null,
-      tokens: { input, output, cacheRead, cacheWrite, total },
+      ...(usage ? { tokens: { input, output, cacheRead, cacheWrite, total } } : {}),
       ...(contextWindow
         ? {
             contextUsage: {
               tokens: contextTokens,
               contextWindow,
-              percent: (contextTokens / contextWindow) * 100,
+              percent: contextTokens === null
+                ? null : (contextTokens / contextWindow) * 100,
             },
           }
         : {}),
     };
+    this.emit({
+      type: "usage_update",
+      usage: {
+        tokens: this.stats.tokens,
+        contextUsage: this.stats.contextUsage ?? null,
+      },
+    });
   }
 
   private emitConfig(): void {

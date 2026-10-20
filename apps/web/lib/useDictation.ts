@@ -1,15 +1,34 @@
 "use client";
 
+import {
+  apiError,
+  getErrorMessage,
+  isSpeechErrorCode,
+  speechErrorMessage,
+  type SpeechErrorCode,
+} from "@overtchat/shared";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { apiUrl } from "@/lib/api-url";
 
 export type DictationStatus = "idle" | "recording" | "transcribing";
 
 export type DictationError =
   | { kind: "permission" }
+  | { kind: "insecure_context" }
   | { kind: "unsupported" }
-  | { kind: "stt_unavailable"; role: "admin" | "user" }
+  | { kind: "stt_unavailable"; role?: "admin" | "user"; code?: SpeechErrorCode }
   | { kind: "empty" }
   | { kind: "other"; message: string };
+
+/** Handle returned by {@link useDictation}. */
+export interface Dictation {
+  status: DictationStatus;
+  error: DictationError | null;
+  start: () => Promise<void>;
+  stop: () => void;
+  cancel: () => void;
+  clearError: () => void;
+}
 
 const PREFERRED_MIME = [
   "audio/webm;codecs=opus",
@@ -26,7 +45,7 @@ function pickMime(): string | undefined {
   return undefined;
 }
 
-export function useDictation(onResult: (text: string) => void) {
+export function useDictation(onResult: (text: string) => void): Dictation {
   const [status, setStatus] = useState<DictationStatus>("idle");
   const [error, setError] = useState<DictationError | null>(null);
 
@@ -46,7 +65,14 @@ export function useDictation(onResult: (text: string) => void) {
 
   const start = useCallback(async () => {
     setError(null);
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (typeof window !== "undefined" && window.isSecureContext === false) {
+      setError({ kind: "insecure_context" });
+      return;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       setError({ kind: "unsupported" });
       return;
     }
@@ -103,31 +129,47 @@ export function useDictation(onResult: (text: string) => void) {
             : "ogg";
         const fd = new FormData();
         fd.append("file", blob, `dictation.${ext}`);
-        const res = await fetch("/api/transcribe", { method: "POST", body: fd });
+        const res = await fetch(apiUrl("/api/transcribe"), {
+          method: "POST",
+          body: fd,
+        });
 
-        if (res.status === 503) {
-          const j = (await res.json().catch(() => ({}))) as {
-            role?: "admin" | "user";
-          };
-          setError({ kind: "stt_unavailable", role: j.role ?? "user" });
-          setStatus("idle");
-          return;
-        }
         if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          setError({ kind: "other", message: text || `HTTP ${res.status}` });
+          const failure = apiError(
+            res.status,
+            await res.text().catch(() => ""),
+            "Couldn't transcribe this recording. Please try again.",
+            "stt",
+          );
+          setError(
+            isSpeechErrorCode(failure.code)
+              ? { kind: "stt_unavailable", code: failure.code }
+              : { kind: "other", message: failure.message },
+          );
           setStatus("idle");
           return;
         }
 
-        const j = (await res.json().catch(() => ({}))) as { text?: string };
-        const out = (j.text ?? "").trim();
+        const j = (await res.json().catch(() => null)) as {
+          text?: unknown;
+        } | null;
+        if (typeof j?.text !== "string") {
+          setError({
+            kind: "other",
+            message: speechErrorMessage("stt", "speech_invalid_response"),
+          });
+          return;
+        }
+        const out = j.text.trim();
         if (out) onResult(out);
         else setError({ kind: "empty" });
       } catch (e) {
         setError({
           kind: "other",
-          message: e instanceof Error ? e.message : "Transcription failed",
+          message: getErrorMessage(
+            e,
+            "Couldn't transcribe this recording. Please try again.",
+          ),
         });
       } finally {
         setStatus("idle");
@@ -151,5 +193,12 @@ export function useDictation(onResult: (text: string) => void) {
     setError(null);
   }, []);
 
-  return { status, error, start, stop, cancel, clearError: () => setError(null) };
+  return {
+    status,
+    error,
+    start,
+    stop,
+    cancel,
+    clearError: () => setError(null),
+  };
 }

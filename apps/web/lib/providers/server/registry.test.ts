@@ -25,6 +25,13 @@ afterEach(() => {
 });
 
 describe("provider registry", () => {
+  it.each(["vllm", "llamacpp"] as const)("isolates %s assistant prefill options from normal requests", (providerId) => {
+    const configured = createConfiguredLanguageModel({ ...baseConfig, providerId, providerOptions: { max_tokens: 32 } });
+    expect(configured.providerOptions).toEqual({ [providerId]: { max_tokens: 32 } });
+    expect(configured.assistantContinuationOptions).toEqual({ [providerId]: {
+      max_tokens: 32, continue_final_message: true, add_generation_prompt: false,
+    } });
+  });
   it("maps every catalog provider to its matching adapter", () => {
     for (const providerId of PROVIDER_IDS) {
       expect(getProviderAdapter(providerId).id).toBe(providerId);
@@ -240,6 +247,108 @@ describe("provider registry", () => {
     ).toThrow("manages its API format automatically");
   });
 
+  it("rejects reasoning levels in adapters that do not consume them", () => {
+    expect(() =>
+      createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId: "custom",
+        apiFormat: "openai-chat",
+        reasoningLevel: "low",
+      }),
+    ).toThrow("does not support per-chat reasoning levels");
+  });
+
+  it.each([
+    {
+      providerId: "openai" as const,
+      model: "gpt-5.4",
+      reasoningLevel: "xhigh" as const,
+      providerOptions: { reasoningEffort: "low", reasoningSummary: "auto" },
+      expectedBody: { reasoning: { effort: "xhigh", summary: "auto" } },
+    },
+    {
+      providerId: "anthropic" as const,
+      model: "claude-opus-4-7",
+      reasoningLevel: "max" as const,
+      providerOptions: {
+        effort: "low",
+        thinking: { type: "enabled", budgetTokens: 4096 },
+      },
+      expectedBody: {
+        thinking: { type: "adaptive" },
+        output_config: { effort: "max" },
+      },
+    },
+    {
+      providerId: "google" as const,
+      model: "gemini-3.1-pro-preview",
+      reasoningLevel: "high" as const,
+      providerOptions: {
+        thinkingConfig: { thinkingBudget: 4096, includeThoughts: false },
+      },
+      expectedBody: {
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: "high",
+            includeThoughts: false,
+          },
+        },
+      },
+    },
+    {
+      providerId: "deepseek" as const,
+      model: "deepseek-v4-flash",
+      reasoningLevel: "max" as const,
+      providerOptions: { reasoningEffort: "low", custom: true },
+      expectedBody: {
+        reasoning_effort: "max",
+        thinking: { type: "enabled" },
+        custom: true,
+      },
+    },
+  ])(
+    "serializes an explicit $providerId selection over saved reasoning params",
+    async ({
+      providerId,
+      model,
+      reasoningLevel,
+      providerOptions,
+      expectedBody,
+    }) => {
+      let requestBody: Record<string, unknown> | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          return Response.json(
+            { error: { message: "intentional test response" } },
+            { status: 400 },
+          );
+        }),
+      );
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId,
+        model,
+        reasoningLevel,
+        providerOptions,
+      });
+
+      await expect(
+        generateText({
+          model: configured.model,
+          prompt: "Hello",
+          providerOptions: configured.providerOptions,
+        }),
+      ).rejects.toThrow();
+
+      expect(requestBody).toMatchObject(expectedBody);
+    },
+  );
+
   it.each(["vllm", "llamacpp", "sglang"] as const)(
     "uses the shared OpenAI-compatible transport for %s without requiring a key",
     (providerId) => {
@@ -258,6 +367,52 @@ describe("provider registry", () => {
           apiKey: "",
         }),
       ).not.toThrow();
+    },
+  );
+
+  it.each(["vllm", "llamacpp"] as const)(
+    "serializes a per-chat effort for %s while preserving other params",
+    async (providerId) => {
+      let requestBody: Record<string, unknown> | undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+          requestBody = JSON.parse(String(init?.body)) as Record<
+            string,
+            unknown
+          >;
+          return Response.json(
+            { error: { message: "intentional test response" } },
+            { status: 400 },
+          );
+        }),
+      );
+      const configured = createConfiguredLanguageModel({
+        ...baseConfig,
+        providerId,
+        reasoningLevel: "xhigh",
+        providerOptions: {
+          min_p: 0.1,
+          chat_template_kwargs: { custom: "value" },
+        },
+      });
+
+      await expect(
+        generateText({
+          model: configured.model,
+          prompt: "Hello",
+          providerOptions: configured.providerOptions,
+        }),
+      ).rejects.toThrow("intentional test response");
+
+      expect(requestBody).toMatchObject({
+        min_p: 0.1,
+        reasoning_effort: "xhigh",
+        chat_template_kwargs: {
+          custom: "value",
+          enable_thinking: true,
+        },
+      });
     },
   );
 

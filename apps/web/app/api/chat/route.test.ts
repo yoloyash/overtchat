@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("@/lib/notifications/chat", () => ({ notifyChatComplete: mocks.notifyChatComplete }));
+import { createContextCheckpoint } from "@/lib/chat/context-checkpoint";
+import { countTextTokens } from "@/lib/chat/context-budget";
 import type { MessageStats } from "@/lib/chat/stats";
 
 const mocks = vi.hoisted(() => {
@@ -9,13 +12,18 @@ const mocks = vi.hoisted(() => {
   const chatTools = { ...webTools };
 
   return {
+    notifyChatComplete: vi.fn().mockResolvedValue(undefined),
     getSession: vi.fn(),
     parseChatRequest: vi.fn(),
+    chatRequestFingerprint: vi.fn(),
     getChat: vi.fn(),
     getMessages: vi.fn(),
     clearActiveStreamId: vi.fn(),
     commitChatTurn: vi.fn(),
     completeChatStream: vi.fn(),
+    failChatStream: vi.fn(),
+    getChatGeneration: vi.fn(),
+    getChatGenerationByRequestId: vi.fn(),
     inlineUploads: vi.fn(),
     getModelConfig: vi.fn(),
     getServerCapability: vi.fn(),
@@ -36,10 +44,14 @@ const mocks = vi.hoisted(() => {
     cancelUnregister: vi.fn(),
     cancelHas: vi.fn(),
     getStreamContext: vi.fn(),
+    resumeChatStreamResponse: vi.fn(),
     currentDateSystemPrompt: vi.fn(),
     consumeStream: vi.fn(),
+    generateText: vi.fn(),
     convertToModelMessages: vi.fn(),
     createWebTools: vi.fn(),
+    createImageTools: vi.fn(),
+    getImageCapability: vi.fn(),
     createMemoryTools: vi.fn(),
     agentStream: vi.fn(),
     isStepCount: vi.fn(),
@@ -68,6 +80,7 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("server-only", () => ({}));
 vi.mock("ai", () => ({
+  generateText: mocks.generateText,
   consumeStream: mocks.consumeStream,
   convertToModelMessages: mocks.convertToModelMessages,
   createUIMessageStream: mocks.createUIMessageStream,
@@ -84,6 +97,12 @@ vi.mock("ai", () => ({
     }
   },
   toUIMessageStream: mocks.toUIMessageStream,
+}));
+vi.mock("@/lib/images/tools", () => ({
+  createImageTools: mocks.createImageTools,
+  getImageCapability: mocks.getImageCapability,
+  IMAGE_TOOL_PROMPT: "Image tools",
+  withImageReferences: (messages: unknown) => messages,
 }));
 vi.mock("@/lib/tools", () => ({
   createWebTools: mocks.createWebTools,
@@ -112,6 +131,7 @@ vi.mock("@/lib/chat/request", () => {
     }
   }
   return {
+    chatRequestFingerprint: mocks.chatRequestFingerprint,
     ChatRequestError,
     parseChatRequest: mocks.parseChatRequest,
   };
@@ -124,6 +144,9 @@ vi.mock("@/lib/db/chatTurns", () => ({
   clearActiveStreamId: mocks.clearActiveStreamId,
   commitChatTurn: mocks.commitChatTurn,
   completeChatStream: mocks.completeChatStream,
+  failChatStream: mocks.failChatStream,
+  getChatGeneration: mocks.getChatGeneration,
+  getChatGenerationByRequestId: mocks.getChatGenerationByRequestId,
 }));
 vi.mock("@/lib/db/uploads", () => ({ inlineUploads: mocks.inlineUploads }));
 vi.mock("@/lib/db/modelConfigs", () => ({
@@ -166,6 +189,9 @@ vi.mock("@/lib/streams/cancel-registry", () => ({
 vi.mock("@/lib/streams/context", () => ({
   getStreamContext: mocks.getStreamContext,
 }));
+vi.mock("@/lib/streams/http", () => ({
+  resumeChatStreamResponse: mocks.resumeChatStreamResponse,
+}));
 
 import { ProviderConfigurationError } from "@/lib/providers/server/errors";
 import { POST } from "./route";
@@ -183,6 +209,7 @@ const parsedRequest = {
   messages,
   modelConfigId: "model-config",
   chatId: "chat",
+  clientRequestId: "client-request",
   webSearchEnabled: true,
   forceSearch: false,
   timeZone: "America/Los_Angeles",
@@ -232,6 +259,13 @@ function existingChat(activeStreamId: string | null = null) {
 }
 
 describe("chat route setup boundary", () => {
+  beforeAll(() => {
+    // Building the real tokenizer's vocabulary can exceed a test's 5s budget
+    // on a busy runner. Pay that one-time cost in setup, keeping route tests
+    // on the default timeout and exercising the real token counts.
+    countTextTokens("Initialize the chat tokenizer.");
+  }, 30_000);
+
   beforeEach(() => {
     vi.resetAllMocks();
     mocks.agentSettings.length = 0;
@@ -245,6 +279,7 @@ describe("chat route setup boundary", () => {
 
     mocks.getSession.mockResolvedValue({ user: { id: "user" } });
     mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest });
+    mocks.chatRequestFingerprint.mockReturnValue("request-fingerprint");
     mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
     mocks.getServerCapability.mockReturnValue({ provider: "bundled" });
     mocks.listEffectiveMcpServers.mockResolvedValue([]);
@@ -254,6 +289,8 @@ describe("chat route setup boundary", () => {
       release: mocks.releaseMcpBinding,
     });
     mocks.getChat.mockResolvedValue(null);
+    mocks.getChatGenerationByRequestId.mockResolvedValue(null);
+    mocks.getChatGeneration.mockResolvedValue(null);
     mocks.getMessages.mockResolvedValue([]);
     mocks.getProject.mockResolvedValue(null);
     mocks.getActivePersonalization.mockResolvedValue(null);
@@ -264,6 +301,8 @@ describe("chat route setup boundary", () => {
     });
     mocks.resolveModelCapabilities.mockReturnValue(undefined);
     mocks.createWebTools.mockReturnValue(mocks.chatTools);
+    mocks.createImageTools.mockReturnValue({});
+    mocks.getImageCapability.mockReturnValue({ available: false, model: null });
     mocks.createMemoryTools.mockReturnValue(mocks.memoryTools);
     mocks.inlineUploads.mockResolvedValue(messages);
     mocks.convertToModelMessages.mockResolvedValue(convertedMessages);
@@ -277,6 +316,8 @@ describe("chat route setup boundary", () => {
     mocks.cancelHas.mockReturnValue(false);
     mocks.commitChatTurn.mockReturnValue("committed");
     mocks.completeChatStream.mockReturnValue(true);
+    mocks.failChatStream.mockReturnValue(true);
+    mocks.resumeChatStreamResponse.mockResolvedValue(null);
     mocks.clearActiveStreamId.mockResolvedValue(undefined);
     mocks.ensureChatTitle.mockResolvedValue(null);
     mocks.getStreamContext.mockReturnValue(null);
@@ -331,7 +372,7 @@ describe("chat route setup boundary", () => {
     );
   });
 
-  it("returns a CORS-wrapped configuration error without mutating chat", async () => {
+  it("returns a configuration error without mutating chat", async () => {
     const consoleSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     mocks.createConfiguredLanguageModel.mockImplementation(() => {
       throw new ProviderConfigurationError("unsupported Bedrock model");
@@ -340,9 +381,6 @@ describe("chat route setup boundary", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(503);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "exp://mobile",
-    );
     await expect(response.text()).resolves.toContain(
       "unsupported Bedrock model",
     );
@@ -350,6 +388,30 @@ describe("chat route setup boundary", () => {
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
     expect(mocks.cancelRegister).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
+  });
+
+  it("rejects remote attachments before saving or starting a generation", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      messages: [{
+        ...messages[0],
+        parts: [{ type: "file", mediaType: "image/png", url: "http://internal/image.png" }],
+      }],
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("Edit the original message");
+    expect(mocks.inlineUploads).not.toHaveBeenCalled();
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])("disables automatic attachment downloads with tools enabled=%s", async (toolCallingEnabled) => {
+    mocks.getModelConfig.mockResolvedValue({ ...modelConfig, toolCallingEnabled });
+    await POST(request());
+    const download = mocks.agentSettings[0]?.experimental_download as (urls: unknown[]) => Promise<unknown>;
+    await expect(download([{ url: new URL("http://internal/image.png"), isUrlSupportedByModel: true }]))
+      .rejects.toThrow("must provide file data instead");
   });
 
   it.each([
@@ -371,9 +433,6 @@ describe("chat route setup boundary", () => {
     const response = await POST(request());
 
     expect(response.status).toBe(500);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-      "exp://mobile",
-    );
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
     expect(mocks.cancelRegister).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
@@ -613,11 +672,115 @@ describe("chat route setup boundary", () => {
 
     expect(response.status).toBe(500);
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
-    expect(mocks.clearActiveStreamId).toHaveBeenCalledWith(
-      "chat",
-      claim.streamId,
-    );
+    expect(mocks.failChatStream).toHaveBeenCalledWith({
+      chatId: "chat",
+      streamId: claim.streamId,
+      error: "stream setup failed",
+    });
     consoleSpy.mockRestore();
+  });
+
+  it.each([true, false])(
+    "notifies only when completion owns the saved stream (committed=%s)",
+    async (committed) => {
+      mocks.completeChatStream.mockReturnValue(committed);
+      await POST(request());
+      const onEnd = mocks.uiStreamOptions?.onEnd as (
+        event: unknown,
+      ) => Promise<void>;
+      await onEnd({
+        isAborted: false,
+        responseMessage: {
+          id: "answer",
+          role: "assistant",
+          parts: [{ type: "text", text: "Done" }],
+        },
+      });
+      expect(mocks.notifyChatComplete).toHaveBeenCalledTimes(committed ? 1 : 0);
+      if (committed)
+        expect(
+          mocks.completeChatStream.mock.invocationCallOrder[0],
+        ).toBeLessThan(mocks.notifyChatComplete.mock.invocationCallOrder[0]);
+    },
+  );
+
+  it.each(["pending", "rejected"])(
+    "finishes saving and cleaning up the stream when push submission is %s",
+    async (status) => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let finishPush!: () => void;
+      const push = new Promise<void>((resolve) => {
+        finishPush = resolve;
+      });
+      mocks.notifyChatComplete.mockImplementationOnce(() =>
+        status === "pending"
+          ? push
+          : Promise.reject(new Error("push unavailable")),
+      );
+      try {
+        await POST(request());
+        const claim = mocks.commitChatTurn.mock.calls[0][0];
+        const onEnd = mocks.uiStreamOptions?.onEnd as (
+          event: unknown,
+        ) => Promise<void>;
+        await onEnd({
+          isAborted: false,
+          responseMessage: {
+            id: "answer",
+            role: "assistant",
+            parts: [{ type: "text", text: "Done" }],
+          },
+        });
+        expect(mocks.completeChatStream).toHaveBeenCalledTimes(1);
+        expect(mocks.notifyChatComplete).toHaveBeenCalledTimes(1);
+        expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
+        expect(mocks.failChatStream).not.toHaveBeenCalled();
+        if (status === "rejected")
+          expect(consoleSpy).toHaveBeenCalledWith(
+            "[push] Could not send chat notification.",
+          );
+      } finally {
+        finishPush();
+        consoleSpy.mockRestore();
+      }
+    },
+  );
+
+  it("continues canonical history and applies prefill options only to the initial step", async () => {
+    const answer = { id: "answer", role: "assistant", parts: [{ type: "text", text: "partial" }] };
+    const history = [...messages, answer];
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, messages: [answer],
+      action: { type: "continue", targetAssistantMessageId: answer.id } });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue(history);
+    mocks.createConfiguredLanguageModel.mockReturnValue({ model: "language-model",
+      providerOptions: { vllm: { max_tokens: 24 } },
+      assistantContinuationOptions: { vllm: { max_tokens: 24, continue_final_message: true, add_generation_prompt: false } },
+    });
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(expect.objectContaining({
+      continueMessage: answer, userMessage: undefined, truncateFromMessageId: undefined,
+    }));
+    expect(mocks.uiStreamOptions?.originalMessages).toEqual(history);
+    const prepare = mocks.agentSettings[0].prepareStep as (input: object) => Promise<Record<string, unknown>>;
+    const base = { messages: convertedMessages, steps: [] };
+    expect(await prepare({ ...base, stepNumber: 0 })).toMatchObject({ providerOptions: {
+      vllm: { max_tokens: 24, continue_final_message: true, add_generation_prompt: false },
+    } });
+    expect(await prepare({ ...base, stepNumber: 1 })).toMatchObject({ providerOptions: { vllm: { max_tokens: 24 } } });
+  });
+
+  it("refuses to continue an interrupted tool input before claiming a stream", async () => {
+    const answer = { id: "answer", role: "assistant", parts: [
+      { type: "dynamic-tool", toolName: "lookup", toolCallId: "call", state: "input-streaming" },
+    ] };
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, messages: [answer],
+      action: { type: "continue", targetAssistantMessageId: answer.id } });
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue([...messages, answer]);
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
   it("persists a partial assistant when the user aborts", async () => {
@@ -643,7 +806,9 @@ describe("chat route setup boundary", () => {
         id: "assistant-message",
         parts: [{ type: "text", text: "Partial" }],
       },
+      status: "aborted",
     });
+    expect(mocks.notifyChatComplete).not.toHaveBeenCalled();
     expect(mocks.cancelUnregister).toHaveBeenCalledWith(claim.streamId);
   });
 
@@ -688,7 +853,10 @@ describe("chat route setup boundary", () => {
       chatId: "chat",
       streamId: claim.streamId,
       assistantMessage: undefined,
+      status: "error",
+      error: "provider failed",
     });
+    expect(mocks.notifyChatComplete).not.toHaveBeenCalled();
     consoleSpy.mockRestore();
   });
 
@@ -719,6 +887,7 @@ describe("chat route setup boundary", () => {
         id: "assistant-message",
         parts: [{ type: "text", text: "Recovered answer" }],
       },
+      status: "complete",
     });
   });
 
@@ -783,14 +952,89 @@ describe("chat route setup boundary", () => {
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
   });
 
-  it("does not continue a voice chat through the text generation route", async () => {
-    mocks.getChat.mockResolvedValue({ ...existingChat(), kind: "voice" });
+  it("blocks a second request when another server owns the durable run", async () => {
+    mocks.getChat.mockResolvedValue(existingChat("existing-stream"));
+    mocks.getChatGeneration.mockResolvedValue({
+      id: "existing-stream",
+      chatId: "chat",
+      userId: "user",
+      clientRequestId: "other-client-request",
+      requestFingerprint: "other-request-fingerprint",
+      status: "running",
+      error: null,
+      responseMessageId: null,
+      startedAt: new Date(),
+      completedAt: null,
+    });
 
     const response = await POST(request());
 
     expect(response.status).toBe(409);
+    expect(mocks.cancelHas).toHaveBeenCalledWith("existing-stream");
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("reattaches an exact duplicate start without invoking the model", async () => {
+    mocks.getChatGenerationByRequestId.mockResolvedValue({
+      id: "existing-stream",
+      chatId: "chat",
+      userId: "user",
+      clientRequestId: "client-request",
+      requestFingerprint: "request-fingerprint",
+      status: "running",
+      error: null,
+      responseMessageId: null,
+      startedAt: new Date(),
+      completedAt: null,
+    });
+    mocks.resumeChatStreamResponse.mockResolvedValue(
+      new Response("resumed", { status: 200 }),
+    );
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("X-OvertChat-Generation")).toBe("resumed");
+    expect(mocks.resumeChatStreamResponse).toHaveBeenCalledWith(
+      "existing-stream",
+    );
+    expect(mocks.getModelConfig).not.toHaveBeenCalled();
     expect(mocks.agentStream).not.toHaveBeenCalled();
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("never restarts a completed duplicate submission", async () => {
+    mocks.getChatGenerationByRequestId.mockResolvedValue({
+      id: "completed-stream",
+      chatId: "chat",
+      userId: "user",
+      clientRequestId: "client-request",
+      requestFingerprint: "request-fingerprint",
+      status: "complete",
+      error: null,
+      responseMessageId: "assistant-message",
+      startedAt: new Date(),
+      completedAt: new Date(),
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(409);
+    await expect(response.text()).resolves.toBe(
+      "Generation request was already completed",
+    );
+    expect(mocks.resumeChatStreamResponse).not.toHaveBeenCalled();
+    expect(mocks.getModelConfig).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+  });
+
+  it("continues an existing voice chat through ordinary text generation", async () => {
+    mocks.getChat.mockResolvedValue({ ...existingChat(), kind: "voice" });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalled();
+    expect(mocks.agentStream).toHaveBeenCalled();
   });
 
   it("uses automatic tools normally and forces only the first requested step", async () => {
@@ -818,15 +1062,30 @@ describe("chat route setup boundary", () => {
       expect(settings).not.toHaveProperty("runtimeContext");
       expect(settings).not.toHaveProperty("toolApproval");
     }
-    expect(automatic.prepareStep).toBeUndefined();
+    expect(automatic.prepareStep).toEqual(expect.any(Function));
     const prepareStep = forced.prepareStep as (options: {
       stepNumber: number;
-    }) => unknown;
-    expect(prepareStep({ stepNumber: 0 })).toEqual({
+      messages: unknown[];
+      steps: unknown[];
+    }) => Promise<unknown>;
+    expect(
+      await prepareStep({
+        stepNumber: 0,
+        messages: convertedMessages,
+        steps: [],
+      }),
+    ).toEqual({
+      messages: convertedMessages,
       activeTools: mocks.toolOrder,
       toolChoice: "required",
     });
-    expect(prepareStep({ stepNumber: 1 })).toBeUndefined();
+    expect(
+      await prepareStep({
+        stepNumber: 1,
+        messages: convertedMessages,
+        steps: [],
+      }),
+    ).toEqual({ messages: convertedMessages });
     expect(automatic.tools).toBe(forced.tools);
     expect(automatic.instructions).toEqual(forced.instructions);
     expect(mocks.currentDateSystemPrompt).toHaveBeenCalledWith(
@@ -862,6 +1121,57 @@ describe("chat route setup boundary", () => {
     expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
       expect.objectContaining({ supportsImageInput: false }),
     );
+  });
+
+  it("forwards a discovered reasoning level to a local runtime", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "low",
+    });
+    mocks.getModelConfig.mockResolvedValue({
+      ...modelConfig,
+      providerId: "llamacpp",
+      apiFormat: "auto",
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "low",
+        efforts: ["low"],
+      },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(200);
+    expect(mocks.createConfiguredLanguageModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        providerId: "llamacpp",
+        reasoningLevel: "low",
+      }),
+    );
+  });
+
+  it("rejects reasoning levels absent from discovered controls", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      reasoningLevel: "low",
+    });
+    mocks.resolveModelCapabilities.mockReturnValue({
+      reasoningControls: {
+        toggle: true,
+        defaultLevel: "medium",
+        efforts: ["medium"],
+      },
+    });
+
+    const response = await POST(request());
+
+    expect(response.status).toBe(400);
+    expect(await response.text()).toBe(
+      "Reasoning level low is unavailable for this model",
+    );
+    expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
   });
 
   it("removes web tools when the capability is disabled", async () => {
@@ -977,7 +1287,7 @@ describe("chat route setup boundary", () => {
         toolChoice: "auto",
       }),
     );
-    expect(mocks.agentSettings[0]?.prepareStep).toBeUndefined();
+    expect(mocks.agentSettings[0]?.prepareStep).toEqual(expect.any(Function));
     expect(mocks.toUIMessageStream).toHaveBeenCalledWith(
       expect.objectContaining({ tools: mcpTools }),
     );
@@ -986,8 +1296,7 @@ describe("chat route setup boundary", () => {
       [{ id: "reference" }],
     );
     const observed = mocks.uiStreamOptions?.stream as
-      | ReadableStream<unknown>
-      | undefined;
+      ReadableStream<unknown> | undefined;
     await observed?.pipeTo(new WritableStream());
     expect(mocks.releaseMcpBinding).toHaveBeenCalledOnce();
   });
@@ -1229,13 +1538,32 @@ describe("chat route setup boundary", () => {
     );
   });
 
+  it("uses identical system instructions and tools for voice and text turns", async () => {
+    mocks.inlineUploads.mockImplementation(async (value) => value);
+    await POST(request());
+    const text = mocks.agentSettings[0];
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, responseStyle: "voice" });
+    await POST(request());
+    const voice = mocks.agentSettings[1];
+    expect(voice.instructions).toEqual(text.instructions);
+    expect(voice.tools).toEqual(text.tools);
+    expect(voice.toolOrder).toEqual(text.toolOrder);
+    expect(voice.providerOptions).toEqual(text.providerOptions);
+    expect(mocks.commitChatTurn).toHaveBeenLastCalledWith(expect.objectContaining({
+      userMessage: { id: "user-message", parts: messages[0].parts, metadata: { responseStyle: "voice-v1" } },
+    }));
+    const voiceInput = mocks.convertToModelMessages.mock.calls.at(-1)?.[0];
+    expect(JSON.stringify(voiceInput)).toContain("For this response only");
+    expect(JSON.stringify(mocks.convertToModelMessages.mock.calls[0][0])).not.toContain("For this response only");
+  });
+
   it("keeps prompt content and persisted UI messages unchanged", async () => {
     const originalMessages = structuredClone(messages);
 
     await POST(request());
 
     expect(mocks.agentStreamArgs[0].messages).toBe(convertedMessages);
-    expect(mocks.uiStreamOptions?.originalMessages).toBe(messages);
+    expect(mocks.uiStreamOptions?.originalMessages).toEqual(messages);
     expect(mocks.commitChatTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         userMessage: { id: "user-message", parts: messages[0].parts },
@@ -1249,6 +1577,330 @@ describe("chat route setup boundary", () => {
     );
     expect(messages).toEqual(originalMessages);
     expect(mocks.agentSettings[0]).not.toHaveProperty("runtimeContext");
+  });
+
+  it.each([false, true])(
+    "compacts regular chat and carries checkpoints in response metadata (temporary=%s)",
+    async (temporary) => {
+      const old = {
+        id: "old-user",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "Remember ORCHID-47. " + "reference ".repeat(10000),
+          },
+        ],
+      };
+      const history = [old, ...messages];
+      const modelHistory = history.map((message) => ({
+        role: message.role,
+        content: message.parts[0].text,
+      }));
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        messages: history,
+        temporary,
+      });
+      mocks.inlineUploads.mockResolvedValue(history);
+      mocks.convertToModelMessages.mockResolvedValue(modelHistory);
+      mocks.resolveModelContextWindow.mockReturnValue(4096);
+      mocks.generateText.mockResolvedValue({
+        text: "The launch code is ORCHID-47.",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          inputTokenDetails: {},
+        },
+      });
+      await POST(request());
+      const prepare = mocks.agentSettings[0].prepareStep as (
+        input: object,
+      ) => Promise<{ messages: Array<{ content: string }> }>;
+      const prepared = await prepare({
+        messages: modelHistory,
+        steps: [],
+        stepNumber: 0,
+      });
+      expect(prepared.messages[0].content).toContain("ORCHID-47");
+      expect(prepared.messages.at(-1)?.content).toBe("Hello");
+      expect(mocks.agentSettings[0].maxOutputTokens).toBeUndefined();
+      expect(mocks.uiStreamOptions?.originalMessages).toEqual(history);
+      expect(mocks.uiChunks).toContainEqual({
+        type: "data-context-status",
+        data: "compacted",
+        transient: true,
+      });
+      const metadata = (
+        mocks.uiStreamOptions?.messageMetadata as (
+          input: object,
+        ) => Record<string, unknown>
+      )({
+        part: {
+          type: "finish",
+          finishReason: "stop",
+          totalUsage: {
+            inputTokens: 200,
+            outputTokens: 20,
+            totalTokens: 220,
+            inputTokenDetails: {},
+          },
+        },
+      });
+      expect(metadata.contextCheckpoint).toMatchObject({
+        boundaryMessageId: "user-message",
+        summary: expect.stringContaining("ORCHID-47"),
+      });
+      await (mocks.uiStreamOptions?.onEnd as (input: object) => Promise<void>)({
+        responseMessage: {
+          id: "response",
+          role: "assistant",
+          parts: [{ type: "text", text: "Answer" }],
+          metadata,
+        },
+        isAborted: false,
+      });
+      if (temporary) {
+        expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+        expect(mocks.completeChatStream).not.toHaveBeenCalled();
+      } else {
+        expect(mocks.completeChatStream).toHaveBeenCalledWith(
+          expect.objectContaining({
+            assistantMessage: expect.objectContaining({ metadata }),
+            usage: expect.objectContaining({
+              inputTokens: 200 + 100 * mocks.generateText.mock.calls.length,
+            }),
+          }),
+        );
+      }
+    },
+  );
+
+  it.each([false, true])(
+    "runs compact-only through the owned stream without generating an answer (temporary=%s)",
+    async (temporary) => {
+      const history = [
+        {
+          id: "u1",
+          role: "user",
+          parts: [{ type: "text", text: "Remember ORCHID-47" }],
+        },
+        {
+          id: "a1",
+          role: "assistant",
+          parts: [{ type: "text", text: "Okay" }],
+        },
+        { id: "u2", role: "user", parts: [{ type: "text", text: "Continue" }] },
+        {
+          id: "a2",
+          role: "assistant",
+          parts: [{ type: "text", text: "Ready" }],
+        },
+      ];
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        action: { type: "compact" },
+        messages: temporary ? history : history.slice(-1),
+        temporary,
+      });
+      mocks.getChat.mockResolvedValue(
+        temporary ? null : { id: "chat", title: "Saved chat" },
+      );
+      mocks.getMessages.mockResolvedValue(history);
+      mocks.inlineUploads.mockResolvedValue(history);
+      mocks.convertToModelMessages.mockResolvedValue(
+        history.map((m) => ({ role: m.role, content: m.parts[0].text })),
+      );
+      mocks.generateText.mockResolvedValue({
+        text: "The code is ORCHID-47",
+        usage: {
+          inputTokens: 100,
+          outputTokens: 10,
+          totalTokens: 110,
+          inputTokenDetails: {},
+        },
+      });
+      expect((await POST(request())).status).toBe(200);
+      const reader = (
+        mocks.uiStreamOptions!.stream as ReadableStream<Record<string, unknown>>
+      ).getReader();
+      const parts: Record<string, unknown>[] = [];
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        parts.push(next.value);
+      }
+      expect(parts.map((p) => p.type)).toEqual(["start", "finish"]);
+      expect(mocks.agentStream).not.toHaveBeenCalled();
+      expect(mocks.uiStreamOptions?.originalMessages).toBeUndefined();
+      const metadata = (
+        mocks.uiStreamOptions!.messageMetadata as (
+          input: object,
+        ) => Record<string, unknown>
+      )({ part: parts.at(-1) });
+      expect(metadata).toMatchObject({
+        contextStatus: "manual-compacted",
+        contextCheckpoint: {
+          boundaryMessageId: "u2",
+          summary: "The code is ORCHID-47",
+        },
+      });
+      await (mocks.uiStreamOptions!.onEnd as (input: object) => Promise<void>)({
+        responseMessage: {
+          id: "marker",
+          role: "assistant",
+          parts: [],
+          metadata,
+        },
+        isAborted: false,
+      });
+      if (temporary) {
+        expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+        expect(mocks.completeChatStream).not.toHaveBeenCalled();
+      } else {
+        expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+          expect.objectContaining({
+            userMessage: undefined,
+            truncateFromMessageId: undefined,
+          }),
+        );
+        expect(mocks.completeChatStream).toHaveBeenCalledWith(
+          expect.objectContaining({
+            assistantMessage: { id: "marker", parts: [], metadata },
+            usage: expect.objectContaining({
+              inputTokens: 100,
+              outputTokens: 10,
+            }),
+          }),
+        );
+      }
+      expect(mocks.notifyChatComplete).not.toHaveBeenCalled();
+    },
+  );
+
+  it("does not save a replacement checkpoint or answer after a failed manual summary", async () => {
+    const history = [
+      {
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "Important old fact" }],
+      },
+      {
+        id: "u2",
+        role: "user",
+        parts: [{ type: "text", text: "Current request" }],
+      },
+    ];
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      action: { type: "compact" },
+      messages: history.slice(-1),
+    });
+    mocks.getChat.mockResolvedValue({ id: "chat", title: "Saved" });
+    mocks.getMessages.mockResolvedValue(history);
+    mocks.inlineUploads.mockResolvedValue(history);
+    mocks.convertToModelMessages.mockResolvedValue(
+      history.map((m) => ({ role: m.role, content: m.parts[0].text })),
+    );
+    mocks.generateText.mockRejectedValue(new Error("Summarizer unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await POST(request());
+      const reader = (
+        mocks.uiStreamOptions!.stream as ReadableStream<Record<string, unknown>>
+      ).getReader();
+      const parts: Record<string, unknown>[] = [];
+      while (true) {
+        const next = await reader.read();
+        if (next.done) break;
+        parts.push(next.value);
+      }
+      expect(parts.map((p) => p.type)).toEqual(["start", "error"]);
+      expect((parts[1].error as Error).message).toContain(
+        "previous checkpoint are unchanged",
+      );
+      await (mocks.uiStreamOptions!.onEnd as (input: object) => Promise<void>)({
+        responseMessage: {
+          id: "marker",
+          role: "assistant",
+          parts: [],
+          metadata: { contextStatus: "manual-compacting" },
+        },
+        isAborted: false,
+      });
+      expect(mocks.completeChatStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          assistantMessage: undefined,
+          status: "error",
+        }),
+      );
+      expect(mocks.agentStream).not.toHaveBeenCalled();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("keeps ordinary chat working when the model window is unknown", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalled();
+    expect(mocks.agentStream).toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    const prepare = mocks.agentSettings[0].prepareStep as (input: unknown) => Promise<unknown>;
+    expect(await prepare({ messages: convertedMessages, steps: [], stepNumber: 0 }))
+      .toMatchObject({ messages: convertedMessages });
+  });
+
+  it("retains a saved checkpoint when switching to an unknown-window model", async () => {
+    const history = [
+      { id: "u1", role: "user" as const, parts: [{ type: "text" as const, text: "Remember ORCHID-47" }] },
+      { id: "a1", role: "assistant" as const, parts: [{ type: "text" as const, text: "Okay" }] },
+      { id: "u2", role: "user" as const, parts: [{ type: "text" as const, text: "Continue" }] },
+    ];
+    const checkpoint = createContextCheckpoint(history, "u2", "The code is ORCHID-47");
+    const requestMessages = [...history, {
+      id: "a2", role: "assistant" as const, parts: [{ type: "text" as const, text: "Ready" }],
+      metadata: { contextCheckpoint: checkpoint },
+    }, { id: "u3", role: "user" as const, parts: [{ type: "text" as const, text: "What is the code?" }] }];
+    mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, temporary: true, messages: requestMessages });
+    mocks.inlineUploads.mockImplementation(async (value) => value);
+    mocks.convertToModelMessages.mockImplementation(async (value) => value.map((m: typeof history[number]) => ({ role: m.role, content: m.parts[0].text })));
+    expect((await POST(request())).status).toBe(200);
+    const sent = mocks.agentStreamArgs[0].messages as { content: string }[];
+    expect(sent[0].content).toContain("The code is ORCHID-47");
+    expect(sent).toHaveLength(4);
+    expect(sent.at(-1)?.content).toBe("What is the code?");
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it.each([512, 64000])("preserves a configured %s-token reply limit", async (limit) => {
+    const providerOptions = { custom: { max_tokens: limit, temperature: 0.3 } };
+    mocks.createConfiguredLanguageModel.mockReturnValue({ model: "language-model", providerOptions });
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.agentSettings[0].maxOutputTokens).toBeUndefined();
+    expect(mocks.agentSettings[0].providerOptions).toEqual(providerOptions);
+  });
+
+  it("rejects an impossible output reservation before claiming a stream", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(4096);
+    mocks.createConfiguredLanguageModel.mockReturnValue({
+      model: "language-model", providerOptions: { custom: { max_tokens: 8192 } },
+    });
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it("requests a context window for explicit compaction before claiming a stream", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(undefined);
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, action: { type: "compact" }, temporary: true });
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(await response.text()).toContain("context window");
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
   });
 
   it("emits provider cache token details in finish metadata", async () => {
@@ -1330,6 +1982,7 @@ describe("chat route setup boundary", () => {
         id: "assistant-message",
         parts: [{ type: "text", text: "Hello" }],
       },
+      status: "complete",
       usage: {
         occurredAt: expect.any(Date),
         providerId: "custom",
@@ -1551,6 +2204,89 @@ describe("chat route setup boundary", () => {
           stats: { contextTokens: 110, contextWindow: 128_000 },
         },
       },
+      status: "complete",
     });
   });
+  it.each([false, true])("leaves image sequencing automatic and respects explicit search (%s)", async (forceSearch) => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      forceSearch,
+      imageGeneration: { size: "auto", quality: "auto" },
+    });
+    mocks.getImageCapability.mockReturnValue({ available: true, model: "image-model" });
+    const imageTools = {
+      generate_image: { description: "Generate image" },
+      edit_image: { description: "Edit image" },
+    };
+    mocks.createImageTools.mockReturnValue(imageTools);
+
+    await POST(request());
+
+      const settings = mocks.agentSettings[0];
+      expect(settings.tools).toMatchObject({
+        ...mocks.chatTools,
+        ...imageTools,
+      });
+      expect(settings.toolChoice).toBe("auto");
+      expect(settings.instructions).toMatchObject({
+        content: expect.stringContaining(
+          "The user selected Create image for this turn.",
+        ),
+      });
+      if (forceSearch) {
+        const prepareStep = settings.prepareStep as (options: {
+          stepNumber: number;
+          messages: unknown[];
+          steps: unknown[];
+        }) => Promise<unknown>;
+        expect(
+          await prepareStep({
+            stepNumber: 0,
+            messages: convertedMessages,
+            steps: [],
+          }),
+        ).toEqual({
+          messages: convertedMessages,
+          activeTools: mocks.toolOrder,
+          toolChoice: "required",
+        });
+        expect(
+          await prepareStep({
+            stepNumber: 1,
+            messages: convertedMessages,
+            steps: [],
+          }),
+        ).toEqual({ messages: convertedMessages });
+      } else {
+        expect(settings.prepareStep).toEqual(expect.any(Function));
+      }
+    },
+  );
+
+  it("rejects explicit image requests before persistence when unavailable", async () => {
+    mocks.getSession.mockResolvedValue({ user: { id: "user" } });
+    mocks.parseChatRequest.mockResolvedValue({ ...parsedRequest, imageGeneration: { size: "auto", quality: "auto" } });
+    mocks.getChatGenerationByRequestId.mockResolvedValue(null);
+    mocks.getChat.mockResolvedValue(null);
+    mocks.getModelConfig.mockResolvedValue({ ...modelConfig });
+    mocks.getImageCapability.mockReturnValue({ available: false, model: null });
+    mocks.commitChatTurn.mockClear();
+    const response = await POST(request());
+    expect(response.status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+  it.each([true, false])("registers image tools according to chat tool calling (%s)", async (enabled) => {
+    mocks.getModelConfig.mockResolvedValue({ ...modelConfig, toolCallingEnabled: enabled });
+    mocks.getImageCapability.mockReturnValue({ available: true, model: "gpt-image-1" });
+    const generate = { description: "Generate image" };
+    const edit = { description: "Edit image" };
+    mocks.createImageTools.mockReturnValue({ generate_image: generate, edit_image: edit });
+    await POST(request());
+    if (enabled) {
+      expect(mocks.agentSettings[0].tools).toMatchObject({ generate_image: generate, edit_image: edit });
+    } else {
+      expect(mocks.agentSettings[0]).not.toHaveProperty("tools");
+    }
+  });
+
 });

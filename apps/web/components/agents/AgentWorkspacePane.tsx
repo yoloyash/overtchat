@@ -1,5 +1,6 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import {
   useEffect,
   useMemo,
@@ -10,7 +11,6 @@ import {
 import { code, type HighlightResult } from "@streamdown/code";
 import { useIsFetching, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   ChevronDown,
   ChevronRight,
   File,
@@ -171,7 +171,7 @@ function WorkspaceTabs({
   onClose: () => void;
 }) {
   return (
-    <header className="flex h-12 shrink-0 border-b bg-muted/15">
+    <header data-titlebar className="flex h-12 shrink-0 border-b bg-muted/15">
       <div
         role="tablist"
         aria-label="Workspace views"
@@ -454,9 +454,8 @@ function WorkspaceDirectory({
   }
   if (directory.error) {
     return (
-      <div className="mx-3 my-1 rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
-        {directory.error.message}
-      </div>
+      <ErrorNotice className="mx-3 my-1" message={directory.error}
+        actions={<Button size="sm" variant="outline" onClick={() => void directory.refetch()}>Retry</Button>} />
     );
   }
 
@@ -692,13 +691,7 @@ function WorkspaceFilePreview({
         </div>
       ) : file.error ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center">
-          <div className="max-w-xs">
-            <AlertTriangle className="mx-auto size-5 text-destructive" />
-            <p className="mt-3 text-sm font-medium">File cannot be previewed</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {file.error.message}
-            </p>
-          </div>
+          <ErrorNotice className="max-w-xs" title="File cannot be previewed" message={file.error} />
         </div>
       ) : file.data ? (
         <HighlightedFile

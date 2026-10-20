@@ -1,10 +1,10 @@
 "use client";
 
+import { ErrorNotice } from "@/components/ui/error-notice";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { ChatStatus, FileUIPart, UIMessage } from "ai";
 import {
-  AlertTriangle,
   ChevronDown,
   LoaderCircle,
   RotateCcw,
@@ -12,6 +12,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { chatErrorMessage } from "@/lib/chat/message";
 import type { InferenceActivity } from "@/lib/chat/inference-activity";
+import {
+  contextStatusLabel,
+  isManualCompactionMessage,
+  isContextStatus,
+  canContinueMessage,
+  type ContextStatus,
+} from "@overtchat/shared";
 import {
   formatInteger,
   formatTps,
@@ -27,6 +34,7 @@ export function MessageList({
   streaming,
   status,
   inferenceActivity,
+  contextStatus,
   error,
   configured,
   speech,
@@ -36,13 +44,16 @@ export function MessageList({
   loadingOlderMessages,
   onLoadOlderMessages,
   onRegenerate,
+  onContinue,
+  onImageReference,
   onEdit,
-  onRetry,
+  onReconnect,
 }: {
   messages: UIMessage[];
   streaming: boolean;
   status: ChatStatus;
   inferenceActivity: InferenceActivity | null;
+  contextStatus?: ContextStatus | null;
   error: Error | undefined;
   configured: boolean;
   speech: ReturnType<typeof useSpeech>;
@@ -52,8 +63,10 @@ export function MessageList({
   loadingOlderMessages: boolean;
   onLoadOlderMessages: () => void;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
-  onRetry: () => void;
+  onReconnect: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const initialScrollCompleteRef = useRef(false);
@@ -95,9 +108,7 @@ export function MessageList({
     scrollEndThreshold: 80,
     onChange(instance) {
       const atBottom = instance.isAtEnd(80);
-      setIsAtBottom((current) =>
-        current === atBottom ? current : atBottom,
-      );
+      setIsAtBottom((current) => (current === atBottom ? current : atBottom));
       const atTop = (instance.scrollOffset ?? 0) <= 80;
       setIsAtTop((current) => (current === atTop ? current : atTop));
       if (
@@ -158,34 +169,66 @@ export function MessageList({
             const message = messages[item.index];
             if (message) {
               const isLast = item.index === messages.length - 1;
+              const savedContextStatus = (
+                message.metadata as Record<string, unknown> | undefined
+              )?.contextStatus;
+              const visibleContextStatus =
+                isLast && streaming && contextStatus
+                  ? contextStatus
+                  : isContextStatus(savedContextStatus) &&
+                      savedContextStatus !== "compacting" &&
+                      savedContextStatus !== "manual-compacting"
+                    ? savedContextStatus
+                    : null;
+              const contextIndicator = visibleContextStatus && (
+                <p
+                  className="my-2 flex items-center gap-2 text-xs text-muted-foreground"
+                  role="status"
+                >
+                  {(visibleContextStatus === "compacting" ||
+                    visibleContextStatus === "manual-compacting") && (
+                    <LoaderCircle className="size-3.5 animate-spin" />
+                  )}
+                  {contextStatusLabel(visibleContextStatus)}
+                </p>
+              );
               content = (
                 <>
-                  <MessageBubble
-                    message={message}
-                    streaming={streaming && isLast}
-                    canAct={!streaming && configured}
-                    onRegenerate={onRegenerate}
-                    onEdit={onEdit}
-                    speech={speech}
-                    showStats={showStats}
-                    stats={
-                      readMessageStats(message) ??
-                      storedStats[message.id] ??
-                      null
-                    }
-                  />
+                  {message.role === "assistant" && contextIndicator}
+                  {!isManualCompactionMessage(message) && (
+                    <MessageBubble
+                      message={message}
+                      streaming={streaming && isLast}
+                      canAct={!streaming && configured}
+                      onRegenerate={onRegenerate}
+                      onContinue={isLast && canContinueMessage(message) ? onContinue : undefined}
+                      onImageReference={onImageReference}
+                      onEdit={onEdit}
+                      speech={speech}
+                      showStats={showStats}
+                      stats={
+                        readMessageStats(message) ??
+                        storedStats[message.id] ??
+                        null
+                      }
+                    />
+                  )}
+                  {message.role !== "assistant" && contextIndicator}
                   {isLast && !error && streaming && inferenceActivity && (
                     <InferenceActivityIndicator activity={inferenceActivity} />
                   )}
                   {isLast &&
                     !error &&
                     !inferenceActivity &&
+                    !contextStatus &&
                     status === "submitted" &&
                     message.role === "user" && <PendingIndicator />}
                 </>
               );
             } else if (error && item.index === errorOffset) {
-              content = <ChatErrorBubble error={error} onRetry={onRetry} />;
+              content = (
+                <ChatErrorBubble error={error} onReconnect={onReconnect} />
+              );
             }
 
             return (
@@ -319,28 +362,16 @@ function PendingDots() {
 
 function ChatErrorBubble({
   error,
-  onRetry,
+  onReconnect,
 }: {
   error: Error;
-  onRetry: () => void;
+  onReconnect: () => void;
 }) {
   return (
-    <div
-      role="alert"
-      className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
-    >
-      <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1">
-        <p className="text-foreground">{chatErrorMessage(error)}</p>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={onRetry}
-        className="shrink-0"
-      >
-        <RotateCcw /> Retry
+    <ErrorNotice message={chatErrorMessage(error)} actions={
+      <Button variant="outline" size="sm" onClick={onReconnect}>
+        <RotateCcw /> Reconnect
       </Button>
-    </div>
+    } />
   );
 }

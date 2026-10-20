@@ -19,5 +19,6 @@ export function runtimePaths(environment = process.env): RuntimePaths {
     composeFile: path.join(stackDirectory, "compose.yml"),
     searxngDirectory,
     searxngSettingsFile: path.join(searxngDirectory, "settings.yml"),
+    cloudDirectory: path.join(stackDirectory, "cloud"),
   };
 }

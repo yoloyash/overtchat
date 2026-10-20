@@ -1,15 +1,13 @@
 import { createAuthClient } from "better-auth/react";
 import { expoClient } from "@better-auth/expo/client";
+import { twoFactorClient } from "better-auth/client/plugins";
 import * as SecureStore from "expo-secure-store";
 import { getServerUrl } from "@/lib/server-url";
 
-let cached: ReturnType<typeof createAuthClient> | null = null;
-
-export function getAuthClient() {
-  if (cached) return cached;
+function createClient() {
   const baseURL = getServerUrl();
   if (!baseURL) throw new Error("Server URL not set");
-  cached = createAuthClient({
+  return createAuthClient({
     baseURL,
     plugins: [
       expoClient({
@@ -17,8 +15,19 @@ export function getAuthClient() {
         storagePrefix: "overtchat",
         storage: SecureStore,
       }),
+      // The pending sign-in cookie is stored with the session cookie.
+      twoFactorClient(),
     ],
   });
+}
+
+// Infer from the configured factory so Expo plugin actions such as getCookie
+// remain part of the client type.
+type AuthClient = ReturnType<typeof createClient>;
+let cached: AuthClient | null = null;
+
+export function getAuthClient(): AuthClient {
+  if (!cached) cached = createClient();
   return cached;
 }
 

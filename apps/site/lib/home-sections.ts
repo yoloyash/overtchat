@@ -1,6 +1,7 @@
 export const HOME_SECTION_IDS = {
   intro: "intro",
-  howItWorks: "how-it-works",
+  sharing: "sharing",
+  voice: "voice",
   features: "features",
   architecture: "architecture",
   clients: "clients",
@@ -10,10 +11,11 @@ export const HOME_SECTION_IDS = {
 
 export const HOME_SECTIONS = [
   { id: HOME_SECTION_IDS.intro, label: "Introduction" },
-  { id: HOME_SECTION_IDS.howItWorks, label: "How it works" },
-  { id: HOME_SECTION_IDS.features, label: "Features" },
-  { id: HOME_SECTION_IDS.architecture, label: "Architecture" },
-  { id: HOME_SECTION_IDS.clients, label: "Web + mobile" },
-  { id: HOME_SECTION_IDS.quickStart, label: "Quick start" },
+  { id: HOME_SECTION_IDS.sharing, label: "A front door" },
+  { id: HOME_SECTION_IDS.voice, label: "Talk" },
+  { id: HOME_SECTION_IDS.features, label: "Everyday chat" },
+  { id: HOME_SECTION_IDS.architecture, label: "What yours means" },
+  { id: HOME_SECTION_IDS.clients, label: "Anywhere" },
+  { id: HOME_SECTION_IDS.quickStart, label: "Make it yours" },
   { id: HOME_SECTION_IDS.releases, label: "Releases" },
 ] as const;

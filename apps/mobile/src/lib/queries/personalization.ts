@@ -1,3 +1,4 @@
+import { apiError } from "@overtchat/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Memory,
@@ -11,7 +12,7 @@ import { queryKeys } from "@/lib/queries/keys";
 
 async function responseError(response: Response): Promise<Error> {
   const body = (await response.json().catch(() => ({}))) as { error?: string };
-  return new Error(body.error ?? `Request failed (${response.status})`);
+  return apiError(response.status, body, "Could not complete the request. Please try again.");
 }
 
 export function usePersonalization() {

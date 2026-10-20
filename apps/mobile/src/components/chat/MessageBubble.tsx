@@ -13,6 +13,7 @@ import { AttachmentChip } from "./AttachmentChip";
 import { type ActivityPart, ChainOfThought } from "./ChainOfThought";
 import { EditBubble } from "./EditBubble";
 import { MarkdownBody } from "./MarkdownBody";
+import { GeneratedImageCard } from "./GeneratedImageCard";
 import { MemoryArtifact } from "./MemoryArtifact";
 import { MessageActions } from "./MessageActions";
 import { type MessageAction, MessageMenu } from "./MessageMenu";
@@ -27,6 +28,8 @@ export function MessageBubble({
   onCancelEdit,
   onSaveEdit,
   onRegenerate,
+  onContinue,
+  onImageReference,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -37,12 +40,15 @@ export function MessageBubble({
   onCancelEdit: () => void;
   onSaveEdit: (id: string, text: string, files: FileUIPart[]) => void;
   onRegenerate: (id: string) => void;
+  onContinue?: (id: string) => void;
+  onImageReference?: (file: FileUIPart) => void;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
   const [copied, setCopied] = useState(false);
   const menu = useMeasuredPopoverAnchor();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
 
   useEffect(() => {
     return () => {
@@ -150,13 +156,12 @@ export function MessageBubble({
     !streaming && hasAnyText
       ? readOnly
         ? ["copy"]
-        : ["copy", "regenerate"]
+        : ["copy", "regenerate", ...(onContinue ? ["continue" as const] : [])]
       : [];
-  const sourceLookup = useMemo(() => buildSourceLookup(message), [message]);
-
   function onAssistantMenuSelect(action: MessageAction) {
     if (action === "copy") copyText(text);
     else if (action === "regenerate") onRegenerate(message.id);
+    else if (action === "continue") onContinue?.(message.id);
   }
 
   function openAssistantMenu() {
@@ -180,6 +185,16 @@ export function MessageBubble({
                 key={`t-${seg.index}`}
                 text={(seg.part as { text: string }).text}
                 sourceLookup={sourceLookup}
+              />
+            );
+          }
+          if (seg.kind === "image") {
+            return (
+              <GeneratedImageCard
+                key={`i-${seg.index}`}
+                part={seg.part}
+                streaming={streaming}
+                onReference={readOnly ? undefined : onImageReference}
               />
             );
           }
@@ -215,6 +230,7 @@ export function MessageBubble({
             onRegenerate={
               readOnly ? undefined : () => onRegenerate(message.id)
             }
+            onContinue={readOnly || !onContinue ? undefined : () => onContinue(message.id)}
             onSpeak={
               text ? () => void speech.play(message.id, text) : undefined
             }

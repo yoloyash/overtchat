@@ -1,0 +1,26 @@
+# Disposable CPU speech stack for the opt-in browser integration test.
+# The application is started by Playwright on the host; no production volumes.
+name: overtchat-voice-test
+services:
+  voice:
+    build: .
+    image: overtchat-voice:test
+    environment:
+      VOICE_SHARED_SECRET: voice-integration-test-secret
+      OVERTCHAT_VOICE_APP_URL: http://host.docker.internal:${E2E_PORT:-4831}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - 127.0.0.1:18765:8765
+  tts:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu@sha256:28d6f0b6e4df369559012578299d201b855a08fac466f616653edd1f08c5370a
+    ports:
+      - 127.0.0.1:18880:8880
+  stt:
+    image: ghcr.io/yoloyash/overtchat-stt-cpu:0.1.1
+    ports:
+      - 127.0.0.1:15092:5092
+    volumes:
+      - stt-models:/models
+volumes:
+  stt-models:

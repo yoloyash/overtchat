@@ -47,6 +47,14 @@ function event(
 }
 
 describe("agent runtime event reducer", () => {
+  it("treats a retired waiting status from an older connector as a running turn", () => {
+    const running = applyAgentRuntimeEnvelope(snapshot(), event({ type: "agent_start", overtchatRecordedAt: 123 }))!;
+    const legacy = applyAgentRuntimeEnvelope(running, event({ type: "overtchat_status", status: "running", phase: "waiting" }))!;
+    expect(legacy).toMatchObject({ status: "running", activeTurn: { startedAt: 123 }, state: { isStreaming: true } });
+    const idle = applyAgentRuntimeEnvelope(legacy, event({ type: "overtchat_status", status: "idle" }))!;
+    expect(idle).toMatchObject({ status: "idle", activeTurn: null });
+  });
+
   it("uses a connector-recorded timestamp for replay-derived state", () => {
     const started = applyAgentRuntimeEnvelope(
       snapshot(),
@@ -79,7 +87,7 @@ describe("agent runtime event reducer", () => {
     expect(tool.messages.at(-1)).toMatchObject({ timestamp: 3_456 });
   });
 
-  it("reconciles resumed provider history without dropping connector-only messages", () => {
+  it("imports provider history as a whole instead of retaining rows by role", () => {
     const durable = {
       ...snapshot(),
       status: "exited" as const,
@@ -129,7 +137,6 @@ describe("agent runtime event reducer", () => {
       messages: [
         expect.objectContaining({ id: "provider-user" }),
         expect.objectContaining({ id: "provider-assistant" }),
-        { role: "custom", content: "connector command output" },
       ],
     });
     expect(reconciled).not.toHaveProperty("error");
@@ -303,7 +310,7 @@ describe("agent runtime event reducer", () => {
       snapshot(),
       event({
         type: "message_start",
-        message: { role: "assistant", content: [] },
+        message: { role: "assistant", id: "streaming", content: [] },
       }),
     )!;
     const second = applyAgentRuntimeEnvelope(
@@ -312,6 +319,7 @@ describe("agent runtime event reducer", () => {
         type: "message_update",
         message: {
           role: "assistant",
+          id: "streaming",
           content: [{ type: "text", text: "Hello back" }],
         },
       }),
@@ -321,10 +329,39 @@ describe("agent runtime event reducer", () => {
       { role: "user", content: "Hello" },
       {
         role: "assistant",
+        id: "streaming",
         content: [{ type: "text", text: "Hello back" }],
       },
     ]);
   });
+
+  it.each([
+    [{ timestamp: 10 }, { timestamp: 20 }],
+    [
+      { id: "draft", timestamp: 10 },
+      { id: "continuation", timestamp: 10 },
+    ],
+    [{}, {}],
+  ])(
+    "keeps completed text when a distinct assistant starts: %j",
+    (firstIdentity, nextIdentity) => {
+      const draft = {
+        role: "assistant",
+        ...firstIdentity,
+        content: [{ type: "text", text: "## Draft\n\nKeep this answer." }],
+      };
+      const first = applyAgentRuntimeEnvelope(
+        snapshot(),
+        event({ type: "message_end", message: draft }),
+      )!;
+      const nextMessage = { role: "assistant", ...nextIdentity, content: [] };
+      const next = applyAgentRuntimeEnvelope(
+        first,
+        event({ type: "message_start", message: nextMessage }),
+      )!;
+      expect(next.messages.slice(-2)).toEqual([draft, nextMessage]);
+    },
+  );
 
   it("atomically restores canonical turn order after optimistic steer races", () => {
     const initial = { ...snapshot(), messages: [] };
@@ -926,5 +963,35 @@ describe("agent runtime event reducer", () => {
         data: authoritative,
       }),
     ).toBe(authoritative);
+  });
+
+  it("applies live usage and explicit context invalidation without changing transcript or status", () => {
+    const initial = snapshot();
+    initial.status = "running";
+    initial.stats.tokens.total = 900000;
+    const used = applyAgentRuntimeEnvelope(
+      initial,
+      event({
+        type: "usage_update",
+        usage: {
+          contextUsage: { tokens: 12000, contextWindow: 100000, percent: 12 },
+        },
+      }),
+    )!;
+    expect(used.stats.contextUsage?.tokens).toBe(12000);
+    expect(used.stats.tokens.total).toBe(900000);
+    expect(used.messages).toBe(initial.messages);
+    expect(used.status).toBe("running");
+    const unknown = applyAgentRuntimeEnvelope(
+      used,
+      event({ type: "usage_update", usage: { contextUsage: null } }),
+    )!;
+    expect(unknown.stats.contextUsage).toBeUndefined();
+    expect(
+      applyAgentRuntimeEnvelope(
+        used,
+        event({ type: "usage_update", usage: { contextUsage: { tokens: -1 } } }),
+      ),
+    ).toBe(used);
   });
 });

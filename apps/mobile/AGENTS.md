@@ -27,13 +27,26 @@ in the web app.
   only in `src/lib/queries/keys.ts`.
 - Chat rendering and input behavior live under `src/components/chat`; the
   drawer and its project/chat mutations live under `src/components/drawer`.
+- `src/app/(authed)/(drawer)/agents` owns agent navigation within the shared
+  chat drawer. Agent transcripts, settings, and interaction sheets live in
+  `src/components/agents`; authenticated queries and commands live in
+  `src/lib/queries/agents.ts`.
+- Mobile does not expose workspace file browsing. Tool command, change, and
+  output details use `AgentToolDetails`; these are supplied by the agent and do
+  not fetch workspace files. Approval actions preserve provider response values.
+- `src/lib/agents/stream.ts` owns the foreground SSE lifecycle. Use bridge
+  replicas for cursor/epoch reconciliation, abort subscriptions while away,
+  and reconcile before reconnecting. Never automatically retry agent commands.
+  Drafts and unresolved message identities are scoped to server, user, and
+  session in `src/lib/agents/drafts.ts`.
 
 ## Platform constraints
 
 Better Auth stores the mobile cookie in SecureStore. Use `authFetch` for
-authenticated requests; uploads must attach `getAuthCookie()` to the
-`expo/fetch` multipart request explicitly. Changing servers must also reset the
-cached auth client.
+authenticated requests; cookie reads are asynchronous. Authentication upgrade
+and native validation are documented in
+`docs/development.md#authentication-upgrade-validation`. Changing servers must
+also reset the cached auth client.
 
 `src/polyfills.js` must load before the AI SDK streaming stack. Test streaming
 on both Android and iOS after changing the transport or its polyfills.
@@ -44,3 +57,6 @@ drawer behavior currently relies on `predictiveBackGestureEnabled: false` in
 
 Use `@/*` for `src` imports and `@overtchat/shared/theme.rn` for shared theme
 tokens. Run the mobile typecheck before finishing.
+Agent transport and command changes also require `npm run test -w apps/mobile --`.
+See `docs/development.md` for development validation and `docs/deploy.md#mobile`
+for Android and iOS installation.

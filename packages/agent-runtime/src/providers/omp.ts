@@ -1,4 +1,5 @@
 import type {
+  AgentModel,
   AgentProviderCatalog,
   AgentSlashCommand,
 } from "@overtchat/agent-bridge";
@@ -59,18 +60,32 @@ class OmpEventClassifier implements AgentRuntimeEventClassifier {
     ) {
       this.sawAssistant = true;
     }
+    // A run that yielded to background work hands control back, as OMP's own
+    // TUI shows; the job's result starts a new turn.
     const terminal =
+      event.type === "session_settled" ||
       (event.type === "agent_end" &&
+        (event.isTerminal !== false || event.awaitingAsyncWork === true) &&
         (this.sawAssistant ||
           (Array.isArray(event.messages) &&
             event.messages.some((message) => messageRole(message) === "assistant")))) ||
-      (event.type === "prompt_result" && event.agentInvoked === false);
+      (event.type === "prompt_result" &&
+        (event.agentInvoked === false || event.sessionSettled === true));
     if (terminal) this.reset();
     return {
       started: event.type === "agent_start" || event.type === "turn_start",
       terminal,
     };
   }
+}
+
+function hasVisibleQueuedInput(state: Record<string, unknown>): boolean {
+  const queued = state.queuedMessages;
+  if (!queued || typeof queued !== "object") return false;
+  return ["steering", "followUp"].some((key) => {
+    const messages = Reflect.get(queued, key);
+    return Array.isArray(messages) && messages.length > 0;
+  });
 }
 
 function sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity {
@@ -90,6 +105,47 @@ function sessionIdentity(state: Record<string, unknown>): AgentSessionIdentity {
   };
 }
 
+function applyStateDefaults(
+  models: AgentModel[],
+  state: Record<string, unknown>,
+): AgentModel[] {
+  const stateModel = state.model;
+  const defaultModelId =
+    stateModel && typeof stateModel === "object"
+      ? Reflect.get(stateModel, "id")
+      : undefined;
+  if (
+    typeof defaultModelId !== "string" ||
+    !models.some((model) => model.id === defaultModelId)
+  ) {
+    return models;
+  }
+
+  const stateThinkingLevel = state.thinkingLevel;
+  return models.map((model) => {
+    const updated = { ...model };
+    delete updated.isDefault;
+    if (model.id !== defaultModelId) return updated;
+
+    updated.isDefault = true;
+    if (
+      typeof stateThinkingLevel === "string" &&
+      model.thinkingOptions?.some(
+        (option) => option.id === stateThinkingLevel,
+      )
+    ) {
+      updated.defaultThinkingOptionId = stateThinkingLevel;
+      updated.thinkingOptions = model.thinkingOptions.map((option) => {
+        const next = { ...option };
+        delete next.isDefault;
+        if (option.id === stateThinkingLevel) next.isDefault = true;
+        return next;
+      });
+    }
+    return updated;
+  });
+}
+
 async function fetchCatalog(
   target: HostTarget,
   launch: Omit<AgentSessionLaunch, "resume">,
@@ -102,10 +158,11 @@ async function fetchCatalog(
     extraArgs: ["--no-extensions", "--no-skills", "--no-rules"],
   });
   try {
-    await client.getState();
+    const state = await client.getState();
+    const models = await client.getAvailableModels(120_000);
     return {
       provider: "omp",
-      models: await client.getAvailableModels(120_000),
+      models: applyStateDefaults(models, state),
       modes: OMP_MODES,
       defaultModeId: "full",
     };
@@ -116,6 +173,14 @@ async function fetchCatalog(
 
 export const ompProviderAdapter: AgentProviderAdapter = {
   provider: "omp",
+  pollUsage: true,
+  busyFromState(state) {
+    // `isSettled` also counts hidden next-turn context that only the next
+    // explicit prompt delivers, so an idle session can report false forever
+    // (can1357/oh-my-pi#14948). Queued steering and follow-ups still resume.
+    return state.isStreaming === true || state.isCompacting === true ||
+      hasVisibleQueuedInput(state);
+  },
   startSession(target, launch) {
     return startOmp(target, {
       executable: launch.executable,
