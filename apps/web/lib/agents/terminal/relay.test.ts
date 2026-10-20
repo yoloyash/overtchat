@@ -78,4 +78,19 @@ describe("terminal relay isolation", () => {
     await host("host-a");
     expect((await closed)[0]).toBe(1012);
   });
+  it("ignores queued input as soon as access is closed, before the close handshake finishes", async () => {
+    const { host, viewer, relay } = await harness();
+    const owner = await host("host-a");
+    const attached = once(owner, "message");
+    const view = viewer();
+    await once(view, "open");
+    const { streamId } = JSON.parse((await attached)[0].toString());
+    const serverView = (Reflect.get(relay, "views") as Map<string, { socket: WebSocket; host: WebSocket }>).get(streamId)!;
+    const send = vi.spyOn(serverView.host, "send");
+    const closed = once(view, "close");
+    serverView.socket.close(1008, "Terminal access expired.");
+    serverView.socket.emit("message", Buffer.from(JSON.stringify({ type: "input", data: "queued command\r" })), false);
+    expect(send).not.toHaveBeenCalled();
+    expect((await closed)[0]).toBe(1008);
+  });
 });

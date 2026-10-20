@@ -128,6 +128,11 @@ export class TerminalRelay {
       this.views.set(streamId, { ...grant, socket, host });
       this.watch(socket, grant.authorize);
       socket.on("message", (data, binary) => {
+        if (socket.readyState !== WebSocket.OPEN) return;
+        if (this.hosts.get(grant.connectorId) !== host) {
+          socket.close(1012, "Host Connector connection replaced.");
+          return;
+        }
         let control: unknown;
         try { control = JSON.parse(data.toString()); } catch { socket.close(1008, "Invalid terminal control."); return; }
         if (binary || !isTerminalControl(control)) { socket.close(1008, "Invalid terminal control."); return; }
@@ -147,6 +152,7 @@ export class TerminalRelay {
     this.hosts.set(identity.id, socket);
     this.watch(socket, identity.authorize);
     socket.on("message", (data, binary) => {
+      if (socket.readyState !== WebSocket.OPEN || this.hosts.get(identity.id) !== socket) return;
       let reply: unknown;
       try { reply = JSON.parse(data.toString()); } catch { socket.close(1008, "Invalid terminal reply."); return; }
       if (binary || !isTerminalHostReply(reply)) { socket.close(1008, "Invalid terminal reply."); return; }

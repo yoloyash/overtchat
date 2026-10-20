@@ -48,6 +48,7 @@ export class TerminalChannel {
     socket.on("open", () => { this.attempt = 0; alive(); });
     socket.on("ping", alive);
     socket.on("message", (data, binary) => {
+      if (this.stopped || this.socket !== socket || socket.readyState !== WebSocket.OPEN) return;
       let message: unknown;
       try { message = JSON.parse(data.toString()); } catch { socket.close(1008, "Invalid terminal message."); return; }
       if (binary || !isTerminalHostMessage(message)) { socket.close(1008, "Invalid terminal message."); return; }
