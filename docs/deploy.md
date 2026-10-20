@@ -459,8 +459,14 @@ OpenCode server remain available.
 The web and desktop agent workspace header includes a resizable terminal panel.
 It opens one shared shell per workspace, in that workspace's directory, through
 the Host Connector. Local shells run on the connector machine; SSH workspaces use
-the connector's existing OpenSSH alias and require a POSIX shell on the target.
-Windows SSH terminals and the native mobile terminal UI are not supported.
+the connector's existing OpenSSH alias. The connector detects the target OS:
+POSIX targets use their login shell, while Windows targets open an interactive
+Windows PowerShell in the workspace directory. Windows requires an OpenSSH
+server with ConPTY support (Windows 10 / Server 2019 or newer). The connector
+itself still runs on Linux or macOS; the desktop client can run on Windows.
+The native mobile terminal UI is not supported.
+Some Windows OpenSSH versions report exit code 0 for interactive sessions even
+when the shell fails; consult the terminal's error output in that case.
 
 Closing the panel, refreshing the page, or briefly losing the connection leaves
 the shell running. Stop terminates it; Restart creates a fresh shell. Stopping a

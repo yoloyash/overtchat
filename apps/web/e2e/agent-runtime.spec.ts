@@ -3003,6 +3003,9 @@ test("agent context meter stays visible while unknown and renders a 1M reading a
 
 test("workspace terminal streams a real shell, retains state, and reconnects under output load", async ({ page: browserPage }, testInfo) => {
   test.setTimeout(120_000);
+  const windowsAlias = process.env.OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS;
+  const windowsCwd = process.env.OVERTCHAT_TERMINAL_WINDOWS_CWD;
+  if (windowsAlias && !windowsCwd) throw new Error("OVERTCHAT_TERMINAL_WINDOWS_CWD is required for Windows terminal E2E");
   let page = browserPage;
   let desktop: ElectronApplication | undefined;
   await page.goto(await setupUrl());
@@ -3018,7 +3021,8 @@ test("workspace terminal streams a real shell, retains state, and reconnects und
   try {
     db.prepare("UPDATE host_connectors SET token_hash = ? WHERE id = 'connector'")
       .run(createHash("sha256").update(secret).digest("base64url"));
-    db.prepare("UPDATE agent_workspaces SET path = ? WHERE id = 'workspace'").run(directory);
+    db.prepare("UPDATE agent_workspaces SET path = ? WHERE id = 'workspace'").run(windowsAlias ? windowsCwd : directory);
+    if (windowsAlias) db.prepare("UPDATE agent_hosts SET transport = 'ssh', ssh_alias = ? WHERE id = 'host'").run(windowsAlias);
   } finally { db.close(); }
   const canonical = runtimeSnapshot(Date.now());
   canonical.status = "idle";
@@ -3065,6 +3069,46 @@ test("workspace terminal streams a real shell, retains state, and reconnects und
       await page.keyboard.insertText(text);
       await page.keyboard.press("Enter");
     };
+    if (windowsAlias) {
+      await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+      await command("$env:TERMINAL_SAVED='retained'; Write-Output ('__'+'READY__')");
+      await expect.poll(output).toContain("__READY__");
+      await command("Write-Output ('__'+'café 日本語 雪__')");
+      await expect.poll(output).toContain("__café 日本語 雪__");
+      await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();
+      await expect(pane).toBeHidden();
+      await page.getByRole("button", { name: "Open workspace terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toHaveText("Connected");
+      await command("Write-Output ('__'+$env:TERMINAL_SAVED+'__')");
+      await expect.poll(output).toContain("__retained__");
+      const separator = page.getByRole("separator", { name: "Resize workspace terminal" });
+      await separator.focus();
+      await page.keyboard.press("ArrowUp");
+      await command("Write-Output ('__'+'RESIZED_'+$Host.UI.RawUI.WindowSize.Height+'__')");
+      await expect.poll(output).toMatch(/__RESIZED_\d+__/);
+      await command("Write-Output ('__'+'SLEEPING__'); Start-Sleep -Seconds 30");
+      await expect.poll(output).toContain("__SLEEPING__");
+      await page.keyboard.press("Control+c");
+      await expect.poll(async () => (await output()).trimEnd()).toMatch(/PS .+>$/);
+      await command("Write-Output ('x'*65536); Write-Output ('__'+'BURST_DONE__')");
+      await expect.poll(output, { timeout: 20_000 }).toContain("__BURST_DONE__");
+      child.send({ type: "disconnect-terminal" });
+      await expect(pane.getByRole("status")).toHaveText("Reconnecting…", { timeout: 5000 });
+      await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+      await page.reload();
+      await expect(pane.getByRole("status")).toHaveText("Connected", { timeout: 15_000 });
+      await command("Write-Output ('__'+$env:TERMINAL_SAVED+'_AFTER_RELOAD__')");
+      await expect.poll(output).toContain("__retained_AFTER_RELOAD__");
+      await page.screenshot({ path: testInfo.outputPath("workspace-terminal-windows.png") });
+      await page.getByRole("button", { name: "Stop terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toContainText("Exited");
+      await page.getByRole("button", { name: "Restart terminal", exact: true }).click();
+      await expect(pane.getByRole("status")).toHaveText("Connected");
+      await expect.poll(output, { timeout: 20_000 }).toContain(`PS ${windowsCwd}>`);
+      await command("if (!$env:TERMINAL_SAVED) { Write-Output ('__'+'RESTARTED__') }");
+      await expect.poll(output).toContain("__RESTARTED__");
+      return;
+    }
     await command("export TERMINAL_SAVED=retained; printf '__%s__\\n' READY");
     await expect.poll(output).toContain("__READY__");
     await page.getByRole("button", { name: "Close terminal panel", exact: true }).click();

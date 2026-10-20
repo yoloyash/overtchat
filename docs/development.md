@@ -163,6 +163,21 @@ OVERTCHAT_SSH_NODE_PATHS='{"gaming-pc":"C:\\Program Files\\nodejs\\node.exe"}' \
 npm run test -w apps/connector -- src/windows-ssh.integration.test.ts
 ```
 
+For the terminal-only checks, add `-t 'Windows.*terminal'`. These exercise a
+real SSH PTY, PowerShell startup in a path containing spaces/Unicode/shell
+metacharacters, Unicode input, Ctrl-C, resize, screen/state restoration, restart,
+bulk output and a missing-directory failure. They create disposable remote
+files and do not restart the installed connector or desktop application.
+
+To exercise the web UI against that Windows host, set both
+`OVERTCHAT_TERMINAL_WINDOWS_SSH_ALIAS` and `OVERTCHAT_TERMINAL_WINDOWS_CWD`
+when running the workspace-terminal browser test below. The directory must
+already exist. The test opens a real remote shell with a deterministic agent
+fixture and covers input, reconnect/reload, resize, Ctrl-C, bulk output and
+stop/restart. Add `OVERTCHAT_TERMINAL_DESKTOP_E2E=1` to use a locally built
+Electron client instead of Chromium; this does not qualify the installed
+Windows desktop application.
+
 Set `WINDOWS_SSH_GIT_DIR` to the remote directory containing `git.exe` to enable
 the native Git status test; that directory is added only to test process
 environments. Set `WINDOWS_SSH_PROMPT=1` to include a small real model turn
@@ -1113,7 +1128,8 @@ The default is 14717. Do not expose this loopback port publicly.
 Before release, also test local and SSH interactive programs, Ctrl-C, Unicode
 paste, copy/selection, panel resizing, concurrent views, long-running output and
 reconnects. Report real SSH/network timings separately from local rendering
-latency. Native mobile UI and Windows SSH shells are outside this feature's scope.
+latency. Run the [Windows SSH checks](#windows-ssh-validation) for Windows
+workspace targets. Native mobile terminal UI remains outside this feature's scope.
 
 ## Agent display transcript lifecycle
 

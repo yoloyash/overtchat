@@ -26,6 +26,9 @@ import {
   windowsInputChannel,
 } from "./windows-helper.js";
 import { sshCommandArgs } from "./ssh.js";
+import { ConnectorTerminalManager } from "./terminal.js";
+import { powershellLiteral } from "./powershell.js";
+import type { Terminal } from "@xterm/headless";
 
 const alias = process.env.WINDOWS_SSH_ALIAS;
 describe.runIf(Boolean(alias))("native Windows over OpenSSH", () => {
@@ -90,6 +93,74 @@ process.stdout.write(directory);
     await host?.stop();
     if (ledger) await rm(ledger, { recursive: true, force: true });
   }, 60_000);
+
+  it("opens a Windows workspace terminal with literal paths, interactive input, resize and reconnect", async () => {
+    const cwd = path.win32.join(directory, "terminal's [draft] %PATH%");
+    await run("require('node:fs').mkdirSync(process.argv[1])", [cwd]);
+    const manager = new ConnectorTerminalManager(undefined, host.inspectEnvironment);
+    const workspace = { workspaceId: "terminal", connectionId: "windows", provider: "omp" as const, executable: "omp", target, cwd };
+    let output = "";
+    const subscribe = (id: string, cols = 100, rows = 30) => manager.subscribe(id, workspace, { cols, rows }, (event) => {
+      if (event.type === "output") output = (output + event.data).slice(-64 * 1024);
+    });
+    const wait = (text: string) => expect.poll(() => output, { timeout: 20_000 }).toContain(text);
+    const answerQueries = () => {
+      const terminal = (Reflect.get(manager, "terminals") as Map<string, { emulator: Terminal }>).get(workspace.workspaceId)!;
+      // A browser renderer answers console device/cursor queries during use.
+      terminal.emulator.onData((data) => manager.write(workspace.workspaceId, data));
+    };
+    try {
+      await subscribe("first");
+      answerQueries();
+      await wait("PS ");
+      manager.write(workspace.workspaceId, `if ((Get-Location).Path -ceq ${powershellLiteral(cwd)}) { Write-Output ('CWD:' + 'correct') }; $env:TERMINAL_TEST='retained'\r`);
+      await wait("CWD:correct");
+      manager.write(workspace.workspaceId, "Write-Output ('UNICODE:' + 'café 日本語 雪')\r");
+      await wait("UNICODE:café 日本語 雪");
+      manager.unsubscribe("first");
+      const snapshot = await subscribe("second", 112, 34);
+      expect(snapshot.data).toContain("UNICODE:");
+      manager.write(workspace.workspaceId, "Write-Output ('STATE:' + $env:TERMINAL_TEST); Write-Output ('SIZE:' + $Host.UI.RawUI.WindowSize.Width + ':' + $Host.UI.RawUI.WindowSize.Height)\r");
+      await wait("STATE:retained");
+      await wait("SIZE:112:34");
+      manager.write(workspace.workspaceId, "Write-Output ('SLEEP:' + 'started'); Start-Sleep -Seconds 30\r");
+      await wait("SLEEP:started");
+      output = "";
+      manager.write(workspace.workspaceId, "\x03");
+      await wait("PS ");
+      manager.write(workspace.workspaceId, "Write-Output ('INTERRUPT:' + 'ok')\r");
+      await wait("INTERRUPT:ok");
+      manager.write(workspace.workspaceId, "Write-Output ('x' * 65536); Write-Output ('BURST:' + 'done')\r");
+      await wait("BURST:done");
+      manager.unsubscribe("second");
+      await manager.restart(workspace, { cols: 100, rows: 30 });
+      output = "";
+      await subscribe("third");
+      answerQueries();
+      await wait("PS ");
+      manager.write(workspace.workspaceId, "if (-not $env:TERMINAL_TEST) { Write-Output ('RESTART:' + 'clean') }\r");
+      await wait("RESTART:clean");
+    } finally { manager.stopAll(); }
+  }, 120_000);
+
+  it("exits a Windows terminal when its workspace directory is missing", async () => {
+    const manager = new ConnectorTerminalManager(undefined, host.inspectEnvironment);
+    let exitCode: number | null | undefined;
+    let output = "";
+    try {
+      await manager.subscribe("missing", { workspaceId: "missing", connectionId: "windows", provider: "omp", executable: "omp", target, cwd: path.win32.join(directory, "does-not-exist") }, { cols: 80, rows: 24 }, (event) => {
+        if (event.type === "exit") exitCode = event.exitCode;
+        else output += event.data;
+      });
+      const terminal = (Reflect.get(manager, "terminals") as Map<string, { emulator: Terminal }>).get("missing")!;
+      terminal.emulator.onData((data) => manager.write("missing", data));
+      // Some Windows OpenSSH versions report 0 for every PTY exit. Verify the
+      // actionable diagnostic and termination instead of inventing an exit code.
+      await expect.poll(() => exitCode, { timeout: 20_000 }).toBeDefined();
+      expect(output).toContain("does-not-exist");
+      expect(output).not.toContain("PS ");
+    } finally { manager.stopAll(); }
+  }, 30_000);
 
   it("browses, validates, and reads a native Windows workspace", async () => {
     const listing = await listAgentDirectories(

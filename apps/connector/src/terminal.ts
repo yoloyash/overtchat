@@ -11,6 +11,8 @@ import {
   type AgentTerminalSnapshot,
 } from "@overtchat/agent-bridge";
 import { sshTerminalArgs } from "./ssh.js";
+import { HostEnvironments } from "./host-environment.js";
+import type { HostEnvironment } from "@overtchat/agent-runtime";
 
 const { Terminal } = headlessRuntime as unknown as {
   Terminal: typeof HeadlessTerminal;
@@ -102,7 +104,7 @@ function sameTerminalOwner(
   );
 }
 
-function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor): {
+function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor, platform: HostEnvironment["platform"]): {
   command: string;
   args: string[];
   cwd: string;
@@ -110,7 +112,7 @@ function terminalLaunch(descriptor: AgentDaemonWorkspaceDescriptor): {
   if (descriptor.target.transport === "ssh") {
     return {
       command: "ssh",
-      args: sshTerminalArgs(descriptor.target.alias, descriptor.cwd),
+      args: sshTerminalArgs(descriptor.target.alias, descriptor.cwd, platform),
       cwd: process.cwd(),
     };
   }
@@ -150,9 +152,15 @@ function writeToEmulator(
 export class ConnectorTerminalManager {
   private readonly terminals = new Map<string, ManagedTerminal>();
   private readonly subscribers = new Map<string, TerminalSubscriber>();
+  private readonly pending = new Map<string, {
+    descriptor: AgentDaemonWorkspaceDescriptor;
+    abort: AbortController;
+    ready: Promise<ManagedTerminal>;
+  }>();
 
   constructor(
     private readonly idleTimeoutMs = DEFAULT_TERMINAL_IDLE_TIMEOUT_MS,
+    private readonly inspectEnvironment = new HostEnvironments().inspect,
   ) {}
 
   async subscribe(
@@ -166,7 +174,7 @@ export class ConnectorTerminalManager {
       listener,
     });
     try {
-      const terminal = this.getOrCreate(descriptor, size);
+      const terminal = await this.getOrCreate(descriptor, size);
       this.cancelIdleCleanup(terminal);
       this.resize(descriptor.workspaceId, size);
       return await this.snapshot(terminal);
@@ -214,12 +222,14 @@ export class ConnectorTerminalManager {
     size: AgentTerminalSize,
   ): Promise<AgentTerminalSnapshot> {
     this.disposeTerminal(descriptor.workspaceId, true);
-    const terminal = this.create(descriptor, size);
+    const terminal = await this.getOrCreate(descriptor, size);
     this.scheduleIdleCleanup(descriptor.workspaceId);
     return this.snapshot(terminal);
   }
 
   kill(workspaceId: string): boolean {
+    const pending = this.pending.get(workspaceId);
+    if (pending) { this.disposeTerminal(workspaceId, true); return true; }
     const terminal = this.terminals.get(workspaceId);
     if (!terminal || terminal.exited) return false;
     terminal.pty.kill();
@@ -244,7 +254,7 @@ export class ConnectorTerminalManager {
   }
 
   stopConnection(connectionId: string): void {
-    for (const terminal of [...this.terminals.values()]) {
+    for (const terminal of [...this.terminals.values(), ...this.pending.values()]) {
       if (terminal.descriptor.connectionId === connectionId) {
         this.disposeWorkspace(terminal.descriptor.workspaceId);
       }
@@ -252,7 +262,7 @@ export class ConnectorTerminalManager {
   }
 
   stopAll(): void {
-    for (const workspaceId of [...this.terminals.keys()]) {
+    for (const workspaceId of [...this.terminals.keys(), ...this.pending.keys()]) {
       this.disposeWorkspace(workspaceId);
     }
     this.subscribers.clear();
@@ -268,21 +278,35 @@ export class ConnectorTerminalManager {
   private getOrCreate(
     descriptor: AgentDaemonWorkspaceDescriptor,
     size: AgentTerminalSize,
-  ): ManagedTerminal {
+  ): ManagedTerminal | Promise<ManagedTerminal> {
     const existing = this.terminals.get(descriptor.workspaceId);
-    if (!existing) return this.create(descriptor, size);
-    if (!sameTerminalOwner(existing.descriptor, descriptor)) {
+    const pending = this.pending.get(descriptor.workspaceId);
+    const owner = existing ?? pending;
+    if (owner && !sameTerminalOwner(owner.descriptor, descriptor)) {
       throw new Error("The terminal session belongs to a different workspace.");
     }
-    return existing;
+    if (existing) return existing;
+    if (pending) return pending.ready;
+    if (this.terminals.size + this.pending.size >= 32) throw new Error("Close an existing workspace terminal before opening another.");
+    if (descriptor.target.transport === "local") return this.create(descriptor, size, "posix");
+    const abort = new AbortController();
+    const ready = this.inspectEnvironment(descriptor.target, abort.signal).then((environment) => {
+      abort.signal.throwIfAborted();
+      return this.create(descriptor, size, environment.platform);
+    }).finally(() => {
+      if (this.pending.get(descriptor.workspaceId)?.ready === ready) this.pending.delete(descriptor.workspaceId);
+    });
+    this.pending.set(descriptor.workspaceId, { descriptor, abort, ready });
+    return ready;
   }
 
   private create(
     descriptor: AgentDaemonWorkspaceDescriptor,
     size: AgentTerminalSize,
+    platform: HostEnvironment["platform"],
   ): ManagedTerminal {
     if (this.terminals.size >= 32) throw new Error("Close an existing workspace terminal before opening another.");
-    const launch = terminalLaunch(descriptor);
+    const launch = terminalLaunch(descriptor, platform);
     const support = connectorTerminalSupport();
     if (!support.available) throw new Error(`Workspace terminal unavailable: ${support.reason}`);
     const emulator = new Terminal({
@@ -449,6 +473,8 @@ export class ConnectorTerminalManager {
   }
 
   private disposeTerminal(workspaceId: string, kill: boolean): void {
+    this.pending.get(workspaceId)?.abort.abort();
+    this.pending.delete(workspaceId);
     const terminal = this.terminals.get(workspaceId);
     if (!terminal) return;
     this.terminals.delete(workspaceId);

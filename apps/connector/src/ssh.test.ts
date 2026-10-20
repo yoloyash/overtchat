@@ -120,6 +120,20 @@ describe("SSH process launching", () => {
     ]);
     expect(args.at(-1)).toContain("cd -- '/Users/yash/project'\\''s files'");
   });
+
+  it("launches an interactive Windows shell without passing workspace syntax through cmd.exe", () => {
+    const cwd = "D:\\project's files\\日本語 [test] & %PATH%";
+    const args = sshTerminalArgs("windows", cwd, "win32");
+    expect(args[0]).toBe("-tt");
+    expect(args.at(-2)).toBe("windows");
+    const command = args.at(-1)!;
+    expect(command).toMatch(/^powershell.exe -NoLogo -NoExit -OutputFormat Text -EncodedCommand [A-Za-z0-9+/=]+$/u);
+    expect(command).not.toContain(cwd);
+    const script = Buffer.from(command.split(" ").at(-1)!, "base64").toString("utf16le");
+    expect(script).toContain("Set-Location -LiteralPath 'D:\\project''s files\\日本語 [test] & %PATH%' -ErrorAction Stop");
+    expect(script).toContain("exit 1");
+    expect(() => sshTerminalArgs("-oProxyCommand=invalid", cwd, "win32")).toThrow("Invalid SSH host alias");
+  });
 });
 
 describe("SSH host discovery", () => {
