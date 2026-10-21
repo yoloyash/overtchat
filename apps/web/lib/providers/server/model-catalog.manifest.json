@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-20T17:00:25.488Z",
+  "generatedAt": "2026-10-21T17:08:54.520Z",
   "sourceUrl": "https://models.dev/api.json",
-  "sourceSha256": "9a20caa71d7cfda00ec432f18bbd929d8dcad1d119776d02da59f9896aa3d273",
-  "catalogSha256": "724fe586e0d7e62b6bee10bd261d90cf2aaebcddf99b221a4fcb6febb68e2526",
-  "modelCount": 311
+  "sourceSha256": "f41780de57949abeb5211d34482ac775d3eff793817dfa17595aacc69ba3280d",
+  "catalogSha256": "457d3d23e966a6187178d92c7168c097c2186be2c0fc6a4f1b7cd971ef4b2f18",
+  "modelCount": 312
 }

@@ -3132,6 +3132,55 @@
       "reasoning": true,
       "temperature": true
     },
+    "gemini-pro-latest": {
+      "context": 1048576,
+      "output": 65536,
+      "cost": {
+        "cache_read": 0.2,
+        "context_over_200k": {
+          "cache_read": 0.4,
+          "input": 4,
+          "output": 18
+        },
+        "input": 2,
+        "output": 12,
+        "tiers": [
+          {
+            "cache_read": 0.4,
+            "input": 4,
+            "output": 18,
+            "tier": {
+              "size": 200000,
+              "type": "context"
+            }
+          }
+        ]
+      },
+      "input_modalities": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "pdf"
+      ],
+      "output_modalities": [
+        "text"
+      ],
+      "attachment": true,
+      "tool_call": true,
+      "reasoning": true,
+      "structured_output": true,
+      "temperature": true,
+      "reasoning_controls": {
+        "toggle": false,
+        "defaultLevel": "high",
+        "efforts": [
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    },
     "gemma-4-26b-a4b-it": {
       "context": 262144,
       "output": 32768,
@@ -3489,6 +3538,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-fable-5-1": {
@@ -3511,6 +3561,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -3568,7 +3619,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-4-1-20250805-v1:0": {
@@ -3659,6 +3710,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-4-8": {
@@ -3681,6 +3733,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-5": {
@@ -3703,6 +3756,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-opus-5-5": {
@@ -3725,6 +3779,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -3793,7 +3848,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "anthropic.claude-sonnet-5-5": {
@@ -3816,7 +3871,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "apac.amazon.nova-lite-v1:0": {
@@ -3965,7 +4020,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-4-6-v1": {
@@ -4011,6 +4066,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-4-8": {
@@ -4033,6 +4089,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-5": {
@@ -4055,6 +4112,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-opus-5-5": {
@@ -4077,6 +4135,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "au.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -4145,7 +4204,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "ca.amazon.nova-lite-v1:0": {
@@ -4341,6 +4400,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -4398,7 +4458,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-4-5-20251101-v1:0": {
@@ -4467,6 +4527,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-4-8": {
@@ -4489,6 +4550,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-5": {
@@ -4511,6 +4573,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-opus-5-5": {
@@ -4533,6 +4596,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -4623,7 +4687,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "eu.anthropic.claude-sonnet-5-5": {
@@ -4646,7 +4710,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "eu.mistral.pixtral-large-2502-v1:0": {
@@ -4713,6 +4777,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-fable-5-1": {
@@ -4735,6 +4800,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -4792,7 +4858,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-4-5-20251101-v1:0": {
@@ -4861,6 +4927,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-4-8": {
@@ -4883,6 +4950,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-5": {
@@ -4905,6 +4973,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-opus-5-5": {
@@ -4927,6 +4996,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -5017,7 +5087,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.anthropic.claude-sonnet-5-5": {
@@ -5040,7 +5110,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "global.moonshotai.kimi-k3": {
@@ -5583,6 +5653,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": false,
       "temperature": false
     },
     "in.anthropic.claude-sonnet-5": {
@@ -5771,7 +5842,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-4-7": {
@@ -5794,6 +5865,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-4-8": {
@@ -5816,6 +5888,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-5": {
@@ -5838,6 +5911,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-opus-5-5": {
@@ -5860,6 +5934,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "jp.anthropic.claude-sonnet-4-5-20250929-v1:0": {
@@ -5928,7 +6003,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "meta.llama3-1-70b-instruct-v1:0": {
@@ -7141,6 +7216,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-fable-5-1": {
@@ -7163,6 +7239,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
@@ -7220,7 +7297,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-4-1-20250805-v1:0": {
@@ -7311,6 +7388,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-4-8": {
@@ -7333,6 +7411,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-5": {
@@ -7355,6 +7434,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-opus-5-5": {
@@ -7377,6 +7457,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-sonnet-4-20250514-v1:0": {
@@ -7467,7 +7548,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.anthropic.claude-sonnet-5-5": {
@@ -7490,7 +7571,7 @@
       "attachment": true,
       "tool_call": true,
       "reasoning": true,
-      "structured_output": false,
+      "structured_output": true,
       "temperature": false
     },
     "us.deepseek.r1-v1:0": {
