@@ -61,6 +61,10 @@ try {
     if ((Get-FileHash -LiteralPath $installed -Algorithm SHA256).Hash -ne $fixtureHash) { throw 'Concurrent attempt changed the executable' }
   } finally { Remove-Item -LiteralPath $lock -Force }
   Write-Output 'PASS: Windows installer verifies bytes, preserves PATH, rejects tampering/concurrent updates, and recovers a missing CLI entry point.'
+  # The rejected competing operation intentionally exits 1. GitHub's PowerShell
+  # wrapper propagates LASTEXITCODE, so clear that expected failure only after
+  # all assertions pass. Unexpected errors still terminate the script.
+  $global:LASTEXITCODE=0
 } finally {
   [Environment]::SetEnvironmentVariable('Path',$oldUserPath,'User')
   $env:PATH=$oldPath

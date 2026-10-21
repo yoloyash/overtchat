@@ -98,6 +98,11 @@ binaries with the release-pinned runtimes:
 - Separately, a production connector update against the actual managed backend
   preserved the pairing token and ID, matched the candidate bytes, and returned
   authenticated online status at the expected version.
+- The full compiled CLI ran in a limited interactive task. A competing connector
+  lock produced exit 1 with pending state persisted; retry produced exit 0,
+  cleared pending state, and preserved credentials. The temporary task was removed.
+- GitHub Actions artifacts downloaded from `1f25f29` matched both candidate hashes
+  above exactly; installed binaries were checked against them on the PC.
 
 These checks cover process termination and reported filesystem errors, not a
 physical power-cut durability guarantee or rollback of database migrations.
