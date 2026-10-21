@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { writeText as clipboardWriteText } from "clipboard-polyfill";
 import type { FileUIPart, UIMessage } from "ai";
+import { openUIStateKey, type OpenUIAction, type OpenUIFormState } from "@overtchat/shared";
 import { Streamdown } from "streamdown";
 import {
   Check,
@@ -66,7 +67,8 @@ export function MessageBubble({
   onRegenerate,
   onContinue,
   onImageReference,
-  onSendPrompt,
+  onOpenUIAction,
+  openuiStates,
   onEdit,
   speech,
   showStats,
@@ -78,7 +80,8 @@ export function MessageBubble({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
-  onSendPrompt?: (text: string) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
+  openuiStates?: Map<string, OpenUIFormState>;
   onEdit: (id: string, text: string, files: FileUIPart[]) => void;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
@@ -142,7 +145,8 @@ export function MessageBubble({
       onRegenerate={onRegenerate}
       onContinue={onContinue}
       onImageReference={onImageReference}
-      onSendPrompt={onSendPrompt}
+      onOpenUIAction={onOpenUIAction}
+      openuiStates={openuiStates}
       speech={speech}
       showStats={showStats}
       stats={stats}
@@ -157,7 +161,8 @@ function AssistantBubble({
   onRegenerate,
   onContinue,
   onImageReference,
-  onSendPrompt,
+  onOpenUIAction,
+  openuiStates,
   speech,
   showStats,
   stats,
@@ -168,7 +173,8 @@ function AssistantBubble({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
-  onSendPrompt?: (text: string) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
+  openuiStates?: Map<string, OpenUIFormState>;
   speech: ReturnType<typeof useSpeech>;
   showStats: boolean;
   stats: MessageStats | null;
@@ -235,10 +241,12 @@ function AssistantBubble({
             if (seg.kind === "openui") {
               return (
                 <OpenUICard
-                  key={seg.index}
+                  key={seg.part.toolCallId}
+                  messageId={message.id}
                   part={seg.part}
                   streaming={streaming}
-                  onSendPrompt={canAct ? onSendPrompt : undefined}
+                  initialState={openuiStates?.get(openUIStateKey(message.id, seg.part.toolCallId))}
+                  onAction={canAct ? onOpenUIAction : undefined}
                 />
               );
             }

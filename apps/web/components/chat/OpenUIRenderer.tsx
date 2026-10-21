@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useTheme } from "next-themes";
+import {
+  Component,
+  useCallback,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from "react";
 import {
   BuiltinActionType,
   Renderer,
@@ -10,183 +15,202 @@ import {
 } from "@openuidev/react-lang";
 import { ThemeProvider, createTheme } from "@openuidev/react-ui";
 import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
+import {
+  readOpenUIAction,
+  type OpenUIAction,
+  type OpenUIFormState,
+} from "@overtchat/shared";
+import { useState } from "react";
 
-const sharedTypographyTheme = createTheme({
-  fontBody: "var(--font-sans)",
-  fontHeading: "var(--font-sans)",
-  fontLabel: "var(--font-sans)",
-  fontNumbers: "var(--font-sans)",
-  fontCode: "var(--font-mono)",
+const theme = createTheme({
+  fontBody: "var(--font-sans, sans-serif)",
+  fontHeading: "var(--font-sans, sans-serif)",
+  fontLabel: "var(--font-sans, sans-serif)",
+  fontNumbers: "var(--font-sans, sans-serif)",
+  fontCode: "var(--font-mono, monospace)",
+  background: "var(--background)",
+  foreground: "var(--card)",
+  popoverBackground: "var(--popover)",
+  textNeutralPrimary: "var(--foreground)",
+  textNeutralSecondary: "var(--muted-foreground)",
+  textNeutralTertiary: "var(--muted-foreground)",
+  textNeutralLink: "var(--primary)",
+  borderDefault: "var(--border)",
+  borderInteractive: "var(--input)",
+  borderInteractiveSelected: "var(--ring)",
+  interactiveAccentDefault: "var(--primary)",
+  interactiveAccentHover: "var(--primary)",
+  textAccentPrimary: "var(--primary-foreground)",
+  sunk: "var(--muted)",
+  sunkLight: "var(--muted)",
 });
 
-function unwrapStoreValue(value: unknown): unknown {
-  if (
-    value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    "value" in value
-  ) {
-    return value.value;
-  }
-  return value;
+export interface OpenUIRendererProps {
+  messageId: string;
+  toolCallId: string;
+  code: string;
+  isStreaming: boolean;
+  fallbackText: string;
+  mode: "light" | "dark";
+  initialState?: OpenUIFormState;
+  onAction?: (action: OpenUIAction) => void;
+  onOpenUrl?: (url: string) => void;
 }
 
-export function extractFormFields(
-  formState: Record<string, unknown> | undefined,
-): Array<[string, unknown]> {
-  if (!formState || typeof formState !== "object") return [];
-  const fields: Array<[string, unknown]> = [];
-  for (const [key, raw] of Object.entries(formState)) {
-    if (
-      raw &&
-      typeof raw === "object" &&
-      !Array.isArray(raw) &&
-      !("value" in raw && "componentType" in raw)
-    ) {
-      for (const [fieldName, fieldEntry] of Object.entries(
-        raw as Record<string, unknown>,
-      )) {
-        const unwrapped = unwrapStoreValue(fieldEntry);
-        if (unwrapped !== undefined && unwrapped !== "") {
-          fields.push([fieldName, unwrapped]);
-        }
-      }
-      continue;
-    }
-    const unwrapped = unwrapStoreValue(raw);
-    if (unwrapped !== undefined && unwrapped !== "") {
-      fields.push([key, unwrapped]);
-    }
-  }
-  return fields;
-}
-
-function formatActionPrompt(event: ActionEvent): string {
-  const baseMessage =
-    event.humanFriendlyMessage ||
-    (typeof event.params?.message === "string" ? event.params.message : "");
-  const formFields = extractFormFields(
-    event.formState as Record<string, unknown> | undefined,
-  );
-  if (formFields.length > 0) {
-    const formattedFields = formFields
-      .map(
-        ([key, value]) =>
-          `- ${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
-      )
-      .join("\n");
-    return baseMessage
-      ? `${baseMessage}\n\nSubmitted form values:\n${formattedFields}`
-      : `Submitted form${event.formName ? ` (${event.formName})` : ""}:\n${formattedFields}`;
-  }
-  return baseMessage;
-}
-
-function readPersistedFormState(
-  toolCallId: string,
-): Record<string, unknown> | undefined {
-  if (typeof window === "undefined" || !toolCallId) return undefined;
+export function safeOpenUIUrl(raw: unknown): string | undefined {
+  if (typeof raw !== "string") return undefined;
   try {
-    const raw = window.sessionStorage.getItem(
-      `overtchat_openui_state:${toolCallId}`,
-    );
-    if (!raw) return undefined;
-    const parsed: unknown = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
+    // Relative links are not meaningful across browser, desktop and native origins.
+    const url = new URL(raw);
+    return ["https:", "http:", "mailto:", "tel:"].includes(url.protocol)
+      ? url.href
       : undefined;
   } catch {
     return undefined;
   }
 }
 
-export default function OpenUIRenderer({
+export function OpenUIFallback({
+  text,
+  error,
+}: {
+  text: string;
+  error?: string;
+}) {
+  return (
+    <div data-openui-fallback="">
+      {error && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {error}
+        </p>
+      )}
+      {text && <div className="whitespace-pre-wrap text-sm">{text}</div>}
+    </div>
+  );
+}
+
+class RenderBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode; code: string },
+  { failed: boolean; code: string }
+> {
+  state = { failed: false, code: this.props.code };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  static getDerivedStateFromProps(
+    props: { code: string },
+    state: { code: string },
+  ) {
+    return props.code !== state.code
+      ? { failed: false, code: props.code }
+      : null;
+  }
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+export default function OpenUIRenderer(props: OpenUIRendererProps) {
+  return (
+    <RenderBoundary
+      code={props.code}
+      fallback={
+        <OpenUIFallback
+          text={props.fallbackText}
+          error="Interactive UI could not be rendered. The readable answer is shown below."
+        />
+      }
+    >
+      <OpenUIContent {...props} />
+    </RenderBoundary>
+  );
+}
+
+function OpenUIContent({
+  messageId,
   toolCallId,
   code,
   isStreaming,
-  onSendPrompt,
-}: {
-  toolCallId: string;
-  code: string;
-  isStreaming: boolean;
-  onSendPrompt?: (text: string) => void;
-}) {
-  const { resolvedTheme } = useTheme();
-  const mode = resolvedTheme === "dark" ? "dark" : "light";
+  fallbackText,
+  mode,
+  initialState,
+  onAction,
+  onOpenUrl,
+}: OpenUIRendererProps) {
   const [errors, setErrors] = useState<OpenUIError[]>([]);
-  const [initialState] = useState<Record<string, unknown> | undefined>(() =>
-    readPersistedFormState(toolCallId),
-  );
-
-  const handleStateUpdate = useCallback(
-    (state: Record<string, unknown>) => {
-      if (typeof window === "undefined" || !toolCallId) return;
-      try {
-        window.sessionStorage.setItem(
-          `overtchat_openui_state:${toolCallId}`,
-          JSON.stringify(state),
-        );
-      } catch {
-        // Ignore storage quota errors.
-      }
-    },
-    [toolCallId],
-  );
+  const sent = useRef(false);
+  // The parent removes the callback while a turn is queued/running. Re-enable
+  // submission only after that cycle; synchronous double clicks are ignored.
+  useEffect(() => {
+    if (!onAction) sent.current = false;
+  }, [onAction]);
   const handleAction = useCallback(
     (event: ActionEvent) => {
+      if (isStreaming) return;
       if (event.type === BuiltinActionType.OpenUrl) {
-        const rawUrl = event.params?.url;
-        if (typeof window !== "undefined" && typeof rawUrl === "string") {
-          try {
-            const parsed = new URL(rawUrl, window.location.href);
-            if (/^(https?|mailto|tel):$/i.test(parsed.protocol)) {
-              window.open(parsed.href, "_blank", "noopener,noreferrer");
-            }
-          } catch {
-            // Ignore malformed URLs from model output.
-          }
+        const url = safeOpenUIUrl(event.params?.url);
+        if (url) {
+          if (onOpenUrl) onOpenUrl(url);
+          else window.open(url, "_blank", "noopener,noreferrer");
         }
         return;
       }
-
-      if (!onSendPrompt) return;
-      const prompt = formatActionPrompt(event).trim();
-      if (prompt) onSendPrompt(prompt);
+      if (
+        event.type !== BuiltinActionType.ContinueConversation ||
+        !onAction ||
+        sent.current
+      )
+        return;
+      // The upstream form store includes optional fields with undefined values
+      // (for example componentType). Normalize to the actual JSON wire shape.
+      const action = readOpenUIAction(
+        JSON.parse(
+          JSON.stringify({
+            messageId,
+            toolCallId,
+            message: event.humanFriendlyMessage,
+            ...(event.params?.context !== undefined
+              ? { context: event.params.context }
+              : {}),
+            ...(event.formName !== undefined
+              ? { formName: event.formName }
+              : {}),
+            ...(event.formState !== undefined
+              ? { formState: event.formState }
+              : {}),
+          }),
+        ),
+      );
+      if (action) {
+        sent.current = true;
+        onAction(action);
+      }
     },
-    [onSendPrompt],
+    [messageId, toolCallId, isStreaming, onAction, onOpenUrl],
   );
-
-  const fatalFailure = errors.some(
-    (error) =>
-      error.severity !== "warning" &&
-      (error.code === "parse-failed" ||
-        error.code === "no-root" ||
-        error.code === "parse-exception"),
-  );
+  const failed =
+    !isStreaming && errors.some((error) => error.severity !== "warning");
   return (
-    <ThemeProvider
-      mode={mode}
-      lightTheme={sharedTypographyTheme}
-      darkTheme={sharedTypographyTheme}
-    >
-      <div
-        className="w-full"
-        data-openui-rendered=""
-        data-openui-streaming={isStreaming ? "true" : "false"}
-      >
-        <Renderer
-          response={code}
-          library={openuiChatLibrary}
-          isStreaming={isStreaming}
-          initialState={initialState}
-          onStateUpdate={handleStateUpdate}
-          onAction={handleAction}
-          onError={setErrors}
-        />
-        {!isStreaming && fatalFailure && (
-          <p className="mt-2 text-xs text-muted-foreground" role="status">
-            Interactive UI could not be rendered.
-          </p>
+    <ThemeProvider mode={mode} lightTheme={theme} darkTheme={theme}>
+      <div data-openui-rendered="" data-openui-streaming={String(isStreaming)}>
+        <fieldset
+          disabled={isStreaming || !onAction}
+          className="m-0 min-w-0 border-0 p-0"
+        >
+          <Renderer
+            response={code}
+            library={openuiChatLibrary}
+            isStreaming={isStreaming}
+            initialState={initialState}
+            onAction={handleAction}
+            onError={setErrors}
+          />
+        </fieldset>
+        {failed && (
+          <OpenUIFallback
+            text={fallbackText}
+            error="Some interactive content could not be rendered. The readable answer is shown below."
+          />
         )}
       </div>
     </ThemeProvider>

@@ -1,10 +1,14 @@
 import "server-only";
-import { tool } from "ai";
+import { tool, type StopCondition, type ToolSet } from "ai";
 import { z } from "zod";
-import { generateSystemPrompt, type LibrarySpec } from "@openuidev/lang-core";
-import { openuiChatPromptOptions } from "@openuidev/react-ui/genui-lib/prompt-options";
+import {
+  createParser,
+  generateSystemPrompt,
+  type LibrarySpec,
+} from "@openuidev/lang-core";
 import {
   OPENUI_PRESENT_TOOL_NAME,
+  OPENUI_MAX_PROGRAM_LENGTH,
   normalizeOpenUILang,
   type OpenUIToolOutput,
 } from "@overtchat/shared";
@@ -16,7 +20,9 @@ export const OPENUI_CHAT_LIBRARY_SPEC =
 export const OPENUI_TOOL_PROMPT = generateSystemPrompt({
   library: OPENUI_CHAT_LIBRARY_SPEC,
   promptOptions: {
-    ...openuiChatPromptOptions,
+    toolCalls: false,
+    bindings: true,
+    builtinFunctions: true,
     preamble: [
       "Interactive UI (OpenUI):",
       `When a response benefits from interactive visual components (charts, data tables, forms, dashboards, KPI cards, carousels, tabs, or step-by-step guides) or when the user asks for an interactive UI, render the interface by calling ${OPENUI_PRESENT_TOOL_NAME}.`,
@@ -24,22 +30,65 @@ export const OPENUI_TOOL_PROMPT = generateSystemPrompt({
       `When calling ${OPENUI_PRESENT_TOOL_NAME}, set the ui argument to valid OpenUI Lang without markdown code fences, make the tool call the entire response, and never output OpenUI Lang as assistant text.`,
     ].join(" "),
     additionalRules: [
-      ...(openuiChatPromptOptions.additionalRules ?? []),
+      "Only use components and actions in this library. Query and Mutation are unavailable; use chat tools to obtain data before presentation.",
+      "Provide a complete readable equivalent in the text argument, including important values, labels and sources. It is used for copy, speech, search and fallback; do not repeat it as assistant prose.",
       `When using ${OPENUI_PRESENT_TOOL_NAME}, FollowUpBlock clicks, Button @ToAssistant actions, and Form submissions start a new user turn automatically.`,
     ],
   },
 });
 
-export const OPENUI_COMPACT_TOOL_PROMPT = [
-  `Interactive UI (OpenUI): Render interactive interfaces by calling ${OPENUI_PRESENT_TOOL_NAME} with valid OpenUI Lang in the ui argument (no markdown fences).`,
-  "Always start with root = Card([...]) and define child statements below it using positional arguments.",
-  'Core components: CardHeader(title, subtitle?), TextContent(text, size?), BarChart(labels, [Series(name, values)]), LineChart(labels, [Series(name, values)]), Table([Col(label, values, type?)]), OverviewCardBlock([OverviewCardItem(title, value, subtitle?, icon?, trend?)]), ListBlock([ListItem(title, subtitle?, icon?, image?, action?)], variant?), Form(name, Buttons([Button(label, action?, variant?)]), [FormControl(label, Input(name, placeholder?, type?), hint?)]), FollowUpBlock([FollowUpItem(text)]).',
-].join("\n");
+const parser = createParser(OPENUI_CHAT_LIBRARY_SPEC.schema!, "Card");
+
+export function validateOpenUIProgram(ui: unknown): string {
+  const code = normalizeOpenUILang(ui).trim();
+  if (!code) throw new Error("OpenUI program cannot be empty.");
+  if (code.length > OPENUI_MAX_PROGRAM_LENGTH)
+    throw new Error("OpenUI program is too large. Simplify the interface.");
+  const parsed = parser.parse(code);
+  const errors = parsed.meta.errors.filter(
+    (error) => error.severity !== "warning",
+  );
+  if (
+    !parsed.root ||
+    parsed.meta.incomplete ||
+    parsed.meta.unresolved.length ||
+    errors.length
+  ) {
+    throw new Error(
+      `Invalid OpenUI program. Fix it and call present_openui again: ${
+        errors
+          .slice(0, 3)
+          .map((error) => error.message)
+          .join("; ") ||
+        "Use a complete Card root and define every referenced statement."
+      }`,
+    );
+  }
+  if (parsed.queryStatements.length || parsed.mutationStatements.length) {
+    throw new Error(
+      "Query and Mutation are unavailable in this interface. Obtain data with chat tools first and include it in the UI.",
+    );
+  }
+  return code;
+}
+
+/** A failed presentation must remain visible to the model for a bounded repair. */
+export const hasSuccessfulOpenUI: StopCondition<ToolSet> = ({ steps }) =>
+  steps
+    .at(-1)
+    ?.toolResults.some(
+      (result) =>
+        result.toolName === OPENUI_PRESENT_TOOL_NAME &&
+        typeof result.output === "object" &&
+        result.output !== null &&
+        "displayed" in result.output &&
+        result.output.displayed === true,
+    ) ?? false;
 
 export function createOpenUITools() {
   return Object.freeze({
     [OPENUI_PRESENT_TOOL_NAME]: tool<
-      { ui: string },
+      { ui: string; text: string },
       OpenUIToolOutput,
       Record<string, never>
     >({
@@ -48,14 +97,22 @@ export function createOpenUITools() {
       inputSchema: z.object({
         ui: z
           .string()
+          .max(OPENUI_MAX_PROGRAM_LENGTH)
           .describe("A complete OpenUI Lang program with Card as its root"),
+        text: z
+          .string()
+          .trim()
+          .min(1)
+          .max(32_000)
+          .describe(
+            "Complete readable equivalent of the answer, including important data, labels and sources; used for fallback, copy, speech and search.",
+          ),
       }),
-      execute: async ({ ui }) => {
-        if (!normalizeOpenUILang(ui).trim()) {
-          throw new Error("OpenUI program cannot be empty.");
-        }
-        return { displayed: true as const };
+      execute: async ({ ui, text }) => {
+        validateOpenUIProgram(ui);
+        return { displayed: true as const, text };
       },
+      toModelOutput: () => ({ type: "json", value: { displayed: true } }),
     }),
   });
 }

@@ -1,3 +1,4 @@
+import { collectOpenUIStates, type OpenUIAction } from "@overtchat/shared";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { Ionicons } from "@expo/vector-icons";
 import { FlashList, type FlashListRef } from "@shopify/flash-list";
@@ -49,6 +50,8 @@ export function MessageList({
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
+
   localAnchorRequestKey,
   readOnly = false,
 }: {
@@ -68,9 +71,11 @@ export function MessageList({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
   localAnchorRequestKey: number;
   readOnly?: boolean;
 }) {
+  const openuiStates = useMemo(() => collectOpenUIStates(messages), [messages]);
   const { colors, fonts } = useTheme();
   const latestMessage = messages.at(-1);
   const latestMessageId = latestMessage?.id;
@@ -210,6 +215,8 @@ export function MessageList({
                       : undefined
                   }
                   onImageReference={onImageReference}
+                  onOpenUIAction={onOpenUIAction}
+                  openuiStates={openuiStates}
                   readOnly={readOnly}
                 />
               )}

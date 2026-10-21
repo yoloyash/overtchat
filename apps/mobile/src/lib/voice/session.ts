@@ -170,7 +170,7 @@ export class MobileVoiceSession {
   private async refresh(activeOnly = false) {
     if (!this.grant) return;
     const grant = this.grant;
-    const response = await this.deps.request(`/api/chat/${encodeURIComponent(this.grant.chatId)}/messages`);
+    const response = await this.deps.request(`/api/chat/${encodeURIComponent(this.grant.chatId)}/messages?openui=1`);
     if (response.status === 404) return; // A call ended without a spoken turn.
     if (!response.ok) throw new Error("Could not refresh conversation");
     const body = await response.json();

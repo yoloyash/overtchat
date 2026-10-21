@@ -7,7 +7,6 @@ import {
   createUIMessageStreamResponse,
   generateText,
   isStepCount,
-  hasToolCall,
   ToolLoopAgent,
   toUIMessageStream,
   type LanguageModelUsage,
@@ -38,7 +37,6 @@ import {
 } from "@/lib/providers/server/output-budget";
 import {
   isImageToolPart,
-  isOpenUIToolPart,
   OPENUI_PRESENT_TOOL_NAME,
   isGeneratedImage,
   modelSupportsChatReasoningLevel,
@@ -56,10 +54,11 @@ import {
 } from "@/lib/images/tools";
 import {
   createOpenUITools,
-  OPENUI_COMPACT_TOOL_PROMPT,
+  hasSuccessfulOpenUI,
   OPENUI_TOOL_ORDER,
   OPENUI_TOOL_PROMPT,
 } from "@/lib/openui/tools";
+import { withSubmittedOpenUIAction, withOpenUIActionContext } from "@/lib/openui/actions";
 import { currentDateSystemPrompt } from "@/lib/chat/current-date";
 import {
   assertChatAttachments,
@@ -253,6 +252,7 @@ export async function runChat(
   }
 
   if (persistUserMessage) {
+    messages = withSubmittedOpenUIAction(messages, parsedRequest.openuiAction);
     messages = messages.map((message, index) => index === messages.length - 1
       ? withTurnResponseStyle(message, parsedRequest.responseStyle ?? "text")
       : message);
@@ -354,23 +354,32 @@ export async function runChat(
     );
   }
   let contextCheckpoint = restoredContext.checkpoint;
-  const openuiFitsContext =
-    !contextBudget || contextBudget.inputTokens >= 24_000;
-  const hasPriorOpenUI = restoredContext.messages.some((message) =>
-    message.parts.some(isOpenUIToolPart),
-  );
-  const openuiToolsEnabled =
+  const openuiEligible =
+    parsedRequest.openuiSupported === true &&
     modelConfig.toolCallingEnabled !== false &&
-    ((openuiEnabled && openuiFitsContext) || forceOpenUI || hasPriorOpenUI) &&
+    (openuiEnabled || forceOpenUI) &&
     parsedRequest.responseStyle !== "voice";
-  const openuiTools = openuiToolsEnabled ? createOpenUITools() : {};
+  const openuiPromptFits = !openuiEligible || !contextBudget || (
+    countTextTokens(OPENUI_TOOL_PROMPT) +
+    countTextTokens(modelConfig.systemPrompt ?? "") +
+    countTextTokens(JSON.stringify(restoredContext.messages.at(-1)?.parts ?? [])) +
+    2048 < contextBudget.inputTokens
+  );
+  if (forceOpenUI && openuiEligible && !openuiPromptFits) {
+    throw new ChatRequestError(
+      "Interactive UI instructions and this message exceed the model's available context. Choose a larger-context model or shorten the message.",
+    );
+  }
+  const openuiToolsEnabled = openuiEligible && openuiPromptFits;
+  // History decoding is independent of whether this turn offers the tool.
+  const openuiTools = createOpenUITools();
   const inlined = await inlineUploads(
     imageToolsEnabled
       ? withImageReferences(restoredContext.messages, supportsImageInput)
       : restoredContext.messages,
     userId,
   );
-  const convertedMessages = await convertToModelMessages(withResponseStyle(inlined).map((message) =>
+  const convertedMessages = await convertToModelMessages(withOpenUIActionContext(withResponseStyle(inlined)).map((message) =>
     message.role === "assistant"
       ? { ...message, parts: joinContinuationTextParts(message.parts) }
       : message,
@@ -421,11 +430,7 @@ export async function runChat(
     imageGeneration
       ? "The user selected Create image for this turn. Treat their message as an image generation or editing request. Research with available tools or ask a clarifying question first when needed, then use the image tools when ready."
       : null,
-    openuiToolsEnabled
-      ? openuiFitsContext
-        ? OPENUI_TOOL_PROMPT
-        : OPENUI_COMPACT_TOOL_PROMPT
-      : null,
+    openuiToolsEnabled ? OPENUI_TOOL_PROMPT : null,
     forceOpenUI && openuiToolsEnabled
       ? `The user selected Interactive UI for this turn. Present your answer as an interactive OpenUI interface by calling ${OPENUI_PRESENT_TOOL_NAME}. You may use other available tools first when needed, then call ${OPENUI_PRESENT_TOOL_NAME} for your final response.`
       : null,
@@ -560,8 +565,8 @@ export async function runChat(
       ...agentToolNames.filter(
         (name) =>
           !(CHAT_TOOL_ORDER as readonly string[]).includes(name) &&
-        !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
-        !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
+          !(MEMORY_TOOL_ORDER as readonly string[]).includes(name) &&
+          !(OPENUI_TOOL_ORDER as readonly string[]).includes(name),
       ),
     ];
     const includeProviderActivity = modelConfig.providerId === "llamacpp";
@@ -650,6 +655,13 @@ export async function runChat(
         ...(forceSearch && webToolsEnabled && stepNumber === 0
           ? { activeTools: WEB_TOOL_NAMES, toolChoice: "required" as const }
           : {}),
+        ...(openuiToolsEnabled && steps.flatMap((step) => step.toolCalls)
+          .filter((call) => call.toolName === OPENUI_PRESENT_TOOL_NAME).length >= 2
+          ? {
+              activeTools: agentToolNames.filter((name) => name !== OPENUI_PRESENT_TOOL_NAME),
+              instructions: `${system ?? ""}\nInteractive rendering failed twice. Do not call present_openui again. Give the user the complete answer in readable Markdown instead.`,
+            }
+          : {}),
       };
     };
     const result = manualCompaction
@@ -696,7 +708,7 @@ export async function runChat(
             tools: agentTools,
             toolOrder,
             stopWhen: openuiToolsEnabled
-              ? [isStepCount(50), hasToolCall(OPENUI_PRESENT_TOOL_NAME)]
+              ? [isStepCount(50), hasSuccessfulOpenUI]
               : isStepCount(50),
             toolChoice: "auto",
             prepareStep,

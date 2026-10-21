@@ -1248,6 +1248,48 @@ model credentials and leaves that test session in Claude's native history.
 The rewind integration below also checks native context restoration using
 synthetic history, without model requests or credentials.
 
+## Interactive UI validation
+
+OpenUI uses the upstream component library and a `present_openui` tool. Clients
+explicitly advertise renderer support; automatic generation defaults off. A
+one-message request can opt in. Voice turns do not offer the tool. The full
+component/action prompt costs approximately 7,400 tokens, so small-context
+models may decline an explicit request or skip automatic generation.
+
+The tool stores a readable answer alongside its program for copy, speech,
+search, renderer failures, and older clients. Submitted actions live in the
+subsequent user message's metadata, preserving source identity, structured
+context, and form state through reload and native export/import. Unsubmitted
+form edits stay in memory and are lost on reload. Query/Mutation data sources
+are unsupported; models obtain data through ordinary chat tools first.
+
+The browser and desktop share the React renderer. Mobile uses the same renderer
+in a WebView served from `/openui/index.html`, without authentication cookies or
+remote script dependencies. `predev` and `prebuild` generate these static assets;
+standalone/Docker packaging must include `public/`. After renderer changes,
+rebuild those assets and reload the mobile card. Changes to `react-native-webview`
+require rebuilding the native development client.
+
+When upgrading OpenUI, regenerate and commit the component spec, then check
+parser and renderer compatibility:
+
+```sh
+npm run openui:generate -w apps/web
+npm run openui:check -w apps/web
+npm run test -w apps/web -- lib/openui lib/import lib/db/openuiMigration.test.ts app/api/chat/route.test.ts
+E2E_PORT=4897 npm run test:e2e -w apps/web -- openui.spec.ts
+npm run typecheck -w apps/web
+npm run typecheck -w apps/mobile
+npm run build -w apps/desktop
+```
+
+The browser suite exercises the actual mobile bundle and bridge, malformed
+program fallback, structured form submission, duplicate-click suppression, and
+state restoration. Also smoke-test an installed Android and iOS client against
+the updated server: submit a form, reload the chat, open links, change theme,
+scroll a tall card, and verify readable fallback when the renderer cannot load.
+Browser coverage does not validate native WebView loading or gesture behavior.
+
 ## Claude rewind durability
 
 Claude conversation rewinds materialize a native transcript with the SDK's

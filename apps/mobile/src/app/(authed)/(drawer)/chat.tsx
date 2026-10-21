@@ -4,6 +4,7 @@ import {
   hasSuccessfulMemoryMutation,
   modelSupportsChatReasoningLevel,
   modelSupportsToolCalling,
+  type OpenUIAction,
   type ChatReasoningLevel,
   type ChatRequestAction,
 } from "@overtchat/shared";
@@ -503,6 +504,7 @@ function ChatSurface({
       modelConfigId: selectedId,
       webSearchEnabled,
       forceSearch: requested,
+      openuiSupported: true,
       openuiEnabled,
       forceOpenUI: requestedOpenUI,
       ...(imageAvailable && imageRequest ? { imageGeneration: imageRequest } : {}),
@@ -543,10 +545,10 @@ function ChatSurface({
       setMessages(res.data.messages);
   }
 
-  function handleSubmit(text: string, files: FileUIPart[]) {
+  function handleSubmit(text: string, files: FileUIPart[], openuiAction?: OpenUIAction) {
     if (voice.busy) return files.length ? false : voice.sendMessage(text);
     Keyboard.dismiss();
-    if (text.trim().toLowerCase() === "/compact" && files.length === 0) {
+    if (!openuiAction && text.trim().toLowerCase() === "/compact" && files.length === 0) {
       if (voice.busy || streaming || !configured || messages.length === 0) return;
       setContextStatus(null);
       setLocalAnchorRequestKey((key) => key + 1);
@@ -575,17 +577,22 @@ function ChatSurface({
       id: Crypto.randomUUID(),
       text,
       files,
-      body: requestBody(
-        { type: "submit" },
-        searchRequested,
-        imageOptions,
-        openuiRequested,
-      ),
+      body: {
+        ...requestBody(
+          { type: "submit" },
+          openuiAction ? false : searchRequested,
+          openuiAction ? undefined : imageOptions,
+          !openuiAction && openuiRequested,
+        ),
+        ...(openuiAction ? { openuiAction } : {}),
+      },
     });
-    setSearchRequested(false);
-    setOpenuiRequested(false);
-    setImageOptions(undefined);
-    clearAttachments();
+    if (!openuiAction) {
+      setSearchRequested(false);
+      setOpenuiRequested(false);
+      setImageOptions(undefined);
+      clearAttachments();
+    }
   }
 
   function handleContinue(messageId: string) {
@@ -709,6 +716,11 @@ function ChatSurface({
           onStartEdit={(id) => !voice.busy && !streaming && setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSaveEdit={handleSaveEdit}
+          onOpenUIAction={
+            !voice.busy && !streaming && configured && chatQueue.messages.length === 0
+              ? (action) => handleSubmit(action.message, [], action)
+              : undefined
+          }
           onRegenerate={handleRegenerate}
           onContinue={handleContinue}
           onImageReference={!voice.busy && imageAvailable && imageCapability?.supportsEditing !== false ? (file) => {

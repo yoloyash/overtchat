@@ -1,5 +1,7 @@
 "use client";
 
+import type { OpenUIAction } from "@overtchat/shared";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useChat } from "@ai-sdk/react";
@@ -418,6 +420,7 @@ export function ChatArea({
     modelConfigId: selectedId,
     webSearchEnabled,
     forceSearch: searchAvailable && forceSearch,
+    openuiSupported: true,
     openuiEnabled,
     forceOpenUI: openuiAvailable && forceOpenUI,
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -504,10 +507,11 @@ export function ChatArea({
   function handleSubmit(
     text: string,
     attachments: FileUIPart[],
-    forceOpenUIOverride = false,
+    openuiAction?: OpenUIAction,
   ) {
     if (
       !voiceActive &&
+      !openuiAction &&
       text.trim().toLowerCase() === "/compact" &&
       attachments.length === 0
     ) {
@@ -539,16 +543,21 @@ export function ChatArea({
       id: generateId(),
       text,
       files: attachments,
-      body: requestBody(
-        { type: "submit" },
-        searchRequested,
-        imageOptions,
-        openuiRequested || forceOpenUIOverride,
-      ),
+      body: {
+        ...requestBody(
+          { type: "submit" },
+          openuiAction ? false : searchRequested,
+          openuiAction ? undefined : imageOptions,
+          !openuiAction && openuiRequested,
+        ),
+        ...(openuiAction ? { openuiAction } : {}),
+      },
     });
-    setSearchRequested(false);
-    setOpenuiRequested(false);
-    setImageOptions(undefined);
+    if (!openuiAction) {
+      setSearchRequested(false);
+      setOpenuiRequested(false);
+      setImageOptions(undefined);
+    }
   }
 
   const initialQueryFiredRef = useRef(false);
@@ -894,9 +903,9 @@ export function ChatArea({
                   composerRef.current?.addReference(file);
                   setImageOptions({ size: "auto", quality: "auto" });
                 } : undefined}
-            onSendPrompt={
-              !voiceActive && configured && !streaming
-                ? (promptText) => handleSubmit(promptText, [], true)
+            onOpenUIAction={
+              !voiceActive && configured && !streaming && chatQueue.messages.length === 0
+                ? (action) => handleSubmit(action.message, [], action)
                 : undefined
             }
             onEdit={handleEdit}

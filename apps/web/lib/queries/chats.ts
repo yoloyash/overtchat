@@ -117,6 +117,7 @@ export async function fetchChatMessagesPage(
   cursor?: string,
 ): Promise<ChatMessagesPage | null> {
   const params = new URLSearchParams({
+    openui: "1",
     ...(cursor ? { cursor } : {}),
     limit: String(CHAT_MESSAGE_PAGE_SIZE),
   });

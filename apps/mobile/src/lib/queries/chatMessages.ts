@@ -19,7 +19,7 @@ export function useChatMessages(chatId: string | null) {
     queryKey: chatId ? queryKeys.chatMessages(chatId) : ["chat", "messages", "none"],
     enabled: !!chatId,
     queryFn: async (): Promise<ChatMessagesResponse> => {
-      const res = await authFetch(`${getApiBase()}/api/chat/${chatId}/messages`);
+      const res = await authFetch(`${getApiBase()}/api/chat/${chatId}/messages?openui=1`);
       if (!res.ok) throw new Error(`Failed to load chat (${res.status})`);
       return (await res.json()) as ChatMessagesResponse;
     },

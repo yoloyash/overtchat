@@ -1,4 +1,4 @@
-import { getErrorMessage, speechErrorMessage } from "@overtchat/shared";
+import { getErrorMessage, speechErrorMessage, readableMessageText } from "@overtchat/shared";
 import { remark } from "remark";
 import strip from "strip-markdown";
 import type { UIMessage } from "ai";
@@ -12,18 +12,11 @@ export function stripMarkdown(s: string): string {
 }
 
 export function textOf(message: UIMessage): string {
-  return message.parts
-    .filter((p) => p.type === "text")
-    .map((p) => p.text)
-    .join("");
+  return readableMessageText(message);
 }
 
 export function speakableText(message: UIMessage): string {
-  return message.parts
-    .filter((p) => p.type === "text")
-    .map((p) => stripMarkdown(stripCitationMarkers((p as { text: string }).text)))
-    .join(" ")
-    .trim();
+  return stripMarkdown(stripCitationMarkers(readableMessageText(message)));
 }
 
 export function dictationErrorMessage(

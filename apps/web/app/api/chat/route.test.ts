@@ -79,7 +79,8 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("server-only", () => ({}));
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  ...await importOriginal<typeof import("ai")>(),
   generateText: mocks.generateText,
   consumeStream: mocks.consumeStream,
   convertToModelMessages: mocks.convertToModelMessages,
@@ -461,6 +462,118 @@ describe("chat route setup boundary", () => {
     expect(response.status).toBe(404);
     expect(mocks.createConfiguredLanguageModel).not.toHaveBeenCalled();
     expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])(
+    "never re-enables OpenUI merely because history contains a card (supported=%s)",
+    async (supported) => {
+      const history = [
+        {
+          id: "card",
+          role: "assistant",
+          parts: [
+            {
+              type: "tool-present_openui",
+              toolCallId: "t",
+              state: "output-available",
+              input: { ui: 'root = Card([TextContent("Saved answer")])' },
+              output: { displayed: true },
+            },
+          ],
+        },
+      ];
+      mocks.getChat.mockResolvedValue(existingChat());
+      mocks.getMessages.mockResolvedValue(history);
+      mocks.parseChatRequest.mockResolvedValue({
+        ...parsedRequest,
+        openuiSupported: supported,
+        openuiEnabled: false,
+      });
+      expect((await POST(request())).status).toBe(200);
+      expect(mocks.agentSettings[0].tools).not.toHaveProperty("present_openui");
+      expect(mocks.agentSettings[0].instructions).not.toEqual(
+        expect.objectContaining({
+          content: expect.stringContaining("Interactive UI (OpenUI)"),
+        }),
+      );
+      expect(
+        mocks.convertToModelMessages.mock.calls[0][1].tools,
+      ).toHaveProperty("present_openui");
+    },
+  );
+
+  it("rejects a forced card that cannot fit before committing a turn", async () => {
+    mocks.resolveModelContextWindow.mockReturnValue(4096);
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      openuiSupported: true,
+      forceOpenUI: true,
+    });
+    expect((await POST(request())).status).toBe(400);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    expect(mocks.agentStream).not.toHaveBeenCalled();
+  });
+
+  it("removes OpenUI after two unsuccessful presentations so the next step can answer in text", async () => {
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      openuiSupported: true,
+      openuiEnabled: true,
+    });
+    expect((await POST(request())).status).toBe(200);
+    const prepare = mocks.agentSettings[0].prepareStep as (
+      input: object,
+    ) => Promise<{ activeTools?: string[]; instructions?: string }>;
+    const prepared = await prepare({
+      messages: convertedMessages,
+      steps: [
+        { toolCalls: [{ toolName: "present_openui" }] },
+        { toolCalls: [{ toolName: "present_openui" }] },
+      ],
+      stepNumber: 2,
+    });
+    expect(prepared.activeTools).not.toContain("present_openui");
+    expect(prepared.instructions).toContain("readable Markdown");
+  });
+
+  it("persists a validated card action and rejects a source outside owned history", async () => {
+    const action = {
+      messageId: "card",
+      toolCallId: "t",
+      message: "Book",
+      context: { ticket: "T-42" },
+    };
+    mocks.parseChatRequest.mockResolvedValue({
+      ...parsedRequest,
+      openuiSupported: true,
+      openuiAction: action,
+    });
+    expect((await POST(request())).status).toBe(409);
+    expect(mocks.commitChatTurn).not.toHaveBeenCalled();
+    mocks.getChat.mockResolvedValue(existingChat());
+    mocks.getMessages.mockResolvedValue([
+      {
+        id: "card",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-present_openui",
+            toolCallId: "t",
+            state: "output-available",
+            input: { ui: "root = Card([])" },
+            output: { displayed: true },
+          },
+        ],
+      },
+    ]);
+    expect((await POST(request())).status).toBe(200);
+    expect(mocks.commitChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userMessage: expect.objectContaining({
+          metadata: expect.objectContaining({ openuiAction: action }),
+        }),
+      }),
+    );
   });
 
   it("reconstructs saved model context from persisted history", async () => {
@@ -1102,7 +1215,7 @@ describe("chat route setup boundary", () => {
       supportsImageInput: true,
     });
     expect(mocks.convertToModelMessages).toHaveBeenCalledWith(messages, {
-      tools: mocks.chatTools,
+      tools: expect.objectContaining(mocks.chatTools),
       ignoreIncompleteToolCalls: true,
     });
   });

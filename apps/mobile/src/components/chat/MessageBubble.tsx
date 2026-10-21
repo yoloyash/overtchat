@@ -1,3 +1,4 @@
+import { openUIStateKey, type OpenUIAction, type OpenUIFormState } from "@overtchat/shared";
 import type { FileUIPart, UIMessage } from "ai";
 import { groupMessageParts, isToolSettled } from "@overtchat/shared";
 import * as Clipboard from "expo-clipboard";
@@ -31,6 +32,8 @@ export function MessageBubble({
   onRegenerate,
   onContinue,
   onImageReference,
+  onOpenUIAction,
+  openuiStates,
   readOnly = false,
 }: {
   message: UIMessage;
@@ -43,6 +46,8 @@ export function MessageBubble({
   onRegenerate: (id: string) => void;
   onContinue?: (id: string) => void;
   onImageReference?: (file: FileUIPart) => void;
+  onOpenUIAction?: (action: OpenUIAction) => void;
+  openuiStates?: Map<string, OpenUIFormState>;
   readOnly?: boolean;
 }) {
   const { colors, radii, fonts } = useTheme();
@@ -151,7 +156,7 @@ export function MessageBubble({
     );
   }
 
-  const hasAnyText = message.parts.some((p) => p.type === "text");
+  const hasAnyText = text.trim().length > 0;
   const showActions = !streaming && hasAnyText;
   const assistantActions: MessageAction[] =
     !streaming && hasAnyText
@@ -202,7 +207,10 @@ export function MessageBubble({
           if (seg.kind === "openui") {
             return (
               <OpenUICard
-                key={`o-${seg.index}`}
+                messageId={message.id}
+                initialState={openuiStates?.get(openUIStateKey(message.id, seg.part.toolCallId))}
+                onAction={readOnly ? undefined : onOpenUIAction}
+                key={seg.part.toolCallId}
                 part={seg.part}
                 streaming={streaming}
               />

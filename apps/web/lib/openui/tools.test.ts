@@ -1,116 +1,136 @@
 import { describe, expect, it, vi } from "vitest";
-
 vi.mock("server-only", () => ({}));
 import { openuiChatLibrary } from "@openuidev/react-ui/genui-lib";
+import { ToolLoopAgent, isStepCount } from "ai";
+import { MockLanguageModelV4 } from "ai/test";
 import {
-  OPENUI_PRESENT_TOOL_NAME,
+  normalizeOpenUILang,
   OPENUI_TOOL_PART_TYPE,
   groupMessageParts,
-  normalizeOpenUILang,
 } from "@overtchat/shared";
-import { extractFormFields } from "@/components/chat/OpenUIRenderer";
 import { parseChatRequest } from "@/lib/chat/request";
+import { countTextTokens } from "@/lib/chat/context-budget";
 import {
   OPENUI_CHAT_LIBRARY_SPEC,
   OPENUI_TOOL_PROMPT,
   createOpenUITools,
+  hasSuccessfulOpenUI,
+  validateOpenUIProgram,
 } from "./tools";
 
-describe("OpenUI integration", () => {
-  it("keeps the server chat library spec in sync with @openuidev/react-ui", () => {
+const valid = 'root = Card([TextContent("Revenue: 42")])';
+const usage = {
+  inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 },
+  outputTokens: { total: 1, text: 1, reasoning: 0 },
+};
+
+describe("OpenUI tool contract", () => {
+  it("uses the exact renderer spec and keeps the complete prompt under 8000 tokens", () => {
     expect(OPENUI_CHAT_LIBRARY_SPEC).toEqual(openuiChatLibrary.toSpec());
-    expect(OPENUI_TOOL_PROMPT).toContain(OPENUI_PRESENT_TOOL_NAME);
-    expect(OPENUI_TOOL_PROMPT).toContain("root = Card");
-    expect(OPENUI_TOOL_PROMPT).not.toContain(
-      "Your ENTIRE response must be valid openui-lang code",
+    expect(OPENUI_TOOL_PROMPT).toContain("@ToAssistant");
+    expect(OPENUI_TOOL_PROMPT).toContain("text argument");
+    expect(countTextTokens(OPENUI_TOOL_PROMPT)).toBeLessThan(8000);
+  });
+  it.each([undefined, null, 123, {}, [], true])(
+    "safely ignores malformed streamed arguments: %j",
+    (value) => {
+      expect(normalizeOpenUILang(value)).toBe("");
+    },
+  );
+  it("normalizes fenced programs and rejects invalid complete programs", () => {
+    expect(validateOpenUIProgram("```openui\n" + valid + "\n```")).toBe(valid);
+    for (const code of [
+      "",
+      "This is prose",
+      'root = Card([NoSuchComponent("hi")])',
+      "root = Card([missing])",
+    ]) {
+      expect(() => validateOpenUIProgram(code)).toThrow();
+    }
+  });
+  it("persists readable content with the successful tool output", async () => {
+    const result = await createOpenUITools().present_openui.execute!(
+      { ui: valid, text: "Revenue: 42" },
+      { toolCallId: "t", messages: [], context: {} },
     );
-  });
-
-  it("strips accidental markdown code fences from OpenUI Lang strings", () => {
-    const raw = "```openui\nroot = Card([title])\ntitle = TextContent(\"Hi\")\n```";
-    expect(normalizeOpenUILang(raw)).toBe(
-      'root = Card([title])\ntitle = TextContent("Hi")',
-    );
-    expect(normalizeOpenUILang('root = Card([title])')).toBe(
-      "root = Card([title])",
-    );
-  });
-
-  it("validates non-empty OpenUI programs in present_openui execute", async () => {
-    const toolDef = createOpenUITools()[OPENUI_PRESENT_TOOL_NAME];
-    await expect(
-      toolDef.execute!(
-        { ui: 'root = Card([TextContent("Hello")])' },
-        { toolCallId: "tc-1", messages: [], context: {} },
-      ),
-    ).resolves.toEqual({ displayed: true });
-    await expect(
-      toolDef.execute!(
-        { ui: "   " },
-        { toolCallId: "tc-2", messages: [], context: {} },
-      ),
-    ).rejects.toThrow("OpenUI program cannot be empty.");
-  });
-
-  it("groups tool-present_openui parts into openui message segments", () => {
-    const segments = groupMessageParts([
-      { type: "text", text: "Here is the breakdown:" },
-      {
-        type: OPENUI_TOOL_PART_TYPE,
-        toolCallId: "call_1",
-        state: "output-available",
-        input: { ui: 'root = Card([TextContent("Revenue")])' },
-        output: { displayed: true },
-      },
-    ]);
-    expect(segments).toHaveLength(2);
-    expect(segments[0]?.kind).toBe("text");
-    expect(segments[1]).toMatchObject({
-      kind: "openui",
-      part: {
-        type: OPENUI_TOOL_PART_TYPE,
-        toolCallId: "call_1",
-      },
-    });
-  });
-
-  it("unwraps nested OpenUI store form field wrappers into clean key-value pairs", () => {
+    expect(result).toEqual({ displayed: true, text: "Revenue: 42" });
     expect(
-      extractFormFields({
-        tripForm: {
-          destination: { value: "Kyoto", componentType: "Input" },
-          style: { value: "Cultural", componentType: "OptionCards" },
-          emptyField: { value: "", componentType: "Input" },
+      groupMessageParts([
+        {
+          type: OPENUI_TOOL_PART_TYPE,
+          toolCallId: "t",
+          state: "output-available",
+          input: { ui: valid, text: "Revenue: 42" },
+          output: result,
         },
-        $budget: 2500,
-      }),
-    ).toEqual([
-      ["destination", "Kyoto"],
-      ["style", "Cultural"],
-      ["$budget", 2500],
-    ]);
+      ])[0].kind,
+    ).toBe("openui");
   });
-
-  it("allows per-message forceOpenUI even when global openuiEnabled is false", async () => {
-    const req = new Request("http://localhost/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        modelConfigId: "model-1",
-        chatId: "chat-1",
-        openuiEnabled: false,
-        forceOpenUI: true,
-        messages: [
+  it("lets the real SDK repair a failed call and stops on the successful presentation", async () => {
+    let calls = 0;
+    const model = new MockLanguageModelV4({
+      doGenerate: async () => ({
+        content: [
           {
-            id: "msg-1",
-            role: "user",
-            parts: [{ type: "text", text: "Build a trip form" }],
+            type: "tool-call",
+            toolCallId: `t${++calls}`,
+            toolName: "present_openui",
+            input: JSON.stringify({
+              ui: calls === 1 ? " " : valid,
+              text: "Revenue: 42",
+            }),
           },
         ],
+        finishReason: { unified: "tool-calls", raw: "tool-calls" },
+        usage,
+        warnings: [],
       }),
     });
-    const parsed = await parseChatRequest(req);
-    expect(parsed.openuiEnabled).toBe(false);
-    expect(parsed.forceOpenUI).toBe(true);
+    const result = await new ToolLoopAgent({
+      model,
+      tools: createOpenUITools(),
+      stopWhen: [isStepCount(4), hasSuccessfulOpenUI],
+    }).generate({ prompt: "Show revenue" });
+    expect(calls).toBe(2);
+    expect(
+      result.steps[0].content.some((part) => part.type === "tool-error"),
+    ).toBe(true);
+    expect(result.toolResults[0].output).toEqual({
+      displayed: true,
+      text: "Revenue: 42",
+    });
   });
+  it.each([
+    [{}, false, false],
+    [{ openuiEnabled: true, forceOpenUI: true }, false, false],
+    [
+      { openuiSupported: true, openuiEnabled: false, forceOpenUI: true },
+      false,
+      true,
+    ],
+    [{ openuiSupported: true, openuiEnabled: true }, true, false],
+  ])(
+    "negotiates capability independently from preference: %j",
+    async (flags, enabled, forced) => {
+      const parsed = await parseChatRequest(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          body: JSON.stringify({
+            ...flags,
+            chatId: "chat",
+            modelConfigId: "model",
+            messages: [
+              {
+                id: "u",
+                role: "user",
+                parts: [{ type: "text", text: "hello" }],
+              },
+            ],
+          }),
+        }),
+      );
+      expect(parsed.openuiEnabled).toBe(enabled);
+      expect(parsed.forceOpenUI).toBe(forced);
+    },
+  );
 });
