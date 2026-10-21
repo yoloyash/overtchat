@@ -239,6 +239,7 @@ export async function installManagedConnector(
   let hadPrevious = false;
   let installed = false;
   let previousStopped = false;
+  let replacementServiceAttempted = false;
   try {
     progress("Checking Agent Connector executable");
     const preflight = await requireSuccessful(staged.binary, ["version"], { timeoutMs: 10_000 });
@@ -268,6 +269,7 @@ export async function installManagedConnector(
     const provisioned = await provisionConnector(config, managementSecret);
     protectInstallationSecrets(provisioned.token);
     progress("Starting Agent Connector service");
+    replacementServiceAttempted = true;
     await requireSuccessful(installPath, ["install-managed"], {
       timeoutMs: 120_000,
       ...(process.platform === "win32" ? { environment } : {}),
@@ -291,7 +293,17 @@ export async function installManagedConnector(
       if (process.platform === "win32") {
         // Never overwrite an executable until its task has stopped. Keep the
         // backup available if graceful shutdown fails during recovery.
-        await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
+        // A failed copy can leave an incomplete executable. The old service
+        // is already stopped, so only execute the replacement if startup was
+        // attempted; otherwise remove the partial file and restore directly.
+        if (replacementServiceAttempted) {
+          try {
+            await requireSuccessful(installPath, ["service-stop"], { environment, timeoutMs: 60_000 });
+          } catch (recoveryError) {
+            throw new AggregateError([error, recoveryError],
+              `${failedPhase}: ${installationMessage(error)}. Recovery could not stop the replacement: ${installationMessage(recoveryError)}. ${hadPrevious ? `The previous binary is retained at ${backupPath}. ` : ""}Inspect overtchat logs connector before retrying setup or update.`);
+          }
+        }
       } else if (process.platform === "darwin") {
         await runCommand("launchctl", ["bootout", `gui/${process.getuid!()}/com.overtchat.connector`], { timeoutMs: 20_000 }).catch(() => null);
       } else {

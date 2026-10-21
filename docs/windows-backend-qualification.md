@@ -68,6 +68,15 @@ publishing an unreleased artifact.
 
 ## Evidence boundaries
 
+Follow-up rollback audit: a failed Windows connector copy could leave a partial
+executable that the recovery path attempted to run, preventing restoration of the
+previous binary. Recovery now skips replacement shutdown until service startup
+has been attempted. If a started replacement cannot stop, the error preserves
+both failures and identifies the retained backup. The CLI suite passes 265 tests,
+including simulated partial-copy failure and failed-shutdown recovery; CLI lint,
+typecheck, and build also pass. These regression checks use mocked Windows
+process/filesystem failures and do not add physical-machine qualification.
+
 This validates a signed-in Windows desktop deployment, not an unattended Windows
 system service. Sleep suspends availability. Windows ARM64 and Server are outside
 the supported target. Docker Desktop startup must be enabled for sign-in recovery.

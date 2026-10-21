@@ -164,3 +164,47 @@ it("re-enables the previous Windows connector if replacement cannot begin", asyn
     .toContainEqual(["/isolated/bin/overtchat-connector.exe", ["service-install"]]);
   expect(mocks.copyFile.mock.calls.some(([, destination]) => destination === "/isolated/bin/overtchat-connector.exe")).toBe(false);
 });
+
+it("restores the previous Windows connector without executing an incomplete replacement", async () => {
+  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  vi.stubEnv("OVERTCHAT_BIN_DIR", "/isolated/bin");
+  const installed = "/isolated/bin/overtchat-connector.exe";
+  mocks.copyFile.mockImplementation(async (_source, destination) => {
+    if (destination === installed) {
+      throw Object.assign(new Error("disk full during copy"), { code: "ENOSPC" });
+    }
+  });
+  let stops = 0;
+  mocks.requireSuccessful.mockImplementation(async (_command, args) => {
+    if (args[0] === "service-stop" && ++stops > 1) {
+      throw new Error("replacement is not a valid executable");
+    }
+    return { exitCode: 0, stdout: "0.12.0", stderr: "" };
+  });
+  await expect(installManagedConnector(config, "fixture-secret"))
+    .rejects.toThrow("disk full during copy");
+  expect(stops).toBe(1);
+  expect(mocks.rm).toHaveBeenCalledWith(installed, { force: true });
+  expect(mocks.rename).toHaveBeenLastCalledWith(`${installed}.previous`, installed);
+  expect(mocks.runCommand).toHaveBeenLastCalledWith(installed, ["service-install"], {
+    environment: expect.any(Object), timeoutMs: 120_000,
+  });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+it("retains the Windows backup if a started replacement cannot stop for rollback", async () => {
+  vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+  vi.stubEnv("OVERTCHAT_BIN_DIR", "/isolated/bin");
+  const installed = "/isolated/bin/overtchat-connector.exe";
+  let stops = 0;
+  mocks.requireSuccessful.mockImplementation(async (_command, args) => {
+    if (args[0] === "install-managed") throw new Error("startup failed after task registration");
+    if (args[0] === "service-stop" && ++stops > 1) throw new Error("replacement did not stop");
+    return { exitCode: 0, stdout: "0.12.0", stderr: "" };
+  });
+  await expect(installManagedConnector(config, "fixture-secret"))
+    .rejects.toThrow(`startup failed after task registration. Recovery could not stop the replacement: replacement did not stop. The previous binary is retained at ${installed}.previous.`);
+  expect(stops).toBe(2);
+  expect(mocks.rename).toHaveBeenCalledExactlyOnceWith(installed, `${installed}.previous`);
+  expect(mocks.rm).not.toHaveBeenCalledWith(installed, expect.anything());
+});
